@@ -2,7 +2,6 @@
 <html lang="en">
 
 <head>
-
     <meta charset="UTF-8">
 
     <meta
@@ -17,6 +16,10 @@
         rel="stylesheet"
         href="/AGAP/frontend/assets/css/app.css">
 
+    <link
+        rel="stylesheet"
+        href="/AGAP/frontend/assets/css/dashboard.css">
+
 </head>
 
-<body class="bg-gray-100"></body>
+<body class="bg-gray-100">
