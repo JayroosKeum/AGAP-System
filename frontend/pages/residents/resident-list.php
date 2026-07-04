@@ -226,6 +226,167 @@ include '../../layouts/header.php';
 
 </div>
 
+<!-- EDIT RESIDENT MODAL -->
+
+<div id="editResidentModal" class="modal">
+
+    <div class="modal-content">
+
+        <div class="modal-header">
+
+            <h2>Edit Resident</h2>
+
+            <button
+                type="button"
+                class="close-btn"
+                onclick="closeEditModal()">
+
+                &times;
+
+            </button>
+
+        </div>
+
+        <form
+            action="../../../backend/api/residents/update.php"
+            method="POST">
+
+            <input
+                type="hidden"
+                name="resident_id"
+                id="editResidentId">
+
+            <div class="resident-form-grid">
+
+                <div class="form-group">
+                    <label>First Name</label>
+                    <input
+                        type="text"
+                        name="first_name"
+                        id="editFirstName"
+                        required>
+                </div>
+
+                <div class="form-group">
+                    <label>Middle Name</label>
+                    <input
+                        type="text"
+                        name="middle_name"
+                        id="editMiddleName">
+                </div>
+
+                <div class="form-group">
+                    <label>Last Name</label>
+                    <input
+                        type="text"
+                        name="last_name"
+                        id="editLastName"
+                        required>
+                </div>
+
+                <div class="form-group">
+                    <label>Birth Date</label>
+                    <input
+                        type="date"
+                        name="birth_date"
+                        id="editBirthDate">
+                </div>
+
+                <div class="form-group">
+                    <label>Gender</label>
+
+                    <select
+                        name="gender"
+                        id="editGender">
+
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Civil Status</label>
+
+                    <select
+                        name="civil_status"
+                        id="editCivilStatus">
+
+                        <option value="Single">Single</option>
+                        <option value="Married">Married</option>
+                        <option value="Widowed">Widowed</option>
+                        <option value="Separated">Separated</option>
+
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Contact Number</label>
+
+                    <input
+                        type="text"
+                        name="contact_no"
+                        id="editContactNo">
+                </div>
+
+                <div class="form-group">
+                    <label>Email</label>
+
+                    <input
+                        type="email"
+                        name="email"
+                        id="editEmail">
+                </div>
+
+                <div class="form-group">
+                    <label>Purok</label>
+
+                    <input
+                        type="text"
+                        name="purok"
+                        id="editPurok">
+                </div>
+
+                <div class="form-group">
+                    <label>Tenant Status</label>
+
+                    <select
+                        name="is_tenant"
+                        id="editTenant">
+
+                        <option value="0">No</option>
+                        <option value="1">Yes</option>
+
+                    </select>
+                </div>
+
+                <div class="form-group full-width">
+
+                    <label>Address</label>
+
+                    <textarea
+                        name="address"
+                        id="editAddress"
+                        rows="3"></textarea>
+
+                </div>
+
+            </div>
+
+            <button
+                type="submit"
+                class="btn-create">
+
+                Update Resident
+
+            </button>
+
+        </form>
+
+    </div>
+
+</div>
+
 <script src="../../assets/js/residents.js"></script>
 
 <?php include '../../layouts/footer.php'; ?>

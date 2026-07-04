@@ -125,9 +125,59 @@ function closeViewModal()
 
 function editResident(id)
 {
-    alert(
-        'Edit Resident will be implemented next.'
-    );
+    fetch(
+        '../../../backend/api/residents/view.php?id=' + id
+    )
+    .then(response => response.json())
+    .then(data => {
+
+        document.getElementById('editResidentId')
+            .value = data.resident_id;
+
+        document.getElementById('editFirstName')
+            .value = data.first_name ?? '';
+
+        document.getElementById('editMiddleName')
+            .value = data.middle_name ?? '';
+
+        document.getElementById('editLastName')
+            .value = data.last_name ?? '';
+
+        document.getElementById('editBirthDate')
+            .value = data.birth_date ?? '';
+
+        document.getElementById('editGender')
+            .value = data.gender ?? '';
+
+        document.getElementById('editCivilStatus')
+            .value = data.civil_status ?? '';
+
+        document.getElementById('editContactNo')
+            .value = data.contact_no ?? '';
+
+        document.getElementById('editEmail')
+            .value = data.email ?? '';
+
+        document.getElementById('editPurok')
+            .value = data.purok ?? '';
+
+        document.getElementById('editTenant')
+            .value = data.is_tenant ?? '0';
+
+        document.getElementById('editAddress')
+            .value = data.address ?? '';
+
+        document.getElementById('editResidentModal')
+            .style.display = 'flex';
+
+    });
+}
+
+function closeEditModal()
+{
+    document.getElementById(
+        'editResidentModal'
+    ).style.display = 'none';
 }
 
 function deleteResident(id)
