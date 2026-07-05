@@ -387,6 +387,65 @@ include '../../layouts/header.php';
 
 </div>
 
+<!-- DELETE RESIDENT MODAL -->
+
+<div id="deleteResidentModal" class="modal">
+
+    <div class="modal-content delete-modal">
+
+        <div class="modal-header">
+
+            <h2>Delete Resident</h2>
+
+            <button
+                type="button"
+                class="close-btn"
+                onclick="closeDeleteModal()">
+
+                &times;
+
+            </button>
+
+        </div>
+
+        <p>
+            Are you sure you want to delete this resident?
+        </p>
+
+        <p>
+            This action cannot be undone.
+        </p>
+
+        <input
+            type="hidden"
+            id="deleteResidentId">
+
+        <div class="modal-actions">
+
+            <button
+                type="button"
+                class="btn-secondary"
+                onclick="closeDeleteModal()">
+
+                Cancel
+
+            </button>
+
+            <button
+                type="button"
+                class="btn-danger"
+                onclick="confirmDeleteResident()">
+
+                Delete
+
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
 <script src="../../assets/js/residents.js"></script>
 
 <?php include '../../layouts/footer.php'; ?>

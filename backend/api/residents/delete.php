@@ -4,10 +4,10 @@ session_start();
 
 require_once '../../controllers/ResidentController.php';
 
-$controller = new ResidentController();
-
 if (isset($_GET['id']))
 {
+    $controller = new ResidentController();
+
     $controller->destroy($_GET['id']);
 }
 

@@ -117,3 +117,41 @@ td {
 .full-width {
     grid-column: 1 / -1;
 }
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+
+    margin-top: 20px;
+}
+
+.btn-secondary {
+    background: #6b7280;
+    color: white;
+
+    border: none;
+
+    padding: 10px 16px;
+
+    border-radius: 6px;
+
+    cursor: pointer;
+}
+
+.btn-danger {
+    background: #dc2626;
+    color: white;
+
+    border: none;
+
+    padding: 10px 16px;
+
+    border-radius: 6px;
+
+    cursor: pointer;
+}
+
+.btn-danger:hover {
+    background: #b91c1c;
+}

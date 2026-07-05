@@ -182,14 +182,29 @@ function closeEditModal()
 
 function deleteResident(id)
 {
-    if(
-        confirm(
-            'Delete this resident?'
-        )
-    )
-    {
-        window.location.href =
-            '../../../backend/api/residents/delete.php?id='
-            + id;
-    }
+    document.getElementById(
+        'deleteResidentId'
+    ).value = id;
+
+    document.getElementById(
+        'deleteResidentModal'
+    ).style.display = 'flex';
+}
+
+function closeDeleteModal()
+{
+    document.getElementById(
+        'deleteResidentModal'
+    ).style.display = 'none';
+}
+
+function confirmDeleteResident()
+{
+    const id =
+        document.getElementById(
+            'deleteResidentId'
+        ).value;
+
+    window.location.href =
+        '../../../backend/api/residents/delete.php?id=' + id;
 }
