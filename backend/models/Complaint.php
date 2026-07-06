@@ -1,7 +1,6 @@
 <?php
 
-require_once __DIR__ .
-'/../config/database.php';
+require_once __DIR__ . '/../config/database.php';
 
 class Complaint
 {
@@ -41,8 +40,12 @@ class Complaint
 
             $stmt =
             $this->conn->prepare("
-                SELECT *
-                FROM complaints
+                SELECT
+                    c.*,
+                    cc.category_name
+                FROM complaints c
+                LEFT JOIN complaint_categories cc
+                    ON c.category_id = cc.category_id
                 ORDER BY created_at DESC
             ");
 
@@ -95,6 +98,11 @@ class Complaint
     {
         try {
 
+            if(session_status() === PHP_SESSION_NONE)
+            {
+                session_start();
+            }
+
             $complaintNumber =
                 $this->generateComplaintNumber();
 
@@ -123,7 +131,7 @@ class Complaint
                 $data['incident_date'],
                 $data['narrative'],
                 'Filed',
-                $data['encoded_by']
+                $_SESSION['user_id']
             ]);
 
         }
@@ -137,7 +145,7 @@ class Complaint
         }
     }
 
-    public function update($id,$data)
+    public function update($id, $data)
     {
         try {
 

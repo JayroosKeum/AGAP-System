@@ -1,12 +1,15 @@
 <?php
 
+session_start();
+
 require_once '../../controllers/ComplaintController.php';
 
-$id = $_POST['complaint_id'];
+if (isset($_GET['id']))
+{
+    $controller = new ComplaintController();
 
-$controller = new ComplaintController();
-
-$controller->destroy($id);
+    $controller->destroy($_GET['id']);
+}
 
 header(
     'Location: ../../../frontend/pages/complaints/complaint-list.php'

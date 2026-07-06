@@ -1,15 +1,21 @@
 <?php
 
+session_start();
+
 require_once '../../controllers/ComplaintController.php';
 
-$id = $_POST['complaint_id'];
+if ($_SERVER['REQUEST_METHOD'] === 'POST')
+{
+    $controller = new ComplaintController();
 
-$controller = new ComplaintController();
+    $controller->update(
+        $_POST['complaint_id'],
+        $_POST
+    );
 
-$controller->update($id,$_POST);
+    header(
+        'Location: ../../../frontend/pages/complaints/complaint-list.php'
+    );
 
-header(
-    'Location: ../../../frontend/pages/complaints/complaint-details.php?id=' . $id
-);
-
-exit;
+    exit;
+}

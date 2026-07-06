@@ -2,12 +2,10 @@
 
 require_once '../../controllers/ComplaintController.php';
 
-$id = $_GET['id'];
+header('Content-Type: application/json');
 
 $controller = new ComplaintController();
 
-header('Content-Type: application/json');
-
 echo json_encode(
-    $controller->show($id)
+    $controller->show($_GET['id'])
 );
