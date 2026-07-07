@@ -103,6 +103,62 @@ include '../../layouts/header.php';
 
             <div class="form-group">
 
+                <label>Complaint Category</label>
+
+                <select
+                    name="category_id"
+                    required>
+
+                    <option value="">
+                        Select Category
+                    </option>
+
+                    <option value="1">
+                        Non-Payment of Debt
+                    </option>
+
+                    <option value="2">
+                        Breach of Agreement
+                    </option>
+
+                    <option value="3">
+                        Physical Injuries
+                    </option>
+
+                    <option value="4">
+                        Defamation
+                    </option>
+
+                    <option value="5">
+                        Threats
+                    </option>
+
+                    <option value="6">
+                        Property and Rental Disputes
+                    </option>
+
+                    <option value="7">
+                        Disturbance and Public Disorder
+                    </option>
+
+                    <option value="8">
+                        Malicious Mischief
+                    </option>
+
+                    <option value="9">
+                        Trespassing
+                    </option>
+
+                    <option value="10">
+                        Family and Domestic Disputes
+                    </option>
+
+                </select>
+
+            </div>
+
+            <div class="form-group">
+
                 <label>Complaint Title</label>
 
                 <input
