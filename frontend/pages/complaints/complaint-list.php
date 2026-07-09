@@ -230,6 +230,129 @@ include '../../layouts/header.php';
 
 </div>
 
+<!-- EDIT COMPLAINT MODAL -->
+
+<div id="editComplaintModal" class="modal">
+
+    <div class="modal-content">
+
+        <div class="modal-header">
+
+            <h2>Edit Complaint</h2>
+
+            <button
+                class="close-btn"
+                onclick="closeEditComplaintModal()">
+
+                &times;
+
+            </button>
+
+        </div>
+
+        <form
+            action="../../../backend/api/complaints/update.php"
+            method="POST">
+
+            <input
+                type="hidden"
+                name="complaint_id"
+                id="editComplaintId">
+
+            <div class="form-group">
+
+                <label>Category</label>
+
+                <select
+                    name="category_id"
+                    id="editCategoryId"
+                    required>
+
+                    <option value="1">Non-Payment of Debt</option>
+                    <option value="2">Breach of Agreement</option>
+                    <option value="3">Physical Injuries</option>
+                    <option value="4">Defamation</option>
+                    <option value="5">Threats</option>
+                    <option value="6">Property and Rental Disputes</option>
+                    <option value="7">Disturbance and Public Disorder</option>
+                    <option value="8">Malicious Mischief</option>
+                    <option value="9">Trespassing</option>
+                    <option value="10">Family and Domestic Disputes</option>
+
+                </select>
+
+            </div>
+
+            <div class="form-group">
+
+                <label>Complaint Title</label>
+
+                <input
+                    type="text"
+                    name="complaint_title"
+                    id="editComplaintTitle"
+                    required>
+
+            </div>
+
+            <div class="form-group">
+
+                <label>Incident Date</label>
+
+                <input
+                    type="date"
+                    name="incident_date"
+                    id="editIncidentDate"
+                    required>
+
+            </div>
+
+            <div class="form-group">
+
+                <label>Narrative</label>
+
+                <textarea
+                    name="narrative"
+                    id="editNarrative"
+                    rows="5"
+                    required></textarea>
+
+            </div>
+
+            <div class="form-group">
+
+                <label>Status</label>
+
+                <select
+                    name="status"
+                    id="editStatus">
+
+                    <option value="Filed">Filed</option>
+                    <option value="Docketed">Docketed</option>
+                    <option value="Mediation">Mediation</option>
+                    <option value="Conciliation">Conciliation</option>
+                    <option value="Arbitration">Arbitration</option>
+                    <option value="Settled">Settled</option>
+                    <option value="Dismissed">Dismissed</option>
+
+                </select>
+
+            </div>
+
+            <button
+                type="submit"
+                class="btn-create">
+
+                Update Complaint
+
+            </button>
+
+        </form>
+
+    </div>
+
+</div>
+
 <!-- DELETE MODAL -->
 
 <div id="deleteComplaintModal" class="modal">

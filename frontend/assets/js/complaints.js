@@ -36,6 +36,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         </button>
 
                         <button
+                            onclick="editComplaint(${complaint.complaint_id})">
+
+                            Edit
+
+                        </button>
+
+                        <button
                             onclick="deleteComplaint(${complaint.complaint_id})">
 
                             Delete
@@ -105,6 +112,51 @@ function closeViewComplaintModal()
     document
         .getElementById('viewComplaintModal')
         .style.display = 'none';
+}
+
+function editComplaint(id)
+{
+    fetch(
+        '../../../backend/api/complaints/view.php?id=' + id
+    )
+    .then(response => response.json())
+    .then(data => {
+
+        document.getElementById(
+            'editComplaintId'
+        ).value = data.complaint_id;
+
+        document.getElementById(
+            'editCategoryId'
+        ).value = data.category_id;
+
+        document.getElementById(
+            'editComplaintTitle'
+        ).value = data.complaint_title;
+
+        document.getElementById(
+            'editIncidentDate'
+        ).value = data.incident_date;
+
+        document.getElementById(
+            'editNarrative'
+        ).value = data.narrative;
+
+        document.getElementById(
+            'editStatus'
+        ).value = data.status;
+
+        document.getElementById(
+            'editComplaintModal'
+        ).style.display = 'flex';
+    });
+}
+
+function closeEditComplaintModal()
+{
+    document.getElementById(
+        'editComplaintModal'
+    ).style.display = 'none';
 }
 
 function deleteComplaint(id)
