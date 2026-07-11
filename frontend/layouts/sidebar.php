@@ -53,6 +53,12 @@
             </li>
 
             <li>
+                <a href="../search/records.php">
+                    Records Search
+                </a>
+            </li>
+
+            <li>
                 <a href="../hearings/schedules.php">
                     Hearings
                 </a>

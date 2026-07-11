@@ -1,0 +1,111 @@
+.search-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; margin-bottom: 16px; padding: 20px; }
+.search-form { align-items: end; display: grid; gap: 14px; grid-template-columns: repeat(4, minmax(150px, 1fr)); }
+.search-field { display: grid; gap: 6px; }
+.search-field.wide { grid-column: span 2; }
+.search-field label { color: #334155; font-size: .875rem; font-weight: 600; }
+.search-field input, .search-field select { border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; min-height: 38px; padding: 8px 10px; width: 100%; }
+.search-actions { display: flex; gap: 8px; }
+.result-summary { color: #475569; margin: 12px 0; }
+#searchResults small { color: #64748b; display: block; margin-top: 3px; }
+.repeat-flag { color: #9a3412; font-weight: 600; }
+@media (max-width: 900px) { .search-form { grid-template-columns: repeat(2, minmax(150px, 1fr)); } }
+@media (max-width: 560px) { .search-form { grid-template-columns: 1fr; } .search-field.wide { grid-column: span 1; } }
+.table-container {
+    padding: 20px;
+    overflow-x: auto;
+}
+
+.table-container table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+}
+
+.table-container th,
+.table-container td {
+    border: 1px solid #e5e7eb;
+    padding: 12px;
+    text-align: left;
+}
+
+.table-container th {
+    background: #f8fafc;
+}
+
+.empty-state,
+#searchResults td[colspan] {
+    color: #64748b;
+    text-align: center;
+}
+
+#searchResults small {
+    color: #64748b;
+    display: block;
+    margin-top: 3px;
+}
+
+.repeat-flag {
+    display: inline-block;
+    border-radius: 999px;
+    padding: 4px 9px;
+    background: #e0f2fe;
+    color: #075985;
+    font-size: .85rem;
+}
+
+@media (max-width: 900px) {
+    .sidebar {
+        width: 210px;
+    }
+    
+    .search-form {
+        grid-template-columns: repeat(2, minmax(150px, 1fr));
+    }
+}
+
+@media (max-width: 640px) {
+    .dashboard-layout {
+        display: block;
+    }
+    
+    .sidebar {
+        width: auto;
+    }
+    
+    .sidebar-menu {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+    
+    .sidebar-menu a {
+        padding: 8px 10px;
+    }
+    
+    .page-header {
+        padding: 22px 16px 14px;
+    }
+    
+    .search-card, 
+    .table-container {
+        margin-left: 16px;
+        margin-right: 16px;
+    }
+    
+    .result-summary {
+        margin-left: 16px;
+        margin-right: 16px;
+    }
+    
+    .search-form {
+        grid-template-columns: 1fr;
+    }
+    
+    .search-field.wide {
+        grid-column: span 1;
+    }
+    
+    .navbar {
+        padding: 0 16px;
+    }
+}
