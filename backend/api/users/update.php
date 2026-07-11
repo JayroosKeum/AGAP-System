@@ -1,0 +1,1 @@
+<?php require_once '../../controllers/UserController.php'; session_start(); if ($_SERVER['REQUEST_METHOD']==='POST') (new UserController())->update($_POST['user_id'],$_POST); header('Location: ../../../frontend/pages/users/user-list.php');

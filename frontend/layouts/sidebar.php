@@ -53,11 +53,37 @@
             </li>
 
             <li>
+                <a href="../hearings/schedules.php">
+                    Hearings
+                </a>
+            </li>
+
+            <li>
+                <a href="../pangkat/pangkat-list.php">
+                    Pangkat
+                </a>
+            </li>
+
+            <li>
+                <a href="../documents/document-center.php">
+                    KP Documents
+                </a>
+            </li>
+
+            <li>
                 <a href="../reports/report-list.php">
                     Reports
                 </a>
             </li>
 
+        <?php endif; ?>
+
+        <?php if ($_SESSION['role_id'] == 1): ?>
+            <li>
+                <a href="../users/user-list.php">
+                    Users
+                </a>
+            </li>
         <?php endif; ?>
 
 

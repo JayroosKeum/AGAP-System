@@ -62,4 +62,14 @@ class PangkatController
         return $this->pangkat
             ->getMembers($pangkatId);
     }
+
+    public function index()
+    {
+        return $this->pangkat->getAll();
+    }
+
+    public function luponMembers()
+    {
+        return $this->pangkat->getLuponMembers();
+    }
 }

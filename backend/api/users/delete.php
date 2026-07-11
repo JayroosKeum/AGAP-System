@@ -1,0 +1,1 @@
+<?php require_once '../../controllers/UserController.php'; session_start(); if (isset($_GET['id']) && (int)$_GET['id'] !== (int)$_SESSION['user_id']) (new UserController())->delete($_GET['id']); header('Location: ../../../frontend/pages/users/user-list.php');

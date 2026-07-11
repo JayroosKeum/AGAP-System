@@ -57,6 +57,11 @@ class HearingController
         return $this->hearing->getAll();
     }
 
+    public function show($id)
+    {
+        return $this->hearing->getById($id);
+    }
+
     public function attendance($data)
     {
         $result = $this->attendance->record($data);

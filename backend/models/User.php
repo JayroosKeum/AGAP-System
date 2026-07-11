@@ -53,4 +53,28 @@ class User {
             $data['role_id']
         ]);
     }
+
+    public function getAll()
+    {
+        $stmt = $this->db->query('SELECT user_id, first_name, last_name, username, email, role_id FROM users ORDER BY last_name, first_name');
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function update($id, $data)
+    {
+        $sql = 'UPDATE users SET first_name=?, last_name=?, username=?, email=?, role_id=?';
+        $values = [$data['first_name'], $data['last_name'], $data['username'], $data['email'], $data['role_id']];
+        if (!empty($data['password'])) {
+            $sql .= ', password_hash=?';
+            $values[] = password_hash($data['password'], PASSWORD_DEFAULT);
+        }
+        $sql .= ' WHERE user_id=?';
+        $values[] = $id;
+        return $this->db->prepare($sql)->execute($values);
+    }
+
+    public function delete($id)
+    {
+        return $this->db->prepare('DELETE FROM users WHERE user_id=?')->execute([$id]);
+    }
 }
