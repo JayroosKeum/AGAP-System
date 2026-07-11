@@ -13,8 +13,8 @@ include '../../layouts/header.php';
 
 ?>
 
-<link rel="stylesheet" href="../../assets/css/dashboard.css">
-<link rel="stylesheet" href="../../assets/css/complaints.css">
+<link rel="stylesheet" href="../../assets/css/dashboard.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/dashboard.css'); ?>">
+<link rel="stylesheet" href="../../assets/css/complaints.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/complaints.css'); ?>">
 
 <div class="dashboard-layout">
 
@@ -26,9 +26,13 @@ include '../../layouts/header.php';
 
         <div class="page-header">
 
-            <h1>Complaints</h1>
+            <div>
+                <h1>Complaints</h1>
+                <p>Record and monitor community concerns from filing to resolution.</p>
+            </div>
 
             <button
+                type="button"
                 class="btn-create"
                 onclick="openAddComplaintModal()">
 
@@ -89,17 +93,6 @@ include '../../layouts/header.php';
         <form
             action="../../../backend/api/complaints/create.php"
             method="POST">
-
-            <div class="form-group">
-
-                <label>Category ID</label>
-
-                <input
-                    type="number"
-                    name="category_id"
-                    required>
-
-            </div>
 
             <div class="form-group">
 
@@ -393,6 +386,6 @@ include '../../layouts/header.php';
 
 </div>
 
-<script src="../../assets/js/complaints.js"></script>
+<script src="../../assets/js/complaints.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/complaints.js'); ?>"></script>
 
 <?php include '../../layouts/footer.php'; ?>

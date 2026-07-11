@@ -35,9 +35,14 @@ class CaseModel
     public function getAll()
     {
         $stmt = $this->conn->prepare("
-            SELECT *
-            FROM cases
-            ORDER BY created_at DESC
+            SELECT
+                c.*,
+                co.complaint_number,
+                co.complaint_title
+            FROM cases c
+            INNER JOIN complaints co
+                ON co.complaint_id = c.complaint_id
+            ORDER BY c.created_at DESC
         ");
 
         $stmt->execute();
@@ -48,9 +53,16 @@ class CaseModel
     public function getById($id)
     {
         $stmt = $this->conn->prepare("
-            SELECT *
-            FROM cases
-            WHERE case_id=?
+            SELECT
+                c.*,
+                co.complaint_number,
+                co.complaint_title,
+                co.incident_date,
+                co.narrative
+            FROM cases c
+            INNER JOIN complaints co
+                ON co.complaint_id = c.complaint_id
+            WHERE c.case_id=?
         ");
 
         $stmt->execute([$id]);
@@ -60,6 +72,10 @@ class CaseModel
 
     public function create($data)
     {
+        if ($this->getDocketingError($data['complaint_id'] ?? null) !== null) {
+            return false;
+        }
+
         $caseNumber = $this->generateCaseNumber();
 
         $stmt = $this->conn->prepare("
@@ -84,6 +100,29 @@ class CaseModel
             'Docketed',
             date('Y-m-d')
         ]);
+    }
+
+    public function getDocketingError($complaintId)
+    {
+        if (filter_var($complaintId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false) {
+            return 'invalid_complaint';
+        }
+
+        $complaint = $this->conn->prepare('SELECT complaint_id FROM complaints WHERE complaint_id = ?');
+        $complaint->execute([$complaintId]);
+
+        if (!$complaint->fetch()) {
+            return 'invalid_complaint';
+        }
+
+        $case = $this->conn->prepare('SELECT case_id FROM cases WHERE complaint_id = ? LIMIT 1');
+        $case->execute([$complaintId]);
+
+        if ($case->fetch()) {
+            return 'duplicate_case';
+        }
+
+        return null;
     }
 
     public function update($id,$data)

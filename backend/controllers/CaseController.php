@@ -28,6 +28,11 @@ class CaseController
         return $this->case->getById($id);
     }
 
+    public function getDocketingError($complaintId)
+    {
+        return $this->case->getDocketingError($complaintId);
+    }
+
     public function store($data)
     {
         $result = $this->case->create($data);

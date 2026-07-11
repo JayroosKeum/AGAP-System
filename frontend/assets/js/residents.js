@@ -22,23 +22,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         <td>${resident.last_name}</td>
 
-                        <td>
+                        <td class="action-buttons">
 
-                            <button
+                            <button type="button"
                                 onclick="viewResident(${resident.resident_id})">
 
                                 View
 
                             </button>
 
-                            <button
+                            <button type="button"
                                 onclick="editResident(${resident.resident_id})">
 
                                 Edit
 
                             </button>
 
-                            <button
+                            <button type="button" class="delete-button"
                                 onclick="deleteResident(${resident.resident_id})">
 
                                 Delete

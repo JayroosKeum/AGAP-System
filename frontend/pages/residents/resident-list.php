@@ -11,8 +11,8 @@ if (
 include '../../layouts/header.php';
 ?>
 
-<link rel="stylesheet" href="../../assets/css/dashboard.css">
-<link rel="stylesheet" href="../../assets/css/residents.css">
+<link rel="stylesheet" href="../../assets/css/dashboard.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/dashboard.css'); ?>">
+<link rel="stylesheet" href="../../assets/css/residents.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/residents.css'); ?>">
 
 <div class="dashboard-layout">
 
@@ -24,9 +24,13 @@ include '../../layouts/header.php';
 
         <div class="page-header">
 
-            <h1>Residents</h1>
+            <div>
+                <h1>Residents</h1>
+                <p>Maintain resident profiles and contact information.</p>
+            </div>
 
             <button
+                type="button"
                 class="btn-create"
                 onclick="openAddModal()">
 
@@ -446,6 +450,6 @@ include '../../layouts/header.php';
 
 </div>
 
-<script src="../../assets/js/residents.js"></script>
+<script src="../../assets/js/residents.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/residents.js'); ?>"></script>
 
 <?php include '../../layouts/footer.php'; ?>

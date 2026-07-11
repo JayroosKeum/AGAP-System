@@ -9,7 +9,7 @@ $controller = new CaseController();
 $controller->update($id,$_POST);
 
 header(
-    'Location: ../../../frontend/pages/cases/case-details.php?id=' . $id
+    'Location: ../../../frontend/pages/cases/case-list.php'
 );
 
 exit;

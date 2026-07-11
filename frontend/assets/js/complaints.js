@@ -24,25 +24,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     <td>${complaint.complaint_title}</td>
 
-                    <td>${complaint.status}</td>
+                    <td><span class="status status-${String(complaint.status).toLowerCase()}">${complaint.status}</span></td>
 
-                    <td>
+                    <td class="action-buttons">
 
-                        <button
+                        <button type="button"
                             onclick="viewComplaint(${complaint.complaint_id})">
 
                             View
 
                         </button>
 
-                        <button
+                        <button type="button"
                             onclick="editComplaint(${complaint.complaint_id})">
 
                             Edit
 
                         </button>
 
-                        <button
+                        <button type="button" class="delete-button"
                             onclick="deleteComplaint(${complaint.complaint_id})">
 
                             Delete
