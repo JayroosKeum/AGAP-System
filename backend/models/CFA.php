@@ -25,6 +25,9 @@ class CFA
             (
                 ?,CURDATE(),?
             )
+            ON DUPLICATE KEY UPDATE
+                issuance_date = VALUES(issuance_date),
+                reason = VALUES(reason)
         ");
 
         return $stmt->execute([

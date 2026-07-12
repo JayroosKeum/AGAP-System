@@ -26,6 +26,10 @@ class Attendance
             (
                 ?,?,?,?
             )
+            ON DUPLICATE KEY UPDATE
+                attendance_status = VALUES(attendance_status),
+                remarks = VALUES(remarks),
+                recorded_at = CURRENT_TIMESTAMP
         ");
 
         return $stmt->execute([

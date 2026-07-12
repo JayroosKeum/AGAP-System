@@ -26,6 +26,10 @@ class Settlement
             (
                 ?,CURDATE(),?,?
             )
+            ON DUPLICATE KEY UPDATE
+                settlement_date = VALUES(settlement_date),
+                agreement_details = VALUES(agreement_details),
+                compliance_status = VALUES(compliance_status)
         ");
 
         return $stmt->execute([

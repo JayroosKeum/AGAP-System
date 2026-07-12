@@ -12,26 +12,6 @@ class CaseModel
         $this->conn = $database->connect();
     }
 
-    public function generateCaseNumber()
-{
-    $year = date('Y');
-
-    $stmt =
-    $this->conn->query("
-        SELECT COUNT(*)
-        FROM cases
-    ");
-
-    $count =
-    $stmt->fetchColumn() + 1;
-
-    return sprintf(
-        "KP-%s-%05d",
-        $year,
-        $count
-    );
-}
-
     public function getAll()
     {
         $stmt = $this->conn->prepare("
@@ -76,30 +56,46 @@ class CaseModel
             return false;
         }
 
-        $caseNumber = $this->generateCaseNumber();
-
-        $stmt = $this->conn->prepare("
+        try {
+            $this->conn->beginTransaction();
+            $stmt = $this->conn->prepare("
             INSERT INTO cases
             (
                 complaint_id,
-                case_number,
                 case_type,
                 case_status,
                 docket_date
             )
             VALUES
             (
-                ?,?,?,?,?
+                ?,?,?,?
             )
         ");
 
-        return $stmt->execute([
-            $data['complaint_id'],
-            $caseNumber,
-            $data['case_type'],
-            'Docketed',
-            date('Y-m-d')
-        ]);
+            $stmt->execute([
+                $data['complaint_id'],
+                $data['case_type'],
+                'Docketed',
+                date('Y-m-d')
+            ]);
+
+            $caseId = (int) $this->conn->lastInsertId();
+            $caseNumber = sprintf('KP-%s-%05d', date('Y'), $caseId);
+            $numberStatement = $this->conn->prepare(
+                'UPDATE cases SET case_number = ? WHERE case_id = ?'
+            );
+            $numberStatement->execute([$caseNumber, $caseId]);
+
+            $this->conn->commit();
+            return true;
+        } catch (Exception $e) {
+            if ($this->conn->inTransaction()) {
+                $this->conn->rollBack();
+            }
+
+            error_log($e->getMessage());
+            return false;
+        }
     }
 
     public function getDocketingError($complaintId)

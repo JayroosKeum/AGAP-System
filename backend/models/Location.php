@@ -26,6 +26,10 @@ class Location
             (
                 ?,?,?,?
             )
+            ON DUPLICATE KEY UPDATE
+                latitude = VALUES(latitude),
+                longitude = VALUES(longitude),
+                address = VALUES(address)
         ");
 
         return $stmt->execute([

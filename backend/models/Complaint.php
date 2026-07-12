@@ -14,26 +14,6 @@ class Complaint
             $database->connect();
     }
 
-    private function generateComplaintNumber()
-    {
-        $year = date('Y');
-
-        $stmt =
-        $this->conn->query("
-            SELECT COUNT(*)
-            FROM complaints
-        ");
-
-        $count =
-        $stmt->fetchColumn() + 1;
-
-        return sprintf(
-            "CMP-%s-%05d",
-            $year,
-            $count
-        );
-    }
-
     public function getAll()
     {
         try {
@@ -103,14 +83,11 @@ class Complaint
                 session_start();
             }
 
-            $complaintNumber =
-                $this->generateComplaintNumber();
-
+            $this->conn->beginTransaction();
             $stmt =
             $this->conn->prepare("
                 INSERT INTO complaints
                 (
-                    complaint_number,
                     category_id,
                     complaint_title,
                     incident_date,
@@ -120,12 +97,11 @@ class Complaint
                 )
                 VALUES
                 (
-                    ?,?,?,?,?,?,?
+                    ?,?,?,?,?,?
                 )
             ");
 
-            return $stmt->execute([
-                $complaintNumber,
+            $stmt->execute([
                 $data['category_id'],
                 $data['complaint_title'],
                 $data['incident_date'],
@@ -134,9 +110,23 @@ class Complaint
                 $_SESSION['user_id']
             ]);
 
+            $complaintId = (int) $this->conn->lastInsertId();
+            $complaintNumber = sprintf('CMP-%s-%05d', date('Y'), $complaintId);
+            $numberStatement = $this->conn->prepare(
+                'UPDATE complaints SET complaint_number = ? WHERE complaint_id = ?'
+            );
+            $numberStatement->execute([$complaintNumber, $complaintId]);
+
+            $this->conn->commit();
+            return true;
+
         }
         catch(Exception $e)
         {
+            if ($this->conn->inTransaction()) {
+                $this->conn->rollBack();
+            }
+
             error_log(
                 $e->getMessage()
             );

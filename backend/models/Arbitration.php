@@ -26,6 +26,10 @@ class Arbitration
             (
                 ?,?,?,?
             )
+            ON DUPLICATE KEY UPDATE
+                agreement_date = VALUES(agreement_date),
+                award_date = VALUES(award_date),
+                award_details = VALUES(award_details)
         ");
 
         return $stmt->execute([

@@ -9,12 +9,5 @@ if (!isset($_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2,
     exit;
 }
 
-$caseId = filter_input(INPUT_GET, 'case_id', FILTER_VALIDATE_INT);
-if (!$caseId) {
-    http_response_code(422);
-    echo json_encode(['message' => 'A valid case ID is required.']);
-    exit;
-}
-
 require_once '../../controllers/AssignmentController.php';
-echo json_encode((new AssignmentController())->list($caseId));
+echo json_encode((new AssignmentController())->luponMembers());

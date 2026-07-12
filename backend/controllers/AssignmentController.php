@@ -18,24 +18,24 @@ class AssignmentController
         $this->audit = new AuditService();
     }
 
-    public function assign($data)
+    public function assign(array $data): array
     {
         $result = $this->assignment->assign($data);
 
-        if ($result) {
-            $this->audit->log(
-                $_SESSION['user_id'],
-                'Assigned Lupon Member',
-                'Assignments'
-            );
+        if ($result['success']) {
+            $this->audit->log($_SESSION['user_id'], 'Assigned Lupon Member', 'Assignments');
         }
 
         return $result;
     }
 
-    public function list($caseId)
+    public function list(int $caseId): array
     {
-        return $this->assignment
-            ->getAssignments($caseId);
+        return $this->assignment->getAssignments($caseId);
+    }
+
+    public function luponMembers(): array
+    {
+        return $this->assignment->getLuponMembers();
     }
 }

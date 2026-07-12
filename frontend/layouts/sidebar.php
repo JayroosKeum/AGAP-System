@@ -59,6 +59,10 @@
             </li>
 
             <li>
+                <a href="../assignments/case-assignment.php">Case Assignments</a>
+            </li>
+
+            <li>
                 <a href="../hearings/schedules.php">
                     Hearings
                 </a>

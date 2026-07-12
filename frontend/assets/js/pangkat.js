@@ -54,9 +54,9 @@ function loadCases() {
 }
 
 function loadLuponMembers() {
-    api('../../../backend/api/pangkat/lupon-members.php').then(users => {
-        document.getElementById('luponMemberId').innerHTML = users.map(u => 
-            `<option value="${Number(u.user_id)}">${esc(u.last_name)}, ${esc(u.first_name)}</option>`
+    api('../../../backend/api/pangkat/lupon-members.php').then(members => {
+        document.getElementById('luponMemberId').innerHTML = members.map(member =>
+            `<option value="${Number(member.member_id)}">${esc(member.last_name)}, ${esc(member.first_name)}${member.designation ? ` (${esc(member.designation)})` : ''}</option>`
         ).join('');
     });
 }

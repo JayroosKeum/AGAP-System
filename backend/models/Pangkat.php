@@ -56,6 +56,23 @@ class Pangkat
         $position
     )
     {
+        if (!in_array($position, ['Chairman', 'Secretary', 'Member'], true)) {
+            return false;
+        }
+
+        $eligibleMember = $this->conn->prepare(
+            "SELECT u.user_id
+             FROM users u
+             INNER JOIN roles r ON r.role_id = u.role_id
+             WHERE u.user_id = ?
+               AND u.status = 'Active'
+               AND r.role_name = 'Lupon Member'"
+        );
+        $eligibleMember->execute([$memberId]);
+        if (!$eligibleMember->fetch()) {
+            return false;
+        }
+
         $stmt = $this->conn->prepare("
             INSERT INTO pangkat_members
             (
@@ -79,10 +96,11 @@ class Pangkat
     public function getMembers($pangkatId)
     {
         $stmt = $this->conn->prepare("
-            SELECT pm.*, u.first_name, u.last_name
+            SELECT pm.*, u.first_name, u.middle_name, u.last_name
             FROM pangkat_members pm
             INNER JOIN users u ON u.user_id = pm.member_id
             WHERE pm.pangkat_id=?
+            ORDER BY FIELD(pm.position, 'Chairman', 'Secretary', 'Member'), u.last_name, u.first_name
         ");
 
         $stmt->execute([$pangkatId]);
@@ -92,7 +110,14 @@ class Pangkat
 
     public function getLuponMembers()
     {
-        $stmt = $this->conn->query('SELECT user_id, first_name, last_name FROM users WHERE role_id = 3 ORDER BY last_name, first_name');
+        $stmt = $this->conn->query(
+            "SELECT u.user_id AS member_id, u.first_name, u.middle_name, u.last_name
+             FROM users u
+             INNER JOIN roles r ON r.role_id = u.role_id
+             WHERE u.status = 'Active'
+               AND r.role_name = 'Lupon Member'
+             ORDER BY u.last_name, u.first_name"
+        );
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 }
