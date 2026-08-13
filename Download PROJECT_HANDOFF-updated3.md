@@ -49,9 +49,55 @@ For each increment:
 - Case Assignment and Pangkat pages/API.
 - Active users with role name `Lupon Member` are directly assignable.
 - Hearing creation, update, viewing, calendar display, and attendance storage.
-- Settlement, arbitration, CFA, incident-location, proof-of-service, notification, AI chatbot, and narrative-generation endpoints/models exist.
+- Settlement, arbitration, CFA, incident-location, proof-of-service, AI chatbot, and narrative-generation endpoints/models exist.
 - Complaint and case numbering use database-generated IDs and transactions.
 - The schema contains foreign keys, key uniqueness rules, one case per complaint, and one resolution record per case where applicable.
+
+---
+
+## Reports and Export Increment
+
+- Record-based monthly, quarterly, annual, and DILG reports are available to Administrators and Lupon Clerks.
+- Reports include totals, case-status/category breakdowns, hearings, resolution/CFA/archive details, and case-level rows.
+- CSV export uses the existing `generated_reports` table and audit logging; no schema change was required.
+
+---
+
+## Notification Inbox and Workflow Increment
+
+The existing `notifications` table is now used for an authenticated inbox and automatic workflow updates. No schema change or duplicate notification table was introduced.
+
+### Implemented
+
+- Notification Inbox page for Administrator, Lupon Clerk, Lupon Member, and Summons Server roles.
+- Per-user list with unread count, unread-first ordering, and owner-only mark-as-read behavior.
+- JSON list/read APIs with method, session, and role checks, plus audit logging of read actions.
+- Case assignment notification to the assigned Lupon Member.
+- Hearing creation/update notifications to assigned case and Pangkat members.
+- Pangkat formation notification to active Administrators/Lupon Clerks and appointment notification to the appointed Lupon Member.
+- KP Form 12 generation notification to assigned case/Pangkat members.
+- The workflow actor is excluded from their own event notification.
+- Pangkat create/member APIs now have Administrator/Lupon Clerk authorization, JSON responses, and input validation.
+
+### Files Added or Updated
+
+```text
+backend/models/Notification.php
+backend/services/NotificationService.php
+backend/controllers/NotificationController.php
+backend/controllers/AssignmentController.php
+backend/controllers/HearingController.php
+backend/controllers/PangkatController.php
+backend/controllers/DocumentController.php
+backend/api/notifications/list.php
+backend/api/notifications/read.php
+backend/api/pangkat/create.php
+backend/api/pangkat/update.php
+frontend/pages/notifications/inbox.php
+frontend/assets/js/notifications.js
+frontend/assets/css/notifications.css
+frontend/layouts/sidebar.php
+```
 
 ---
 
@@ -254,7 +300,6 @@ Future forms should reuse the same Document model, controller, storage, listing,
 - Project-wide RBAC remains inconsistent, but broad RBAC hardening is not the immediate priority.
 - Complaint party and attachment workflows require full Laragon/MySQL verification.
 - Hearing attendance storage exists, but complete attendance and missed-hearing workflows remain incomplete.
-- Notifications can be sent/read, but a complete notification inbox and workflow-event integration are not present.
 - Location and proof-of-service storage exists, but complete map, upload, verification, and case-linkage UI remains incomplete.
 - AI calls Gemini, but production-grade monitoring and rate limiting are incomplete.
 - Case history and deadline structures exist, but all automatic status-transition rules are not connected.
@@ -266,8 +311,6 @@ Future forms should reuse the same Document model, controller, storage, listing,
 
 The following are still missing or not complete enough to be considered implemented:
 
-- Monthly, quarterly, annual, and DILG report generation/export using actual records.
-- Complete notification inbox and workflow-event notifications.
 - Complete GPS incident-location and proof-of-service workflows.
 - Secure password reset/change-password workflow.
 - Resident self-service complaint filing and status tracking.
@@ -282,38 +325,9 @@ The following are still missing or not complete enough to be considered implemen
 
 Move temporarily away from adding KP forms and implement another missing Module Development feature.
 
-### Recommended Next Module: Reports and Export
+### Recommended Next Module: GPS and Proof of Service
 
-Implement actual monthly, quarterly, annual, and DILG report generation based on existing complaint and case records.
-
-This is recommended because report endpoints currently provide only dashboard-style counts, while the Module Development requirements call for real reports and exports.
-
-### Recommended Reports Increment
-
-1. Inspect the existing report schema, `Report.php`, `ReportController.php`, `ReportService.php`, report API endpoints, and any report pages.
-2. Add a Reports page with:
-   - report type selection;
-   - year selection;
-   - month or quarter selection where applicable;
-   - Generate/View action; and
-   - export action.
-3. Implement actual record-based reports:
-   - Monthly report;
-   - Quarterly report;
-   - Annual report; and
-   - DILG-oriented report.
-4. Use existing complaints, cases, settlements, CFA, archives, hearing, and resolution records.
-5. Include useful totals and case-level details rather than dashboard counts only.
-6. Allow Administrator and Lupon Clerk to generate/export reports.
-7. Allow authorized view-only roles only if consistent with the existing project role design.
-8. Use prepared PDO statements for all filter values.
-9. Validate report type, year, month, quarter, and date range on the server.
-10. Return JSON from data APIs.
-11. Add CSV export first because it requires no additional external PDF library and is easy to verify.
-12. Reuse the document/PDF foundation later if PDF report output is requested.
-13. Audit report export actions if exports are treated as auditable events in the existing design.
-14. Test empty periods, invalid periods, archived cases, role restrictions, and record totals.
-15. Report all changed files, tests, limitations, and any database impact.
+Complete the incident-location and proof-of-service workflow using the existing `incident_locations` and `proof_of_service` tables. Prioritize a map/location UI, secure proof image upload, verification details, case linkage, authorized role flows, and audit logging for mutations.
 
 ### Scope Control for the Next Increment
 
@@ -328,21 +342,19 @@ Do not:
 - introduce duplicate report or document tables; or
 - overwrite uncommitted changes.
 
-After reports are implemented, the next missing-feature priority should be the notification inbox/workflow integration or the GPS/proof-of-service workflow.
+The next missing-feature priority is the GPS/proof-of-service workflow.
 
 ---
 
 ## Feature-Focused Development Order
 
-1. Implement actual monthly, quarterly, annual, and DILG reports with export.
-2. Complete notification inbox and connect notifications to workflow events.
-3. Complete GPS incident-location and proof-of-service workflows.
-4. Complete password reset and account-security features.
-5. Complete resident self-service complaint filing and status tracking.
-6. Complete summons and service/delivery workflow.
-7. Return to remaining official KP forms one form at a time.
-8. Complete attendance, missed-hearing, and advanced status/deadline automation as needed.
-9. Add broader testing, security review, deployment, and backup procedures.
+1. Complete GPS incident-location and proof-of-service workflows.
+2. Complete password reset and account-security features.
+3. Complete resident self-service complaint filing and status tracking.
+4. Complete summons and service/delivery workflow.
+5. Return to remaining official KP forms one form at a time.
+6. Complete attendance, missed-hearing, and advanced status/deadline automation as needed.
+7. Add broader testing, security review, deployment, and backup procedures.
 
 This order prioritizes missing Module Development features. It does not mean existing defects should be ignored when a defect blocks the current feature.
 

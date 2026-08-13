@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../models/Pangkat.php';
 require_once __DIR__ . '/../services/AuditService.php';
+require_once __DIR__ . '/../services/NotificationService.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -11,11 +12,13 @@ class PangkatController
 {
     private $pangkat;
     private $audit;
+    private $notifications;
 
     public function __construct()
     {
         $this->pangkat = new Pangkat();
         $this->audit = new AuditService();
+        $this->notifications = new NotificationService();
     }
 
     public function create($caseId)
@@ -28,6 +31,8 @@ class PangkatController
                 'Created Pangkat',
                 'Pangkat'
             );
+            $caseNumber = $this->notifications->caseNumber((int) $caseId);
+            $this->notifications->notifyRoles(['Administrator', 'Lupon Clerk'], 'Pangkat formed', 'A Pangkat group was formed for ' . $caseNumber . '.', (int) $_SESSION['user_id']);
         }
 
         return $result;
@@ -52,6 +57,7 @@ class PangkatController
                 'Pangkat',
                 $pangkatId
             );
+            $this->notifications->notifyUser((int) $memberId, 'Pangkat appointment', 'You were appointed as Pangkat ' . $position . '.', (int) $_SESSION['user_id']);
         }
 
         return $result;

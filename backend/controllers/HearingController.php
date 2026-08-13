@@ -3,16 +3,19 @@
 require_once __DIR__ . '/../models/Hearing.php';
 require_once __DIR__ . '/../services/AuditService.php';
 require_once __DIR__ . '/../services/DeadlineService.php';
+require_once __DIR__ . '/../services/NotificationService.php';
 
 class HearingController
 {
     private Hearing $hearing;
     private AuditService $audit;
+    private NotificationService $notifications;
 
     public function __construct()
     {
         $this->hearing = new Hearing();
         $this->audit = new AuditService();
+        $this->notifications = new NotificationService();
     }
 
     public function calendar(): array
@@ -61,6 +64,7 @@ class HearingController
             );
             $id = $this->hearing->create($values, $deadline);
             $this->audit->log($userId, 'Created Hearing', 'Hearings', $id);
+            $this->notifyHearingMembers($values, 'Hearing scheduled', $userId);
             return ['success' => true, 'message' => 'Hearing scheduled successfully.', 'hearing_id' => $id];
         } catch (Throwable $exception) {
             error_log($exception->getMessage());
@@ -99,6 +103,7 @@ class HearingController
             );
             $this->hearing->update($id, $values, $deadline);
             $this->audit->log($userId, 'Updated Hearing', 'Hearings', $id);
+            $this->notifyHearingMembers($values, 'Hearing updated', $userId);
             return ['success' => true, 'message' => 'Hearing updated successfully.'];
         } catch (Throwable $exception) {
             error_log($exception->getMessage());
@@ -155,5 +160,12 @@ class HearingController
                 'remarks' => $remarks !== '' ? $remarks : null,
             ],
         ];
+    }
+
+    private function notifyHearingMembers(array $hearing, string $title, int $actorUserId): void
+    {
+        $caseNumber = $this->notifications->caseNumber((int) $hearing['case_id']);
+        $message = sprintf('%s for %s on %s at %s (%s).', $hearing['hearing_type'], $caseNumber, date('F j, Y g:i A', strtotime($hearing['hearing_date'])), $hearing['venue'], $title === 'Hearing updated' ? 'updated schedule' : 'new schedule');
+        $this->notifications->notifyCaseMembers((int) $hearing['case_id'], $title, $message, $actorUserId);
     }
 }

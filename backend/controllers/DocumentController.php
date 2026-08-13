@@ -3,16 +3,19 @@
 require_once __DIR__ . '/../models/Document.php';
 require_once __DIR__ . '/../services/PDFService.php';
 require_once __DIR__ . '/../services/AuditService.php';
+require_once __DIR__ . '/../services/NotificationService.php';
 
 class DocumentController
 {
     private Document $document;
     private AuditService $audit;
+    private NotificationService $notifications;
 
     public function __construct()
     {
         $this->document = new Document();
         $this->audit = new AuditService();
+        $this->notifications = new NotificationService();
     }
 
     public function cases(): array
@@ -80,6 +83,7 @@ class DocumentController
             );
             $documentId = $this->document->createGeneratedDocument((int) $caseId, $templateId, $userId, $relativePath);
             $this->audit->log($userId, 'Generated KP Form 12', 'Documents', $documentId);
+            $this->notifications->notifyCaseMembers((int) $caseId, 'KP Form 12 generated', 'KP Form 12 is available for ' . $data['case_number'] . '.', $userId);
 
             return [
                 'success' => true,

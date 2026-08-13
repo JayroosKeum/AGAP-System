@@ -81,6 +81,7 @@ Flow: `frontend page/JS -> backend/api -> controller -> model/service -> PDO`.
 - Services contain reusable integrations such as audit, notifications, PDF,
   deadlines, and Gemini.
 - Log successful create/update/archive actions through `AuditService`.
+- For workflow notifications, reuse `notifications`, `Notification`, and `NotificationService`; notifications must be retrieved and marked read only by their owning authenticated user.
 - Validate all server-side inputs even if the page already validates them.
 
 ### API file template

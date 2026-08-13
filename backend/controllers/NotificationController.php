@@ -3,14 +3,10 @@
 require_once __DIR__ . '/../models/Notification.php';
 require_once __DIR__ . '/../services/AuditService.php';
 
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
 class NotificationController
 {
-    private $notification;
-    private $audit;
+    private Notification $notification;
+    private AuditService $audit;
 
     public function __construct()
     {
@@ -18,42 +14,18 @@ class NotificationController
         $this->audit = new AuditService();
     }
 
-    public function send(
-        $userId,
-        $title,
-        $message
-    )
+    public function inbox(int $userId): array
     {
-        $result = $this->notification->create(
-            $userId,
-            $title,
-            $message
-        );
-
-        if ($result) {
-            $this->audit->log(
-                $_SESSION['user_id'],
-                'Sent Notification',
-                'Notifications'
-            );
-        }
-
-        return $result;
+        return ['success' => true, 'data' => $this->notification->getByUser($userId), 'unread_count' => $this->notification->unreadCount($userId)];
     }
 
-    public function read($id)
+    public function read(int $notificationId, int $userId): array
     {
-        $result = $this->notification->markRead($id);
-
-        if ($result) {
-            $this->audit->log(
-                $_SESSION['user_id'],
-                'Read Notification',
-                'Notifications',
-                $id
-            );
+        if ($notificationId < 1) return ['success' => false, 'message' => 'A valid notification is required.'];
+        if (!$this->notification->markRead($notificationId, $userId)) {
+            return ['success' => false, 'message' => 'Notification not found, already read, or unavailable.'];
         }
-
-        return $result;
+        $this->audit->log($userId, 'Read Notification', 'Notifications', $notificationId);
+        return ['success' => true, 'message' => 'Notification marked as read.'];
     }
 }
