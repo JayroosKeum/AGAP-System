@@ -1,43 +1,11 @@
-<link rel="stylesheet"
-href="https://unpkg.com/leaflet/dist/leaflet.css">
-
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-
-<div
-    id="map"
-    style="height:500px;">
-</div>
-
-<script>
-
-var map = L.map('map')
-.setView([14.6507,121.1029],13);
-
-L.tileLayer(
-'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
-).addTo(map);
-
-var marker;
-
-map.on('click', function(e){
-
-    if(marker)
-    {
-        map.removeLayer(marker);
-    }
-
-    marker = L.marker(
-        e.latlng
-    ).addTo(map);
-
-    document.getElementById(
-        'latitude'
-    ).value = e.latlng.lat;
-
-    document.getElementById(
-        'longitude'
-    ).value = e.latlng.lng;
-
-});
-
-</script>
+<?php
+session_start(); $roleId = (int) ($_SESSION['role_id'] ?? 0); if (!in_array($roleId, [1, 2, 3, 4], true)) { http_response_code(403); die('Access Denied'); }
+$canManageLocations = in_array($roleId, [1, 2, 4], true); include '../../layouts/header.php';
+?>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="../../assets/css/gps.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/gps.css'); ?>">
+<div class="dashboard-layout"><?php include '../../layouts/sidebar.php'; ?><div class="main-content"><?php include '../../layouts/navbar.php'; ?>
+<div class="page-header"><div><h1>Incident locations</h1><p>Pinpoint and review reported incident locations.</p></div></div><div id="gpsMessage" role="alert"></div>
+<?php if ($canManageLocations): ?><section class="gps-card"><form id="locationForm"><div class="gps-grid"><div class="form-group"><label for="complaintId">Complaint</label><select id="complaintId" name="complaint_id" required><option value="">Select a complaint</option></select></div><div class="form-group"><label for="locationAddress">Location description</label><textarea id="locationAddress" name="address" maxlength="2000" placeholder="Street, landmark, or other details"></textarea></div></div><input type="hidden" id="latitude" name="latitude"><input type="hidden" id="longitude" name="longitude"><p class="map-help">Select a complaint, then click the map to set its exact incident location.</p><div id="incidentMap"></div><button class="btn-create" type="submit">Save incident location</button></form></section><?php else: ?><section class="gps-card"><h2>Location map</h2><div id="incidentMap"></div></section><?php endif; ?>
+<section class="gps-card"><h2>Recorded locations</h2><div class="table-container"><table><thead><tr><th>Complaint</th><th>Case</th><th>Address</th><th>Coordinates</th><th>Updated</th></tr></thead><tbody id="locationsTable"></tbody></table></div></section>
+</div></div><script>window.AGAP_GPS = Object.freeze({canManageLocations: <?php echo $canManageLocations ? 'true' : 'false'; ?>});</script><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="../../assets/js/gps.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/gps.js'); ?>"></script><?php include '../../layouts/footer.php'; ?>

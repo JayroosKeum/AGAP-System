@@ -71,6 +71,8 @@ include '../../layouts/header.php';
                 Sign In
             </button>
 
+            <p class="auth-link"><a href="forgot-password.php">Forgot your password?</a></p>
+
         </form>
 
     </div>

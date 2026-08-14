@@ -23,6 +23,8 @@ $dashboardLink = [1 => '../dashboard/admin-dashboard.php', 2 => '../dashboard/cl
             <p class="nav-label">Operations</p>
             <a href="../hearings/schedules.php"<?php echo $isActive(['schedules.php', 'calendar.php']); ?>>Hearings and deadlines</a>
             <a href="../documents/document-center.php"<?php echo $isActive(['document-center.php', 'summons.php', 'settlements.php', 'cfa.php', 'kp-form-9.php']); ?>>KP documents</a>
+            <a href="../gps/incident-map.php"<?php echo $isActive(['incident-map.php']); ?>>Incident locations</a>
+            <a href="../gps/proof-service.php"<?php echo $isActive(['proof-service.php']); ?>>Proof of service</a>
             <a href="../search/records.php"<?php echo $isActive(['records.php']); ?>>Records search</a>
             <a href="../reports/report-list.php"<?php echo $isActive(['report-list.php']); ?>>Reports and export</a>
         <?php endif; ?>
@@ -31,6 +33,7 @@ $dashboardLink = [1 => '../dashboard/admin-dashboard.php', 2 => '../dashboard/cl
             <p class="nav-label">Case work</p>
             <a href="../hearings/schedules.php"<?php echo $isActive(['schedules.php', 'calendar.php']); ?>>Hearings and deadlines</a>
             <a href="../pangkat/pangkat-list.php"<?php echo $isActive(['pangkat-list.php']); ?>>Pangkat</a>
+            <a href="../gps/incident-map.php"<?php echo $isActive(['incident-map.php']); ?>>Incident locations</a>
         <?php endif; ?>
 
         <?php if ($roleId === 4): ?>

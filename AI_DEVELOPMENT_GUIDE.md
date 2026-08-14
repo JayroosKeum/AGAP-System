@@ -32,6 +32,7 @@ AGAP/
 |   `-- services/              # Reusable integrations and business utilities
 |-- database/
 |   |-- schema.sql             # Canonical schema for a fresh agap_db
+|   |-- migrations/            # One-time scripts for populated databases
 |   |-- preflight_integrity.sql# Read-only checks before a legacy migration
 |   `-- README.md              # Database setup notes
 |-- frontend/
@@ -68,6 +69,9 @@ Use the same module name across `frontend/pages`, `frontend/assets/js`, and
   inside a database transaction, as the Complaint and Case models do.
 - For a one-record-per-case feature, add a unique `case_id` constraint and use
   an upsert only when editing the same record is the intended behavior.
+- For password resets, store only a hashed, single-use token with an expiry;
+  never store a raw reset token or password. Document a populated-database
+  migration whenever a reset-token table is added.
 
 ## Backend conventions
 
@@ -83,6 +87,11 @@ Flow: `frontend page/JS -> backend/api -> controller -> model/service -> PDO`.
 - Log successful create/update/archive actions through `AuditService`.
 - For workflow notifications, reuse `notifications`, `Notification`, and `NotificationService`; notifications must be retrieved and marked read only by their owning authenticated user.
 - Validate all server-side inputs even if the page already validates them.
+- Authentication changes must regenerate the session ID after login or a
+  password change, enforce active-account status, and audit successful
+  password changes and reset requests/completions.
+- Password-reset responses must not reveal whether a username or email exists.
+  Use `AGAP_APP_URL` for the deployed reset-link base URL when it is available.
 
 ### API file template
 
@@ -177,10 +186,12 @@ const api = (url, options) => fetch(url, options).then(async (response) => {
 2. Add or update the model, controller, API, page, and JavaScript together.
 3. Test allowed and denied roles, invalid input, duplicate submissions, and
    missing parent records.
-4. Run `php -l` on each changed PHP file and check `git diff --check`.
-5. Do not claim a feature is complete just because a page, route, or table
+4. For account-security work, test expired and reused tokens, inactive users,
+   invalid current passwords, and password-policy failures.
+5. Run `php -l` on each changed PHP file and check `git diff --check`.
+6. Do not claim a feature is complete just because a page, route, or table
    exists. Verify the full UI-to-database flow.
-6. Preserve existing uncommitted work unless it directly conflicts with the
+7. Preserve existing uncommitted work unless it directly conflicts with the
    requested module; report conflicts before overwriting it.
 
 ## Copy-ready prompt for another AI

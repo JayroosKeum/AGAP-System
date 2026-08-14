@@ -50,6 +50,8 @@ For each increment:
 - Active users with role name `Lupon Member` are directly assignable.
 - Hearing creation, update, viewing, calendar display, and attendance storage.
 - Settlement, arbitration, CFA, incident-location, proof-of-service, AI chatbot, and narrative-generation endpoints/models exist.
+- GPS incident-location and proof-of-service workflows are available.
+- Secure password change and password-reset workflows are available.
 - Complaint and case numbering use database-generated IDs and transactions.
 - The schema contains foreign keys, key uniqueness rules, one case per complaint, and one resolution record per case where applicable.
 
@@ -295,12 +297,84 @@ Future forms should reuse the same Document model, controller, storage, listing,
 
 ---
 
+## GPS Incident Location and Proof-of-Service Increment
+
+The existing `incident_locations` and `proof_of_service` tables are now used
+for authenticated field documentation. No duplicate GPS or proof tables were
+introduced.
+
+### Implemented
+
+- Incident-location map with complaint selection, coordinate/address
+  validation, and saved-location markers.
+- Administrator, Lupon Clerk, and Summons Server location-write access; Lupon
+  Members have read-only location-map access.
+- Proof-of-service recording for active cases, with service details, optional
+  proof image, service history, duplicate-entry protection, and case linkage.
+- Secure JPG, PNG, and WebP uploads limited to 5 MB, stored under
+  `storage/uploads/proof-of-service/` using random filenames.
+- Authenticated proof-image retrieval constrained to the storage directory.
+- JSON APIs with method/session/role checks, server-side validation, and
+  audit logging for location and proof mutations.
+
+### Testing Status
+
+- PHP lint, JavaScript syntax check, and `git diff --check` passed.
+- Browser/MySQL acceptance testing remains required in Laragon, including
+  actual image upload, saved markers, and authorized/denied role flows.
+- Leaflet/OpenStreetMap map tiles require browser network access.
+
+---
+
+## Account Security Increment
+
+Password security now has both an authenticated change-password path and a
+one-time reset flow. `database/schema.sql` includes the canonical
+`password_reset_tokens` table.
+
+### Implemented
+
+- Change-password page/API available to every authenticated application role.
+- Current-password verification and password policy: at least 12 characters
+  with uppercase, lowercase, and a number.
+- Session ID regeneration after successful login and password changes.
+- Inactive users are rejected at login and cannot receive/reset passwords.
+- Password-reset request, token reset page, and JSON APIs.
+- One-hour, single-use, SHA-256-hashed reset tokens; raw tokens are only sent
+  in the reset link and are never stored in the database.
+- Generic reset-request results to avoid revealing whether an account exists.
+- Audit entries for reset requests, resets, and password changes.
+- A reset-link entry on login and a change-password entry in the authenticated
+  navbar.
+
+### Existing Database Step
+
+For a populated database, apply once:
+
+```text
+database/migrations/20260813_add_password_reset_tokens.sql
+```
+
+For a new database, `database/schema.sql` already creates the table.
+
+### Configuration and Testing Limitations
+
+- PHP mail must be configured for actual email delivery.
+- Set `AGAP_APP_URL` to the deployed application base URL so reset links use
+  the correct host; the local fallback is `http://localhost/AGAP`.
+- PHP lint, JavaScript syntax check, and `git diff --check` passed.
+- Still verify mail delivery plus expired/reused token, password-policy,
+  inactive-account, and browser role/session flows in Laragon.
+
+---
+
 ## Present but Incomplete or Requiring Verification
 
 - Project-wide RBAC remains inconsistent, but broad RBAC hardening is not the immediate priority.
 - Complaint party and attachment workflows require full Laragon/MySQL verification.
 - Hearing attendance storage exists, but complete attendance and missed-hearing workflows remain incomplete.
-- Location and proof-of-service storage exists, but complete map, upload, verification, and case-linkage UI remains incomplete.
+- GPS/proof workflows need Laragon acceptance testing, including actual image
+  upload and authorized/denied role scenarios.
 - AI calls Gemini, but production-grade monitoring and rate limiting are incomplete.
 - Case history and deadline structures exist, but all automatic status-transition rules are not connected.
 - KP Form 12 is implemented but needs successful PDF generation and visual acceptance testing with complete case data.
@@ -311,8 +385,6 @@ Future forms should reuse the same Document model, controller, storage, listing,
 
 The following are still missing or not complete enough to be considered implemented:
 
-- Complete GPS incident-location and proof-of-service workflows.
-- Secure password reset/change-password workflow.
 - Resident self-service complaint filing and status tracking.
 - Complete summons workflow and delivery linkage.
 - Remaining official KP forms and generated-document templates.
@@ -325,17 +397,20 @@ The following are still missing or not complete enough to be considered implemen
 
 Move temporarily away from adding KP forms and implement another missing Module Development feature.
 
-### Recommended Next Module: GPS and Proof of Service
+### Recommended Next Module: Resident Self-Service Complaint Filing and Status Tracking
 
-Complete the incident-location and proof-of-service workflow using the existing `incident_locations` and `proof_of_service` tables. Prioritize a map/location UI, secure proof image upload, verification details, case linkage, authorized role flows, and audit logging for mutations.
+Implement a resident-facing complaint filing and status-tracking workflow.
+First confirm the resident account/authentication approach in the Module
+Development requirements and existing schema before adding new tables or roles.
 
 ### Scope Control for the Next Increment
 
-Do not perform broad unrelated hardening. Only add security and validation directly required by the report feature.
+Do not perform broad unrelated hardening. Only add security and validation
+directly required by the resident self-service feature.
 
 Do not:
 
-- rewrite the hearing workflow;
+- rewrite the hearing or account-security workflows;
 - add more KP forms;
 - restructure unrelated models;
 - replace the canonical schema;
@@ -348,13 +423,11 @@ The next missing-feature priority is the GPS/proof-of-service workflow.
 
 ## Feature-Focused Development Order
 
-1. Complete GPS incident-location and proof-of-service workflows.
-2. Complete password reset and account-security features.
-3. Complete resident self-service complaint filing and status tracking.
-4. Complete summons and service/delivery workflow.
-5. Return to remaining official KP forms one form at a time.
-6. Complete attendance, missed-hearing, and advanced status/deadline automation as needed.
-7. Add broader testing, security review, deployment, and backup procedures.
+1. Complete resident self-service complaint filing and status tracking.
+2. Complete summons and service/delivery workflow.
+3. Return to remaining official KP forms one form at a time.
+4. Complete attendance, missed-hearing, and advanced status/deadline automation as needed.
+5. Add broader testing, security review, deployment, and backup procedures.
 
 This order prioritizes missing Module Development features. It does not mean existing defects should be ignored when a defect blocks the current feature.
 
