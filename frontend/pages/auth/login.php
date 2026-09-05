@@ -1,4 +1,5 @@
 <?php
+$loginError = ($_GET['error'] ?? '') === 'invalid_credentials';
 include '../../layouts/header.php';
 ?>
 
@@ -38,6 +39,12 @@ include '../../layouts/header.php';
             <p>
                 Sign in to continue
             </p>
+
+            <?php if ($loginError): ?>
+                <div class="auth-message error" role="alert">
+                    Invalid username or password.
+                </div>
+            <?php endif; ?>
 
             <div class="form-group">
 
