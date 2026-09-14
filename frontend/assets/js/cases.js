@@ -29,6 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td class="action-buttons">
                         <button type="button" onclick="viewCase(${Number(item.case_id)})">View</button>
                         <button type="button" onclick="editCase(${Number(item.case_id)})">Edit</button>
+                        ${item.case_status !== 'Archived' ? `<button type="button" onclick="openCaseAssignments(${Number(item.case_id)})">Assign</button>` : ''}
                         ${item.case_status !== 'Archived' ? `<button type="button" class="archive-button" onclick="archiveCase(${Number(item.case_id)})">Archive</button>` : ''}
                     </td>
                 </tr>
@@ -135,4 +136,8 @@ function editCase(id) {
 function archiveCase(id) {
     document.getElementById('archiveCaseId').value = id;
     showModal('archiveCaseModal');
+}
+
+function openCaseAssignments(caseId) {
+    window.openCaseAssignments?.(caseId);
 }

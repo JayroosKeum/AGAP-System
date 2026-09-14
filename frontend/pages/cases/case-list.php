@@ -10,6 +10,7 @@ include '../../layouts/header.php';
 $docketError = $_GET['error'] ?? '';
 $docketMessages = [
     'invalid_complaint' => 'The Complaint ID does not exist. Choose a complaint from the list below.',
+    'complaint_not_accepted' => 'A complaint must be reviewed and accepted before it can be docketed.',
     'duplicate_case' => 'This complaint has already been docketed as a case.',
     'save_failed' => 'The case could not be docketed. Please try again.'
 ];
@@ -51,6 +52,45 @@ $docketMessages = [
                 <tbody id="caseTable"></tbody>
             </table>
         </div>
+
+        <section class="case-assignment-panel" id="caseAssignments">
+            <div class="section-heading">
+                <div>
+                    <h2>Case assignments</h2>
+                    <p>Assign active Lupon Members and review their responsibilities for each case.</p>
+                </div>
+            </div>
+            <div class="assignment-grid">
+                <form id="assignmentForm" class="assignment-form">
+                    <div class="form-group">
+                        <label for="caseId">Case <span class="required-mark" aria-hidden="true">*</span></label>
+                        <select id="caseId" name="case_id" required><option value="">Select a case</option></select>
+                    </div>
+                    <div class="form-group">
+                        <label for="memberId">Lupon Member <span class="required-mark" aria-hidden="true">*</span></label>
+                        <select id="memberId" name="member_id" required><option value="">Select a Lupon Member</option></select>
+                    </div>
+                    <div class="form-group">
+                        <label for="assignmentRole">Assignment Role <span class="required-mark" aria-hidden="true">*</span></label>
+                        <select id="assignmentRole" name="assignment_role" required>
+                            <option value="Mediator">Mediator</option>
+                            <option value="Pangkat Chairman">Pangkat Chairman</option>
+                            <option value="Pangkat Secretary">Pangkat Secretary</option>
+                            <option value="Pangkat Member">Pangkat Member</option>
+                        </select>
+                    </div>
+                    <button class="btn-create" type="submit">Assign Member</button>
+                    <p id="assignmentMessage" role="status"></p>
+                </form>
+                <div class="assignment-history">
+                    <h3>Assigned members</h3>
+                    <div class="assignment-table-wrap"><table>
+                        <thead><tr><th>Lupon Member</th><th>Role</th><th>Date Assigned</th></tr></thead>
+                        <tbody id="assignmentTable"><tr><td colspan="3" class="empty-state">Select a case to view assignments.</td></tr></tbody>
+                    </table></div>
+                </div>
+            </div>
+        </section>
     </div>
 </div>
 
@@ -141,5 +181,6 @@ $docketMessages = [
 </div>
 
 <script src="../../assets/js/cases.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/cases.js'); ?>"></script>
+<script src="../../assets/js/assignments.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/assignments.js'); ?>"></script>
 
 <?php include '../../layouts/footer.php'; ?>

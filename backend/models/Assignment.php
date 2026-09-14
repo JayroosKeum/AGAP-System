@@ -51,6 +51,52 @@ class Assignment
         return ['success' => true, 'message' => 'Lupon member assigned successfully.'];
     }
 
+    public function replaceConciliationTeam(int $caseId, array $members): array
+    {
+        $roles = [
+            'chairman_id' => 'Pangkat Chairman',
+            'secretary_id' => 'Pangkat Secretary',
+            'member_id' => 'Pangkat Member',
+        ];
+        $ids = [];
+        foreach ($roles as $field => $role) {
+            $id = filter_var($members[$field] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+            if (!$id) return ['success' => false, 'message' => 'Choose a Chairman, Secretary, and Member.'];
+            $ids[$field] = (int) $id;
+        }
+        if (count(array_unique($ids)) !== 3) return ['success' => false, 'message' => 'The Chairman, Secretary, and Member must be different Lupon Members.'];
+        if (!$this->caseExists($caseId)) return ['success' => false, 'message' => 'Active case not found.'];
+        foreach ($ids as $id) {
+            if (!$this->isActiveLuponMember($id)) return ['success' => false, 'message' => 'Every selected person must be an active Lupon Member.'];
+        }
+        try {
+            $this->conn->beginTransaction();
+            $this->conn->prepare("DELETE FROM case_assignments WHERE case_id = ? AND assignment_role IN ('Pangkat Chairman', 'Pangkat Secretary', 'Pangkat Member')")->execute([$caseId]);
+            $insert = $this->conn->prepare('INSERT INTO case_assignments (case_id, member_id, assignment_role, assigned_date) VALUES (?, ?, ?, CURDATE())');
+            foreach ($roles as $field => $role) $insert->execute([$caseId, $ids[$field], $role]);
+            $this->conn->commit();
+            return ['success' => true, 'message' => 'Conciliation team saved.'];
+        } catch (Throwable $exception) {
+            if ($this->conn->inTransaction()) $this->conn->rollBack();
+            error_log($exception->getMessage());
+            return ['success' => false, 'message' => 'Unable to save the conciliation team.'];
+        }
+    }
+
+    private function caseExists(int $caseId): bool
+    {
+        $stmt = $this->conn->prepare("SELECT 1 FROM cases WHERE case_id = ? AND case_status <> 'Archived'");
+        $stmt->execute([$caseId]);
+        return (bool) $stmt->fetchColumn();
+    }
+
+    private function isActiveLuponMember(int $memberId): bool
+    {
+        $stmt = $this->conn->prepare("SELECT 1 FROM users u INNER JOIN roles r ON r.role_id = u.role_id WHERE u.user_id = ? AND u.status = 'Active' AND r.role_name = 'Lupon Member'");
+        $stmt->execute([$memberId]);
+        return (bool) $stmt->fetchColumn();
+    }
+
     public function getAssignments(int $caseId): array
     {
         $stmt = $this->conn->prepare(

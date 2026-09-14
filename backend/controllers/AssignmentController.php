@@ -48,4 +48,15 @@ class AssignmentController
     {
         return $this->assignment->getLuponMembers();
     }
+
+    public function saveConciliationTeam(array $data): array
+    {
+        $caseId = filter_var($data['case_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if (!$caseId) return ['success' => false, 'message' => 'Select a valid case.'];
+        $result = $this->assignment->replaceConciliationTeam((int) $caseId, $data);
+        if ($result['success']) {
+            $this->audit->log((int) $_SESSION['user_id'], 'Saved Conciliation Team', 'Assignments', (int) $caseId);
+        }
+        return $result;
+    }
 }

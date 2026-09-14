@@ -69,6 +69,20 @@ class ComplaintController
         return $result;
     }
 
+    public function review(int $id, array $data): array
+    {
+        $status = trim((string) ($data['status'] ?? ''));
+        $notes = trim((string) ($data['review_notes'] ?? ''));
+        if ($id < 1 || mb_strlen($notes) > 2000) {
+            return ['success' => false, 'message' => 'Provide valid review notes of 2,000 characters or fewer.'];
+        }
+        $result = $this->complaint->review($id, $status, $notes !== '' ? $notes : null);
+        if ($result['success']) {
+            $this->audit->log((int) $_SESSION['user_id'], 'Reviewed Complaint: ' . $status, 'Complaints', $id);
+        }
+        return $result;
+    }
+
     public function destroy($id)
     {
         $result = $this->complaint->delete($id);
@@ -119,8 +133,8 @@ class ComplaintController
         if (!isset($file['error']) || (int) $file['error'] !== UPLOAD_ERR_OK) {
             return ['success' => false, 'message' => 'A valid file upload is required.'];
         }
-        if ((int) ($file['size'] ?? 0) < 1 || (int) $file['size'] > 5 * 1024 * 1024) {
-            return ['success' => false, 'message' => 'The file must not exceed 5 MB.'];
+        if ((int) ($file['size'] ?? 0) < 1 || (int) $file['size'] > 25 * 1024 * 1024) {
+            return ['success' => false, 'message' => 'The file must not exceed 25 MB.'];
         }
 
         $finfo = new finfo(FILEINFO_MIME_TYPE);
@@ -128,10 +142,12 @@ class ComplaintController
         $allowed = [
             'image/jpeg' => 'jpg',
             'image/png' => 'png',
-            'application/pdf' => 'pdf'
+            'application/pdf' => 'pdf',
+            'video/mp4' => 'mp4',
+            'video/webm' => 'webm'
         ];
         if (!isset($allowed[$mime])) {
-            return ['success' => false, 'message' => 'Only JPG, PNG, and PDF files are allowed.'];
+            return ['success' => false, 'message' => 'Only JPG, PNG, PDF, MP4, and WebM files are allowed.'];
         }
 
         $originalName = trim(basename((string) ($file['name'] ?? 'attachment')));

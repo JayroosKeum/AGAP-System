@@ -40,6 +40,7 @@ include '../../layouts/header.php';
             <div class="action-buttons">
                 <button type="button" class="btn-create" onclick="openAddPartyModal()">Add Party</button>
                 <button type="button" class="btn-create" onclick="openAddAttachmentModal()">Add Attachment</button>
+                <button type="button" class="btn-create" onclick="openReviewComplaintModal()">Review Complaint</button>
             </div>
         </div>
 
@@ -123,9 +124,23 @@ include '../../layouts/header.php';
             <input type="hidden" id="attachmentComplaintId">
             <div class="form-group">
                 <label>File</label>
-                <input type="file" id="attachmentFile" accept=".jpg,.jpeg,.png,.pdf" required>
+                <input type="file" id="attachmentFile" accept=".jpg,.jpeg,.png,.pdf,video/mp4,video/webm" required>
+                <small>JPG, PNG, PDF, MP4, or WebM up to 25 MB.</small>
             </div>
             <button type="submit" class="btn-create">Add Attachment</button>
+        </form>
+    </div>
+</div>
+
+<div id="reviewComplaintModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header"><h2>Review Complaint</h2><button class="close-btn" onclick="closeReviewComplaintModal()">&times;</button></div>
+        <form id="reviewComplaintForm">
+            <input type="hidden" id="reviewComplaintId" name="complaint_id">
+            <div class="form-group"><label for="reviewStatus">Decision</label><select id="reviewStatus" name="status" required><option value="Under Review">Under Review</option><option value="Needs Information">Needs Information</option><option value="Accepted">Accept for Docketing</option><option value="Rejected">Reject / Refer</option></select></div>
+            <div class="form-group"><label for="reviewNotes">Review Notes</label><textarea id="reviewNotes" name="review_notes" maxlength="2000" rows="4" placeholder="Record the review outcome or missing information"></textarea></div>
+            <button type="submit" class="btn-create">Save Review</button>
+            <p id="reviewMessage" role="status"></p>
         </form>
     </div>
 </div>

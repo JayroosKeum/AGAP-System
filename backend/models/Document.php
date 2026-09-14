@@ -101,7 +101,7 @@ class Document
     public function getAllGenerated(): array
     {
         $stmt = $this->conn->prepare(
-            "SELECT gd.document_id, gd.case_id, gd.file_path, gd.generated_at,
+            "SELECT gd.document_id, gd.case_id, gd.file_path, gd.generated_at, gd.service_status, gd.regeneration_reason,
                     dt.template_name, c.case_number, co.complaint_title,
                     TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS generated_by_name
              FROM generated_documents gd
@@ -113,6 +113,30 @@ class Document
         );
         $stmt->execute();
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function getGeneratedByCase(int $caseId): array
+    {
+        $stmt = $this->conn->prepare(
+            "SELECT gd.document_id, gd.case_id, gd.generated_at, gd.service_status, dt.template_name
+             FROM generated_documents gd INNER JOIN document_templates dt ON dt.template_id = gd.template_id
+             WHERE gd.case_id = ? ORDER BY gd.generated_at DESC"
+        );
+        $stmt->execute([$caseId]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function markForService(int $documentId, int $caseId): bool
+    {
+        $stmt = $this->conn->prepare("UPDATE generated_documents SET service_status = 'For Service' WHERE document_id = ? AND case_id = ? AND service_status = 'Generated'");
+        $stmt->execute([$documentId, $caseId]);
+        return $stmt->rowCount() === 1;
+    }
+
+    public function markServed(int $documentId, int $caseId): bool
+    {
+        $stmt = $this->conn->prepare("UPDATE generated_documents SET service_status = 'Served' WHERE document_id = ? AND case_id = ?");
+        return $stmt->execute([$documentId, $caseId]);
     }
 
     public function getGeneratedById(int $documentId): array|false

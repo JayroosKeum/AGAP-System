@@ -92,12 +92,13 @@ class Complaint
                     complaint_title,
                     incident_date,
                     narrative,
+                    additional_details,
                     status,
                     encoded_by
                 )
                 VALUES
                 (
-                    ?,?,?,?,?,?
+                    ?,?,?,?,?,?,?
                 )
             ");
 
@@ -106,6 +107,7 @@ class Complaint
                 $data['complaint_title'],
                 $data['incident_date'],
                 $data['narrative'],
+                trim((string) ($data['additional_details'] ?? '')) ?: null,
                 'Filed',
                 $_SESSION['user_id']
             ]);
@@ -147,7 +149,7 @@ class Complaint
                     complaint_title=?,
                     incident_date=?,
                     narrative=?,
-                    status=?
+                    additional_details=?
                 WHERE complaint_id=?
             ");
 
@@ -156,7 +158,7 @@ class Complaint
                 $data['complaint_title'],
                 $data['incident_date'],
                 $data['narrative'],
-                $data['status'],
+                trim((string) ($data['additional_details'] ?? '')) ?: null,
                 $id
             ]);
 
@@ -169,6 +171,19 @@ class Complaint
 
             return false;
         }
+    }
+
+    public function review(int $id, string $status, ?string $notes): array
+    {
+        $allowed = ['Under Review', 'Needs Information', 'Accepted', 'Rejected'];
+        if (!in_array($status, $allowed, true)) {
+            return ['success' => false, 'message' => 'Select a valid review decision.'];
+        }
+        $stmt = $this->conn->prepare("UPDATE complaints SET status = ?, review_notes = ? WHERE complaint_id = ? AND status NOT IN ('Docketed', 'Archived')");
+        $stmt->execute([$status, $notes, $id]);
+        return $stmt->rowCount() === 1
+            ? ['success' => true, 'message' => 'Complaint review saved.']
+            : ['success' => false, 'message' => 'This complaint cannot be reviewed in its current status.'];
     }
 
     public function delete($id)

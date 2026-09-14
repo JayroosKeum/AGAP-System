@@ -183,6 +183,12 @@ include '../../layouts/header.php';
 
             </div>
 
+            <div class="form-group">
+                <label>Additional Details</label>
+                <textarea name="additional_details" rows="3" maxlength="5000" placeholder="People involved, location context, prior actions, or other relevant facts"></textarea>
+                <small>Optional; up to 5,000 characters.</small>
+            </div>
+
             <button
                 type="submit"
                 class="btn-create">
@@ -313,22 +319,13 @@ include '../../layouts/header.php';
             </div>
 
             <div class="form-group">
+                <label>Additional Details</label>
+                <textarea name="additional_details" id="editAdditionalDetails" rows="3" maxlength="5000"></textarea>
+            </div>
 
-                <label>Status</label>
+            <div class="form-group">
 
-                <select
-                    name="status"
-                    id="editStatus">
-
-                    <option value="Filed">Filed</option>
-                    <option value="Docketed">Docketed</option>
-                    <option value="Mediation">Mediation</option>
-                    <option value="Conciliation">Conciliation</option>
-                    <option value="Arbitration">Arbitration</option>
-                    <option value="Settled">Settled</option>
-                    <option value="Dismissed">Dismissed</option>
-
-                </select>
+                <small>Review status is managed from the complaint review workspace.</small>
 
             </div>
 

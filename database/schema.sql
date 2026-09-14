@@ -130,7 +130,9 @@ CREATE TABLE complaints (
     complaint_title VARCHAR(255) NOT NULL,
     incident_date DATE NULL,
     narrative LONGTEXT NOT NULL,
-    status ENUM('Filed', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Dismissed', 'CFA Issued', 'Archived') NOT NULL DEFAULT 'Filed',
+    additional_details LONGTEXT NULL,
+    review_notes TEXT NULL,
+    status ENUM('Filed', 'Under Review', 'Needs Information', 'Accepted', 'Rejected', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Dismissed', 'CFA Issued', 'Archived') NOT NULL DEFAULT 'Filed',
     encoded_by INT UNSIGNED NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -248,6 +250,7 @@ CREATE TABLE case_assignments (
     assigned_date DATE NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_case_assignments_role (case_id, member_id, assignment_role),
+    UNIQUE KEY uq_case_assignments_case_role (case_id, assignment_role),
     KEY idx_case_assignments_member_id (member_id),
     CONSTRAINT fk_case_assignments_case
         FOREIGN KEY (case_id) REFERENCES cases (case_id) ON DELETE CASCADE,
@@ -366,6 +369,8 @@ CREATE TABLE generated_documents (
     template_id INT UNSIGNED NOT NULL,
     generated_by INT UNSIGNED NULL,
     file_path VARCHAR(1024) NOT NULL,
+    service_status ENUM('Generated', 'For Service', 'Served', 'Service Failed') NOT NULL DEFAULT 'Generated',
+    regeneration_reason TEXT NULL,
     generated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY idx_generated_documents_case_id (case_id),
     KEY idx_generated_documents_template_id (template_id),
@@ -380,14 +385,18 @@ CREATE TABLE generated_documents (
 CREATE TABLE proof_of_service (
     proof_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     case_id INT UNSIGNED NOT NULL,
+    document_id INT UNSIGNED NULL,
     served_by INT UNSIGNED NULL,
     served_date DATETIME NOT NULL,
     remarks TEXT NULL,
     image_path VARCHAR(1024) NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY idx_proof_of_service_case_id (case_id),
+    KEY idx_proof_of_service_document_id (document_id),
     CONSTRAINT fk_proof_of_service_case
         FOREIGN KEY (case_id) REFERENCES cases (case_id) ON DELETE CASCADE,
+    CONSTRAINT fk_proof_of_service_document
+        FOREIGN KEY (document_id) REFERENCES generated_documents (document_id) ON DELETE SET NULL,
     CONSTRAINT fk_proof_of_service_user
         FOREIGN KEY (served_by) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;

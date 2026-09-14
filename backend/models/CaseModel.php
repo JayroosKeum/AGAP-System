@@ -85,6 +85,11 @@ class CaseModel
                 'UPDATE cases SET case_number = ? WHERE case_id = ?'
             );
             $numberStatement->execute([$caseNumber, $caseId]);
+            $statusStatement = $this->conn->prepare("UPDATE complaints SET status = 'Docketed' WHERE complaint_id = ? AND status = 'Accepted'");
+            $statusStatement->execute([$data['complaint_id']]);
+            if ($statusStatement->rowCount() !== 1) {
+                throw new RuntimeException('Complaint approval changed before docketing.');
+            }
 
             $this->conn->commit();
             return true;
@@ -104,11 +109,15 @@ class CaseModel
             return 'invalid_complaint';
         }
 
-        $complaint = $this->conn->prepare('SELECT complaint_id FROM complaints WHERE complaint_id = ?');
+        $complaint = $this->conn->prepare('SELECT complaint_id, status FROM complaints WHERE complaint_id = ?');
         $complaint->execute([$complaintId]);
 
-        if (!$complaint->fetch()) {
+        $complaintRecord = $complaint->fetch(PDO::FETCH_ASSOC);
+        if (!$complaintRecord) {
             return 'invalid_complaint';
+        }
+        if ($complaintRecord['status'] !== 'Accepted') {
+            return 'complaint_not_accepted';
         }
 
         $case = $this->conn->prepare('SELECT case_id FROM cases WHERE complaint_id = ? LIMIT 1');
