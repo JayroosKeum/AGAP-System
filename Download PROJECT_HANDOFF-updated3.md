@@ -60,11 +60,17 @@ full location description and optional coordinates in `incident_locations`.
 `database/schema.sql` is the fresh-install source of truth. Apply
 `database/migrations/20260914_core_case_workflow_redesign.sql` and then
 `database/migrations/20260916_complaint_incident_details.sql` and
-`database/migrations/20260917_case_team_roles.sql` once to an
+`database/migrations/20260917_case_team_roles.sql` and
+`database/migrations/20260918_case_deadline_unique.sql` once to an
 existing populated database before using the redesigned fields and relations.
 Alternatively, a database that predates all three changes can run the single
 `database/migrations/20260917_consolidated_workflow_upgrade.sql` script instead.
 Never run both the consolidated and individual migration paths.
+
+For local debugging, `schema.sql` also seeds the Administrator, Lupon Clerk,
+Summons Server, and three distinct Lupon Member accounts. The same optional
+seed is available at `database/seeds/local_test_users.sql`; every account uses
+the local-only password `password`.
 Resolve any duplicate case/assignment-role data before adding the unique
 assignment constraint.
 

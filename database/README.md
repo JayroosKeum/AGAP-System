@@ -27,6 +27,21 @@ Do not run the consolidated query if any of its individual migrations have
 already been applied; its `ADD COLUMN`, index, and constraint operations are
 intentionally one-time changes.
 
+## Local test accounts
+
+`schema.sql` seeds local-only test accounts. Existing local databases can add
+the same accounts with `database/seeds/local_test_users.sql`. Every account
+uses the password `password`:
+
+- `admin` — Administrator
+- `clerk` — Lupon Clerk
+- `luponhead`, `luponsecretary`, `luponmember` — three Lupon Members for the
+  Head, Secretary, and Member case-team test
+- `summonsserver` — Summons Server
+
+These known credentials are intentionally for debugging only. Remove or change
+them before deploying to a real environment.
+
 `preflight_integrity.sql` is read-only and identifies the duplicates and
 orphaned rows that must be resolved before that migration.
 

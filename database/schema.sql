@@ -234,6 +234,7 @@ CREATE TABLE case_deadlines (
     completed_at DATETIME NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_case_deadlines_case_type (case_id, deadline_type),
     KEY idx_case_deadlines_case_id_due_date (case_id, due_date),
     CONSTRAINT fk_case_deadlines_case
         FOREIGN KEY (case_id) REFERENCES cases (case_id) ON DELETE CASCADE
@@ -454,6 +455,38 @@ INSERT INTO roles (role_name) VALUES
     ('Lupon Member'),
     ('Summons Server')
 ON DUPLICATE KEY UPDATE role_name = VALUES(role_name);
+
+-- Local development accounts only. Every account below uses password: password
+-- Remove or change these accounts before deploying outside a local/test environment.
+INSERT INTO users (first_name, last_name, username, email, password_hash, role_id, status)
+SELECT 'Admin', 'User', 'admin', 'admin@agap.test', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.', role_id, 'Active'
+FROM roles WHERE role_name = 'Administrator'
+AND NOT EXISTS (SELECT 1 FROM users WHERE username = 'admin');
+
+INSERT INTO users (first_name, last_name, username, email, password_hash, role_id, status)
+SELECT 'Clerk', 'User', 'clerk', 'clerk@agap.test', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.', role_id, 'Active'
+FROM roles WHERE role_name = 'Lupon Clerk'
+AND NOT EXISTS (SELECT 1 FROM users WHERE username = 'clerk');
+
+INSERT INTO users (first_name, last_name, username, email, password_hash, role_id, status)
+SELECT 'Lupon', 'Head', 'luponhead', 'luponhead@agap.test', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.', role_id, 'Active'
+FROM roles WHERE role_name = 'Lupon Member'
+AND NOT EXISTS (SELECT 1 FROM users WHERE username = 'luponhead');
+
+INSERT INTO users (first_name, last_name, username, email, password_hash, role_id, status)
+SELECT 'Lupon', 'Secretary', 'luponsecretary', 'luponsecretary@agap.test', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.', role_id, 'Active'
+FROM roles WHERE role_name = 'Lupon Member'
+AND NOT EXISTS (SELECT 1 FROM users WHERE username = 'luponsecretary');
+
+INSERT INTO users (first_name, last_name, username, email, password_hash, role_id, status)
+SELECT 'Lupon', 'Member', 'luponmember', 'luponmember@agap.test', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.', role_id, 'Active'
+FROM roles WHERE role_name = 'Lupon Member'
+AND NOT EXISTS (SELECT 1 FROM users WHERE username = 'luponmember');
+
+INSERT INTO users (first_name, last_name, username, email, password_hash, role_id, status)
+SELECT 'Summons', 'Server', 'summonsserver', 'summonsserver@agap.test', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.', role_id, 'Active'
+FROM roles WHERE role_name = 'Summons Server'
+AND NOT EXISTS (SELECT 1 FROM users WHERE username = 'summonsserver');
 
 INSERT INTO complaint_categories (category_name) VALUES
     ('Non-Payment of Debt'),

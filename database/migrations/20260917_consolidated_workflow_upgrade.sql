@@ -1,7 +1,8 @@
 -- One-time consolidated upgrade for an existing agap_db created before the
 -- complaint-review, evidence/location, document-service, and case-team work.
 -- Run this INSTEAD OF 20260914_core_case_workflow_redesign.sql,
--- 20260916_complaint_incident_details.sql, and 20260917_case_team_roles.sql.
+-- 20260916_complaint_incident_details.sql, 20260917_case_team_roles.sql,
+-- and 20260918_case_deadline_unique.sql.
 -- For a new installation, use database/schema.sql only.
 
 ALTER TABLE complaints
@@ -38,3 +39,7 @@ WHERE assignment_role IN ('Pangkat Chairman', 'Pangkat Secretary', 'Pangkat Memb
 ALTER TABLE case_assignments
     MODIFY COLUMN assignment_role ENUM('Mediator', 'Head', 'Secretary', 'Member') NOT NULL,
     ADD UNIQUE KEY uq_case_assignments_case_role (case_id, assignment_role);
+
+-- Resolve duplicate (case_id, deadline_type) rows before applying this constraint.
+ALTER TABLE case_deadlines
+    ADD CONSTRAINT uq_case_deadlines_case_type UNIQUE (case_id, deadline_type);

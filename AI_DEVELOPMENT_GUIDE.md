@@ -33,6 +33,7 @@ AGAP/
 |-- database/
 |   |-- schema.sql             # Canonical schema for a fresh agap_db
 |   |-- migrations/            # One-time scripts for populated databases
+|   |-- seeds/                 # Local-only optional test data
 |   |-- preflight_integrity.sql# Read-only checks before a legacy migration
 |   `-- README.md              # Database setup notes
 |-- frontend/
@@ -76,6 +77,11 @@ Use the same module name across `frontend/pages`, `frontend/assets/js`, and
   For an older populated database that predates the workflow redesign, use
   `database/migrations/20260917_consolidated_workflow_upgrade.sql` instead of
   the three individual workflow migrations. Do not run both options.
+- Local development test users are seeded by `schema.sql` and are also
+  available for existing local databases in `database/seeds/local_test_users.sql`.
+  They include an Administrator, Lupon Clerk, Summons Server, and three Lupon
+  Members for the required case team. Never retain the shared `password`
+  credentials outside a local/test environment.
 
 ## Backend conventions
 
