@@ -74,12 +74,13 @@ class Complaint
         }
     }
 
-    public function create($data)
+    public function create($data): array
     {
         try {
 
-            if (!$this->hasValidIncidentInput($data)) {
-                return false;
+            $validation = $this->validateIncidentInput($data);
+            if (!$validation['success']) {
+                return $validation;
             }
 
             if(session_status() === PHP_SESSION_NONE)
@@ -130,7 +131,7 @@ class Complaint
             $numberStatement->execute([$complaintNumber, $complaintId]);
 
             $this->conn->commit();
-            return true;
+            return ['success' => true, 'message' => 'Complaint created successfully.'];
 
         }
         catch(Exception $e)
@@ -143,16 +144,28 @@ class Complaint
                 $e->getMessage()
             );
 
-            return false;
+            return ['success' => false, 'message' => 'Unable to create the complaint. Please try again.'];
         }
     }
 
-    public function update($id, $data)
+    public function update($id, $data): array
     {
         try {
 
-            if (!$this->hasValidIncidentInput($data)) {
-                return false;
+            $complaintId = filter_var($id, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+            if (!$complaintId) {
+                return ['success' => false, 'message' => 'Select a valid complaint to update.'];
+            }
+
+            $validation = $this->validateIncidentInput($data);
+            if (!$validation['success']) {
+                return $validation;
+            }
+
+            $exists = $this->conn->prepare('SELECT complaint_id FROM complaints WHERE complaint_id = ?');
+            $exists->execute([$complaintId]);
+            if (!$exists->fetchColumn()) {
+                return ['success' => false, 'message' => 'The complaint could not be found.'];
             }
 
             $stmt =
@@ -170,7 +183,7 @@ class Complaint
                 WHERE complaint_id=?
             ");
 
-            return $stmt->execute([
+            $stmt->execute([
                 $data['category_id'],
                 $data['complaint_title'],
                 $data['incident_date'],
@@ -179,8 +192,10 @@ class Complaint
                 trim((string) ($data['incident_landmark'] ?? '')) ?: null,
                 $data['narrative'],
                 trim((string) ($data['additional_details'] ?? '')) ?: null,
-                $id
+                $complaintId
             ]);
+
+            return ['success' => true, 'message' => 'Complaint updated successfully.'];
 
         }
         catch(Exception $e)
@@ -189,7 +204,7 @@ class Complaint
                 $e->getMessage()
             );
 
-            return false;
+            return ['success' => false, 'message' => 'Unable to update the complaint. Please try again.'];
         }
     }
 
@@ -232,20 +247,31 @@ class Complaint
         }
     }
 
-    private function hasValidIncidentInput(array $data): bool
+    private function validateIncidentInput(array $data): array
     {
         $categoryId = filter_var($data['category_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         $title = trim((string) ($data['complaint_title'] ?? ''));
         $date = trim((string) ($data['incident_date'] ?? ''));
         $time = trim((string) ($data['incident_time'] ?? ''));
         $narrative = trim((string) ($data['narrative'] ?? ''));
-        if (!$categoryId || $title === '' || mb_strlen($title) > 255 || $narrative === '' || mb_strlen($narrative) > 15000) return false;
+
+        if (!$categoryId) return ['success' => false, 'message' => 'Select a valid complaint category.'];
+        $category = $this->conn->prepare('SELECT category_id FROM complaint_categories WHERE category_id = ?');
+        $category->execute([$categoryId]);
+        if (!$category->fetchColumn()) return ['success' => false, 'message' => 'Select a valid complaint category.'];
+        if ($title === '') return ['success' => false, 'message' => 'Complaint title is required.'];
+        if (mb_strlen($title) > 255) return ['success' => false, 'message' => 'Complaint title must be 255 characters or fewer.'];
+        if ($date === '') return ['success' => false, 'message' => 'Incident date is required.'];
         $parsedDate = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
-        if (!$parsedDate || $parsedDate->format('Y-m-d') !== $date) return false;
-        if ($time !== '' && !preg_match('/^([01]\\d|2[0-3]):[0-5]\\d$/', $time)) return false;
+        if (!$parsedDate || $parsedDate->format('Y-m-d') !== $date) return ['success' => false, 'message' => 'Incident date is invalid.'];
+        if ($time !== '' && !preg_match('/^([01]\\d|2[0-3]):[0-5]\\d$/', $time)) return ['success' => false, 'message' => 'Incident time is invalid.'];
+        if ($narrative === '') return ['success' => false, 'message' => 'Incident narrative is required.'];
+        if (mb_strlen($narrative) > 15000) return ['success' => false, 'message' => 'Narrative is too long. Use 15,000 characters or fewer.'];
         foreach (['incident_location' => 255, 'incident_landmark' => 255, 'additional_details' => 5000] as $field => $maxLength) {
-            if (mb_strlen(trim((string) ($data[$field] ?? ''))) > $maxLength) return false;
+            if (mb_strlen(trim((string) ($data[$field] ?? ''))) > $maxLength) {
+                return ['success' => false, 'message' => ucwords(str_replace('_', ' ', $field)) . " must be {$maxLength} characters or fewer."];
+            }
         }
-        return true;
+        return ['success' => true];
     }
 }

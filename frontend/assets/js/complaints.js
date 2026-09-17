@@ -39,6 +39,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const locationForm = document.getElementById('incidentLocationForm');
     if (locationForm) locationForm.addEventListener('submit', handleIncidentLocation);
+
+    const flash = window.agapComplaintFlash;
+    if (flash?.message) {
+        window.agapNotify?.(flash.message, flash.type || 'error');
+
+        if (flash.open_modal === 'add') {
+            openAddComplaintModal();
+            restoreComplaintForm('addComplaintModal', flash.old);
+        } else if (flash.open_modal === 'edit') {
+            populateEditComplaintForm(flash.old);
+        }
+    }
 });
 
 function loadComplaintList() {
@@ -301,16 +313,30 @@ function editComplaint(id) {
     fetch('../../../backend/api/complaints/view.php?id=' + id)
     .then(response => response.json())
     .then(data => {
-        document.getElementById('editComplaintId').value = data.complaint_id;
-        document.getElementById('editCategoryId').value = data.category_id;
-        document.getElementById('editComplaintTitle').value = data.complaint_title;
-        document.getElementById('editIncidentDate').value = data.incident_date;
-        document.getElementById('editIncidentTime').value = data.incident_time || '';
-        document.getElementById('editIncidentLocation').value = data.incident_location || '';
-        document.getElementById('editIncidentLandmark').value = data.incident_landmark || '';
-        document.getElementById('editNarrative').value = data.narrative;
-        document.getElementById('editAdditionalDetails').value = data.additional_details || '';
-        document.getElementById('editComplaintModal').style.display = 'flex';
+        populateEditComplaintForm(data);
+    });
+}
+
+function populateEditComplaintForm(data = {}) {
+    document.getElementById('editComplaintId').value = data.complaint_id || '';
+    document.getElementById('editCategoryId').value = data.category_id || '';
+    document.getElementById('editComplaintTitle').value = data.complaint_title || '';
+    document.getElementById('editIncidentDate').value = data.incident_date || '';
+    document.getElementById('editIncidentTime').value = data.incident_time || '';
+    document.getElementById('editIncidentLocation').value = data.incident_location || '';
+    document.getElementById('editIncidentLandmark').value = data.incident_landmark || '';
+    document.getElementById('editNarrative').value = data.narrative || '';
+    document.getElementById('editAdditionalDetails').value = data.additional_details || '';
+    document.getElementById('editComplaintModal').style.display = 'flex';
+}
+
+function restoreComplaintForm(modalId, values = {}) {
+    const form = document.querySelector(`#${modalId} form`);
+    if (!form || !values) return;
+
+    Object.entries(values).forEach(([name, value]) => {
+        const field = form.elements.namedItem(name);
+        if (field && typeof field.value !== 'undefined') field.value = value ?? '';
     });
 }
 

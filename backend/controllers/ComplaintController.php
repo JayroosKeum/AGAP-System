@@ -42,11 +42,11 @@ class ComplaintController
         return $complaint;
     }
 
-    public function store($data)
+    public function store($data): array
     {
         $result = $this->complaint->create($data);
 
-        if ($result) {
+        if ($result['success']) {
             $this->audit->log(
                 $_SESSION['user_id'],
                 'Created Complaint',
@@ -57,11 +57,11 @@ class ComplaintController
         return $result;
     }
 
-    public function update($id, $data)
+    public function update($id, $data): array
     {
         $result = $this->complaint->update($id, $data);
 
-        if ($result) {
+        if ($result['success']) {
             $this->audit->log(
                 $_SESSION['user_id'],
                 'Updated Complaint',

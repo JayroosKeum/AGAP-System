@@ -9,6 +9,9 @@ if (
     die('Access Denied');
 }
 
+$complaintFlash = $_SESSION['complaint_flash'] ?? null;
+unset($_SESSION['complaint_flash']);
+
 include '../../layouts/header.php';
 
 ?>
@@ -406,6 +409,12 @@ include '../../layouts/header.php';
 
 </div>
 
+<script>
+window.agapComplaintFlash = <?php echo json_encode(
+    $complaintFlash,
+    JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
+); ?>;
+</script>
 <script src="../../assets/js/complaints.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/complaints.js'); ?>"></script>
 
 <?php include '../../layouts/footer.php'; ?>
