@@ -129,6 +129,9 @@ CREATE TABLE complaints (
     category_id INT UNSIGNED NOT NULL,
     complaint_title VARCHAR(255) NOT NULL,
     incident_date DATE NULL,
+    incident_time TIME NULL,
+    incident_location VARCHAR(255) NULL,
+    incident_landmark VARCHAR(255) NULL,
     narrative LONGTEXT NOT NULL,
     additional_details LONGTEXT NULL,
     review_notes TEXT NULL,
@@ -246,7 +249,7 @@ CREATE TABLE case_assignments (
     case_id INT UNSIGNED NOT NULL,
     -- References the user account of an active Lupon Member.
     member_id INT UNSIGNED NOT NULL,
-    assignment_role ENUM('Mediator', 'Pangkat Chairman', 'Pangkat Secretary', 'Pangkat Member') NOT NULL,
+    assignment_role ENUM('Mediator', 'Head', 'Secretary', 'Member') NOT NULL,
     assigned_date DATE NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_case_assignments_role (case_id, member_id, assignment_role),

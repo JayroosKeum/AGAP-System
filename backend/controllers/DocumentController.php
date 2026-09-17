@@ -60,7 +60,7 @@ class DocumentController
             return ['success' => false, 'message' => 'Schedule a Conciliation hearing before generating KP Form 12.'];
         }
         if (empty($data['chairman_name'])) {
-            return ['success' => false, 'message' => 'Assign a Pangkat Chairman before generating KP Form 12.'];
+            return ['success' => false, 'message' => 'Assign a case-team Head before generating KP Form 12.'];
         }
 
         $data['notice_date'] = $noticeDate;

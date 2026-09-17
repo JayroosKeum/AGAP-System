@@ -27,7 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td>${escapeHtml(item.docket_date)}</td>
                     <td><span class="status status-${String(item.case_status).toLowerCase()}">${escapeHtml(item.case_status)}</span></td>
                     <td class="action-buttons">
-                        <button type="button" onclick="viewCase(${Number(item.case_id)})">View</button>
+                        <button type="button" onclick="window.location.href='case-details.php?id=${Number(item.case_id)}'">Open Workspace</button>
                         <button type="button" onclick="editCase(${Number(item.case_id)})">Edit</button>
                         ${item.case_status !== 'Archived' ? `<button type="button" onclick="openCaseAssignments(${Number(item.case_id)})">Assign</button>` : ''}
                         ${item.case_status !== 'Archived' ? `<button type="button" class="archive-button" onclick="archiveCase(${Number(item.case_id)})">Archive</button>` : ''}
@@ -63,7 +63,10 @@ function renderComplaintOptions() {
 
     select.innerHTML = complaintsForDocket.map(item => {
         const docketed = docketedComplaintIds.has(String(item.complaint_id));
-        return `<option value="${Number(item.complaint_id)}" ${docketed ? 'disabled' : ''}>${escapeHtml(item.complaint_id)} - ${escapeHtml(item.complaint_number)} - ${escapeHtml(item.complaint_title)}${docketed ? ' (Already docketed)' : ''}</option>`;
+        const accepted = item.status === 'Accepted';
+        const unavailable = docketed || !accepted;
+        const reason = docketed ? ' (Already docketed)' : (accepted ? '' : ' (Awaiting review acceptance)');
+        return `<option value="${Number(item.complaint_id)}" ${unavailable ? 'disabled' : ''}>${escapeHtml(item.complaint_id)} - ${escapeHtml(item.complaint_number)} - ${escapeHtml(item.complaint_title)}${reason}</option>`;
     }).join('');
 }
 
@@ -80,6 +83,8 @@ function validateComplaintId() {
         warning.textContent = 'This Complaint ID does not exist. Please select a complaint from the list.';
     } else if (docketedComplaintIds.has(complaintId)) {
         warning.textContent = 'This complaint has already been docketed.';
+    } else if (complaintsForDocket.find(item => String(item.complaint_id) === complaintId)?.status !== 'Accepted') {
+        warning.textContent = 'This complaint must be reviewed and accepted before it can be docketed.';
     } else {
         return true;
     }

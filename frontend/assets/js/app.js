@@ -1,3 +1,24 @@
+window.agapNotify = (message, type = 'info', title = 'AGAP') => {
+    if (!message) return;
+    let region = document.getElementById('agapToastRegion');
+    if (!region) {
+        region = document.createElement('div');
+        region.id = 'agapToastRegion';
+        region.className = 'agap-toast-region';
+        region.setAttribute('aria-live', 'polite');
+        region.setAttribute('aria-atomic', 'false');
+        document.body.appendChild(region);
+    }
+    const toast = document.createElement('article');
+    toast.className = `agap-toast ${type}`;
+    const heading = document.createElement('strong'); heading.textContent = title;
+    const text = document.createElement('p'); text.textContent = message;
+    const close = document.createElement('button'); close.type = 'button'; close.className = 'agap-toast-close'; close.setAttribute('aria-label', 'Dismiss notification'); close.textContent = '×';
+    close.addEventListener('click', () => toast.remove());
+    toast.append(heading, text, close); region.appendChild(toast);
+    window.setTimeout(() => toast.remove(), type === 'error' ? 8500 : 5500);
+};
+
 document.addEventListener('DOMContentLoaded', () => {
     const requiredFieldSelector = 'input[required]:not([type="hidden"]), textarea[required], select[required]';
     const validationMessage = (field) => {
@@ -104,4 +125,40 @@ document.addEventListener('DOMContentLoaded', () => {
         group.addEventListener('toggle', () => localStorage.setItem(key, String(group.open)));
     });
     sidebar.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeMobileSidebar));
+
+    const recentlyDisplayed = new Set();
+    const showMessagePopup = (element) => {
+        if (!(element instanceof Element) || element.classList.contains('field-validation-message')) return;
+        const message = element.textContent.trim();
+        if (!message || recentlyDisplayed.has(`${element.id}:${message}`)) return;
+        recentlyDisplayed.add(`${element.id}:${message}`);
+        const type = element.classList.contains('error') ? 'error' : (element.classList.contains('success') ? 'success' : 'info');
+        window.agapNotify(message, type, type === 'error' ? 'Action needed' : 'AGAP update');
+    };
+    new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            const element = mutation.target.nodeType === Node.ELEMENT_NODE ? mutation.target : mutation.target.parentElement;
+            const messageElement = element?.closest?.('[role="alert"], [role="status"]');
+            if (messageElement) showMessagePopup(messageElement);
+        });
+    }).observe(document.body, { childList: true, characterData: true, subtree: true });
+
+    if (!document.getElementById('appSidebar')) return;
+    const seenKey = 'agap-seen-notification-ids';
+    const seen = new Set(JSON.parse(sessionStorage.getItem(seenKey) || '[]'));
+    const checkWorkflowNotifications = async () => {
+        try {
+            const response = await fetch('../../../backend/api/notifications/list.php');
+            const result = await response.json();
+            if (!response.ok || result.success === false) return;
+            const unseen = (result.data || []).filter((item) => !Number(item.is_read) && !seen.has(String(item.notification_id)));
+            unseen.slice(0, 3).forEach((item) => {
+                seen.add(String(item.notification_id));
+                window.agapNotify(item.message, 'info', item.title || 'New notification');
+            });
+            sessionStorage.setItem(seenKey, JSON.stringify([...seen].slice(-100)));
+        } catch (_) { /* Notification polling must not interrupt page work. */ }
+    };
+    checkWorkflowNotifications();
+    window.setInterval(checkWorkflowNotifications, 45000);
 });

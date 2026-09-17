@@ -55,6 +55,11 @@ include '../../layouts/header.php';
                 <tbody id="hearingTable"></tbody>
             </table>
         </div>
+        <section class="hearing-calendar-section">
+            <div class="calendar-toolbar"><button type="button" id="previousMonth" class="btn-secondary" aria-label="Previous month">&larr;</button><h2 id="calendarMonth"></h2><button type="button" id="nextMonth" class="btn-secondary" aria-label="Next month">&rarr;</button></div>
+            <p class="calendar-help"><?php echo $canManageHearings ? 'Select a date to start a new hearing, or select an existing hearing to edit it.' : 'Select a hearing to view its details.'; ?></p>
+            <div class="hearing-calendar" id="hearingCalendar" aria-label="Hearing calendar"></div>
+        </section>
         <div class="page-header"><div><h2>Legal Deadlines</h2><p>Automatically calculated from scheduled proceedings.</p></div></div>
         <div class="table-container">
             <table><thead><tr><th>Case No.</th><th>Deadline</th><th>Due Date</th><th>Status</th></tr></thead>
@@ -96,7 +101,7 @@ include '../../layouts/header.php';
                 <label for="hearingRemarks">Remarks</label>
                 <textarea id="hearingRemarks" name="remarks" rows="3" placeholder="Optional notes or instructions"></textarea>
             </div>
-            <button type="submit" class="btn-create">Save Schedule</button>
+            <button type="submit" class="btn-create">Review Schedule</button>
         </form>
     </div>
 </div>
@@ -142,8 +147,19 @@ include '../../layouts/header.php';
                 <label for="editHearingRemarks">Remarks</label>
                 <textarea id="editHearingRemarks" name="remarks" rows="3"></textarea>
             </div>
-            <button type="submit" class="btn-create">Save Changes</button>
+            <button type="submit" class="btn-create">Review Changes</button>
         </form>
+    </div>
+</div>
+<?php endif; ?>
+
+<?php if ($canManageHearings): ?>
+<div id="reviewHearingModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header"><h2>Review Hearing Schedule</h2><button type="button" class="close-btn" onclick="closeReviewHearingModal()">&times;</button></div>
+        <p>Confirm these details before the hearing is scheduled. This will notify the case team.</p>
+        <dl id="reviewHearingDetails" class="hearing-details"></dl>
+        <div class="modal-actions"><button type="button" class="btn-secondary" onclick="closeReviewHearingModal()">Back to Edit</button><button type="button" class="btn-create" id="confirmHearingSchedule">Confirm Schedule</button></div>
     </div>
 </div>
 <?php endif; ?>

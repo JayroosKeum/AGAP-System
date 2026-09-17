@@ -21,5 +21,9 @@ th { background: #f8fafc; }
 .form-group input, .form-group select, .form-group textarea { box-sizing: border-box; width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; }
 .hearing-details { display: grid; grid-template-columns: 130px 1fr; gap: 12px 16px; margin: 0; }
 .hearing-details dt { font-weight: 700; }
+.hearing-calendar-section { background:#fff; border:1px solid #e5e7eb; border-radius:10px; margin:0 20px 30px; padding:20px; }
+.calendar-toolbar { align-items:center; display:flex; justify-content:space-between; margin-bottom:16px; }.calendar-toolbar h2 { font-size:18px; margin:0; }
+.hearing-calendar { display:grid; gap:1px; grid-template-columns:repeat(7, minmax(0, 1fr)); background:#e5e7eb; border:1px solid #e5e7eb; }.calendar-weekday { background:#f8fafc; color:#64748b; font-size:11px; font-weight:700; padding:9px; text-align:center; text-transform:uppercase; }.calendar-day { background:#fff; min-height:110px; padding:8px; }.calendar-day-actionable { cursor:pointer; }.calendar-day-actionable:hover { background:#f8fafc; }.calendar-day strong { color:#475569; display:block; font-size:12px; margin-bottom:7px; }.calendar-hearing { background:#e0f2fe; border:0; border-radius:5px; color:#075985; cursor:pointer; display:block; font-size:11px; margin:4px 0; overflow:hidden; padding:5px; text-align:left; text-overflow:ellipsis; white-space:nowrap; width:100%; }.calendar-hearing:hover { background:#bae6fd; }.calendar-help { color:#64748b; margin:0 0 12px; }
+@media (max-width:720px) { .hearing-calendar-section { margin-left:18px; margin-right:18px; overflow-x:auto; }.hearing-calendar { min-width:630px; }.calendar-day { min-height:95px; } }
 .hearing-details dd { margin: 0; white-space: pre-wrap; }
 @media (max-width: 640px) { .page-header { align-items: flex-start; gap: 14px; flex-direction: column; } .hearing-details { grid-template-columns: 1fr; gap: 4px; } .hearing-details dd { margin-bottom: 10px; } }

@@ -1,15 +1,16 @@
-const canManageHearings =
-    window.AGAP_HEARINGS?.canManage === true;
+const canManageHearings = window.AGAP_HEARINGS?.canManage === true;
+let calendarHearings = [];
+let calendarCursor = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+let pendingScheduleForm = null;
 
 document.addEventListener('DOMContentLoaded', () => {
-    loadHearings();
-    loadDeadlines();
-
-    if (canManageHearings) {
-        loadCases();
-        bindAjaxForm('addHearingForm', closeAddHearingModal);
-        bindAjaxForm('editHearingForm', closeEditHearingModal);
-    }
+    loadHearings(); loadDeadlines(); bindCalendarControls();
+    if (!canManageHearings) return;
+    loadCases();
+    bindReviewForm('addHearingForm', closeAddHearingModal);
+    bindReviewForm('editHearingForm', closeEditHearingModal);
+    document.getElementById('confirmHearingSchedule')?.addEventListener('click', confirmHearingSchedule);
+    configureCreateDateValidation();
 });
 
 async function api(url, options = {}) {
@@ -23,38 +24,11 @@ async function loadHearings() {
     const table = document.getElementById('hearingTable');
     try {
         const result = await api('../../../backend/api/hearings/calendar.php');
-        const hearings = result.data || [];
-        table.innerHTML = hearings.length ? hearings.map(item => `
-            <tr>
-                <td>${escapeHtml(item.case_number)}</td>
-                <td>${escapeHtml(item.complaint_number)} - ${escapeHtml(item.complaint_title)}</td>
-                <td><span class="hearing-type">${escapeHtml(item.hearing_type)}</span></td>
-                <td>${formatDateTime(item.hearing_date)}</td>
-                <td>${escapeHtml(item.venue)}</td>
-                <td class="action-buttons">
-                    <button
-                        type="button"
-                        data-view="${Number(item.hearing_id)}"
-                    >
-                        View
-                    </button>
-
-                    ${canManageHearings ? `
-                        <button
-                            type="button"
-                            data-edit="${Number(item.hearing_id)}"
-                        >
-                            Edit
-                        </button>
-                    ` : ''}
-                </td>
-            </tr>`).join('') : '<tr><td colspan="6" class="empty-state">No hearings scheduled.</td></tr>';
-
-        table.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => viewHearing(button.dataset.view)));
-        table.querySelectorAll('[data-edit]').forEach(button => button.addEventListener('click', () => editHearing(button.dataset.edit)));
-    } catch (error) {
-        table.innerHTML = `<tr><td colspan="6" class="empty-state">${escapeHtml(error.message)}</td></tr>`;
-    }
+        const hearings = result.data || []; calendarHearings = hearings; renderCalendar();
+        table.innerHTML = hearings.length ? hearings.map((item) => `<tr><td>${escapeHtml(item.case_number)}</td><td>${escapeHtml(item.complaint_number)} - ${escapeHtml(item.complaint_title)}</td><td><span class="hearing-type">${escapeHtml(item.hearing_type)}</span></td><td>${formatDateTime(item.hearing_date)}</td><td>${escapeHtml(item.venue)}</td><td class="action-buttons"><button type="button" data-view="${Number(item.hearing_id)}">View</button>${canManageHearings ? `<button type="button" data-edit="${Number(item.hearing_id)}">Edit</button>` : ''}</td></tr>`).join('') : '<tr><td colspan="6" class="empty-state">No hearings scheduled.</td></tr>';
+        table.querySelectorAll('[data-view]').forEach((button) => button.addEventListener('click', () => viewHearing(button.dataset.view)));
+        table.querySelectorAll('[data-edit]').forEach((button) => button.addEventListener('click', () => editHearing(button.dataset.edit)));
+    } catch (error) { table.innerHTML = `<tr><td colspan="6" class="empty-state">${escapeHtml(error.message)}</td></tr>`; }
 }
 
 async function loadDeadlines() {
@@ -62,119 +36,62 @@ async function loadDeadlines() {
     try {
         const result = await api('../../../backend/api/hearings/deadlines.php');
         const deadlines = result.data || [];
-        table.innerHTML = deadlines.length ? deadlines.map(item => `
-            <tr><td>${escapeHtml(item.case_number)}</td><td>${escapeHtml(item.deadline_type)}</td>
-            <td>${formatDate(item.due_date)}</td><td>${escapeHtml(item.status)}</td></tr>`).join('')
-            : '<tr><td colspan="4" class="empty-state">No tracked deadlines.</td></tr>';
-    } catch (error) {
-        table.innerHTML = `<tr><td colspan="4" class="empty-state">${escapeHtml(error.message)}</td></tr>`;
-    }
+        table.innerHTML = deadlines.length ? deadlines.map((item) => `<tr><td>${escapeHtml(item.case_number)}</td><td>${escapeHtml(item.deadline_type)}</td><td>${formatDate(item.due_date)}</td><td>${escapeHtml(item.status)}</td></tr>`).join('') : '<tr><td colspan="4" class="empty-state">No tracked deadlines.</td></tr>';
+    } catch (error) { table.innerHTML = `<tr><td colspan="4" class="empty-state">${escapeHtml(error.message)}</td></tr>`; }
 }
 
 async function loadCases() {
-    const select = document.getElementById('hearingCaseId');
-
-    if (!select) {
-        return;
-    }
-
+    const select = document.getElementById('hearingCaseId'); if (!select) return;
     try {
-        const response = await fetch(
-            '../../../backend/api/cases/list.php'
-        );
-
-        const cases = await response.json();
-
-        if (!response.ok) {
-            throw new Error(
-                cases.message || 'Unable to load cases.'
-            );
-        }
-
-        select.replaceChildren(
-            new Option('Select a case', '')
-        );
-
-        cases
-            .filter(item => item.case_status !== 'Archived')
-            .forEach(item => {
-                select.add(
-                    new Option(
-                        `${item.case_number} - ${item.complaint_title}`,
-                        item.case_id
-                    )
-                );
-            });
-    } catch (error) {
-        select.replaceChildren(
-            new Option(error.message, '')
-        );
-    }
+        const response = await fetch('../../../backend/api/cases/list.php'); const cases = await response.json();
+        if (!response.ok) throw new Error(cases.message || 'Unable to load cases.');
+        select.replaceChildren(new Option('Select a case', ''));
+        cases.filter((item) => item.case_status !== 'Archived').forEach((item) => { const option = new Option(`${item.case_number} - ${item.complaint_title}`, item.case_id); option.dataset.docketDate = item.docket_date || ''; select.add(option); });
+        const caseId = new URLSearchParams(window.location.search).get('case_id');
+        if (caseId && [...select.options].some((option) => option.value === caseId)) select.value = caseId;
+        setInitialHearingMax();
+    } catch (error) { select.replaceChildren(new Option(error.message, '')); }
 }
 
-function bindAjaxForm(id, onSuccess) {
-    const form = document.getElementById(id);
-
-    if (!form) {
-        return;
-    }
-
-    form.addEventListener('submit', async event => {
-        event.preventDefault();
-        setMessage('');
-        try {
-            const result = await api(form.action, { method: 'POST', body: new FormData(form) });
-            setMessage(result.message, true);
-            onSuccess();
-            form.reset();
-            await Promise.all([loadHearings(), loadDeadlines()]);
-        } catch (error) {
-            setMessage(error.message, false);
-        }
-    });
+function configureCreateDateValidation() {
+    const date = document.getElementById('hearingDate'); const type = document.getElementById('hearingType'); const caseSelect = document.getElementById('hearingCaseId');
+    if (!date || !type || !caseSelect) return;
+    const now = new Date(); now.setMinutes(now.getMinutes() - now.getTimezoneOffset()); date.min = now.toISOString().slice(0, 16);
+    type.addEventListener('change', setInitialHearingMax); caseSelect.addEventListener('change', setInitialHearingMax);
 }
 
-async function getHearing(id) {
-    const result = await api('../../../backend/api/hearings/view.php?id=' + encodeURIComponent(id));
-    return result.data;
+function setInitialHearingMax() {
+    const date = document.getElementById('hearingDate'); const type = document.getElementById('hearingType'); const selected = document.getElementById('hearingCaseId')?.selectedOptions[0];
+    if (!date || !type) return; date.max = '';
+    if (type.value !== 'Initial Hearing' || !selected?.dataset.docketDate) return;
+    const latest = new Date(`${selected.dataset.docketDate}T23:59:59`); latest.setDate(latest.getDate() + 5); date.max = latest.toISOString().slice(0, 16);
 }
 
-async function viewHearing(id) {
-    try {
-        const item = await getHearing(id);
-        const details = document.getElementById('hearingDetails');
-        details.replaceChildren();
-        const dl = document.createElement('dl');
-        dl.className = 'hearing-details';
-        [['Case', item.case_number], ['Complaint', `${item.complaint_number} - ${item.complaint_title}`],
-         ['Type', item.hearing_type], ['Date & Time', formatDateTime(item.hearing_date)],
-         ['Venue', item.venue], ['Remarks', item.remarks || 'None']].forEach(([label, value]) => {
-            const dt = document.createElement('dt'); dt.textContent = label;
-            const dd = document.createElement('dd'); dd.textContent = value;
-            dl.append(dt, dd);
-        });
-        details.appendChild(dl);
-        showModal('viewHearingModal');
-    } catch (error) { setMessage(error.message, false); }
+function bindReviewForm(id, onSuccess) {
+    const form = document.getElementById(id); if (!form) return;
+    form.addEventListener('submit', (event) => { event.preventDefault(); if (!form.reportValidity()) return; pendingScheduleForm = { form, onSuccess }; renderScheduleReview(form); showModal('reviewHearingModal'); });
 }
 
-async function editHearing(id) {
-    try {
-        const item = await getHearing(id);
-        document.getElementById('editHearingId').value = item.hearing_id;
-        document.getElementById('editHearingType').value = item.hearing_type;
-        document.getElementById('editHearingDate').value = toDateTimeLocal(item.hearing_date);
-        document.getElementById('editHearingVenue').value = item.venue || '';
-        document.getElementById('editHearingRemarks').value = item.remarks || '';
-        showModal('editHearingModal');
-    } catch (error) { setMessage(error.message, false); }
+function renderScheduleReview(form) {
+    const values = Object.fromEntries(new FormData(form)); const caseLabel = form.querySelector('[name="case_id"]')?.selectedOptions?.[0]?.textContent || 'Current case'; const details = document.getElementById('reviewHearingDetails');
+    details.replaceChildren(); [['Case', caseLabel], ['Hearing type', values.hearing_type], ['Date & time', formatDateTime(values.hearing_date)], ['Venue', values.venue], ['Remarks', values.remarks || 'None']].forEach(([label, value]) => { const dt = document.createElement('dt'); dt.textContent = label; const dd = document.createElement('dd'); dd.textContent = value; details.append(dt, dd); });
 }
 
-function setMessage(message, success = false) {
-    const box = document.getElementById('hearingMessage');
-    box.textContent = message;
-    box.className = message ? (success ? 'alert success' : 'alert error') : '';
+async function confirmHearingSchedule() {
+    if (!pendingScheduleForm) return; const { form, onSuccess } = pendingScheduleForm; setMessage('');
+    try { const data = new FormData(form); data.set('schedule_reviewed', '1'); const result = await api(form.action, { method: 'POST', body: data }); setMessage(result.message, true); closeReviewHearingModal(); onSuccess(); form.reset(); await Promise.all([loadHearings(), loadDeadlines()]); } catch (error) { setMessage(error.message); } finally { pendingScheduleForm = null; }
 }
+
+async function getHearing(id) { return (await api('../../../backend/api/hearings/view.php?id=' + encodeURIComponent(id))).data; }
+async function viewHearing(id) { try { const item = await getHearing(id); const details = document.getElementById('hearingDetails'); details.replaceChildren(); [['Case', item.case_number], ['Complaint', `${item.complaint_number} - ${item.complaint_title}`], ['Type', item.hearing_type], ['Date & Time', formatDateTime(item.hearing_date)], ['Venue', item.venue], ['Remarks', item.remarks || 'None']].forEach(([label, value]) => { const dt = document.createElement('dt'); dt.textContent = label; const dd = document.createElement('dd'); dd.textContent = value; details.append(dt, dd); }); showModal('viewHearingModal'); } catch (error) { setMessage(error.message); } }
+async function editHearing(id) { try { const item = await getHearing(id); document.getElementById('editHearingId').value = item.hearing_id; document.getElementById('editHearingType').value = item.hearing_type; document.getElementById('editHearingDate').value = toDateTimeLocal(item.hearing_date); document.getElementById('editHearingVenue').value = item.venue || ''; document.getElementById('editHearingRemarks').value = item.remarks || ''; showModal('editHearingModal'); } catch (error) { setMessage(error.message); } }
+
+function bindCalendarControls() { document.getElementById('previousMonth')?.addEventListener('click', () => { calendarCursor.setMonth(calendarCursor.getMonth() - 1); renderCalendar(); }); document.getElementById('nextMonth')?.addEventListener('click', () => { calendarCursor.setMonth(calendarCursor.getMonth() + 1); renderCalendar(); }); }
+function renderCalendar() { const calendar = document.getElementById('hearingCalendar'); const title = document.getElementById('calendarMonth'); if (!calendar || !title) return; title.textContent = calendarCursor.toLocaleDateString([], { month: 'long', year: 'numeric' }); const year = calendarCursor.getFullYear(); const month = calendarCursor.getMonth(); const firstDay = new Date(year, month, 1).getDay(); const days = new Date(year, month + 1, 0).getDate(); const byDay = calendarHearings.reduce((groups, item) => { const date = new Date(item.hearing_date.replace(' ', 'T')); if (date.getFullYear() === year && date.getMonth() === month) (groups[date.getDate()] ||= []).push(item); return groups; }, {}); calendar.replaceChildren(); ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach((day) => { const cell = document.createElement('div'); cell.className = 'calendar-weekday'; cell.textContent = day; calendar.appendChild(cell); }); for (let blank = 0; blank < firstDay; blank += 1) calendar.appendChild(document.createElement('div')); for (let day = 1; day <= days; day += 1) { const cell = document.createElement('div'); cell.className = 'calendar-day'; if (canManageHearings) { cell.classList.add('calendar-day-actionable'); cell.addEventListener('click', () => openCalendarSchedule(year, month, day)); } const number = document.createElement('strong'); number.textContent = day; cell.appendChild(number); (byDay[day] || []).forEach((item) => { const entry = document.createElement('button'); entry.type = 'button'; entry.className = 'calendar-hearing'; entry.textContent = `${new Date(item.hearing_date.replace(' ', 'T')).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} ${item.case_number}`; entry.addEventListener('click', (event) => { event.stopPropagation(); if (canManageHearings) editHearing(item.hearing_id); else viewHearing(item.hearing_id); }); cell.appendChild(entry); }); calendar.appendChild(cell); } }
+
+function openCalendarSchedule(year, month, day) { const input = document.getElementById('hearingDate'); if (!input) return; const selected = new Date(year, month, day, 9, 0); const now = new Date(); if (selected <= now) { setMessage('Choose a future date to schedule a hearing.'); return; } selected.setMinutes(selected.getMinutes() - selected.getTimezoneOffset()); input.value = selected.toISOString().slice(0, 16); openAddHearingModal(); }
+
+function setMessage(message, success = false) { const box = document.getElementById('hearingMessage'); box.textContent = message; box.className = message ? (success ? 'alert success' : 'alert error') : ''; }
 function escapeHtml(value) { const node = document.createElement('div'); node.textContent = value || ''; return node.innerHTML; }
 function formatDate(value) { return value ? new Date(value + 'T00:00:00').toLocaleDateString() : ''; }
 function formatDateTime(value) { return value ? new Date(value.replace(' ', 'T')).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : ''; }
@@ -185,3 +102,4 @@ function openAddHearingModal() { showModal('addHearingModal'); }
 function closeAddHearingModal() { hideModal('addHearingModal'); }
 function closeViewHearingModal() { hideModal('viewHearingModal'); }
 function closeEditHearingModal() { hideModal('editHearingModal'); }
+function closeReviewHearingModal() { hideModal('reviewHearingModal'); pendingScheduleForm = null; }

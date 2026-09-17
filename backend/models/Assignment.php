@@ -16,7 +16,7 @@ class Assignment
         $caseId = filter_var($data['case_id'] ?? null, FILTER_VALIDATE_INT);
         $memberId = filter_var($data['member_id'] ?? null, FILTER_VALIDATE_INT);
         $role = trim($data['assignment_role'] ?? '');
-        $roles = ['Mediator', 'Pangkat Chairman', 'Pangkat Secretary', 'Pangkat Member'];
+        $roles = ['Mediator', 'Head', 'Secretary', 'Member'];
 
         if (!$caseId || !$memberId || !in_array($role, $roles, true)) {
             return ['success' => false, 'message' => 'Please provide a valid case, Lupon member, and assignment role.'];
@@ -51,31 +51,44 @@ class Assignment
         return ['success' => true, 'message' => 'Lupon member assigned successfully.'];
     }
 
-    public function replaceConciliationTeam(int $caseId, array $members): array
+    public function replaceCaseTeam(int $caseId, array $members): array
     {
         $roles = [
-            'chairman_id' => 'Pangkat Chairman',
-            'secretary_id' => 'Pangkat Secretary',
-            'member_id' => 'Pangkat Member',
+            'head_id' => 'Head',
+            'secretary_id' => 'Secretary',
+            'member_id' => 'Member',
         ];
         $ids = [];
         foreach ($roles as $field => $role) {
             $id = filter_var($members[$field] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-            if (!$id) return ['success' => false, 'message' => 'Choose a Chairman, Secretary, and Member.'];
+            if (!$id) return ['success' => false, 'message' => 'Choose a Head, Secretary, and Member.'];
             $ids[$field] = (int) $id;
         }
-        if (count(array_unique($ids)) !== 3) return ['success' => false, 'message' => 'The Chairman, Secretary, and Member must be different Lupon Members.'];
+        if (count(array_unique($ids)) !== 3) return ['success' => false, 'message' => 'The Head, Secretary, and Member must be different Lupon Members.'];
         if (!$this->caseExists($caseId)) return ['success' => false, 'message' => 'Active case not found.'];
         foreach ($ids as $id) {
             if (!$this->isActiveLuponMember($id)) return ['success' => false, 'message' => 'Every selected person must be an active Lupon Member.'];
         }
         try {
             $this->conn->beginTransaction();
-            $this->conn->prepare("DELETE FROM case_assignments WHERE case_id = ? AND assignment_role IN ('Pangkat Chairman', 'Pangkat Secretary', 'Pangkat Member')")->execute([$caseId]);
+            $this->conn->prepare("DELETE FROM case_assignments WHERE case_id = ? AND assignment_role IN ('Head', 'Secretary', 'Member')")->execute([$caseId]);
             $insert = $this->conn->prepare('INSERT INTO case_assignments (case_id, member_id, assignment_role, assigned_date) VALUES (?, ?, ?, CURDATE())');
             foreach ($roles as $field => $role) $insert->execute([$caseId, $ids[$field], $role]);
+
+            // Keep the legacy Pangkat record in sync for existing KP document templates.
+            // It is not a separate user-facing assignment workflow.
+            $group = $this->conn->prepare(
+                'INSERT INTO pangkat_groups (case_id, formation_date) VALUES (?, CURDATE())
+                 ON DUPLICATE KEY UPDATE formation_date = VALUES(formation_date), pangkat_id = LAST_INSERT_ID(pangkat_id)'
+            );
+            $group->execute([$caseId]);
+            $pangkatId = (int) $this->conn->lastInsertId();
+            $this->conn->prepare('DELETE FROM pangkat_members WHERE pangkat_id = ?')->execute([$pangkatId]);
+            $memberInsert = $this->conn->prepare('INSERT INTO pangkat_members (pangkat_id, member_id, position) VALUES (?, ?, ?)');
+            $positions = ['head_id' => 'Chairman', 'secretary_id' => 'Secretary', 'member_id' => 'Member'];
+            foreach ($positions as $field => $position) $memberInsert->execute([$pangkatId, $ids[$field], $position]);
             $this->conn->commit();
-            return ['success' => true, 'message' => 'Conciliation team saved.'];
+            return ['success' => true, 'message' => 'Case team saved.'];
         } catch (Throwable $exception) {
             if ($this->conn->inTransaction()) $this->conn->rollBack();
             error_log($exception->getMessage());

@@ -38,7 +38,7 @@ async function loadKp12Preview() {
             ['Respondent(s)', item.respondents.map(p => p.full_name).join(', ') || 'Missing'],
             ['Conciliation hearing', item.hearing_date ? formatDateTime(item.hearing_date) : 'Not scheduled'],
             ['Venue', item.venue || 'Missing'],
-            ['Pangkat Chairman', item.chairman_name || 'Not assigned']
+            ['Case-team Head', item.chairman_name || 'Not assigned']
         ];
         values.forEach(([label, value]) => {
             const row = document.createElement('div');

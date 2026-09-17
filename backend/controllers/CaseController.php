@@ -28,6 +28,12 @@ class CaseController
         return $this->case->getById($id);
     }
 
+    public function workspace(int $id): array
+    {
+        $workspace = $this->case->getWorkspace($id);
+        return $workspace ? ['success' => true, 'data' => $workspace] : ['success' => false, 'message' => 'Case not found.'];
+    }
+
     public function getDocketingError($complaintId)
     {
         return $this->case->getDocketingError($complaintId);

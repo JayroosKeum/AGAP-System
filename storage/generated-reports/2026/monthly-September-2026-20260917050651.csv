@@ -1,0 +1,22 @@
+"AGAP Monthly Report"
+Period,"September 2026"
+
+Summary,Total
+"Complaints Filed",2
+"Cases Docketed",1
+"Civil Cases",1
+"Criminal Cases",0
+"Settled Cases",0
+"Arbitration Cases",0
+"Cfa Issued Cases",0
+"Archived Cases",0
+"Hearings Scheduled",1
+
+"Case Status",Total
+Docketed,1
+
+"Complaint Category","Cases Docketed"
+"Non-Payment of Debt",1
+
+"Case Number","Complaint Number",Title,Category,Type,Status,"Docket Date",Hearings,"Last Hearing","Settlement Date","Arbitration Award Date","CFA Issuance Date","Archived Date"
+KP-2026-00002,CMP-2026-00003,Wak-title,"Non-Payment of Debt",Civil,Docketed,2026-09-17,1,"2026-09-18 15:59:00",,,,

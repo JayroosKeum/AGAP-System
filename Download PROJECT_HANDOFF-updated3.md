@@ -21,13 +21,94 @@ For each increment:
 
 ---
 
+## Core Workflow Redesign (September 2026)
+
+The following redesign is implemented as the current UX direction:
+
+- **Complaint review gate:** New complaints are `Filed`; reviewers can set
+  `Under Review`, `Needs Information`, `Accepted`, or `Rejected` with review
+  notes. Only `Accepted` complaints may be docketed, and docketing changes the
+  complaint to `Docketed` in the same transaction.
+- **Complaint workspace:** The complaint details page consolidates review,
+  parties, dedicated picture/video/document evidence uploads
+  (JPG/PNG/PDF/MP4/WebM, up to 25 MB), additional details, and the incident
+  location form. This replaces a fragmented complaint flow and no longer
+  requires normal users to open the separate GPS location page.
+
+### Complaint incident fields
+
+The `complaints` table now includes optional `incident_time`,
+`incident_location`, and `incident_landmark` fields in addition to the
+existing date, narrative, and additional details. The details page stores the
+full location description and optional coordinates in `incident_locations`.
+- **Case workspace:** Opening a case now leads to `case-details.php`, which
+  presents the case overview, team, hearings, generated documents, and proof
+  of service together. The case list remains the cross-case monitoring screen.
+- **Atomic case team:** Case Assignments now saves Head, Secretary,
+  and Member together. All three must be distinct active users with the role
+  name `Lupon Member`. The write is transactional and synchronizes existing
+  Pangkat tables only to keep the existing KP Form 12 data source compatible.
+  The separate Pangkat page redirects to Case Assignments and is no longer an
+  operational feature.
+- **Document-linked service:** Proof-of-service records require a generated
+  document belonging to the selected case. Saving proof marks the document
+  `Served`; document service states are `Generated`, `For Service`, `Served`,
+  and `Service Failed`.
+
+### Database change
+
+`database/schema.sql` is the fresh-install source of truth. Apply
+`database/migrations/20260914_core_case_workflow_redesign.sql` and then
+`database/migrations/20260916_complaint_incident_details.sql` and
+`database/migrations/20260917_case_team_roles.sql` once to an
+existing populated database before using the redesigned fields and relations.
+Alternatively, a database that predates all three changes can run the single
+`database/migrations/20260917_consolidated_workflow_upgrade.sql` script instead.
+Never run both the consolidated and individual migration paths.
+Resolve any duplicate case/assignment-role data before adding the unique
+assignment constraint.
+
+### Remaining follow-up
+
+- Add a controlled UI action for the `For Service` and `Service Failed`
+  document states; the current flow sets `Generated` on generation and `Served`
+  when proof is recorded.
+- Keep future KP forms inside the case workspace/document center and require a
+  stated regeneration reason when a form is generated again.
+
+### Hearing scheduling refinement
+
+- The Hearings page provides a calendar view backed by the authenticated
+  `backend/api/hearings/calendar.php` endpoint.
+- Scheduling from the Case Workspace preselects that case.
+- Client and server validate future dates; Initial Hearings retain the
+  five-calendar-day docketing limit.
+- The scheduler must review the selected case, hearing type, date/time, venue,
+  and remarks in a confirmation dialog before the API creates or updates it.
+- Administrators and Lupon Clerks can click an eligible calendar day to start a
+  new schedule with that date prefilled, or click an existing calendar entry to
+  edit it. Lupon Members remain read-only and open entries for viewing.
+
+### Global workflow popups
+
+- `frontend/assets/js/app.js` provides the shared `window.agapNotify()` toast
+  component, styled in `frontend/assets/css/app.css`.
+- Existing in-page status and alert regions display as dismissible popups in
+  addition to their normal inline message.
+- While authenticated, AGAP checks the existing notification inbox every
+  45 seconds and shows newly received unread workflow notifications as popups.
+  This covers assignments, hearings, documents, and future notifications that
+  use `NotificationService`, without creating separate popup logic per module.
+
+---
+
 ## Current Stack and Database
 
 - PHP, HTML/CSS/JavaScript, MySQL, and Laragon.
 - The canonical fresh-database schema is `database/schema.sql`.
 - The database name is `agap_db`.
 - The database connection is in `backend/config/database.php`.
-- Active users whose role name is `Lupon Member` are directly eligible for Case Assignment and Pangkat.
+- Active users whose role name is `Lupon Member` are directly eligible for the Head, Secretary, and Member case team.
 - Do not introduce a separate `lupon_members` table.
 - Complaint parties are stored in `complaint_parties`.
 - Complaint attachments are stored in `complaint_attachments`.
@@ -46,7 +127,7 @@ For each increment:
 - Secure complaint attachment upload, download, deletion, and linkage.
 - Complaint categories, case docketing, case update, archive, and searchable records.
 - Dashboard count cards for total, settled, CFA-issued, and archived cases.
-- Case Assignment and Pangkat pages/API.
+- Case Assignment page/API with an atomic three-member team; the former Pangkat page redirects to it.
 - Active users with role name `Lupon Member` are directly assignable.
 - Hearing creation, update, viewing, calendar display, and attendance storage.
 - Settlement, arbitration, CFA, incident-location, proof-of-service, AI chatbot, and narrative-generation endpoints/models exist.

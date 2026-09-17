@@ -1,4 +1,8 @@
 <?php
+header('Content-Type: application/json; charset=utf-8');
+http_response_code(410);
+echo json_encode(['success' => false, 'message' => 'Pangkat assignment has been replaced by the complete case-team assignment.']);
+exit;
 session_start();
 header('Content-Type: application/json; charset=utf-8');
 require_once __DIR__ . '/../../controllers/PangkatController.php';

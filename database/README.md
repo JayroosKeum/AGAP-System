@@ -15,6 +15,18 @@ strengthened constraints can expose duplicate or orphaned records that must be
 resolved first. Back up the database, validate existing records, then apply a
 reviewed migration in a maintenance window.
 
+For an existing database that predates the current complaint workflow,
+document-service, and unified case-team changes, run the single consolidated
+upgrade query instead of the individual workflow migrations:
+
+```powershell
+mysql -u root agap_db < database/migrations/20260917_consolidated_workflow_upgrade.sql
+```
+
+Do not run the consolidated query if any of its individual migrations have
+already been applied; its `ADD COLUMN`, index, and constraint operations are
+intentionally one-time changes.
+
 `preflight_integrity.sql` is read-only and identifies the duplicates and
 orphaned rows that must be resolved before that migration.
 
@@ -22,8 +34,10 @@ orphaned rows that must be resolved before that migration.
 
 - A complaint can be docketed into only one case.
 - A resident can be attached to a complaint once per party type.
-- Any active user with the `Lupon Member` role is eligible for assignment.
-- A Lupon member can have an assignment only once for the same case and role.
+- Any active user with the `Lupon Member` role is eligible for the unified
+  Head, Secretary, and Member case team.
+- A case has one assignment per case-team role; the application saves the
+  three distinct roles as one transaction.
 - A case has at most one Pangkat group, settlement, arbitration record, CFA,
   and incident location.
 - Pangkat and case assignments reference the eligible user's account directly.

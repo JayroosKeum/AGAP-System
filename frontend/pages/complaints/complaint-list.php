@@ -157,6 +157,7 @@ include '../../layouts/header.php';
                 <input
                     type="text"
                     name="complaint_title"
+                    maxlength="255"
                     required>
 
             </div>
@@ -179,8 +180,24 @@ include '../../layouts/header.php';
                 <textarea
                     name="narrative"
                     rows="5"
+                    maxlength="15000"
                     required></textarea>
 
+            </div>
+
+            <div class="form-group">
+                <label>Incident Time</label>
+                <input type="time" name="incident_time">
+            </div>
+
+            <div class="form-group">
+                <label>Specific Incident Location</label>
+                <input type="text" name="incident_location" maxlength="255" placeholder="Street, building, purok, or nearby place">
+            </div>
+
+            <div class="form-group">
+                <label>Landmark</label>
+                <input type="text" name="incident_landmark" maxlength="255" placeholder="Optional nearby landmark">
             </div>
 
             <div class="form-group">
@@ -290,6 +307,7 @@ include '../../layouts/header.php';
                     type="text"
                     name="complaint_title"
                     id="editComplaintTitle"
+                    maxlength="255"
                     required>
 
             </div>
@@ -314,9 +332,14 @@ include '../../layouts/header.php';
                     name="narrative"
                     id="editNarrative"
                     rows="5"
+                    maxlength="15000"
                     required></textarea>
 
             </div>
+
+            <div class="form-group"><label>Incident Time</label><input type="time" name="incident_time" id="editIncidentTime"></div>
+            <div class="form-group"><label>Specific Incident Location</label><input type="text" name="incident_location" id="editIncidentLocation" maxlength="255"></div>
+            <div class="form-group"><label>Landmark</label><input type="text" name="incident_landmark" id="editIncidentLandmark" maxlength="255"></div>
 
             <div class="form-group">
                 <label>Additional Details</label>

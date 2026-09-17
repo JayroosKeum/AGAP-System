@@ -56,31 +56,22 @@ $docketMessages = [
         <section class="case-assignment-panel" id="caseAssignments">
             <div class="section-heading">
                 <div>
-                    <h2>Case assignments</h2>
-                    <p>Assign active Lupon Members and review their responsibilities for each case.</p>
+                    <h2>Case team assignment</h2>
+                    <p>Assign the required Head, Secretary, and Member together for each case.</p>
                 </div>
             </div>
             <div class="assignment-grid">
-                <form id="assignmentForm" class="assignment-form">
+                <form id="teamForm" class="assignment-form">
                     <div class="form-group">
                         <label for="caseId">Case <span class="required-mark" aria-hidden="true">*</span></label>
                         <select id="caseId" name="case_id" required><option value="">Select a case</option></select>
                     </div>
-                    <div class="form-group">
-                        <label for="memberId">Lupon Member <span class="required-mark" aria-hidden="true">*</span></label>
-                        <select id="memberId" name="member_id" required><option value="">Select a Lupon Member</option></select>
-                    </div>
-                    <div class="form-group">
-                        <label for="assignmentRole">Assignment Role <span class="required-mark" aria-hidden="true">*</span></label>
-                        <select id="assignmentRole" name="assignment_role" required>
-                            <option value="Mediator">Mediator</option>
-                            <option value="Pangkat Chairman">Pangkat Chairman</option>
-                            <option value="Pangkat Secretary">Pangkat Secretary</option>
-                            <option value="Pangkat Member">Pangkat Member</option>
-                        </select>
-                    </div>
-                    <button class="btn-create" type="submit">Assign Member</button>
-                    <p id="assignmentMessage" role="status"></p>
+                    <p class="form-hint">All three roles are required and must be assigned to different active Lupon Members.</p>
+                    <div class="form-group"><label for="headId">Head <span class="required-mark" aria-hidden="true">*</span></label><select id="headId" name="head_id" required></select></div>
+                    <div class="form-group"><label for="secretaryId">Secretary <span class="required-mark" aria-hidden="true">*</span></label><select id="secretaryId" name="secretary_id" required></select></div>
+                    <div class="form-group"><label for="teamMemberId">Member <span class="required-mark" aria-hidden="true">*</span></label><select id="teamMemberId" name="member_id" required></select></div>
+                    <button class="btn-create" type="submit">Save Three-Member Team</button>
+                    <p id="teamMessage" role="status"></p>
                 </form>
                 <div class="assignment-history">
                     <h3>Assigned members</h3>

@@ -35,6 +35,20 @@
 }
 
 /* Required field indicators and inline browser validation feedback. */
+.agap-toast-region { bottom:22px; display:grid; gap:10px; max-width:min(390px, calc(100vw - 32px)); position:fixed; right:22px; z-index:1200; }.agap-toast { animation:agap-toast-in .2s ease-out; background:#18181b; border-left:4px solid #a1a1aa; border-radius:9px; box-shadow:0 10px 30px rgba(0,0,0,.22); color:#fff; min-width:280px; padding:13px 40px 13px 14px; position:relative; }.agap-toast.success { border-left-color:#22c55e; }.agap-toast.error { border-left-color:#ef4444; }.agap-toast.info { border-left-color:#38bdf8; }.agap-toast strong { display:block; font-size:13px; margin-bottom:3px; }.agap-toast p { color:#e4e4e7; font-size:12px; line-height:1.45; margin:0; }.agap-toast-close { background:transparent; border:0; color:#d4d4d8; cursor:pointer; font-size:22px; line-height:1; padding:4px; position:absolute; right:8px; top:8px; }.agap-toast-close:hover { color:#fff; } @keyframes agap-toast-in { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+.sidebar-nav a { align-items:center; display:flex; gap:10px; }
+.nav-icon { align-items:center; display:inline-flex; flex:0 0 18px; font-family:"Segoe UI Symbol","Noto Sans Symbols",sans-serif; font-size:17px; font-weight:400; justify-content:center; line-height:1; text-align:center; }
+.nav-group summary { gap:7px; }
+.nav-group-icon { align-items:center; color:#a1a1aa; display:inline-flex; font-family:"Segoe UI Symbol","Noto Sans Symbols",sans-serif; font-size:13px; justify-content:center; letter-spacing:0; width:13px; }
+#appSidebar.is-collapsed .sidebar-nav a { align-items:center; justify-content:center; }
+#appSidebar.is-collapsed .sidebar-nav a::before { display:none; }
+#appSidebar.is-collapsed .sidebar-nav a .nav-icon { flex-basis:36px; font-size:18px; }
+#appSidebar.is-collapsed .sidebar-nav a .nav-link-label { display:none; }
+@media (max-width:900px) {
+    #appSidebar.is-collapsed .sidebar-nav a { justify-content:flex-start; }
+    #appSidebar.is-collapsed .sidebar-nav a .nav-icon { flex-basis:18px; font-size:17px; }
+    #appSidebar.is-collapsed .sidebar-nav a .nav-link-label { display:inline; }
+}
 .required-mark { color:#b91c1c; font-weight:800; }
 .field-validation-message { color:#b91c1c; font-size:12px; margin:6px 0 0; }
 .form-group input.is-invalid,.form-group select.is-invalid,.form-group textarea.is-invalid { border-color:#dc2626; box-shadow:0 0 0 3px rgba(220,38,38,.12); }

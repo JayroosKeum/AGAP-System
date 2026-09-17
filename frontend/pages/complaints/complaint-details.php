@@ -39,7 +39,9 @@ include '../../layouts/header.php';
             </div>
             <div class="action-buttons">
                 <button type="button" class="btn-create" onclick="openAddPartyModal()">Add Party</button>
-                <button type="button" class="btn-create" onclick="openAddAttachmentModal()">Add Attachment</button>
+                <button type="button" class="btn-create" onclick="openAddAttachmentModal('image')">Upload Picture</button>
+                <button type="button" class="btn-create" onclick="openAddAttachmentModal('video')">Upload Video</button>
+                <button type="button" class="btn-create" onclick="openAddAttachmentModal('document')">Upload Document</button>
                 <button type="button" class="btn-create" onclick="openReviewComplaintModal()">Review Complaint</button>
             </div>
         </div>
@@ -49,6 +51,16 @@ include '../../layouts/header.php';
             <div class="table-container">
                 <h3>Complaint Details</h3>
                 <div id="complaintInfo"></div>
+            </div>
+
+            <div class="table-container">
+                <h3>Incident Location</h3>
+                <form id="incidentLocationForm">
+                    <input type="hidden" id="locationComplaintId" name="complaint_id">
+                    <div class="form-group"><label for="incidentAddress">Location description <span class="required-mark" aria-hidden="true">*</span></label><textarea id="incidentAddress" name="address" rows="3" maxlength="2000" required placeholder="Street, purok, building, and other identifying details"></textarea></div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;"><div class="form-group"><label for="incidentLatitude">Latitude</label><input id="incidentLatitude" name="latitude" type="number" step="any" min="-90" max="90" placeholder="Optional"></div><div class="form-group"><label for="incidentLongitude">Longitude</label><input id="incidentLongitude" name="longitude" type="number" step="any" min="-180" max="180" placeholder="Optional"></div></div>
+                    <button type="submit" class="btn-create">Save Incident Location</button><p id="locationMessage" role="status"></p>
+                </form>
             </div>
 
             <!-- Complaint Parties -->
@@ -117,15 +129,15 @@ include '../../layouts/header.php';
 <div id="addAttachmentModal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
-            <h2>Add Attachment</h2>
+            <h2 id="attachmentModalTitle">Upload Evidence</h2>
             <button class="close-btn" onclick="closeAddAttachmentModal()">&times;</button>
         </div>
         <form id="addAttachmentForm">
             <input type="hidden" id="attachmentComplaintId">
             <div class="form-group">
-                <label>File</label>
-                <input type="file" id="attachmentFile" accept=".jpg,.jpeg,.png,.pdf,video/mp4,video/webm" required>
-                <small>JPG, PNG, PDF, MP4, or WebM up to 25 MB.</small>
+                <label id="attachmentFileLabel">Evidence file</label>
+                <input type="file" id="attachmentFile" required>
+                <small id="attachmentFileHelp">Select a file up to 25 MB.</small>
             </div>
             <button type="submit" class="btn-create">Add Attachment</button>
         </form>

@@ -122,6 +122,10 @@ class HearingController
         $rawDate = trim((string) ($data['hearing_date'] ?? ''));
         $types = ['Initial Hearing', 'Mediation', 'Conciliation', 'Arbitration'];
 
+        if (($data['schedule_reviewed'] ?? '') !== '1') {
+            return ['success' => false, 'message' => 'Review the hearing details before final scheduling.'];
+        }
+
         $date = DateTimeImmutable::createFromFormat('Y-m-d\TH:i', $rawDate)
             ?: DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $rawDate);
 

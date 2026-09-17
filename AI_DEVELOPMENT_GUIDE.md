@@ -7,7 +7,7 @@ continue AGAP without sharing the whole project.
 
 Share these files first:
 
-1. `AI_DEVELOPMENT_GUIDE.md` and `PROJECT_HANDOFF.md`.
+1. `AI_DEVELOPMENT_GUIDE.md` and the current `PROJECT_HANDOFF` file.
 2. `database/schema.sql`.
 3. The relevant Module Development PDF pages or a short description of the
    target module.
@@ -64,7 +64,7 @@ Use the same module name across `frontend/pages`, `frontend/assets/js`, and
 - Use foreign keys, explicit `NOT NULL` rules, unique indexes, and named
   constraints for new relationships.
 - Do not use a separate `lupon_members` table. An active user with the role
-  name `Lupon Member` is assignable to cases and Pangkat.
+  name `Lupon Member` is eligible for the unified case-team assignment.
 - Do not use `COUNT(*) + 1` to generate business numbers. Use an inserted ID
   inside a database transaction, as the Complaint and Case models do.
 - For a one-record-per-case feature, add a unique `case_id` constraint and use
@@ -72,6 +72,10 @@ Use the same module name across `frontend/pages`, `frontend/assets/js`, and
 - For password resets, store only a hashed, single-use token with an expiry;
   never store a raw reset token or password. Document a populated-database
   migration whenever a reset-token table is added.
+- `database/schema.sql` is the complete, single SQL script for a new database.
+  For an older populated database that predates the workflow redesign, use
+  `database/migrations/20260917_consolidated_workflow_upgrade.sql` instead of
+  the three individual workflow migrations. Do not run both options.
 
 ## Backend conventions
 
@@ -194,6 +198,47 @@ const api = (url, options) => fetch(url, options).then(async (response) => {
 7. Preserve existing uncommitted work unless it directly conflicts with the
    requested module; report conflicts before overwriting it.
 
+## Core workflow and UX rules
+
+- A complaint begins as `Filed`. A permitted reviewer moves it to `Under Review`,
+  `Needs Information`, `Accepted`, or `Rejected`, with optional review notes.
+  Only an `Accepted` complaint can be docketed; docketing changes it to
+  `Docketed` in the same transaction as case creation.
+- Treat `frontend/pages/complaints/complaint-details.php` as the complaint
+  workspace: review, parties, picture/video/document evidence, and the
+  incident-location form are available from that record. Do not send users to
+  a separate location page for normal complaint encoding.
+- Complaint intake records the incident date, optional time, specific location,
+  landmark, narrative, and supporting details. Evidence uploads validate MIME
+  type and size server-side: JPG/PNG pictures, MP4/WebM videos, and PDFs are
+  allowed up to 25 MB.
+- Treat `frontend/pages/cases/case-details.php` as the case workspace: it is
+  the record-level overview for case team, hearings, generated documents, and
+  proof of service. Keep cross-case monitoring pages for lists and calendars.
+- Do not require a separate Pangkat workflow. Save the Head, Secretary,
+  and Member together from Case Assignments, require three distinct active
+  users whose role name is `Lupon Member`, and perform the replacement in one
+  transaction. Existing `pangkat_groups` and `pangkat_members` may be synced
+  internally for legacy KP-document compatibility; they are not a separate
+  user journey.
+- Proof of service must reference a generated document for the selected case.
+  Generated-document service states are `Generated`, `For Service`, `Served`,
+  and `Service Failed`; recording proof marks that document `Served`.
+- Required form controls need a visible asterisk, an HTML `required` rule, and
+  server-side validation. Provide useful character limits and file format/size
+  guidance beside relevant inputs.
+- Hearing scheduling is case-based: link from the case workspace into the
+  scheduling page with `case_id`, validate future dates and the Initial Hearing
+  five-day docketing limit on both client and server, show calendar data from
+  the hearing calendar API, allow staff to begin scheduling from an eligible
+  calendar date and edit an existing calendar entry, and require review and
+  confirmation before the final write.
+- Use the shared `window.agapNotify(message, type, title)` toast layer for
+  user-facing workflow feedback. It converts module status/alert messages into
+  dismissible popups and polls the authenticated notification inbox for newly
+  received unread workflow notifications. Do not create page-specific popup
+  implementations for individual modules.
+
 ## Copy-ready prompt for another AI
 
 ```text
@@ -210,7 +255,8 @@ and related services).
 Rules:
 - Keep agap_db and database/schema.sql as the schema source of truth.
 - Active users with role name "Lupon Member" must automatically be eligible
-  for Case Assignment and Pangkat; do not introduce a lupon_members table.
+  for the Head, Secretary, and Member case-team roles; do not introduce a
+  lupon_members table.
 - Use prepared PDO statements, server-side validation, JSON API responses,
   role checks, and audit logging for mutations.
 - Do not rewrite unrelated modules or overwrite uncommitted changes.

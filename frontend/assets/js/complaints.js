@@ -33,6 +33,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (addAttachmentForm) {
         addAttachmentForm.addEventListener('submit', handleAddAttachment);
     }
+
+    const reviewForm = document.getElementById('reviewComplaintForm');
+    if (reviewForm) reviewForm.addEventListener('submit', handleReviewComplaint);
+
+    const locationForm = document.getElementById('incidentLocationForm');
+    if (locationForm) locationForm.addEventListener('submit', handleIncidentLocation);
 });
 
 function loadComplaintList() {
@@ -80,15 +86,26 @@ function loadComplaintDetails() {
         document.getElementById('complaintInfo').innerHTML = `
             <p><strong>Category:</strong> ${escapeHtml(data.category_id)}</p>
             <p><strong>Incident Date:</strong> ${escapeHtml(data.incident_date || 'N/A')}</p>
+            <p><strong>Incident Time:</strong> ${escapeHtml(data.incident_time || 'Not recorded')}</p>
+            <p><strong>Specific Location:</strong> ${escapeHtml(data.incident_location || 'Not recorded')}</p>
+            <p><strong>Landmark:</strong> ${escapeHtml(data.incident_landmark || 'Not recorded')}</p>
             <p><strong>Status:</strong> <span class="status status-${escapeHtml(String(data.status).toLowerCase())}">${escapeHtml(data.status)}</span></p>
             <p><strong>Narrative:</strong></p>
             <p style="white-space: pre-wrap;">${escapeHtml(data.narrative)}</p>
+            <p><strong>Additional Details:</strong></p>
+            <p style="white-space: pre-wrap;">${escapeHtml(data.additional_details || 'None provided.')}</p>
+            <p><strong>Review Notes:</strong></p>
+            <p style="white-space: pre-wrap;">${escapeHtml(data.review_notes || 'No review notes yet.')}</p>
         `;
 
         // Load parties
         renderParties(data.parties || []);
         // Load attachments
         renderAttachments(data.attachments || []);
+        const location = data.location || {};
+        document.getElementById('incidentAddress').value = location.address || '';
+        document.getElementById('incidentLatitude').value = location.latitude || '';
+        document.getElementById('incidentLongitude').value = location.longitude || '';
     });
 
     // Load residents for add party modal
@@ -97,6 +114,8 @@ function loadComplaintDetails() {
     // Set complaint ID in modals
     document.getElementById('partyComplaintId').value = complaintId;
     document.getElementById('attachmentComplaintId').value = complaintId;
+    document.getElementById('reviewComplaintId').value = complaintId;
+    document.getElementById('locationComplaintId').value = complaintId;
 }
 
 function loadResidents() {
@@ -165,12 +184,50 @@ function closeAddPartyModal() {
     document.getElementById('addPartyModal').style.display = 'none';
 }
 
-function openAddAttachmentModal() {
+function openAddAttachmentModal(type = 'image') {
+    const image = type === 'image';
+    const video = type === 'video';
+    document.getElementById('attachmentModalTitle').textContent = image ? 'Upload Picture Evidence' : (video ? 'Upload Video Evidence' : 'Upload Document Evidence');
+    document.getElementById('attachmentFileLabel').textContent = image ? 'Picture *' : (video ? 'Video *' : 'Document *');
+    document.getElementById('attachmentFileHelp').textContent = image ? 'JPG or PNG up to 25 MB.' : (video ? 'MP4 or WebM up to 25 MB.' : 'PDF up to 25 MB.');
+    document.getElementById('attachmentFile').accept = image ? 'image/jpeg,image/png' : (video ? 'video/mp4,video/webm' : 'application/pdf');
     document.getElementById('addAttachmentModal').style.display = 'flex';
 }
 
 function closeAddAttachmentModal() {
     document.getElementById('addAttachmentModal').style.display = 'none';
+}
+
+function openReviewComplaintModal() {
+    document.getElementById('reviewComplaintModal').style.display = 'flex';
+}
+
+function closeReviewComplaintModal() {
+    document.getElementById('reviewComplaintModal').style.display = 'none';
+}
+
+function handleReviewComplaint(event) {
+    event.preventDefault();
+    const message = document.getElementById('reviewMessage');
+    complaintApi('../../../backend/api/complaints/review.php', { method: 'POST', body: new FormData(event.currentTarget) })
+        .then((result) => {
+            message.textContent = result.message;
+            closeReviewComplaintModal();
+            loadComplaintDetails();
+        })
+        .catch((error) => { message.textContent = error.message; });
+}
+
+function handleIncidentLocation(event) {
+    event.preventDefault();
+    const message = document.getElementById('locationMessage');
+    complaintApi('../../../backend/api/complaints/location.php', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget)))
+    }).then((result) => {
+        message.textContent = result.message;
+        loadComplaintDetails();
+    }).catch((error) => { message.textContent = error.message; });
 }
 
 function handleAddParty(e) {
@@ -248,8 +305,11 @@ function editComplaint(id) {
         document.getElementById('editCategoryId').value = data.category_id;
         document.getElementById('editComplaintTitle').value = data.complaint_title;
         document.getElementById('editIncidentDate').value = data.incident_date;
+        document.getElementById('editIncidentTime').value = data.incident_time || '';
+        document.getElementById('editIncidentLocation').value = data.incident_location || '';
+        document.getElementById('editIncidentLandmark').value = data.incident_landmark || '';
         document.getElementById('editNarrative').value = data.narrative;
-        document.getElementById('editStatus').value = data.status;
+        document.getElementById('editAdditionalDetails').value = data.additional_details || '';
         document.getElementById('editComplaintModal').style.display = 'flex';
     });
 }

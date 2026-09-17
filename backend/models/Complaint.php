@@ -78,6 +78,10 @@ class Complaint
     {
         try {
 
+            if (!$this->hasValidIncidentInput($data)) {
+                return false;
+            }
+
             if(session_status() === PHP_SESSION_NONE)
             {
                 session_start();
@@ -91,6 +95,9 @@ class Complaint
                     category_id,
                     complaint_title,
                     incident_date,
+                    incident_time,
+                    incident_location,
+                    incident_landmark,
                     narrative,
                     additional_details,
                     status,
@@ -98,7 +105,7 @@ class Complaint
                 )
                 VALUES
                 (
-                    ?,?,?,?,?,?,?
+                    ?,?,?,?,?,?,?,?,?,?
                 )
             ");
 
@@ -106,6 +113,9 @@ class Complaint
                 $data['category_id'],
                 $data['complaint_title'],
                 $data['incident_date'],
+                trim((string) ($data['incident_time'] ?? '')) ?: null,
+                trim((string) ($data['incident_location'] ?? '')) ?: null,
+                trim((string) ($data['incident_landmark'] ?? '')) ?: null,
                 $data['narrative'],
                 trim((string) ($data['additional_details'] ?? '')) ?: null,
                 'Filed',
@@ -141,6 +151,10 @@ class Complaint
     {
         try {
 
+            if (!$this->hasValidIncidentInput($data)) {
+                return false;
+            }
+
             $stmt =
             $this->conn->prepare("
                 UPDATE complaints
@@ -148,6 +162,9 @@ class Complaint
                     category_id=?,
                     complaint_title=?,
                     incident_date=?,
+                    incident_time=?,
+                    incident_location=?,
+                    incident_landmark=?,
                     narrative=?,
                     additional_details=?
                 WHERE complaint_id=?
@@ -157,6 +174,9 @@ class Complaint
                 $data['category_id'],
                 $data['complaint_title'],
                 $data['incident_date'],
+                trim((string) ($data['incident_time'] ?? '')) ?: null,
+                trim((string) ($data['incident_location'] ?? '')) ?: null,
+                trim((string) ($data['incident_landmark'] ?? '')) ?: null,
                 $data['narrative'],
                 trim((string) ($data['additional_details'] ?? '')) ?: null,
                 $id
@@ -179,11 +199,12 @@ class Complaint
         if (!in_array($status, $allowed, true)) {
             return ['success' => false, 'message' => 'Select a valid review decision.'];
         }
-        $stmt = $this->conn->prepare("UPDATE complaints SET status = ?, review_notes = ? WHERE complaint_id = ? AND status NOT IN ('Docketed', 'Archived')");
+        $exists = $this->conn->prepare("SELECT complaint_id FROM complaints WHERE complaint_id = ? AND status NOT IN ('Docketed', 'Archived')");
+        $exists->execute([$id]);
+        if (!$exists->fetchColumn()) return ['success' => false, 'message' => 'This complaint cannot be reviewed in its current status.'];
+        $stmt = $this->conn->prepare('UPDATE complaints SET status = ?, review_notes = ? WHERE complaint_id = ?');
         $stmt->execute([$status, $notes, $id]);
-        return $stmt->rowCount() === 1
-            ? ['success' => true, 'message' => 'Complaint review saved.']
-            : ['success' => false, 'message' => 'This complaint cannot be reviewed in its current status.'];
+        return ['success' => true, 'message' => 'Complaint review saved.'];
     }
 
     public function delete($id)
@@ -209,5 +230,22 @@ class Complaint
 
             return false;
         }
+    }
+
+    private function hasValidIncidentInput(array $data): bool
+    {
+        $categoryId = filter_var($data['category_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $title = trim((string) ($data['complaint_title'] ?? ''));
+        $date = trim((string) ($data['incident_date'] ?? ''));
+        $time = trim((string) ($data['incident_time'] ?? ''));
+        $narrative = trim((string) ($data['narrative'] ?? ''));
+        if (!$categoryId || $title === '' || mb_strlen($title) > 255 || $narrative === '' || mb_strlen($narrative) > 15000) return false;
+        $parsedDate = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+        if (!$parsedDate || $parsedDate->format('Y-m-d') !== $date) return false;
+        if ($time !== '' && !preg_match('/^([01]\\d|2[0-3]):[0-5]\\d$/', $time)) return false;
+        foreach (['incident_location' => 255, 'incident_landmark' => 255, 'additional_details' => 5000] as $field => $maxLength) {
+            if (mb_strlen(trim((string) ($data[$field] ?? ''))) > $maxLength) return false;
+        }
+        return true;
     }
 }

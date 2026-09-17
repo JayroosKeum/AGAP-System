@@ -17,6 +17,5 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-$result = (new AssignmentController())->assign($_POST);
-http_response_code($result['success'] ? 201 : 422);
-echo json_encode($result);
+http_response_code(410);
+echo json_encode(['success' => false, 'message' => 'Individual role assignment has been replaced by the complete case-team assignment.']);

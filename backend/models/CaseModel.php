@@ -103,6 +103,21 @@ class CaseModel
         }
     }
 
+    public function getWorkspace(int $id): array|false
+    {
+        $case = $this->getById($id);
+        if (!$case) return false;
+        $assignments = $this->conn->prepare("SELECT ca.assignment_role, ca.assigned_date, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS member_name FROM case_assignments ca INNER JOIN users u ON u.user_id = ca.member_id WHERE ca.case_id = ? ORDER BY FIELD(ca.assignment_role, 'Head', 'Secretary', 'Member', 'Mediator'), ca.assigned_date");
+        $assignments->execute([$id]);
+        $hearings = $this->conn->prepare("SELECT hearing_id, hearing_type, hearing_date, venue, CASE WHEN hearing_date < NOW() THEN 'Completed' ELSE 'Scheduled' END AS hearing_status FROM hearings WHERE case_id = ? ORDER BY hearing_date ASC");
+        $hearings->execute([$id]);
+        $documents = $this->conn->prepare("SELECT gd.document_id, gd.generated_at, gd.service_status, dt.template_name FROM generated_documents gd INNER JOIN document_templates dt ON dt.template_id = gd.template_id WHERE gd.case_id = ? ORDER BY gd.generated_at DESC");
+        $documents->execute([$id]);
+        $proofs = $this->conn->prepare("SELECT ps.proof_id, ps.document_id, ps.served_date, ps.remarks, dt.template_name, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS served_by_name FROM proof_of_service ps LEFT JOIN generated_documents gd ON gd.document_id = ps.document_id LEFT JOIN document_templates dt ON dt.template_id = gd.template_id LEFT JOIN users u ON u.user_id = ps.served_by WHERE ps.case_id = ? ORDER BY ps.served_date DESC");
+        $proofs->execute([$id]);
+        return ['case' => $case, 'assignments' => $assignments->fetchAll(PDO::FETCH_ASSOC), 'hearings' => $hearings->fetchAll(PDO::FETCH_ASSOC), 'documents' => $documents->fetchAll(PDO::FETCH_ASSOC), 'proofs' => $proofs->fetchAll(PDO::FETCH_ASSOC)];
+    }
+
     public function getDocketingError($complaintId)
     {
         if (filter_var($complaintId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false) {

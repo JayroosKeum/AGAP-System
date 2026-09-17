@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../models/Complaint.php';
 require_once __DIR__ . '/../models/ComplaintParty.php';
 require_once __DIR__ . '/../models/Attachment.php';
+require_once __DIR__ . '/../models/Location.php';
 require_once __DIR__ . '/../services/AuditService.php';
 
 if (session_status() === PHP_SESSION_NONE) {
@@ -14,6 +15,7 @@ class ComplaintController
     private $complaint;
     private $complaintParty;
     private $attachment;
+    private $location;
     private $audit;
 
     public function __construct()
@@ -21,6 +23,7 @@ class ComplaintController
         $this->complaint = new Complaint();
         $this->complaintParty = new ComplaintParty();
         $this->attachment = new Attachment();
+        $this->location = new Location();
         $this->audit = new AuditService();
     }
 
@@ -35,6 +38,7 @@ class ComplaintController
         if (!$complaint) return false;
         $complaint['parties'] = $this->complaintParty->getByComplaint($id);
         $complaint['attachments'] = $this->attachment->getByComplaint($id);
+        $complaint['location'] = $this->location->getByComplaint((int) $id);
         return $complaint;
     }
 
@@ -186,6 +190,20 @@ class ComplaintController
     public function getAttachment(int $attachmentId): array|false
     {
         return $this->attachment->getById($attachmentId);
+    }
+
+    public function saveIncidentLocation(int $complaintId, array $data): array
+    {
+        $address = trim((string) ($data['address'] ?? ''));
+        $latitude = $data['latitude'] ?? null;
+        $longitude = $data['longitude'] ?? null;
+        $latitude = $latitude === '' || $latitude === null ? null : filter_var($latitude, FILTER_VALIDATE_FLOAT);
+        $longitude = $longitude === '' || $longitude === null ? null : filter_var($longitude, FILTER_VALIDATE_FLOAT);
+        if ($complaintId < 1 || $address === '' || mb_strlen($address) > 2000) return ['success' => false, 'message' => 'Provide an incident location of 2,000 characters or fewer.'];
+        if ($latitude === false || $longitude === false || ($latitude !== null && ($latitude < -90 || $latitude > 90)) || ($longitude !== null && ($longitude < -180 || $longitude > 180))) return ['success' => false, 'message' => 'Provide valid optional latitude and longitude values.'];
+        $result = $this->location->save($complaintId, $latitude, $longitude, $address);
+        if ($result['success']) $this->audit->log((int) $_SESSION['user_id'], 'Saved Complaint Incident Location', 'Complaints', $complaintId);
+        return $result + ['message' => $result['success'] ? 'Incident location saved.' : 'Unable to save the incident location.'];
     }
     public function deleteAttachment(int $attachmentId): array
     {
