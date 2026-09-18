@@ -18,6 +18,7 @@ include '../../layouts/header.php';
 
 <link rel="stylesheet" href="../../assets/css/dashboard.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/dashboard.css'); ?>">
 <link rel="stylesheet" href="../../assets/css/complaints.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/complaints.css'); ?>">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 
 <div class="dashboard-layout">
 
@@ -194,8 +195,18 @@ include '../../layouts/header.php';
             </div>
 
             <div class="form-group">
-                <label>Specific Incident Location</label>
-                <input type="text" name="incident_location" maxlength="255" placeholder="Street, building, purok, or nearby place">
+                <label>Specific Incident Location <span class="required-mark" aria-hidden="true">*</span></label>
+                <input type="text" name="incident_location" maxlength="255" required placeholder="Street, building, purok, or nearby place">
+            </div>
+
+            <div class="form-group complaint-map-group">
+                <label>Exact Map Location <span class="optional-label">Optional</span></label>
+                <input type="hidden" name="map_location_state" value="none" data-map-state>
+                <input type="hidden" name="location_latitude" value="" data-map-latitude>
+                <input type="hidden" name="location_longitude" value="" data-map-longitude>
+                <p class="map-help">Click the map to pin the incident location. The pin is saved with this complaint.</p>
+                <div id="addComplaintMap" class="complaint-location-map" aria-label="Map for selecting the exact incident location"></div>
+                <div class="map-selection-row"><span class="map-selection-status" data-map-status>No map point selected.</span><button type="button" class="btn-secondary" data-clear-map>Clear pin</button></div>
             </div>
 
             <div class="form-group">
@@ -341,7 +352,16 @@ include '../../layouts/header.php';
             </div>
 
             <div class="form-group"><label>Incident Time</label><input type="time" name="incident_time" id="editIncidentTime"></div>
-            <div class="form-group"><label>Specific Incident Location</label><input type="text" name="incident_location" id="editIncidentLocation" maxlength="255"></div>
+            <div class="form-group"><label>Specific Incident Location <span class="required-mark" aria-hidden="true">*</span></label><input type="text" name="incident_location" id="editIncidentLocation" maxlength="255" required></div>
+            <div class="form-group complaint-map-group">
+                <label>Exact Map Location <span class="optional-label">Optional</span></label>
+                <input type="hidden" name="map_location_state" value="unchanged" data-map-state>
+                <input type="hidden" name="location_latitude" value="" data-map-latitude>
+                <input type="hidden" name="location_longitude" value="" data-map-longitude>
+                <p class="map-help">Click the map to change the saved pin, or clear it to remove the exact map point.</p>
+                <div id="editComplaintMap" class="complaint-location-map" aria-label="Map for selecting the exact incident location"></div>
+                <div class="map-selection-row"><span class="map-selection-status" data-map-status>Loading saved map point…</span><button type="button" class="btn-secondary" data-clear-map>Clear pin</button></div>
+            </div>
             <div class="form-group"><label>Landmark</label><input type="text" name="incident_landmark" id="editIncidentLandmark" maxlength="255"></div>
 
             <div class="form-group">
@@ -415,6 +435,7 @@ window.agapComplaintFlash = <?php echo json_encode(
     JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
 ); ?>;
 </script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="../../assets/js/complaints.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/complaints.js'); ?>"></script>
 
 <?php include '../../layouts/footer.php'; ?>

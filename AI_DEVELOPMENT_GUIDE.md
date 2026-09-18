@@ -211,11 +211,15 @@ const api = (url, options) => fetch(url, options).then(async (response) => {
   Only an `Accepted` complaint can be docketed; docketing changes it to
   `Docketed` in the same transaction as case creation.
 - Treat `frontend/pages/complaints/complaint-details.php` as the complaint
-  workspace: review, parties, picture/video/document evidence, and the
-  incident-location form are available from that record. Do not send users to
-  a separate location page for normal complaint encoding.
-- Complaint intake records the incident date, optional time, specific location,
-  landmark, narrative, and supporting details. Evidence uploads validate MIME
+  workspace for review, parties, and picture/video/document evidence. Create
+  and edit incident details, including the optional exact map pin, from the
+  Add/Edit Complaint forms on `complaint-list.php`; do not create a separate
+  Incident Locations page or location-only save route.
+- Complaint intake requires the incident date and specific location, and records
+  optional time, landmark, narrative, supporting details, and an optional exact
+  map pin. Store an exact pin in `incident_locations` as part of the same
+  complaint create/update transaction. On edit, preserve a saved pin unless the
+  user moves or clears it. Evidence uploads validate MIME
   type and size server-side: JPG/PNG pictures, MP4/WebM videos, and PDFs are
   allowed up to 25 MB.
 - Treat `frontend/pages/cases/case-details.php` as the case workspace: it is

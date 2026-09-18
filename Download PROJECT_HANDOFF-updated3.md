@@ -30,17 +30,20 @@ The following redesign is implemented as the current UX direction:
   notes. Only `Accepted` complaints may be docketed, and docketing changes the
   complaint to `Docketed` in the same transaction.
 - **Complaint workspace:** The complaint details page consolidates review,
-  parties, dedicated picture/video/document evidence uploads
-  (JPG/PNG/PDF/MP4/WebM, up to 25 MB), additional details, and the incident
-  location form. This replaces a fragmented complaint flow and no longer
-  requires normal users to open the separate GPS location page.
+  parties, and dedicated picture/video/document evidence uploads
+  (JPG/PNG/PDF/MP4/WebM, up to 25 MB). Complaint creation and editing are
+  handled from the Complaints page; those forms include the incident details
+  and optional exact map pin. The standalone Incident Locations page, its
+  navigation links, and its location-only API routes are retired.
 
 ### Complaint incident fields
 
-The `complaints` table now includes optional `incident_time`,
-`incident_location`, and `incident_landmark` fields in addition to the
-existing date, narrative, and additional details. The details page stores the
-full location description and optional coordinates in `incident_locations`.
+The `complaints` table includes optional `incident_time` and
+`incident_landmark`, plus a required `incident_location`, in addition to the
+existing date, narrative, and additional details. The Add/Edit Complaint forms
+also provide an optional Leaflet map pin. Coordinates and the location address
+are stored in `incident_locations` within the same transaction as the complaint
+write; an edit retains the pin unless it is moved or explicitly cleared.
 - **Case workspace:** Opening a case now leads to `case-details.php`, which
   presents the case overview, team, hearings, generated documents, and proof
   of service together. The case list remains the cross-case monitoring screen.
@@ -136,8 +139,10 @@ assignment constraint.
 - Case Assignment page/API with an atomic three-member team; the former Pangkat page redirects to it.
 - Active users with role name `Lupon Member` are directly assignable.
 - Hearing creation, update, viewing, calendar display, and attendance storage.
-- Settlement, arbitration, CFA, incident-location, proof-of-service, AI chatbot, and narrative-generation endpoints/models exist.
-- GPS incident-location and proof-of-service workflows are available.
+- Settlement, arbitration, CFA, proof-of-service, AI chatbot, and narrative-generation endpoints/models exist.
+- Proof-of-service is available from the GPS/operations area; incident-location
+  selection is embedded in Complaint Add/Edit rather than exposed as a separate
+  GPS workflow.
 - Secure password change and password-reset workflows are available.
 - Complaint and case numbering use database-generated IDs and transactions.
 - The schema contains foreign keys, key uniqueness rules, one case per complaint, and one resolution record per case where applicable.
@@ -384,7 +389,7 @@ Future forms should reuse the same Document model, controller, storage, listing,
 
 ---
 
-## GPS Incident Location and Proof-of-Service Increment
+## Incident Location Consolidation and Proof-of-Service Increment
 
 The existing `incident_locations` and `proof_of_service` tables are now used
 for authenticated field documentation. No duplicate GPS or proof tables were
@@ -392,24 +397,32 @@ introduced.
 
 ### Implemented
 
-- Incident-location map with complaint selection, coordinate/address
-  validation, and saved-location markers.
-- Administrator, Lupon Clerk, and Summons Server location-write access; Lupon
-  Members have read-only location-map access.
+- The retired standalone incident-location map page and its navigation links
+  have been removed.
+- Complaint Add/Edit forms include the Leaflet/OpenStreetMap map selector.
+  Clicking the map creates or moves a pin; the edit form can also clear a pin.
+- Specific incident location is required by both HTML and server-side
+  validation. Map coordinates are optional, but a selected pin must include a
+  valid latitude/longitude pair within their allowed ranges.
+- Complaint and incident-location writes are transactional. A saved pin is
+  preserved on normal edits and its address stays synchronized with the
+  complaint's specific-location field.
 - Proof-of-service recording for active cases, with service details, optional
   proof image, service history, duplicate-entry protection, and case linkage.
 - Secure JPG, PNG, and WebP uploads limited to 5 MB, stored under
   `storage/uploads/proof-of-service/` using random filenames.
 - Authenticated proof-image retrieval constrained to the storage directory.
 - JSON APIs with method/session/role checks, server-side validation, and
-  audit logging for location and proof mutations.
+  audit logging for proof mutations.
 
 ### Testing Status
 
 - PHP lint, JavaScript syntax check, and `git diff --check` passed.
 - Browser/MySQL acceptance testing remains required in Laragon, including
-  actual image upload, saved markers, and authorized/denied role flows.
-- Leaflet/OpenStreetMap map tiles require browser network access.
+  actual image upload, complaint create/edit map-pin save/change/clear, and
+  authorized/denied role flows.
+- Leaflet/OpenStreetMap map tiles require browser network access; the required
+  text-based incident location remains available when map tiles are unavailable.
 
 ---
 
@@ -504,7 +517,8 @@ Do not:
 - introduce duplicate report or document tables; or
 - overwrite uncommitted changes.
 
-The next missing-feature priority is the GPS/proof-of-service workflow.
+The next missing-feature priority remains resident self-service complaint
+filing and status tracking.
 
 ---
 

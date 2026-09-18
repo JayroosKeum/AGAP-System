@@ -24,4 +24,10 @@ th { background: #f8fafc; }
 .form-group label { display: block; margin-bottom: 6px; font-weight: 600; }
 .form-group input, .form-group select, .form-group textarea { box-sizing: border-box; width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.required-mark { color: #b91c1c; }
+.optional-label { color: #64748b; font-size: .85rem; font-weight: 400; }
+.map-help { color: #64748b; font-size: .9rem; margin: 0 0 8px; }
+.complaint-location-map { height: 280px; border: 1px solid #cbd5e1; border-radius: 6px; }
+.map-selection-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; }
+.map-selection-status { color: #475569; font-size: .9rem; }
 @media (max-width: 640px) { .page-header { align-items: flex-start; gap: 14px; flex-direction: column; } }

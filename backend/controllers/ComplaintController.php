@@ -192,19 +192,6 @@ class ComplaintController
         return $this->attachment->getById($attachmentId);
     }
 
-    public function saveIncidentLocation(int $complaintId, array $data): array
-    {
-        $address = trim((string) ($data['address'] ?? ''));
-        $latitude = $data['latitude'] ?? null;
-        $longitude = $data['longitude'] ?? null;
-        $latitude = $latitude === '' || $latitude === null ? null : filter_var($latitude, FILTER_VALIDATE_FLOAT);
-        $longitude = $longitude === '' || $longitude === null ? null : filter_var($longitude, FILTER_VALIDATE_FLOAT);
-        if ($complaintId < 1 || $address === '' || mb_strlen($address) > 2000) return ['success' => false, 'message' => 'Provide an incident location of 2,000 characters or fewer.'];
-        if ($latitude === false || $longitude === false || ($latitude !== null && ($latitude < -90 || $latitude > 90)) || ($longitude !== null && ($longitude < -180 || $longitude > 180))) return ['success' => false, 'message' => 'Provide valid optional latitude and longitude values.'];
-        $result = $this->location->save($complaintId, $latitude, $longitude, $address);
-        if ($result['success']) $this->audit->log((int) $_SESSION['user_id'], 'Saved Complaint Incident Location', 'Complaints', $complaintId);
-        return $result + ['message' => $result['success'] ? 'Incident location saved.' : 'Unable to save the incident location.'];
-    }
     public function deleteAttachment(int $attachmentId): array
     {
         $attachment = $this->attachment->getById($attachmentId);

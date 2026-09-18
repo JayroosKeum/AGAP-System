@@ -1,11 +1,89 @@
-const gpsApi = async (url, options = {}) => { const response = await fetch(url, options); const data = await response.json().catch(() => ({success:false, message:'Invalid server response.'})); if (!response.ok || data.success === false) throw new Error(data.message || 'Request failed.'); return data; };
-const escapeHtml = (value) => { const node = document.createElement('div'); node.textContent = value ?? ''; return node.innerHTML; };
-const formatDateTime = (value) => value ? new Date(value.replace(' ', 'T')).toLocaleString([], {dateStyle:'medium', timeStyle:'short'}) : '—';
-const setGpsMessage = (id, message, success = false) => { const box = document.getElementById(id); if (!box) return; box.textContent = message; box.className = message ? `alert ${success ? 'success' : 'error'}` : ''; };
-document.addEventListener('DOMContentLoaded', () => { if (document.getElementById('incidentMap')) initLocations(); if (document.getElementById('proofForm')) initProofs(); });
-let incidentMap; let selectedMarker; let locationMarkers = [];
-async function initLocations() { const select = document.getElementById('complaintId'); incidentMap = L.map('incidentMap').setView([14.6507,121.1029], 13); L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution:'© OpenStreetMap contributors'}).addTo(incidentMap); if (!select) { loadLocations(); return; } try { const result = await gpsApi('../../../backend/api/gps/complaints.php'); result.data.forEach(item => select.add(new Option(`${item.complaint_number || 'Unnumbered'} - ${item.complaint_title}`, item.complaint_id))); } catch (error) { setGpsMessage('gpsMessage', error.message); } incidentMap.on('click', e => { if (selectedMarker) selectedMarker.setLatLng(e.latlng); else selectedMarker = L.marker(e.latlng).addTo(incidentMap); document.getElementById('latitude').value = e.latlng.lat.toFixed(8); document.getElementById('longitude').value = e.latlng.lng.toFixed(8); }); select.addEventListener('change', async () => { if (!select.value) return; try { const result = await gpsApi('../../../backend/api/gps/location.php?complaint_id=' + encodeURIComponent(select.value)); const item = result.data; document.getElementById('locationAddress').value = item?.address || ''; if (item?.latitude !== null && item?.longitude !== null && item) { const latlng = [Number(item.latitude), Number(item.longitude)]; document.getElementById('latitude').value = item.latitude; document.getElementById('longitude').value = item.longitude; if (selectedMarker) selectedMarker.setLatLng(latlng); else selectedMarker = L.marker(latlng).addTo(incidentMap); incidentMap.setView(latlng, 16); } } catch (error) { setGpsMessage('gpsMessage', error.message); } }); document.getElementById('locationForm').addEventListener('submit', async e => { e.preventDefault(); try { const result = await gpsApi('../../../backend/api/gps/location.php', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(Object.fromEntries(new FormData(e.currentTarget)))}); setGpsMessage('gpsMessage', result.message, true); loadLocations(); } catch (error) { setGpsMessage('gpsMessage', error.message); } }); loadLocations(); }
-async function loadLocations() { const table = document.getElementById('locationsTable'); try { const result = await gpsApi('../../../backend/api/gps/location.php'); const rows = result.data || []; if (incidentMap) { locationMarkers.forEach(marker => incidentMap.removeLayer(marker)); locationMarkers = rows.map(item => L.marker([Number(item.latitude), Number(item.longitude)]).addTo(incidentMap).bindTooltip(escapeHtml(`${item.complaint_number || 'Complaint'}: ${item.complaint_title || ''}`))); if (rows.length && !document.getElementById('locationForm')) incidentMap.fitBounds(locationMarkers.map(marker => marker.getLatLng()), {padding:[30,30], maxZoom:15}); } table.innerHTML = rows.length ? rows.map(item => `<tr><td>${escapeHtml(item.complaint_number)} - ${escapeHtml(item.complaint_title)}</td><td>${escapeHtml(item.case_number || 'Not docketed')}</td><td>${escapeHtml(item.address || '—')}</td><td>${Number(item.latitude).toFixed(6)}, ${Number(item.longitude).toFixed(6)}</td><td>${formatDateTime(item.updated_at)}</td></tr>`).join('') : '<tr><td colspan="5" class="empty-state">No incident locations recorded.</td></tr>'; } catch (error) { table.innerHTML = `<tr><td colspan="5" class="empty-state">${escapeHtml(error.message)}</td></tr>`; } }
-async function initProofs() { const select = document.getElementById('proofCaseId'); const documentSelect = document.getElementById('proofDocumentId'); document.getElementById('servedDate').value = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0,16); try { const result = await gpsApi('../../../backend/api/gps/proof-service.php'); result.data.forEach(item => select.add(new Option(`${item.case_number} - ${item.complaint_title}`, item.case_id))); } catch (error) { setGpsMessage('proofMessage', error.message); } select.addEventListener('change', async () => { await loadServiceDocuments(select.value); loadProofs(select.value); }); document.getElementById('proofForm').addEventListener('submit', async e => { e.preventDefault(); const selectedCaseId = select.value; try { const result = await gpsApi('../../../backend/api/gps/proof-service.php', {method:'POST', body:new FormData(e.currentTarget)}); setGpsMessage('proofMessage', result.message, true); e.currentTarget.reset(); select.value = selectedCaseId; await loadServiceDocuments(selectedCaseId); document.getElementById('servedDate').value = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0,16); if (selectedCaseId) loadProofs(selectedCaseId); } catch (error) { setGpsMessage('proofMessage', error.message); } }); }
-async function loadServiceDocuments(caseId) { const select = document.getElementById('proofDocumentId'); select.replaceChildren(new Option(caseId ? 'Loading documents…' : 'Select a case first', '')); select.disabled = !caseId; if (!caseId) return; try { const result = await gpsApi('../../../backend/api/gps/proof-service.php?case_id=' + encodeURIComponent(caseId) + '&mode=documents'); const documents = result.data || []; select.replaceChildren(new Option(documents.length ? 'Select a generated document' : 'No generated documents available', '')); documents.forEach(item => select.add(new Option(`${item.template_name} — ${item.service_status}`, item.document_id))); select.disabled = documents.length === 0; } catch (error) { select.replaceChildren(new Option(error.message, '')); select.disabled = true; } }
-async function loadProofs(caseId) { const table = document.getElementById('proofsTable'); if (!caseId) { table.innerHTML = '<tr><td colspan="4" class="empty-state">Select a case to view service history.</td></tr>'; return; } try { const result = await gpsApi('../../../backend/api/gps/proof-service.php?case_id=' + encodeURIComponent(caseId)); const rows = result.data || []; table.innerHTML = rows.length ? rows.map(item => `<tr><td>${formatDateTime(item.served_date)}</td><td>${escapeHtml(item.served_by_name || 'Unknown')}</td><td>${escapeHtml(item.remarks || '—')}</td><td>${item.image_path ? `<a target="_blank" rel="noopener" href="../../../backend/api/gps/proof-image.php?id=${Number(item.proof_id)}"><img class="proof-image" src="../../../backend/api/gps/proof-image.php?id=${Number(item.proof_id)}" alt="Proof image"></a>` : '—'}</td></tr>`).join('') : '<tr><td colspan="4" class="empty-state">No proof of service recorded.</td></tr>'; } catch (error) { table.innerHTML = `<tr><td colspan="4" class="empty-state">${escapeHtml(error.message)}</td></tr>`; } }
+const gpsApi = async (url, options = {}) => {
+    const response = await fetch(url, options);
+    const data = await response.json().catch(() => ({ success: false, message: 'Invalid server response.' }));
+    if (!response.ok || data.success === false) throw new Error(data.message || 'Request failed.');
+    return data;
+};
+
+const escapeGpsHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, character => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#039;', '"': '&quot;'
+})[character]);
+
+const formatDateTime = (value) => value
+    ? new Date(value.replace(' ', 'T')).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+    : '—';
+
+const setGpsMessage = (id, message, success = false) => {
+    const box = document.getElementById(id);
+    if (!box) return;
+    box.textContent = message;
+    box.className = message ? `alert ${success ? 'success' : 'error'}` : '';
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+    if (document.getElementById('proofForm')) initProofs();
+});
+
+async function initProofs() {
+    const select = document.getElementById('proofCaseId');
+    document.getElementById('servedDate').value = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    try {
+        const result = await gpsApi('../../../backend/api/gps/proof-service.php');
+        result.data.forEach(item => select.add(new Option(`${item.case_number} - ${item.complaint_title}`, item.case_id)));
+    } catch (error) {
+        setGpsMessage('proofMessage', error.message);
+    }
+
+    select.addEventListener('change', async () => {
+        await loadServiceDocuments(select.value);
+        loadProofs(select.value);
+    });
+
+    document.getElementById('proofForm').addEventListener('submit', async event => {
+        event.preventDefault();
+        const selectedCaseId = select.value;
+        try {
+            const result = await gpsApi('../../../backend/api/gps/proof-service.php', { method: 'POST', body: new FormData(event.currentTarget) });
+            setGpsMessage('proofMessage', result.message, true);
+            event.currentTarget.reset();
+            select.value = selectedCaseId;
+            await loadServiceDocuments(selectedCaseId);
+            document.getElementById('servedDate').value = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+            if (selectedCaseId) loadProofs(selectedCaseId);
+        } catch (error) {
+            setGpsMessage('proofMessage', error.message);
+        }
+    });
+}
+
+async function loadServiceDocuments(caseId) {
+    const select = document.getElementById('proofDocumentId');
+    select.replaceChildren(new Option(caseId ? 'Loading documents…' : 'Select a case first', ''));
+    select.disabled = !caseId;
+    if (!caseId) return;
+    try {
+        const result = await gpsApi('../../../backend/api/gps/proof-service.php?case_id=' + encodeURIComponent(caseId));
+        const documents = result.data || [];
+        select.replaceChildren(new Option(documents.length ? 'Select a generated document' : 'No generated documents available', ''));
+        documents.forEach(item => select.add(new Option(`${item.template_name} — ${item.service_status}`, item.document_id)));
+        select.disabled = documents.length === 0;
+    } catch (error) {
+        select.replaceChildren(new Option(error.message, ''));
+        select.disabled = true;
+    }
+}
+
+async function loadProofs(caseId) {
+    const table = document.getElementById('proofsTable');
+    if (!caseId) {
+        table.innerHTML = '<tr><td colspan="4" class="empty-state">Select a case to view service history.</td></tr>';
+        return;
+    }
+    try {
+        const result = await gpsApi('../../../backend/api/gps/proof-service.php?case_id=' + encodeURIComponent(caseId));
+        const rows = result.data || [];
+        table.innerHTML = rows.length ? rows.map(item => `<tr><td>${formatDateTime(item.served_date)}</td><td>${escapeGpsHtml(item.served_by_name || 'Unknown')}</td><td>${escapeGpsHtml(item.remarks || '—')}</td><td>${item.image_path ? `<a target="_blank" rel="noopener" href="../../../backend/api/gps/proof-image.php?id=${Number(item.proof_id)}"><img class="proof-image" src="../../../backend/api/gps/proof-image.php?id=${Number(item.proof_id)}" alt="Proof image"></a>` : '—'}</td></tr>`).join('') : '<tr><td colspan="4" class="empty-state">No proof of service recorded.</td></tr>';
+    } catch (error) {
+        table.innerHTML = `<tr><td colspan="4" class="empty-state">${escapeGpsHtml(error.message)}</td></tr>`;
+    }
+}

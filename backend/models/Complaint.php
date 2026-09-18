@@ -82,6 +82,10 @@ class Complaint
             if (!$validation['success']) {
                 return $validation;
             }
+            $mapValidation = $this->validateMapLocationInput($data, false);
+            if (!$mapValidation['success']) {
+                return $mapValidation;
+            }
 
             if(session_status() === PHP_SESSION_NONE)
             {
@@ -129,6 +133,7 @@ class Complaint
                 'UPDATE complaints SET complaint_number = ? WHERE complaint_id = ?'
             );
             $numberStatement->execute([$complaintNumber, $complaintId]);
+            $this->applyMapLocation($complaintId, $data);
 
             $this->conn->commit();
             return ['success' => true, 'message' => 'Complaint created successfully.'];
@@ -161,6 +166,10 @@ class Complaint
             if (!$validation['success']) {
                 return $validation;
             }
+            $mapValidation = $this->validateMapLocationInput($data, true);
+            if (!$mapValidation['success']) {
+                return $mapValidation;
+            }
 
             $exists = $this->conn->prepare('SELECT complaint_id FROM complaints WHERE complaint_id = ?');
             $exists->execute([$complaintId]);
@@ -168,6 +177,7 @@ class Complaint
                 return ['success' => false, 'message' => 'The complaint could not be found.'];
             }
 
+            $this->conn->beginTransaction();
             $stmt =
             $this->conn->prepare("
                 UPDATE complaints
@@ -194,12 +204,17 @@ class Complaint
                 trim((string) ($data['additional_details'] ?? '')) ?: null,
                 $complaintId
             ]);
+            $this->applyMapLocation($complaintId, $data);
+            $this->conn->commit();
 
             return ['success' => true, 'message' => 'Complaint updated successfully.'];
 
         }
         catch(Exception $e)
         {
+            if ($this->conn->inTransaction()) {
+                $this->conn->rollBack();
+            }
             error_log(
                 $e->getMessage()
             );
@@ -265,6 +280,7 @@ class Complaint
         $parsedDate = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
         if (!$parsedDate || $parsedDate->format('Y-m-d') !== $date) return ['success' => false, 'message' => 'Incident date is invalid.'];
         if ($time !== '' && !preg_match('/^([01]\\d|2[0-3]):[0-5]\\d$/', $time)) return ['success' => false, 'message' => 'Incident time is invalid.'];
+        if (trim((string) ($data['incident_location'] ?? '')) === '') return ['success' => false, 'message' => 'Specific incident location is required.'];
         if ($narrative === '') return ['success' => false, 'message' => 'Incident narrative is required.'];
         if (mb_strlen($narrative) > 15000) return ['success' => false, 'message' => 'Narrative is too long. Use 15,000 characters or fewer.'];
         foreach (['incident_location' => 255, 'incident_landmark' => 255, 'additional_details' => 5000] as $field => $maxLength) {
@@ -273,5 +289,57 @@ class Complaint
             }
         }
         return ['success' => true];
+    }
+
+    private function validateMapLocationInput(array $data, bool $isUpdate): array
+    {
+        $defaultState = $isUpdate ? 'unchanged' : 'none';
+        $state = trim((string) ($data['map_location_state'] ?? $defaultState));
+        $latitude = trim((string) ($data['location_latitude'] ?? ''));
+        $longitude = trim((string) ($data['location_longitude'] ?? ''));
+
+        if (!in_array($state, ['none', 'unchanged', 'selected', 'clear'], true)) {
+            return ['success' => false, 'message' => 'Map location state is invalid.'];
+        }
+        if ($state === 'selected') {
+            $latitudeValue = filter_var($latitude, FILTER_VALIDATE_FLOAT);
+            $longitudeValue = filter_var($longitude, FILTER_VALIDATE_FLOAT);
+            if ($latitude === '' || $longitude === '' || $latitudeValue === false || $longitudeValue === false
+                || $latitudeValue < -90 || $latitudeValue > 90 || $longitudeValue < -180 || $longitudeValue > 180) {
+                return ['success' => false, 'message' => 'Select a valid point on the map.'];
+            }
+        } elseif ($latitude !== '' || $longitude !== '') {
+            return ['success' => false, 'message' => 'Select a map point or clear the map location.'];
+        }
+
+        return ['success' => true];
+    }
+
+    private function applyMapLocation(int $complaintId, array $data): void
+    {
+        $state = trim((string) ($data['map_location_state'] ?? 'none'));
+        if ($state === 'unchanged') {
+            $address = trim((string) $data['incident_location']);
+            $updateAddress = $this->conn->prepare('UPDATE incident_locations SET address = ? WHERE complaint_id = ?');
+            $updateAddress->execute([$address, $complaintId]);
+            return;
+        }
+        if ($state === 'none') {
+            return;
+        }
+        if ($state === 'clear') {
+            $delete = $this->conn->prepare('DELETE FROM incident_locations WHERE complaint_id = ?');
+            $delete->execute([$complaintId]);
+            return;
+        }
+
+        $latitude = (float) $data['location_latitude'];
+        $longitude = (float) $data['location_longitude'];
+        $address = trim((string) $data['incident_location']);
+        $stmt = $this->conn->prepare(
+            'INSERT INTO incident_locations (complaint_id, latitude, longitude, address) VALUES (?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE latitude = VALUES(latitude), longitude = VALUES(longitude), address = VALUES(address)'
+        );
+        $stmt->execute([$complaintId, $latitude, $longitude, $address]);
     }
 }

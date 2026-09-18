@@ -55,12 +55,7 @@ include '../../layouts/header.php';
 
             <div class="table-container">
                 <h3>Incident Location</h3>
-                <form id="incidentLocationForm">
-                    <input type="hidden" id="locationComplaintId" name="complaint_id">
-                    <div class="form-group"><label for="incidentAddress">Location description <span class="required-mark" aria-hidden="true">*</span></label><textarea id="incidentAddress" name="address" rows="3" maxlength="2000" required placeholder="Street, purok, building, and other identifying details"></textarea></div>
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;"><div class="form-group"><label for="incidentLatitude">Latitude</label><input id="incidentLatitude" name="latitude" type="number" step="any" min="-90" max="90" placeholder="Optional"></div><div class="form-group"><label for="incidentLongitude">Longitude</label><input id="incidentLongitude" name="longitude" type="number" step="any" min="-180" max="180" placeholder="Optional"></div></div>
-                    <button type="submit" class="btn-create">Save Incident Location</button><p id="locationMessage" role="status"></p>
-                </form>
+                <p>Location details and the optional map pin are managed when creating or editing this complaint.</p>
             </div>
 
             <!-- Complaint Parties -->

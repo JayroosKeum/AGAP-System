@@ -37,8 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const reviewForm = document.getElementById('reviewComplaintForm');
     if (reviewForm) reviewForm.addEventListener('submit', handleReviewComplaint);
 
-    const locationForm = document.getElementById('incidentLocationForm');
-    if (locationForm) locationForm.addEventListener('submit', handleIncidentLocation);
+    initialiseComplaintMaps();
 
     const flash = window.agapComplaintFlash;
     if (flash?.message) {
@@ -114,10 +113,6 @@ function loadComplaintDetails() {
         renderParties(data.parties || []);
         // Load attachments
         renderAttachments(data.attachments || []);
-        const location = data.location || {};
-        document.getElementById('incidentAddress').value = location.address || '';
-        document.getElementById('incidentLatitude').value = location.latitude || '';
-        document.getElementById('incidentLongitude').value = location.longitude || '';
     });
 
     // Load residents for add party modal
@@ -127,7 +122,6 @@ function loadComplaintDetails() {
     document.getElementById('partyComplaintId').value = complaintId;
     document.getElementById('attachmentComplaintId').value = complaintId;
     document.getElementById('reviewComplaintId').value = complaintId;
-    document.getElementById('locationComplaintId').value = complaintId;
 }
 
 function loadResidents() {
@@ -230,18 +224,6 @@ function handleReviewComplaint(event) {
         .catch((error) => { message.textContent = error.message; });
 }
 
-function handleIncidentLocation(event) {
-    event.preventDefault();
-    const message = document.getElementById('locationMessage');
-    complaintApi('../../../backend/api/complaints/location.php', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget)))
-    }).then((result) => {
-        message.textContent = result.message;
-        loadComplaintDetails();
-    }).catch((error) => { message.textContent = error.message; });
-}
-
 function handleAddParty(e) {
     e.preventDefault();
     const formData = new FormData();
@@ -295,6 +277,7 @@ function deleteAttachment(attachmentId) {
 // Keep existing functions for backward compatibility
 function openAddComplaintModal() {
     document.getElementById('addComplaintModal').style.display = 'flex';
+    refreshComplaintMap('addComplaintMap');
 }
 
 function closeAddComplaintModal() {
@@ -318,6 +301,11 @@ function editComplaint(id) {
 }
 
 function populateEditComplaintForm(data = {}) {
+    const editForm = document.querySelector('#editComplaintModal form');
+    editForm.querySelector('[data-map-state]').value = 'unchanged';
+    editForm.querySelector('[data-map-latitude]').value = '';
+    editForm.querySelector('[data-map-longitude]').value = '';
+    complaintMaps.editComplaintMap?.clear('unchanged');
     document.getElementById('editComplaintId').value = data.complaint_id || '';
     document.getElementById('editCategoryId').value = data.category_id || '';
     document.getElementById('editComplaintTitle').value = data.complaint_title || '';
@@ -328,6 +316,14 @@ function populateEditComplaintForm(data = {}) {
     document.getElementById('editNarrative').value = data.narrative || '';
     document.getElementById('editAdditionalDetails').value = data.additional_details || '';
     document.getElementById('editComplaintModal').style.display = 'flex';
+    restoreComplaintForm('editComplaintModal', data);
+    const map = complaintMaps.editComplaintMap;
+    if (data.location && data.location.latitude !== null && data.location.longitude !== null) {
+        map?.showExistingPoint(data.location.latitude, data.location.longitude);
+    } else {
+        syncComplaintMapFromForm('editComplaintMap');
+    }
+    refreshComplaintMap('editComplaintMap');
 }
 
 function restoreComplaintForm(modalId, values = {}) {
@@ -338,6 +334,88 @@ function restoreComplaintForm(modalId, values = {}) {
         const field = form.elements.namedItem(name);
         if (field && typeof field.value !== 'undefined') field.value = value ?? '';
     });
+    syncComplaintMapFromForm(modalId === 'addComplaintModal' ? 'addComplaintMap' : 'editComplaintMap');
+}
+
+const complaintMaps = {};
+
+function initialiseComplaintMaps() {
+    if (!window.L) return;
+    initialiseComplaintMap('addComplaintMap', 'none');
+    initialiseComplaintMap('editComplaintMap', 'unchanged');
+}
+
+function initialiseComplaintMap(mapId, emptyState) {
+    const element = document.getElementById(mapId);
+    if (!element || complaintMaps[mapId]) return;
+
+    const form = element.closest('form');
+    const state = form.querySelector('[data-map-state]');
+    const latitude = form.querySelector('[data-map-latitude]');
+    const longitude = form.querySelector('[data-map-longitude]');
+    const status = form.querySelector('[data-map-status]');
+    const map = L.map(element).setView([14.6507, 121.1029], 13);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    let marker = null;
+    const setStatus = (message) => { status.textContent = message; };
+    const setPoint = (lat, lng, mapState = 'selected') => {
+        if (marker) marker.setLatLng([lat, lng]);
+        else marker = L.marker([lat, lng]).addTo(map);
+        latitude.value = Number(lat).toFixed(8);
+        longitude.value = Number(lng).toFixed(8);
+        state.value = mapState;
+        setStatus(`Map point selected: ${latitude.value}, ${longitude.value}`);
+        map.setView([lat, lng], Math.max(map.getZoom(), 16));
+    };
+
+    complaintMaps[mapId] = {
+        map,
+        showExistingPoint(lat, lng) {
+            if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) return;
+            if (marker) marker.setLatLng([Number(lat), Number(lng)]);
+            else marker = L.marker([Number(lat), Number(lng)]).addTo(map);
+            latitude.value = '';
+            longitude.value = '';
+            state.value = 'unchanged';
+            setStatus(`Saved map point: ${Number(lat).toFixed(8)}, ${Number(lng).toFixed(8)}`);
+            map.setView([Number(lat), Number(lng)], 16);
+        },
+        setPoint,
+        clear(nextState = emptyState) {
+            if (marker) { map.removeLayer(marker); marker = null; }
+            latitude.value = '';
+            longitude.value = '';
+            state.value = nextState;
+            setStatus(nextState === 'clear' ? 'Saved map point will be removed.' : 'No map point selected.');
+        },
+        refresh() { setTimeout(() => map.invalidateSize(), 0); }
+    };
+
+    map.on('click', (event) => setPoint(event.latlng.lat, event.latlng.lng));
+    form.querySelector('[data-clear-map]').addEventListener('click', () => {
+        complaintMaps[mapId].clear(mapId === 'editComplaintMap' ? 'clear' : 'none');
+    });
+}
+
+function syncComplaintMapFromForm(mapId) {
+    const controller = complaintMaps[mapId];
+    if (!controller) return;
+    const form = controller.map.getContainer().closest('form');
+    const state = form.querySelector('[data-map-state]').value;
+    const latitude = form.querySelector('[data-map-latitude]').value;
+    const longitude = form.querySelector('[data-map-longitude]').value;
+    if (state === 'selected' && latitude !== '' && longitude !== '') {
+        controller.setPoint(Number(latitude), Number(longitude), 'selected');
+    } else if (state === 'clear' || state === 'none') {
+        controller.clear(state);
+    }
+}
+
+function refreshComplaintMap(mapId) {
+    complaintMaps[mapId]?.refresh();
 }
 
 function closeEditComplaintModal() {
