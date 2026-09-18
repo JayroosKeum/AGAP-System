@@ -12,16 +12,75 @@ class CaseModel
         $this->conn = $database->connect();
     }
 
-    public function getAll()
+        public function getAll(): array
     {
         $stmt = $this->conn->prepare("
             SELECT
                 c.*,
                 co.complaint_number,
-                co.complaint_title
+                co.complaint_title,
+
+                COALESCE(
+                    (
+                        SELECT GROUP_CONCAT(
+                            DISTINCT TRIM(
+                                CONCAT_WS(
+                                    ' ',
+                                    complainant.first_name,
+                                    complainant.middle_name,
+                                    complainant.last_name
+                                )
+                            )
+                            ORDER BY
+                                complainant.last_name,
+                                complainant.first_name
+                            SEPARATOR ', '
+                        )
+                        FROM complaint_parties complainant_party
+                        INNER JOIN residents complainant
+                            ON complainant.resident_id =
+                            complainant_party.resident_id
+                        WHERE complainant_party.complaint_id =
+                            co.complaint_id
+                        AND complainant_party.party_type =
+                            'Complainant'
+                    ),
+                    ''
+                ) AS complainant_names,
+
+                COALESCE(
+                    (
+                        SELECT GROUP_CONCAT(
+                            DISTINCT TRIM(
+                                CONCAT_WS(
+                                    ' ',
+                                    respondent.first_name,
+                                    respondent.middle_name,
+                                    respondent.last_name
+                                )
+                            )
+                            ORDER BY
+                                respondent.last_name,
+                                respondent.first_name
+                            SEPARATOR ', '
+                        )
+                        FROM complaint_parties respondent_party
+                        INNER JOIN residents respondent
+                            ON respondent.resident_id =
+                            respondent_party.resident_id
+                        WHERE respondent_party.complaint_id =
+                            co.complaint_id
+                        AND respondent_party.party_type =
+                            'Respondent'
+                    ),
+                    ''
+                ) AS respondent_names
+
             FROM cases c
+
             INNER JOIN complaints co
                 ON co.complaint_id = c.complaint_id
+
             ORDER BY c.created_at DESC
         ");
 
