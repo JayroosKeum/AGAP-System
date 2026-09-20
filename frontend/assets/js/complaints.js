@@ -34,8 +34,13 @@ document.addEventListener('DOMContentLoaded', () => {
         addAttachmentForm.addEventListener('submit', handleAddAttachment);
     }
 
-    const reviewForm = document.getElementById('reviewComplaintForm');
-    if (reviewForm) reviewForm.addEventListener('submit', handleReviewComplaint);
+    const mediationForm = document.getElementById('scheduleMediationForm');
+    if (mediationForm) {
+        mediationForm.addEventListener('submit', reviewMediationSchedule);
+        const dateInput = document.getElementById('mediationDate');
+        if (dateInput) dateInput.min = new Date().toISOString().slice(0, 10);
+    }
+    document.getElementById('confirmMediationButton')?.addEventListener('click', submitMediationSchedule);
 
     initialiseComplaintMaps();
 
@@ -94,6 +99,13 @@ function loadComplaintDetails() {
         document.getElementById('complaintNumber').textContent = 'Complaint #' + data.complaint_number;
         document.getElementById('complaintTitle').textContent = data.complaint_title;
 
+        const scheduleButton = document.getElementById('scheduleMediationButton');
+        if (scheduleButton) {
+            const canSchedule = data.status === 'Under Review';
+            scheduleButton.disabled = !canSchedule;
+            scheduleButton.title = canSchedule ? '' : 'Mediation can only be scheduled while this complaint is under review.';
+        }
+
         document.getElementById('complaintInfo').innerHTML = `
             <p><strong>Category:</strong> ${escapeHtml(data.category_id)}</p>
             <p><strong>Incident Date:</strong> ${escapeHtml(data.incident_date || 'N/A')}</p>
@@ -121,7 +133,8 @@ function loadComplaintDetails() {
     // Set complaint ID in modals
     document.getElementById('partyComplaintId').value = complaintId;
     document.getElementById('attachmentComplaintId').value = complaintId;
-    document.getElementById('reviewComplaintId').value = complaintId;
+    const mediationComplaintId = document.getElementById('mediationComplaintId');
+    if (mediationComplaintId) mediationComplaintId.value = complaintId;
 }
 
 function loadResidents() {
@@ -204,24 +217,77 @@ function closeAddAttachmentModal() {
     document.getElementById('addAttachmentModal').style.display = 'none';
 }
 
-function openReviewComplaintModal() {
-    document.getElementById('reviewComplaintModal').style.display = 'flex';
+function openScheduleMediationModal() {
+    const form = document.getElementById('scheduleMediationForm');
+    if (!form) return;
+    document.getElementById('mediationMessage').textContent = '';
+    document.getElementById('scheduleMediationModal').style.display = 'flex';
 }
 
-function closeReviewComplaintModal() {
-    document.getElementById('reviewComplaintModal').style.display = 'none';
+function closeScheduleMediationModal() {
+    document.getElementById('scheduleMediationModal').style.display = 'none';
 }
 
-function handleReviewComplaint(event) {
+function reviewMediationSchedule(event) {
     event.preventDefault();
-    const message = document.getElementById('reviewMessage');
-    complaintApi('../../../backend/api/complaints/review.php', { method: 'POST', body: new FormData(event.currentTarget) })
+    const form = event.currentTarget;
+    const message = document.getElementById('mediationMessage');
+    message.textContent = '';
+    if (!form.reportValidity()) return;
+
+    const values = Object.fromEntries(new FormData(form));
+    if (!values.mediation_date || !values.mediation_time) {
+        message.textContent = 'Mediation date and time are required.';
+        return;
+    }
+
+    const selected = new Date(`${values.mediation_date}T${values.mediation_time}`);
+    if (Number.isNaN(selected.getTime()) || selected <= new Date()) {
+        message.textContent = 'Choose a future mediation date and time.';
+        return;
+    }
+
+    const details = document.getElementById('mediationConfirmationDetails');
+    details.replaceChildren();
+    [
+        ['Date and time', selected.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })],
+        ['Venue', values.venue],
+        ['Remarks', values.remarks || 'None'],
+    ].forEach(([label, value]) => {
+        const term = document.createElement('dt');
+        term.textContent = label;
+        const description = document.createElement('dd');
+        description.textContent = value;
+        details.append(term, description);
+    });
+    document.getElementById('confirmMediationModal').style.display = 'flex';
+}
+
+function closeConfirmMediationModal() {
+    document.getElementById('confirmMediationModal').style.display = 'none';
+}
+
+function submitMediationSchedule() {
+    const form = document.getElementById('scheduleMediationForm');
+    const message = document.getElementById('mediationMessage');
+    if (!form) return;
+    const button = document.getElementById('confirmMediationButton');
+    const data = new FormData(form);
+    data.set('schedule_confirmed', '1');
+    button.disabled = true;
+    complaintApi('../../../backend/api/complaints/schedule-mediation.php', { method: 'POST', body: data })
         .then((result) => {
-            message.textContent = result.message;
-            closeReviewComplaintModal();
+            closeConfirmMediationModal();
+            closeScheduleMediationModal();
+            window.agapNotify?.(result.message, 'success');
             loadComplaintDetails();
         })
-        .catch((error) => { message.textContent = error.message; });
+        .catch((error) => {
+            closeConfirmMediationModal();
+            message.textContent = error.message;
+            window.agapNotify?.(error.message, 'error');
+        })
+        .finally(() => { button.disabled = false; });
 }
 
 function handleAddParty(e) {

@@ -42,7 +42,7 @@ include '../../layouts/header.php';
                 <button type="button" class="btn-create" onclick="openAddAttachmentModal('image')">Upload Picture</button>
                 <button type="button" class="btn-create" onclick="openAddAttachmentModal('video')">Upload Video</button>
                 <button type="button" class="btn-create" onclick="openAddAttachmentModal('document')">Upload Document</button>
-                <button type="button" class="btn-create" onclick="openReviewComplaintModal()">Review Complaint</button>
+                <button type="button" class="btn-create" id="scheduleMediationButton" onclick="openScheduleMediationModal()">Schedule Mediation</button>
             </div>
         </div>
 
@@ -139,16 +139,27 @@ include '../../layouts/header.php';
     </div>
 </div>
 
-<div id="reviewComplaintModal" class="modal">
+<div id="scheduleMediationModal" class="modal">
     <div class="modal-content">
-        <div class="modal-header"><h2>Review Complaint</h2><button class="close-btn" onclick="closeReviewComplaintModal()">&times;</button></div>
-        <form id="reviewComplaintForm">
-            <input type="hidden" id="reviewComplaintId" name="complaint_id">
-            <div class="form-group"><label for="reviewStatus">Decision</label><select id="reviewStatus" name="status" required><option value="Under Review">Under Review</option><option value="Needs Information">Needs Information</option><option value="Accepted">Accept for Docketing</option><option value="Rejected">Reject / Refer</option></select></div>
-            <div class="form-group"><label for="reviewNotes">Review Notes</label><textarea id="reviewNotes" name="review_notes" maxlength="2000" rows="4" placeholder="Record the review outcome or missing information"></textarea></div>
-            <button type="submit" class="btn-create">Save Review</button>
-            <p id="reviewMessage" role="status"></p>
+        <div class="modal-header"><h2>Schedule Mediation</h2><button class="close-btn" onclick="closeScheduleMediationModal()">&times;</button></div>
+        <form id="scheduleMediationForm">
+            <input type="hidden" id="mediationComplaintId" name="complaint_id">
+            <div class="form-group"><label for="mediationDate">Mediation Date <span class="required-mark" aria-hidden="true">*</span></label><input type="date" id="mediationDate" name="mediation_date" required></div>
+            <div class="form-group"><label for="mediationTime">Mediation Time <span class="required-mark" aria-hidden="true">*</span></label><input type="time" id="mediationTime" name="mediation_time" required></div>
+            <div class="form-group"><label for="mediationVenue">Venue <span class="required-mark" aria-hidden="true">*</span></label><input type="text" id="mediationVenue" name="venue" maxlength="255" value="Barangay Hall" required></div>
+            <div class="form-group"><label for="mediationRemarks">Remarks</label><textarea id="mediationRemarks" name="remarks" maxlength="5000" rows="3" placeholder="Optional mediation instructions"></textarea></div>
+            <button type="submit" class="btn-create">Continue</button>
+            <p id="mediationMessage" role="status"></p>
         </form>
+    </div>
+</div>
+
+<div id="confirmMediationModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header"><h2>Confirm Mediation</h2><button class="close-btn" onclick="closeConfirmMediationModal()">&times;</button></div>
+        <p>Are you sure you want to proceed with this mediation schedule? This will create the case and move the complaint to mediation.</p>
+        <dl id="mediationConfirmationDetails" class="hearing-details"></dl>
+        <div class="modal-actions"><button type="button" class="btn-secondary" onclick="closeConfirmMediationModal()">Back</button><button type="button" class="btn-create" id="confirmMediationButton">Confirm Mediation</button></div>
     </div>
 </div>
 
