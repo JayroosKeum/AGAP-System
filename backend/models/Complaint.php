@@ -123,7 +123,7 @@ class Complaint
                 trim((string) ($data['incident_landmark'] ?? '')) ?: null,
                 $data['narrative'],
                 trim((string) ($data['additional_details'] ?? '')) ?: null,
-                'Filed',
+                'Under Review',
                 $_SESSION['user_id']
             ]);
 
@@ -136,7 +136,7 @@ class Complaint
             $this->applyMapLocation($complaintId, $data);
 
             $this->conn->commit();
-            return ['success' => true, 'message' => 'Complaint created successfully.'];
+            return ['success' => true, 'message' => 'Complaint submitted and placed under review.'];
 
         }
         catch(Exception $e)
