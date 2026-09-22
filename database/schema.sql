@@ -42,6 +42,7 @@ CREATE TABLE users (
     last_name VARCHAR(100) NOT NULL,
     username VARCHAR(100) NOT NULL,
     email VARCHAR(150) NULL,
+    contact_no VARCHAR(20) NULL,
     password_hash VARCHAR(255) NOT NULL,
     role_id INT UNSIGNED NOT NULL,
     status ENUM('Active', 'Inactive') NOT NULL DEFAULT 'Active',
@@ -456,7 +457,8 @@ INSERT INTO roles (role_name) VALUES
     ('Summons Server')
 ON DUPLICATE KEY UPDATE role_name = VALUES(role_name);
 
--- Local development accounts only. Every account below uses password: password
+-- Local development accounts only. Every account below uses password: password.
+-- They use the normal password-hash login flow; this is not a login bypass.
 -- Remove or change these accounts before deploying outside a local/test environment.
 INSERT INTO users (first_name, last_name, username, email, password_hash, role_id, status)
 SELECT 'Admin', 'User', 'admin', 'admin@agap.test', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.', role_id, 'Active'

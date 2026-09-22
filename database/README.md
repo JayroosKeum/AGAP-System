@@ -40,7 +40,16 @@ uses the password `password`:
 - `summonsserver` — Summons Server
 
 These known credentials are intentionally for debugging only. Remove or change
-them before deploying to a real environment.
+them before deploying to a real environment. They are ordinary active accounts
+whose passwords are checked through the normal login flow; AGAP has no login
+bypass or role-selection shortcut.
+
+## User contact-number upgrade
+
+For an existing populated database, apply
+`database/migrations/20260919_add_user_contact_number.sql` once before using
+the contact-number field in User Management. Fresh databases receive the field
+from `schema.sql`.
 
 `preflight_integrity.sql` is read-only and identifies the duplicates and
 orphaned rows that must be resolved before that migration.
