@@ -37,19 +37,28 @@ $docketMessages = [
             <div class="page-alert" role="alert"><?php echo $docketMessages[$docketError]; ?></div>
         <?php endif; ?>
 
-        <div class="table-container">
+                <div class="table-container">
             <table>
                 <thead>
                     <tr>
                         <th>Case No.</th>
                         <th>Complaint</th>
+                        <th>Complainant</th>
+                        <th>Respondent</th>
                         <th>Case Type</th>
                         <th>Docket Date</th>
                         <th>Status</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
-                <tbody id="caseTable"></tbody>
+
+                <tbody id="caseTable">
+                    <tr>
+                        <td colspan="8" class="empty-state">
+                            Loading cases...
+                        </td>
+                    </tr>
+                </tbody>
             </table>
         </div>
 
