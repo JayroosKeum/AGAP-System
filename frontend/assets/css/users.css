@@ -137,3 +137,8 @@ th {
         grid-template-columns: 1fr;
     }
 }
+
+.form-group small { color: #64748b; display: block; margin-top: 5px; }
+.user-message { border-radius: 6px; margin-bottom: 14px; padding: 10px; }
+.user-message.error { background: #fef2f2; color: #991b1b; }
+.user-message.success { background: #f0fdf4; color: #166534; }

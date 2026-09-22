@@ -4,7 +4,7 @@ require_once __DIR__ . '/../config/database.php';
 
 class User {
 
-    private $db;
+    private PDO $db;
 
     public function __construct()
     {
@@ -12,7 +12,7 @@ class User {
         $this->db = $database->connect();
     }
 
-    public function findByUsername($username)
+    public function findByUsername(string $username): array|false
     {
         $stmt = $this->db->prepare(
             "SELECT * FROM users WHERE username = ?"
@@ -23,7 +23,7 @@ class User {
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 
-    public function create($data)
+    public function create(array $data): array
     {
         $stmt = $this->db->prepare("
             INSERT INTO users
@@ -32,26 +32,30 @@ class User {
                 last_name,
                 username,
                 email,
+                contact_no,
                 password_hash,
                 role_id
             )
             VALUES
             (
-                ?,?,?,?,?,?
+                ?,?,?,?,?,?,?
             )
         ");
 
-        return $stmt->execute([
-            $data['first_name'],
-            $data['last_name'],
-            $data['username'],
-            $data['email'],
-            password_hash(
-                $data['password'],
-                PASSWORD_DEFAULT
-            ),
-            $data['role_id']
-        ]);
+        try {
+            $stmt->execute([
+                $data['first_name'],
+                $data['last_name'],
+                $data['username'],
+                $data['email'],
+                $data['contact_no'],
+                password_hash($data['password'], PASSWORD_DEFAULT),
+                $data['role_id']
+            ]);
+            return ['success' => true, 'id' => (int) $this->db->lastInsertId()];
+        } catch (PDOException $exception) {
+            return $this->databaseError($exception);
+        }
     }
 
     public function findActiveByUsernameOrEmail(string $identity): array|false
@@ -114,27 +118,60 @@ class User {
         }
     }
 
-    public function getAll()
+    public function getAll(): array
     {
-        $stmt = $this->db->query('SELECT user_id, first_name, last_name, username, email, role_id FROM users ORDER BY last_name, first_name');
+        $stmt = $this->db->query('SELECT u.user_id, u.first_name, u.last_name, u.username, u.email, u.contact_no, u.role_id, r.role_name FROM users u INNER JOIN roles r ON r.role_id = u.role_id ORDER BY u.last_name, u.first_name');
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function update($id, $data)
+    public function roleExists(int $roleId): bool
     {
-        $sql = 'UPDATE users SET first_name=?, last_name=?, username=?, email=?, role_id=?';
-        $values = [$data['first_name'], $data['last_name'], $data['username'], $data['email'], $data['role_id']];
-        if (!empty($data['password'])) {
-            $sql .= ', password_hash=?';
-            $values[] = password_hash($data['password'], PASSWORD_DEFAULT);
-        }
-        $sql .= ' WHERE user_id=?';
-        $values[] = $id;
-        return $this->db->prepare($sql)->execute($values);
+        $stmt = $this->db->prepare('SELECT 1 FROM roles WHERE role_id = ?');
+        $stmt->execute([$roleId]);
+        return (bool) $stmt->fetchColumn();
     }
 
-    public function delete($id)
+    public function update(int $id, array $data): array
     {
-        return $this->db->prepare('DELETE FROM users WHERE user_id=?')->execute([$id]);
+        try {
+            $sql = 'UPDATE users SET first_name=?, last_name=?, username=?, email=?, contact_no=?, role_id=?';
+            $values = [$data['first_name'], $data['last_name'], $data['username'], $data['email'], $data['contact_no'], $data['role_id']];
+            if ($data['password'] !== '') {
+                $sql .= ', password_hash=?';
+                $values[] = password_hash($data['password'], PASSWORD_DEFAULT);
+            }
+            $sql .= ' WHERE user_id=?';
+            $values[] = $id;
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($values);
+            if ($stmt->rowCount() === 0) {
+                $exists = $this->db->prepare('SELECT 1 FROM users WHERE user_id = ?');
+                $exists->execute([$id]);
+                return $exists->fetchColumn()
+                    ? ['success' => true]
+                    : ['success' => false, 'message' => 'User was not found.'];
+            }
+            return ['success' => true];
+        } catch (PDOException $exception) {
+            return $this->databaseError($exception);
+        }
+    }
+
+    public function delete(int $id): array
+    {
+        try {
+            $stmt = $this->db->prepare('DELETE FROM users WHERE user_id=?');
+            $stmt->execute([$id]);
+            return $stmt->rowCount() === 1 ? ['success' => true] : ['success' => false, 'message' => 'User was not found.'];
+        } catch (PDOException $exception) {
+            return ['success' => false, 'message' => 'This user cannot be deleted because their account is referenced by case records.'];
+        }
+    }
+
+    private function databaseError(PDOException $exception): array
+    {
+        if ($exception->getCode() === '23000') return ['success' => false, 'message' => 'Username or email address is already in use.'];
+        error_log($exception->getMessage());
+        return ['success' => false, 'message' => 'Unable to save the user account.'];
     }
 }

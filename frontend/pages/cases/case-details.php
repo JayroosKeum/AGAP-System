@@ -11,7 +11,7 @@ include '../../layouts/header.php';
     <div class="page-header"><div><a href="case-list.php" class="back-link">&larr; Back to Cases</a><h1 id="workspaceTitle">Case Workspace</h1><p id="workspaceSubtitle">Loading case information…</p></div><div class="action-buttons"><a id="assignLink" class="btn-create">Manage Team</a><a id="hearingLink" class="btn-create">Schedule Hearing</a></div></div>
     <p id="workspaceMessage" role="alert"></p>
     <section class="workspace-grid">
-      <div class="table-container"><h3>Case overview</h3><div id="caseOverview"></div></div>
+      <div class="table-container"><h3>Case overviewWADWWADWAWD</h3><div id="caseOverview"></div></div>
       <div class="table-container"><h3>Case team</h3><div id="caseTeam"></div></div>
       <div class="table-container"><h3>Hearings and deadlines</h3><div id="caseHearings"></div></div>
       <div class="table-container"><h3>Generated documents</h3><div id="caseDocuments"></div></div>

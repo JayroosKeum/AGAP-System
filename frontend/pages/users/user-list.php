@@ -28,6 +28,7 @@ include '../../layouts/header.php';
                         <th>Name</th>
                         <th>Username</th>
                         <th>Email</th>
+                        <th>Contact Number</th>
                         <th>Role</th>
                         <th>Actions</th>
                     </tr>
@@ -47,6 +48,7 @@ include '../../layouts/header.php';
         
         <form id="userForm" method="POST" action="../../../backend/api/users/create.php">
             <input type="hidden" id="userId" name="user_id">
+            <div id="userMessage" role="alert"></div>
             
             <div class="grid">
                 <div class="form-group">
@@ -67,6 +69,12 @@ include '../../layouts/header.php';
             <div class="form-group">
                 <label>Email</label>
                 <input id="email" type="email" name="email" required>
+            </div>
+
+            <div class="form-group">
+                <label>Contact Number</label>
+                <input id="contactNo" type="tel" name="contact_no" maxlength="20" pattern="[0-9+() .-]{7,20}" inputmode="tel" aria-describedby="contactNoHelp">
+                <small id="contactNoHelp">Optional. Use 7 to 20 digits and phone symbols.</small>
             </div>
             
             <div class="form-group">
