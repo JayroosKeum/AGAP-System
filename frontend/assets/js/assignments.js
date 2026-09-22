@@ -11,46 +11,87 @@
     const message =
         document.getElementById('teamMessage');
 
-    const selects = [
-        'headId',
-        'secretaryId',
-        'teamMemberId'
-    ].map((id) => document.getElementById(id));
+    const headSelect =
+        document.getElementById('headId');
+
+    const secretarySelect =
+        document.getElementById('secretaryId');
+
+    const memberSelect =
+        document.getElementById('teamMemberId');
+
+    const automaticHeadDisplay =
+        document.getElementById(
+            'automaticHeadDisplay'
+        );
+
+    const automaticHeadName =
+        document.getElementById(
+            'automaticHeadName'
+        );
 
     if (
         !assignmentTable ||
         !caseSelect ||
         !form ||
         !message ||
-        selects.some((select) => !select)
+        !headSelect ||
+        !secretarySelect ||
+        !memberSelect ||
+        !automaticHeadDisplay ||
+        !automaticHeadName
     ) {
         return;
     }
 
+    let casesById = new Map();
+    let luponMembers = [];
+    let automaticHead = null;
+
     const api = (
         url,
         options = {}
-    ) => fetch(url, options).then(async (response) => {
-        const data = await response
-            .json()
-            .catch(() => ({
-                message: 'Invalid server response.'
-            }));
+    ) => fetch(url, options).then(
+        async (response) => {
+            const data = await response
+                .json()
+                .catch(() => ({
+                    success: false,
+                    message:
+                        'Invalid server response.'
+                }));
 
-        if (!response.ok || data.success === false) {
-            throw new Error(
-                data.message || 'Request failed.'
-            );
+            if (
+                !response.ok ||
+                data.success === false
+            ) {
+                throw new Error(
+                    data.message ||
+                    'Request failed.'
+                );
+            }
+
+            return data;
         }
-
-        return data;
-    });
+    );
 
     const escapeHtml = (value) => {
-        const node = document.createElement('div');
+        const node =
+            document.createElement('div');
+
         node.textContent = value ?? '';
 
         return node.innerHTML;
+    };
+
+    const fullName = (person) => {
+        return [
+            person?.first_name,
+            person?.middle_name,
+            person?.last_name
+        ]
+            .filter(Boolean)
+            .join(' ');
     };
 
     const showMessage = (
@@ -76,6 +117,98 @@
         }
     };
 
+    function selectedCase() {
+        return casesById.get(
+            String(caseSelect.value)
+        ) || null;
+    }
+
+    function isMediationCase() {
+        return (
+            selectedCase()?.case_status ===
+            'Mediation'
+        );
+    }
+
+    function showAutomaticHead() {
+        const name =
+            fullName(automaticHead) ||
+            'Administrator';
+
+        automaticHeadName.textContent = name;
+        automaticHeadDisplay.hidden = false;
+
+        headSelect.hidden = true;
+        headSelect.disabled = true;
+        headSelect.required = false;
+    }
+
+    function hideAutomaticHead() {
+        automaticHeadDisplay.hidden = true;
+
+        headSelect.hidden = false;
+        headSelect.disabled = false;
+        headSelect.required = true;
+    }
+
+    function configureHeadField() {
+        if (!isMediationCase()) {
+            hideAutomaticHead();
+            return;
+        }
+
+        /*
+         * For Mediation, the Head dropdown must never be used.
+         */
+        headSelect.hidden = true;
+        headSelect.disabled = true;
+        headSelect.required = false;
+
+        if (!automaticHead) {
+            automaticHeadDisplay.hidden = true;
+            return;
+        }
+
+        showAutomaticHead();
+    }
+
+    function populateMemberSelect(
+        select,
+        placeholder
+    ) {
+        select.replaceChildren(
+            new Option(placeholder, '')
+        );
+
+        luponMembers.forEach((member) => {
+            const memberId =
+                Number(member.member_id);
+
+            if (
+                !Number.isInteger(memberId) ||
+                memberId < 1
+            ) {
+                return;
+            }
+
+            const name = [
+                member.last_name,
+                member.first_name,
+                member.middle_name
+            ]
+                .filter(Boolean)
+                .join(', ');
+
+            select.add(
+                new Option(
+                    name ||
+                        'Unnamed Lupon Member',
+                    memberId
+                )
+            );
+        });
+    }
+
     async function loadCases() {
         const cases = await api(
             '../../../backend/api/cases/list.php'
@@ -85,6 +218,13 @@
             ? cases
             : [];
 
+        casesById = new Map(
+            rows.map((item) => [
+                String(item.case_id),
+                item
+            ])
+        );
+
         caseSelect.replaceChildren(
             new Option('Select a case', '')
         );
@@ -92,10 +232,12 @@
         rows
             .filter(
                 (item) =>
-                    item.case_status !== 'Archived'
+                    item.case_status !==
+                    'Archived'
             )
             .forEach((item) => {
-                const caseId = Number(item.case_id);
+                const caseId =
+                    Number(item.case_id);
 
                 if (
                     !Number.isInteger(caseId) ||
@@ -104,14 +246,6 @@
                     return;
                 }
 
-                const complainants =
-                    item.complainant_names ||
-                    'No complainant recorded';
-
-                const respondents =
-                    item.respondent_names ||
-                    'No respondent recorded';
-
                 const caseNumber =
                     item.case_number ||
                     'No case number';
@@ -119,6 +253,14 @@
                 const complaintTitle =
                     item.complaint_title ||
                     'Untitled complaint';
+
+                const complainants =
+                    item.complainant_names ||
+                    'No complainant recorded';
+
+                const respondents =
+                    item.respondent_names ||
+                    'No respondent recorded';
 
                 const label = [
                     caseNumber,
@@ -139,58 +281,36 @@
             'assignments/lupon-members.php'
         );
 
-        const rows = Array.isArray(members)
-            ? members
-            : [];
+        luponMembers =
+            Array.isArray(members)
+                ? members
+                : [];
 
-        selects.forEach((select) => {
-            select.replaceChildren(
-                new Option(
-                    'Select a Lupon Member',
-                    ''
-                )
-            );
+        populateMemberSelect(
+            headSelect,
+            'Select a Lupon Member'
+        );
 
-            rows.forEach((member) => {
-                const memberId =
-                    Number(member.member_id);
+        populateMemberSelect(
+            secretarySelect,
+            'Select a Lupon Member'
+        );
 
-                if (
-                    !Number.isInteger(memberId) ||
-                    memberId < 1
-                ) {
-                    return;
-                }
-
-                const fullName = [
-                    member.last_name,
-                    member.first_name
-                ]
-                    .filter(Boolean)
-                    .join(', ');
-
-                select.add(
-                    new Option(
-                        fullName ||
-                            'Unnamed Lupon Member',
-                        memberId
-                    )
-                );
-            });
-        });
+        populateMemberSelect(
+            memberSelect,
+            'Select a Lupon Member'
+        );
     }
 
-    async function loadAssignments() {
-        clearAssignmentSelections();
-
-        if (!caseSelect.value) {
+    function renderAssignmentTable(rows) {
+        if (!rows.length) {
             assignmentTable.innerHTML = `
                 <tr>
                     <td
                         colspan="3"
                         class="empty-state"
                     >
-                        Select a case to view its team.
+                        No case team has been assigned.
                     </td>
                 </tr>
             `;
@@ -198,32 +318,22 @@
             return;
         }
 
-        try {
-            const assignments = await api(
-                '../../../backend/api/' +
-                'assignments/list.php?case_id=' +
-                encodeURIComponent(caseSelect.value)
-            );
+        assignmentTable.innerHTML = rows
+            .map((item) => {
+                const name = [
+                    item.last_name,
+                    item.first_name,
+                    item.middle_name
+                ]
+                    .filter(Boolean)
+                    .join(', ');
 
-            const rows = Array.isArray(assignments)
-                ? assignments
-                : [];
-
-            assignmentTable.innerHTML = rows.length
-                ? rows.map((item) => `
+                return `
                     <tr>
                         <td>
                             ${escapeHtml(
-                                item.last_name ||
-                                ''
-                            )}${
-                                item.last_name &&
-                                item.first_name
-                                    ? ', '
-                                    : ''
-                            }${escapeHtml(
-                                item.first_name ||
-                                'Unnamed member'
+                                name ||
+                                'Unnamed user'
                             )}
                         </td>
 
@@ -241,17 +351,55 @@
                             )}
                         </td>
                     </tr>
-                `).join('')
-                : `
-                    <tr>
-                        <td
-                            colspan="3"
-                            class="empty-state"
-                        >
-                            No case team has been assigned.
-                        </td>
-                    </tr>
                 `;
+            })
+            .join('');
+    }
+
+    async function loadAssignments() {
+        headSelect.value = '';
+        secretarySelect.value = '';
+        memberSelect.value = '';
+        automaticHead = null;
+
+        if (!caseSelect.value) {
+            hideAutomaticHead();
+
+            assignmentTable.innerHTML = `
+                <tr>
+                    <td
+                        colspan="3"
+                        class="empty-state"
+                    >
+                        Select a case to view its team.
+                    </td>
+                </tr>
+            `;
+
+            return;
+        }
+
+        /*
+         * Hide the Head dropdown immediately when the selected
+         * case is Mediation, even before the API finishes.
+         */
+        configureHeadField();
+
+        try {
+            const assignments = await api(
+                '../../../backend/api/' +
+                'assignments/list.php?case_id=' +
+                encodeURIComponent(
+                    caseSelect.value
+                )
+            );
+
+            const rows =
+                Array.isArray(assignments)
+                    ? assignments
+                    : [];
+
+            renderAssignmentTable(rows);
 
             const byRole = Object.fromEntries(
                 rows.map((item) => [
@@ -260,17 +408,58 @@
                 ])
             );
 
-            document.getElementById('headId').value =
-                byRole.Head || '';
+            if (isMediationCase()) {
+                const headAssignment = rows.find(
+                    (item) =>
+                        item.assignment_role ===
+                        'Head'
+                );
 
-            document.getElementById(
-                'secretaryId'
-            ).value = byRole.Secretary || '';
+                automaticHead = headAssignment
+                    ? {
+                        member_id:
+                            headAssignment.member_id,
+                        first_name:
+                            headAssignment.first_name,
+                        middle_name:
+                            headAssignment.middle_name,
+                        last_name:
+                            headAssignment.last_name,
+                        username:
+                            headAssignment.username,
+                        role_name:
+                            headAssignment.role_name
+                    }
+                    : null;
+            } else {
+                automaticHead = null;
 
-            document.getElementById(
-                'teamMemberId'
-            ).value = byRole.Member || '';
+                headSelect.value =
+                    byRole.Head || '';
+            }
+
+            secretarySelect.value =
+                byRole.Secretary || '';
+
+            memberSelect.value =
+                byRole.Member || '';
+
+            configureHeadField();
+
+            if (
+                isMediationCase() &&
+                !automaticHead
+            ) {
+                showMessage(
+                    'The active Administrator or ' +
+                    'Barangay Captain Head assignment ' +
+                    'could not be found.'
+                );
+            }
         } catch (error) {
+            automaticHead = null;
+            configureHeadField();
+
             assignmentTable.innerHTML = `
                 <tr>
                     <td
@@ -286,22 +475,20 @@
         }
     }
 
-    function clearAssignmentSelections() {
-        selects.forEach((select) => {
-            select.value = '';
-        });
-    }
-
     window.openCaseAssignments = (caseId) => {
         const id = String(caseId);
 
         const matchingOption = Array.from(
             caseSelect.options
-        ).find((option) => option.value === id);
+        ).find(
+            (option) =>
+                option.value === id
+        );
 
         if (!matchingOption) {
             showMessage(
-                'The selected case is not available for assignment.'
+                'The selected case is not ' +
+                'available for assignment.'
             );
 
             return;
@@ -330,30 +517,97 @@
             event.preventDefault();
             showMessage('');
 
-            const ids = selects
-                .map((select) => select.value)
-                .filter(Boolean);
+            if (!caseSelect.value) {
+                showMessage(
+                    'Select a case before saving.'
+                );
+
+                return;
+            }
 
             if (
-                !caseSelect.value ||
-                ids.length !== 3
+                isMediationCase() &&
+                !automaticHead
             ) {
                 showMessage(
-                    'Select a case and all three team ' +
-                    'members before saving.'
+                    'The active Administrator or ' +
+                    'Barangay Captain Head assignment ' +
+                    'could not be found.'
                 );
 
                 return;
             }
 
-            if (new Set(ids).size !== 3) {
+            const headId = isMediationCase()
+                ? String(
+                    automaticHead.member_id
+                )
+                : headSelect.value;
+
+            const secretaryId =
+                secretarySelect.value;
+
+            const memberId =
+                memberSelect.value;
+
+            if (
+                !headId ||
+                !secretaryId ||
+                !memberId
+            ) {
                 showMessage(
-                    'Head, Secretary, and Member must ' +
-                    'be different Lupon Members.'
+                    isMediationCase()
+                        ? 'Select the Secretary ' +
+                            'and Member.'
+                        : 'Select the Head, ' +
+                            'Secretary, and Member.'
                 );
 
                 return;
             }
+
+            const selectedIds = [
+                headId,
+                secretaryId,
+                memberId
+            ];
+
+            if (
+                new Set(selectedIds).size !== 3
+            ) {
+                showMessage(
+                    'Head, Secretary, and Member ' +
+                    'must be different users.'
+                );
+
+                return;
+            }
+
+            const data = new FormData(form);
+
+            data.set(
+                'case_id',
+                caseSelect.value
+            );
+
+            /*
+             * The Head field is disabled for Mediation and is
+             * therefore not included in FormData automatically.
+             */
+            data.set(
+                'head_id',
+                headId
+            );
+
+            data.set(
+                'secretary_id',
+                secretaryId
+            );
+
+            data.set(
+                'member_id',
+                memberId
+            );
 
             try {
                 const result = await api(
@@ -361,7 +615,7 @@
                     'assignments/team.php',
                     {
                         method: 'POST',
-                        body: new FormData(form)
+                        body: data
                     }
                 );
 
@@ -381,7 +635,11 @@
     Promise.all([
         loadCases(),
         loadMembers()
-    ]).catch((error) => {
-        showMessage(error.message);
-    });
+    ])
+        .then(() => {
+            hideAutomaticHead();
+        })
+        .catch((error) => {
+            showMessage(error.message);
+        });
 })();
