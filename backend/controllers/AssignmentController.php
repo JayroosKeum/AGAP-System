@@ -10,9 +10,9 @@ if (session_status() === PHP_SESSION_NONE) {
 
 class AssignmentController
 {
-    private $assignment;
-    private $audit;
-    private $notifications;
+    private Assignment $assignment;
+    private AuditService $audit;
+    private NotificationService $notifications;
 
     public function __construct()
     {
@@ -26,28 +26,71 @@ class AssignmentController
         return ['success' => false, 'message' => 'Save the complete Head, Secretary, and Member case team together.'];
     }
 
+    /**
+     * Returns the assignments for a case.
+     * For a Mediation case, this first ensures that the
+     * existing active Administrator is assigned as Head.
+     */
     public function list(int $caseId): array
     {
-        return $this->assignment->getAssignments($caseId);
+        if ($caseId < 1) {
+            return [];
+        }
+
+        $headResult = $this->assignment->ensureMediationHead($caseId);
+        if (!$headResult['success']) {
+            return [];
+        }
+
+        return $this->assignment->getByCase($caseId);
     }
 
+    /**
+     * Returns active Lupon Member users for the normal
+     * Head, Secretary, and Member dropdowns.
+     * The Administrator is intentionally not included.
+     */
     public function luponMembers(): array
     {
         return $this->assignment->getLuponMembers();
     }
 
+    /**
+     * Saves the complete three-person case team.
+     * For Mediation, Assignment::replaceCaseTeam() ignores
+     * the submitted Head and uses the active Administrator.
+     */
     public function saveCaseTeam(array $data): array
     {
-        $caseId = filter_var($data['case_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-        if (!$caseId) return ['success' => false, 'message' => 'Select a valid case.'];
-        $result = $this->assignment->replaceCaseTeam((int) $caseId, $data);
-        if ($result['success']) {
-            $this->audit->log((int) $_SESSION['user_id'], 'Saved Case Team', 'Assignments', (int) $caseId);
-            $caseNumber = $this->notifications->caseNumber((int) $caseId);
-            foreach (['head_id' => 'Head', 'secretary_id' => 'Secretary', 'member_id' => 'Member'] as $field => $role) {
-                $this->notifications->notifyUser((int) $data[$field], 'Case team assignment', 'You were assigned as ' . $role . ' for ' . $caseNumber . '.', (int) $_SESSION['user_id']);
-            }
+        $caseId = filter_var(
+            $data['case_id'] ?? null,
+            FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => 1]]
+        );
+
+        if (!$caseId) {
+            return [
+                'success' => false,
+                'message' => 'A valid case is required.'
+            ];
         }
+
+        $result = $this->assignment->replaceCaseTeam((int) $caseId, $data);
+        if (!$result['success']) {
+            return $result;
+        }
+
+        $actorUserId = (int) ($_SESSION['user_id'] ?? 0);
+        if ($actorUserId > 0) {
+            $this->audit->log($actorUserId, 'Saved Case Team', 'Assignments', (int) $caseId);
+            $this->notifications->notifyCaseMembers(
+                (int) $caseId,
+                'Case team updated',
+                'Your case-team assignment has been updated.',
+                $actorUserId
+            );
+        }
+
         return $result;
     }
 }

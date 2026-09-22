@@ -154,7 +154,6 @@ class HearingController
         if (!$case || $case['case_status'] === 'Archived') {
             return ['success' => false, 'message' => 'The selected case does not exist or is archived.'];
         }
-
         return [
             'success' => true,
             'data' => [

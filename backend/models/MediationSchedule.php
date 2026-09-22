@@ -16,18 +16,16 @@ class MediationSchedule
         try {
             $this->conn->beginTransaction();
 
-            $complaint = $this->conn->prepare(
-                'SELECT complaint_id, status FROM complaints WHERE complaint_id = ? FOR UPDATE'
-            );
+            $complaint = $this->conn->prepare('SELECT complaint_id, status FROM complaints WHERE complaint_id = ? FOR UPDATE');
             $complaint->execute([$complaintId]);
             $record = $complaint->fetch(PDO::FETCH_ASSOC);
             if (!$record) {
                 $this->conn->rollBack();
                 return ['success' => false, 'message' => 'Complaint not found.'];
             }
-            if ($record['status'] !== 'Under Review') {
+            if (!in_array($record['status'], ['Filed', 'Under Review', 'Needs Information', 'Accepted'], true)) {
                 $this->conn->rollBack();
-                return ['success' => false, 'message' => 'Only complaints under review can proceed to 1st Mediation.'];
+                return ['success' => false, 'message' => 'This complaint cannot proceed to 1st Mediation in its current status.'];
             }
 
             $existingCase = $this->conn->prepare('SELECT case_id FROM cases WHERE complaint_id = ? LIMIT 1');
@@ -36,6 +34,17 @@ class MediationSchedule
                 $this->conn->rollBack();
                 return ['success' => false, 'message' => 'This complaint already has a case record.'];
             }
+
+            $adminStmt = $this->conn->prepare(
+                "SELECT u.user_id
+                 FROM users u
+                 INNER JOIN roles r ON r.role_id = u.role_id
+                 WHERE u.status = 'Active' AND r.role_name = 'Administrator'
+                 ORDER BY u.user_id ASC
+                 LIMIT 1"
+            );
+            $adminStmt->execute();
+            $administrator = $adminStmt->fetch(PDO::FETCH_ASSOC);
 
             $case = $this->conn->prepare(
                 "INSERT INTO cases (complaint_id, case_type, case_status, docket_date)
@@ -47,10 +56,21 @@ class MediationSchedule
             $number = $this->conn->prepare('UPDATE cases SET case_number = ? WHERE case_id = ?');
             $number->execute([$caseNumber, $caseId]);
 
+            if ($administrator) {
+                $headAssignment = $this->conn->prepare(
+                    "INSERT INTO case_assignments (case_id, member_id, assignment_role, assigned_date)
+                     VALUES (?, ?, 'Head', CURDATE())"
+                );
+                $headAssignment->execute([$caseId, (int) $administrator['user_id']]);
+            }
+
             $history = $this->conn->prepare(
                 "INSERT INTO case_history (case_id, status, remarks) VALUES (?, 'Docketed', ?)"
             );
-            $history->execute([$caseId, 'Case docketed when the 1st Mediation was scheduled.']);
+            $history->execute([
+                $caseId,
+                'Case docketed when the 1st Mediation was scheduled. The Administrator or Barangay Captain was automatically assigned as Head.'
+            ]);
 
             $hearing = $this->conn->prepare(
                 "INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, remarks)
@@ -75,6 +95,7 @@ class MediationSchedule
                 'case_id' => $caseId,
                 'case_number' => $caseNumber,
                 'hearing_id' => $hearingId,
+                'head_member_id' => $administrator ? (int) $administrator['user_id'] : null,
             ];
         } catch (Throwable $exception) {
             if ($this->conn->inTransaction()) {

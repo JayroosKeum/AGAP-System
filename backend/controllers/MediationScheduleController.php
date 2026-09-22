@@ -19,14 +19,11 @@ class MediationScheduleController
 
     public function schedule(array $data, int $userId): array
     {
-        $complaintId = filter_var($data['complaint_id'] ?? null, FILTER_VALIDATE_INT, [
-            'options' => ['min_range' => 1],
-        ]);
+        $complaintId = filter_var($data['complaint_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         $date = trim((string) ($data['mediation_date'] ?? ''));
         $time = trim((string) ($data['mediation_time'] ?? ''));
         $venue = trim((string) ($data['venue'] ?? 'Barangay Hall'));
         $remarks = trim((string) ($data['remarks'] ?? ''));
-
         if (($data['schedule_confirmed'] ?? '') !== '1') {
             return ['success' => false, 'message' => 'Confirm the mediation schedule before continuing.'];
         }
@@ -47,12 +44,7 @@ class MediationScheduleController
             return ['success' => false, 'message' => 'Remarks must not exceed 5,000 characters.'];
         }
 
-        $result = $this->mediation->create(
-            (int) $complaintId,
-            $hearingDate->format('Y-m-d H:i:s'),
-            $venue,
-            $remarks !== '' ? $remarks : null
-        );
+        $result = $this->mediation->create((int) $complaintId, $hearingDate->format('Y-m-d H:i:s'), $venue, $remarks !== '' ? $remarks : null);
         if ($result['success']) {
             $this->audit->log($userId, 'Scheduled 1st Mediation', 'Hearings', $result['hearing_id']);
             $this->audit->log($userId, 'Docketed Case at 1st Mediation', 'Cases', $result['case_id']);

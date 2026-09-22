@@ -31,3 +31,4 @@ th { background: #f8fafc; }
 .map-selection-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; }
 .map-selection-status { color: #475569; font-size: .9rem; }
 @media (max-width: 640px) { .page-header { align-items: flex-start; gap: 14px; flex-direction: column; } }
+button:disabled, button.is-disabled, button[disabled], .btn-create:disabled, .btn-create.is-disabled, .btn-secondary:disabled, .btn-secondary.is-disabled, a.btn-create.is-disabled, a.btn-create[disabled] { background: #e4e4e7 !important; color: #a1a1aa !important; cursor: not-allowed !important; pointer-events: none !important; opacity: 0.65 !important; box-shadow: none !important; }

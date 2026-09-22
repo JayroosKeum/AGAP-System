@@ -76,7 +76,16 @@ $docketMessages = [
                         <select id="caseId" name="case_id" required><option value="">Select a case</option></select>
                     </div>
                     <p class="form-hint">All three roles are required and must be assigned to different active Lupon Members.</p>
-                    <div class="form-group"><label for="headId">Head <span class="required-mark" aria-hidden="true">*</span></label><select id="headId" name="head_id" required></select></div>
+                    <div class="form-group">
+                        <label for="headId">Head <span class="required-mark" aria-hidden="true">*</span></label>
+                        <select id="headId" name="head_id" required>
+                            <option value="">Select a Lupon Member</option>
+                        </select>
+                        <div id="automaticHeadDisplay" class="automatic-head-display" hidden>
+                            <strong id="automaticHeadName">Administrator</strong>
+                            <small>Barangay Captain and Lupon Head. Automatically assigned for Mediation and cannot be changed.</small>
+                        </div>
+                    </div>
                     <div class="form-group"><label for="secretaryId">Secretary <span class="required-mark" aria-hidden="true">*</span></label><select id="secretaryId" name="secretary_id" required></select></div>
                     <div class="form-group"><label for="teamMemberId">Member <span class="required-mark" aria-hidden="true">*</span></label><select id="teamMemberId" name="member_id" required></select></div>
                     <button class="btn-create" type="submit">Save Three-Member Team</button>

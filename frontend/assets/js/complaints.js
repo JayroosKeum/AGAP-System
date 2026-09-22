@@ -139,10 +139,10 @@ async function configureMediationScheduleButton(button, complaint) {
     button.disabled = true;
     delete button.dataset.caseId;
     if (!complaint.case_id) {
-        const canSchedule = complaint.status === 'Under Review';
+        const canSchedule = ['Filed', 'Under Review', 'Needs Information', 'Accepted'].includes(complaint.status);
         button.textContent = 'Schedule 1st Mediation';
         button.disabled = !canSchedule;
-        button.title = canSchedule ? '' : '1st Mediation can only be scheduled while the complaint is under review.';
+        button.title = canSchedule ? '' : '1st Mediation cannot be scheduled for this complaint.';
         return;
     }
 
@@ -279,30 +279,21 @@ function reviewMediationSchedule(event) {
     const message = document.getElementById('mediationMessage');
     message.textContent = '';
     if (!form.reportValidity()) return;
-
     const values = Object.fromEntries(new FormData(form));
     if (!values.mediation_date || !values.mediation_time) {
         message.textContent = '1st Mediation date and time are required.';
         return;
     }
-
     const selected = new Date(`${values.mediation_date}T${values.mediation_time}`);
     if (Number.isNaN(selected.getTime()) || selected <= new Date()) {
         message.textContent = 'Choose a future 1st Mediation date and time.';
         return;
     }
-
     const details = document.getElementById('mediationConfirmationDetails');
     details.replaceChildren();
-    [
-        ['Date and time', selected.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })],
-        ['Venue', values.venue],
-        ['Remarks', values.remarks || 'None'],
-    ].forEach(([label, value]) => {
-        const term = document.createElement('dt');
-        term.textContent = label;
-        const description = document.createElement('dd');
-        description.textContent = value;
+    [['Date and time', selected.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })], ['Venue', values.venue], ['Remarks', values.remarks || 'None']].forEach(([label, value]) => {
+        const term = document.createElement('dt'); term.textContent = label;
+        const description = document.createElement('dd'); description.textContent = value;
         details.append(term, description);
     });
     document.getElementById('confirmMediationModal').style.display = 'flex';
@@ -315,8 +306,8 @@ function closeConfirmMediationModal() {
 function submitMediationSchedule() {
     const form = document.getElementById('scheduleMediationForm');
     const message = document.getElementById('mediationMessage');
-    if (!form) return;
     const button = document.getElementById('confirmMediationButton');
+    if (!form || !button) return;
     const data = new FormData(form);
     data.set('schedule_confirmed', '1');
     button.disabled = true;
@@ -327,11 +318,7 @@ function submitMediationSchedule() {
             window.agapNotify?.(result.message, 'success');
             loadComplaintDetails();
         })
-        .catch((error) => {
-            closeConfirmMediationModal();
-            message.textContent = error.message;
-            window.agapNotify?.(error.message, 'error');
-        })
+        .catch((error) => { closeConfirmMediationModal(); message.textContent = error.message; window.agapNotify?.(error.message, 'error'); })
         .finally(() => { button.disabled = false; });
 }
 

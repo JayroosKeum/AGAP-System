@@ -183,9 +183,9 @@ class Hearing
     {
         $sql = "SELECT d.deadline_id, d.case_id, d.deadline_type, d.due_date,
                        CASE
-                           WHEN d.status = 'Completed' THEN 'Completed'
-                           WHEN d.due_date < CURDATE() THEN 'Overdue'
-                           ELSE 'Pending'
+                            WHEN d.status = 'Completed' THEN 'Completed'
+                            WHEN d.due_date < CURDATE() THEN 'Overdue'
+                            ELSE 'Pending'
                        END AS status,
                        d.completed_at, c.case_number
                 FROM case_deadlines d

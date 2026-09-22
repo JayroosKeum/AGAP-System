@@ -148,8 +148,7 @@ include '../../layouts/header.php';
             <div class="form-group"><label for="mediationTime">1st Mediation Time <span class="required-mark" aria-hidden="true">*</span></label><input type="time" id="mediationTime" name="mediation_time" required></div>
             <div class="form-group"><label for="mediationVenue">Venue <span class="required-mark" aria-hidden="true">*</span></label><input type="text" id="mediationVenue" name="venue" maxlength="255" value="Barangay Hall" required></div>
             <div class="form-group"><label for="mediationRemarks">Remarks</label><textarea id="mediationRemarks" name="remarks" maxlength="5000" rows="3" placeholder="Optional mediation instructions"></textarea></div>
-            <button type="submit" class="btn-create">Continue</button>
-            <p id="mediationMessage" role="status"></p>
+            <button type="submit" class="btn-create">Continue</button><p id="mediationMessage" role="status"></p>
         </form>
     </div>
 </div>

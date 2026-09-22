@@ -3,14 +3,20 @@ let calendarHearings = [];
 let calendarCursor = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 let pendingScheduleForm = null;
 
-document.addEventListener('DOMContentLoaded', () => {
-    loadHearings(); loadDeadlines(); bindCalendarControls();
+document.addEventListener('DOMContentLoaded', async () => {
+    bindCalendarControls();
+    await Promise.all([loadHearings(), loadDeadlines()]);
     if (!canManageHearings) return;
-    loadCases();
+    await loadCases();
     bindReviewForm('addHearingForm', closeAddHearingModal);
     bindReviewForm('editHearingForm', closeEditHearingModal);
     document.getElementById('confirmHearingSchedule')?.addEventListener('click', confirmHearingSchedule);
     configureCreateDateValidation();
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('case_id')) {
+        openAddHearingModal();
+    }
 });
 
 async function api(url, options = {}) {
@@ -48,7 +54,8 @@ async function loadCases() {
         if (!response.ok) throw new Error(cases.message || 'Unable to load cases.');
         select.replaceChildren(new Option('Select a case', ''));
         cases.filter((item) => item.case_status !== 'Archived').forEach((item) => { const option = new Option(`${item.case_number} - ${item.complaint_title}`, item.case_id); option.dataset.docketDate = item.docket_date || ''; select.add(option); });
-        const caseId = new URLSearchParams(window.location.search).get('case_id');
+        const params = new URLSearchParams(window.location.search);
+        const caseId = params.get('case_id');
         if (caseId && [...select.options].some((option) => option.value === caseId)) select.value = caseId;
         updateNextSchedule();
     } catch (error) { select.replaceChildren(new Option(error.message, '')); }
@@ -63,12 +70,14 @@ function configureCreateDateValidation() {
 
 function updateNextSchedule() {
     const select = document.getElementById('hearingCaseId'); const type = document.getElementById('hearingType'); const help = document.getElementById('hearingProgressionHelp');
+    const submitBtn = document.querySelector('#addHearingForm button[type="submit"]');
     if (!select || !type || !help) return;
     const caseId = select.value;
     type.replaceChildren();
     if (!caseId) {
         type.add(new Option('Select a case first', '')); type.disabled = true;
         help.textContent = 'Select a case to see its next permitted schedule.';
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.title = ''; }
         return;
     }
     const hearings = calendarHearings.filter((item) => String(item.case_id) === String(caseId));
@@ -80,10 +89,12 @@ function updateNextSchedule() {
     if (!typeValue) {
         type.add(new Option('No further schedules permitted', '')); type.disabled = true;
         help.textContent = 'This case already has three mediation and three conciliation schedules.';
+        if (submitBtn) { submitBtn.disabled = true; submitBtn.title = 'All schedules completed for this case.'; }
         return;
     }
     type.add(new Option(label, typeValue)); type.disabled = false;
     help.textContent = `The next permitted schedule is ${label}.`;
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.title = ''; }
 }
 
 function bindReviewForm(id, onSuccess) {
@@ -126,7 +137,7 @@ function hearingLabel(item) {
 }
 function showModal(id) { document.getElementById(id).style.display = 'flex'; }
 function hideModal(id) { document.getElementById(id).style.display = 'none'; }
-function openAddHearingModal() { showModal('addHearingModal'); }
+function openAddHearingModal() { updateNextSchedule(); showModal('addHearingModal'); }
 function closeAddHearingModal() { hideModal('addHearingModal'); }
 function closeViewHearingModal() { hideModal('viewHearingModal'); }
 function closeEditHearingModal() { hideModal('editHearingModal'); }
