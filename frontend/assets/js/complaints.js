@@ -101,9 +101,7 @@ function loadComplaintDetails() {
 
         const scheduleButton = document.getElementById('scheduleMediationButton');
         if (scheduleButton) {
-            const canSchedule = data.status === 'Under Review';
-            scheduleButton.disabled = !canSchedule;
-            scheduleButton.title = canSchedule ? '' : 'Mediation can only be scheduled while this complaint is under review.';
+            configureMediationScheduleButton(scheduleButton, data);
         }
 
         document.getElementById('complaintInfo').innerHTML = `
@@ -135,6 +133,48 @@ function loadComplaintDetails() {
     document.getElementById('attachmentComplaintId').value = complaintId;
     const mediationComplaintId = document.getElementById('mediationComplaintId');
     if (mediationComplaintId) mediationComplaintId.value = complaintId;
+}
+
+async function configureMediationScheduleButton(button, complaint) {
+    button.disabled = true;
+    delete button.dataset.caseId;
+    if (!complaint.case_id) {
+        const canSchedule = complaint.status === 'Under Review';
+        button.textContent = 'Schedule 1st Mediation';
+        button.disabled = !canSchedule;
+        button.title = canSchedule ? '' : '1st Mediation can only be scheduled while the complaint is under review.';
+        return;
+    }
+
+    try {
+        const response = await fetch('../../../backend/api/hearings/calendar.php');
+        const result = await response.json();
+        if (!response.ok || result.success === false) throw new Error(result.message || 'Unable to load hearing progression.');
+        const hearings = (result.data || []).filter((hearing) => String(hearing.case_id) === String(complaint.case_id));
+        const mediationCount = hearings.filter((hearing) => hearing.hearing_type === 'Mediation').length;
+        const conciliationCount = hearings.filter((hearing) => hearing.hearing_type === 'Conciliation').length;
+        let label = '';
+        if (mediationCount < 3) label = `Schedule ${ordinalLabel(mediationCount + 1)} Mediation`;
+        else if (conciliationCount < 3) label = `Schedule ${ordinalLabel(conciliationCount + 1)} Conciliation`;
+
+        if (!label) {
+            button.textContent = 'All schedules completed';
+            button.title = 'This case already has three mediation and three conciliation schedules.';
+            return;
+        }
+
+        button.textContent = label;
+        button.title = `Open the hearing scheduler for ${label.replace('Schedule ', '')}.`;
+        button.dataset.caseId = String(complaint.case_id);
+        button.disabled = false;
+    } catch (error) {
+        button.textContent = 'Schedule next hearing';
+        button.title = error.message;
+    }
+}
+
+function ordinalLabel(number) {
+    return number === 1 ? '1st' : (number === 2 ? '2nd' : (number === 3 ? '3rd' : `${number}th`));
 }
 
 function loadResidents() {
@@ -218,6 +258,11 @@ function closeAddAttachmentModal() {
 }
 
 function openScheduleMediationModal() {
+    const button = document.getElementById('scheduleMediationButton');
+    if (button?.dataset.caseId) {
+        window.location.href = `../hearings/schedules.php?case_id=${encodeURIComponent(button.dataset.caseId)}`;
+        return;
+    }
     const form = document.getElementById('scheduleMediationForm');
     if (!form) return;
     document.getElementById('mediationMessage').textContent = '';
@@ -237,13 +282,13 @@ function reviewMediationSchedule(event) {
 
     const values = Object.fromEntries(new FormData(form));
     if (!values.mediation_date || !values.mediation_time) {
-        message.textContent = 'Mediation date and time are required.';
+        message.textContent = '1st Mediation date and time are required.';
         return;
     }
 
     const selected = new Date(`${values.mediation_date}T${values.mediation_time}`);
     if (Number.isNaN(selected.getTime()) || selected <= new Date()) {
-        message.textContent = 'Choose a future mediation date and time.';
+        message.textContent = 'Choose a future 1st Mediation date and time.';
         return;
     }
 

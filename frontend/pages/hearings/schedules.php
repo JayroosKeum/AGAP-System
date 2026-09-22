@@ -25,7 +25,7 @@ include '../../layouts/header.php';
         <div class="page-header">
             <div>
                 <h1>Hearing Schedules</h1>
-                <p>Plan and monitor mediation and conciliation hearings.</p>
+                <p>Schedule up to three mediations, followed by up to three conciliations, for each case.</p>
             </div>
             <?php if ($canManageHearings): ?>
             <button
@@ -77,25 +77,23 @@ include '../../layouts/header.php';
         </div>
         <form id="addHearingForm" action="../../../backend/api/hearings/create.php" method="POST">
             <div class="form-group">
-                <label for="hearingCaseId">Case</label>
+                <label for="hearingCaseId">Case <span class="required-mark" aria-hidden="true">*</span></label>
                 <select id="hearingCaseId" name="case_id" required></select>
             </div>
             <div class="form-group">
-                <label for="hearingType">Hearing Type</label>
+                <label for="hearingType">Next Schedule</label>
                 <select id="hearingType" name="hearing_type" required>
-                    <option value="Initial Hearing">Initial Hearing</option>
-                    <option value="Mediation">Mediation</option>
-                    <option value="Conciliation">Conciliation</option>
-                    <option value="Arbitration">Arbitration</option>
+                    <option value="">Select a case first</option>
                 </select>
+                <small id="hearingProgressionHelp">Select a case to see its next permitted schedule.</small>
             </div>
             <div class="form-group">
-                <label for="hearingDate">Date &amp; Time</label>
+                <label for="hearingDate">Date &amp; Time <span class="required-mark" aria-hidden="true">*</span></label>
                 <input type="datetime-local" id="hearingDate" name="hearing_date" required>
             </div>
             <div class="form-group">
-                <label for="hearingVenue">Venue</label>
-                <input type="text" id="hearingVenue" name="venue" placeholder="e.g., Barangay Hall - Hearing Room 1" required>
+                <label for="hearingVenue">Venue <span class="required-mark" aria-hidden="true">*</span></label>
+                <input type="text" id="hearingVenue" name="venue" maxlength="255" placeholder="e.g., Barangay Hall - Hearing Room 1" required>
             </div>
             <div class="form-group">
                 <label for="hearingRemarks">Remarks</label>
@@ -128,12 +126,7 @@ include '../../layouts/header.php';
             <input type="hidden" name="hearing_id" id="editHearingId">
             <div class="form-group">
                 <label for="editHearingType">Hearing Type</label>
-                <select id="editHearingType" name="hearing_type" required>
-                    <option value="Initial Hearing">Initial Hearing</option>
-                    <option value="Mediation">Mediation</option>
-                    <option value="Conciliation">Conciliation</option>
-                    <option value="Arbitration">Arbitration</option>
-                </select>
+                <input type="text" id="editHearingType" readonly>
             </div>
             <div class="form-group">
                 <label for="editHearingDate">Date &amp; Time</label>

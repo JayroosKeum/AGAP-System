@@ -62,10 +62,14 @@ class HearingController
                 $values['hearing_type'],
                 $values['hearing_date']
             );
-            $id = $this->hearing->create($values, $deadline);
-            $this->audit->log($userId, 'Created Hearing', 'Hearings', $id);
-            $this->notifyHearingMembers($values, 'Hearing scheduled', $userId);
-            return ['success' => true, 'message' => 'Hearing scheduled successfully.', 'hearing_id' => $id];
+            $result = $this->hearing->createProgression($values, $deadline, $userId);
+            if (!$result['success']) {
+                return $result;
+            }
+            $label = $this->ordinal($result['sequence']) . ' ' . $result['hearing_type'];
+            $this->audit->log($userId, 'Scheduled ' . $label, 'Hearings', $result['hearing_id']);
+            $this->notifyHearingMembers($values, $label . ' scheduled', $userId, $label);
+            return ['success' => true, 'message' => $label . ' scheduled successfully.', 'hearing_id' => $result['hearing_id']];
         } catch (Throwable $exception) {
             error_log($exception->getMessage());
             return ['success' => false, 'message' => 'Unable to schedule the hearing.'];
@@ -80,7 +84,9 @@ class HearingController
         }
 
         $data['case_id'] = $existing['case_id'];
-        $validated = $this->validate($data);
+        // A schedule may be rescheduled, but its workflow stage cannot be changed by editing it.
+        $data['hearing_type'] = $existing['hearing_type'];
+        $validated = $this->validate($data, true);
         if (!$validated['success']) {
             return $validated;
         }
@@ -111,7 +117,7 @@ class HearingController
         }
     }
 
-    private function validate(array $data): array
+    private function validate(array $data, bool $allowExistingTypes = false): array
     {
         $caseId = filter_var($data['case_id'] ?? null, FILTER_VALIDATE_INT, [
             'options' => ['min_range' => 1],
@@ -120,7 +126,9 @@ class HearingController
         $venue = trim((string) ($data['venue'] ?? ''));
         $remarks = trim((string) ($data['remarks'] ?? ''));
         $rawDate = trim((string) ($data['hearing_date'] ?? ''));
-        $types = ['Initial Hearing', 'Mediation', 'Conciliation', 'Arbitration'];
+        $types = $allowExistingTypes
+            ? ['Initial Hearing', 'Mediation', 'Conciliation', 'Arbitration']
+            : ['Mediation', 'Conciliation'];
 
         if (($data['schedule_reviewed'] ?? '') !== '1') {
             return ['success' => false, 'message' => 'Review the hearing details before final scheduling.'];
@@ -147,13 +155,6 @@ class HearingController
             return ['success' => false, 'message' => 'The selected case does not exist or is archived.'];
         }
 
-        if ($type === 'Initial Hearing') {
-            $latest = (new DateTimeImmutable($case['docket_date']))->modify('+5 days')->setTime(23, 59, 59);
-            if ($date > $latest) {
-                return ['success' => false, 'message' => 'Initial hearing must be scheduled within five calendar days of docketing.'];
-            }
-        }
-
         return [
             'success' => true,
             'data' => [
@@ -166,10 +167,20 @@ class HearingController
         ];
     }
 
-    private function notifyHearingMembers(array $hearing, string $title, int $actorUserId): void
+    private function notifyHearingMembers(array $hearing, string $title, int $actorUserId, ?string $label = null): void
     {
         $caseNumber = $this->notifications->caseNumber((int) $hearing['case_id']);
-        $message = sprintf('%s for %s on %s at %s (%s).', $hearing['hearing_type'], $caseNumber, date('F j, Y g:i A', strtotime($hearing['hearing_date'])), $hearing['venue'], $title === 'Hearing updated' ? 'updated schedule' : 'new schedule');
+        $message = sprintf('%s for %s on %s at %s (%s).', $label ?? $hearing['hearing_type'], $caseNumber, date('F j, Y g:i A', strtotime($hearing['hearing_date'])), $hearing['venue'], $title === 'Hearing updated' ? 'updated schedule' : 'new schedule');
         $this->notifications->notifyCaseMembers((int) $hearing['case_id'], $title, $message, $actorUserId);
+    }
+
+    private function ordinal(int $number): string
+    {
+        return match ($number) {
+            1 => '1st',
+            2 => '2nd',
+            3 => '3rd',
+            default => $number . 'th',
+        };
     }
 }

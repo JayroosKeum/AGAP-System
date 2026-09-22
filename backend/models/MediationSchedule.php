@@ -27,7 +27,7 @@ class MediationSchedule
             }
             if ($record['status'] !== 'Under Review') {
                 $this->conn->rollBack();
-                return ['success' => false, 'message' => 'Only complaints under review can proceed to mediation.'];
+                return ['success' => false, 'message' => 'Only complaints under review can proceed to 1st Mediation.'];
             }
 
             $existingCase = $this->conn->prepare('SELECT case_id FROM cases WHERE complaint_id = ? LIMIT 1');
@@ -39,7 +39,7 @@ class MediationSchedule
 
             $case = $this->conn->prepare(
                 "INSERT INTO cases (complaint_id, case_type, case_status, docket_date)
-                 VALUES (?, 'Civil', 'Mediation', CURDATE())"
+                 VALUES (?, 'Civil', 'Docketed', CURDATE())"
             );
             $case->execute([$complaintId]);
             $caseId = (int) $this->conn->lastInsertId();
@@ -48,9 +48,9 @@ class MediationSchedule
             $number->execute([$caseNumber, $caseId]);
 
             $history = $this->conn->prepare(
-                "INSERT INTO case_history (case_id, status, remarks) VALUES (?, 'Mediation', ?)"
+                "INSERT INTO case_history (case_id, status, remarks) VALUES (?, 'Docketed', ?)"
             );
-            $history->execute([$caseId, 'Case opened when mediation was scheduled.']);
+            $history->execute([$caseId, 'Case docketed when the 1st Mediation was scheduled.']);
 
             $hearing = $this->conn->prepare(
                 "INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, remarks)
@@ -65,13 +65,13 @@ class MediationSchedule
             );
             $deadline->execute([$caseId, $hearingDate]);
 
-            $status = $this->conn->prepare("UPDATE complaints SET status = 'Mediation' WHERE complaint_id = ?");
+            $status = $this->conn->prepare("UPDATE complaints SET status = 'Docketed' WHERE complaint_id = ?");
             $status->execute([$complaintId]);
 
             $this->conn->commit();
             return [
                 'success' => true,
-                'message' => 'Mediation has been scheduled successfully.',
+                'message' => '1st Mediation has been scheduled and the case is now docketed.',
                 'case_id' => $caseId,
                 'case_number' => $caseNumber,
                 'hearing_id' => $hearingId,

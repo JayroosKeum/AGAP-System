@@ -52,9 +52,10 @@ class Complaint
 
             $stmt =
             $this->conn->prepare("
-                SELECT *
-                FROM complaints
-                WHERE complaint_id=?
+                SELECT c.*, cs.case_id
+                FROM complaints c
+                LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
+                WHERE c.complaint_id=?
             ");
 
             $stmt->execute([$id]);

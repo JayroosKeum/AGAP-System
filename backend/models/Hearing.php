@@ -74,10 +74,36 @@ class Hearing
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 
-    public function create(array $data, ?array $deadline): int
+    public function createProgression(array $data, ?array $deadline, int $userId): array
     {
         try {
             $this->conn->beginTransaction();
+            $case = $this->conn->prepare('SELECT case_id, case_status FROM cases WHERE case_id = ? FOR UPDATE');
+            $case->execute([$data['case_id']]);
+            if (!$case->fetch(PDO::FETCH_ASSOC)) {
+                $this->conn->rollBack();
+                return ['success' => false, 'message' => 'The selected case does not exist.'];
+            }
+
+            $counts = $this->conn->prepare(
+                "SELECT hearing_type, COUNT(*) AS total FROM hearings WHERE case_id = ? AND hearing_type IN ('Mediation', 'Conciliation') GROUP BY hearing_type"
+            );
+            $counts->execute([$data['case_id']]);
+            $scheduled = ['Mediation' => 0, 'Conciliation' => 0];
+            foreach ($counts->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $scheduled[$row['hearing_type']] = (int) $row['total'];
+            }
+
+            $expectedType = $scheduled['Mediation'] < 3 ? 'Mediation' : ($scheduled['Conciliation'] < 3 ? 'Conciliation' : null);
+            if ($expectedType === null) {
+                $this->conn->rollBack();
+                return ['success' => false, 'message' => 'All three mediation and all three conciliation schedules have already been completed for this case.'];
+            }
+            if ($data['hearing_type'] !== $expectedType) {
+                $this->conn->rollBack();
+                return ['success' => false, 'message' => 'The next required schedule is ' . ($scheduled[$expectedType] + 1) . ($scheduled[$expectedType] === 0 ? 'st ' : ($scheduled[$expectedType] === 1 ? 'nd ' : 'rd ')) . $expectedType . '.'];
+            }
+
             $stmt = $this->conn->prepare(
                 'INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, remarks)
                  VALUES (?, ?, ?, ?, ?)'
@@ -99,8 +125,17 @@ class Hearing
                 );
             }
 
+            if ($expectedType === 'Conciliation' && $scheduled['Conciliation'] === 0) {
+                $status = $this->conn->prepare("UPDATE cases SET case_status = 'Conciliation' WHERE case_id = ?");
+                $status->execute([$data['case_id']]);
+                $complaintStatus = $this->conn->prepare("UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = 'Conciliation' WHERE c.case_id = ?");
+                $complaintStatus->execute([$data['case_id']]);
+                $history = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, 'Conciliation', ?, ?)");
+                $history->execute([$data['case_id'], 'Case moved to conciliation when the 1st Conciliation was scheduled.', $userId]);
+            }
+
             $this->conn->commit();
-            return $hearingId;
+            return ['success' => true, 'hearing_id' => $hearingId, 'sequence' => $scheduled[$expectedType] + 1, 'hearing_type' => $expectedType];
         } catch (Throwable $exception) {
             if ($this->conn->inTransaction()) {
                 $this->conn->rollBack();
