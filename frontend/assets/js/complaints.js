@@ -343,12 +343,12 @@ function deleteAttachment(attachmentId) {
 
 // Keep existing functions for backward compatibility
 function openAddComplaintModal() {
-    document.getElementById('addComplaintModal').style.display = 'flex';
-    refreshComplaintMap('addComplaintMap');
+    window.location.href = 'complaint-create.php';
 }
 
 function closeAddComplaintModal() {
-    document.getElementById('addComplaintModal').style.display = 'none';
+    const modal = document.getElementById('addComplaintModal');
+    if (modal) modal.style.display = 'none';
 }
 
 function viewComplaint(id) {

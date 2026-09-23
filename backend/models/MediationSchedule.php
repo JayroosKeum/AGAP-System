@@ -16,7 +16,7 @@ class MediationSchedule
         try {
             $this->conn->beginTransaction();
 
-            $complaint = $this->conn->prepare('SELECT complaint_id, status FROM complaints WHERE complaint_id = ? FOR UPDATE');
+            $complaint = $this->conn->prepare('SELECT complaint_id, status, case_type FROM complaints WHERE complaint_id = ? FOR UPDATE');
             $complaint->execute([$complaintId]);
             $record = $complaint->fetch(PDO::FETCH_ASSOC);
             if (!$record) {
@@ -46,11 +46,15 @@ class MediationSchedule
             $adminStmt->execute();
             $administrator = $adminStmt->fetch(PDO::FETCH_ASSOC);
 
+            $caseType = (!empty($record['case_type']) && in_array($record['case_type'], ['Civil', 'Criminal'], true))
+                ? $record['case_type']
+                : 'Civil';
+
             $case = $this->conn->prepare(
                 "INSERT INTO cases (complaint_id, case_type, case_status, docket_date)
-                 VALUES (?, 'Civil', 'Docketed', CURDATE())"
+                 VALUES (?, ?, 'Docketed', CURDATE())"
             );
-            $case->execute([$complaintId]);
+            $case->execute([$complaintId, $caseType]);
             $caseId = (int) $this->conn->lastInsertId();
             $caseNumber = sprintf('KP-%s-%05d', date('Y'), $caseId);
             $number = $this->conn->prepare('UPDATE cases SET case_number = ? WHERE case_id = ?');

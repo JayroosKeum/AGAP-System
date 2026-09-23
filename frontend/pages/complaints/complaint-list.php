@@ -36,14 +36,12 @@ include '../../layouts/header.php';
                 <p>Record and monitor community concerns from filing to resolution.</p>
             </div>
 
-            <button
-                type="button"
+            <a
+                href="complaint-create.php"
                 class="btn-create"
-                onclick="openAddComplaintModal()">
-
-                Add Complaint
-
-            </button>
+                style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+                + Add Complaint
+            </a>
 
         </div>
 
@@ -119,166 +117,6 @@ include '../../layouts/header.php';
             </table>
 
         </div>
-
-    </div>
-
-</div>
-
-<!-- ADD MODAL -->
-
-<div id="addComplaintModal" class="modal">
-
-    <div class="modal-content">
-
-        <div class="modal-header">
-
-            <h2>Add Complaint</h2>
-
-            <button
-                class="close-btn"
-                onclick="closeAddComplaintModal()">
-
-                &times;
-
-            </button>
-
-        </div>
-
-        <form
-            action="../../../backend/api/complaints/create.php"
-            method="POST">
-
-            <div class="form-group">
-
-                <label>Complaint Category</label>
-
-                <select
-                    name="category_id"
-                    required>
-
-                    <option value="">
-                        Select Category
-                    </option>
-
-                    <option value="1">
-                        Non-Payment of Debt
-                    </option>
-
-                    <option value="2">
-                        Breach of Agreement
-                    </option>
-
-                    <option value="3">
-                        Physical Injuries
-                    </option>
-
-                    <option value="4">
-                        Defamation
-                    </option>
-
-                    <option value="5">
-                        Threats
-                    </option>
-
-                    <option value="6">
-                        Property and Rental Disputes
-                    </option>
-
-                    <option value="7">
-                        Disturbance and Public Disorder
-                    </option>
-
-                    <option value="8">
-                        Malicious Mischief
-                    </option>
-
-                    <option value="9">
-                        Trespassing
-                    </option>
-
-                    <option value="10">
-                        Family and Domestic Disputes
-                    </option>
-
-                </select>
-
-            </div>
-
-            <div class="form-group">
-
-                <label>Complaint Title</label>
-
-                <input
-                    type="text"
-                    name="complaint_title"
-                    maxlength="255"
-                    required>
-
-            </div>
-
-            <div class="form-group">
-
-                <label>Incident Date</label>
-
-                <input
-                    type="date"
-                    name="incident_date"
-                    required>
-
-            </div>
-
-            <div class="form-group">
-
-                <label>Narrative</label>
-
-                <textarea
-                    name="narrative"
-                    rows="5"
-                    maxlength="15000"
-                    required></textarea>
-
-            </div>
-
-            <div class="form-group">
-                <label>Incident Time</label>
-                <input type="time" name="incident_time">
-            </div>
-
-            <div class="form-group">
-                <label>Specific Incident Location <span class="required-mark" aria-hidden="true">*</span></label>
-                <input type="text" name="incident_location" maxlength="255" required placeholder="Street, building, purok, or nearby place">
-            </div>
-
-            <div class="form-group complaint-map-group">
-                <label>Exact Map Location <span class="optional-label">Optional</span></label>
-                <input type="hidden" name="map_location_state" value="none" data-map-state>
-                <input type="hidden" name="location_latitude" value="" data-map-latitude>
-                <input type="hidden" name="location_longitude" value="" data-map-longitude>
-                <p class="map-help">Click the map to pin the incident location. The pin is saved with this complaint.</p>
-                <div id="addComplaintMap" class="complaint-location-map" aria-label="Map for selecting the exact incident location"></div>
-                <div class="map-selection-row"><span class="map-selection-status" data-map-status>No map point selected.</span><button type="button" class="btn-secondary" data-clear-map>Clear pin</button></div>
-            </div>
-
-            <div class="form-group">
-                <label>Landmark</label>
-                <input type="text" name="incident_landmark" maxlength="255" placeholder="Optional nearby landmark">
-            </div>
-
-            <div class="form-group">
-                <label>Additional Details</label>
-                <textarea name="additional_details" rows="3" maxlength="5000" placeholder="People involved, location context, prior actions, or other relevant facts"></textarea>
-                <small>Optional; up to 5,000 characters.</small>
-            </div>
-
-            <button
-                type="submit"
-                class="btn-create">
-
-                Save Complaint
-
-            </button>
-
-        </form>
 
     </div>
 
