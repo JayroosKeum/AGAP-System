@@ -186,6 +186,18 @@ class Complaint
                 return ['success' => false, 'message' => 'Select a valid complaint to update.'];
             }
 
+            if (!empty($data['incident_datetime'])) {
+                $rawDt = trim((string) $data['incident_datetime']);
+                $dtObj = DateTimeImmutable::createFromFormat('Y-m-d\TH:i', $rawDt)
+                    ?: DateTimeImmutable::createFromFormat('Y-m-d\TH:i:s', $rawDt)
+                    ?: DateTimeImmutable::createFromFormat('Y-m-d H:i', $rawDt)
+                    ?: DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $rawDt);
+                if ($dtObj) {
+                    $data['incident_date'] = $dtObj->format('Y-m-d');
+                    $data['incident_time'] = $dtObj->format('H:i');
+                }
+            }
+
             $validation = $this->validateIncidentInput($data);
             if (!$validation['success']) {
                 return $validation;
@@ -201,12 +213,17 @@ class Complaint
                 return ['success' => false, 'message' => 'The complaint could not be found.'];
             }
 
+            $caseType = in_array(trim((string)($data['case_type'] ?? '')), ['Civil', 'Criminal'], true)
+                ? trim((string)$data['case_type'])
+                : 'Civil';
+
             $this->conn->beginTransaction();
             $stmt =
             $this->conn->prepare("
                 UPDATE complaints
                 SET
                     category_id=?,
+                    case_type=?,
                     complaint_title=?,
                     incident_date=?,
                     incident_time=?,
@@ -219,6 +236,7 @@ class Complaint
 
             $stmt->execute([
                 $data['category_id'],
+                $caseType,
                 trim((string) $data['complaint_title']),
                 $data['incident_date'],
                 trim((string) ($data['incident_time'] ?? '')) ?: null,
@@ -228,10 +246,29 @@ class Complaint
                 trim((string) ($data['additional_details'] ?? '')) ?: null,
                 $complaintId
             ]);
+
+            $updateCase = $this->conn->prepare("
+                UPDATE cases
+                SET case_type = ?
+                WHERE complaint_id = ? AND case_status IN ('Docketed', 'Mediation')
+            ");
+            $updateCase->execute([$caseType, $complaintId]);
+
             $this->applyMapLocation($complaintId, $data);
+
+            if (isset($data['complainant_name']) || isset($data['respondent_name'])) {
+                $delParties = $this->conn->prepare('DELETE FROM complaint_parties WHERE complaint_id = ?');
+                $delParties->execute([$complaintId]);
+                $this->applyParties($complaintId, $data);
+            }
+
             $this->conn->commit();
 
-            return ['success' => true, 'message' => 'Complaint updated successfully.'];
+            return [
+                'success' => true,
+                'message' => 'Complaint updated successfully.',
+                'complaint_id' => $complaintId
+            ];
 
         }
         catch(Exception $e)

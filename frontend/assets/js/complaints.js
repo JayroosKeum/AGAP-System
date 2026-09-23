@@ -360,11 +360,7 @@ function closeViewComplaintModal() {
 }
 
 function editComplaint(id) {
-    fetch('../../../backend/api/complaints/view.php?id=' + id)
-    .then(response => response.json())
-    .then(data => {
-        populateEditComplaintForm(data);
-    });
+    window.location.href = 'complaint-edit.php?id=' + id;
 }
 
 function populateEditComplaintForm(data = {}) {
