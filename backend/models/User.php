@@ -131,6 +131,32 @@ class User {
         return (bool) $stmt->fetchColumn();
     }
 
+    public function usernameInUse(string $username, ?int $exceptUserId = null): bool
+    {
+        $sql = 'SELECT 1 FROM users WHERE username = ?';
+        $values = [$username];
+        if ($exceptUserId !== null) {
+            $sql .= ' AND user_id <> ?';
+            $values[] = $exceptUserId;
+        }
+        $stmt = $this->db->prepare($sql . ' LIMIT 1');
+        $stmt->execute($values);
+        return (bool) $stmt->fetchColumn();
+    }
+
+    public function emailInUse(string $email, ?int $exceptUserId = null): bool
+    {
+        $sql = 'SELECT 1 FROM users WHERE email = ?';
+        $values = [$email];
+        if ($exceptUserId !== null) {
+            $sql .= ' AND user_id <> ?';
+            $values[] = $exceptUserId;
+        }
+        $stmt = $this->db->prepare($sql . ' LIMIT 1');
+        $stmt->execute($values);
+        return (bool) $stmt->fetchColumn();
+    }
+
     public function update(int $id, array $data): array
     {
         try {

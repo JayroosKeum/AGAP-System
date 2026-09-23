@@ -137,26 +137,37 @@ class ComplaintController
         if (!isset($file['error']) || (int) $file['error'] !== UPLOAD_ERR_OK) {
             return ['success' => false, 'message' => 'A valid file upload is required.'];
         }
-        if ((int) ($file['size'] ?? 0) < 1 || (int) $file['size'] > 25 * 1024 * 1024) {
+        $temporaryPath = (string) ($file['tmp_name'] ?? '');
+        $actualSize = $temporaryPath !== '' && is_uploaded_file($temporaryPath) ? filesize($temporaryPath) : false;
+        if ($actualSize === false || $actualSize < 1 || $actualSize > 25 * 1024 * 1024
+            || (int) ($file['size'] ?? -1) !== $actualSize) {
             return ['success' => false, 'message' => 'The file must not exceed 25 MB.'];
         }
 
         $finfo = new finfo(FILEINFO_MIME_TYPE);
-        $mime = $finfo->file($file['tmp_name']);
+        $mime = $finfo->file($temporaryPath);
         $allowed = [
-            'image/jpeg' => 'jpg',
-            'image/png' => 'png',
-            'application/pdf' => 'pdf',
-            'video/mp4' => 'mp4',
-            'video/webm' => 'webm'
+            'image/jpeg' => ['jpg', 'jpeg'],
+            'image/png' => ['png'],
+            'application/pdf' => ['pdf'],
+            'video/mp4' => ['mp4'],
+            'video/webm' => ['webm']
         ];
-        if (!isset($allowed[$mime])) {
+        $extension = strtolower(pathinfo((string) ($file['name'] ?? ''), PATHINFO_EXTENSION));
+        if (!isset($allowed[$mime]) || !in_array($extension, $allowed[$mime], true)) {
             return ['success' => false, 'message' => 'Only JPG, PNG, PDF, MP4, and WebM files are allowed.'];
+        }
+        if (str_starts_with($mime, 'image/') && @getimagesize($temporaryPath) === false) {
+            return ['success' => false, 'message' => 'The uploaded image is invalid or corrupted.'];
+        }
+        if ($mime === 'application/pdf' && file_get_contents($temporaryPath, false, null, 0, 5) !== '%PDF-') {
+            return ['success' => false, 'message' => 'The uploaded PDF is invalid or corrupted.'];
         }
 
         $originalName = trim(basename((string) ($file['name'] ?? 'attachment')));
-        $originalName = preg_replace('/[^A-Za-z0-9._ -]/', '_', $originalName) ?: 'attachment.' . $allowed[$mime];
-        $storedName = bin2hex(random_bytes(16)) . '.' . $allowed[$mime];
+        $originalName = preg_replace('/[^A-Za-z0-9._ -]/', '_', $originalName) ?: 'attachment.' . $extension;
+        $storedExtension = $mime === 'image/jpeg' ? 'jpg' : $extension;
+        $storedName = bin2hex(random_bytes(16)) . '.' . $storedExtension;
         $relativePath = 'storage/uploads/evidence/' . $storedName;
         $targetDirectory = dirname(__DIR__, 2) . '/storage/uploads/evidence';
         if (!is_dir($targetDirectory) && !mkdir($targetDirectory, 0750, true) && !is_dir($targetDirectory)) {

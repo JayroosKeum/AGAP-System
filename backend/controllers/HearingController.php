@@ -4,6 +4,7 @@ require_once __DIR__ . '/../models/Hearing.php';
 require_once __DIR__ . '/../services/AuditService.php';
 require_once __DIR__ . '/../services/DeadlineService.php';
 require_once __DIR__ . '/../services/NotificationService.php';
+require_once __DIR__ . '/../services/ValidationService.php';
 
 class HearingController
 {
@@ -134,8 +135,12 @@ class HearingController
             return ['success' => false, 'message' => 'Review the hearing details before final scheduling.'];
         }
 
-        $date = DateTimeImmutable::createFromFormat('Y-m-d\TH:i', $rawDate)
-            ?: DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $rawDate);
+        $date = null;
+        if (ValidationService::dateTime($rawDate, 'Y-m-d\TH:i')) {
+            $date = DateTimeImmutable::createFromFormat('Y-m-d\TH:i', $rawDate);
+        } elseif (ValidationService::dateTime($rawDate, 'Y-m-d H:i:s')) {
+            $date = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $rawDate);
+        }
 
         if (!$caseId || !in_array($type, $types, true) || !$date) {
             return ['success' => false, 'message' => 'Provide a valid case, hearing type, date, and time.'];

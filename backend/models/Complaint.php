@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../services/ValidationService.php';
 
 class Complaint
 {
@@ -117,12 +118,12 @@ class Complaint
 
             $stmt->execute([
                 $data['category_id'],
-                $data['complaint_title'],
+                trim((string) $data['complaint_title']),
                 $data['incident_date'],
                 trim((string) ($data['incident_time'] ?? '')) ?: null,
                 trim((string) ($data['incident_location'] ?? '')) ?: null,
                 trim((string) ($data['incident_landmark'] ?? '')) ?: null,
-                $data['narrative'],
+                trim((string) $data['narrative']),
                 trim((string) ($data['additional_details'] ?? '')) ?: null,
                 'Under Review',
                 $_SESSION['user_id']
@@ -196,12 +197,12 @@ class Complaint
 
             $stmt->execute([
                 $data['category_id'],
-                $data['complaint_title'],
+                trim((string) $data['complaint_title']),
                 $data['incident_date'],
                 trim((string) ($data['incident_time'] ?? '')) ?: null,
                 trim((string) ($data['incident_location'] ?? '')) ?: null,
                 trim((string) ($data['incident_landmark'] ?? '')) ?: null,
-                $data['narrative'],
+                trim((string) $data['narrative']),
                 trim((string) ($data['additional_details'] ?? '')) ?: null,
                 $complaintId
             ]);
@@ -277,16 +278,23 @@ class Complaint
         if (!$category->fetchColumn()) return ['success' => false, 'message' => 'Select a valid complaint category.'];
         if ($title === '') return ['success' => false, 'message' => 'Complaint title is required.'];
         if (mb_strlen($title) > 255) return ['success' => false, 'message' => 'Complaint title must be 255 characters or fewer.'];
+        if (!ValidationService::text($title)) return ['success' => false, 'message' => 'Please remove unsupported characters from the complaint title.'];
         if ($date === '') return ['success' => false, 'message' => 'Incident date is required.'];
         $parsedDate = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
         if (!$parsedDate || $parsedDate->format('Y-m-d') !== $date) return ['success' => false, 'message' => 'Incident date is invalid.'];
         if ($time !== '' && !preg_match('/^([01]\\d|2[0-3]):[0-5]\\d$/', $time)) return ['success' => false, 'message' => 'Incident time is invalid.'];
-        if (trim((string) ($data['incident_location'] ?? '')) === '') return ['success' => false, 'message' => 'Specific incident location is required.'];
+        $location = trim((string) ($data['incident_location'] ?? ''));
+        if ($location === '') return ['success' => false, 'message' => 'Specific incident location is required.'];
+        if (!ValidationService::address($location)) return ['success' => false, 'message' => 'Please remove unsupported control characters from the incident location.'];
         if ($narrative === '') return ['success' => false, 'message' => 'Incident narrative is required.'];
         if (mb_strlen($narrative) > 15000) return ['success' => false, 'message' => 'Narrative is too long. Use 15,000 characters or fewer.'];
+        if (!ValidationService::text($narrative, true)) return ['success' => false, 'message' => 'Please remove unsupported control characters from the incident narrative.'];
         foreach (['incident_location' => 255, 'incident_landmark' => 255, 'additional_details' => 5000] as $field => $maxLength) {
             if (mb_strlen(trim((string) ($data[$field] ?? ''))) > $maxLength) {
                 return ['success' => false, 'message' => ucwords(str_replace('_', ' ', $field)) . " must be {$maxLength} characters or fewer."];
+            }
+            if (!ValidationService::text(trim((string) ($data[$field] ?? '')), $field === 'additional_details')) {
+                return ['success' => false, 'message' => 'Please remove unsupported control characters from ' . str_replace('_', ' ', $field) . '.'];
             }
         }
         return ['success' => true];

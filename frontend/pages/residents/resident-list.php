@@ -99,6 +99,7 @@ include '../../layouts/header.php';
                     <input
                         type="text"
                         name="first_name"
+                        maxlength="100"
                         required>
                 </div>
 
@@ -106,7 +107,8 @@ include '../../layouts/header.php';
                     <label>Middle Name</label>
                     <input
                         type="text"
-                        name="middle_name">
+                        name="middle_name"
+                        maxlength="100">
                 </div>
 
                 <div class="form-group">
@@ -114,6 +116,7 @@ include '../../layouts/header.php';
                     <input
                         type="text"
                         name="last_name"
+                        maxlength="100"
                         required>
                 </div>
 
@@ -149,7 +152,9 @@ include '../../layouts/header.php';
 
                     <input
                         type="text"
-                        name="contact_no">
+                        name="contact_no"
+                        maxlength="20"
+                        inputmode="tel">
                 </div>
 
                 <div class="form-group">
@@ -157,7 +162,8 @@ include '../../layouts/header.php';
 
                     <input
                         type="email"
-                        name="email">
+                        name="email"
+                        maxlength="150">
                 </div>
 
                 <div class="form-group">
@@ -165,7 +171,8 @@ include '../../layouts/header.php';
 
                     <input
                         type="text"
-                        name="purok">
+                        name="purok"
+                        maxlength="100">
                 </div>
 
                 <div class="form-group">
@@ -268,6 +275,7 @@ include '../../layouts/header.php';
                         type="text"
                         name="first_name"
                         id="editFirstName"
+                        maxlength="100"
                         required>
                 </div>
 
@@ -276,7 +284,8 @@ include '../../layouts/header.php';
                     <input
                         type="text"
                         name="middle_name"
-                        id="editMiddleName">
+                        id="editMiddleName"
+                        maxlength="100">
                 </div>
 
                 <div class="form-group">
@@ -285,6 +294,7 @@ include '../../layouts/header.php';
                         type="text"
                         name="last_name"
                         id="editLastName"
+                        maxlength="100"
                         required>
                 </div>
 
@@ -330,7 +340,9 @@ include '../../layouts/header.php';
                     <input
                         type="text"
                         name="contact_no"
-                        id="editContactNo">
+                        id="editContactNo"
+                        maxlength="20"
+                        inputmode="tel">
                 </div>
 
                 <div class="form-group">
@@ -339,7 +351,8 @@ include '../../layouts/header.php';
                     <input
                         type="email"
                         name="email"
-                        id="editEmail">
+                        id="editEmail"
+                        maxlength="150">
                 </div>
 
                 <div class="form-group">
@@ -348,7 +361,8 @@ include '../../layouts/header.php';
                     <input
                         type="text"
                         name="purok"
-                        id="editPurok">
+                        id="editPurok"
+                        maxlength="100">
                 </div>
 
                 <div class="form-group">

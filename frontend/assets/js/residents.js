@@ -5,6 +5,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!table) return;
 
+    document.querySelectorAll('#addResidentModal form, #editResidentModal form').forEach((form) => {
+        const today = new Date();
+        today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+        const birthDate = form.querySelector('[name="birth_date"]');
+        if (birthDate) birthDate.max = today.toISOString().slice(0, 10);
+        form.addEventListener('submit', (event) => {
+            form.querySelectorAll('input:not([type="hidden"]):not([type="date"]), textarea').forEach((field) => {
+                field.value = field.value.trim();
+                field.setCustomValidity('');
+                if (['first_name', 'middle_name', 'last_name'].includes(field.name)
+                    && field.value !== ''
+                    && !/^[\p{L}\p{M}]+(?:[ '-][\p{L}\p{M}]+)*$/u.test(field.value)) {
+                    field.setCustomValidity('Please enter a name using letters, spaces, hyphens, or apostrophes.');
+                }
+                if (field.name === 'contact_no' && field.value !== '' && !validPhilippinePhone(field.value)) {
+                    field.setCustomValidity('Please enter a valid Philippine mobile or telephone number.');
+                }
+                if (['address', 'purok'].includes(field.name) && /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/.test(field.value)) {
+                    field.setCustomValidity('Please remove unsupported control characters.');
+                }
+            });
+            if (!form.reportValidity()) event.preventDefault();
+        });
+    });
+
     fetch('../../../backend/api/residents/list.php')
         .then(response => response.json())
         .then(data => {
@@ -18,9 +43,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         <td>${resident.resident_id}</td>
 
-                        <td>${resident.first_name}</td>
+                        <td>${escapeResidentHtml(resident.first_name)}</td>
 
-                        <td>${resident.last_name}</td>
+                        <td>${escapeResidentHtml(resident.last_name)}</td>
 
                         <td class="action-buttons">
 
@@ -60,6 +85,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
 });
 
+function validPhilippinePhone(value) {
+    if (!/^\+?[0-9 .()\-]+$/.test(value)) return false;
+    let digits = value.replace(/\D/g, '');
+    if (value.startsWith('+') || digits.startsWith('63')) {
+        if (!digits.startsWith('63')) return false;
+        digits = digits.slice(2);
+    } else if (digits.startsWith('0')) {
+        digits = digits.slice(1);
+    }
+    return /^9\d{9}$/.test(digits) || /^(?:2\d{8}|[3-8]\d{8,9})$/.test(digits);
+}
+
 function openAddModal()
 {
     document
@@ -87,33 +124,39 @@ function viewResident(id)
         ).innerHTML = `
 
             <h3>
-                ${data.first_name}
-                ${data.middle_name ?? ''}
-                ${data.last_name}
+                ${escapeResidentHtml(data.first_name)}
+                ${escapeResidentHtml(data.middle_name ?? '')}
+                ${escapeResidentHtml(data.last_name)}
             </h3>
 
             <hr><br>
 
-            <p><strong>Birth Date:</strong> ${data.birth_date ?? ''}</p>
+            <p><strong>Birth Date:</strong> ${escapeResidentHtml(data.birth_date ?? '')}</p>
 
-            <p><strong>Gender:</strong> ${data.gender ?? ''}</p>
+            <p><strong>Gender:</strong> ${escapeResidentHtml(data.gender ?? '')}</p>
 
-            <p><strong>Civil Status:</strong> ${data.civil_status ?? ''}</p>
+            <p><strong>Civil Status:</strong> ${escapeResidentHtml(data.civil_status ?? '')}</p>
 
-            <p><strong>Contact:</strong> ${data.contact_no ?? ''}</p>
+            <p><strong>Contact:</strong> ${escapeResidentHtml(data.contact_no ?? '')}</p>
 
-            <p><strong>Email:</strong> ${data.email ?? ''}</p>
+            <p><strong>Email:</strong> ${escapeResidentHtml(data.email ?? '')}</p>
 
-            <p><strong>Address:</strong> ${data.address ?? ''}</p>
+            <p><strong>Address:</strong> ${escapeResidentHtml(data.address ?? '')}</p>
 
-            <p><strong>Purok:</strong> ${data.purok ?? ''}</p>
+            <p><strong>Purok:</strong> ${escapeResidentHtml(data.purok ?? '')}</p>
 
         `;
 
         document
             .getElementById('viewResidentModal')
             .style.display = 'flex';
-    });
+});
+
+function escapeResidentHtml(value) {
+    const node = document.createElement('span');
+    node.textContent = value ?? '';
+    return node.innerHTML;
+}
 }
 
 function closeViewModal()
