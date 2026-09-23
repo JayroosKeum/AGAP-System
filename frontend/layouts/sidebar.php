@@ -33,13 +33,12 @@ $dashboardLink = [1 => '../dashboard/admin-dashboard.php', 2 => '../dashboard/cl
                     <a href="../cases/case-list.php"<?php echo $isActive(['case-list.php', 'create-case.php', 'case-details.php', 'case-assignment.php']); ?>><span class="nav-icon" aria-hidden="true">⚖</span><span class="nav-link-label">Cases and assignments</span></a>
                 </div>
             </details>
-            <details class="nav-group"<?php echo $isGroupActive(['schedules.php', 'calendar.php', 'document-center.php', 'summons.php', 'settlements.php', 'cfa.php', 'kp-form-9.php', 'proof-service.php', 'records.php', 'report-list.php']) ? ' open' : ''; ?> data-nav-group="operations">
+            <details class="nav-group"<?php echo $isGroupActive(['schedules.php', 'calendar.php', 'document-center.php', 'summons.php', 'settlements.php', 'cfa.php', 'kp-form-9.php', 'proof-service.php', 'report-list.php']) ? ' open' : ''; ?> data-nav-group="operations">
                 <summary><span class="nav-group-icon" aria-hidden="true">◈</span>Operations</summary>
                 <div class="nav-group-links">
                     <a href="../hearings/schedules.php"<?php echo $isActive(['schedules.php', 'calendar.php']); ?>><span class="nav-icon" aria-hidden="true">□</span><span class="nav-link-label">Hearings and deadlines</span></a>
                     <a href="../documents/document-center.php"<?php echo $isActive(['document-center.php', 'summons.php', 'settlements.php', 'cfa.php', 'kp-form-9.php']); ?>><span class="nav-icon" aria-hidden="true">▱</span><span class="nav-link-label">KP documents</span></a>
                     <a href="../gps/proof-service.php"<?php echo $isActive(['proof-service.php']); ?>><span class="nav-icon" aria-hidden="true">✓</span><span class="nav-link-label">Proof of service</span></a>
-                    <a href="../search/records.php"<?php echo $isActive(['records.php']); ?>><span class="nav-icon" aria-hidden="true">⌕</span><span class="nav-link-label">Records search</span></a>
                     <a href="../reports/report-list.php"<?php echo $isActive(['report-list.php']); ?>><span class="nav-icon" aria-hidden="true">▥</span><span class="nav-link-label">Reports and export</span></a>
                 </div>
             </details>

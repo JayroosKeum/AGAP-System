@@ -11,12 +11,6 @@ const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, character 
 
 document.addEventListener('DOMContentLoaded', () => {
 
-    // Handle complaint list
-    const table = document.getElementById('complaintTable');
-    if (table) {
-        loadComplaintList();
-    }
-
     // Handle complaint details page
     if (document.getElementById('complaintNumber')) {
         loadComplaintDetails();
@@ -56,31 +50,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 });
-
-function loadComplaintList() {
-    fetch('../../../backend/api/complaints/list.php')
-    .then(response => response.json())
-    .then(data => {
-        const table = document.getElementById('complaintTable');
-        let rows = '';
-        data.forEach(complaint => {
-            rows += `
-                <tr>
-                    <td>${Number(complaint.complaint_id)}</td>
-                    <td>${escapeHtml(complaint.complaint_number)}</td>
-                    <td>${escapeHtml(complaint.complaint_title)}</td>
-                    <td><span class="status status-${String(complaint.status).toLowerCase()}">${escapeHtml(complaint.status)}</span></td>
-                    <td class="action-buttons">
-                        <button type="button" onclick="window.location.href='complaint-details.php?id=${complaint.complaint_id}'">View</button>
-                        <button type="button" onclick="editComplaint(${complaint.complaint_id})">Edit</button>
-                        <button type="button" class="delete-button" onclick="deleteComplaint(${complaint.complaint_id})">Delete</button>
-                    </td>
-                </tr>
-            `;
-        });
-        table.innerHTML = rows;
-    });
-}
 
 function loadComplaintDetails() {
     // Get complaint ID from URL

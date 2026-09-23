@@ -18,6 +18,7 @@ include '../../layouts/header.php';
 
 <link rel="stylesheet" href="../../assets/css/dashboard.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/dashboard.css'); ?>">
 <link rel="stylesheet" href="../../assets/css/complaints.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/complaints.css'); ?>">
+<link rel="stylesheet" href="../../assets/css/search.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/search.css'); ?>">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 
 <div class="dashboard-layout">
@@ -46,6 +47,56 @@ include '../../layouts/header.php';
 
         </div>
 
+        <section class="search-card">
+            <form id="recordsSearchForm" class="search-form">
+                <div class="search-field wide">
+                    <label for="searchQuery">Keyword</label>
+                    <input id="searchQuery" name="q" type="search" placeholder="Case no., complaint no., title, narrative, or resident name">
+                </div>
+                <div class="search-field">
+                    <label for="searchStatus">Status</label>
+                    <select id="searchStatus" name="status">
+                        <option value="">All statuses</option>
+                        <option>Filed</option>
+                        <option>Under Review</option>
+                        <option>Needs Information</option>
+                        <option>Accepted</option>
+                        <option>Rejected</option>
+                        <option>Docketed</option>
+                        <option>Mediation</option>
+                        <option>Conciliation</option>
+                        <option>Arbitration</option>
+                        <option>Settled</option>
+                        <option>Dismissed</option>
+                        <option>CFA Issued</option>
+                        <option>Archived</option>
+                    </select>
+                </div>
+                <div class="search-field">
+                    <label for="searchType">Case type</label>
+                    <select id="searchType" name="case_type">
+                        <option value="">All types</option>
+                        <option>Civil</option>
+                        <option>Criminal</option>
+                    </select>
+                </div>
+                <div class="search-field">
+                    <label for="searchFrom">Incident date from</label>
+                    <input id="searchFrom" name="date_from" type="date">
+                </div>
+                <div class="search-field">
+                    <label for="searchTo">Incident date to</label>
+                    <input id="searchTo" name="date_to" type="date">
+                </div>
+                <div class="search-actions">
+                    <button class="btn-create" type="submit">Search Records</button>
+                    <button class="btn-secondary" id="clearSearch" type="button">Clear</button>
+                </div>
+            </form>
+        </section>
+
+        <p id="resultSummary" class="result-summary" aria-live="polite"></p>
+
         <div class="table-container">
 
             <table>
@@ -54,17 +105,16 @@ include '../../layouts/header.php';
 
                     <tr>
                         <th>ID</th>
-                        <th>Complaint No.</th>
-                        <th>Title</th>
+                        <th>Case</th>
+                        <th>Complaint</th>
+                        <th>Parties</th>
                         <th>Status</th>
-                        <th>Actions</th>
+                        <th>Incident Date</th>
                     </tr>
 
                 </thead>
 
-                <tbody id="complaintTable">
-
-                </tbody>
+                <tbody id="complaintTable"><tr><td colspan="6">Loading complaint records...</td></tr></tbody>
 
             </table>
 
@@ -437,5 +487,6 @@ window.agapComplaintFlash = <?php echo json_encode(
 </script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="../../assets/js/complaints.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/complaints.js'); ?>"></script>
+<script src="../../assets/js/search.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/search.js'); ?>"></script>
 
 <?php include '../../layouts/footer.php'; ?>
