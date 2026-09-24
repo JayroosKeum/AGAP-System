@@ -209,14 +209,6 @@
                 const complainants = item.complainant_names || 'No complainant recorded';
                 const respondents = item.respondent_names || 'No respondent recorded';
 
-                const complainants =
-                    item.complainant_names ||
-                    'No complainant recorded';
-
-                const respondents =
-                    item.respondent_names ||
-                    'No respondent recorded';
-
                 const label = [
                     caseNumber,
                     complaintTitle,
