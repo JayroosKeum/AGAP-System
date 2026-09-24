@@ -49,7 +49,8 @@ $docketMessages = [
                         <label for="caseId">Case <span class="required-mark" aria-hidden="true">*</span></label>
                         <select id="caseId" name="case_id" required><option value="">Select a case</option></select>
                     </div>
-                    <p class="form-hint">All three roles are required and must be assigned to different active Lupon Members.</p>
+                    <p id="assignmentHelp" class="form-hint">All three roles are required and must be assigned to different active Lupon Members.</p>
+                    <p id="assignmentRuleMessage" class="form-hint" role="status" hidden></p>
                     <div class="form-group">
                         <label for="headId">Head <span class="required-mark" aria-hidden="true">*</span></label>
                         <select id="headId" name="head_id" required>
@@ -57,7 +58,7 @@ $docketMessages = [
                         </select>
                         <div id="automaticHeadDisplay" class="automatic-head-display" hidden>
                             <strong id="automaticHeadName">Administrator</strong>
-                            <small>Barangay Captain and Lupon Head. Automatically assigned for Mediation and cannot be changed.</small>
+                            <small>Barangay Captain and Lupon Head. Automatically assigned at the Docketed/Mediation stage and cannot be changed.</small>
                         </div>
                     </div>
                     <div class="form-group"><label for="secretaryId">Secretary <span class="required-mark" aria-hidden="true">*</span></label><select id="secretaryId" name="secretary_id" required></select></div>
@@ -154,7 +155,7 @@ $docketMessages = [
             <h2>Update Case</h2>
             <button type="button" class="close-btn" onclick="closeEditCaseModal()">&times;</button>
         </div>
-        <form action="../../../backend/api/cases/update.php" method="POST">
+        <form id="editCaseForm" action="../../../backend/api/cases/update.php" method="POST">
             <input type="hidden" name="case_id" id="editCaseId">
             <div class="form-group">
                 <label for="editCaseType">Case Type</label>
@@ -173,6 +174,28 @@ $docketMessages = [
                     <option value="Settled">Settled</option>
                     <option value="Dismissed">Dismissed</option>
                 </select>
+            </div>
+            <div id="editTeamSection" hidden>
+                <h3>Lupon Team</h3>
+                <p id="editTeamGuidance" class="form-hint"></p>
+                <div id="editAutomaticHead" class="automatic-head-display" hidden>
+                    <strong>Barangay Captain / Administrator</strong>
+                    <small>Automatically assigned at the Docketed/Mediation stage. Secretary and Member are not manually assignable during this stage.</small>
+                </div>
+                <div id="editTeamFields">
+                    <div class="form-group">
+                        <label for="editHeadId">Head <span class="required-mark" aria-hidden="true">*</span></label>
+                        <select id="editHeadId" name="head_id"><option value="">Select a Lupon Member</option></select>
+                    </div>
+                    <div class="form-group">
+                        <label for="editSecretaryId">Secretary <span class="required-mark" aria-hidden="true">*</span></label>
+                        <select id="editSecretaryId" name="secretary_id"><option value="">Select a Lupon Member</option></select>
+                    </div>
+                    <div class="form-group">
+                        <label for="editMemberId">Member <span class="required-mark" aria-hidden="true">*</span></label>
+                        <select id="editMemberId" name="member_id"><option value="">Select a Lupon Member</option></select>
+                    </div>
+                </div>
             </div>
             <button type="submit" class="btn-create">Save Changes</button>
         </form>

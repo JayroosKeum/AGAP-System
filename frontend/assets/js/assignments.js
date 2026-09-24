@@ -8,6 +8,8 @@
     const memberSelect = document.getElementById('teamMemberId');
     const automaticHeadDisplay = document.getElementById('automaticHeadDisplay');
     const automaticHeadName = document.getElementById('automaticHeadName');
+    const assignmentHelp = document.getElementById('assignmentHelp');
+    const assignmentRuleMessage = document.getElementById('assignmentRuleMessage');
 
     if (
         !assignmentTable ||
@@ -26,6 +28,7 @@
     let casesById = new Map();
     let luponMembers = [];
     let automaticHead = null;
+    let currentAssignments = [];
 
     const api = (url, options = {}) =>
         fetch(url, options).then(async (response) => {
@@ -80,6 +83,52 @@
         const currentCase = selectedCase();
         if (!currentCase) return false;
         return currentCase.case_status === 'Mediation' || currentCase.case_status === 'Docketed';
+    }
+
+    function isCurrentMediationCase() {
+        return ['Docketed', 'Mediation'].includes(selectedCase()?.case_status);
+    }
+
+    function configureAssignmentMode(rows = currentAssignments) {
+        const status = selectedCase()?.case_status;
+        const mediation = ['Docketed', 'Mediation'].includes(status);
+        const hasConciliationTeam = status === 'Conciliation' && rows.some(
+            (item) => ['Head', 'Secretary', 'Member'].includes(item.assignment_role)
+        );
+        const locked = mediation || hasConciliationTeam;
+
+        headSelect.disabled = mediation || hasConciliationTeam;
+        headSelect.required = !mediation && !hasConciliationTeam;
+        secretarySelect.disabled = locked;
+        memberSelect.disabled = locked;
+        if (mediation) {
+            secretarySelect.replaceChildren(new Option('Not available during Mediation', ''));
+            memberSelect.replaceChildren(new Option('Not available during Mediation', ''));
+        } else {
+            populateMemberSelect(secretarySelect, 'Select a Lupon Member');
+            populateMemberSelect(memberSelect, 'Select a Lupon Member');
+            const byRole = Object.fromEntries(rows.map((item) => [item.assignment_role, String(item.member_id)]));
+            secretarySelect.value = byRole.Secretary || '';
+            memberSelect.value = byRole.Member || '';
+        }
+
+        const saveButton = form.querySelector('button[type="submit"]');
+        if (saveButton) saveButton.disabled = locked;
+        if (assignmentHelp) {
+            assignmentHelp.textContent = mediation
+                ? 'Secretary and Member are not manually assigned during Mediation.'
+                : hasConciliationTeam
+                    ? 'This assigned Conciliation team is read-only here; use Edit to make changes.'
+                    : 'All three roles are required and must be assigned to different active Lupon Members.';
+        }
+        if (assignmentRuleMessage) {
+            assignmentRuleMessage.hidden = !locked;
+            assignmentRuleMessage.textContent = mediation
+                ? 'Lupon assignment is automatic for Docketed and Mediation cases. The Barangay Captain is automatically assigned as Head.'
+                : hasConciliationTeam
+                    ? 'This Conciliation case already has an assigned Lupon team. Use Edit to modify the assigned members.'
+                    : '';
+        }
     }
 
     function showAutomaticHead() {
@@ -216,6 +265,8 @@
         secretarySelect.value = '';
         memberSelect.value = '';
         automaticHead = null;
+        currentAssignments = [];
+        configureAssignmentMode([]);
 
         if (!caseSelect.value) {
             hideAutomaticHead();
@@ -242,7 +293,10 @@
             );
 
             const rows = Array.isArray(assignments) ? assignments : [];
-            renderAssignmentTable(rows);
+            currentAssignments = rows;
+            renderAssignmentTable(isCurrentMediationCase()
+                ? rows.filter((item) => item.assignment_role === 'Head')
+                : rows);
 
             const byRole = Object.fromEntries(
                 rows.map((item) => [item.assignment_role, String(item.member_id)])
@@ -272,6 +326,7 @@
             memberSelect.value = byRole.Member || '';
 
             configureHeadField();
+            configureAssignmentMode(rows);
 
             if (isMediationCase() && !automaticHead) {
                 showMessage(
@@ -280,7 +335,9 @@
             }
         } catch (error) {
             automaticHead = null;
+            currentAssignments = [];
             configureHeadField();
+            configureAssignmentMode([]);
 
             assignmentTable.innerHTML = `
                 <tr>
@@ -312,11 +369,37 @@
         loadAssignments();
     };
 
+    window.refreshCaseAssignments = async (caseId) => {
+        const previousSelection = caseSelect.value;
+        try {
+            await loadCases();
+            const nextId = String(caseId || previousSelection);
+            if (Array.from(caseSelect.options).some((option) => option.value === nextId)) {
+                caseSelect.value = nextId;
+            }
+            await loadAssignments();
+        } catch (error) {
+            showMessage(error.message);
+        }
+    };
+
     caseSelect.addEventListener('change', loadAssignments);
 
     form.addEventListener('submit', async (event) => {
         event.preventDefault();
         showMessage('');
+
+        if (isCurrentMediationCase()) {
+            showMessage('Lupon assignment is automatic for Docketed and Mediation cases. The Barangay Captain is automatically assigned as Head.');
+            return;
+        }
+
+        if (selectedCase()?.case_status === 'Conciliation' && currentAssignments.some(
+            (item) => ['Head', 'Secretary', 'Member'].includes(item.assignment_role)
+        )) {
+            showMessage('This Conciliation case already has an assigned Lupon team. Use Edit to modify the assigned members.');
+            return;
+        }
 
         if (!caseSelect.value) {
             showMessage('Select a case before saving.');

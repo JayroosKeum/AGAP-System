@@ -51,6 +51,13 @@ class Assignment
             ];
         }
 
+        if (in_array($case['case_status'], ['Docketed', 'Mediation'], true)) {
+            return [
+                'success' => false,
+                'message' => 'Lupon assignment is automatic for Docketed and Mediation cases. The Barangay Captain is automatically assigned as Head.'
+            ];
+        }
+
         $isMediation = in_array($case['case_status'], ['Docketed', 'Mediation'], true);
         $isAutomaticMediationHead = $isMediation && $role === 'Head';
 
@@ -128,13 +135,9 @@ class Assignment
     /**
      * Replaces the complete Head, Secretary, and Member team.
      *
-     * For Mediation cases (Docketed or Mediation):
-     * - Head is the existing active Administrator.
-     * - Submitted head_id is ignored.
-     * - Secretary and Member must be active Lupon Members.
-     *
-     * For non-Mediation cases:
-     * - Head, Secretary, and Member must be active Lupon Members.
+     * Docketed and Mediation use the automatic Administrator Head and reject
+     * manual team saves. Conciliation accepts one initial team only; later
+     * changes are made through the case edit operation.
      */
     public function replaceCaseTeam(int $caseId, array $members): array
     {
@@ -151,6 +154,13 @@ class Assignment
             return [
                 'success' => false,
                 'message' => 'The team of an archived case cannot be changed.'
+            ];
+        }
+
+        if (in_array($case['case_status'], ['Docketed', 'Mediation'], true)) {
+            return [
+                'success' => false,
+                'message' => 'Lupon assignment is automatic for Docketed and Mediation cases. The Barangay Captain is automatically assigned as Head.'
             ];
         }
 
@@ -225,6 +235,30 @@ class Assignment
 
         try {
             $this->conn->beginTransaction();
+
+            $lockedCase = $this->conn->prepare('SELECT case_status FROM cases WHERE case_id = ? FOR UPDATE');
+            $lockedCase->execute([$caseId]);
+            $lockedStatus = $lockedCase->fetchColumn();
+            if (!$lockedStatus || $lockedStatus !== $case['case_status']) {
+                $this->conn->rollBack();
+                return ['success' => false, 'message' => 'The case status changed. Reload the case and try again.'];
+            }
+
+            if ($case['case_status'] === 'Conciliation') {
+                $existingTeam = $this->conn->prepare(
+                    "SELECT assignment_id FROM case_assignments
+                     WHERE case_id = ? AND assignment_role IN ('Head', 'Secretary', 'Member')
+                     LIMIT 1 FOR UPDATE"
+                );
+                $existingTeam->execute([$caseId]);
+                if ($existingTeam->fetchColumn()) {
+                    $this->conn->rollBack();
+                    return [
+                        'success' => false,
+                        'message' => 'This Conciliation case already has an assigned Lupon team. Use Edit to modify the assigned members.'
+                    ];
+                }
+            }
 
             $delete = $this->conn->prepare(
                 "DELETE FROM case_assignments

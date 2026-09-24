@@ -32,7 +32,76 @@ document.addEventListener('DOMContentLoaded', () => {
             event.preventDefault();
         }
     });
+
+    document.getElementById('editCaseStatus')?.addEventListener('change', configureEditTeamFields);
+    document.getElementById('editCaseForm')?.addEventListener('submit', saveCaseEdit);
 });
+
+function configureEditTeamFields() {
+    const section = document.getElementById('editTeamSection');
+    const fields = document.getElementById('editTeamFields');
+    const guidance = document.getElementById('editTeamGuidance');
+    const automaticHead = document.getElementById('editAutomaticHead');
+    const status = document.getElementById('editCaseStatus')?.value;
+    const selects = ['editHeadId', 'editSecretaryId', 'editMemberId']
+        .map((id) => document.getElementById(id)).filter(Boolean);
+    if (!section || !fields || !guidance || !automaticHead) return;
+
+    const automaticHeadStage = ['Docketed', 'Mediation'].includes(status);
+    section.hidden = !automaticHeadStage && status !== 'Conciliation';
+    if (automaticHeadStage) {
+        fields.hidden = true;
+        automaticHead.hidden = false;
+        guidance.textContent = 'Lupon assignment is automatic for Docketed and Mediation cases. The Barangay Captain is automatically assigned as Head.';
+        selects.forEach((select) => { select.disabled = true; select.required = false; });
+    } else if (status === 'Conciliation') {
+        fields.hidden = false;
+        automaticHead.hidden = true;
+        guidance.textContent = 'Assign three different active Lupon Members. Use this Edit form to modify an existing Conciliation team.';
+        selects.forEach((select) => { select.disabled = false; select.required = true; });
+    } else {
+        fields.hidden = true;
+        automaticHead.hidden = true;
+        guidance.textContent = '';
+        selects.forEach((select) => { select.disabled = true; select.required = false; });
+    }
+}
+
+async function saveCaseEdit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const status = document.getElementById('editCaseStatus')?.value;
+    const fields = ['editHeadId', 'editSecretaryId', 'editMemberId'];
+    if (status === 'Conciliation') {
+        const selected = fields.map((id) => document.getElementById(id)?.value || '');
+        if (selected.some((value) => !value)) {
+            window.agapNotify?.('Select a Head, Secretary, and Member for Conciliation.', 'error', 'Check the Lupon team');
+            return;
+        }
+        if (new Set(selected).size !== 3) {
+            window.agapNotify?.('Head, Secretary, and Member must be assigned to different active Lupon Members.', 'error', 'Check the Lupon team');
+            return;
+        }
+    }
+
+    const submit = form.querySelector('button[type="submit"]');
+    if (submit) submit.disabled = true;
+    try {
+        const response = await fetch(form.action, { method: 'POST', body: new FormData(form) });
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !result?.success) throw new Error(result?.message || 'Unable to update the case.');
+        window.agapNotify?.(result.message || 'Case updated successfully.', 'success', 'Case updated');
+        const caseId = document.getElementById('editCaseId')?.value;
+        closeEditCaseModal();
+        const table = document.getElementById('caseTable');
+        if (table) loadCaseList(table);
+        if (caseId) window.refreshCaseAssignments?.(caseId);
+    } catch (error) {
+        window.agapNotify?.(error.message, 'error', 'Unable to update case');
+    } finally {
+        if (submit) submit.disabled = false;
+    }
+}
 
 function loadComplaintsForDocketing() {
     fetch('../../../backend/api/complaints/list.php')
@@ -588,9 +657,21 @@ function viewCase(id) {
         });
 }
 
-function editCase(id) {
-    getCase(id)
-        .then((item) => {
+async function editCase(id) {
+    try {
+            const [item, assignments, members] = await Promise.all([
+                getCase(id),
+                fetch('../../../backend/api/assignments/list.php?case_id=' + encodeURIComponent(id)).then(async (response) => {
+                    const data = await response.json();
+                    if (!response.ok) throw new Error(data.message || 'Unable to load the current team.');
+                    return data;
+                }),
+                fetch('../../../backend/api/assignments/lupon-members.php').then(async (response) => {
+                    const data = await response.json();
+                    if (!response.ok) throw new Error(data.message || 'Unable to load Lupon Members.');
+                    return data;
+                })
+            ]);
             const idField =
                 document.getElementById('editCaseId');
 
@@ -616,15 +697,25 @@ function editCase(id) {
             typeField.value = item.case_type;
             statusField.value = item.case_status;
 
+            const memberByRole = Object.fromEntries((Array.isArray(assignments) ? assignments : [])
+                .filter((assignment) => assignment.role_name === 'Lupon Member')
+                .map((assignment) => [assignment.assignment_role, String(assignment.member_id)]));
+            ['Head', 'Secretary', 'Member'].forEach((role) => {
+                const select = document.getElementById(`edit${role}Id`);
+                if (!select) return;
+                select.replaceChildren(new Option('Select a Lupon Member', ''));
+                (Array.isArray(members) ? members : []).forEach((member) => {
+                    const label = [member.last_name, member.first_name, member.middle_name].filter(Boolean).join(', ');
+                    select.add(new Option(label || 'Unnamed Lupon Member', member.member_id));
+                });
+                select.value = memberByRole[role] || '';
+            });
+            configureEditTeamFields();
+
             showModal('editCaseModal');
-        })
-        .catch((error) => {
-            window.agapNotify?.(
-                error.message,
-                'error',
-                'Unable to edit case'
-            );
-        });
+    } catch (error) {
+        window.agapNotify?.(error.message, 'error', 'Unable to edit case');
+    }
 }
 
 function archiveCase(id) {

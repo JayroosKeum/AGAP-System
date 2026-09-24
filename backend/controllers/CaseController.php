@@ -63,10 +63,12 @@ class CaseController
     {
         $result = $this->case->update($id, $data);
 
-        if ($result) {
+        if (is_array($result) && !empty($result['success'])) {
             $this->audit->log(
                 $_SESSION['user_id'],
-                'Updated Case',
+                isset($data['head_id'], $data['secretary_id'], $data['member_id'])
+                    ? 'Updated Case and Lupon Team'
+                    : 'Updated Case',
                 'Cases',
                 $id
             );
