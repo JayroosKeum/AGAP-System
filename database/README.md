@@ -27,6 +27,17 @@ Do not run the consolidated query if any of its individual migrations have
 already been applied; its `ADD COLUMN`, index, and constraint operations are
 intentionally one-time changes.
 
+## Complaint case-type upgrade
+
+An existing database whose `complaints` table does not yet contain `case_type`
+must apply `database/migrations/20260924_add_complaint_case_type.sql` once.
+Back up the database first. The migration adds the column using the canonical
+`Civil` default for existing complaints, then copies the stored type from each
+linked case so docketed complaints retain their known type. Existing
+undocketed complaints have no stored case type to recover and therefore keep
+the canonical `Civil` default. Do not run this migration if `complaints.case_type`
+already exists; fresh databases get it from `schema.sql`.
+
 ## Local test accounts
 
 `schema.sql` seeds local-only test accounts. Existing local databases can add

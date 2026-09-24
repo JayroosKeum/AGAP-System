@@ -70,8 +70,8 @@ function loadComplaintsForDocketing() {
         });
 }
 
-function loadCaseList(table) {
-    fetch('../../../backend/api/cases/list.php')
+function loadCaseList(table, page = 1) {
+    fetch('../../../backend/api/cases/list.php?page=' + encodeURIComponent(page))
         .then((response) => {
             if (!response.ok) {
                 throw new Error('Unable to load cases.');
@@ -79,18 +79,16 @@ function loadCaseList(table) {
 
             return response.json();
         })
-        .then((cases) => {
-            const rows = Array.isArray(cases)
-                ? cases
+        .then((result) => {
+            const rows = Array.isArray(result.cases)
+                ? result.cases
                 : [];
 
             docketedComplaintIds = new Set(
-                rows.map(
-                    (item) => String(item.complaint_id)
-                )
+                (result.docketed_complaint_ids || []).map(String)
             );
-
             renderComplaintOptions();
+            renderCasePagination(result.pagination, table);
 
             if (!rows.length) {
                 table.innerHTML = `
@@ -117,7 +115,49 @@ function loadCaseList(table) {
                     </td>
                 </tr>
             `;
+            document.getElementById('casePagination').hidden = true;
         });
+}
+
+function renderCasePagination(pagination, table) {
+    const container = document.getElementById('casePagination');
+    const summary = document.getElementById('casePaginationSummary');
+    const controls = document.getElementById('casePaginationControls');
+    if (!container || !summary || !controls || !pagination) return;
+
+    const total = Number(pagination.total_records) || 0;
+    const pageSize = Number(pagination.per_page) || 25;
+    const page = Number(pagination.current_page) || 1;
+    const totalPages = Number(pagination.total_pages) || 0;
+    const first = total ? ((page - 1) * pageSize) + 1 : 0;
+    const last = Math.min(page * pageSize, total);
+
+    summary.textContent = `Showing ${first}–${last} of ${total} cases`;
+    controls.replaceChildren();
+    container.hidden = false;
+
+    if (totalPages <= 1) return;
+
+    const addPageButton = (label, pageNumber, disabled = false, current = false) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = current ? 'btn-create case-page-current' : 'btn-secondary';
+        button.textContent = label;
+        button.disabled = disabled;
+        if (current) button.setAttribute('aria-current', 'page');
+        button.addEventListener('click', () => loadCaseList(table, pageNumber));
+        controls.appendChild(button);
+    };
+
+    addPageButton('Previous', page - 1, page <= 1);
+
+    const firstVisiblePage = Math.max(1, Math.min(page - 2, totalPages - 4));
+    const lastVisiblePage = Math.min(totalPages, firstVisiblePage + 4);
+    for (let number = firstVisiblePage; number <= lastVisiblePage; number++) {
+        addPageButton(String(number), number, number === page, number === page);
+    }
+
+    addPageButton('Next', page + 1, page >= totalPages);
 }
 
 function renderCaseRow(item) {

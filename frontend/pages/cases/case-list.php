@@ -30,37 +30,11 @@ $docketMessages = [
                 <h1>Cases</h1>
                 <p>Manage docketed barangay cases and their progress.</p>
             </div>
-            <button type="button" class="btn-create" onclick="openAddCaseModal()">Docket Case</button>
         </div>
 
         <?php if (isset($docketMessages[$docketError])): ?>
             <div class="page-alert" role="alert"><?php echo $docketMessages[$docketError]; ?></div>
         <?php endif; ?>
-
-                <div class="table-container">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Case No.</th>
-                        <th>Complaint</th>
-                        <th>Complainant</th>
-                        <th>Respondent</th>
-                        <th>Case Type</th>
-                        <th>Docket Date</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-
-                <tbody id="caseTable">
-                    <tr>
-                        <td colspan="8" class="empty-state">
-                            Loading cases...
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
 
         <section class="case-assignment-panel" id="caseAssignments">
             <div class="section-heading">
@@ -100,6 +74,37 @@ $docketMessages = [
                 </div>
             </div>
         </section>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Case No.</th>
+                        <th>Complaint</th>
+                        <th>Complainant</th>
+                        <th>Respondent</th>
+                        <th>Case Type</th>
+                        <th>Docket Date</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+
+                <tbody id="caseTable">
+                    <tr>
+                        <td colspan="8" class="empty-state">
+                            Loading cases...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div id="casePagination" class="case-pagination" aria-label="Cases pagination" hidden>
+            <span id="casePaginationSummary" class="case-pagination-summary" aria-live="polite"></span>
+            <div id="casePaginationControls" class="case-pagination-controls"></div>
+        </div>
+
     </div>
 </div>
 

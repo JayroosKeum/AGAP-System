@@ -23,6 +23,11 @@ class CaseController
         return $this->case->getAll();
     }
 
+    public function page(int $page): array
+    {
+        return $this->case->getPage($page, 25);
+    }
+
     public function show($id)
     {
         return $this->case->getById($id);

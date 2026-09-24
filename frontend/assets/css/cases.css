@@ -18,6 +18,12 @@
 .btn-danger, .archive-button { background: #dc2626; color: #fff; }
 .btn-secondary { background: #e5e7eb; color: #1f2937; }
 .table-container { padding: 20px; overflow-x: auto; }
+.case-pagination { align-items:center; background:#fff; border:1px solid #e5e7eb; border-radius:8px; display:flex; flex-wrap:wrap; gap:12px; justify-content:space-between; margin:0 20px 24px; padding:14px 16px; }
+.case-pagination[hidden] { display:none; }
+.case-pagination-summary { color:#475569; }
+.case-pagination-controls { align-items:center; display:flex; flex-wrap:wrap; gap:6px; }
+.case-pagination-controls button { min-width:40px; }
+.case-pagination-controls .case-page-current { cursor:default; }
 table { width: 100%; border-collapse: collapse; background: #fff; }
 th, td { border: 1px solid #e5e7eb; padding: 12px; text-align: left; }
 th { background: #f8fafc; }
