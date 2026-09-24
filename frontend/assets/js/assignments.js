@@ -45,7 +45,9 @@
         });
 
     const escapeHtml = (value) => {
-        const node = document.createElement('div');
+        const node =
+            document.createElement('div');
+
         node.textContent = value ?? '';
         return node.innerHTML;
     };
@@ -206,6 +208,14 @@
                 const complaintTitle = item.complaint_title || 'Untitled complaint';
                 const complainants = item.complainant_names || 'No complainant recorded';
                 const respondents = item.respondent_names || 'No respondent recorded';
+
+                const complainants =
+                    item.complainant_names ||
+                    'No complainant recorded';
+
+                const respondents =
+                    item.respondent_names ||
+                    'No respondent recorded';
 
                 const label = [
                     caseNumber,

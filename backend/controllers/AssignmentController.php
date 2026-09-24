@@ -18,12 +18,8 @@ class AssignmentController
     {
         $this->assignment = new Assignment();
         $this->audit = new AuditService();
-        $this->notifications = new NotificationService();
-    }
-
-    public function assign(array $data): array
-    {
-        return ['success' => false, 'message' => 'Save the complete Head, Secretary, and Member case team together.'];
+        $this->notifications =
+            new NotificationService();
     }
 
     /**
@@ -52,7 +48,8 @@ class AssignmentController
      */
     public function luponMembers(): array
     {
-        return $this->assignment->getLuponMembers();
+        return $this->assignment
+            ->getLuponMembers();
     }
 
     /**

@@ -351,6 +351,7 @@ class Assignment
                 ca.assigned_date,
                 ca.assignment_id"
         );
+
         $stmt->execute([$caseId]);
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -379,7 +380,8 @@ class Assignment
                 u.username,
                 r.role_name
              FROM users u
-             INNER JOIN roles r ON r.role_id = u.role_id
+             INNER JOIN roles r
+                ON r.role_id = u.role_id
              WHERE u.status = 'Active'
                AND r.role_name = 'Lupon Member'
              ORDER BY
