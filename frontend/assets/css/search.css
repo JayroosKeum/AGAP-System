@@ -7,6 +7,7 @@
 .search-actions { display: flex; gap: 8px; }
 .result-summary { color: #475569; margin: 12px 0; }
 #searchResults small { color: #64748b; display: block; margin-top: 3px; }
+#complaintTable small { color: #64748b; display: block; margin-top: 3px; }
 .repeat-flag { color: #9a3412; font-weight: 600; }
 @media (max-width: 900px) { .search-form { grid-template-columns: repeat(2, minmax(150px, 1fr)); } }
 @media (max-width: 560px) { .search-form { grid-template-columns: 1fr; } .search-field.wide { grid-column: span 1; } }

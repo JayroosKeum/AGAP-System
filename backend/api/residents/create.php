@@ -10,7 +10,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST')
 
     $result = $controller->store($_POST);
 
-    if ($result)
+    if ($result['success'])
     {
         header(
             'Location: ../../../frontend/pages/residents/resident-list.php'
@@ -18,5 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST')
         exit;
     }
 
-    die('Failed to save resident.');
+    http_response_code(422);
+    header('Content-Type: text/plain; charset=utf-8');
+    exit($result['message'] ?? 'Please check the resident information and try again.');
 }

@@ -52,3 +52,39 @@
 .required-mark { color:#b91c1c; font-weight:800; }
 .field-validation-message { color:#b91c1c; font-size:12px; margin:6px 0 0; }
 .form-group input.is-invalid,.form-group select.is-invalid,.form-group textarea.is-invalid { border-color:#dc2626; box-shadow:0 0 0 3px rgba(220,38,38,.12); }
+
+/* Disabled button styling: lighter color and cannot be clicked */
+button:disabled,
+button.is-disabled,
+button[disabled],
+.btn-create:disabled,
+.btn-create.is-disabled,
+.btn-secondary:disabled,
+.btn-secondary.is-disabled,
+.btn-danger:disabled,
+.btn-danger.is-disabled,
+.btn-export:disabled,
+.btn-export.is-disabled,
+.action-buttons button:disabled,
+a.btn-create.is-disabled,
+a.btn-create[disabled],
+a.btn-create[aria-disabled="true"],
+a.is-disabled {
+    background: #e4e4e7 !important;
+    color: #a1a1aa !important;
+    cursor: not-allowed !important;
+    pointer-events: none !important;
+    opacity: 0.65 !important;
+    box-shadow: none !important;
+    border: 0 !important;
+    text-decoration: none !important;
+}
+body .btn-create:disabled:hover,
+body .btn-create.is-disabled:hover,
+body .btn-export:disabled:hover,
+body .btn-export.is-disabled:hover,
+button:disabled:hover,
+a.btn-create.is-disabled:hover {
+    background: #e4e4e7 !important;
+    color: #a1a1aa !important;
+}

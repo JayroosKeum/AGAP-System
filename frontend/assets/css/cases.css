@@ -18,6 +18,12 @@
 .btn-danger, .archive-button { background: #dc2626; color: #fff; }
 .btn-secondary { background: #e5e7eb; color: #1f2937; }
 .table-container { padding: 20px; overflow-x: auto; }
+.case-pagination { align-items:center; background:#fff; border:1px solid #e5e7eb; border-radius:8px; display:flex; flex-wrap:wrap; gap:12px; justify-content:space-between; margin:0 20px 24px; padding:14px 16px; }
+.case-pagination[hidden] { display:none; }
+.case-pagination-summary { color:#475569; }
+.case-pagination-controls { align-items:center; display:flex; flex-wrap:wrap; gap:6px; }
+.case-pagination-controls button { min-width:40px; }
+.case-pagination-controls .case-page-current { cursor:default; }
 table { width: 100%; border-collapse: collapse; background: #fff; }
 th, td { border: 1px solid #e5e7eb; padding: 12px; text-align: left; }
 th { background: #f8fafc; }
@@ -53,6 +59,8 @@ th { background: #f8fafc; }
 .assignment-grid { display:grid; gap:24px; grid-template-columns:minmax(250px, .8fr) minmax(0, 1.2fr); }.assignment-form { border-right:1px solid #e4e4e7; padding-right:24px; }.assignment-history h3 { margin:0 0 12px; }.assignment-table-wrap { overflow-x:auto; }.assignment-history table { min-width:460px; }.required-mark { color:#b91c1c; }.assignment-message { margin:12px 0 0; }.assignment-message.success { color:#176b3a; }.assignment-message.error { color:#9d2525; }
 @media (max-width:760px) { .case-assignment-panel { margin-left:18px; margin-right:18px; padding:18px; }.assignment-grid { grid-template-columns:1fr; }.assignment-form { border-bottom:1px solid #e4e4e7; border-right:0; padding:0 0 20px; } }
 @media (max-width:760px) { .workspace-grid { grid-template-columns:1fr; margin-left:18px; margin-right:18px; } }
+button:disabled, button.is-disabled, button[disabled], .btn-create:disabled, .btn-create.is-disabled, .btn-secondary:disabled, .btn-secondary.is-disabled, a.btn-create.is-disabled, a.btn-create[disabled] { background: #e4e4e7 !important; color: #a1a1aa !important; cursor: not-allowed !important; pointer-events: none !important; opacity: 0.65 !important; box-shadow: none !important; }
+
 .automatic-head-display {
     border: 1px solid #bbf7d0;
     border-radius: 7px;

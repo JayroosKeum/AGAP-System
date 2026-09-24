@@ -29,28 +29,10 @@ class MediationSchedule
         try {
             $this->conn->beginTransaction();
 
-            /*
-             * Lock the complaint to prevent concurrent requests
-             * from creating multiple cases for the same complaint.
-             */
-            $complaintStatement = $this->conn->prepare(
-                'SELECT
-                    complaint_id,
-                    status
-                 FROM complaints
-                 WHERE complaint_id = ?
-                 FOR UPDATE'
-            );
-
-            $complaintStatement->execute([
-                $complaintId
-            ]);
-
-            $complaint = $complaintStatement->fetch(
-                PDO::FETCH_ASSOC
-            );
-
-            if (!$complaint) {
+            $complaint = $this->conn->prepare('SELECT complaint_id, status, case_type FROM complaints WHERE complaint_id = ? FOR UPDATE');
+            $complaint->execute([$complaintId]);
+            $record = $complaint->fetch(PDO::FETCH_ASSOC);
+            if (!$record) {
                 $this->conn->rollBack();
 
                 return [
@@ -58,16 +40,9 @@ class MediationSchedule
                     'message' => 'Complaint not found.'
                 ];
             }
-
-            if ($complaint['status'] !== 'Under Review') {
+            if (!in_array($record['status'], ['Filed', 'Under Review', 'Needs Information', 'Accepted'], true)) {
                 $this->conn->rollBack();
-
-                return [
-                    'success' => false,
-                    'message' =>
-                        'Only complaints under review can ' .
-                        'proceed to mediation.'
-                ];
+                return ['success' => false, 'message' => 'This complaint cannot proceed to 1st Mediation in its current status.'];
             }
 
             /*
@@ -109,51 +84,46 @@ class MediationSchedule
                 ];
             }
 
-            /*
-             * Confirm that the complaint does not already have
-             * an existing case record.
-             */
-            $existingCaseStatement = $this->conn->prepare(
-                'SELECT case_id
-                 FROM cases
-                 WHERE complaint_id = ?
-                 LIMIT 1'
+            $adminStmt = $this->conn->prepare(
+                "SELECT u.user_id
+                 FROM users u
+                 INNER JOIN roles r ON r.role_id = u.role_id
+                 WHERE u.status = 'Active' AND r.role_name = 'Administrator'
+                 ORDER BY u.user_id ASC
+                 LIMIT 1"
             );
+            $adminStmt->execute();
+            $administrator = $adminStmt->fetch(PDO::FETCH_ASSOC);
 
-            $existingCaseStatement->execute([
-                $complaintId
-            ]);
+            $caseType = (!empty($record['case_type']) && in_array($record['case_type'], ['Civil', 'Criminal'], true))
+                ? $record['case_type']
+                : 'Civil';
 
-            if ($existingCaseStatement->fetchColumn()) {
-                $this->conn->rollBack();
+            $case = $this->conn->prepare(
+                "INSERT INTO cases (complaint_id, case_type, case_status, docket_date)
+                 VALUES (?, ?, 'Docketed', CURDATE())"
+            );
+            $case->execute([$complaintId, $caseType]);
+            $caseId = (int) $this->conn->lastInsertId();
+            $caseNumber = sprintf('KP-%s-%05d', date('Y'), $caseId);
+            $number = $this->conn->prepare('UPDATE cases SET case_number = ? WHERE case_id = ?');
+            $number->execute([$caseNumber, $caseId]);
 
-                return [
-                    'success' => false,
-                    'message' =>
-                        'This complaint already has a case record.'
-                ];
+            if ($administrator) {
+                $headAssignment = $this->conn->prepare(
+                    "INSERT INTO case_assignments (case_id, member_id, assignment_role, assigned_date)
+                     VALUES (?, ?, 'Head', CURDATE())"
+                );
+                $headAssignment->execute([$caseId, (int) $administrator['user_id']]);
             }
 
-            /*
-             * Create the Mediation case.
-             *
-             * This retains the existing behavior where a case
-             * created through Mediation is classified as Civil.
-             */
-            $caseStatement = $this->conn->prepare(
-                "INSERT INTO cases (
-                    complaint_id,
-                    case_type,
-                    case_status,
-                    docket_date
-                 )
-                 VALUES (
-                    ?,
-                    'Civil',
-                    'Mediation',
-                    CURDATE()
-                 )"
+            $history = $this->conn->prepare(
+                "INSERT INTO case_history (case_id, status, remarks) VALUES (?, 'Docketed', ?)"
             );
+            $history->execute([
+                $caseId,
+                'Case docketed when the 1st Mediation was scheduled. The Administrator or Barangay Captain was automatically assigned as Head.'
+            ]);
 
             $caseStatement->execute([
                 $complaintId
@@ -178,152 +148,18 @@ class MediationSchedule
                  WHERE case_id = ?'
             );
 
-            $caseNumberStatement->execute([
-                $caseNumber,
-                $caseId
-            ]);
-
-            /*
-             * Automatically assign the existing Administrator
-             * as the Head of the Mediation case.
-             */
-            $headAssignmentStatement = $this->conn->prepare(
-                "INSERT INTO case_assignments (
-                    case_id,
-                    member_id,
-                    assignment_role,
-                    assigned_date
-                 )
-                 VALUES (
-                    ?,
-                    ?,
-                    'Head',
-                    CURDATE()
-                 )"
-            );
-
-            $headAssignmentStatement->execute([
-                $caseId,
-                (int) $administrator['user_id']
-            ]);
-
-            /*
-             * Record the initial Mediation status and automatic
-             * Head assignment in the case history.
-             */
-            $historyStatement = $this->conn->prepare(
-                "INSERT INTO case_history (
-                    case_id,
-                    status,
-                    remarks
-                 )
-                 VALUES (
-                    ?,
-                    'Mediation',
-                    ?
-                 )"
-            );
-
-            $historyStatement->execute([
-                $caseId,
-                'Case opened when mediation was scheduled. ' .
-                'The Administrator or Barangay Captain was ' .
-                'automatically assigned as Head.'
-            ]);
-
-            /*
-             * Create the Mediation hearing.
-             */
-            $hearingStatement = $this->conn->prepare(
-                "INSERT INTO hearings (
-                    case_id,
-                    hearing_type,
-                    hearing_date,
-                    venue,
-                    remarks
-                 )
-                 VALUES (
-                    ?,
-                    'Mediation',
-                    ?,
-                    ?,
-                    ?
-                 )"
-            );
-
-            $hearingStatement->execute([
-                $caseId,
-                $hearingDate,
-                $venue,
-                $remarks
-            ]);
-
-            $hearingId = (int) $this->conn
-                ->lastInsertId();
-
-            /*
-             * Create the 15-day Mediation Period deadline.
-             */
-            $deadlineStatement = $this->conn->prepare(
-                "INSERT INTO case_deadlines (
-                    case_id,
-                    deadline_type,
-                    due_date,
-                    status
-                 )
-                 VALUES (
-                    ?,
-                    'Mediation Period',
-                    DATE_ADD(
-                        DATE(?),
-                        INTERVAL 15 DAY
-                    ),
-                    'Pending'
-                 )"
-            );
-
-            $deadlineStatement->execute([
-                $caseId,
-                $hearingDate
-            ]);
-
-            /*
-             * Synchronize the complaint status with the case.
-             *
-             * The status condition prevents the request from
-             * overriding another workflow update.
-             */
-            $statusStatement = $this->conn->prepare(
-                "UPDATE complaints
-                 SET status = 'Mediation'
-                 WHERE complaint_id = ?
-                   AND status = 'Under Review'"
-            );
-
-            $statusStatement->execute([
-                $complaintId
-            ]);
-
-            if ($statusStatement->rowCount() !== 1) {
-                throw new RuntimeException(
-                    'Complaint status changed before ' .
-                    'mediation could be scheduled.'
-                );
-            }
+            $status = $this->conn->prepare("UPDATE complaints SET status = 'Docketed' WHERE complaint_id = ?");
+            $status->execute([$complaintId]);
 
             $this->conn->commit();
 
             return [
                 'success' => true,
-                'message' =>
-                    'Mediation has been scheduled. ' .
-                    'The Administrator or Barangay Captain ' .
-                    'was automatically assigned as Head.',
+                'message' => '1st Mediation has been scheduled and the case is now docketed.',
                 'case_id' => $caseId,
                 'case_number' => $caseNumber,
                 'hearing_id' => $hearingId,
-                'head_member_id' =>
-                    (int) $administrator['user_id']
+                'head_member_id' => $administrator ? (int) $administrator['user_id'] : null,
             ];
         } catch (Throwable $exception) {
             if ($this->conn->inTransaction()) {

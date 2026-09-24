@@ -23,6 +23,11 @@ class CaseController
         return $this->case->getAll();
     }
 
+    public function page(int $page): array
+    {
+        return $this->case->getPage($page, 25);
+    }
+
     public function show($id)
     {
         return $this->case->getById($id);
@@ -58,10 +63,12 @@ class CaseController
     {
         $result = $this->case->update($id, $data);
 
-        if ($result) {
+        if (is_array($result) && !empty($result['success'])) {
             $this->audit->log(
                 $_SESSION['user_id'],
-                'Updated Case',
+                isset($data['head_id'], $data['secretary_id'], $data['member_id'])
+                    ? 'Updated Case and Lupon Team'
+                    : 'Updated Case',
                 'Cases',
                 $id
             );

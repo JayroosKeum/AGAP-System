@@ -29,12 +29,13 @@ The following redesign is implemented as the current UX direction:
   `Under Review`, `Needs Information`, `Accepted`, or `Rejected` with review
   notes. Only `Accepted` complaints may be docketed, and docketing changes the
   complaint to `Docketed` in the same transaction.
-- **Complaint workspace:** The complaint details page consolidates review,
-  parties, and dedicated picture/video/document evidence uploads
-  (JPG/PNG/PDF/MP4/WebM, up to 25 MB). Complaint creation and editing are
-  handled from the Complaints page; those forms include the incident details
-  and optional exact map pin. The standalone Incident Locations page, its
-  navigation links, and its location-only API routes are retired.
+- **Complaint workspace & unified evidence intake:** The complaint details page consolidates review,
+  parties, and a unified evidence upload modal. In `complaint-create.php`, a dedicated
+  "Evidence / Attachments" section allows optional multiple uploads (images, videos, PDF, DOC, DOCX up to 25 MB)
+  with drag-and-drop, client-side queue preview/removal, and secure backend validation/storage in
+  `storage/uploads/complaint-evidence/`. Complaint creation and editing are handled from the Complaints page;
+  those forms include the incident details, evidence attachments, and optional exact map pin. The standalone
+  Incident Locations page, its navigation links, and its location-only API routes are retired.
 
 ### Complaint incident fields
 
@@ -160,6 +161,11 @@ write; an edit retains the pin unless it is moved or explicitly cleared.
       and `incident_time`), specific incident location text input, landmark text input,
       and an interactive Leaflet/OpenStreetMap pin selector saving latitude and longitude
       coordinates into `incident_locations`.
+    - **Section 4: Evidence / Attachments (Optional)**: A single unified upload section
+      replacing separate image/video/doc buttons. Supports drag-and-drop and multi-file selection
+      (`accept="image/*,video/*,.pdf,.doc,.docx"` up to 25 MB per file), interactive queue preview
+      with file type badges, sizes, and instant removal before submit. Files are validated server-side
+      and stored securely in `storage/uploads/complaint-evidence/` with records in `complaint_attachments`.
 
 - **Dedicated Edit Complaint Page (`complaint-edit.php`)**:
   - Replaces the legacy `#editComplaintModal` popup with a dedicated, full-page edit interface
@@ -175,9 +181,55 @@ write; an edit retains the pin unless it is moved or explicitly cleared.
   - "Edit Complaint" buttons on both `complaint-details.php` and `complaint-list.php` route
     directly to `complaint-edit.php?id=<id>`.
 
+- **Redesigned Modern Complaint Workspace (`complaint-details.php`)**:
+  - Re-architected into a compact, responsive two-column workspace adhering to the design language and card order of `complaint-create.php`, `complaint-edit.php`, and `case-details.php`.
+  - **Breadcrumb & Header Controls**: Features complaint title, complaint number, dynamic status badge, case type badge, category badge, and linked case badge. When a complaint is docketed, a prominent green button routes directly to `../cases/case-details.php?id=<case_id>`. Action buttons provide immediate access to "Schedule 1st Mediation" and "Edit" (linking to `complaint-edit.php`). The "+ Add Party" and "+ Upload Evidence" modal buttons are omitted from the header, card headers, and empty states so this workspace remains focused on reading complaint information.
+  - **Zero Repetition & Aligned Field Mappings**: Removed redundant KPI cards and eliminated duplicate location/landmark fields from Card 1. All fields cleanly mapped to their designated cards:
+    - **Left Column**:
+      1. *1. Incident & Classification*: Full Complaint Title, Category, Case Type, Incident Date, Incident Time, Date Filed, Administrative Status, and Linked Docketed Case.
+      2. *2. Involved Parties*: Clean read-only party cards with role badges (Complainant, Respondent, Witness), resident names, contact number, and purok/address (remove actions omitted so details remain strictly read-only).
+      3. *3. Narrative & Facts*: Statement of the complaint facts, detailed narrative, and optional additional details / prior attempts.
+    - **Right Column**:
+      4. *4. Incident Location*: Specific incident address, nearby landmark, GPS coordinates, and an interactive Leaflet/OpenStreetMap marker (with clean fallback if coordinates are omitted).
+      5. *5. Evidence & Attachments*: Visual evidence cards with image thumbnails, file-type icons, download links, and delete actions.
+  - Preserved backward compatibility for scheduling modals (`#scheduleMediationModal`, `#confirmMediationModal`) and legacy DOM IDs.
+
+- **Aligned Editable Complaint Form (`complaint-edit.php`)**:
+  - Re-architected into the 5-card layout of `complaint-details.php` in an editable interface:
+    - **Header Toolbar**: Direct back link to details, complaint number heading (`#editComplaintHeading`), live title preview subheading (`#editComplaintSubheading`), dynamic status pill, live category and case type pills, linked case badge, Cancel button, and top Save Changes button.
+    - **Confirmation Modals**:
+      - *Save Changes*: Prompts the user with "Do you want to save the changes made to this complaint?". Clicking "Yes, Save Changes" submits the form and redirects to `complaint-details.php?id=<id>` with a success flash message; "No, Keep Editing" closes the modal and stays on the page. Form submit via keyboard (Enter key) is intercepted to trigger the same confirmation.
+      - *Discard Changes*: Clicking Cancel or the Back link prompts "Are you sure you want to discard the changes?". Clicking "Yes, Discard" redirects to `complaint-details.php?id=<id>`; "No, Keep Editing" stays on the page.
+    - **No Redundant Bottom Bar**: Removed the bottom `.intake-actions-bar` in favor of the header toolbar actions.
+    - **Left Column**:
+      1. *1. Incident & Classification*: Editable title input, category select, case type select (`Civil`/`Criminal`), merged `datetime-local` input, and read-only context pills for Date Filed, Status, and Docketed Case.
+      2. *2. Involved Parties*: Embedded Complainant and Respondent inputs with datalist autocomplete (`#residentsDatalist`), dynamic additional parties (Witness, Complainant, Respondent) with remove buttons, and "+ Add Another Party" button.
+      3. *3. Narrative & Facts*: Detailed narrative textarea and optional additional details / prior attempts textarea.
+    - **Right Column**:
+      4. *4. Incident Location*: Specific incident location text, landmark text, and interactive Leaflet map pin selector with clear pin button.
+      5. *5. Evidence & Attachments*: Visual cards of existing attachments (preview thumbnails/file icons, file name, download link, upload date, and instant AJAX delete) plus drag-and-drop / file browser upload queue for additional evidence files (`evidence[]`). (Card 6 Administrative Review Notes omitted).
+    - **Backend & Controller Wiring**: `ComplaintController::update` accepts `$files` and seamlessly attaches newly uploaded evidence to `complaint_attachments`, while updating incident data, parties, and `incident_locations` within a secure database transaction. `Complaint::validateMapLocationInput` safely accepts pre-existing coordinates under `map_location_state = 'unchanged'`, resolving false-positive location rejections on existing complaints.
+
+- **Separated 3-Dimensional Complaint Lifecycle & Interactive Modern List (`complaint-list.php`)**:
+  - Replaces the single collapsed/overloaded status concept with three orthogonal, legally compliant lifecycle dimensions conforming strictly to the Katarungang Pambarangay provisions of RA 7160 (Local Government Code of 1991):
+    1. **Intake / Administrative Status**: `Under Review` (newly filed, awaiting screening/scheduling) vs `Docketed` (assigned a case number and scheduled for hearing).
+    2. **Progression / Dispute Stage**: Active procedural phase — `None / Pre-docketing`, `Mediation` (PB phase, Sec. 410b), `Conciliation` (Pangkat phase, Sec. 410b/412), or `Arbitration` (voluntary binding arbitration, Sec. 413).
+    3. **Case Disposition / Final Outcome**: How the dispute concluded — `Pending`, `Amicable Settlement` (mutual agreement, Sec. 411), `Arbitration Award` (binding resolution, Sec. 413), `Certificate to File Action (CFA)` (failed conciliation/repudiation, Sec. 412), or `Dismissed / Dropped` (non-appearance/withdrawal, Sec. 410d).
+  - Clean status badge representation in table rows (Status column):
+    - Removed label prefixes ("intake", "stage", "result") so only the status values themselves are displayed.
+    - Intake pill (`badge-intake-*`): Under Review / Docketed.
+    - Dispute Stage pill (`badge-stage-*`): Mediation / Conciliation / Arbitration (shown during active hearing stages).
+    - Final Disposition pill (`badge-disp-*`): Pending / Amicable Settlement / Arbitration Award / CFA Issued / Dismissed.
+    - **Stage Expiration Rule**: After the 3 mediation and 3 conciliation hearings have taken place (`conciliation_count >= 3`), the dispute stage is exhausted and removed from the Status display, showing only the intake (`Docketed` or `Under Review`) and result (`Dismissed`, `CFA Issued`, `Amicable Settlement`, `Pending`, etc.).
+  - Interactive table column header sorting on all columns (Complaint, Case No., Category, Parties, Incident Date, Status) with ascending/descending toggling (`▲`/`▼`/`⇅`), instant zero-latency client-side sorting on loaded rows, and backend database sort mapping.
+  - Granular secondary filter drawer with separate dropdowns for each lifecycle dimension (`#searchIntake`, `#searchStage`, `#searchDisposition`), date range, case type (`Civil` / `Criminal`), and quick status navigation tabs (`All`, `Under Review`, `Docketed`, `Mediation`, `Conciliation`, `Arbitration`, `Settled`, `Dismissed`, `CFA`).
+  - Real-time tab counts and KPI summary metrics derived directly from the three lifecycle dimensions.
+  - **10 Items Per Page Pagination**: Responsive pagination bar (`#complaintPagination`) below the table displaying a dynamic summary ("Showing 1–10 of 14 complaint records"), Previous/Next navigation buttons, numeric page buttons with ellipsis for large page counts, and automatic reset to Page 1 upon filtering or sorting.
+
 - Relevant files include `frontend/pages/complaints/complaint-list.php`,
   `complaint-create.php`, `complaint-edit.php`, `complaint-details.php`,
   `frontend/assets/js/search.js`, `frontend/assets/js/complaints.js`,
+  `frontend/assets/css/complaints.css`,
   `backend/api/complaints/create.php`, `backend/api/complaints/update.php`,
   `backend/api/search/records.php`, `backend/models/Complaint.php`,
   `backend/models/Search.php`, and `frontend/layouts/sidebar.php`.

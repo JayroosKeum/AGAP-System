@@ -21,8 +21,17 @@ const request = async (url, options = {}) => {
 
 document.addEventListener('DOMContentLoaded', () => {
     loadUsers();
-    document.getElementById('userForm').addEventListener('submit', saveUser);
+    const form = document.getElementById('userForm');
+    form.addEventListener('submit', saveUser);
+    form.addEventListener('input', clearFieldValidationMessage);
+    form.addEventListener('change', clearFieldValidationMessage);
 });
+
+function clearFieldValidationMessage(event) {
+    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) {
+        event.target.setCustomValidity('');
+    }
+}
 
 async function loadUsers() {
     try {
@@ -48,6 +57,7 @@ async function loadUsers() {
 function openUserModal() {
     const form = document.getElementById('userForm');
     form.reset();
+    form.querySelectorAll('input, select').forEach((field) => field.setCustomValidity(''));
     form.action = '../../../backend/api/users/create.php';
     document.getElementById('userModalTitle').textContent = 'Add User';
     document.getElementById('password').required = true;
@@ -81,6 +91,18 @@ async function saveUser(event) {
     event.preventDefault();
     const form = event.currentTarget;
     showMessage('');
+    for (const field of form.querySelectorAll('input:not([type="hidden"]):not([type="password"])')) {
+        field.value = field.value.trim();
+        field.setCustomValidity('');
+        if (['first_name', 'last_name'].includes(field.name)
+            && !/^[\p{L}\p{M}]+(?:[ '-][\p{L}\p{M}]+)*$/u.test(field.value)) {
+            field.setCustomValidity('Please enter a valid name using letters, spaces, hyphens, or apostrophes.');
+        }
+        if (field.name === 'contact_no' && field.value && !validPhilippinePhone(field.value)) {
+            field.setCustomValidity('Please enter a valid Philippine mobile or telephone number.');
+        }
+    }
+    if (!form.reportValidity()) return;
     try {
         const result = await request(form.action, {method: 'POST', body: new FormData(form)});
         showMessage(result.message, true);
@@ -91,6 +113,18 @@ async function saveUser(event) {
         showMessage(error.message);
         window.agapNotify?.(error.message, 'error', 'User Management');
     }
+}
+
+function validPhilippinePhone(value) {
+    if (!/^\+?[0-9 .()\-]+$/.test(value)) return false;
+    let digits = value.replace(/\D/g, '');
+    if (value.startsWith('+') || digits.startsWith('63')) {
+        if (!digits.startsWith('63')) return false;
+        digits = digits.slice(2);
+    } else if (digits.startsWith('0')) {
+        digits = digits.slice(1);
+    }
+    return /^9\d{9}$/.test(digits) || /^(?:2\d{8}|[3-8]\d{8,9})$/.test(digits);
 }
 
 async function deleteUser(id) {

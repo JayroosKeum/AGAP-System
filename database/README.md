@@ -27,6 +27,17 @@ Do not run the consolidated query if any of its individual migrations have
 already been applied; its `ADD COLUMN`, index, and constraint operations are
 intentionally one-time changes.
 
+## Complaint case-type upgrade
+
+An existing database whose `complaints` table does not yet contain `case_type`
+must apply `database/migrations/20260924_add_complaint_case_type.sql` once.
+Back up the database first. The migration adds the column using the canonical
+`Civil` default for existing complaints, then copies the stored type from each
+linked case so docketed complaints retain their known type. Existing
+undocketed complaints have no stored case type to recover and therefore keep
+the canonical `Civil` default. Do not run this migration if `complaints.case_type`
+already exists; fresh databases get it from `schema.sql`.
+
 ## Local test accounts
 
 `schema.sql` seeds local-only test accounts. Existing local databases can add
@@ -57,7 +68,12 @@ orphaned rows that must be resolved before that migration.
 ## Relationship rules
 
 - A complaint can be docketed into only one case.
-- A resident can be attached to a complaint once per party type.
+- A resident can be attached to a complaint once per party type (Complainant or Respondent)
+  recorded in `complaint_parties`.
+- Incident map coordinates (`latitude`, `longitude`) and verified address are stored in
+  `incident_locations`, linked via `complaint_id` (and synced to `case_id` upon docketing).
+- Complaint case classification is recorded in `complaints.case_type` (`Civil` or `Criminal`)
+  and synchronized to `cases.case_type`.
 - Any active user with the `Lupon Member` role is eligible for the unified
   Head, Secretary, and Member case team.
 - A case has one assignment per case-team role; the application saves the
@@ -65,6 +81,17 @@ orphaned rows that must be resolved before that migration.
 - A case has at most one Pangkat group, settlement, arbitration record, CFA,
   and incident location.
 - Pangkat and case assignments reference the eligible user's account directly.
+
+## Hearing Progression and Docketing Lifecycle
+
+- Hearing schedules are tracked in `hearings` and associated deadlines in `case_deadlines`.
+- **Progression Sequence**:
+  - Up to 3 Mediation hearings (`1st Mediation`, `2nd Mediation`, `3rd Mediation`).
+  - Followed by up to 3 Conciliation hearings (`1st Conciliation`, `2nd Conciliation`, `3rd Conciliation`).
+  - Scheduling halts permanently once the 3rd Conciliation hearing is reached.
+- **Automatic Docketing**:
+  - Scheduling the `1st Mediation` hearing automatically transitions `cases.case_status` to `'Docketed'`
+    and synchronizes `complaints.status` to `'Docketed'` in the same database transaction.
 
 The schema keeps historical audit, log, document, and service records when a
 user is removed by setting their actor reference to `NULL`. Core parent

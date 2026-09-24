@@ -77,6 +77,11 @@ Use the same module name across `frontend/pages`, `frontend/assets/js`, and
   For an older populated database that predates the workflow redesign, use
   `database/migrations/20260917_consolidated_workflow_upgrade.sql` instead of
   the three individual workflow migrations. Do not run both options.
+- Existing databases that predate the complaint case-type field also need
+  `database/migrations/20260924_add_complaint_case_type.sql` once. It adds
+  `complaints.case_type` and backfills docketed complaints from their linked
+  cases; do not run it when the field already exists. Fresh databases receive
+  the field from `schema.sql`.
 - Local development test users are seeded by `schema.sql` and are also
   available for existing local databases in `database/seeds/local_test_users.sql`.
   They include an Administrator, Lupon Clerk, Summons Server, and three Lupon
@@ -210,39 +215,113 @@ const api = (url, options) => fetch(url, options).then(async (response) => {
   `Needs Information`, `Accepted`, or `Rejected`, with optional review notes.
   Only an `Accepted` complaint can be docketed; docketing changes it to
   `Docketed` in the same transaction as case creation.
+- The Complaints page (`complaint-list.php`) is the primary record-search screen.
+  It features a modern, compact dashboard layout: 4 KPI metric cards (Total, Under
+  Review, In Progress, Settled) with 1-click filtering, 8 process-based quick status
+  tabs (`All`, `Under Review`, `Docketed`, `Mediation`, `Conciliation`, `Arbitration`,
+  `Settled`, `Dismissed`, `CFA`) with live counts, interactive clickable column headers
+  with ascending/descending sorting (`▲`/`▼`/`⇅`), and a compact toolbar with debounced
+  keyword search, clear button, Case Type dropdown (`All`, `Civil`, `Criminal`),
+  Category dropdown, and a collapsible filter drawer with dedicated dropdowns for the
+  three orthogonal lifecycle dimensions (`#searchIntake`, `#searchStage`, `#searchDisposition`)
+  alongside incident date ranges. Results appear in a dedicated 7-column table:
+  `Complaint`, `Case No.`, `Category`, `Parties`, `Incident Date`, `Status`
+  (displaying clean status badges without label prefixes for Intake, Dispute Stage, and
+  Case Disposition; stage automatically hides after 3 mediations and 3 conciliations),
+  and `Actions` (View Details link, Edit Page link, and Delete modal trigger). The table
+  paginates records up to 10 items per page with dynamic range summary and navigation controls.
+  The standalone Records Search page remains available by direct URL for compatibility,
+  while its sidebar navigation item is removed.
+- Complaint intake and editing use dedicated full-page forms (`complaint-create.php`
+  and `complaint-edit.php`) rather than popup modals:
+  - Both pages share a modern, compact two-column card architecture.
+  - **Classification & Case Type**: Category dropdown, narrative description, prayer for
+    relief, and a mandatory **Case Type** dropdown (`Civil` or `Criminal`), stored in
+    `complaints.case_type` and propagated to `cases.case_type` upon docketing.
+  - **Integrated Parties**: Complainant and Respondent textboxes are embedded directly
+    in the form (replacing the previous "Add Party" modal popup button), featuring live
+    resident datalist autocomplete (`#residentOptions`) and automatic database
+    synchronization into `complaint_parties`.
+  - **Merged Incident Datetime**: Uses a single `<input type="datetime-local" name="incident_datetime">`
+    on intake and edit, parsed server-side into `incident_date` (DATE) and `incident_time` (TIME).
+  - **Incident Location & Map**: Requires specific location text, optional landmark, and
+    an optional interactive Leaflet/OpenStreetMap pin selector. Coordinates are persisted
+    in `incident_locations` in the same transaction as the complaint write. On update,
+    `map_location_state = 'unchanged'` preserves saved coordinates without triggering validation errors.
+  - **Edit Layout Parity & Synchronization**: `complaint-edit.php` mirrors the 5-card layout of `complaint-details.php` in an editable interface:
+    - **Header & Navigation**: Back link to details, complaint number heading, dynamic status badge, live title preview subheading, live category and case type badges, linked case pill, Cancel button (with "Are you sure you want to discard the changes?" confirmation modal), and Save Changes button (with "Do you want to save the changes?" confirmation modal). The bottom `.intake-actions-bar` is removed in favor of top toolbar controls.
+    - **Left Column**: 1. Incident & Classification (title, category select, case type select, merged datetime-local input, read-only date filed, status, and docketed case), 2. Involved Parties (embedded Complainant and Respondent inputs with datalist autocomplete, dynamic additional parties with remove buttons, and "+ Add Another Party"), and 3. Narrative & Facts (narrative textarea and additional details textarea).
+    - **Right Column**: 4. Incident Location (incident address, landmark, and interactive Leaflet map pin selector with clear button) and 5. Evidence & Attachments (existing attachment cards with preview/download/delete and drag-and-drop file upload queue). (Note: Card 6 Administrative Review Notes is omitted from complaint details and edit views).
+    - **Atomic Updates & Redirection**: Confirmed form submissions update `complaints`, sync `case_type` to any linked `cases`, update `complaint_parties`, update/clear coordinates in `incident_locations`, and attach new evidence files into `complaint_attachments`, automatically redirecting back to `complaint-details.php?id=<id>` with a success flash banner.
 - Treat `frontend/pages/complaints/complaint-details.php` as the complaint
-  workspace for review, parties, and picture/video/document evidence. Create
-  and edit incident details, including the optional exact map pin, from the
-  Add/Edit Complaint forms on `complaint-list.php`; do not create a separate
-  Incident Locations page or location-only save route.
-- Complaint intake requires the incident date and specific location, and records
-  optional time, landmark, narrative, supporting details, and an optional exact
-  map pin. Store an exact pin in `incident_locations` as part of the same
-  complaint create/update transaction. On edit, preserve a saved pin unless the
-  user moves or clears it. Evidence uploads validate MIME
-  type and size server-side: JPG/PNG pictures, MP4/WebM videos, and PDFs are
-  allowed up to 25 MB.
+  workspace for read-only review, parties, and evidence inspection. It features a
+  modern, compact two-column layout matching the card ordering of `complaint-create.php` and `complaint-edit.php`:
+  - **Header & Navigation**: Title, complaint number, dynamic status badges, case type,
+    category, linked case pill, direct "View Case Workspace" button when docketed,
+    "Schedule 1st Mediation", and "Edit" (routing to `complaint-edit.php` for record edits;
+    separate "+ Add Party" and "+ Upload Evidence" buttons are omitted as this page is read-only).
+  - **Left Column**: 1. Incident & Classification (Complaint Title, Category, Case Type, Incident Date,
+    Incident Time, Date Filed, Administrative Status, Docketed Case), 2. Involved Parties (read-only cards with role badges,
+    contact number, and purok/address; party management and removal is handled in `complaint-edit.php`), and 3. Narrative & Facts (statement and additional details).
+  - **Right Column**: 4. Incident Location & Leaflet Interactive Map Pin (specific address, landmark, GPS pin)
+    and 5. Evidence & Attachments (visual cards with image thumbnails, document icons, secure download, and delete actions).
+- Complaint intake (`complaint-create.php`) requires the incident date and specific location, and records
+  optional time, landmark, narrative, supporting details, optional exact map pin, and optional evidence/attachments.
+  A single dedicated "Evidence / Attachments" section replaces separate upload buttons and accepts multiple
+  images, videos, PDFs, and DOC/DOCX files (up to 25 MB per file) with interactive preview and queue removal.
+  Store an exact pin in `incident_locations` as part of the same complaint create/update transaction. On edit,
+  preserve a saved pin unless the user moves or clears it. Evidence uploads validate MIME type and size
+  server-side: JPG/PNG/GIF/WebP pictures, MP4/WebM videos, PDFs, and DOC/DOCX documents are allowed up to 25 MB
+  per file and stored in `storage/uploads/complaint-evidence/`.
 - Treat `frontend/pages/cases/case-details.php` as the case workspace: it is
   the record-level overview for case team, hearings, generated documents, and
   proof of service. Keep cross-case monitoring pages for lists and calendars.
+- The Cases list omits the top-right Docket Case button, places Case Team
+  Assignment above the table, and loads 25 cases per page from the existing
+  database ordering. Pagination is server-side; keep the assignment case
+  selector sourced from the full case list rather than only the visible page.
 - Do not require a separate Pangkat workflow. Save the Head, Secretary,
   and Member together from Case Assignments, require three distinct active
   users whose role name is `Lupon Member`, and perform the replacement in one
   transaction. Existing `pangkat_groups` and `pangkat_members` may be synced
   internally for legacy KP-document compatibility; they are not a separate
   user journey.
+- Case-team assignment depends on the case stage. In this implementation,
+  `Docketed` and `Mediation` use the active `Administrator` as the automatic
+  Barangay Captain/Head; Secretary and Member are unavailable and manual team
+  saves must be rejected by the server. A `Conciliation` team may be initially
+  saved once through the assignment form. After that, keep the assigned values
+  read-only there and allow changes through the authorized case Edit operation
+  only. Validate all three as distinct active `Lupon Member` users on the
+  server and save case/status/team changes atomically without duplicate
+  assignment rows. No schema change is needed for these rules.
 - Proof of service must reference a generated document for the selected case.
   Generated-document service states are `Generated`, `For Service`, `Served`,
   and `Service Failed`; recording proof marks that document `Served`.
 - Required form controls need a visible asterisk, an HTML `required` rule, and
   server-side validation. Provide useful character limits and file format/size
   guidance beside relevant inputs.
+- Reuse `backend/services/ValidationService.php` for shared name, email, date,
+  phone, address, and text checks. Current validation trims required values,
+  rejects control characters and impossible dates, checks Philippine telephone
+  number formats, validates existing dropdown choices, and checks upload MIME
+  type/extension/size where those upload flows exist. Keep critical checks on
+  the server; client checks are for immediate feedback. Do not normalize or
+  rewrite existing stored records as part of adding validation.
 - Hearing scheduling is case-based: link from the case workspace into the
   scheduling page with `case_id`, validate future dates and the Initial Hearing
   five-day docketing limit on both client and server, show calendar data from
   the hearing calendar API, allow staff to begin scheduling from an eligible
   calendar date and edit an existing calendar entry, and require review and
   confirmation before the final write.
+- **Hearing Progression and Automatic Docketing Rules**:
+  - Hearing sessions follow a statutory progression: up to 3 Mediation hearings
+    (`1st Mediation`, `2nd Mediation`, `3rd Mediation`), followed by up to 3 Conciliation
+    hearings (`1st Conciliation`, `2nd Conciliation`, `3rd Conciliation`).
+  - Scheduling permanently halts once the `3rd Conciliation` hearing is scheduled.
+  - Scheduling the `1st Mediation` hearing automatically triggers case docketing
+    (`cases.case_status = 'Docketed'`) and updates complaint status (`complaints.status = 'Docketed'`)
+    in the same database transaction.
 - Use the shared `window.agapNotify(message, type, title)` toast layer for
   user-facing workflow feedback. It converts module status/alert messages into
   dismissible popups and polls the authenticated notification inbox for newly
