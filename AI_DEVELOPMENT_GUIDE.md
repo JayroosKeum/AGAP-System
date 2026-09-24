@@ -215,16 +215,36 @@ const api = (url, options) => fetch(url, options).then(async (response) => {
   `Needs Information`, `Accepted`, or `Rejected`, with optional review notes.
   Only an `Accepted` complaint can be docketed; docketing changes it to
   `Docketed` in the same transaction as case creation.
-- The Complaints page is the primary record-search screen. It combines keyword,
-  status, case-type, category, and incident-date filters with status KPI cards
-  and tabs; results come from the existing Records Search API and appear in one
-  complaint table. Keep the standalone Records Search page available for direct
-  compatibility, but do not restore its removed sidebar entry without a
-  specific requirement. The current table has Complaint, Case No., Category,
-  Parties, Incident Date, Status, and Actions columns.
-- Complaint intake and editing use dedicated `complaint-create.php` and
-  `complaint-edit.php` pages. Keep party selection, complaint case type,
-  incident details, and optional map pin in those workflows.
+- The Complaints page (`complaint-list.php`) is the primary record-search screen.
+  It features a modern, compact dashboard layout: 4 KPI metric cards (Total, Under
+  Review, In Progress, Settled) with 1-click filtering, quick status tabs with live
+  counts, a compact toolbar with debounced search, clear button, Case Type dropdown
+  (`All`, `Civil`, `Criminal`), Category dropdown, and a collapsible filter drawer for
+  incident date ranges and exact status. Results appear in a dedicated 7-column table:
+  `Complaint`, `Case No.`, `Category`, `Parties`, `Incident Date`, `Status`, and
+  `Actions` (View Details link, Edit Page link, and Delete modal trigger).
+  The standalone Records Search page remains available by direct URL for compatibility,
+  while its sidebar navigation item is removed.
+- Complaint intake and editing use dedicated full-page forms (`complaint-create.php`
+  and `complaint-edit.php`) rather than popup modals:
+  - Both pages share a modern, compact two-column card architecture.
+  - **Classification & Case Type**: Category dropdown, narrative description, prayer for
+    relief, and a mandatory **Case Type** dropdown (`Civil` or `Criminal`), stored in
+    `complaints.case_type` and propagated to `cases.case_type` upon docketing.
+  - **Integrated Parties**: Complainant and Respondent textboxes are embedded directly
+    in the form (replacing the previous "Add Party" modal popup button), featuring live
+    resident datalist autocomplete (`#residentOptions`) and automatic database
+    synchronization into `complaint_parties`.
+  - **Merged Incident Datetime**: Uses a single `<input type="datetime-local" name="incident_datetime">`
+    on intake and edit, parsed server-side into `incident_date` (DATE) and `incident_time` (TIME).
+  - **Incident Location & Map**: Requires specific location text, optional landmark, and
+    an optional interactive Leaflet/OpenStreetMap pin selector. Coordinates are persisted
+    in `incident_locations` in the same transaction as the complaint write.
+  - **Edit Synchronization**: `complaint-edit.php` preloads all stored facts, parties,
+    merged datetime, case type, and coordinates. Edits atomically update `complaints`,
+    sync `case_type` to any linked `cases`, update `complaint_parties`, and update/clear
+    coordinates in `incident_locations`. Edit buttons on `complaint-details.php` and
+    `complaint-list.php` route directly to `complaint-edit.php?id=<id>`.
 - Treat `frontend/pages/complaints/complaint-details.php` as the complaint
   workspace for review, parties, and picture/video/document evidence. Create
   and edit incident details, including the optional exact map pin, from the
@@ -278,6 +298,14 @@ const api = (url, options) => fetch(url, options).then(async (response) => {
   the hearing calendar API, allow staff to begin scheduling from an eligible
   calendar date and edit an existing calendar entry, and require review and
   confirmation before the final write.
+- **Hearing Progression and Automatic Docketing Rules**:
+  - Hearing sessions follow a statutory progression: up to 3 Mediation hearings
+    (`1st Mediation`, `2nd Mediation`, `3rd Mediation`), followed by up to 3 Conciliation
+    hearings (`1st Conciliation`, `2nd Conciliation`, `3rd Conciliation`).
+  - Scheduling permanently halts once the `3rd Conciliation` hearing is scheduled.
+  - Scheduling the `1st Mediation` hearing automatically triggers case docketing
+    (`cases.case_status = 'Docketed'`) and updates complaint status (`complaints.status = 'Docketed'`)
+    in the same database transaction.
 - Use the shared `window.agapNotify(message, type, title)` toast layer for
   user-facing workflow feedback. It converts module status/alert messages into
   dismissible popups and polls the authenticated notification inbox for newly
