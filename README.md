@@ -42,15 +42,21 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
   - Atomic server updates: synchronizes `complaints`, propagates `case_type` to linked `cases`, updates/inserts `complaint_parties`, and persists or clears coordinates in `incident_locations`.
 - **Modern, Compact Complaints List (`complaint-list.php`)**:
   - **4 Top KPI Metric Cards**: "Total Complaints", "Under Review", "In Progress", and "Settled" with one-click filtering.
-  - **Quick Status Tabs**: Horizontal status tabs (`All`, `Filed`, `Under Review`, `Accepted`, `Docketed`, etc.) with live counts.
-  - **Compact Toolbar**: Debounced keyword search, quick clear button, Case Type dropdown (`All`, `Civil`, `Criminal`), Category filter dropdown, and collapsible filter drawer for date ranges (`Date From`, `Date To`) and exact status.
+  - **8 Process-Based Status Navigation Tabs**: Horizontal quick-access tabs with live count pills for each stage and disposition: `All`, `Under Review`, `Docketed`, `Mediation`, `Conciliation`, `Arbitration`, `Settled`, `Dismissed`, and `CFA`.
+  - **3-Dimensional Lifecycle Tracking**: Conforms to RA 7160 (Katarungang Pambarangay) by decoupling orthogonal attributes:
+    1. **Intake Status**: `Under Review` (screening/pre-docketing) vs `Docketed` (assigned case number).
+    2. **Progression / Dispute Stage**: `None / Pre-docketing`, `Mediation` (PB phase), `Conciliation` (Pangkat phase), or `Arbitration` (voluntary binding phase).
+    3. **Case Disposition**: `Pending`, `Amicable Settlement` (mutual agreement), `Arbitration Award` (binding resolution), `Certificate to File Action (CFA)`, or `Dismissed / Dropped`.
+  - **Interactive Column Header Sorting**: Clickable table headers on all 6 data columns (`Complaint`, `Case No.`, `Category`, `Parties`, `Incident Date`, `Status`) with toggleable ascending/descending sorting (`▲`/`▼`/`⇅`), zero-latency client-side instant sort, and backend database sort mapping.
+  - **Compact Toolbar & Granular Drawer**: Debounced keyword search, clear button, Case Type dropdown (`All`, `Civil`, `Criminal`), Category filter dropdown, and a collapsible secondary drawer containing dedicated dropdowns for each lifecycle dimension (`#searchIntake`, `#searchStage`, `#searchDisposition`) alongside date range pickers and active filter chips with one-click removal.
+  - **10 Items Per Page Pagination**: Clean, responsive pagination bar below the table displaying a dynamic range summary ("Showing 1–10 of 14 complaint records"), Previous/Next navigation controls, and direct numeric page selectors.
   - **7-Column Table Layout**:
-    1. **Complaint** (Complaint Number, Title, Filing Date)
-    2. **Case No.** (Formatted Case No. or "Not Docketed" badge)
+    1. **Complaint** (Complaint Number, Title, Case Type badge)
+    2. **Case No.** (Formatted Docket Case No. or "Undocketed" badge)
     3. **Category** (Badge)
-    4. **Parties** (Complainant and Respondent with distinct role badges)
-    5. **Incident Date** (Formatted date & time)
-    6. **Status** (Color-coded status badge)
+    4. **Parties** (Complainant, Respondent, and Witness pills with role tags)
+    5. **Incident Date** (Formatted date)
+    6. **Status** (Clean color-coded badges for Intake, Dispute Stage, and Final Outcome without label prefixes; stage automatically expires and hides after 3 mediations and 3 conciliations)
     7. **Actions** (View Details, Edit Page, Delete modal trigger)
 - **Complaint Workspace (`complaint-details.php`)**:
   - Multi-stage review gate: `Filed` $\rightarrow$ `Under Review` / `Needs Information` $\rightarrow$ `Accepted` / `Rejected`.

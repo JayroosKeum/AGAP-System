@@ -578,13 +578,19 @@ button:disabled, button.is-disabled, button[disabled], .btn-create:disabled, .bt
 }
 
 /* Status Badges */
+.status-pills-wrap {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    align-items: center;
+}
 .status-pill-badge {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    padding: 4px 10px;
+    padding: 3px 9px;
     border-radius: 9999px;
-    font-size: 0.82rem;
+    font-size: 0.8rem;
     font-weight: 600;
     white-space: nowrap;
 }
@@ -623,11 +629,89 @@ button:disabled, button.is-disabled, button[disabled], .btn-create:disabled, .bt
 .status-pill-dismissed { background: #f1f5f9; color: #475569; }
 .status-pill-dismissed .status-dot { background: #94a3b8; }
 
+.status-pill-cfa,
 .status-pill-cfa-issued { background: #fef2f2; color: #991b1b; }
+.status-pill-cfa .status-dot,
 .status-pill-cfa-issued .status-dot { background: #dc2626; }
 
 .status-pill-archived { background: #e2e8f0; color: #334155; }
 .status-pill-archived .status-dot { background: #64748b; }
+
+/* Sortable Table Headers */
+.sortable-th {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+.sortable-th:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+}
+.th-content {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.sort-indicator {
+    display: inline-flex;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    line-height: 1;
+}
+.sortable-th.sort-active-asc .sort-indicator,
+.sortable-th.sort-active-desc .sort-indicator {
+    color: #0284c7;
+    font-weight: 800;
+}
+.sortable-th.sort-active-asc,
+.sortable-th.sort-active-desc {
+    color: #0369a1;
+}
+
+/* 3-Dimensional Lifecycle Badges (Intake, Stage, Disposition) */
+.lifecycle-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
+}
+.lifecycle-subrow {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+}
+.lifecycle-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 5px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1.25;
+    white-space: nowrap;
+}
+.lifecycle-badge-label {
+    display: none;
+}
+
+/* 1. Intake Status */
+.badge-intake-under-review { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+.badge-intake-docketed { background: #e0e7ff; color: #3730a3; border: 1px solid #c7d2fe; }
+
+/* 2. Dispute Stage */
+.badge-stage-none { background: #f8fafc; color: #94a3b8; border: 1px solid #e2e8f0; }
+.badge-stage-mediation { background: #ede9fe; color: #5b21b6; border: 1px solid #ddd6fe; }
+.badge-stage-conciliation { background: #ccfbf1; color: #115e59; border: 1px solid #99f6e4; }
+.badge-stage-arbitration { background: #fae8ff; color: #86198f; border: 1px solid #f5d0fe; }
+
+/* 3. Final Disposition */
+.badge-disp-pending { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+.badge-disp-settled { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; font-weight: 700; }
+.badge-disp-arbitration { background: #f3e8ff; color: #7e22ce; border: 1px solid #e9d5ff; font-weight: 700; }
+.badge-disp-cfa { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; font-weight: 700; }
+.badge-disp-dismissed { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; font-weight: 600; }
 
 /* Dedicated Actions Column */
 .table-actions-group {
@@ -703,6 +787,85 @@ button:disabled, button.is-disabled, button[disabled], .btn-create:disabled, .bt
     margin: 0 0 16px;
 }
 
+/* Complaints Modern Pagination */
+.complaints-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 12px 18px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    margin: 0 20px 30px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+}
+.complaints-pagination[hidden] {
+    display: none !important;
+}
+.complaints-pagination-summary {
+    color: #475569;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+.complaints-pagination-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.complaints-page-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 34px;
+    height: 34px;
+    padding: 0 10px;
+    border-radius: 6px;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #334155;
+    font-size: 0.84rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+}
+.complaints-page-btn:hover:not(:disabled) {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+    color: #0f172a;
+}
+.complaints-page-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    background: #f8fafc;
+    border-color: #e2e8f0;
+}
+.complaints-page-btn.active,
+.complaints-page-btn.current {
+    background: #0284c7;
+    border-color: #0284c7;
+    color: #ffffff;
+    cursor: default;
+    box-shadow: 0 1px 3px rgba(2, 132, 199, 0.3);
+}
+.complaints-page-nav-btn {
+    padding: 0 12px;
+    font-weight: 600;
+    font-size: 0.82rem;
+}
+.pagination-ellipsis {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    color: #94a3b8;
+    font-weight: 600;
+    user-select: none;
+}
+
 /* Responsive Table & Grid Rules */
 @media (max-width: 1024px) {
     .complaints-kpi-grid {
@@ -719,6 +882,7 @@ button:disabled, button.is-disabled, button[disabled], .btn-create:disabled, .bt
     .complaints-toolbar-card,
     .results-meta-bar,
     .complaints-table-container,
+    .complaints-pagination,
     .complaint-alert-banner {
         margin-left: 14px;
         margin-right: 14px;

@@ -175,9 +175,26 @@ write; an edit retains the pin unless it is moved or explicitly cleared.
   - "Edit Complaint" buttons on both `complaint-details.php` and `complaint-list.php` route
     directly to `complaint-edit.php?id=<id>`.
 
+- **Separated 3-Dimensional Complaint Lifecycle & Interactive Modern List (`complaint-list.php`)**:
+  - Replaces the single collapsed/overloaded status concept with three orthogonal, legally compliant lifecycle dimensions conforming strictly to the Katarungang Pambarangay provisions of RA 7160 (Local Government Code of 1991):
+    1. **Intake / Administrative Status**: `Under Review` (newly filed, awaiting screening/scheduling) vs `Docketed` (assigned a case number and scheduled for hearing).
+    2. **Progression / Dispute Stage**: Active procedural phase — `None / Pre-docketing`, `Mediation` (PB phase, Sec. 410b), `Conciliation` (Pangkat phase, Sec. 410b/412), or `Arbitration` (voluntary binding arbitration, Sec. 413).
+    3. **Case Disposition / Final Outcome**: How the dispute concluded — `Pending`, `Amicable Settlement` (mutual agreement, Sec. 411), `Arbitration Award` (binding resolution, Sec. 413), `Certificate to File Action (CFA)` (failed conciliation/repudiation, Sec. 412), or `Dismissed / Dropped` (non-appearance/withdrawal, Sec. 410d).
+  - Clean status badge representation in table rows (Status column):
+    - Removed label prefixes ("intake", "stage", "result") so only the status values themselves are displayed.
+    - Intake pill (`badge-intake-*`): Under Review / Docketed.
+    - Dispute Stage pill (`badge-stage-*`): Mediation / Conciliation / Arbitration (shown during active hearing stages).
+    - Final Disposition pill (`badge-disp-*`): Pending / Amicable Settlement / Arbitration Award / CFA Issued / Dismissed.
+    - **Stage Expiration Rule**: After the 3 mediation and 3 conciliation hearings have taken place (`conciliation_count >= 3`), the dispute stage is exhausted and removed from the Status display, showing only the intake (`Docketed` or `Under Review`) and result (`Dismissed`, `CFA Issued`, `Amicable Settlement`, `Pending`, etc.).
+  - Interactive table column header sorting on all columns (Complaint, Case No., Category, Parties, Incident Date, Status) with ascending/descending toggling (`▲`/`▼`/`⇅`), instant zero-latency client-side sorting on loaded rows, and backend database sort mapping.
+  - Granular secondary filter drawer with separate dropdowns for each lifecycle dimension (`#searchIntake`, `#searchStage`, `#searchDisposition`), date range, case type (`Civil` / `Criminal`), and quick status navigation tabs (`All`, `Under Review`, `Docketed`, `Mediation`, `Conciliation`, `Arbitration`, `Settled`, `Dismissed`, `CFA`).
+  - Real-time tab counts and KPI summary metrics derived directly from the three lifecycle dimensions.
+  - **10 Items Per Page Pagination**: Responsive pagination bar (`#complaintPagination`) below the table displaying a dynamic summary ("Showing 1–10 of 14 complaint records"), Previous/Next navigation buttons, numeric page buttons with ellipsis for large page counts, and automatic reset to Page 1 upon filtering or sorting.
+
 - Relevant files include `frontend/pages/complaints/complaint-list.php`,
   `complaint-create.php`, `complaint-edit.php`, `complaint-details.php`,
   `frontend/assets/js/search.js`, `frontend/assets/js/complaints.js`,
+  `frontend/assets/css/complaints.css`,
   `backend/api/complaints/create.php`, `backend/api/complaints/update.php`,
   `backend/api/search/records.php`, `backend/models/Complaint.php`,
   `backend/models/Search.php`, and `frontend/layouts/sidebar.php`.

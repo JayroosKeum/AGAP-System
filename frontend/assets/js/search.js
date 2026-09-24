@@ -5,7 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!form || !results) return;
 
     const complaintView = results.id === 'complaintTable';
-    const columnCount = complaintView ? 7 : 7;
+    const columnCount = 7;
 
     const searchInput = document.getElementById('searchQuery');
     const clearInputBtn = document.getElementById('clearSearchInput');
@@ -20,8 +20,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const activeDot = document.getElementById('filterActiveDot');
     const chipsContainer = document.getElementById('activeFilterChips');
 
+    // Distinct Lifecycle Attribute Selectors
+    const intakeSelect = document.getElementById('searchIntake');
+    const stageSelect = document.getElementById('searchStage');
+    const dispositionSelect = document.getElementById('searchDisposition');
+
+    // Sorting Elements
+    const sortSelect = document.getElementById('searchSort');
+    const sortOrderInput = document.getElementById('sortOrder');
+    const sortableHeaders = document.querySelectorAll('.sortable-th');
+
     let debounceTimer = null;
     let cachedGlobalCounts = null;
+    let loadedRows = [];
+    let activeSortKey = 'date';
+    let activeSortDir = 'desc';
+
+    // Pagination State (Max 10 per page)
+    const pageSize = 10;
+    let currentPage = 1;
+    const paginationContainer = document.getElementById('complaintPagination');
+    const paginationSummary = document.getElementById('complaintPaginationSummary');
+    const paginationControls = document.getElementById('complaintPaginationControls');
 
     // Toggle secondary filter drawer
     if (drawerToggle && drawerPanel) {
@@ -67,10 +87,198 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Auto-submit on distinct lifecycle drawer filter changes
+    [intakeSelect, stageSelect, dispositionSelect].forEach(select => {
+        if (select) {
+            select.addEventListener('change', () => {
+                // If user filters specifically by intake/stage/disposition, clear single status quick filter
+                if (statusSelect && (intakeSelect?.value || stageSelect?.value || dispositionSelect?.value)) {
+                    statusSelect.value = '';
+                    syncNavTabsWithStatus('');
+                }
+                form.requestSubmit();
+            });
+        }
+    });
+
     if (statusSelect) {
         statusSelect.addEventListener('change', () => {
             syncNavTabsWithStatus(statusSelect.value);
             form.requestSubmit();
+        });
+    }
+
+    // Sort selector dropdown change
+    if (sortSelect) {
+        sortSelect.addEventListener('change', () => {
+            const val = sortSelect.value;
+            applySortFromDropdownValue(val);
+        });
+    }
+
+    function applySortFromDropdownValue(val) {
+        if (val.endsWith('_asc')) {
+            activeSortKey = mapSortValueToHeaderKey(val.replace('_asc', ''));
+            activeSortDir = 'asc';
+        } else if (val.endsWith('_desc')) {
+            activeSortKey = mapSortValueToHeaderKey(val.replace('_desc', ''));
+            activeSortDir = 'desc';
+        } else {
+            activeSortKey = mapSortValueToHeaderKey(val);
+            activeSortDir = (activeSortKey === 'date') ? 'desc' : 'asc';
+        }
+
+        updateSortHeadersUI();
+        if (loadedRows.length > 0) {
+            sortRows(loadedRows, activeSortKey, activeSortDir);
+            if (complaintView) {
+                currentPage = 1;
+                renderPaginatedRows();
+            } else {
+                renderRows(loadedRows);
+            }
+        } else {
+            form.requestSubmit();
+        }
+    }
+
+    function mapSortValueToHeaderKey(val) {
+        switch (val) {
+            case 'incident_date': return 'date';
+            case 'complaint_number':
+            case 'complaint_title': return 'complaint';
+            case 'case_number': return 'case_no';
+            case 'category_name': return 'category';
+            case 'parties': return 'parties';
+            case 'intake_status':
+            case 'current_stage':
+            case 'final_disposition': return 'lifecycle';
+            default: return val || 'date';
+        }
+    }
+
+    // Interactive Column Header Sorting
+    if (sortableHeaders.length > 0) {
+        sortableHeaders.forEach(th => {
+            th.addEventListener('click', () => {
+                const sortKey = th.dataset.sortKey;
+                if (!sortKey) return;
+
+                if (activeSortKey === sortKey) {
+                    activeSortDir = (activeSortDir === 'asc') ? 'desc' : 'asc';
+                } else {
+                    activeSortKey = sortKey;
+                    activeSortDir = (sortKey === 'date') ? 'desc' : 'asc';
+                }
+
+                updateSortHeadersUI();
+
+                if (sortOrderInput) {
+                    sortOrderInput.value = activeSortDir.toUpperCase();
+                }
+
+                // Sync with #searchSort dropdown if appropriate option exists
+                syncSortDropdown();
+
+                if (loadedRows.length > 0) {
+                    sortRows(loadedRows, activeSortKey, activeSortDir);
+                    if (complaintView) {
+                        currentPage = 1;
+                        renderPaginatedRows();
+                    } else {
+                        renderRows(loadedRows);
+                    }
+                } else {
+                    form.requestSubmit();
+                }
+            });
+        });
+    }
+
+    function updateSortHeadersUI() {
+        sortableHeaders.forEach(th => {
+            const key = th.dataset.sortKey;
+            const ind = document.getElementById(`sortInd_${key}`);
+            th.classList.remove('sort-active-asc', 'sort-active-desc');
+
+            if (key === activeSortKey) {
+                th.classList.add(`sort-active-${activeSortDir}`);
+                if (ind) ind.textContent = (activeSortDir === 'asc') ? '▲' : '▼';
+            } else {
+                if (ind) ind.textContent = '⇅';
+            }
+        });
+    }
+
+    function syncSortDropdown() {
+        if (!sortSelect) return;
+        const targetVal = (activeSortKey === 'date')
+            ? (activeSortDir === 'asc' ? 'incident_date_asc' : 'incident_date')
+            : (activeSortKey === 'complaint')
+                ? (activeSortDir === 'desc' ? 'complaint_number_desc' : 'complaint_number')
+                : (activeSortKey === 'case_no')
+                    ? (activeSortDir === 'desc' ? 'case_number_desc' : 'case_number')
+                    : (activeSortKey === 'category')
+                        ? 'category_name'
+                        : '';
+
+        if (targetVal) {
+            const opt = sortSelect.querySelector(`option[value="${targetVal}"]`);
+            if (opt) sortSelect.value = targetVal;
+        }
+    }
+
+    // In-memory row sorting for instantaneous UI feedback
+    function sortRows(rows, key, dir) {
+        const mult = (dir === 'asc') ? 1 : -1;
+        rows.sort((a, b) => {
+            switch (key) {
+                case 'complaint': {
+                    const cA = String(a.complaint_number || a.complaint_title || '').toLowerCase();
+                    const cB = String(b.complaint_number || b.complaint_title || '').toLowerCase();
+                    return cA.localeCompare(cB) * mult;
+                }
+                case 'case_no': {
+                    const noA = String(a.case_number || '').toLowerCase();
+                    const noB = String(b.case_number || '').toLowerCase();
+                    if (!noA && noB) return 1;
+                    if (noA && !noB) return -1;
+                    return noA.localeCompare(noB) * mult;
+                }
+                case 'category': {
+                    const catA = String(a.category_name || '').toLowerCase();
+                    const catB = String(b.category_name || '').toLowerCase();
+                    return catA.localeCompare(catB) * mult;
+                }
+                case 'parties': {
+                    const pA = String(a.parties || '').toLowerCase();
+                    const pB = String(b.parties || '').toLowerCase();
+                    return pA.localeCompare(pB) * mult;
+                }
+                case 'date': {
+                    const dA = a.incident_date || '';
+                    const dB = b.incident_date || '';
+                    return dA.localeCompare(dB) * mult;
+                }
+                case 'lifecycle': {
+                    const rank = (r) => {
+                        const disp = r.final_disposition || '';
+                        if (disp === 'Amicable Settlement') return 10;
+                        if (disp.includes('Arbitration')) return 9;
+                        if (disp.includes('CFA')) return 8;
+                        if (disp.includes('Dismissed')) return 7;
+                        const st = r.current_stage || '';
+                        if (st === 'Arbitration') return 6;
+                        if (st === 'Conciliation') return 5;
+                        if (st === 'Mediation') return 4;
+                        if (r.intake_status === 'Docketed') return 3;
+                        return 1;
+                    };
+                    return (rank(a) - rank(b)) * mult;
+                }
+                default:
+                    return 0;
+            }
         });
     }
 
@@ -85,6 +293,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (statusSelect) {
                 statusSelect.value = targetStatus;
             }
+
+            // Clear secondary drawer lifecycle filters so tab filter takes priority
+            if (intakeSelect) intakeSelect.value = '';
+            if (stageSelect) stageSelect.value = '';
+            if (dispositionSelect) dispositionSelect.value = '';
 
             syncKpiCardsWithStatus(targetStatus);
             form.requestSubmit();
@@ -105,6 +318,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 statusSelect.value = targetStatus;
             }
 
+            if (intakeSelect) intakeSelect.value = '';
+            if (stageSelect) stageSelect.value = '';
+            if (dispositionSelect) dispositionSelect.value = '';
+
             syncNavTabsWithStatus(targetStatus);
             form.requestSubmit();
         });
@@ -123,6 +340,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const f = card.dataset.kpiFilter;
             if (statusVal === '' && f === 'all') card.classList.add('active');
             else if (f === statusVal) card.classList.add('active');
+            else if (f === 'in_progress' && ['Mediation', 'Conciliation', 'Arbitration', 'Docketed', 'in_progress'].includes(statusVal)) card.classList.add('active');
             else card.classList.remove('active');
         });
     }
@@ -149,9 +367,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 return data;
             })
             .then(rows => {
-                renderRows(rows);
+                loadedRows = Array.isArray(rows) ? rows : [];
+                sortRows(loadedRows, activeSortKey, activeSortDir);
                 if (complaintView) {
-                    updateKpiAndTabCounts(rows);
+                    currentPage = 1;
+                    updateKpiAndTabCounts(loadedRows);
+                    renderPaginatedRows();
+                } else {
+                    renderRows(loadedRows);
                 }
             })
             .catch(() => {
@@ -165,6 +388,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </td>
                     </tr>
                 `;
+                if (paginationContainer) paginationContainer.style.display = 'none';
                 if (summary) summary.textContent = '';
             });
     });
@@ -172,9 +396,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // Clear search and reset filters
     clearBtn?.addEventListener('click', () => {
         form.reset();
+        currentPage = 1;
         if (clearInputBtn) clearInputBtn.style.display = 'none';
         if (drawerPanel) drawerPanel.classList.remove('open');
         if (drawerToggle) drawerToggle.classList.remove('active');
+
+        if (intakeSelect) intakeSelect.value = '';
+        if (stageSelect) stageSelect.value = '';
+        if (dispositionSelect) dispositionSelect.value = '';
+        if (statusSelect) statusSelect.value = '';
+
+        activeSortKey = 'date';
+        activeSortDir = 'desc';
+        updateSortHeadersUI();
+        if (sortOrderInput) sortOrderInput.value = 'DESC';
+        if (sortSelect) sortSelect.value = 'incident_date';
 
         syncNavTabsWithStatus('');
         updateDrawerActiveState();
@@ -191,7 +427,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateDrawerActiveState() {
         if (!activeDot) return;
         const hasDrawerActive = Boolean(
-            (statusSelect && statusSelect.value && statusSelect.value !== 'in_progress' && statusSelect.value !== 'Under Review' && statusSelect.value !== 'Docketed' && statusSelect.value !== 'Settled') ||
+            (intakeSelect && intakeSelect.value) ||
+            (stageSelect && stageSelect.value) ||
+            (dispositionSelect && dispositionSelect.value) ||
             (fromInput && fromInput.value) ||
             (toInput && toInput.value)
         );
@@ -242,6 +480,33 @@ document.addEventListener('DOMContentLoaded', () => {
             filterCount++;
         }
 
+        const intake = intakeSelect?.value ?? '';
+        if (intake) {
+            addChip(`Intake: ${intake}`, () => {
+                intakeSelect.value = '';
+                form.requestSubmit();
+            });
+            filterCount++;
+        }
+
+        const stage = stageSelect?.value ?? '';
+        if (stage) {
+            addChip(`Stage: ${stage}`, () => {
+                stageSelect.value = '';
+                form.requestSubmit();
+            });
+            filterCount++;
+        }
+
+        const disp = dispositionSelect?.value ?? '';
+        if (disp) {
+            addChip(`Disposition: ${disp}`, () => {
+                dispositionSelect.value = '';
+                form.requestSubmit();
+            });
+            filterCount++;
+        }
+
         const from = fromInput?.value ?? '';
         if (from) {
             addChip(`From: ${from}`, () => {
@@ -278,22 +543,37 @@ document.addEventListener('DOMContentLoaded', () => {
             !caseTypeSelect?.value &&
             !categorySelect?.value &&
             !statusSelect?.value &&
+            !intakeSelect?.value &&
+            !stageSelect?.value &&
+            !dispositionSelect?.value &&
             !fromInput?.value &&
             !toInput?.value;
 
         if (isDefaultView || !cachedGlobalCounts) {
             const allCount = rows.length;
-            const reviewCount = rows.filter(r => (r.record_status || r.case_status) === 'Under Review' || r.record_status === 'Filed' || r.record_status === 'Needs Information').length;
-            const progressCount = rows.filter(r => ['Docketed', 'Mediation', 'Conciliation', 'Arbitration'].includes(r.record_status || r.case_status)).length;
-            const docketedCount = rows.filter(r => (r.record_status || r.case_status) === 'Docketed').length;
-            const settledCount = rows.filter(r => ['Settled', 'Dismissed', 'CFA Issued'].includes(r.record_status || r.case_status)).length;
+            const reviewCount = rows.filter(r => r.intake_status === 'Under Review').length;
+            const docketedCount = rows.filter(r => r.intake_status === 'Docketed').length;
+            const mediationCount = rows.filter(r => r.current_stage === 'Mediation').length;
+            const conciliationCount = rows.filter(r => r.current_stage === 'Conciliation').length;
+            const arbitrationCount = rows.filter(r => r.current_stage === 'Arbitration').length;
+            const settledCount = rows.filter(r => r.final_disposition === 'Amicable Settlement').length;
+            const dismissedCount = rows.filter(r => r.final_disposition === 'Dismissed / Dropped').length;
+            const cfaCount = rows.filter(r => r.final_disposition === 'Certificate to File Action (CFA)').length;
+            const progressCount = rows.filter(r => {
+                return ['Mediation', 'Conciliation', 'Arbitration'].includes(r.current_stage) || r.intake_status === 'Docketed';
+            }).length;
 
             cachedGlobalCounts = {
                 all: allCount,
                 review: reviewCount,
-                progress: progressCount,
                 docketed: docketedCount,
-                settled: settledCount
+                mediation: mediationCount,
+                conciliation: conciliationCount,
+                arbitration: arbitrationCount,
+                settled: settledCount,
+                dismissed: dismissedCount,
+                cfa: cfaCount,
+                progress: progressCount
             };
         }
 
@@ -310,17 +590,121 @@ document.addEventListener('DOMContentLoaded', () => {
 
         setEl('tabCountAll', counts.all);
         setEl('tabCountReview', counts.review);
-        setEl('tabCountProgress', counts.progress);
         setEl('tabCountDocketed', counts.docketed);
+        setEl('tabCountMediation', counts.mediation);
+        setEl('tabCountConciliation', counts.conciliation);
+        setEl('tabCountArbitration', counts.arbitration);
         setEl('tabCountSettled', counts.settled);
+        setEl('tabCountDismissed', counts.dismissed);
+        setEl('tabCountCfa', counts.cfa);
     }
 
-    function renderRows(rows) {
-        if (!Array.isArray(rows)) throw new Error('Invalid records response.');
-        if (summary) {
-            summary.textContent = `Showing ${rows.length} complaint record${rows.length === 1 ? '' : 's'}`;
+    function renderPaginatedRows() {
+        if (!complaintView) {
+            renderRows(loadedRows);
+            return;
         }
-        if (!rows.length) {
+
+        const total = loadedRows.length;
+        const totalPages = Math.ceil(total / pageSize) || 1;
+
+        if (currentPage > totalPages) currentPage = totalPages;
+        if (currentPage < 1) currentPage = 1;
+
+        const startIdx = (currentPage - 1) * pageSize;
+        const endIdx = Math.min(startIdx + pageSize, total);
+        const pageSlice = loadedRows.slice(startIdx, endIdx);
+
+        renderRows(pageSlice, total);
+        renderPaginationControls(total, totalPages, startIdx, endIdx);
+    }
+
+    function renderPaginationControls(total, totalPages, startIdx, endIdx) {
+        if (!paginationContainer || !paginationSummary || !paginationControls) return;
+
+        if (total === 0) {
+            paginationContainer.style.display = 'none';
+            return;
+        }
+
+        paginationContainer.style.display = 'flex';
+        const firstNum = total > 0 ? (startIdx + 1) : 0;
+        const summaryText = `Showing ${firstNum}–${endIdx} of ${total} complaint record${total === 1 ? '' : 's'}`;
+        paginationSummary.textContent = summaryText;
+
+        if (summary) {
+            summary.textContent = summaryText;
+        }
+
+        paginationControls.replaceChildren();
+
+        if (totalPages <= 1) {
+            return;
+        }
+
+        const createBtn = (label, pageNum, disabled = false, current = false, isNav = false) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = `complaints-page-btn ${current ? 'active current' : ''} ${isNav ? 'complaints-page-nav-btn' : ''}`;
+            btn.textContent = label;
+            btn.disabled = disabled;
+            if (current) btn.setAttribute('aria-current', 'page');
+            btn.addEventListener('click', () => {
+                if (currentPage !== pageNum && !disabled) {
+                    currentPage = pageNum;
+                    renderPaginatedRows();
+                    const tableWrap = document.querySelector('.complaints-table-container');
+                    if (tableWrap) {
+                        tableWrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }
+                }
+            });
+            return btn;
+        };
+
+        // Previous button
+        paginationControls.appendChild(createBtn('← Previous', currentPage - 1, currentPage <= 1, false, true));
+
+        // Numeric buttons with ellipsis if many pages
+        const maxButtons = 5;
+        let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
+        let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+        if (endPage - startPage < maxButtons - 1) {
+            startPage = Math.max(1, endPage - maxButtons + 1);
+        }
+
+        if (startPage > 1) {
+            paginationControls.appendChild(createBtn('1', 1, false, currentPage === 1));
+            if (startPage > 2) {
+                const ellipsis = document.createElement('span');
+                ellipsis.className = 'pagination-ellipsis';
+                ellipsis.textContent = '…';
+                paginationControls.appendChild(ellipsis);
+            }
+        }
+
+        for (let p = startPage; p <= endPage; p++) {
+            paginationControls.appendChild(createBtn(String(p), p, false, p === currentPage));
+        }
+
+        if (endPage < totalPages) {
+            if (endPage < totalPages - 1) {
+                const ellipsis = document.createElement('span');
+                ellipsis.className = 'pagination-ellipsis';
+                ellipsis.textContent = '…';
+                paginationControls.appendChild(ellipsis);
+            }
+            paginationControls.appendChild(createBtn(String(totalPages), totalPages, false, currentPage === totalPages));
+        }
+
+        // Next button
+        paginationControls.appendChild(createBtn('Next →', currentPage + 1, currentPage >= totalPages, false, true));
+    }
+
+    function renderRows(rows, totalCount) {
+        if (!Array.isArray(rows)) throw new Error('Invalid records response.');
+        const effectiveTotal = typeof totalCount === 'number' ? totalCount : rows.length;
+        if (!effectiveTotal) {
             results.innerHTML = `
                 <tr>
                     <td colspan="${columnCount}" class="table-empty-wrap">
@@ -331,6 +715,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     </td>
                 </tr>
             `;
+            if (paginationContainer) paginationContainer.style.display = 'none';
+            if (summary) summary.textContent = 'Showing 0 complaint records';
             return;
         }
         results.innerHTML = rows.map(row => complaintView ? renderComplaintRow(row) : renderSearchRow(row)).join('');
@@ -338,8 +724,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderComplaintRow(row) {
         const id = Number(row.complaint_id);
-        const status = String(row.record_status || row.case_status || 'Under Review');
-        const statusClass = status.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
         const caseType = String(row.case_type || 'Civil');
         const caseTypeClass = caseType.toLowerCase() === 'criminal' ? 'badge-type-criminal' : 'badge-type-civil';
 
@@ -404,6 +788,49 @@ document.addEventListener('DOMContentLoaded', () => {
                </div>`
             : '';
 
+        // Distinct Lifecycle Representation without label prefixes
+        const intake = row.intake_status || (row.case_id ? 'Docketed' : 'Under Review');
+        const intakeClass = (intake === 'Docketed') ? 'badge-intake-docketed' : 'badge-intake-under-review';
+
+        const medCount = Number(row.mediation_count || 0);
+        const conCount = Number(row.conciliation_count || 0);
+        const isStageExhausted = Boolean(row.is_stage_exhausted) || (conCount >= 3) || (medCount >= 3 && conCount >= 3);
+
+        const stage = isStageExhausted ? 'None' : (row.current_stage || 'None');
+        let stageClass = 'badge-stage-none';
+        if (stage === 'Mediation') stageClass = 'badge-stage-mediation';
+        else if (stage === 'Conciliation') stageClass = 'badge-stage-conciliation';
+        else if (stage === 'Arbitration') stageClass = 'badge-stage-arbitration';
+
+        const disp = row.final_disposition || 'Pending';
+        let dispClass = 'badge-disp-pending';
+        let dispLabel = 'Pending';
+        if (disp === 'Amicable Settlement' || disp === 'Settled') {
+            dispClass = 'badge-disp-settled';
+            dispLabel = 'Amicable Settlement';
+        } else if (disp === 'Arbitration Award') {
+            dispClass = 'badge-disp-arbitration';
+            dispLabel = 'Arbitration Award';
+        } else if (disp.includes('CFA') || disp.includes('Certificate')) {
+            dispClass = 'badge-disp-cfa';
+            dispLabel = 'CFA Issued';
+        } else if (disp.includes('Dismissed') || disp.includes('Dropped')) {
+            dispClass = 'badge-disp-dismissed';
+            dispLabel = 'Dismissed';
+        }
+
+        const statusHtml = `
+            <div class="lifecycle-group">
+                <div class="lifecycle-subrow">
+                    <span class="lifecycle-badge ${intakeClass}">${escapeHtml(intake)}</span>
+                    ${stage !== 'None' ? `<span class="lifecycle-badge ${stageClass}">${escapeHtml(stage)}</span>` : ''}
+                </div>
+                <div class="lifecycle-subrow">
+                    <span class="lifecycle-badge ${dispClass}">${escapeHtml(dispLabel)}</span>
+                </div>
+            </div>
+        `;
+
         return `
             <tr>
                 <td>
@@ -419,12 +846,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td><span class="badge-category">${escapeHtml(row.category_name || 'Uncategorized')}</span></td>
                 <td>${partiesHtml}</td>
                 <td><span style="color: #475569; font-size: 0.85rem; white-space: nowrap;">${formattedDate}</span></td>
-                <td>
-                    <span class="status-pill-badge status-pill-${statusClass}">
-                        <span class="status-dot"></span>
-                        ${escapeHtml(status)}
-                    </span>
-                </td>
+                <td>${statusHtml}</td>
                 <td style="text-align: right;">${actionsHtml}</td>
             </tr>
         `;

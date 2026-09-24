@@ -100,14 +100,26 @@ include '../../layouts/header.php';
             <button type="button" class="nav-tab-btn" data-tab-status="Under Review">
                 Under Review <span class="tab-count-pill" id="tabCountReview">0</span>
             </button>
-            <button type="button" class="nav-tab-btn" data-tab-status="in_progress">
-                In Progress (Mediation / Conciliation) <span class="tab-count-pill" id="tabCountProgress">0</span>
-            </button>
             <button type="button" class="nav-tab-btn" data-tab-status="Docketed">
-                Docketed Cases <span class="tab-count-pill" id="tabCountDocketed">0</span>
+                Docketed <span class="tab-count-pill" id="tabCountDocketed">0</span>
+            </button>
+            <button type="button" class="nav-tab-btn" data-tab-status="Mediation">
+                Mediation <span class="tab-count-pill" id="tabCountMediation">0</span>
+            </button>
+            <button type="button" class="nav-tab-btn" data-tab-status="Conciliation">
+                Conciliation <span class="tab-count-pill" id="tabCountConciliation">0</span>
+            </button>
+            <button type="button" class="nav-tab-btn" data-tab-status="Arbitration">
+                Arbitration <span class="tab-count-pill" id="tabCountArbitration">0</span>
             </button>
             <button type="button" class="nav-tab-btn" data-tab-status="Settled">
                 Settled <span class="tab-count-pill" id="tabCountSettled">0</span>
+            </button>
+            <button type="button" class="nav-tab-btn" data-tab-status="Dismissed">
+                Dismissed <span class="tab-count-pill" id="tabCountDismissed">0</span>
+            </button>
+            <button type="button" class="nav-tab-btn" data-tab-status="CFA">
+                CFA <span class="tab-count-pill" id="tabCountCfa">0</span>
             </button>
         </div>
 
@@ -136,6 +148,20 @@ include '../../layouts/header.php';
                         <?php endforeach; ?>
                     </select>
 
+                    <select id="searchSort" name="sort_by" class="toolbar-select" title="Order records">
+                        <option value="incident_date">Sort: Incident Date (Newest)</option>
+                        <option value="incident_date_asc">Sort: Incident Date (Oldest)</option>
+                        <option value="complaint_number">Sort: Complaint No. (Asc)</option>
+                        <option value="complaint_number_desc">Sort: Complaint No. (Desc)</option>
+                        <option value="case_number">Sort: Case No. (Asc)</option>
+                        <option value="case_number_desc">Sort: Case No. (Desc)</option>
+                        <option value="category_name">Sort: Category (A-Z)</option>
+                        <option value="intake_status">Sort: Intake (Review → Docketed)</option>
+                        <option value="current_stage">Sort: Stage (Mediation → Conciliation → Arbitration)</option>
+                        <option value="final_disposition">Sort: Disposition (Pending → Resolved)</option>
+                    </select>
+                    <input type="hidden" id="sortOrder" name="sort_order" value="DESC">
+
                     <button type="button" id="toggleFilterDrawer" class="btn-filter-drawer-toggle">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
                         <span>More Filters</span>
@@ -147,28 +173,39 @@ include '../../layouts/header.php';
                     </button>
                 </div>
 
-                <!-- Collapsible Secondary Filter Drawer -->
+                <!-- Collapsible Secondary Filter Drawer with Distinct Lifecycle Attributes -->
                 <div id="filterDrawerPanel" class="filter-drawer-panel">
                     <div class="drawer-controls-grid">
                         <div class="drawer-field">
-                            <label for="searchStatus">Exact Status</label>
-                            <select id="searchStatus" name="status">
-                                <option value="">All statuses</option>
-                                <option value="Filed">Filed</option>
-                                <option value="Under Review">Under Review</option>
-                                <option value="Needs Information">Needs Information</option>
-                                <option value="Accepted">Accepted</option>
-                                <option value="Rejected">Rejected</option>
-                                <option value="Docketed">Docketed</option>
-                                <option value="Mediation">Mediation</option>
-                                <option value="Conciliation">Conciliation</option>
-                                <option value="Arbitration">Arbitration</option>
-                                <option value="Settled">Settled</option>
-                                <option value="Dismissed">Dismissed</option>
-                                <option value="CFA Issued">CFA Issued</option>
-                                <option value="Archived">Archived</option>
+                            <label for="searchIntake">1. Intake Status</label>
+                            <select id="searchIntake" name="intake_status">
+                                <option value="">All Intake States</option>
+                                <option value="Under Review">Under Review (Screening / Pre-docketing)</option>
+                                <option value="Docketed">Docketed (Case Assigned)</option>
                             </select>
                         </div>
+                        <div class="drawer-field">
+                            <label for="searchStage">2. Dispute Stage</label>
+                            <select id="searchStage" name="current_stage">
+                                <option value="">All Procedural Stages</option>
+                                <option value="Mediation">Mediation (Punong Barangay)</option>
+                                <option value="Conciliation">Conciliation (Pangkat ng Tagapagkasundo)</option>
+                                <option value="Arbitration">Arbitration (Binding Agreement)</option>
+                                <option value="None">None / Pre-docketing</option>
+                            </select>
+                        </div>
+                        <div class="drawer-field">
+                            <label for="searchDisposition">3. Final Disposition</label>
+                            <select id="searchDisposition" name="final_disposition">
+                                <option value="">All Dispositions</option>
+                                <option value="Pending">Pending (Ongoing Proceedings)</option>
+                                <option value="Amicable Settlement">Amicable Settlement (Mutual Agreement)</option>
+                                <option value="Arbitration Award">Arbitration Award (Binding Decision)</option>
+                                <option value="Certificate to File Action (CFA)">Certificate to File Action (CFA)</option>
+                                <option value="Dismissed / Dropped">Dismissed / Dropped</option>
+                            </select>
+                        </div>
+                        <input type="hidden" id="searchStatus" name="status" value="">
                         <div class="drawer-field">
                             <label for="searchFrom">Incident Date From</label>
                             <input id="searchFrom" name="date_from" type="date">
@@ -177,8 +214,8 @@ include '../../layouts/header.php';
                             <label for="searchTo">Incident Date To</label>
                             <input id="searchTo" name="date_to" type="date">
                         </div>
-                        <div>
-                            <button class="btn-create" type="submit" style="padding: 7px 16px; font-size: 0.84rem;">Apply Filters</button>
+                        <div style="display: flex; align-items: flex-end;">
+                            <button class="btn-create" type="submit" style="padding: 7px 16px; font-size: 0.84rem; height: 38px;">Apply Filters</button>
                         </div>
                     </div>
                 </div>
@@ -191,17 +228,29 @@ include '../../layouts/header.php';
             <div id="activeFilterChips" class="active-filters-chips"></div>
         </div>
 
-        <!-- 7-Column Modern Complaints Table -->
+        <!-- 7-Column Modern Complaints Table with Clickable Sortable Headers -->
         <div class="complaints-table-container">
             <table class="modern-complaints-table">
                 <thead>
                     <tr>
-                        <th style="min-width: 220px;">Complaint</th>
-                        <th style="min-width: 125px;">Case No.</th>
-                        <th style="min-width: 140px;">Category</th>
-                        <th style="min-width: 190px;">Parties</th>
-                        <th style="min-width: 110px;">Incident Date</th>
-                        <th style="min-width: 130px;">Status</th>
+                        <th class="sortable-th" data-sort-key="complaint" style="min-width: 210px;" title="Click to sort by Complaint (A-Z / Z-A)">
+                            <span class="th-content">Complaint <span class="sort-indicator" id="sortInd_complaint">⇅</span></span>
+                        </th>
+                        <th class="sortable-th" data-sort-key="case_no" style="min-width: 125px;" title="Click to sort by Case Number">
+                            <span class="th-content">Case No. <span class="sort-indicator" id="sortInd_case_no">⇅</span></span>
+                        </th>
+                        <th class="sortable-th" data-sort-key="category" style="min-width: 140px;" title="Click to sort by Category">
+                            <span class="th-content">Category <span class="sort-indicator" id="sortInd_category">⇅</span></span>
+                        </th>
+                        <th class="sortable-th" data-sort-key="parties" style="min-width: 180px;" title="Click to sort by Parties">
+                            <span class="th-content">Parties <span class="sort-indicator" id="sortInd_parties">⇅</span></span>
+                        </th>
+                        <th class="sortable-th sort-active-desc" data-sort-key="date" style="min-width: 115px;" title="Click to sort by Incident Date">
+                            <span class="th-content">Incident Date <span class="sort-indicator" id="sortInd_date">▼</span></span>
+                        </th>
+                        <th class="sortable-th" data-sort-key="lifecycle" style="min-width: 200px;" title="Click to sort by Status">
+                            <span class="th-content">Status <span class="sort-indicator" id="sortInd_lifecycle">⇅</span></span>
+                        </th>
                         <th style="min-width: 150px; text-align: right;">Actions</th>
                     </tr>
                 </thead>
@@ -214,6 +263,12 @@ include '../../layouts/header.php';
                     </tr>
                 </tbody>
             </table>
+        </div>
+
+        <!-- Modern Pagination Bar (10 items per page) -->
+        <div id="complaintPagination" class="complaints-pagination" aria-label="Complaints pagination" style="display: none;">
+            <span id="complaintPaginationSummary" class="complaints-pagination-summary" aria-live="polite">Showing 0 complaints</span>
+            <div id="complaintPaginationControls" class="complaints-pagination-controls"></div>
         </div>
 
     </div>

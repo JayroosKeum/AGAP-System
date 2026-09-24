@@ -217,12 +217,19 @@ const api = (url, options) => fetch(url, options).then(async (response) => {
   `Docketed` in the same transaction as case creation.
 - The Complaints page (`complaint-list.php`) is the primary record-search screen.
   It features a modern, compact dashboard layout: 4 KPI metric cards (Total, Under
-  Review, In Progress, Settled) with 1-click filtering, quick status tabs with live
-  counts, a compact toolbar with debounced search, clear button, Case Type dropdown
-  (`All`, `Civil`, `Criminal`), Category dropdown, and a collapsible filter drawer for
-  incident date ranges and exact status. Results appear in a dedicated 7-column table:
-  `Complaint`, `Case No.`, `Category`, `Parties`, `Incident Date`, `Status`, and
-  `Actions` (View Details link, Edit Page link, and Delete modal trigger).
+  Review, In Progress, Settled) with 1-click filtering, 8 process-based quick status
+  tabs (`All`, `Under Review`, `Docketed`, `Mediation`, `Conciliation`, `Arbitration`,
+  `Settled`, `Dismissed`, `CFA`) with live counts, interactive clickable column headers
+  with ascending/descending sorting (`▲`/`▼`/`⇅`), and a compact toolbar with debounced
+  keyword search, clear button, Case Type dropdown (`All`, `Civil`, `Criminal`),
+  Category dropdown, and a collapsible filter drawer with dedicated dropdowns for the
+  three orthogonal lifecycle dimensions (`#searchIntake`, `#searchStage`, `#searchDisposition`)
+  alongside incident date ranges. Results appear in a dedicated 7-column table:
+  `Complaint`, `Case No.`, `Category`, `Parties`, `Incident Date`, `Status`
+  (displaying clean status badges without label prefixes for Intake, Dispute Stage, and
+  Case Disposition; stage automatically hides after 3 mediations and 3 conciliations),
+  and `Actions` (View Details link, Edit Page link, and Delete modal trigger). The table
+  paginates records up to 10 items per page with dynamic range summary and navigation controls.
   The standalone Records Search page remains available by direct URL for compatibility,
   while its sidebar navigation item is removed.
 - Complaint intake and editing use dedicated full-page forms (`complaint-create.php`
