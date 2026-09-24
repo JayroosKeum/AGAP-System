@@ -79,6 +79,17 @@ class Complaint
     public function create($data): array
     {
         try {
+            if (!empty($data['incident_datetime'])) {
+                $rawDt = trim((string) $data['incident_datetime']);
+                $dtObj = DateTimeImmutable::createFromFormat('Y-m-d\\TH:i', $rawDt)
+                    ?: DateTimeImmutable::createFromFormat('Y-m-d\\TH:i:s', $rawDt)
+                    ?: DateTimeImmutable::createFromFormat('Y-m-d H:i', $rawDt)
+                    ?: DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $rawDt);
+                if ($dtObj) {
+                    $data['incident_date'] = $dtObj->format('Y-m-d');
+                    $data['incident_time'] = $dtObj->format('H:i');
+                }
+            }
 
             $validation = $this->validateIncidentInput($data);
             if (!$validation['success']) {
@@ -94,12 +105,17 @@ class Complaint
                 session_start();
             }
 
+            $caseType = in_array(trim((string)($data['case_type'] ?? '')), ['Civil', 'Criminal'], true)
+                ? trim((string)$data['case_type'])
+                : 'Civil';
+
             $this->conn->beginTransaction();
             $stmt =
             $this->conn->prepare("
                 INSERT INTO complaints
                 (
                     category_id,
+                    case_type,
                     complaint_title,
                     incident_date,
                     incident_time,
@@ -112,12 +128,13 @@ class Complaint
                 )
                 VALUES
                 (
-                    ?,?,?,?,?,?,?,?,?,?
+                    ?,?,?,?,?,?,?,?,?,?,?
                 )
             ");
 
             $stmt->execute([
                 $data['category_id'],
+                $caseType,
                 trim((string) $data['complaint_title']),
                 $data['incident_date'],
                 trim((string) ($data['incident_time'] ?? '')) ?: null,
@@ -136,9 +153,14 @@ class Complaint
             );
             $numberStatement->execute([$complaintNumber, $complaintId]);
             $this->applyMapLocation($complaintId, $data);
+            $this->applyParties($complaintId, $data);
 
             $this->conn->commit();
-            return ['success' => true, 'message' => 'Complaint submitted and placed under review.'];
+            return [
+                'success' => true,
+                'message' => 'Complaint submitted and placed under review.',
+                'complaint_id' => $complaintId
+            ];
 
         }
         catch(Exception $e)
@@ -164,6 +186,18 @@ class Complaint
                 return ['success' => false, 'message' => 'Select a valid complaint to update.'];
             }
 
+            if (!empty($data['incident_datetime'])) {
+                $rawDt = trim((string) $data['incident_datetime']);
+                $dtObj = DateTimeImmutable::createFromFormat('Y-m-d\TH:i', $rawDt)
+                    ?: DateTimeImmutable::createFromFormat('Y-m-d\TH:i:s', $rawDt)
+                    ?: DateTimeImmutable::createFromFormat('Y-m-d H:i', $rawDt)
+                    ?: DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $rawDt);
+                if ($dtObj) {
+                    $data['incident_date'] = $dtObj->format('Y-m-d');
+                    $data['incident_time'] = $dtObj->format('H:i');
+                }
+            }
+
             $validation = $this->validateIncidentInput($data);
             if (!$validation['success']) {
                 return $validation;
@@ -179,12 +213,17 @@ class Complaint
                 return ['success' => false, 'message' => 'The complaint could not be found.'];
             }
 
+            $caseType = in_array(trim((string)($data['case_type'] ?? '')), ['Civil', 'Criminal'], true)
+                ? trim((string)$data['case_type'])
+                : 'Civil';
+
             $this->conn->beginTransaction();
             $stmt =
             $this->conn->prepare("
                 UPDATE complaints
                 SET
                     category_id=?,
+                    case_type=?,
                     complaint_title=?,
                     incident_date=?,
                     incident_time=?,
@@ -197,6 +236,7 @@ class Complaint
 
             $stmt->execute([
                 $data['category_id'],
+                $caseType,
                 trim((string) $data['complaint_title']),
                 $data['incident_date'],
                 trim((string) ($data['incident_time'] ?? '')) ?: null,
@@ -206,10 +246,29 @@ class Complaint
                 trim((string) ($data['additional_details'] ?? '')) ?: null,
                 $complaintId
             ]);
+
+            $updateCase = $this->conn->prepare("
+                UPDATE cases
+                SET case_type = ?
+                WHERE complaint_id = ? AND case_status IN ('Docketed', 'Mediation')
+            ");
+            $updateCase->execute([$caseType, $complaintId]);
+
             $this->applyMapLocation($complaintId, $data);
+
+            if (isset($data['complainant_name']) || isset($data['respondent_name'])) {
+                $delParties = $this->conn->prepare('DELETE FROM complaint_parties WHERE complaint_id = ?');
+                $delParties->execute([$complaintId]);
+                $this->applyParties($complaintId, $data);
+            }
+
             $this->conn->commit();
 
-            return ['success' => true, 'message' => 'Complaint updated successfully.'];
+            return [
+                'success' => true,
+                'message' => 'Complaint updated successfully.',
+                'complaint_id' => $complaintId
+            ];
 
         }
         catch(Exception $e)
@@ -271,6 +330,18 @@ class Complaint
         $date = trim((string) ($data['incident_date'] ?? ''));
         $time = trim((string) ($data['incident_time'] ?? ''));
         $narrative = trim((string) ($data['narrative'] ?? ''));
+
+        if ($date === '' && !empty($data['incident_datetime'])) {
+            $rawDt = trim((string) $data['incident_datetime']);
+            $dtObj = DateTimeImmutable::createFromFormat('Y-m-d\\TH:i', $rawDt)
+                ?: DateTimeImmutable::createFromFormat('Y-m-d\\TH:i:s', $rawDt)
+                ?: DateTimeImmutable::createFromFormat('Y-m-d H:i', $rawDt)
+                ?: DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $rawDt);
+            if ($dtObj) {
+                $date = $dtObj->format('Y-m-d');
+                $time = $dtObj->format('H:i');
+            }
+        }
 
         if (!$categoryId) return ['success' => false, 'message' => 'Select a valid complaint category.'];
         $category = $this->conn->prepare('SELECT category_id FROM complaint_categories WHERE category_id = ?');
@@ -351,4 +422,106 @@ class Complaint
         );
         $stmt->execute([$complaintId, $latitude, $longitude, $address]);
     }
+
+    private function applyParties(int $complaintId, array $data): void
+    {
+        $partyStmt = $this->conn->prepare("
+            INSERT IGNORE INTO complaint_parties (complaint_id, resident_id, party_type)
+            VALUES (?, ?, ?)
+        ");
+
+        // 1. Complainant
+        $compName = trim((string)($data['complainant_name'] ?? ''));
+        $compId = filter_var($data['complainant_resident_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
+        if ($compName !== '' || $compId) {
+            $resId = $this->resolveResidentId($compName, $compId);
+            if ($resId) {
+                $partyStmt->execute([$complaintId, $resId, 'Complainant']);
+            }
+        }
+
+        // 2. Respondent (Person being complained against)
+        $respName = trim((string)($data['respondent_name'] ?? ''));
+        $respId = filter_var($data['respondent_resident_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
+        if ($respName !== '' || $respId) {
+            $resId = $this->resolveResidentId($respName, $respId);
+            if ($resId) {
+                $partyStmt->execute([$complaintId, $resId, 'Respondent']);
+            }
+        }
+
+        // 3. Additional parties
+        if (!empty($data['party_names']) && is_array($data['party_names'])) {
+            $types = $data['party_types'] ?? [];
+            $ids = $data['party_resident_ids'] ?? [];
+            foreach ($data['party_names'] as $index => $name) {
+                $pName = trim((string)$name);
+                $pType = trim((string)($types[$index] ?? 'Witness'));
+                if (!in_array($pType, ['Complainant', 'Respondent', 'Witness'], true)) {
+                    $pType = 'Witness';
+                }
+                $pId = filter_var($ids[$index] ?? null, FILTER_VALIDATE_INT) ?: null;
+                if ($pName !== '' || $pId) {
+                    $resId = $this->resolveResidentId($pName, $pId);
+                    if ($resId) {
+                        $partyStmt->execute([$complaintId, $resId, $pType]);
+                    }
+                }
+            }
+        }
+    }
+
+    private function resolveResidentId(string $name, ?int $residentId = null): ?int
+    {
+        if ($residentId && $residentId > 0) {
+            $check = $this->conn->prepare('SELECT resident_id FROM residents WHERE resident_id = ?');
+            $check->execute([$residentId]);
+            if ($check->fetchColumn()) {
+                return (int) $residentId;
+            }
+        }
+
+        $name = trim($name);
+        if ($name === '') {
+            return null;
+        }
+
+        // Check existing resident by full name
+        $lookup = $this->conn->prepare("
+            SELECT resident_id FROM residents 
+            WHERE TRIM(CONCAT_WS(' ', first_name, last_name)) = ?
+               OR TRIM(CONCAT_WS(' ', first_name, middle_name, last_name)) = ?
+               OR TRIM(CONCAT(last_name, ', ', first_name)) = ?
+            LIMIT 1
+        ");
+        $lookup->execute([$name, $name, $name]);
+        $existingId = $lookup->fetchColumn();
+        if ($existingId) {
+            return (int) $existingId;
+        }
+
+        // Auto-create resident entry to ensure foreign key on complaint_parties is satisfied
+        $parts = preg_split('/\\s+/', $name);
+        if (count($parts) === 1) {
+            $firstName = $parts[0];
+            $lastName = '-';
+            $middleName = null;
+        } elseif (count($parts) === 2) {
+            $firstName = $parts[0];
+            $lastName = $parts[1];
+            $middleName = null;
+        } else {
+            $firstName = $parts[0];
+            $lastName = array_pop($parts);
+            $middleName = implode(' ', array_slice($parts, 1));
+        }
+
+        $createStmt = $this->conn->prepare("
+            INSERT INTO residents (first_name, middle_name, last_name)
+            VALUES (?, ?, ?)
+        ");
+        $createStmt->execute([$firstName, $middleName ?: null, $lastName]);
+        return (int) $this->conn->lastInsertId();
+    }
 }
+

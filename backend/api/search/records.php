@@ -1,6 +1,8 @@
 <?php
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 header('Content-Type: application/json');
 
 if (!isset($_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2, 3], true)) {
@@ -9,5 +11,5 @@ if (!isset($_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2,
     exit;
 }
 
-require_once '../../controllers/SearchController.php';
+require_once __DIR__ . '/../../controllers/SearchController.php';
 echo json_encode((new SearchController())->records($_GET));

@@ -50,7 +50,8 @@ class ComplaintController
             $this->audit->log(
                 $_SESSION['user_id'],
                 'Created Complaint',
-                'Complaints'
+                'Complaints',
+                $result['complaint_id'] ?? null
             );
         }
 

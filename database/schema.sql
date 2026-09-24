@@ -128,6 +128,7 @@ CREATE TABLE complaints (
     -- Assigned immediately after insert by the model so database-generated IDs remain race-safe.
     complaint_number VARCHAR(50) NULL,
     category_id INT UNSIGNED NOT NULL,
+    case_type ENUM('Civil', 'Criminal') NOT NULL DEFAULT 'Civil',
     complaint_title VARCHAR(255) NOT NULL,
     incident_date DATE NULL,
     incident_time TIME NULL,
