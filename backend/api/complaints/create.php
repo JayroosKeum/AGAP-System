@@ -31,7 +31,7 @@ if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESS
 }
 
 $controller = new ComplaintController();
-$result = $controller->store($_POST);
+$result = $controller->store($_POST, $_FILES);
 
 if ($isJson) {
     header('Content-Type: application/json; charset=utf-8');

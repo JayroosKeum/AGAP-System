@@ -49,7 +49,8 @@ class ComplaintParty
     {
         $stmt = $this->conn->prepare(
             "SELECT cp.party_id, cp.party_type, r.resident_id,
-                    TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS resident_name
+                    TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS resident_name,
+                    r.contact_no, r.purok, r.address
              FROM complaint_parties cp
              INNER JOIN residents r ON r.resident_id = cp.resident_id
              WHERE cp.complaint_id = ?

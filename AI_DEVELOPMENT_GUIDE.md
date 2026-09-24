@@ -253,17 +253,25 @@ const api = (url, options) => fetch(url, options).then(async (response) => {
     coordinates in `incident_locations`. Edit buttons on `complaint-details.php` and
     `complaint-list.php` route directly to `complaint-edit.php?id=<id>`.
 - Treat `frontend/pages/complaints/complaint-details.php` as the complaint
-  workspace for review, parties, and picture/video/document evidence. Create
-  and edit incident details, including the optional exact map pin, from the
-  Add/Edit Complaint forms; do not create a separate
-  Incident Locations page or location-only save route.
-- Complaint intake requires the incident date and specific location, and records
-  optional time, landmark, narrative, supporting details, and an optional exact
-  map pin. Store an exact pin in `incident_locations` as part of the same
-  complaint create/update transaction. On edit, preserve a saved pin unless the
-  user moves or clears it. Evidence uploads validate MIME
-  type and size server-side: JPG/PNG pictures, MP4/WebM videos, and PDFs are
-  allowed up to 25 MB.
+  workspace for review, parties, and unified evidence attachments. It features a
+  modern, compact two-column layout matching the card ordering of `complaint-create.php` and `complaint-edit.php`:
+  - **Header & Navigation**: Title, complaint number, dynamic status badges, case type,
+    category, linked case pill, direct "View Case Workspace" button when docketed,
+    "Schedule 1st Mediation", "Edit", "+ Add Party", and "+ Upload Evidence".
+  - **Left Column**: 1. Incident & Classification (Complaint Title, Category, Case Type, Incident Date,
+    Incident Time, Date Filed, Administrative Status, Docketed Case), 2. Involved Parties (cards with role badges,
+    contact number, purok/address, remove buttons), and 3. Narrative & Facts (statement and additional details).
+  - **Right Column**: 4. Incident Location & Leaflet Interactive Map Pin (specific address, landmark, GPS pin),
+    5. Evidence & Attachments (visual cards with image thumbnails, document icons, secure download, and delete actions),
+    and 6. Administrative Review Notes (screening remarks).
+- Complaint intake (`complaint-create.php`) requires the incident date and specific location, and records
+  optional time, landmark, narrative, supporting details, optional exact map pin, and optional evidence/attachments.
+  A single dedicated "Evidence / Attachments" section replaces separate upload buttons and accepts multiple
+  images, videos, PDFs, and DOC/DOCX files (up to 25 MB per file) with interactive preview and queue removal.
+  Store an exact pin in `incident_locations` as part of the same complaint create/update transaction. On edit,
+  preserve a saved pin unless the user moves or clears it. Evidence uploads validate MIME type and size
+  server-side: JPG/PNG/GIF/WebP pictures, MP4/WebM videos, PDFs, and DOC/DOCX documents are allowed up to 25 MB
+  per file and stored in `storage/uploads/complaint-evidence/`.
 - Treat `frontend/pages/cases/case-details.php` as the case workspace: it is
   the record-level overview for case team, hearings, generated documents, and
   proof of service. Keep cross-case monitoring pages for lists and calendars.

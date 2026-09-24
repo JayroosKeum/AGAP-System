@@ -54,7 +54,7 @@ include '../../layouts/header.php';
             </div>
         <?php endif; ?>
 
-        <form id="createComplaintForm" action="../../../backend/api/complaints/create.php" method="POST" class="complaint-intake-form">
+        <form id="createComplaintForm" action="../../../backend/api/complaints/create.php" method="POST" enctype="multipart/form-data" class="complaint-intake-form">
             <div class="complaint-intake-grid">
                 <!-- LEFT COLUMN -->
                 <div class="intake-col">
@@ -206,6 +206,43 @@ include '../../layouts/header.php';
                             </div>
                         </div>
                     </div>
+
+                    <!-- CARD 5: Evidence / Attachments -->
+                    <div class="intake-card evidence-card">
+                        <div class="intake-card-header">
+                            <h3>5. Evidence / Attachments</h3>
+                            <span class="card-subtitle">Supporting documents, pictures, or videos <span class="optional-label">Optional</span></span>
+                        </div>
+
+                        <div class="evidence-upload-zone" id="evidenceDropZone">
+                            <input type="file" id="evidenceFiles" name="evidence[]" multiple accept="image/*,video/*,.pdf,.doc,.docx" class="evidence-file-input">
+                            <div class="upload-zone-body">
+                                <div class="upload-zone-icon">
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                        <polyline points="17 8 12 3 7 8"/>
+                                        <line x1="12" y1="3" x2="12" y2="15"/>
+                                    </svg>
+                                </div>
+                                <div class="upload-zone-text">
+                                    <p class="upload-primary-text"><strong>Choose files</strong> or drag &amp; drop here</p>
+                                    <p class="upload-secondary-text">Images, videos, PDF, and Word documents up to 25 MB each</p>
+                                </div>
+                                <button type="button" class="btn-browse-files" id="btnBrowseEvidence">Browse Files</button>
+                            </div>
+                        </div>
+
+                        <div id="evidenceValidationAlert" class="evidence-alert-inline" style="display: none;"></div>
+
+                        <!-- Selected files queue preview -->
+                        <div id="evidenceQueueContainer" class="evidence-queue-container" style="display: none;">
+                            <div class="evidence-queue-header">
+                                <span class="evidence-queue-title">Selected Files (<span id="evidenceCount">0</span>)</span>
+                                <button type="button" id="clearAllEvidenceBtn" class="btn-clear-evidence">Clear All</button>
+                            </div>
+                            <ul id="evidenceQueueList" class="evidence-queue-list"></ul>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -314,6 +351,220 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize standalone map immediately
     if (window.initialiseComplaintMap) {
         window.initialiseComplaintMap('addComplaintMap', 'none');
+    }
+
+    // Evidence file queue handling (DataTransfer backed)
+    const evidenceInput = document.getElementById('evidenceFiles');
+    const evidenceDropZone = document.getElementById('evidenceDropZone');
+    const btnBrowseEvidence = document.getElementById('btnBrowseEvidence');
+    const evidenceAlert = document.getElementById('evidenceValidationAlert');
+    const queueContainer = document.getElementById('evidenceQueueContainer');
+    const queueList = document.getElementById('evidenceQueueList');
+    const countDisplay = document.getElementById('evidenceCount');
+    const clearAllBtn = document.getElementById('clearAllEvidenceBtn');
+
+    let evidenceDataTransfer = new DataTransfer();
+    const maxFileSize = 25 * 1024 * 1024; // 25 MB
+    const allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'webm', 'pdf', 'doc', 'docx'];
+
+    function showEvidenceAlert(msg) {
+        if (!evidenceAlert) return;
+        evidenceAlert.textContent = msg;
+        evidenceAlert.style.display = 'block';
+    }
+
+    function hideEvidenceAlert() {
+        if (!evidenceAlert) return;
+        evidenceAlert.textContent = '';
+        evidenceAlert.style.display = 'none';
+    }
+
+    function formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    }
+
+    function getFileTypeInfo(file) {
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
+            return { type: 'image', badge: 'Image', iconClass: 'icon-image', text: 'IMG' };
+        }
+        if (['mp4', 'webm'].includes(ext)) {
+            return { type: 'video', badge: 'Video', iconClass: 'icon-video', text: 'VID' };
+        }
+        if (ext === 'pdf') {
+            return { type: 'pdf', badge: 'PDF', iconClass: 'icon-pdf', text: 'PDF' };
+        }
+        if (['doc', 'docx'].includes(ext)) {
+            return { type: 'doc', badge: 'Word', iconClass: 'icon-doc', text: 'DOC' };
+        }
+        return { type: 'other', badge: ext.toUpperCase(), iconClass: 'icon-file', text: 'FILE' };
+    }
+
+    function renderEvidenceQueue() {
+        if (!queueContainer || !queueList || !countDisplay) return;
+        const files = Array.from(evidenceDataTransfer.files);
+        countDisplay.textContent = files.length;
+
+        if (files.length === 0) {
+            queueContainer.style.display = 'none';
+            queueList.innerHTML = '';
+            return;
+        }
+
+        queueContainer.style.display = 'block';
+        queueList.innerHTML = '';
+
+        files.forEach((file, index) => {
+            const fileInfo = getFileTypeInfo(file);
+            const li = document.createElement('li');
+            li.className = 'evidence-queue-item';
+
+            const leftDiv = document.createElement('div');
+            leftDiv.className = 'evidence-item-left';
+
+            if (fileInfo.type === 'image') {
+                const img = document.createElement('img');
+                img.className = 'evidence-item-thumb';
+                img.src = URL.createObjectURL(file);
+                img.alt = file.name;
+                img.onload = () => URL.revokeObjectURL(img.src);
+                leftDiv.appendChild(img);
+            } else {
+                const icon = document.createElement('div');
+                icon.className = `evidence-item-icon ${fileInfo.iconClass}`;
+                icon.textContent = fileInfo.text;
+                leftDiv.appendChild(icon);
+            }
+
+            const detailsDiv = document.createElement('div');
+            detailsDiv.className = 'evidence-item-details';
+
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'evidence-item-name';
+            nameSpan.textContent = file.name;
+            nameSpan.title = file.name;
+
+            const metaSpan = document.createElement('span');
+            metaSpan.className = 'evidence-item-meta';
+            metaSpan.innerHTML = `<span class="evidence-type-badge">${fileInfo.badge}</span> ${formatFileSize(file.size)}`;
+
+            detailsDiv.appendChild(nameSpan);
+            detailsDiv.appendChild(metaSpan);
+            leftDiv.appendChild(detailsDiv);
+
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'btn-remove-evidence-item';
+            removeBtn.innerHTML = '&times;';
+            removeBtn.title = 'Remove this file';
+            removeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                removeFileFromQueue(index);
+            });
+
+            li.appendChild(leftDiv);
+            li.appendChild(removeBtn);
+            queueList.appendChild(li);
+        });
+    }
+
+    function addFilesToQueue(incomingFiles) {
+        hideEvidenceAlert();
+        let errors = [];
+
+        Array.from(incomingFiles).forEach(file => {
+            if (file.size > maxFileSize) {
+                errors.push(`"${file.name}" exceeds the 25 MB limit.`);
+                return;
+            }
+
+            const ext = file.name.split('.').pop().toLowerCase();
+            if (!allowedExtensions.includes(ext)) {
+                errors.push(`"${file.name}" is not an allowed format (JPG, PNG, GIF, WebP, MP4, WebM, PDF, DOC, DOCX).`);
+                return;
+            }
+
+            const alreadyExists = Array.from(evidenceDataTransfer.files).some(
+                existing => existing.name === file.name && existing.size === file.size && existing.lastModified === file.lastModified
+            );
+            if (alreadyExists) return;
+
+            evidenceDataTransfer.items.add(file);
+        });
+
+        if (errors.length > 0) {
+            showEvidenceAlert(errors.join(' '));
+        }
+
+        evidenceInput.files = evidenceDataTransfer.files;
+        renderEvidenceQueue();
+    }
+
+    function removeFileFromQueue(indexToRemove) {
+        const newDt = new DataTransfer();
+        Array.from(evidenceDataTransfer.files).forEach((file, idx) => {
+            if (idx !== indexToRemove) {
+                newDt.items.add(file);
+            }
+        });
+        evidenceDataTransfer = newDt;
+        evidenceInput.files = evidenceDataTransfer.files;
+        renderEvidenceQueue();
+    }
+
+    if (evidenceInput) {
+        evidenceInput.addEventListener('change', () => {
+            if (evidenceInput.files && evidenceInput.files.length > 0) {
+                addFilesToQueue(evidenceInput.files);
+            }
+        });
+    }
+
+    if (btnBrowseEvidence && evidenceInput) {
+        btnBrowseEvidence.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            evidenceInput.click();
+        });
+    }
+
+    if (clearAllBtn) {
+        clearAllBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            evidenceDataTransfer = new DataTransfer();
+            if (evidenceInput) evidenceInput.files = evidenceDataTransfer.files;
+            hideEvidenceAlert();
+            renderEvidenceQueue();
+        });
+    }
+
+    if (evidenceDropZone) {
+        ['dragenter', 'dragover'].forEach(eventName => {
+            evidenceDropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                evidenceDropZone.classList.add('drag-over');
+            });
+        });
+
+        ['dragleave', 'dragend'].forEach(eventName => {
+            evidenceDropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                evidenceDropZone.classList.remove('drag-over');
+            });
+        });
+
+        evidenceDropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            evidenceDropZone.classList.remove('drag-over');
+            if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                addFilesToQueue(e.dataTransfer.files);
+            }
+        });
     }
 });
 </script>

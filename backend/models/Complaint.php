@@ -53,9 +53,10 @@ class Complaint
 
             $stmt =
             $this->conn->prepare("
-                SELECT c.*, cs.case_id
+                SELECT c.*, cs.case_id, cs.case_number, cs.case_status, cat.category_name
                 FROM complaints c
                 LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
+                LEFT JOIN complaint_categories cat ON cat.category_id = c.category_id
                 WHERE c.complaint_id=?
             ");
 

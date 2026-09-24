@@ -9,6 +9,36 @@ const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, character 
     '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#039;', '"': '&quot;'
 })[character]);
 
+const setText = (id, text) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = (text !== null && text !== undefined && String(text).trim() !== '') ? text : '—';
+};
+
+const formatTime12 = (timeStr) => {
+    if (!timeStr) return 'Not recorded';
+    const parts = String(timeStr).split(':');
+    if (parts.length < 2) return timeStr;
+    let h = parseInt(parts[0], 10);
+    const m = parts[1];
+    if (isNaN(h)) return timeStr;
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12;
+    if (h === 0) h = 12;
+    return `${h}:${m} ${ampm}`;
+};
+
+const formatDateReadable = (dateStr) => {
+    if (!dateStr) return '—';
+    try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return dateStr;
+        return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    } catch (_) {
+        return dateStr;
+    }
+};
+
 document.addEventListener('DOMContentLoaded', () => {
 
     // Handle complaint details page
@@ -65,33 +95,157 @@ function loadComplaintDetails() {
             window.location.href = 'complaint-list.php';
             return;
         }
-        document.getElementById('complaintNumber').textContent = 'Complaint #' + data.complaint_number;
-        document.getElementById('complaintTitle').textContent = data.complaint_title;
+        // Header Title & Number
+        const compNum = data.complaint_number || ('CMP-' + String(data.complaint_id).padStart(5, '0'));
+        const compNumEl = document.getElementById('complaintNumber');
+        if (compNumEl) compNumEl.textContent = 'Complaint #' + compNum;
 
+        const compTitleEl = document.getElementById('complaintTitle');
+        if (compTitleEl) compTitleEl.textContent = data.complaint_title || 'Untitled Complaint';
+
+        // Status Badge
+        const statusEl = document.getElementById('complaintStatusBadge');
+        if (statusEl) {
+            const st = String(data.status || 'Filed');
+            const stSlug = st.toLowerCase().replace(/[^a-z0-9]/g, '-');
+            statusEl.className = 'status-pill status-' + stSlug;
+            statusEl.textContent = st;
+        }
+
+        // Type & Category Badges
+        const typeEl = document.getElementById('complaintCaseTypeBadge');
+        if (typeEl) typeEl.textContent = data.case_type || 'Civil';
+
+        const catEl = document.getElementById('complaintCategoryBadge');
+        if (catEl) catEl.textContent = data.category_name || (data.category_id ? 'Category #' + data.category_id : 'General');
+
+        // Linked Case Actions & Badges
+        const caseNumber = data.case_number || (data.case_id ? 'KP-' + String(data.case_id).padStart(5, '0') : null);
+        const caseLinkEl = document.getElementById('complaintCaseLink');
+        const viewCaseBtn = document.getElementById('viewCaseBtn');
+        const caseBadgeText = document.getElementById('caseNumberBadgeText');
+
+        if (data.case_id) {
+            const caseUrl = '../cases/case-details.php?id=' + encodeURIComponent(data.case_id);
+            if (caseLinkEl) {
+                caseLinkEl.href = caseUrl;
+                caseLinkEl.style.display = 'inline-flex';
+                if (caseBadgeText) caseBadgeText.textContent = caseNumber || data.case_id;
+            }
+            if (viewCaseBtn) {
+                viewCaseBtn.href = caseUrl;
+                viewCaseBtn.style.display = 'inline-flex';
+            }
+        } else {
+            if (caseLinkEl) caseLinkEl.style.display = 'none';
+            if (viewCaseBtn) viewCaseBtn.style.display = 'none';
+        }
+
+        // Edit link
+        const editBtn = document.getElementById('editComplaintBtn');
+        if (editBtn) editBtn.href = 'complaint-edit.php?id=' + encodeURIComponent(complaintId);
+
+        // Schedule Mediation Button configuration
         const scheduleButton = document.getElementById('scheduleMediationButton');
         if (scheduleButton) {
             configureMediationScheduleButton(scheduleButton, data);
         }
 
-        document.getElementById('complaintInfo').innerHTML = `
-            <p><strong>Category:</strong> ${escapeHtml(data.category_id)}</p>
-            <p><strong>Incident Date:</strong> ${escapeHtml(data.incident_date || 'N/A')}</p>
-            <p><strong>Incident Time:</strong> ${escapeHtml(data.incident_time || 'Not recorded')}</p>
-            <p><strong>Specific Location:</strong> ${escapeHtml(data.incident_location || 'Not recorded')}</p>
-            <p><strong>Landmark:</strong> ${escapeHtml(data.incident_landmark || 'Not recorded')}</p>
-            <p><strong>Status:</strong> <span class="status status-${escapeHtml(String(data.status).toLowerCase())}">${escapeHtml(data.status)}</span></p>
-            <p><strong>Narrative:</strong></p>
-            <p style="white-space: pre-wrap;">${escapeHtml(data.narrative)}</p>
-            <p><strong>Additional Details:</strong></p>
-            <p style="white-space: pre-wrap;">${escapeHtml(data.additional_details || 'None provided.')}</p>
-            <p><strong>Review Notes:</strong></p>
-            <p style="white-space: pre-wrap;">${escapeHtml(data.review_notes || 'No review notes yet.')}</p>
-        `;
+        // Card 1: Incident & Classification Info Grid
+        setText('infoComplaintTitle', data.complaint_title);
+        setText('infoCategory', data.category_name || (data.category_id ? 'Category #' + data.category_id : 'General'));
+        setText('infoCaseType', data.case_type || 'Civil');
+        setText('infoIncidentDate', data.incident_date ? formatDateReadable(data.incident_date) : 'N/A');
+        setText('infoIncidentTime', data.incident_time ? formatTime12(data.incident_time) : 'Not recorded');
+        setText('infoDateFiled', data.created_at ? formatDateReadable(data.created_at) : '—');
 
-        // Load parties
-        renderParties(data.parties || []);
-        // Load attachments
-        renderAttachments(data.attachments || []);
+        const infoStatusEl = document.getElementById('infoStatus');
+        if (infoStatusEl) {
+            const st = String(data.status || 'Filed');
+            const stSlug = st.toLowerCase().replace(/[^a-z0-9]/g, '-');
+            infoStatusEl.innerHTML = `<span class="status-pill status-${stSlug}">${escapeHtml(st)}</span>`;
+        }
+
+        const infoDocketEl = document.getElementById('infoDocketCase');
+        if (infoDocketEl) {
+            if (data.case_id) {
+                infoDocketEl.innerHTML = `<a href="../cases/case-details.php?id=${encodeURIComponent(data.case_id)}" class="meta-pill case-pill" style="display:inline-flex;">📁 ${escapeHtml(caseNumber || ('Case #' + data.case_id))} &rarr;</a>`;
+            } else {
+                infoDocketEl.textContent = 'Not yet docketed';
+            }
+        }
+
+        // Card 3: Narrative & Additional Details
+        const narrEl = document.getElementById('complaintNarrative');
+        if (narrEl) narrEl.textContent = data.narrative || 'No statement narrative provided.';
+
+        const addWrap = document.getElementById('complaintAdditionalDetailsWrap');
+        const addEl = document.getElementById('complaintAdditionalDetails');
+        if (addWrap && addEl) {
+            if (data.additional_details && data.additional_details.trim()) {
+                addWrap.style.display = 'block';
+                addEl.textContent = data.additional_details;
+            } else {
+                addWrap.style.display = 'none';
+            }
+        }
+
+        // Card 4: Incident Location & Leaflet Map
+        setText('locationAddressText', data.incident_location || (data.location && data.location.address) || 'Not specified');
+        setText('locationLandmarkText', data.incident_landmark || 'None');
+
+        const mapContainer = document.getElementById('complaintDetailMap');
+        const emptyMapPlaceholder = document.getElementById('emptyMapPlaceholder');
+        const coordText = document.getElementById('locationCoordinatesText');
+
+        const lat = data.location && data.location.latitude ? parseFloat(data.location.latitude) : null;
+        const lng = data.location && data.location.longitude ? parseFloat(data.location.longitude) : null;
+
+        if (lat && lng && !isNaN(lat) && !isNaN(lng)) {
+            if (coordText) coordText.textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+            if (mapContainer && window.L) {
+                mapContainer.style.display = 'block';
+                if (emptyMapPlaceholder) emptyMapPlaceholder.style.display = 'none';
+                if (window.complaintDetailMapInstance) {
+                    window.complaintDetailMapInstance.remove();
+                }
+                const map = L.map('complaintDetailMap', { scrollWheelZoom: false }).setView([lat, lng], 16);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; OpenStreetMap contributors'
+                }).addTo(map);
+                const marker = L.marker([lat, lng]).addTo(map);
+                marker.bindPopup(`<strong>${escapeHtml(compNum)}</strong><br>${escapeHtml(data.incident_location || 'Incident Location')}`).openPopup();
+                window.complaintDetailMapInstance = map;
+                setTimeout(() => map.invalidateSize(), 200);
+            }
+        } else {
+            if (coordText) coordText.textContent = 'No GPS coordinates pinned';
+            if (mapContainer) mapContainer.style.display = 'none';
+            if (emptyMapPlaceholder) emptyMapPlaceholder.style.display = 'flex';
+        }
+
+        // Card 6: Administrative Review Notes
+        const revEl = document.getElementById('complaintReviewNotes');
+        if (revEl) {
+            revEl.textContent = (data.review_notes && data.review_notes.trim()) ? data.review_notes : 'No administrative review notes recorded yet.';
+        }
+
+        // Legacy compatibility container
+        const legacyInfo = document.getElementById('complaintInfo');
+        if (legacyInfo) {
+            legacyInfo.innerHTML = `
+                <p><strong>Category:</strong> ${escapeHtml(data.category_name || data.category_id)}</p>
+                <p><strong>Incident Date:</strong> ${escapeHtml(data.incident_date || 'N/A')}</p>
+                <p><strong>Incident Time:</strong> ${escapeHtml(data.incident_time || 'Not recorded')}</p>
+                <p><strong>Status:</strong> ${escapeHtml(data.status)}</p>
+            `;
+        }
+
+        // Render Parties and Attachments
+        const parties = data.parties || [];
+        const attachments = data.attachments || [];
+        renderParties(parties);
+        renderAttachments(attachments);
     });
 
     // Load residents for add party modal
@@ -162,46 +316,136 @@ function loadResidents() {
 }
 
 function renderParties(parties) {
+    const container = document.getElementById('partiesListContainer');
     const tbody = document.getElementById('partiesTable');
-    if (!tbody) return;
+    const countEl = document.getElementById('partiesCount');
+    if (countEl) countEl.textContent = parties.length;
+
+    if (tbody) {
+        if (parties.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 16px;">No parties added yet</td></tr>';
+        } else {
+            let rows = '';
+            parties.forEach(party => {
+                rows += `
+                    <tr>
+                        <td>${escapeHtml(party.resident_name)}</td>
+                        <td>${escapeHtml(party.party_type)}</td>
+                        <td class="action-buttons"><button type="button" class="delete-button" onclick="deleteParty(${Number(party.party_id)})">Remove</button></td>
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = rows;
+        }
+    }
+
+    if (!container) return;
+
     if (parties.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 16px;">No parties added yet</td></tr>';
+        container.innerHTML = '<div class="empty-detail-state"><p style="margin:0 0 8px;">No parties added to this complaint yet.</p><button type="button" class="card-header-btn" onclick="openAddPartyModal()">+ Add Party</button></div>';
         return;
     }
-    let rows = '';
+
+    let cards = '';
     parties.forEach(party => {
-        rows += `
-            <tr>
-                <td>${escapeHtml(party.resident_name)}</td>
-                <td>${escapeHtml(party.party_type)}</td>
-                <td class="action-buttons"><button type="button" class="delete-button" onclick="deleteParty(${Number(party.party_id)})">Remove</button></td>
-            </tr>
+        const typeClass = 'badge-' + escapeHtml(String(party.party_type).toLowerCase());
+        cards += `
+            <div class="party-detail-card">
+                <div class="party-detail-left">
+                    <span class="party-badge ${typeClass}">${escapeHtml(party.party_type)}</span>
+                    <div class="party-detail-info">
+                        <div class="party-detail-name">${escapeHtml(party.resident_name)}</div>
+                        <div class="party-detail-sub">
+                            ${party.contact_no ? `<span>📞 ${escapeHtml(party.contact_no)}</span>` : ''}
+                            ${party.purok ? `<span>📍 Purok ${escapeHtml(party.purok)}</span>` : ''}
+                            ${party.address ? `<span>🏠 ${escapeHtml(party.address)}</span>` : ''}
+                        </div>
+                    </div>
+                </div>
+                <button type="button" class="btn-remove-party-sm" title="Remove party" onclick="deleteParty(${Number(party.party_id)})">&times;</button>
+            </div>
         `;
     });
-    tbody.innerHTML = rows;
+    container.innerHTML = cards;
 }
 
 function renderAttachments(attachments) {
+    const container = document.getElementById('attachmentsListContainer');
     const tbody = document.getElementById('attachmentsTable');
-    if (!tbody) return;
+    const countEl = document.getElementById('attachmentsCount');
+    if (countEl) countEl.textContent = attachments.length;
+
+    if (tbody) {
+        if (attachments.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 16px;">No attachments added yet</td></tr>';
+        } else {
+            let rows = '';
+            attachments.forEach(attachment => {
+                rows += `
+                    <tr>
+                        <td><a href="../../../backend/api/complaints/download-attachment.php?id=${Number(attachment.attachment_id)}">${escapeHtml(attachment.file_name)}</a></td>
+                        <td>${escapeHtml(attachment.file_type)}</td>
+                        <td>${new Date(attachment.uploaded_at).toLocaleString()}</td>
+                        <td class="action-buttons">
+                            <button type="button" class="delete-button" onclick="deleteAttachment(${attachment.attachment_id})">Delete</button>
+                        </td>
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = rows;
+        }
+    }
+
+    if (!container) return;
+
     if (attachments.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 16px;">No attachments added yet</td></tr>';
+        container.innerHTML = '<div class="empty-detail-state"><p style="margin:0 0 8px;">No evidence or attachments uploaded yet.</p><button type="button" class="card-header-btn" onclick="openAddAttachmentModal()">+ Upload Evidence</button></div>';
         return;
     }
-    let rows = '';
-    attachments.forEach(attachment => {
-        rows += `
-            <tr>
-                <td><a href="../../../backend/api/complaints/download-attachment.php?id=${Number(attachment.attachment_id)}">${escapeHtml(attachment.file_name)}</a></td>
-                <td>${escapeHtml(attachment.file_type)}</td>
-                <td>${new Date(attachment.uploaded_at).toLocaleString()}</td>
-                <td class="action-buttons">
-                    <button type="button" class="delete-button" onclick="deleteAttachment(${attachment.attachment_id})">Delete</button>
-                </td>
-            </tr>
+
+    let cards = '';
+    attachments.forEach(att => {
+        const downloadUrl = `../../../backend/api/complaints/download-attachment.php?id=${Number(att.attachment_id)}`;
+        const ext = String(att.file_name).split('.').pop().toLowerCase();
+        const isImg = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext) || String(att.file_type).startsWith('image/');
+        const isVid = ['mp4', 'webm'].includes(ext) || String(att.file_type).startsWith('video/');
+        const isPdf = ext === 'pdf' || att.file_type === 'application/pdf';
+        const isDoc = ['doc', 'docx'].includes(ext) || String(att.file_type).includes('word');
+
+        let iconClass = 'icon-file';
+        let iconText = 'FILE';
+        if (isVid) { iconClass = 'icon-video'; iconText = 'VID'; }
+        else if (isPdf) { iconClass = 'icon-pdf'; iconText = 'PDF'; }
+        else if (isDoc) { iconClass = 'icon-doc'; iconText = 'DOC'; }
+
+        const uploadDate = att.uploaded_at ? new Date(att.uploaded_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+
+        cards += `
+            <div class="attachment-detail-card">
+                <div class="attachment-detail-left">
+                    ${isImg
+                        ? `<img src="${downloadUrl}" class="attachment-thumb-img" alt="${escapeHtml(att.file_name)}">`
+                        : `<div class="attachment-type-icon ${iconClass}">${iconText}</div>`
+                    }
+                    <div style="min-width: 0; flex: 1;">
+                        <a href="${downloadUrl}" class="attachment-detail-name" title="Download ${escapeHtml(att.file_name)}">${escapeHtml(att.file_name)}</a>
+                        <div class="attachment-detail-meta">
+                            <span>${escapeHtml(att.file_type || ext.toUpperCase())}</span> &bull; <span>${uploadDate}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="attachment-detail-actions">
+                    <a href="${downloadUrl}" class="btn-icon-action" title="Download file" download>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    </a>
+                    <button type="button" class="btn-icon-action delete" title="Delete attachment" onclick="deleteAttachment(${att.attachment_id})">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    </button>
+                </div>
+            </div>
         `;
     });
-    tbody.innerHTML = rows;
+    container.innerHTML = cards;
 }
 
 function openAddPartyModal() {
@@ -212,13 +456,34 @@ function closeAddPartyModal() {
     document.getElementById('addPartyModal').style.display = 'none';
 }
 
-function openAddAttachmentModal(type = 'image') {
-    const image = type === 'image';
-    const video = type === 'video';
-    document.getElementById('attachmentModalTitle').textContent = image ? 'Upload Picture Evidence' : (video ? 'Upload Video Evidence' : 'Upload Document Evidence');
-    document.getElementById('attachmentFileLabel').textContent = image ? 'Picture *' : (video ? 'Video *' : 'Document *');
-    document.getElementById('attachmentFileHelp').textContent = image ? 'JPG or PNG up to 25 MB.' : (video ? 'MP4 or WebM up to 25 MB.' : 'PDF up to 25 MB.');
-    document.getElementById('attachmentFile').accept = image ? 'image/jpeg,image/png' : (video ? 'video/mp4,video/webm' : 'application/pdf');
+function openAddAttachmentModal(type = 'all') {
+    const fileInput = document.getElementById('attachmentFile');
+    if (!fileInput) return;
+    const isImage = type === 'image';
+    const isVideo = type === 'video';
+    const isDoc = type === 'document';
+
+    if (isImage) {
+        document.getElementById('attachmentModalTitle').textContent = 'Upload Picture Evidence';
+        document.getElementById('attachmentFileLabel').textContent = 'Picture *';
+        document.getElementById('attachmentFileHelp').textContent = 'JPG, PNG, GIF, or WebP up to 25 MB.';
+        fileInput.accept = 'image/*';
+    } else if (isVideo) {
+        document.getElementById('attachmentModalTitle').textContent = 'Upload Video Evidence';
+        document.getElementById('attachmentFileLabel').textContent = 'Video *';
+        document.getElementById('attachmentFileHelp').textContent = 'MP4 or WebM up to 25 MB.';
+        fileInput.accept = 'video/mp4,video/webm';
+    } else if (isDoc) {
+        document.getElementById('attachmentModalTitle').textContent = 'Upload Document Evidence';
+        document.getElementById('attachmentFileLabel').textContent = 'Document *';
+        document.getElementById('attachmentFileHelp').textContent = 'PDF, DOC, or DOCX up to 25 MB.';
+        fileInput.accept = '.pdf,.doc,.docx';
+    } else {
+        document.getElementById('attachmentModalTitle').textContent = 'Upload Evidence / Attachment';
+        document.getElementById('attachmentFileLabel').textContent = 'Evidence File *';
+        document.getElementById('attachmentFileHelp').textContent = 'Images, videos, PDF, and DOC/DOCX up to 25 MB.';
+        fileInput.accept = 'image/*,video/*,.pdf,.doc,.docx';
+    }
     document.getElementById('addAttachmentModal').style.display = 'flex';
 }
 

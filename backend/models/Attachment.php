@@ -39,7 +39,7 @@ class Attachment
     public function getByComplaint(int $complaintId): array
     {
         $stmt = $this->conn->prepare(
-            'SELECT attachment_id, complaint_id, file_name, file_type, uploaded_at
+            'SELECT attachment_id, complaint_id, file_name, file_path, file_type, uploaded_at
              FROM complaint_attachments WHERE complaint_id = ? ORDER BY uploaded_at DESC'
         );
         $stmt->execute([$complaintId]);

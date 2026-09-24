@@ -24,9 +24,17 @@ if (!$attachment) {
     exit('Attachment not found.');
 }
 
-$base = realpath(dirname(__DIR__, 3) . '/storage/uploads/evidence');
+$base1 = realpath(dirname(__DIR__, 3) . '/storage/uploads/complaint-evidence');
+$base2 = realpath(dirname(__DIR__, 3) . '/storage/uploads/evidence');
 $path = realpath(dirname(__DIR__, 3) . '/' . $attachment['file_path']);
-if ($base === false || $path === false || !str_starts_with($path, $base . DIRECTORY_SEPARATOR) || !is_file($path)) {
+$isValidPath = false;
+if ($path !== false && is_file($path)) {
+    if (($base1 !== false && str_starts_with($path, $base1 . DIRECTORY_SEPARATOR)) ||
+        ($base2 !== false && str_starts_with($path, $base2 . DIRECTORY_SEPARATOR))) {
+        $isValidPath = true;
+    }
+}
+if (!$isValidPath) {
     http_response_code(404);
     exit('Attachment file not found.');
 }

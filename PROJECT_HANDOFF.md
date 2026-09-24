@@ -29,12 +29,13 @@ The following redesign is implemented as the current UX direction:
   `Under Review`, `Needs Information`, `Accepted`, or `Rejected` with review
   notes. Only `Accepted` complaints may be docketed, and docketing changes the
   complaint to `Docketed` in the same transaction.
-- **Complaint workspace:** The complaint details page consolidates review,
-  parties, and dedicated picture/video/document evidence uploads
-  (JPG/PNG/PDF/MP4/WebM, up to 25 MB). Complaint creation and editing are
-  handled from the Complaints page; those forms include the incident details
-  and optional exact map pin. The standalone Incident Locations page, its
-  navigation links, and its location-only API routes are retired.
+- **Complaint workspace & unified evidence intake:** The complaint details page consolidates review,
+  parties, and a unified evidence upload modal. In `complaint-create.php`, a dedicated
+  "Evidence / Attachments" section allows optional multiple uploads (images, videos, PDF, DOC, DOCX up to 25 MB)
+  with drag-and-drop, client-side queue preview/removal, and secure backend validation/storage in
+  `storage/uploads/complaint-evidence/`. Complaint creation and editing are handled from the Complaints page;
+  those forms include the incident details, evidence attachments, and optional exact map pin. The standalone
+  Incident Locations page, its navigation links, and its location-only API routes are retired.
 
 ### Complaint incident fields
 
@@ -160,6 +161,11 @@ write; an edit retains the pin unless it is moved or explicitly cleared.
       and `incident_time`), specific incident location text input, landmark text input,
       and an interactive Leaflet/OpenStreetMap pin selector saving latitude and longitude
       coordinates into `incident_locations`.
+    - **Section 4: Evidence / Attachments (Optional)**: A single unified upload section
+      replacing separate image/video/doc buttons. Supports drag-and-drop and multi-file selection
+      (`accept="image/*,video/*,.pdf,.doc,.docx"` up to 25 MB per file), interactive queue preview
+      with file type badges, sizes, and instant removal before submit. Files are validated server-side
+      and stored securely in `storage/uploads/complaint-evidence/` with records in `complaint_attachments`.
 
 - **Dedicated Edit Complaint Page (`complaint-edit.php`)**:
   - Replaces the legacy `#editComplaintModal` popup with a dedicated, full-page edit interface
@@ -174,6 +180,20 @@ write; an edit retains the pin unless it is moved or explicitly cleared.
     inserting if new), and persists updated or cleared coordinates in `incident_locations`.
   - "Edit Complaint" buttons on both `complaint-details.php` and `complaint-list.php` route
     directly to `complaint-edit.php?id=<id>`.
+
+- **Redesigned Modern Complaint Workspace (`complaint-details.php`)**:
+  - Re-architected into a compact, responsive two-column workspace adhering to the design language and card order of `complaint-create.php`, `complaint-edit.php`, and `case-details.php`.
+  - **Breadcrumb & Header Controls**: Features complaint title, complaint number, dynamic status badge, case type badge, category badge, and linked case badge. When a complaint is docketed, a prominent green button routes directly to `../cases/case-details.php?id=<case_id>`. Action buttons provide immediate access to "Schedule 1st Mediation", "Edit", "+ Add Party", and "+ Upload Evidence".
+  - **Zero Repetition & Aligned Field Mappings**: Removed redundant KPI cards and eliminated duplicate location/landmark fields from Card 1. All fields cleanly mapped to their designated cards:
+    - **Left Column**:
+      1. *1. Incident & Classification*: Full Complaint Title, Category, Case Type, Incident Date, Incident Time, Date Filed, Administrative Status, and Linked Docketed Case.
+      2. *2. Involved Parties*: Clean party cards with role badges (Complainant, Respondent, Witness), resident names, contact number, purok/address, and remove actions (with inline "+ Add Party" in card header).
+      3. *3. Narrative & Facts*: Statement of the complaint facts, detailed narrative, and optional additional details / prior attempts.
+    - **Right Column**:
+      4. *4. Incident Location*: Specific incident address, nearby landmark, GPS coordinates, and an interactive Leaflet/OpenStreetMap marker (with clean fallback if coordinates are omitted).
+      5. *5. Evidence & Attachments*: Visual evidence cards with image thumbnails, file-type icons, download links, and delete actions (with inline "+ Upload Evidence" in card header).
+      6. *6. Administrative Review Notes*: Intake screening remarks and reviewer notes.
+  - Preserved backward compatibility for all modals (`#addPartyModal`, `#addAttachmentModal`, `#scheduleMediationModal`, `#confirmMediationModal`) and legacy DOM IDs.
 
 - **Separated 3-Dimensional Complaint Lifecycle & Interactive Modern List (`complaint-list.php`)**:
   - Replaces the single collapsed/overloaded status concept with three orthogonal, legally compliant lifecycle dimensions conforming strictly to the Katarungang Pambarangay provisions of RA 7160 (Local Government Code of 1991):
