@@ -12,11 +12,11 @@ if (session_status() === PHP_SESSION_NONE) {
 
 class ComplaintController
 {
-    private $complaint;
-    private $complaintParty;
-    private $attachment;
-    private $location;
-    private $audit;
+    private Complaint $complaint;
+    private ComplaintParty $complaintParty;
+    private Attachment $attachment;
+    private Location $location;
+    private AuditService $audit;
 
     public function __construct()
     {
@@ -27,18 +27,21 @@ class ComplaintController
         $this->audit = new AuditService();
     }
 
-    public function index()
+    public function index(): array
     {
         return $this->complaint->getAll();
     }
 
-    public function show($id)
+    public function show(int $id): array|false
     {
+        if ($id <= 0) {
+            return false;
+        }
         $complaint = $this->complaint->getById($id);
         if (!$complaint) return false;
         $complaint['parties'] = $this->complaintParty->getByComplaint($id);
         $complaint['attachments'] = $this->attachment->getByComplaint($id);
-        $complaint['location'] = $this->location->getByComplaint((int) $id);
+        $complaint['location'] = $this->location->getByComplaint($id);
         return $complaint;
     }
 
@@ -86,7 +89,7 @@ class ComplaintController
         return $result;
     }
 
-    public function update($id, $data, array $files = []): array
+    public function update(int $id, array $data, array $files = []): array
     {
         $evidenceFiles = [];
         if (!empty($files['evidence'])) {
@@ -146,8 +149,11 @@ class ComplaintController
         return $result;
     }
 
-    public function destroy($id)
+    public function destroy(int $id): bool
     {
+        if ($id <= 0) {
+            return false;
+        }
         $result = $this->complaint->delete($id);
 
         if ($result) {
@@ -159,7 +165,7 @@ class ComplaintController
             );
         }
 
-        return $result;
+        return (bool) $result;
     }
 
     public function addParty(int $complaintId, int $residentId, string $partyType): array

@@ -7,5 +7,5 @@ header('Content-Type: application/json');
 $controller = new ComplaintController();
 
 echo json_encode(
-    $controller->show($_GET['id'])
+    $controller->show((int) ($_GET['id'] ?? 0))
 );
