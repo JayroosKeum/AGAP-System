@@ -8,7 +8,7 @@ if (isset($_GET['id']))
 {
     $controller = new ComplaintController();
 
-    $controller->destroy($_GET['id']);
+    $controller->destroy((int) $_GET['id']);
 }
 
 header(
