@@ -86,11 +86,41 @@ class ComplaintController
         return $result;
     }
 
-    public function update($id, $data): array
+    public function update($id, $data, array $files = []): array
     {
+        $evidenceFiles = [];
+        if (!empty($files['evidence'])) {
+            $evidenceFiles = $this->normalizeFilesArray($files['evidence']);
+        } elseif (!empty($files['attachments'])) {
+            $evidenceFiles = $this->normalizeFilesArray($files['attachments']);
+        } elseif (!empty($_FILES['evidence'])) {
+            $evidenceFiles = $this->normalizeFilesArray($_FILES['evidence']);
+        }
+
+        foreach ($evidenceFiles as $file) {
+            $validationError = $this->validateAttachmentFile($file);
+            if ($validationError !== null) {
+                return ['success' => false, 'message' => $validationError];
+            }
+        }
+
         $result = $this->complaint->update($id, $data);
 
         if ($result['success']) {
+            $complaintId = (int) $id;
+            if (!empty($evidenceFiles) && $complaintId > 0) {
+                $uploadedCount = 0;
+                foreach ($evidenceFiles as $file) {
+                    $attachResult = $this->addAttachment($complaintId, $file);
+                    if ($attachResult['success']) {
+                        $uploadedCount++;
+                    }
+                }
+                if ($uploadedCount > 0) {
+                    $result['message'] .= " ($uploadedCount attachment(s) uploaded.)";
+                }
+            }
+
             $this->audit->log(
                 $_SESSION['user_id'],
                 'Updated Complaint',

@@ -246,24 +246,25 @@ const api = (url, options) => fetch(url, options).then(async (response) => {
     on intake and edit, parsed server-side into `incident_date` (DATE) and `incident_time` (TIME).
   - **Incident Location & Map**: Requires specific location text, optional landmark, and
     an optional interactive Leaflet/OpenStreetMap pin selector. Coordinates are persisted
-    in `incident_locations` in the same transaction as the complaint write.
-  - **Edit Synchronization**: `complaint-edit.php` preloads all stored facts, parties,
-    merged datetime, case type, and coordinates. Edits atomically update `complaints`,
-    sync `case_type` to any linked `cases`, update `complaint_parties`, and update/clear
-    coordinates in `incident_locations`. Edit buttons on `complaint-details.php` and
-    `complaint-list.php` route directly to `complaint-edit.php?id=<id>`.
+    in `incident_locations` in the same transaction as the complaint write. On update,
+    `map_location_state = 'unchanged'` preserves saved coordinates without triggering validation errors.
+  - **Edit Layout Parity & Synchronization**: `complaint-edit.php` mirrors the 5-card layout of `complaint-details.php` in an editable interface:
+    - **Header & Navigation**: Back link to details, complaint number heading, dynamic status badge, live title preview subheading, live category and case type badges, linked case pill, Cancel button (with "Are you sure you want to discard the changes?" confirmation modal), and Save Changes button (with "Do you want to save the changes?" confirmation modal). The bottom `.intake-actions-bar` is removed in favor of top toolbar controls.
+    - **Left Column**: 1. Incident & Classification (title, category select, case type select, merged datetime-local input, read-only date filed, status, and docketed case), 2. Involved Parties (embedded Complainant and Respondent inputs with datalist autocomplete, dynamic additional parties with remove buttons, and "+ Add Another Party"), and 3. Narrative & Facts (narrative textarea and additional details textarea).
+    - **Right Column**: 4. Incident Location (incident address, landmark, and interactive Leaflet map pin selector with clear button) and 5. Evidence & Attachments (existing attachment cards with preview/download/delete and drag-and-drop file upload queue). (Note: Card 6 Administrative Review Notes is omitted from complaint details and edit views).
+    - **Atomic Updates & Redirection**: Confirmed form submissions update `complaints`, sync `case_type` to any linked `cases`, update `complaint_parties`, update/clear coordinates in `incident_locations`, and attach new evidence files into `complaint_attachments`, automatically redirecting back to `complaint-details.php?id=<id>` with a success flash banner.
 - Treat `frontend/pages/complaints/complaint-details.php` as the complaint
-  workspace for review, parties, and unified evidence attachments. It features a
+  workspace for read-only review, parties, and evidence inspection. It features a
   modern, compact two-column layout matching the card ordering of `complaint-create.php` and `complaint-edit.php`:
   - **Header & Navigation**: Title, complaint number, dynamic status badges, case type,
     category, linked case pill, direct "View Case Workspace" button when docketed,
-    "Schedule 1st Mediation", "Edit", "+ Add Party", and "+ Upload Evidence".
+    "Schedule 1st Mediation", and "Edit" (routing to `complaint-edit.php` for record edits;
+    separate "+ Add Party" and "+ Upload Evidence" buttons are omitted as this page is read-only).
   - **Left Column**: 1. Incident & Classification (Complaint Title, Category, Case Type, Incident Date,
-    Incident Time, Date Filed, Administrative Status, Docketed Case), 2. Involved Parties (cards with role badges,
-    contact number, purok/address, remove buttons), and 3. Narrative & Facts (statement and additional details).
-  - **Right Column**: 4. Incident Location & Leaflet Interactive Map Pin (specific address, landmark, GPS pin),
-    5. Evidence & Attachments (visual cards with image thumbnails, document icons, secure download, and delete actions),
-    and 6. Administrative Review Notes (screening remarks).
+    Incident Time, Date Filed, Administrative Status, Docketed Case), 2. Involved Parties (read-only cards with role badges,
+    contact number, and purok/address; party management and removal is handled in `complaint-edit.php`), and 3. Narrative & Facts (statement and additional details).
+  - **Right Column**: 4. Incident Location & Leaflet Interactive Map Pin (specific address, landmark, GPS pin)
+    and 5. Evidence & Attachments (visual cards with image thumbnails, document icons, secure download, and delete actions).
 - Complaint intake (`complaint-create.php`) requires the incident date and specific location, and records
   optional time, landmark, narrative, supporting details, optional exact map pin, and optional evidence/attachments.
   A single dedicated "Evidence / Attachments" section replaces separate upload buttons and accepts multiple

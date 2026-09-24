@@ -15,6 +15,8 @@ if (!isset($_GET['id']) || empty($_GET['id'])) {
 }
 
 $complaintId = (int)$_GET['id'];
+$complaintFlash = $_SESSION['complaint_flash'] ?? null;
+unset($_SESSION['complaint_flash']);
 
 include '../../layouts/header.php';
 
@@ -60,10 +62,14 @@ include '../../layouts/header.php';
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                     Edit
                 </a>
-                <button type="button" class="btn-secondary" onclick="openAddPartyModal()">+ Add Party</button>
-                <button type="button" class="btn-secondary" onclick="openAddAttachmentModal()">+ Upload Evidence</button>
             </div>
         </div>
+
+        <?php if ($complaintFlash && !empty($complaintFlash['message'])): ?>
+            <div class="alert alert-<?php echo htmlspecialchars($complaintFlash['type'] ?? 'success'); ?>" role="alert" style="margin: 0 30px 20px;">
+                <?php echo htmlspecialchars($complaintFlash['message']); ?>
+            </div>
+        <?php endif; ?>
 
         <!-- Main Workspace Grid -->
         <div class="complaint-details-workspace">
@@ -115,12 +121,9 @@ include '../../layouts/header.php';
 
                     <!-- CARD 2: Involved Parties -->
                     <div class="intake-card">
-                        <div class="intake-card-header with-action">
-                            <div>
-                                <h3>2. Involved Parties (<span id="partiesCount">0</span>)</h3>
-                                <span class="card-subtitle">Complainants, respondents, and witnesses</span>
-                            </div>
-                            <button type="button" class="card-header-btn" onclick="openAddPartyModal()">+ Add Party</button>
+                        <div class="intake-card-header">
+                            <h3>2. Involved Parties (<span id="partiesCount">0</span>)</h3>
+                            <span class="card-subtitle">Complainants, respondents, and witnesses</span>
                         </div>
                         <div id="partiesListContainer" class="parties-detail-list">
                             <div class="empty-detail-state">Loading parties...</div>
@@ -174,25 +177,13 @@ include '../../layouts/header.php';
 
                     <!-- CARD 5: Evidence & Attachments -->
                     <div class="intake-card evidence-card">
-                        <div class="intake-card-header with-action">
-                            <div>
-                                <h3>5. Evidence / Attachments (<span id="attachmentsCount">0</span>)</h3>
-                                <span class="card-subtitle">Supporting documents, pictures, or videos</span>
-                            </div>
-                            <button type="button" class="card-header-btn" onclick="openAddAttachmentModal()">+ Upload Evidence</button>
+                        <div class="intake-card-header">
+                            <h3>5. Evidence / Attachments (<span id="attachmentsCount">0</span>)</h3>
+                            <span class="card-subtitle">Supporting documents, pictures, or videos</span>
                         </div>
                         <div id="attachmentsListContainer" class="attachments-detail-list">
                             <div class="empty-detail-state">Loading attachments...</div>
                         </div>
-                    </div>
-
-                    <!-- CARD 6: Administrative Review Notes -->
-                    <div class="intake-card">
-                        <div class="intake-card-header">
-                            <h3>6. Administrative Review Notes</h3>
-                            <span class="card-subtitle">Barangay staff screening and review remarks</span>
-                        </div>
-                        <div id="complaintReviewNotes" class="detail-narrative-box">No administrative review notes recorded yet.</div>
                     </div>
                 </div>
 
@@ -201,62 +192,14 @@ include '../../layouts/header.php';
 
         <!-- Hidden legacy compatibility containers (ensures old callers don't throw) -->
         <div id="complaintInfo" style="display:none;"></div>
+        <div id="complaintReviewNotes" style="display:none;"></div>
         <table style="display:none;"><tbody id="partiesTable"></tbody></table>
         <table style="display:none;"><tbody id="attachmentsTable"></tbody></table>
+        <input type="hidden" id="partyComplaintId" value="<?php echo $complaintId; ?>">
+        <input type="hidden" id="attachmentComplaintId" value="<?php echo $complaintId; ?>">
 
     </div>
 
-</div>
-
-<!-- Add Party Modal -->
-<div id="addPartyModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h2>Add Party</h2>
-            <button class="close-btn" onclick="closeAddPartyModal()">&times;</button>
-        </div>
-        <form id="addPartyForm">
-            <input type="hidden" id="partyComplaintId">
-            <div class="form-group">
-                <label>Resident <span class="required-mark">*</span></label>
-                <select id="partyResidentId" required></select>
-            </div>
-            <div class="form-group">
-                <label>Party Type <span class="required-mark">*</span></label>
-                <select id="partyType" required>
-                    <option value="Complainant">Complainant</option>
-                    <option value="Respondent">Respondent</option>
-                    <option value="Witness">Witness</option>
-                </select>
-            </div>
-            <div class="modal-actions">
-                <button type="button" class="btn-secondary" onclick="closeAddPartyModal()">Cancel</button>
-                <button type="submit" class="btn-create">Add Party</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- Add Attachment Modal -->
-<div id="addAttachmentModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h2 id="attachmentModalTitle">Upload Evidence</h2>
-            <button class="close-btn" onclick="closeAddAttachmentModal()">&times;</button>
-        </div>
-        <form id="addAttachmentForm">
-            <input type="hidden" id="attachmentComplaintId">
-            <div class="form-group">
-                <label id="attachmentFileLabel">Evidence File <span class="required-mark">*</span></label>
-                <input type="file" id="attachmentFile" accept="image/*,video/*,.pdf,.doc,.docx" required>
-                <small id="attachmentFileHelp" class="field-hint">Select an image, video, PDF, or Word document up to 25 MB.</small>
-            </div>
-            <div class="modal-actions">
-                <button type="button" class="btn-secondary" onclick="closeAddAttachmentModal()">Cancel</button>
-                <button type="submit" class="btn-create">Upload Evidence</button>
-            </div>
-        </form>
-    </div>
 </div>
 
 <div id="scheduleMediationModal" class="modal">

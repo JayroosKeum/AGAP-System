@@ -183,17 +183,32 @@ write; an edit retains the pin unless it is moved or explicitly cleared.
 
 - **Redesigned Modern Complaint Workspace (`complaint-details.php`)**:
   - Re-architected into a compact, responsive two-column workspace adhering to the design language and card order of `complaint-create.php`, `complaint-edit.php`, and `case-details.php`.
-  - **Breadcrumb & Header Controls**: Features complaint title, complaint number, dynamic status badge, case type badge, category badge, and linked case badge. When a complaint is docketed, a prominent green button routes directly to `../cases/case-details.php?id=<case_id>`. Action buttons provide immediate access to "Schedule 1st Mediation", "Edit", "+ Add Party", and "+ Upload Evidence".
+  - **Breadcrumb & Header Controls**: Features complaint title, complaint number, dynamic status badge, case type badge, category badge, and linked case badge. When a complaint is docketed, a prominent green button routes directly to `../cases/case-details.php?id=<case_id>`. Action buttons provide immediate access to "Schedule 1st Mediation" and "Edit" (linking to `complaint-edit.php`). The "+ Add Party" and "+ Upload Evidence" modal buttons are omitted from the header, card headers, and empty states so this workspace remains focused on reading complaint information.
   - **Zero Repetition & Aligned Field Mappings**: Removed redundant KPI cards and eliminated duplicate location/landmark fields from Card 1. All fields cleanly mapped to their designated cards:
     - **Left Column**:
       1. *1. Incident & Classification*: Full Complaint Title, Category, Case Type, Incident Date, Incident Time, Date Filed, Administrative Status, and Linked Docketed Case.
-      2. *2. Involved Parties*: Clean party cards with role badges (Complainant, Respondent, Witness), resident names, contact number, purok/address, and remove actions (with inline "+ Add Party" in card header).
+      2. *2. Involved Parties*: Clean read-only party cards with role badges (Complainant, Respondent, Witness), resident names, contact number, and purok/address (remove actions omitted so details remain strictly read-only).
       3. *3. Narrative & Facts*: Statement of the complaint facts, detailed narrative, and optional additional details / prior attempts.
     - **Right Column**:
       4. *4. Incident Location*: Specific incident address, nearby landmark, GPS coordinates, and an interactive Leaflet/OpenStreetMap marker (with clean fallback if coordinates are omitted).
-      5. *5. Evidence & Attachments*: Visual evidence cards with image thumbnails, file-type icons, download links, and delete actions (with inline "+ Upload Evidence" in card header).
-      6. *6. Administrative Review Notes*: Intake screening remarks and reviewer notes.
-  - Preserved backward compatibility for all modals (`#addPartyModal`, `#addAttachmentModal`, `#scheduleMediationModal`, `#confirmMediationModal`) and legacy DOM IDs.
+      5. *5. Evidence & Attachments*: Visual evidence cards with image thumbnails, file-type icons, download links, and delete actions.
+  - Preserved backward compatibility for scheduling modals (`#scheduleMediationModal`, `#confirmMediationModal`) and legacy DOM IDs.
+
+- **Aligned Editable Complaint Form (`complaint-edit.php`)**:
+  - Re-architected into the 5-card layout of `complaint-details.php` in an editable interface:
+    - **Header Toolbar**: Direct back link to details, complaint number heading (`#editComplaintHeading`), live title preview subheading (`#editComplaintSubheading`), dynamic status pill, live category and case type pills, linked case badge, Cancel button, and top Save Changes button.
+    - **Confirmation Modals**:
+      - *Save Changes*: Prompts the user with "Do you want to save the changes made to this complaint?". Clicking "Yes, Save Changes" submits the form and redirects to `complaint-details.php?id=<id>` with a success flash message; "No, Keep Editing" closes the modal and stays on the page. Form submit via keyboard (Enter key) is intercepted to trigger the same confirmation.
+      - *Discard Changes*: Clicking Cancel or the Back link prompts "Are you sure you want to discard the changes?". Clicking "Yes, Discard" redirects to `complaint-details.php?id=<id>`; "No, Keep Editing" stays on the page.
+    - **No Redundant Bottom Bar**: Removed the bottom `.intake-actions-bar` in favor of the header toolbar actions.
+    - **Left Column**:
+      1. *1. Incident & Classification*: Editable title input, category select, case type select (`Civil`/`Criminal`), merged `datetime-local` input, and read-only context pills for Date Filed, Status, and Docketed Case.
+      2. *2. Involved Parties*: Embedded Complainant and Respondent inputs with datalist autocomplete (`#residentsDatalist`), dynamic additional parties (Witness, Complainant, Respondent) with remove buttons, and "+ Add Another Party" button.
+      3. *3. Narrative & Facts*: Detailed narrative textarea and optional additional details / prior attempts textarea.
+    - **Right Column**:
+      4. *4. Incident Location*: Specific incident location text, landmark text, and interactive Leaflet map pin selector with clear pin button.
+      5. *5. Evidence & Attachments*: Visual cards of existing attachments (preview thumbnails/file icons, file name, download link, upload date, and instant AJAX delete) plus drag-and-drop / file browser upload queue for additional evidence files (`evidence[]`). (Card 6 Administrative Review Notes omitted).
+    - **Backend & Controller Wiring**: `ComplaintController::update` accepts `$files` and seamlessly attaches newly uploaded evidence to `complaint_attachments`, while updating incident data, parties, and `incident_locations` within a secure database transaction. `Complaint::validateMapLocationInput` safely accepts pre-existing coordinates under `map_location_state = 'unchanged'`, resolving false-positive location rejections on existing complaints.
 
 - **Separated 3-Dimensional Complaint Lifecycle & Interactive Modern List (`complaint-list.php`)**:
   - Replaces the single collapsed/overloaded status concept with three orthogonal, legally compliant lifecycle dimensions conforming strictly to the Katarungang Pambarangay provisions of RA 7160 (Local Government Code of 1991):

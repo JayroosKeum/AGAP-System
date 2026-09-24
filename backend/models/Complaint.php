@@ -389,6 +389,15 @@ class Complaint
                 || $latitudeValue < -90 || $latitudeValue > 90 || $longitudeValue < -180 || $longitudeValue > 180) {
                 return ['success' => false, 'message' => 'Select a valid point on the map.'];
             }
+        } elseif ($state === 'unchanged') {
+            if ($latitude !== '' || $longitude !== '') {
+                $latitudeValue = filter_var($latitude, FILTER_VALIDATE_FLOAT);
+                $longitudeValue = filter_var($longitude, FILTER_VALIDATE_FLOAT);
+                if ($latitudeValue === false || $longitudeValue === false
+                    || $latitudeValue < -90 || $latitudeValue > 90 || $longitudeValue < -180 || $longitudeValue > 180) {
+                    return ['success' => false, 'message' => 'Map point coordinates are invalid.'];
+                }
+            }
         } elseif ($latitude !== '' || $longitude !== '') {
             return ['success' => false, 'message' => 'Select a map point or clear the map location.'];
         }

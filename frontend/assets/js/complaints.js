@@ -248,12 +248,16 @@ function loadComplaintDetails() {
         renderAttachments(attachments);
     });
 
-    // Load residents for add party modal
-    loadResidents();
+    // Load residents only if party select exists
+    if (document.getElementById('partyResidentId')) {
+        loadResidents();
+    }
 
-    // Set complaint ID in modals
-    document.getElementById('partyComplaintId').value = complaintId;
-    document.getElementById('attachmentComplaintId').value = complaintId;
+    // Set complaint ID in hidden/modal elements if present
+    const partyComplaintInput = document.getElementById('partyComplaintId');
+    if (partyComplaintInput) partyComplaintInput.value = complaintId;
+    const attachmentComplaintInput = document.getElementById('attachmentComplaintId');
+    if (attachmentComplaintInput) attachmentComplaintInput.value = complaintId;
     const mediationComplaintId = document.getElementById('mediationComplaintId');
     if (mediationComplaintId) mediationComplaintId.value = complaintId;
 }
@@ -331,7 +335,7 @@ function renderParties(parties) {
                     <tr>
                         <td>${escapeHtml(party.resident_name)}</td>
                         <td>${escapeHtml(party.party_type)}</td>
-                        <td class="action-buttons"><button type="button" class="delete-button" onclick="deleteParty(${Number(party.party_id)})">Remove</button></td>
+                        <td></td>
                     </tr>
                 `;
             });
@@ -342,7 +346,7 @@ function renderParties(parties) {
     if (!container) return;
 
     if (parties.length === 0) {
-        container.innerHTML = '<div class="empty-detail-state"><p style="margin:0 0 8px;">No parties added to this complaint yet.</p><button type="button" class="card-header-btn" onclick="openAddPartyModal()">+ Add Party</button></div>';
+        container.innerHTML = '<div class="empty-detail-state"><p style="margin:0;">No parties added to this complaint yet.</p></div>';
         return;
     }
 
@@ -362,7 +366,6 @@ function renderParties(parties) {
                         </div>
                     </div>
                 </div>
-                <button type="button" class="btn-remove-party-sm" title="Remove party" onclick="deleteParty(${Number(party.party_id)})">&times;</button>
             </div>
         `;
     });
@@ -399,7 +402,7 @@ function renderAttachments(attachments) {
     if (!container) return;
 
     if (attachments.length === 0) {
-        container.innerHTML = '<div class="empty-detail-state"><p style="margin:0 0 8px;">No evidence or attachments uploaded yet.</p><button type="button" class="card-header-btn" onclick="openAddAttachmentModal()">+ Upload Evidence</button></div>';
+        container.innerHTML = '<div class="empty-detail-state"><p style="margin:0;">No evidence or attachments uploaded yet.</p></div>';
         return;
     }
 
@@ -449,46 +452,55 @@ function renderAttachments(attachments) {
 }
 
 function openAddPartyModal() {
-    document.getElementById('addPartyModal').style.display = 'flex';
+    const modal = document.getElementById('addPartyModal');
+    if (modal) modal.style.display = 'flex';
 }
 
 function closeAddPartyModal() {
-    document.getElementById('addPartyModal').style.display = 'none';
+    const modal = document.getElementById('addPartyModal');
+    if (modal) modal.style.display = 'none';
 }
 
 function openAddAttachmentModal(type = 'all') {
+    const modal = document.getElementById('addAttachmentModal');
+    if (!modal) return;
     const fileInput = document.getElementById('attachmentFile');
     if (!fileInput) return;
     const isImage = type === 'image';
     const isVideo = type === 'video';
     const isDoc = type === 'document';
 
+    const titleEl = document.getElementById('attachmentModalTitle');
+    const labelEl = document.getElementById('attachmentFileLabel');
+    const helpEl = document.getElementById('attachmentFileHelp');
+
     if (isImage) {
-        document.getElementById('attachmentModalTitle').textContent = 'Upload Picture Evidence';
-        document.getElementById('attachmentFileLabel').textContent = 'Picture *';
-        document.getElementById('attachmentFileHelp').textContent = 'JPG, PNG, GIF, or WebP up to 25 MB.';
+        if (titleEl) titleEl.textContent = 'Upload Picture Evidence';
+        if (labelEl) labelEl.textContent = 'Picture *';
+        if (helpEl) helpEl.textContent = 'JPG, PNG, GIF, or WebP up to 25 MB.';
         fileInput.accept = 'image/*';
     } else if (isVideo) {
-        document.getElementById('attachmentModalTitle').textContent = 'Upload Video Evidence';
-        document.getElementById('attachmentFileLabel').textContent = 'Video *';
-        document.getElementById('attachmentFileHelp').textContent = 'MP4 or WebM up to 25 MB.';
+        if (titleEl) titleEl.textContent = 'Upload Video Evidence';
+        if (labelEl) labelEl.textContent = 'Video *';
+        if (helpEl) helpEl.textContent = 'MP4 or WebM up to 25 MB.';
         fileInput.accept = 'video/mp4,video/webm';
     } else if (isDoc) {
-        document.getElementById('attachmentModalTitle').textContent = 'Upload Document Evidence';
-        document.getElementById('attachmentFileLabel').textContent = 'Document *';
-        document.getElementById('attachmentFileHelp').textContent = 'PDF, DOC, or DOCX up to 25 MB.';
+        if (titleEl) titleEl.textContent = 'Upload Document Evidence';
+        if (labelEl) labelEl.textContent = 'Document *';
+        if (helpEl) helpEl.textContent = 'PDF, DOC, or DOCX up to 25 MB.';
         fileInput.accept = '.pdf,.doc,.docx';
     } else {
-        document.getElementById('attachmentModalTitle').textContent = 'Upload Evidence / Attachment';
-        document.getElementById('attachmentFileLabel').textContent = 'Evidence File *';
-        document.getElementById('attachmentFileHelp').textContent = 'Images, videos, PDF, and DOC/DOCX up to 25 MB.';
+        if (titleEl) titleEl.textContent = 'Upload Evidence / Attachment';
+        if (labelEl) labelEl.textContent = 'Evidence File *';
+        if (helpEl) helpEl.textContent = 'Images, videos, PDF, and DOC/DOCX up to 25 MB.';
         fileInput.accept = 'image/*,video/*,.pdf,.doc,.docx';
     }
-    document.getElementById('addAttachmentModal').style.display = 'flex';
+    modal.style.display = 'flex';
 }
 
 function closeAddAttachmentModal() {
-    document.getElementById('addAttachmentModal').style.display = 'none';
+    const modal = document.getElementById('addAttachmentModal');
+    if (modal) modal.style.display = 'none';
 }
 
 function openScheduleMediationModal() {
