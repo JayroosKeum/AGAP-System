@@ -77,6 +77,11 @@ Use the same module name across `frontend/pages`, `frontend/assets/js`, and
   For an older populated database that predates the workflow redesign, use
   `database/migrations/20260917_consolidated_workflow_upgrade.sql` instead of
   the three individual workflow migrations. Do not run both options.
+- Existing databases that predate the complaint case-type field also need
+  `database/migrations/20260924_add_complaint_case_type.sql` once. It adds
+  `complaints.case_type` and backfills docketed complaints from their linked
+  cases; do not run it when the field already exists. Fresh databases receive
+  the field from `schema.sql`.
 - Local development test users are seeded by `schema.sql` and are also
   available for existing local databases in `database/seeds/local_test_users.sql`.
   They include an Administrator, Lupon Clerk, Summons Server, and three Lupon
@@ -210,10 +215,20 @@ const api = (url, options) => fetch(url, options).then(async (response) => {
   `Needs Information`, `Accepted`, or `Rejected`, with optional review notes.
   Only an `Accepted` complaint can be docketed; docketing changes it to
   `Docketed` in the same transaction as case creation.
+- The Complaints page is the primary record-search screen. It combines keyword,
+  status, case-type, category, and incident-date filters with status KPI cards
+  and tabs; results come from the existing Records Search API and appear in one
+  complaint table. Keep the standalone Records Search page available for direct
+  compatibility, but do not restore its removed sidebar entry without a
+  specific requirement. The current table has Complaint, Case No., Category,
+  Parties, Incident Date, Status, and Actions columns.
+- Complaint intake and editing use dedicated `complaint-create.php` and
+  `complaint-edit.php` pages. Keep party selection, complaint case type,
+  incident details, and optional map pin in those workflows.
 - Treat `frontend/pages/complaints/complaint-details.php` as the complaint
   workspace for review, parties, and picture/video/document evidence. Create
   and edit incident details, including the optional exact map pin, from the
-  Add/Edit Complaint forms on `complaint-list.php`; do not create a separate
+  Add/Edit Complaint forms; do not create a separate
   Incident Locations page or location-only save route.
 - Complaint intake requires the incident date and specific location, and records
   optional time, landmark, narrative, supporting details, and an optional exact
@@ -225,18 +240,38 @@ const api = (url, options) => fetch(url, options).then(async (response) => {
 - Treat `frontend/pages/cases/case-details.php` as the case workspace: it is
   the record-level overview for case team, hearings, generated documents, and
   proof of service. Keep cross-case monitoring pages for lists and calendars.
+- The Cases list omits the top-right Docket Case button, places Case Team
+  Assignment above the table, and loads 25 cases per page from the existing
+  database ordering. Pagination is server-side; keep the assignment case
+  selector sourced from the full case list rather than only the visible page.
 - Do not require a separate Pangkat workflow. Save the Head, Secretary,
   and Member together from Case Assignments, require three distinct active
   users whose role name is `Lupon Member`, and perform the replacement in one
   transaction. Existing `pangkat_groups` and `pangkat_members` may be synced
   internally for legacy KP-document compatibility; they are not a separate
   user journey.
+- Case-team assignment depends on the case stage. In this implementation,
+  `Docketed` and `Mediation` use the active `Administrator` as the automatic
+  Barangay Captain/Head; Secretary and Member are unavailable and manual team
+  saves must be rejected by the server. A `Conciliation` team may be initially
+  saved once through the assignment form. After that, keep the assigned values
+  read-only there and allow changes through the authorized case Edit operation
+  only. Validate all three as distinct active `Lupon Member` users on the
+  server and save case/status/team changes atomically without duplicate
+  assignment rows. No schema change is needed for these rules.
 - Proof of service must reference a generated document for the selected case.
   Generated-document service states are `Generated`, `For Service`, `Served`,
   and `Service Failed`; recording proof marks that document `Served`.
 - Required form controls need a visible asterisk, an HTML `required` rule, and
   server-side validation. Provide useful character limits and file format/size
   guidance beside relevant inputs.
+- Reuse `backend/services/ValidationService.php` for shared name, email, date,
+  phone, address, and text checks. Current validation trims required values,
+  rejects control characters and impossible dates, checks Philippine telephone
+  number formats, validates existing dropdown choices, and checks upload MIME
+  type/extension/size where those upload flows exist. Keep critical checks on
+  the server; client checks are for immediate feedback. Do not normalize or
+  rewrite existing stored records as part of adding validation.
 - Hearing scheduling is case-based: link from the case workspace into the
   scheduling page with `case_id`, validate future dates and the Initial Hearing
   five-day docketing limit on both client and server, show calendar data from

@@ -47,16 +47,125 @@ write; an edit retains the pin unless it is moved or explicitly cleared.
 - **Case workspace:** Opening a case now leads to `case-details.php`, which
   presents the case overview, team, hearings, generated documents, and proof
   of service together. The case list remains the cross-case monitoring screen.
-- **Atomic case team:** Case Assignments now saves Head, Secretary,
-  and Member together. All three must be distinct active users with the role
-  name `Lupon Member`. The write is transactional and synchronizes existing
-  Pangkat tables only to keep the existing KP Form 12 data source compatible.
-  The separate Pangkat page redirects to Case Assignments and is no longer an
-  operational feature.
+- **Atomic case team:** Case Assignments saves Head, Secretary, and Member
+  together. For `Docketed` and `Mediation`, the active `Administrator` account
+  represents the Barangay Captain and is automatically assigned as Head;
+  Secretary and Member cannot be manually assigned at these stages. For
+  `Conciliation`, the team can be initially assigned once from the assignment
+  form. Existing Conciliation assignments are read-only there and can be
+  changed through the authorized case Edit operation. All three team members
+  must be distinct active users with the role name `Lupon Member`. Server-side
+  checks enforce the rules, and case/status/team edits are transactional.
+  Existing Pangkat tables are synchronized on Conciliation team saves for KP
+  Form 12 compatibility. The separate Pangkat page redirects to Case
+  Assignments and is no longer an operational feature.
 - **Document-linked service:** Proof-of-service records require a generated
   document belonging to the selected case. Saving proof marks the document
   `Served`; document service states are `Generated`, `For Service`, `Served`,
   and `Service Failed`.
+
+### Case Assignment Stage Rules (September 2026)
+
+- `Docketed` and `Mediation` are treated as automatic-Head stages by the case
+  assignment UI and backend. The Head is the first active user with the
+  `Administrator` role. The assignment form disables the Head, Secretary,
+  Member, and save controls; the API rejects manual team submissions.
+- A Conciliation case with no team accepts one initial Head/Secretary/Member
+  team through `backend/api/assignments/team.php`. The three IDs must refer to
+  different active users whose role name is `Lupon Member`.
+- Once a Conciliation team exists, the assignment form displays it read-only
+  and directs staff to **Edit**. The case Edit modal preselects current active
+  members and updates the case fields and team in one database transaction.
+  The server validates roles and distinct membership and updates existing
+  assignment rows rather than adding another set.
+- Switching a case to `Docketed` or `Mediation` restores the automatic
+  Administrator Head and removes the manual Secretary and Member case
+  assignments. Switching to `Conciliation` requires a complete valid team.
+- The case update API returns JSON, checks for an authenticated Administrator
+  or Lupon Clerk, and the controller records the existing audit event. No
+  database schema or migration change was required.
+- Relevant files: `frontend/pages/cases/case-list.php`,
+  `frontend/assets/js/cases.js`, `frontend/assets/js/assignments.js`,
+  `backend/api/cases/update.php`, `backend/controllers/CaseController.php`,
+  `backend/models/CaseModel.php`, and `backend/models/Assignment.php`.
+
+### Case Assignment Testing Status
+
+- PHP syntax checks passed for the changed PHP files. JavaScript syntax checks
+  and `git diff --check` passed.
+- Browser/MySQL assignment scenarios have not yet been run. Verify automatic
+  Head display and rejected manual submits for Docketed/Mediation, initial and
+  repeated Conciliation assignment, Edit updates, role restrictions, and
+  status transitions in Laragon without using production data.
+
+## Other Undocumented Implemented Changes (September 2026)
+
+### Cases page ordering and pagination
+
+- The top-right **Docket Case** button was removed from the Cases list page;
+  docketing itself remains available through its existing workflow.
+- The Case Team Assignment section appears above the cases table.
+- The case table uses server-side pagination, with 25 rows per page and the
+  existing newest-first `created_at` ordering. The list API returns the page,
+  total count, and pagination metadata. The assignment selector still loads
+  from the complete case list and is not restricted to the current page.
+- The existing case table columns and row actions remain in place. No schema or
+  case-record changes are part of pagination.
+- Relevant files: `frontend/pages/cases/case-list.php`,
+  `frontend/assets/js/cases.js`, `frontend/assets/css/cases.css`,
+  `backend/api/cases/list.php`, `backend/controllers/CaseController.php`, and
+  `backend/models/CaseModel.php`.
+
+### Complaints search, listing, and intake
+
+- Records Search was integrated into the Complaints page and now drives the
+  complaint results table through `backend/api/search/records.php`. Current
+  filters include keyword, exact status, case type, category, and incident date
+  range. KPI cards and status tabs also filter the same result set. The Clear /
+  Reset action restores the unfiltered list.
+- The current Complaints page has KPI cards, status tabs, a compact filter
+  toolbar with a secondary filter drawer, active-filter indicators, and one
+  seven-column table: Complaint, Case No., Category, Parties, Incident Date,
+  Status, and Actions. The earlier six-column table design was superseded by
+  this later Complaints page update. The standalone Records Search page remains
+  available by direct URL for compatibility, while its sidebar navigation item
+  is removed.
+- Complaint create and edit now use dedicated `complaint-create.php` and
+  `complaint-edit.php` pages. Intake/edit include complaint case type, party
+  management, incident details, and the optional map location. The detail page
+  remains the review and evidence workspace.
+- Search/list integration and intake changes are read/write behavior through
+  existing complaint records; they do not create a parallel search-data table.
+- Relevant files include `frontend/pages/complaints/complaint-list.php`,
+  `complaint-create.php`, `complaint-edit.php`, `complaint-details.php`,
+  `frontend/assets/js/search.js`, `frontend/assets/js/complaints.js`,
+  `backend/api/search/records.php`, `backend/models/Search.php`, and
+  `frontend/layouts/sidebar.php`.
+
+### Shared validation improvements
+
+- `backend/services/ValidationService.php` provides shared checks for required
+  trimmed values, names, real dates/date-times, email format, Philippine mobile
+  and landline formats, address/text control characters, and maximum lengths.
+- User and resident forms now apply client and server checks for relevant names,
+  contact numbers, email, dates, and defined selections. User create/update
+  reports understandable duplicate username/email errors while preserving the
+  existing uniqueness rules. Complaint, hearing, and proof-of-service paths
+  reject invalid text or impossible dates where applicable.
+- Existing evidence/upload paths validate extensions against detected MIME
+  types, the existing size limits, and basic image/PDF validity. Resident data
+  is escaped when rendered. These changes do not migrate or clean existing
+  records.
+- PHP lint, JavaScript syntax checks, `git diff --check`, and direct validator
+  checks passed when implemented. Duplicate-check queries and actual uploads
+  were not integration-tested because no database/upload integration session
+  was available. The local Module Development PDF was not reviewed because the
+  browser blocked its file path; message-provided requirements were used.
+- Relevant files include `backend/services/ValidationService.php`,
+  `backend/controllers/UserController.php`, `ResidentController.php`,
+  `ComplaintController.php`, `HearingController.php`, `GPSController.php`,
+  `backend/models/User.php`, `backend/models/Complaint.php`, and the associated
+  user/resident form JavaScript and API files.
 
 ### Database change
 
@@ -69,6 +178,15 @@ existing populated database before using the redesigned fields and relations.
 Alternatively, a database that predates all three changes can run the single
 `database/migrations/20260917_consolidated_workflow_upgrade.sql` script instead.
 Never run both the consolidated and individual migration paths.
+
+Also apply `database/migrations/20260919_add_user_contact_number.sql` once to
+an existing database that lacks the user contact-number field, and
+`database/migrations/20260924_add_complaint_case_type.sql` once if
+`complaints.case_type` is absent. The latter uses the canonical `Civil` default
+for existing complaints and copies a linked case's type to docketed complaints.
+Fresh installs receive both fields through `database/schema.sql`. See
+`database/README.md` for prerequisites and the migration paths; never run a
+one-time migration against a database that already has its target field.
 
 For local debugging, `schema.sql` also seeds the Administrator, Lupon Clerk,
 Summons Server, and three distinct Lupon Member accounts. The same optional
