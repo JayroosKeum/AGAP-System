@@ -186,6 +186,10 @@ define('DB_PASS', '');
 define('DB_NAME', 'agap_db');
 ```
 
+To enable AI narrative enhancement, configure `GEMINI_API_KEY` as a PHP/Apache
+environment variable and restart Apache. The key is read server-side only; do
+not add it to JavaScript or `backend/config/gemini.php`.
+
 ### 4. Access the Application
 Start Apache and MySQL in Laragon, then open:
 ```text

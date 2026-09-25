@@ -333,6 +333,18 @@ include '../../layouts/header.php';
                             <div class="form-group">
                                 <label for="narrative">Statement of Complaint / Narrative <span class="required-mark">*</span></label>
                                 <textarea id="narrative" name="narrative" rows="5" maxlength="15000" required placeholder="Describe in detail what occurred, when, and the circumstances surrounding the incident..."><?php echo htmlspecialchars($effNarrative); ?></textarea>
+                                <div class="ai-narrative-actions">
+                                    <button type="button" class="btn-outline-sm" data-enhance-narrative>✨ Enhance with AI</button>
+                                    <small class="field-hint">Improves wording only. Review the suggestion before applying it.</small>
+                                </div>
+                                <div class="ai-narrative-preview" data-narrative-preview hidden>
+                                    <strong>AI suggestion</strong>
+                                    <p data-narrative-suggestion></p>
+                                    <div class="ai-narrative-preview-actions">
+                                        <button type="button" class="btn-create btn-sm" data-apply-narrative>Apply suggestion</button>
+                                        <button type="button" class="btn-secondary btn-sm" data-discard-narrative>Keep my original</button>
+                                    </div>
+                                </div>
                                 <small class="field-hint">Required; up to 15,000 characters.</small>
                             </div>
 

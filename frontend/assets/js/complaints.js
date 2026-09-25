@@ -67,6 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('confirmMediationButton')?.addEventListener('click', submitMediationSchedule);
 
     initialiseComplaintMaps();
+    initialiseNarrativeEnhancement();
 
     const flash = window.agapComplaintFlash;
     if (flash?.message) {
@@ -80,6 +81,67 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 });
+
+function initialiseNarrativeEnhancement() {
+    const button = document.querySelector('[data-enhance-narrative]');
+    const narrative = document.getElementById('narrative');
+    const preview = document.querySelector('[data-narrative-preview]');
+    const suggestion = document.querySelector('[data-narrative-suggestion]');
+    if (!button || !narrative || !preview || !suggestion) return;
+
+    const applyButton = preview.querySelector('[data-apply-narrative]');
+    const discardButton = preview.querySelector('[data-discard-narrative]');
+    let proposedNarrative = '';
+    const setBusy = (busy) => {
+        button.disabled = busy;
+        button.textContent = busy ? 'Enhancing…' : '✨ Enhance with AI';
+    };
+
+    button.addEventListener('click', async () => {
+        const original = narrative.value.trim();
+        if (original.length < 10) {
+            window.agapNotify?.('Enter at least 10 characters before using AI enhancement.', 'error');
+            narrative.focus();
+            return;
+        }
+
+        setBusy(true);
+        preview.hidden = true;
+        try {
+            const response = await fetch('../../../backend/api/ai/refine-narrative.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({ narrative: original })
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.success || !result.narrative) {
+                throw new Error(result.message || 'Unable to enhance the narrative.');
+            }
+            proposedNarrative = result.narrative;
+            suggestion.textContent = proposedNarrative;
+            preview.hidden = false;
+            preview.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } catch (error) {
+            window.agapNotify?.(error.message || 'Unable to enhance the narrative.', 'error');
+        } finally {
+            setBusy(false);
+        }
+    });
+
+    applyButton?.addEventListener('click', () => {
+        if (!proposedNarrative) return;
+        narrative.value = proposedNarrative;
+        narrative.dispatchEvent(new Event('input', { bubbles: true }));
+        preview.hidden = true;
+        window.agapNotify?.('AI suggestion applied. Please review it before saving.', 'success');
+    });
+
+    discardButton?.addEventListener('click', () => {
+        proposedNarrative = '';
+        preview.hidden = true;
+        narrative.focus();
+    });
+}
 
 function loadComplaintDetails() {
     // Get complaint ID from URL
