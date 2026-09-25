@@ -144,7 +144,10 @@ include '../../layouts/header.php';
         <!-- Modern Page Header with Status & Action Toolbar (copied layout from complaint-details.php) -->
         <div class="complaint-details-header">
             <div class="complaint-details-heading">
-                <a href="complaint-details.php?id=<?php echo $complaintId; ?>" class="back-link" onclick="handleBackLink(event)">&larr; Back to Complaint Details</a>
+                <a href="complaint-details.php?id=<?php echo $complaintId; ?>" class="back-link" onclick="handleBackLink(event)">
+                    <svg class="back-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                    <span>Back to Complaint Details</span>
+                </a>
                 <div class="complaint-title-row">
                     <h1 id="editComplaintHeading">Edit Complaint — <?php echo htmlspecialchars($complaint['complaint_number'] ?: ('CMP-' . str_pad($complaintId, 5, '0', STR_PAD_LEFT))); ?></h1>
                     <span id="complaintStatusBadge" class="status-pill status-<?php echo $statusSlug; ?>"><?php echo htmlspecialchars($complaint['status'] ?: 'Filed'); ?></span>
