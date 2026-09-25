@@ -308,6 +308,28 @@ assignment constraint.
   This covers assignments, hearings, documents, and future notifications that
   use `NotificationService`, without creating separate popup logic per module.
 
+### Hearing and Deadlines Page Reorganization (September 2026)
+
+- `frontend/pages/hearings/schedules.php` presents the existing calendar first,
+  then the search/filter card, a combined Hearings and Deadlines table, and
+  server-side pagination. Calendar month navigation and its event display remain
+  independent of the table pagination.
+- Search filters include keyword (case number, complaint number, or venue),
+  status (`Scheduled`, `Pending`, `Completed`, `Overdue`), hearing/deadline type,
+  and date range. Search resets to page 1; Clear removes the filters and loads
+  the default result set.
+- The unified table has seven columns: Case No., Complaint, Hearing Type,
+  Date and Time, Status, Venue, and Actions. The API/model combine existing
+  hearing and legal-deadline records with a database `UNION` query; no duplicate
+  records or new tables are introduced.
+- The read endpoint returns at most 25 records per page along with total-count
+  and page metadata. Existing schedule/view/edit permissions and calendar
+  interactions remain in place.
+- Relevant files: `frontend/pages/hearings/schedules.php`,
+  `frontend/assets/js/hearings.js`, `frontend/assets/css/hearings.css`,
+  `backend/api/hearings/list.php`, `backend/controllers/HearingController.php`,
+  and `backend/models/Hearing.php`.
+
 ---
 
 ## Current Stack and Database

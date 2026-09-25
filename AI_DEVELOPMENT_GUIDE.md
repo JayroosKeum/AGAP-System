@@ -325,6 +325,13 @@ const api = (url, options) => fetch(url, options).then(async (response) => {
   - Scheduling the `1st Mediation` hearing automatically triggers case docketing
     (`cases.case_status = 'Docketed'`) and updates complaint status (`complaints.status = 'Docketed'`)
     in the same database transaction.
+- The Hearings and Deadlines page (`frontend/pages/hearings/schedules.php`) keeps
+  the month calendar first, followed by shared search filters and one combined
+  hearings/deadlines table. Search filters include keyword, status, hearing type,
+  and date range; Clear restores unfiltered results. The combined read API uses a
+  `UNION`-based query and server-side pagination of 25 rows per page. Calendar
+  month events remain independently loaded and are not constrained by the table's
+  current page. Preserve the existing scheduling and role permissions.
 - Use the shared `window.agapNotify(message, type, title)` toast layer for
   user-facing workflow feedback. It converts module status/alert messages into
   dismissible popups and polls the authenticated notification inbox for newly
