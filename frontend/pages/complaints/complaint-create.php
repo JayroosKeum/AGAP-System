@@ -182,9 +182,23 @@ include '../../layouts/header.php';
                             <span class="card-subtitle">Where the incident took place</span>
                         </div>
 
+                        <div class="detail-info-grid">
+                            <div class="form-group">
+                                <label for="incidentCity">City <span class="required-mark">*</span></label>
+                                <input type="text" id="incidentCity" name="incident_city" maxlength="100" required readonly value="<?php echo htmlspecialchars($old['incident_city'] ?? 'Marikina City'); ?>">
+                            </div>
+                            <div class="form-group">
+                                <label for="incidentBarangay">Barangay <span class="required-mark">*</span></label>
+                                <input type="text" id="incidentBarangay" name="incident_barangay" maxlength="100" required readonly value="<?php echo htmlspecialchars($old['incident_barangay'] ?? 'Tumana'); ?>">
+                            </div>
+                        </div>
                         <div class="form-group">
-                            <label for="incidentLocation">Specific Incident Location <span class="required-mark">*</span></label>
-                            <input type="text" id="incidentLocation" name="incident_location" maxlength="255" required placeholder="Street, building, purok, or nearby place" value="<?php echo htmlspecialchars($old['incident_location'] ?? ''); ?>">
+                            <label for="incidentStreet">Street / Specific Location <span class="required-mark">*</span></label>
+                            <input type="text" id="incidentStreet" name="incident_street" maxlength="255" required placeholder="Street, building, or nearby place" value="<?php echo htmlspecialchars($old['incident_street'] ?? $old['incident_location'] ?? ''); ?>">
+                        </div>
+                        <div class="form-group">
+                            <label for="incidentPurok">Purok <span class="optional-label">Optional</span></label>
+                            <input type="text" id="incidentPurok" name="incident_purok" maxlength="100" placeholder="e.g. Purok 3" value="<?php echo htmlspecialchars($old['incident_purok'] ?? ''); ?>">
                         </div>
 
                         <div class="form-group">
@@ -199,7 +213,7 @@ include '../../layouts/header.php';
                             <input type="hidden" name="location_latitude" value="<?php echo htmlspecialchars($old['location_latitude'] ?? ''); ?>" data-map-latitude>
                             <input type="hidden" name="location_longitude" value="<?php echo htmlspecialchars($old['location_longitude'] ?? ''); ?>" data-map-longitude>
                             
-                            <p class="map-help">Click anywhere on the map to pin the incident location. The pin is saved with this complaint.</p>
+                            <p class="map-help">Type an address to place a pin, or click/drag the pin to fill the address. Pins are limited to Barangay Tumana.</p>
                             
                             <div id="addComplaintMap" class="complaint-location-map compact-map" aria-label="Map for selecting the exact incident location"></div>
                             

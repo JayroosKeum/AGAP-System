@@ -107,6 +107,10 @@ if (!$effDatetime && !empty($complaint['incident_date'])) {
 $effNarrative = $old['narrative'] ?? $complaint['narrative'];
 $effDetails = $old['additional_details'] ?? ($complaint['additional_details'] ?? '');
 $effLocation = $old['incident_location'] ?? ($complaint['incident_location'] ?? '');
+$effCity = $old['incident_city'] ?? ($complaint['incident_city'] ?? 'Marikina City');
+$effBarangay = $old['incident_barangay'] ?? ($complaint['incident_barangay'] ?? 'Tumana');
+$effStreet = $old['incident_street'] ?? ($complaint['incident_street'] ?? $effLocation);
+$effPurok = $old['incident_purok'] ?? ($complaint['incident_purok'] ?? '');
 $effLandmark = $old['incident_landmark'] ?? ($complaint['incident_landmark'] ?? '');
 
 $effCompName = $old['complainant_name'] ?? ($primaryComplainant['name'] ?? '');
@@ -351,9 +355,23 @@ include '../../layouts/header.php';
                                 <span class="card-subtitle">Geographic location and pinned coordinates</span>
                             </div>
 
+                            <div class="detail-info-grid">
+                                <div class="form-group">
+                                    <label for="incidentCity">City <span class="required-mark">*</span></label>
+                                    <input type="text" id="incidentCity" name="incident_city" maxlength="100" required readonly value="<?php echo htmlspecialchars($effCity); ?>">
+                                </div>
+                                <div class="form-group">
+                                    <label for="incidentBarangay">Barangay <span class="required-mark">*</span></label>
+                                    <input type="text" id="incidentBarangay" name="incident_barangay" maxlength="100" required readonly value="<?php echo htmlspecialchars($effBarangay); ?>">
+                                </div>
+                            </div>
                             <div class="form-group">
-                                <label for="incidentLocation">Specific Incident Location <span class="required-mark">*</span></label>
-                                <input type="text" id="incidentLocation" name="incident_location" maxlength="255" required placeholder="Street, building, purok, or nearby place" value="<?php echo htmlspecialchars($effLocation); ?>">
+                                <label for="incidentStreet">Street / Specific Location <span class="required-mark">*</span></label>
+                                <input type="text" id="incidentStreet" name="incident_street" maxlength="255" required placeholder="Street, building, or nearby place" value="<?php echo htmlspecialchars($effStreet); ?>">
+                            </div>
+                            <div class="form-group">
+                                <label for="incidentPurok">Purok <span class="optional-label">Optional</span></label>
+                                <input type="text" id="incidentPurok" name="incident_purok" maxlength="100" placeholder="e.g. Purok 3" value="<?php echo htmlspecialchars($effPurok); ?>">
                             </div>
 
                             <div class="form-group">
@@ -368,7 +386,7 @@ include '../../layouts/header.php';
                                 <input type="hidden" name="location_latitude" id="locationLatitude" value="<?php echo htmlspecialchars($savedLat); ?>" data-map-latitude>
                                 <input type="hidden" name="location_longitude" id="locationLongitude" value="<?php echo htmlspecialchars($savedLng); ?>" data-map-longitude>
 
-                                <p class="map-help">Click anywhere on the map to update or set the incident pin. Clear to remove the exact map point.</p>
+                                <p class="map-help">Type an address to move the pin, or click/drag the pin to fill the address. Pins are limited to Barangay Tumana.</p>
 
                                 <div id="editComplaintMap" class="complaint-location-map compact-map" aria-label="Map for selecting the exact incident location"></div>
 
@@ -780,69 +798,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Leaflet map initialization for edit
-    if (window.L) {
-        const mapElement = document.getElementById('editComplaintMap');
-        if (mapElement) {
-            const form = mapElement.closest('form');
-            const stateInput = form.querySelector('[data-map-state]');
-            const latInput = form.querySelector('[data-map-latitude]');
-            const lngInput = form.querySelector('[data-map-longitude]');
-            const statusEl = form.querySelector('[data-map-status]');
-            
-            const initialLat = parseFloat(latInput.value);
-            const initialLng = parseFloat(lngInput.value);
-            const hasInitialPoint = !isNaN(initialLat) && !isNaN(initialLng);
-
-            const map = L.map(mapElement).setView(
-                hasInitialPoint ? [initialLat, initialLng] : [14.6507, 121.1029],
-                hasInitialPoint ? 16 : 13
-            );
-
-            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OpenStreetMap contributors'
-            }).addTo(map);
-
-            let marker = null;
-            if (hasInitialPoint) {
-                marker = L.marker([initialLat, initialLng]).addTo(map);
-            }
-
-            const setPoint = (lat, lng) => {
-                if (marker) {
-                    marker.setLatLng([lat, lng]);
-                } else {
-                    marker = L.marker([lat, lng]).addTo(map);
-                }
-                latInput.value = Number(lat).toFixed(8);
-                lngInput.value = Number(lng).toFixed(8);
-                stateInput.value = 'selected';
-                if (statusEl) {
-                    statusEl.textContent = `Map point selected: ${latInput.value}, ${lngInput.value}`;
-                }
-                map.setView([lat, lng], Math.max(map.getZoom(), 16));
-            };
-
-            map.on('click', (e) => {
-                setPoint(e.latlng.lat, e.latlng.lng);
-            });
-
-            form.querySelector('[data-clear-map]')?.addEventListener('click', () => {
-                if (marker) {
-                    map.removeLayer(marker);
-                    marker = null;
-                }
-                latInput.value = '';
-                lngInput.value = '';
-                stateInput.value = 'clear';
-                if (statusEl) {
-                    statusEl.textContent = 'Saved map point will be removed upon save.';
-                }
-            });
-
-            setTimeout(() => map.invalidateSize(), 150);
-        }
-    }
+    // The shared complaints script initializes the Tumana-restricted map.
 
     // Evidence file queue handling (DataTransfer backed)
     const evidenceInput = document.getElementById('evidenceFiles');
