@@ -202,6 +202,141 @@ class Hearing
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
+    public function getPaginatedCombined(array $filters = [], int $page = 1, int $perPage = 25): array
+    {
+        $baseSql = "
+        SELECT
+            'hearing' AS record_type,
+            h.hearing_id AS record_id,
+            h.case_id,
+            c.case_number,
+            co.complaint_number,
+            co.complaint_title,
+            h.hearing_type AS raw_type,
+            CASE
+                WHEN h.hearing_type IN ('Mediation', 'Conciliation') THEN
+                    CONCAT(
+                        CASE ROW_NUMBER() OVER (PARTITION BY h.case_id, h.hearing_type ORDER BY h.created_at ASC, h.hearing_id ASC)
+                            WHEN 1 THEN '1st '
+                            WHEN 2 THEN '2nd '
+                            WHEN 3 THEN '3rd '
+                            ELSE CONCAT(ROW_NUMBER() OVER (PARTITION BY h.case_id, h.hearing_type ORDER BY h.created_at ASC, h.hearing_id ASC), 'th ')
+                        END,
+                        h.hearing_type
+                    )
+                ELSE h.hearing_type
+            END AS hearing_type,
+            h.hearing_date AS schedule_date,
+            h.venue,
+            CASE WHEN h.hearing_date < NOW() THEN 'Completed' ELSE 'Scheduled' END AS status,
+            h.remarks,
+            h.created_at
+        FROM hearings h
+        LEFT JOIN cases c ON c.case_id = h.case_id
+        LEFT JOIN complaints co ON co.complaint_id = c.complaint_id
+
+        UNION ALL
+
+        SELECT
+            'deadline' AS record_type,
+            d.deadline_id AS record_id,
+            d.case_id,
+            c.case_number,
+            co.complaint_number,
+            co.complaint_title,
+            d.deadline_type AS raw_type,
+            d.deadline_type AS hearing_type,
+            CAST(CONCAT(d.due_date, ' 00:00:00') AS DATETIME) AS schedule_date,
+            NULL AS venue,
+            CASE
+                WHEN d.status = 'Completed' THEN 'Completed'
+                WHEN d.due_date < CURDATE() THEN 'Overdue'
+                ELSE 'Pending'
+            END AS status,
+            NULL AS remarks,
+            d.created_at
+        FROM case_deadlines d
+        LEFT JOIN cases c ON c.case_id = d.case_id
+        LEFT JOIN complaints co ON co.complaint_id = c.complaint_id
+        ";
+
+        $where = [];
+        $params = [];
+
+        $q = trim((string) ($filters['q'] ?? ''));
+        if ($q !== '') {
+            $where[] = '(case_number LIKE :kw OR complaint_number LIKE :kw OR complaint_title LIKE :kw OR venue LIKE :kw OR hearing_type LIKE :kw)';
+            $params[':kw'] = '%' . $q . '%';
+        }
+
+        $status = trim((string) ($filters['status'] ?? ''));
+        if (in_array($status, ['Scheduled', 'Pending', 'Completed', 'Overdue'], true)) {
+            $where[] = 'status = :status';
+            $params[':status'] = $status;
+        }
+
+        $hearingType = trim((string) ($filters['hearing_type'] ?? ''));
+        $allowedTypes = [
+            'Mediation', 'Conciliation', 'Initial Hearing', 'Arbitration',
+            'Mediation Period', 'Conciliation Period', 'Conciliation Extension'
+        ];
+        if (in_array($hearingType, $allowedTypes, true)) {
+            $where[] = '(raw_type = :htype OR hearing_type = :htype)';
+            $params[':htype'] = $hearingType;
+        }
+
+        $dateFrom = trim((string) ($filters['date_from'] ?? ''));
+        if ($dateFrom !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateFrom)) {
+            $where[] = 'DATE(schedule_date) >= :date_from';
+            $params[':date_from'] = $dateFrom;
+        }
+
+        $dateTo = trim((string) ($filters['date_to'] ?? ''));
+        if ($dateTo !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTo)) {
+            $where[] = 'DATE(schedule_date) <= :date_to';
+            $params[':date_to'] = $dateTo;
+        }
+
+        $whereClause = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+
+        $countSql = "SELECT COUNT(*) FROM ($baseSql) AS combined $whereClause";
+        $stmt = $this->conn->prepare($countSql);
+        foreach ($params as $k => $v) {
+            $stmt->bindValue($k, $v);
+        }
+        $stmt->execute();
+        $totalRecords = (int) $stmt->fetchColumn();
+
+        $totalPages = $totalRecords > 0 ? (int) ceil($totalRecords / $perPage) : 1;
+        if ($page > $totalPages) {
+            $page = $totalPages;
+        }
+        if ($page < 1) {
+            $page = 1;
+        }
+        $offset = ($page - 1) * $perPage;
+
+        $dataSql = "SELECT * FROM ($baseSql) AS combined $whereClause ORDER BY schedule_date ASC, record_id ASC LIMIT :limit OFFSET :offset";
+        $stmt = $this->conn->prepare($dataSql);
+        foreach ($params as $k => $v) {
+            $stmt->bindValue($k, $v);
+        }
+        $stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+        $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        return [
+            'records' => $records,
+            'pagination' => [
+                'total_records' => $totalRecords,
+                'per_page' => $perPage,
+                'current_page' => $page,
+                'total_pages' => $totalPages,
+            ],
+        ];
+    }
+
     private function upsertDeadline(int $caseId, string $type, string $dueDate): void
     {
         $stmt = $this->conn->prepare(

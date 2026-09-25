@@ -477,6 +477,15 @@ UNIQUE KEY uq_case_deadlines_case_type (case_id, deadline_type)
 
 For an existing populated database, duplicate `(case_id, deadline_type)` rows must be resolved before applying this unique key.
 
+### Hearing and Deadlines Page Reorganization, Unified Table, Search & Pagination (September 2026)
+
+- **Page Structure Order**: The page (`schedules.php`) is reorganized so the Calendar appears first at the top, followed by a dedicated Search/Filters card, followed by the combined Hearings and Deadlines table, followed by server-side pagination.
+- **Top Calendar**: Preserves existing calendar month/date navigation, event clicks, view/edit modal integration, and unpaginated month-wide event display.
+- **Search & Filters Card**: Styled matching the Complaints page toolbar. Includes Keyword (`Case no., complaint no., or venue`), Status (`All statuses`, `Scheduled`, `Pending`, `Completed`, `Overdue`), Hearing Type (`All types`, `Mediation`, `Conciliation`, `Initial Hearing`, `Arbitration`, `Mediation Period`, `Conciliation Period`, `Conciliation Extension`), Date From, Date To, Search button, and Clear button. Clear resets all filters and restores default page 1 results.
+- **Unified Hearings and Deadlines Table**: The separate Hearing Deadlines and Legal Deadlines tables are combined into a single 7-column table: `Case No.`, `Complaint`, `Hearing Type`, `Date and Time`, `Status`, `Venue`, and `Actions`. Existing hearings and legal deadlines are presented together via database UNION query without duplicating records.
+- **Server-Side Pagination**: Limited to a maximum of 25 records per page with total count summary and Previous, numeric page, and Next controls. Search submissions reset pagination to page 1.
+- **Relevant Files**: `frontend/pages/hearings/schedules.php`, `frontend/assets/js/hearings.js`, `frontend/assets/css/hearings.css`, `backend/api/hearings/list.php`, `backend/controllers/HearingController.php`, and `backend/models/Hearing.php`.
+
 ---
 
 ## Document Generation Foundation and KP Form 12

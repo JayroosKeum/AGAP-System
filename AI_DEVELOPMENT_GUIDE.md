@@ -230,6 +230,9 @@ const api = (url, options) => fetch(url, options).then(async (response) => {
   Case Disposition; stage automatically hides after 3 mediations and 3 conciliations),
   and `Actions` (View Details link, Edit Page link, and Delete modal trigger). The table
   paginates records up to 10 items per page with dynamic range summary and navigation controls.
+  The Records Search API returns at most 250 matching rows per request; the 10-row pages
+  are rendered client-side over that response, so counts and pagination describe the
+  returned result set rather than an unbounded database total.
   The standalone Records Search page remains available by direct URL for compatibility,
   while its sidebar navigation item is removed.
 - Complaint intake and editing use dedicated full-page forms (`complaint-create.php`
@@ -322,6 +325,13 @@ const api = (url, options) => fetch(url, options).then(async (response) => {
   - Scheduling the `1st Mediation` hearing automatically triggers case docketing
     (`cases.case_status = 'Docketed'`) and updates complaint status (`complaints.status = 'Docketed'`)
     in the same database transaction.
+- The Hearings and Deadlines page (`frontend/pages/hearings/schedules.php`) keeps
+  the month calendar first, followed by shared search filters and one combined
+  hearings/deadlines table. Search filters include keyword, status, hearing type,
+  and date range; Clear restores unfiltered results. The combined read API uses a
+  `UNION`-based query and server-side pagination of 25 rows per page. Calendar
+  month events remain independently loaded and are not constrained by the table's
+  current page. Preserve the existing scheduling and role permissions.
 - Use the shared `window.agapNotify(message, type, title)` toast layer for
   user-facing workflow feedback. It converts module status/alert messages into
   dismissible popups and polls the authenticated notification inbox for newly

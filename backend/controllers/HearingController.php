@@ -19,6 +19,27 @@ class HearingController
         $this->notifications = new NotificationService();
     }
 
+    public function index(array $params = []): array
+    {
+        $page = max(1, (int) ($params['page'] ?? 1));
+        $perPage = 25;
+        $filters = [
+            'q' => trim((string) ($params['q'] ?? '')),
+            'status' => trim((string) ($params['status'] ?? '')),
+            'hearing_type' => trim((string) ($params['hearing_type'] ?? '')),
+            'date_from' => trim((string) ($params['date_from'] ?? '')),
+            'date_to' => trim((string) ($params['date_to'] ?? '')),
+        ];
+
+        $result = $this->hearing->getPaginatedCombined($filters, $page, $perPage);
+
+        return [
+            'success' => true,
+            'data' => $result['records'],
+            'pagination' => $result['pagination'],
+        ];
+    }
+
     public function calendar(): array
     {
         return ['success' => true, 'data' => $this->hearing->getAll()];

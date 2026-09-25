@@ -24,8 +24,8 @@ include '../../layouts/header.php';
 
         <div class="page-header">
             <div>
-                <h1>Hearing Schedules</h1>
-                <p>Schedule up to three mediations, followed by up to three conciliations, for each case.</p>
+                <h1>Hearings and Deadlines</h1>
+                <p>Manage hearings, deadlines, and scheduled case activities.</p>
             </div>
             <?php if ($canManageHearings): ?>
             <button
@@ -40,30 +40,99 @@ include '../../layouts/header.php';
 
         <div id="hearingMessage" role="alert"></div>
 
-        <div class="table-container">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Case No.</th>
-                        <th>Complaint</th>
-                        <th>Hearing Type</th>
-                        <th>Date &amp; Time</th>
-                        <th>Venue</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="hearingTable"></tbody>
-            </table>
-        </div>
         <section class="hearing-calendar-section">
             <div class="calendar-toolbar"><button type="button" id="previousMonth" class="btn-secondary" aria-label="Previous month">&larr;</button><h2 id="calendarMonth"></h2><button type="button" id="nextMonth" class="btn-secondary" aria-label="Next month">&rarr;</button></div>
             <p class="calendar-help"><?php echo $canManageHearings ? 'Select a date to start a new hearing, or select an existing hearing to edit it.' : 'Select a hearing to view its details.'; ?></p>
             <div class="hearing-calendar" id="hearingCalendar" aria-label="Hearing calendar"></div>
         </section>
-        <div class="page-header"><div><h2>Legal Deadlines</h2><p>Automatically calculated from scheduled proceedings.</p></div></div>
+
+        <section class="hearings-search-card" aria-label="Search and filter hearings and deadlines">
+            <div class="search-card-header">
+                <h2>Search / Filters</h2>
+            </div>
+            <form id="hearingsSearchForm" class="hearings-search-form">
+                <div class="search-form-row">
+                    <div class="search-field keyword-field">
+                        <label for="searchKeyword">Keyword</label>
+                        <div class="search-box-wrap">
+                            <svg class="search-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                            <input type="search" id="searchKeyword" name="q" class="search-input-field" placeholder="Case no., complaint no., or venue" autocomplete="off">
+                            <button type="button" id="clearSearchInput" class="search-clear-btn" title="Clear keyword">&times;</button>
+                        </div>
+                    </div>
+
+                    <div class="search-field status-field">
+                        <label for="searchStatus">Status</label>
+                        <select id="searchStatus" name="status" class="toolbar-select">
+                            <option value="">All statuses</option>
+                            <option value="Scheduled">Scheduled</option>
+                            <option value="Pending">Pending</option>
+                            <option value="Completed">Completed</option>
+                            <option value="Overdue">Overdue</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="search-form-row">
+                    <div class="search-field hearing-type-field">
+                        <label for="searchHearingType">Hearing Type</label>
+                        <select id="searchHearingType" name="hearing_type" class="toolbar-select">
+                            <option value="">All types</option>
+                            <option value="Mediation">Mediation</option>
+                            <option value="Conciliation">Conciliation</option>
+                            <option value="Initial Hearing">Initial Hearing</option>
+                            <option value="Arbitration">Arbitration</option>
+                            <option value="Mediation Period">Mediation Period</option>
+                            <option value="Conciliation Period">Conciliation Period</option>
+                            <option value="Conciliation Extension">Conciliation Extension</option>
+                        </select>
+                    </div>
+
+                    <div class="search-field date-field">
+                        <label for="searchDateFrom">Date From</label>
+                        <input type="date" id="searchDateFrom" name="date_from" class="search-input-field search-date-input">
+                    </div>
+
+                    <div class="search-field date-field">
+                        <label for="searchDateTo">Date To</label>
+                        <input type="date" id="searchDateTo" name="date_to" class="search-input-field search-date-input">
+                    </div>
+                </div>
+
+                <div class="search-actions-row">
+                    <button type="submit" class="btn-create" id="btnSearch">Search</button>
+                    <button type="button" class="btn-secondary" id="btnClearSearch">Clear</button>
+                </div>
+            </form>
+        </section>
+
+        <div class="table-section-header">
+            <h2>Hearings and Deadlines</h2>
+        </div>
         <div class="table-container">
-            <table><thead><tr><th>Case No.</th><th>Deadline</th><th>Due Date</th><th>Status</th></tr></thead>
-            <tbody id="deadlineTable"></tbody></table>
+            <table class="combined-records-table">
+                <thead>
+                    <tr>
+                        <th>Case No.</th>
+                        <th>Complaint</th>
+                        <th>Hearing Type</th>
+                        <th>Date and Time</th>
+                        <th>Status</th>
+                        <th>Venue</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="combinedTable">
+                    <tr>
+                        <td colspan="7" class="empty-state">Loading hearings and deadlines...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div id="hearingPagination" class="complaints-pagination" aria-label="Hearings and deadlines pagination" style="display: none;">
+            <span id="hearingPaginationSummary" class="complaints-pagination-summary" aria-live="polite">Showing 0 records</span>
+            <div id="hearingPaginationControls" class="complaints-pagination-controls"></div>
         </div>
     </div>
 </div>

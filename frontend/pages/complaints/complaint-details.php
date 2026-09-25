@@ -37,7 +37,10 @@ include '../../layouts/header.php';
         <!-- Modern Page Header with Status & Action Toolbar -->
         <div class="complaint-details-header">
             <div class="complaint-details-heading">
-                <a href="complaint-list.php" class="back-link">&larr; Back to Complaints</a>
+                <a href="complaint-list.php" class="back-link">
+                    <svg class="back-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                    <span>Back to Complaints</span>
+                </a>
                 <div class="complaint-title-row">
                     <h1 id="complaintNumber">Complaint #CMP-...</h1>
                     <span id="complaintStatusBadge" class="status-pill status-filed">Loading...</span>
