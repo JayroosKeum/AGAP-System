@@ -30,8 +30,8 @@ The following redesign is implemented as the current UX direction:
   notes. Only `Accepted` complaints may be docketed, and docketing changes the
   complaint to `Docketed` in the same transaction.
 - **Complaint workspace:** The complaint details page consolidates review,
-  parties, and dedicated picture/video/document evidence uploads
-  (JPG/PNG/PDF/MP4/WebM, up to 25 MB). Complaint creation and editing are
+  parties, and evidence uploads (JPG/PNG/GIF/WebP, MP4/WebM, PDF, DOC/DOCX,
+  up to 25 MB per file). Complaint creation and editing are
   handled from the Complaints page; those forms include the incident details
   and optional exact map pin. The standalone Incident Locations page, its
   navigation links, and its location-only API routes are retired.
@@ -121,28 +121,38 @@ write; an edit retains the pin unless it is moved or explicitly cleared.
 - Records Search was integrated into the Complaints page and now drives the
   complaint results table through `backend/api/search/records.php`. Current
   filters include keyword, exact status, case type (`Civil` / `Criminal`), category,
-  and incident date range. KPI cards and status tabs also filter the same result set.
-  The Clear / Reset action restores the unfiltered list.
+  the separate Intake Status, Dispute Stage, and Final Disposition fields, and
+  incident date range. KPI cards and status tabs also filter the same result set.
+  The Clear / Reset action restores the unfiltered list and resets sorting/page state.
 - **Modern, Compact Complaints List (`complaint-list.php`)**:
   - Re-architected into a high-density, compact, and intuitive layout.
   - 4 Top Metric KPI Cards: "Total Complaints", "Under Review", "In Progress", and
     "Settled". Each card displays real-time counts and supports 1-click filtering
     of the underlying table.
-  - Quick Status Navigation Tabs: Horizontal tabs (`All`, `Filed`, `Under Review`,
-    `Accepted`, `Docketed`, etc.) with dynamic count badges for quick status filtering.
+  - Quick Status Navigation Tabs: Horizontal process tabs (`All`, `Under Review`,
+    `Docketed`, `Mediation`, `Conciliation`, `Arbitration`, `Settled`, `Dismissed`,
+    and `CFA`) with dynamic counts.
   - Compact Action & Search Toolbar: Includes a debounced keyword search input,
     a quick "Clear" button, a Case Type filter dropdown (`All Types`, `Civil`, `Criminal`),
-    a Category filter dropdown, and a collapsible "Filter Drawer" providing granular
-    `Date From`, `Date To`, and exact status filters.
+    a Category filter dropdown, and a collapsible "Filter Drawer" providing separate
+    intake, current-stage, and final-disposition filters, date range, and sort selection.
   - Dedicated 7-Column Table Layout:
     1. **Complaint**: Complaint number, title/brief subject, and relative filing date.
     2. **Case No.**: Formatted Case Number or a subdued "Not Docketed" pill badge.
     3. **Category**: Clean category badge.
     4. **Parties**: Complainant and Respondent names tagged with distinct party badges.
     5. **Incident Date**: Formatted incident date and time.
-    6. **Status**: Color-coded status badge (`Filed`, `Under Review`, `Accepted`, `Docketed`, etc.).
+    6. **Status**: Displays applicable Intake, Dispute Stage, and Final Disposition badges;
+       the stage badge is omitted once the stage is exhausted by the mediation/conciliation
+       hearing limits.
     7. **Actions**: Clear action button group with View Details (`complaint-details.php?id=`),
        Edit Complaint (`complaint-edit.php?id=`), and Delete modal trigger.
+  - Complaint, case number, category, parties, incident date, and lifecycle/status headers
+    can be sorted in ascending or descending order. The search API uses a fixed whitelist
+    for database sort expressions; interactive sorting and pagination reset to the first page.
+  - Results are returned by the API with a maximum of 250 matching rows. The page renders
+    those rows in 10-item client-side pages, with a range summary and Previous/Next/page
+    controls. Thus the visible-page count describes the API result set, not an unbounded total.
   - The top "Add Complaint" primary CTA routes directly to `complaint-create.php`
     instead of opening a modal.
 
@@ -160,6 +170,9 @@ write; an edit retains the pin unless it is moved or explicitly cleared.
       and `incident_time`), specific incident location text input, landmark text input,
       and an interactive Leaflet/OpenStreetMap pin selector saving latitude and longitude
       coordinates into `incident_locations`.
+    - **Evidence & Attachments**: Multiple image, video, PDF, DOC, and DOCX files can be
+      queued with previews/removal before submission. Each file is limited to 25 MB;
+      server validation checks the actual MIME type and validates supported file contents.
 
 - **Dedicated Edit Complaint Page (`complaint-edit.php`)**:
   - Replaces the legacy `#editComplaintModal` popup with a dedicated, full-page edit interface
@@ -171,7 +184,10 @@ write; an edit retains the pin unless it is moved or explicitly cleared.
   - Atomic update execution via `backend/api/complaints/update.php` and `Complaint::update()`:
     updates the core `complaints` record, propagates `case_type` changes to linked docketed `cases`,
     synchronizes complainant and respondent rows in `complaint_parties` (updating existing or
-    inserting if new), and persists updated or cleared coordinates in `incident_locations`.
+    inserting if new), persists updated or cleared coordinates in `incident_locations`, and
+    attaches any newly submitted evidence in the same transactional complaint update.
+    The edit form preserves saved map coordinates when unchanged, confirms save/discard actions,
+    and redirects back to the complaint details page after a successful update.
   - "Edit Complaint" buttons on both `complaint-details.php` and `complaint-list.php` route
     directly to `complaint-edit.php?id=<id>`.
 

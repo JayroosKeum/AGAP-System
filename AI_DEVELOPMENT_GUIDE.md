@@ -230,6 +230,9 @@ const api = (url, options) => fetch(url, options).then(async (response) => {
   Case Disposition; stage automatically hides after 3 mediations and 3 conciliations),
   and `Actions` (View Details link, Edit Page link, and Delete modal trigger). The table
   paginates records up to 10 items per page with dynamic range summary and navigation controls.
+  The Records Search API returns at most 250 matching rows per request; the 10-row pages
+  are rendered client-side over that response, so counts and pagination describe the
+  returned result set rather than an unbounded database total.
   The standalone Records Search page remains available by direct URL for compatibility,
   while its sidebar navigation item is removed.
 - Complaint intake and editing use dedicated full-page forms (`complaint-create.php`
