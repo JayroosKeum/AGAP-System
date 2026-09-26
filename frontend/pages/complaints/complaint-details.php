@@ -60,7 +60,16 @@ include '../../layouts/header.php';
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                     Case Workspace
                 </a>
+                <button type="button" class="btn-create" id="issueSummonButton" onclick="handleIssueSummonClick()" style="display: inline-flex; align-items: center; gap: 6px;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                    <span id="issueSummonButtonText">Issue 1st Summon</span>
+                </button>
                 <button type="button" class="btn-create" id="scheduleMediationButton" onclick="openScheduleMediationModal()">Schedule 1st Mediation</button>
+                <button type="button" class="btn-secondary" id="statusTrackerButton" onclick="toggleStatusTracker()" style="display: inline-flex; align-items: center; gap: 6px;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    <span>Status</span>
+                    <span id="statusToggleArrow" style="font-size: 0.72rem; margin-left: 2px;">▼</span>
+                </button>
                 <a id="editComplaintBtn" href="complaint-edit.php?id=<?php echo $complaintId; ?>" class="btn-secondary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                     Edit
@@ -73,6 +82,59 @@ include '../../layouts/header.php';
                 <?php echo htmlspecialchars($complaintFlash['message']); ?>
             </div>
         <?php endif; ?>
+
+        <!-- Collapsible Case Status / Progress Section -->
+        <div id="statusTrackerSection" class="status-tracker-section" style="display: none; margin: 0 30px 24px;">
+            <div class="status-tracker-card">
+                <div class="status-tracker-card-header">
+                    <div class="status-tracker-header-left">
+                        <div class="status-tracker-title-wrap">
+                            <span class="status-tracker-icon">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                            </span>
+                            <h2>Case Status / Progress</h2>
+                        </div>
+                        <span id="trackerCurrentStageBadge" class="status-pill status-filed">Loading...</span>
+                    </div>
+                    <button type="button" class="btn-collapse-toggle" onclick="toggleStatusTracker()" title="Collapse case status section" aria-label="Collapse case status section">
+                        <span id="trackerCollapseIcon">▲</span>
+                    </button>
+                </div>
+
+                <div class="status-tracker-body">
+                    <!-- Horizontal Progress Tracker Stepper -->
+                    <div class="status-stepper-scroll">
+                        <div id="statusStepperTrack" class="status-stepper-track">
+                            <div class="stepper-loading">Loading case progression…</div>
+                        </div>
+                    </div>
+
+                    <!-- Current Stage Context Banner -->
+                    <div id="statusStageHighlights" class="status-stage-highlights" style="display:none;">
+                        <div class="highlight-info-box">
+                            <div class="highlight-icon" id="highlightIcon">ℹ</div>
+                            <div class="highlight-text">
+                                <strong id="highlightStageName">Current Stage: —</strong>
+                                <p id="highlightStageDetails" style="margin: 2px 0 0; color: #475569; font-size: 0.88rem;">—</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Expandable Case Event History -->
+                    <div class="status-history-drawer">
+                        <button type="button" class="btn-history-toggle" onclick="toggleCaseHistoryDrawer()">
+                            <span id="historyDrawerIcon">▶</span>
+                            <span>View Recorded Events &amp; Case History (<span id="historyEventCount">0</span>)</span>
+                        </button>
+                        <div id="caseHistoryContent" class="case-history-content" style="display: none;">
+                            <div id="caseHistoryTimeline" class="case-history-timeline">
+                                <p style="color:#64748b; font-size:0.85rem; margin:0;">Loading case events…</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Main Workspace Grid -->
         <div class="complaint-details-workspace">
@@ -249,6 +311,28 @@ include '../../layouts/header.php';
         <div class="modal-actions">
             <button type="button" class="btn-secondary" onclick="closeConfirmMediationModal()">Back</button>
             <button type="button" class="btn-create" id="confirmMediationButton">Confirm 1st Mediation</button>
+        </div>
+<div id="summonsRequiredModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 480px;">
+        <div class="modal-header" style="border-bottom: 1px solid #fee2e2; background: #fff5f5;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                <h2 style="color: #991b1b; font-size: 1.15rem; margin: 0;">Summons Required</h2>
+            </div>
+            <button class="close-btn" onclick="closeSummonsRequiredModal()">&times;</button>
+        </div>
+        <div style="padding: 20px 24px;">
+            <p style="margin: 0 0 16px; font-size: 0.95rem; line-height: 1.5; color: #334155;">
+                1st Mediation is unavailable until a summons has been successfully served.
+            </p>
+            <div style="background: #f8fafc; border-left: 3px solid #f59e0b; padding: 12px 14px; border-radius: 4px; font-size: 0.85rem; color: #475569;">
+                <strong>Required Process Sequence:</strong><br>
+                Complaint &rarr; Case/Docket &rarr; Issue Summon &rarr; Serve Summon &rarr; Proof of Service &rarr; 1st Mediation
+            </div>
+        </div>
+        <div class="modal-actions" style="padding: 14px 24px; background: #f8fafc; border-top: 1px solid #e2e8f0;">
+            <button type="button" class="btn-secondary" onclick="closeSummonsRequiredModal()">Close</button>
+            <button type="button" class="btn-create" onclick="closeSummonsRequiredModal(); handleIssueSummonClick();">Issue 1st Summon Now</button>
         </div>
     </div>
 </div>

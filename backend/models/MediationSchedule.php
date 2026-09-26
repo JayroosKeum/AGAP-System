@@ -34,80 +34,69 @@ class MediationSchedule
             $record = $complaint->fetch(PDO::FETCH_ASSOC);
             if (!$record) {
                 $this->conn->rollBack();
-
                 return [
                     'success' => false,
                     'message' => 'Complaint not found.'
                 ];
             }
-            if (!in_array($record['status'], ['Filed', 'Under Review', 'Needs Information', 'Accepted'], true)) {
+
+            $caseStmt = $this->conn->prepare('SELECT case_id, case_number, case_status FROM cases WHERE complaint_id = ? FOR UPDATE');
+            $caseStmt->execute([$complaintId]);
+            $existingCase = $caseStmt->fetch(PDO::FETCH_ASSOC);
+
+            // Prerequisite check: The first summons must be issued and the required service process must be recorded
+            if (!$existingCase) {
                 $this->conn->rollBack();
-                return ['success' => false, 'message' => 'This complaint cannot proceed to 1st Mediation in its current status.'];
-            }
-
-            $existingCase = $this->conn->prepare('SELECT case_id FROM cases WHERE complaint_id = ? LIMIT 1');
-            $existingCase->execute([$complaintId]);
-            if ($existingCase->fetchColumn()) {
-                $this->conn->rollBack();
-                return ['success' => false, 'message' => 'This complaint already has a case record.'];
-            }
-
-            /*
-             * Locate the existing active Administrator.
-             *
-             * In AGAP, the Administrator represents the
-             * Barangay Captain and Lupon Head.
-             */
-            $adminStmt = $this->conn->prepare(
-                "SELECT u.user_id
-                 FROM users u
-                 INNER JOIN roles r ON r.role_id = u.role_id
-                 WHERE u.status = 'Active' AND r.role_name = 'Administrator'
-                 ORDER BY u.user_id ASC
-                 LIMIT 1"
-            );
-            $adminStmt->execute();
-            $administrator = $adminStmt->fetch(PDO::FETCH_ASSOC);
-
-            if (!$administrator) {
-                $this->conn->rollBack();
-
                 return [
                     'success' => false,
-                    'message' =>
-                        'The active Administrator or Barangay ' .
-                        'Captain account could not be found.'
+                    'message' => 'The first summons must be issued and the required service process must be recorded before proceeding to the 1st Mediation stage.'
                 ];
             }
 
-            $caseType = (!empty($record['case_type']) && in_array($record['case_type'], ['Civil', 'Criminal'], true))
-                ? $record['case_type']
-                : 'Civil';
+            $caseId = (int) $existingCase['case_id'];
+            $caseNumber = $existingCase['case_number'];
 
-            $case = $this->conn->prepare(
-                "INSERT INTO cases (complaint_id, case_type, case_status, docket_date)
-                 VALUES (?, ?, 'Docketed', CURDATE())"
+            // Check if summons was issued
+            $summonsCheck = $this->conn->prepare(
+                "SELECT 1 FROM generated_documents gd
+                 INNER JOIN document_templates dt ON dt.template_id = gd.template_id
+                 WHERE gd.case_id = ? AND (dt.template_name = 'KP Form 9' OR dt.template_name LIKE '%Summon%')"
             );
-            $case->execute([$complaintId, $caseType]);
-            $caseId = (int) $this->conn->lastInsertId();
-            $caseNumber = sprintf('KP-%s-%05d', date('Y'), $caseId);
-            $number = $this->conn->prepare('UPDATE cases SET case_number = ? WHERE case_id = ?');
-            $number->execute([$caseNumber, $caseId]);
+            $summonsCheck->execute([$caseId]);
+            if (!$summonsCheck->fetchColumn()) {
+                $this->conn->rollBack();
+                return [
+                    'success' => false,
+                    'message' => 'The first summons must be issued and the required service process must be recorded before proceeding to the 1st Mediation stage.'
+                ];
+            }
 
-            $headAssignment = $this->conn->prepare(
-                "INSERT INTO case_assignments (case_id, member_id, assignment_role, assigned_date)
-                 VALUES (?, ?, 'Head', CURDATE())"
+            // Check if service process was recorded in proof_of_service with Served status
+            $proofCheck = $this->conn->prepare("SELECT 1 FROM proof_of_service WHERE case_id = ? AND service_result = 'Served'");
+            $proofCheck->execute([$caseId]);
+
+            if (!$proofCheck->fetchColumn()) {
+                $this->conn->rollBack();
+                return [
+                    'success' => false,
+                    'message' => 'The first summons must be issued and the required service process must be recorded before proceeding to the 1st Mediation stage.'
+                ];
+            }
+
+            // Prevent duplicate 1st Mediation
+            $existingMediation = $this->conn->prepare(
+                "SELECT hearing_id FROM hearings WHERE case_id = ? AND hearing_type = 'Mediation' LIMIT 1"
             );
-            $headAssignment->execute([$caseId, (int) $administrator['user_id']]);
+            $existingMediation->execute([$caseId]);
+            if ($existingMediation->fetchColumn()) {
+                $this->conn->rollBack();
+                return [
+                    'success' => false,
+                    'message' => '1st Mediation has already been scheduled for this case.'
+                ];
+            }
 
-            $history = $this->conn->prepare(
-                "INSERT INTO case_history (case_id, status, remarks) VALUES (?, 'Docketed', ?)"
-            );
-            $history->execute([
-                $caseId,
-                'Case docketed when the 1st Mediation was scheduled. The Administrator or Barangay Captain was automatically assigned as Head.'
-            ]);
-
+            // Insert 1st Mediation hearing
             $hearing = $this->conn->prepare(
                 "INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, remarks)
                  VALUES (?, 'Mediation', ?, ?, ?)"
@@ -115,24 +104,40 @@ class MediationSchedule
             $hearing->execute([$caseId, $hearingDate, $venue, $remarks]);
             $hearingId = (int) $this->conn->lastInsertId();
 
+            // Transition case status to Mediation if currently Docketed
+            if ($existingCase['case_status'] === 'Docketed') {
+                $updateCase = $this->conn->prepare("UPDATE cases SET case_status = 'Mediation' WHERE case_id = ?");
+                $updateCase->execute([$caseId]);
+
+                $updateComplaint = $this->conn->prepare("UPDATE complaints SET status = 'Mediation' WHERE complaint_id = ?");
+                $updateComplaint->execute([$complaintId]);
+            }
+
+            // Upsert Mediation Period deadline
             $deadline = $this->conn->prepare(
                 "INSERT INTO case_deadlines (case_id, deadline_type, due_date, status)
-                 VALUES (?, 'Mediation Period', DATE_ADD(DATE(?), INTERVAL 15 DAY), 'Pending')"
+                 VALUES (?, 'Mediation Period', DATE_ADD(DATE(?), INTERVAL 15 DAY), 'Pending')
+                 ON DUPLICATE KEY UPDATE due_date = VALUES(due_date)"
             );
             $deadline->execute([$caseId, $hearingDate]);
 
-            $status = $this->conn->prepare("UPDATE complaints SET status = 'Docketed' WHERE complaint_id = ?");
-            $status->execute([$complaintId]);
+            // Record in case history
+            $history = $this->conn->prepare(
+                "INSERT INTO case_history (case_id, status, remarks) VALUES (?, 'Mediation', ?)"
+            );
+            $history->execute([
+                $caseId,
+                sprintf('1st Mediation scheduled for %s at %s.', date('F j, Y g:i A', strtotime($hearingDate)), $venue)
+            ]);
 
             $this->conn->commit();
 
             return [
                 'success' => true,
-                'message' => '1st Mediation has been scheduled and the case is now docketed.',
+                'message' => '1st Mediation has been scheduled successfully.',
                 'case_id' => $caseId,
                 'case_number' => $caseNumber,
                 'hearing_id' => $hearingId,
-                'head_member_id' => (int) $administrator['user_id'],
             ];
         } catch (Throwable $exception) {
             if ($this->conn->inTransaction()) {
@@ -143,9 +148,7 @@ class MediationSchedule
 
             return [
                 'success' => false,
-                'message' =>
-                    'Unable to schedule mediation. ' .
-                    'Please try again.'
+                'message' => 'Unable to schedule mediation. Please try again.'
             ];
         }
     }

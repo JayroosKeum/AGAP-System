@@ -46,6 +46,12 @@ document.addEventListener('DOMContentLoaded', () => {
         loadComplaintDetails();
     }
 
+window.addEventListener('pageshow', (event) => {
+    if (event.persisted && document.getElementById('complaintNumber')) {
+        loadComplaintDetails();
+    }
+});
+
     // Handle add party form
     const addPartyForm = document.getElementById('addPartyForm');
     if (addPartyForm) {
@@ -143,20 +149,20 @@ function initialiseNarrativeEnhancement() {
     });
 }
 
-function loadComplaintDetails() {
+async function loadComplaintDetails() {
     // Get complaint ID from URL
     const params = new URLSearchParams(window.location.search);
     const complaintId = params.get('id');
     if (!complaintId) return;
 
-    // Load complaint info
-    fetch('../../../backend/api/complaints/view.php?id=' + complaintId)
-    .then(response => response.json())
-    .then(data => {
+    try {
+        const response = await fetch('../../../backend/api/complaints/view.php?id=' + encodeURIComponent(complaintId) + '&_t=' + Date.now(), { cache: 'no-store' });
+        const data = await response.json();
         if (!data) {
             window.location.href = 'complaint-list.php';
             return;
         }
+
         // Header Title & Number
         const compNum = data.complaint_number || ('CMP-' + String(data.complaint_id).padStart(5, '0'));
         const compNumEl = document.getElementById('complaintNumber');
@@ -207,10 +213,13 @@ function loadComplaintDetails() {
         const editBtn = document.getElementById('editComplaintBtn');
         if (editBtn) editBtn.href = 'complaint-edit.php?id=' + encodeURIComponent(complaintId);
 
+        // Load Case Status / Progress Tracker & Action Buttons first
+        await loadCaseProgress(complaintId);
+
         // Schedule Mediation Button configuration
         const scheduleButton = document.getElementById('scheduleMediationButton');
         if (scheduleButton) {
-            configureMediationScheduleButton(scheduleButton, data);
+            await configureMediationScheduleButton(scheduleButton, data);
         }
 
         // Card 1: Incident & Classification Info Grid
@@ -308,7 +317,9 @@ function loadComplaintDetails() {
         const attachments = data.attachments || [];
         renderParties(parties);
         renderAttachments(attachments);
-    });
+    } catch (err) {
+        console.error('Error loading complaint details:', err);
+    }
 
     // Load residents only if party select exists
     if (document.getElementById('partyResidentId')) {
@@ -325,18 +336,21 @@ function loadComplaintDetails() {
 }
 
 async function configureMediationScheduleButton(button, complaint) {
-    button.disabled = true;
+    button.disabled = false;
     delete button.dataset.caseId;
+
+    const progress = window.caseProgressData;
+    const isSummonsServed = progress ? Boolean(progress.summons_prerequisite_met) : false;
+
     if (!complaint.case_id) {
-        const canSchedule = ['Filed', 'Under Review', 'Needs Information', 'Accepted'].includes(complaint.status);
         button.textContent = 'Schedule 1st Mediation';
-        button.disabled = !canSchedule;
-        button.title = canSchedule ? '' : '1st Mediation cannot be scheduled for this complaint.';
+        button.classList.add('btn-disabled');
+        button.title = '1st Mediation is unavailable until a summons has been successfully served.';
         return;
     }
 
     try {
-        const response = await fetch('../../../backend/api/hearings/calendar.php');
+        const response = await fetch('../../../backend/api/hearings/calendar.php?_t=' + Date.now(), { cache: 'no-store' });
         const result = await response.json();
         if (!response.ok || result.success === false) throw new Error(result.message || 'Unable to load hearing progression.');
         const hearings = (result.data || []).filter((hearing) => String(hearing.case_id) === String(complaint.case_id));
@@ -348,14 +362,22 @@ async function configureMediationScheduleButton(button, complaint) {
 
         if (!label) {
             button.textContent = 'All schedules completed';
+            button.classList.add('btn-disabled');
             button.title = 'This case already has three mediation and three conciliation schedules.';
             return;
         }
 
         button.textContent = label;
-        button.title = `Open the hearing scheduler for ${label.replace('Schedule ', '')}.`;
         button.dataset.caseId = String(complaint.case_id);
-        button.disabled = false;
+
+        // 1st Mediation requires summons prerequisite met (at least one Served attempt in DB)
+        if (mediationCount === 0 && !isSummonsServed) {
+            button.classList.add('btn-disabled');
+            button.title = '1st Mediation is unavailable until a summons has been successfully served.';
+        } else {
+            button.classList.remove('btn-disabled');
+            button.title = `Open the hearing scheduler for ${label.replace('Schedule ', '')}.`;
+        }
     } catch (error) {
         button.textContent = 'Schedule next hearing';
         button.title = error.message;
@@ -567,6 +589,14 @@ function closeAddAttachmentModal() {
 
 function openScheduleMediationModal() {
     const button = document.getElementById('scheduleMediationButton');
+    const isFirstMediation = !button || !button.textContent || button.textContent.includes('1st Mediation');
+
+    // Section 5: Check summons workflow prerequisite
+    if (isFirstMediation && window.caseProgressData && !window.caseProgressData.summons_prerequisite_met) {
+        openSummonsRequiredModal();
+        return;
+    }
+
     if (button?.dataset.caseId) {
         window.location.href = `../hearings/schedules.php?case_id=${encodeURIComponent(button.dataset.caseId)}`;
         return;
@@ -579,6 +609,220 @@ function openScheduleMediationModal() {
 
 function closeScheduleMediationModal() {
     document.getElementById('scheduleMediationModal').style.display = 'none';
+}
+
+function openSummonsRequiredModal() {
+    const modal = document.getElementById('summonsRequiredModal');
+    if (modal) modal.style.display = 'flex';
+}
+
+function closeSummonsRequiredModal() {
+    const modal = document.getElementById('summonsRequiredModal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function handleIssueSummonClick() {
+    const params = new URLSearchParams(window.location.search);
+    const complaintId = params.get('id');
+    if (!complaintId) return;
+
+    const btn = document.getElementById('issueSummonButton');
+    const progress = window.caseProgressData;
+
+    // If button action is to view existing proof of service
+    if (progress?.actions?.summon_button?.action === 'view_proof' && progress.actions.summon_button.url) {
+        window.location.href = progress.actions.summon_button.url;
+        return;
+    }
+
+    if (btn) btn.disabled = true;
+
+    try {
+        const formData = new FormData();
+        formData.append('complaint_id', complaintId);
+        const result = await complaintApi('../../../backend/api/summons/issue.php', {
+            method: 'POST',
+            body: formData
+        });
+
+        window.agapNotify?.(result.message, 'success');
+
+        const caseId = result.case_id;
+        const docId = result.document_id;
+        const redirectUrl = `../gps/proof-service.php?case_id=${encodeURIComponent(caseId)}` + (docId ? `&document_id=${encodeURIComponent(docId)}` : '');
+
+        setTimeout(() => {
+            window.location.href = redirectUrl;
+        }, 350);
+    } catch (error) {
+        window.agapNotify?.(error.message, 'error');
+        if (btn) btn.disabled = false;
+    }
+}
+
+function toggleStatusTracker() {
+    const section = document.getElementById('statusTrackerSection');
+    const arrow = document.getElementById('statusToggleArrow');
+    const collapseIcon = document.getElementById('trackerCollapseIcon');
+    if (!section) return;
+
+    const isOpen = section.style.display !== 'none';
+    if (isOpen) {
+        section.style.display = 'none';
+        if (arrow) arrow.textContent = '▼';
+        if (collapseIcon) collapseIcon.textContent = '▼';
+    } else {
+        section.style.display = 'block';
+        if (arrow) arrow.textContent = '▲';
+        if (collapseIcon) collapseIcon.textContent = '▲';
+    }
+}
+
+function toggleCaseHistoryDrawer() {
+    const content = document.getElementById('caseHistoryContent');
+    const icon = document.getElementById('historyDrawerIcon');
+    if (!content) return;
+    const isOpen = content.style.display !== 'none';
+    content.style.display = isOpen ? 'none' : 'block';
+    if (icon) icon.textContent = isOpen ? '▶' : '▼';
+}
+
+async function loadCaseProgress(complaintId) {
+    if (!complaintId) return;
+    try {
+        const response = await fetch(`../../../backend/api/complaints/progress.php?id=${encodeURIComponent(complaintId)}&_t=${Date.now()}`, { cache: 'no-store' });
+        const result = await response.json();
+        if (!response.ok || !result.success || !result.data) {
+            return;
+        }
+
+        const progress = result.data;
+        window.caseProgressData = progress;
+
+        // Configure Issue 1st Summon button
+        const issueBtn = document.getElementById('issueSummonButton');
+        const issueText = document.getElementById('issueSummonButtonText');
+        if (issueBtn && progress.actions?.summon_button) {
+            const btnInfo = progress.actions.summon_button;
+            if (issueText) issueText.textContent = btnInfo.label;
+            issueBtn.title = btnInfo.tooltip || '';
+
+            if (btnInfo.action === 'view_proof') {
+                issueBtn.className = 'btn-secondary';
+            } else {
+                issueBtn.className = 'btn-create';
+            }
+        }
+
+        // Configure Schedule 1st Mediation button prerequisite: only clickable after summon is served
+        const scheduleBtn = document.getElementById('scheduleMediationButton');
+        if (scheduleBtn) {
+            scheduleBtn.disabled = false;
+            const isFirstMediation = !scheduleBtn.textContent || scheduleBtn.textContent.includes('1st Mediation');
+            if (isFirstMediation && !progress.summons_prerequisite_met) {
+                scheduleBtn.classList.add('btn-disabled');
+                scheduleBtn.title = '1st Mediation is unavailable until a summons has been successfully served.';
+            } else {
+                scheduleBtn.classList.remove('btn-disabled');
+                scheduleBtn.title = scheduleBtn.textContent || 'Schedule 1st Mediation';
+            }
+        }
+
+        // Render Status Tracker
+        renderStatusTracker(progress);
+    } catch (err) {
+        console.error('Error loading case progress:', err);
+    }
+}
+
+
+function renderStatusTracker(progress) {
+    const track = document.getElementById('statusStepperTrack');
+    const badge = document.getElementById('trackerCurrentStageBadge');
+    const highlightBox = document.getElementById('statusStageHighlights');
+    const stageNameEl = document.getElementById('highlightStageName');
+    const stageDetailsEl = document.getElementById('highlightStageDetails');
+    const historyCountEl = document.getElementById('historyEventCount');
+    const historyTimelineEl = document.getElementById('caseHistoryTimeline');
+
+    if (!track || !progress.stages) return;
+
+    const stages = progress.stages;
+    const currentIdx = progress.current_stage_index ?? 0;
+    const currentStage = stages[currentIdx] || stages[0];
+
+    // Current stage badge
+    if (badge && currentStage) {
+        const titleSlug = currentStage.title.toLowerCase().replace(/[^a-z0-9]/g, '-');
+        badge.className = `status-pill status-${titleSlug}`;
+        badge.textContent = `Stage ${currentStage.number}: ${currentStage.title}`;
+    }
+
+    // Render 9 horizontal steps
+    track.innerHTML = stages.map((st, idx) => {
+        const isCompleted = st.state === 'completed';
+        const isCurrent = st.state === 'current';
+        const isLast = idx === stages.length - 1;
+        const flagClass = st.flag ? `flag-${st.flag}` : '';
+
+        let circleContent = '';
+        if (isCompleted) {
+            circleContent = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+        } else if (isCurrent) {
+            circleContent = '<span class="circle-dot"></span>';
+        } else {
+            circleContent = '<span class="circle-empty"></span>';
+        }
+
+        return `
+            <div class="stepper-step-item ${st.state} ${flagClass}" data-step-id="${escapeHtml(st.id)}">
+                <div class="stepper-node-wrap">
+                    <div class="stepper-circle" title="${escapeHtml(st.title + ': ' + (st.subtitle || st.state))}">${circleContent}</div>
+                    ${!isLast ? '<div class="stepper-connector-line"></div>' : ''}
+                </div>
+                <div class="stepper-label-wrap">
+                    <span class="stepper-step-title">${escapeHtml(st.title)}</span>
+                    <span class="stepper-step-sub">${escapeHtml(st.subtitle || '—')}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    // Highlight info
+    if (highlightBox && currentStage) {
+        highlightBox.style.display = 'block';
+        if (stageNameEl) stageNameEl.textContent = `Current Stage: ${currentStage.title} (${currentStage.subtitle || currentStage.state})`;
+        if (stageDetailsEl) stageDetailsEl.textContent = currentStage.details || 'Awaiting procedural actions.';
+    }
+
+    // History Timeline
+    const historyEvents = progress.history || [];
+    if (historyCountEl) historyCountEl.textContent = historyEvents.length;
+    if (historyTimelineEl) {
+        if (!historyEvents.length) {
+            historyTimelineEl.innerHTML = '<p style="color:#64748b; font-size:0.85rem; margin:0;">No case events recorded yet.</p>';
+        } else {
+            historyTimelineEl.innerHTML = historyEvents.map(evt => {
+                const dateStr = evt.date ? formatDateReadable(evt.date) + ' ' + formatTime12(evt.date.slice(11, 16)) : '—';
+                const badgeClass = evt.badge_class || 'badge-info';
+                return `
+                    <div class="history-event-card">
+                        <div class="history-event-body">
+                            <div class="history-event-header">
+                                <span class="history-event-title">${escapeHtml(evt.title)}</span>
+                                <span class="history-event-date">${escapeHtml(dateStr)}</span>
+                            </div>
+                            <div class="history-event-details">
+                                <span class="status-pill ${escapeHtml(badgeClass)}" style="font-size:0.72rem; padding: 2px 7px; margin-right: 6px;">${escapeHtml(evt.badge || evt.category)}</span>
+                                <span>${escapeHtml(evt.details || '')}</span>
+                                ${evt.actor ? `<span style="color:#94a3b8; font-size:0.75rem; margin-left: 6px;">· Recorded by ${escapeHtml(evt.actor)}</span>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+    }
 }
 
 function reviewMediationSchedule(event) {

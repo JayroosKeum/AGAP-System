@@ -25,6 +25,13 @@ class GPSController
     public function locations(): array { return ['success' => true, 'data' => $this->location->getAll()]; }
     public function cases(): array { return ['success' => true, 'data' => $this->proof->getAvailableCases()]; }
     public function documents(int $caseId): array { return ['success' => true, 'data' => $this->document->getGeneratedByCase($caseId)]; }
+    public function caseSummary(int $caseId): array
+    {
+        $summary = $this->proof->getCaseSummary($caseId);
+        if (!$summary) return ['success' => false, 'message' => 'Case not found.'];
+        return ['success' => true, 'data' => $summary];
+    }
+    public function summonsServers(): array { return ['success' => true, 'data' => $this->proof->getSummonsServers()]; }
 
     public function location(int $complaintId): array
     {
@@ -53,25 +60,50 @@ class GPSController
 
     public function saveProof(array $data, array $file, int $userId): array
     {
+        date_default_timezone_set('Asia/Manila');
         $caseId = filter_var($data['case_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         $documentId = filter_var($data['document_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         $servedDate = trim((string) ($data['served_date'] ?? ''));
         $date = null;
-        if (ValidationService::dateTime($servedDate, 'Y-m-d\\TH:i')) {
-            $date = DateTimeImmutable::createFromFormat('Y-m-d\\TH:i', $servedDate);
-        } elseif (ValidationService::dateTime($servedDate, 'Y-m-d H:i:s')) {
-            $date = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $servedDate);
+        if ($servedDate !== '') {
+            $cleanDate = str_replace('T', ' ', $servedDate);
+            try {
+                $date = new DateTimeImmutable($cleanDate, new DateTimeZone('Asia/Manila'));
+            } catch (Throwable $e) {
+                try {
+                    $date = DateTimeImmutable::createFromFormat('m/d/Y h:i A', $servedDate, new DateTimeZone('Asia/Manila'));
+                } catch (Throwable $e2) {
+                    $ts = strtotime($servedDate);
+                    if ($ts !== false) {
+                        $date = (new DateTimeImmutable('@' . $ts))->setTimezone(new DateTimeZone('Asia/Manila'));
+                    }
+                }
+            }
         }
         $remarks = trim((string) ($data['remarks'] ?? ''));
-        if (!$caseId || !$documentId || !$date || $date > new DateTimeImmutable('+5 minutes')) return ['success' => false, 'message' => 'Select an active case, generated document, and a valid service date that is not in the future.'];
+        $serviceResult = trim((string) ($data['service_result'] ?? 'Served'));
+        $allowedResults = ['Served', 'Not Served', 'Refused', 'Respondent Not Found', 'Address Problem', 'Other'];
+        if (!in_array($serviceResult, $allowedResults, true)) {
+            $serviceResult = 'Served';
+        }
+        $servedBy = filter_var($data['served_by'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: $userId;
+
+        // Allow up to 24 hours in the future to account for clock skew, timezones, and planned service entries
+        $maxAllowedDate = (new DateTimeImmutable('now', new DateTimeZone('Asia/Manila')))->modify('+24 hours');
+        if (!$caseId || !$documentId || !$date || $date > $maxAllowedDate) {
+            return ['success' => false, 'message' => 'Select an active case, generated document, and a valid service date that is not in the future.'];
+        }
         if (mb_strlen($remarks) > 2000) return ['success' => false, 'message' => 'Verification details must not exceed 2,000 characters.'];
         $upload = $this->storeImage($file);
         if (!$upload['success']) return $upload;
-        $result = $this->proof->create((int) $caseId, (int) $documentId, $userId, $date->format('Y-m-d H:i:s'), $remarks !== '' ? $remarks : null, $upload['path']);
+        $result = $this->proof->create((int) $caseId, (int) $documentId, (int) $servedBy, $date->format('Y-m-d H:i:s'), $remarks !== '' ? $remarks : null, $upload['path'], $serviceResult);
         if (!$result['success'] && $upload['path']) @unlink(dirname(__DIR__, 2) . '/' . $upload['path']);
-        if ($result['success']) { $this->document->markServed((int) $documentId, (int) $caseId); $this->audit->log($userId, 'Recorded proof of service', 'GPS', (int) $result['proof_id']); }
+        if ($result['success']) {
+            $this->audit->log($userId, 'Recorded proof of service (' . $serviceResult . ')', 'GPS', (int) $result['proof_id']);
+        }
         return $result + ['message' => $result['success'] ? 'Proof of service recorded.' : null];
     }
+
 
     public function proofImage(int $proofId): array|false { return $this->proof->getById($proofId); }
 

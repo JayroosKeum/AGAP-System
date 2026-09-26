@@ -396,6 +396,7 @@ CREATE TABLE proof_of_service (
     proof_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     case_id INT UNSIGNED NOT NULL,
     document_id INT UNSIGNED NULL,
+    service_result VARCHAR(50) NOT NULL DEFAULT 'Served',
     served_by INT UNSIGNED NULL,
     served_date DATETIME NOT NULL,
     remarks TEXT NULL,
