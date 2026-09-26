@@ -301,6 +301,15 @@ const api = (url, options) => fetch(url, options).then(async (response) => {
 - Proof of service must reference a generated document for the selected case.
   Generated-document service states are `Generated`, `For Service`, `Served`,
   and `Service Failed`; recording proof marks that document `Served`.
+- **Summons Workflow and 1st Mediation Eligibility Rules**:
+  - The statutory case sequence follows: `Complaint` → `Case/Docket` → `Issue Summon` → `Serve Summon` → `Proof of Service` → `1st Mediation`.
+  - The "Schedule 1st Mediation" button on Complaint Details is enabled if and only if **ANY** valid summon/service record for the case has a successful `Served` result in the database (`proof_of_service.service_result = 'Served'` or `generated_documents.service_status = 'Served'`).
+  - Supports multiple summons attempts: eligible if 1st Summon is Served, OR if 1st Summon fails and 2nd Summon is Served.
+  - The eligibility check maps the complaint to its underlying case (`complaints.complaint_id` → `cases.case_id`) and queries actual proof records; never assume `complaint_id == case_id`.
+  - When ineligible, the button remains visually disabled (`.btn-disabled` with `#94a3b8`, `cursor: not-allowed`, `opacity: 0.65`) with tooltip: *"1st Mediation is unavailable until a summons has been successfully served."*, and clicking it opens the explanation modal `summonsRequiredModal`.
+  - When eligible, the button displays active black styling (`.btn-create`: `#1e293b`), standard pointer cursor, and is fully clickable.
+  - On the Proof of Service page, saving a service attempt immediately auto-refreshes the "Service History & Attempts" table via client-side fetch without full page reload, preserves all historical attempts in descending order without duplicates, and avoids fake/optimistic rows on save failure.
+  - Workflow API endpoints (`proof-service.php`, `progress.php`, `view.php`) send `Cache-Control: no-store, no-cache, must-revalidate` headers to prevent stale browser cache state.
 - Required form controls need a visible asterisk, an HTML `required` rule, and
   server-side validation. Provide useful character limits and file format/size
   guidance beside relevant inputs.

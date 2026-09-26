@@ -718,6 +718,61 @@ For a new database, `database/schema.sql` already creates the table.
 
 ---
 
+## Summons Workflow, Status Tracker, 1st Mediation Eligibility, and Proof of Service (September 2026)
+
+The Complaint Details and Proof of Service modules provide an integrated, end-to-end summons and mediation progression:
+
+### 1. Complaint Details Action Toolbar & Case Progress Workflow
+- **Top Actions**: Arranged in standard workflow order:
+  `Issue 1st Summon` | `Schedule 1st Mediation` | `Status` | `Edit`
+- **Dynamic Summons Button**:
+  - `Issue 1st Summon`: Generates the initial summons document (KP Form 9) and redirects to Proof of Service with prefilled case/document IDs.
+  - `Issue 2nd Summon`: Available if the first summons attempt resulted in failure (`Not Served`, `Refused`, `Respondent Not Found`, `Address Problem`).
+  - `Summons Served` / `2nd Summon Issued`: Displayed as a secondary button linking directly to the Proof of Service history once served or once the 2nd attempt is issued.
+- **Visual Status Tracker**:
+  - Collapsible 9-stage stepper track: `Filing & Docketing` (Stage 1), `Summon Issued` (Stage 2), `Summons Service` (Stage 3), `Proof of Service` (Stage 4), `Hearing Scheduled` (Stage 5), `Mediation` (Stage 6), `Conciliation` (Stage 7), `Settlement / Outcome` (Stage 8), and `Final Resolution / CFA` (Stage 9).
+  - Derived dynamically from underlying database records (`complaints`, `cases`, `generated_documents`, `proof_of_service`, `hearings`, `hearing_attendance`, `pangkat_groups`, `amicable_settlements`, `cfa_records`, and `arbitration_records`).
+  - Integrated with an expandable Case Event History drawer rendering full chronological event timelines with author badges and status pills.
+
+### 2. 1st Mediation Eligibility Rules
+- **Prerequisite Enforcement**:
+  - The `Schedule 1st Mediation` button is strictly gated by summons service completion. It becomes enabled if and only if **ANY** valid summon or service record for the underlying case has a successful `Served` result in the database (`proof_of_service.service_result = 'Served'` or `generated_documents.service_status = 'Served'`).
+  - Supports multiple summons attempts: eligible if Attempt #1 is Served, OR if Attempt #1 failed and Attempt #2 is Served.
+  - Queries actual service records linked via `complaints.complaint_id → cases.case_id → proof_of_service.service_result`. Never assumes `complaint_id == case_id`.
+  - When ineligible: button remains visually disabled (`.btn-disabled` with gray background `#94a3b8`, dimmed opacity, and `not-allowed` cursor), mouse hover shows tooltip: *"1st Mediation is unavailable until a summons has been successfully served."*, and clicking opens `summonsRequiredModal` detailing the required sequence (`Complaint → Case/Docket → Issue Summon → Serve Summon → Proof of Service → 1st Mediation`).
+  - When eligible: button restores active black styling (`.btn-create`: `#1e293b`), standard pointer cursor, and click routes directly to the hearing scheduler.
+  - Asynchronous coordination: `loadComplaintDetails()` awaits `loadCaseProgress(complaintId)` before running `configureMediationScheduleButton()`, eliminating race conditions.
+  - Browser Back/Forward navigation (bfcache) triggers re-fetch via `pageshow` listener to guarantee up-to-date eligibility without manual browser refresh.
+
+### 3. Proof of Service Immediate Auto-Refresh & History
+- **Automatic Client-Side Refresh**:
+  - On the Proof of Service page (`frontend/pages/gps/proof-service.php`), saving a service attempt immediately auto-refreshes the "Service History & Attempts" table via client-side fetch without requiring a full browser reload (F5 / Ctrl+R).
+  - Form inputs are reset, the active case is preserved, and latest service documents, history rows, and context summary cards are sequentially refreshed.
+  - Preserves all historical attempts in descending order (`Attempt #4`, `Attempt #3`, `Attempt #2`, `Attempt #1`) with attempt counter, formatted dates, template name, server name, badges, remarks, and thumbnail links.
+  - Does not insert duplicate rows or generate fake/optimistic rows on failure. If save fails, error messages are displayed and user inputs remain untouched for correction.
+- **Cache-Busting Integration**:
+  - `backend/api/gps/proof-service.php`, `backend/api/complaints/progress.php`, and `backend/api/complaints/view.php` send HTTP headers:
+    `Cache-Control: no-store, no-cache, must-revalidate, max-age=0` and `Pragma: no-cache`.
+  - Frontend `gpsApi` includes `cache: 'no-store'` and appends `_t=${Date.now()}` timestamp parameters to GET requests.
+
+### 4. Relevant Files
+- `backend/models/CaseProgress.php`
+- `backend/models/Summons.php`
+- `backend/models/ProofOfService.php`
+- `backend/controllers/GPSController.php`
+- `backend/api/summons/issue.php`
+- `backend/api/complaints/progress.php`
+- `backend/api/complaints/view.php`
+- `backend/api/gps/proof-service.php`
+- `frontend/pages/complaints/complaint-details.php`
+- `frontend/pages/gps/proof-service.php`
+- `frontend/assets/js/complaints.js`
+- `frontend/assets/js/gps.js`
+- `frontend/assets/css/complaints.css`
+- `frontend/assets/css/gps.css`
+
+---
+
 ## Present but Incomplete or Requiring Verification
 
 - Project-wide RBAC remains inconsistent, but broad RBAC hardening is not the immediate priority.
@@ -736,7 +791,6 @@ For a new database, `database/schema.sql` already creates the table.
 The following are still missing or not complete enough to be considered implemented:
 
 - Resident self-service complaint filing and status tracking.
-- Complete summons workflow and delivery linkage.
 - Remaining official KP forms and generated-document templates.
 - Complete attendance, missed-hearing, deadline-completion, and case-status workflow.
 - Automated tests, user acceptance testing, deployment, and backup procedures.
