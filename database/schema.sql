@@ -96,6 +96,7 @@ CREATE TABLE audit_trails (
 -- PEOPLE AND COMPLAINT INTAKE
 -- =====================================================
 
+-- Resident profiles / directory (stores first name, middle name, last name, and address to avoid misreporting persons in complaints; not user login accounts)
 CREATE TABLE residents (
     resident_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     first_name VARCHAR(100) NOT NULL,

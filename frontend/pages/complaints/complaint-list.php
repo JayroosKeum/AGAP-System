@@ -129,7 +129,7 @@ include '../../layouts/header.php';
                 <div class="toolbar-main-row">
                     <div class="search-box-wrap">
                         <svg class="search-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                        <input id="searchQuery" name="q" type="search" class="search-input-field" placeholder="Search by complaint no., title, resident name, or case no..." autocomplete="off">
+                        <input id="searchQuery" name="q" type="search" class="search-input-field" placeholder="Search by complaint no., title, resident profile, or case no..." autocomplete="off">
                         <button type="button" id="clearSearchInput" class="search-clear-btn" title="Clear keyword">&times;</button>
                     </div>
 

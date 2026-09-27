@@ -66,6 +66,9 @@ Use the same module name across `frontend/pages`, `frontend/assets/js`, and
   constraints for new relationships.
 - Do not use a separate `lupon_members` table. An active user with the role
   name `Lupon Member` is eligible for the unified case-team assignment.
+- The `residents` table represents verified resident profiles/identity registry records
+  (name and address) used during complaint intake to verify involved parties and avoid
+  misreporting individuals; it is distinct from user login accounts (`users`).
 - Do not use `COUNT(*) + 1` to generate business numbers. Use an inserted ID
   inside a database transaction, as the Complaint and Case models do.
 - For a one-record-per-case feature, add a unique `case_id` constraint and use

@@ -114,7 +114,7 @@ include '../../layouts/header.php';
                     <div class="intake-card">
                         <div class="intake-card-header">
                             <h3>2. Involved Parties</h3>
-                            <span class="card-subtitle">Identify the complainant and respondent</span>
+                            <span class="card-subtitle">Select from resident profiles to avoid misreporting, or enter full name</span>
                         </div>
 
                         <!-- Complainant Textbox -->
@@ -124,7 +124,7 @@ include '../../layouts/header.php';
                                 Full Name <span class="required-mark">*</span>
                             </label>
                             <div class="party-input-wrap">
-                                <input type="text" id="complainantName" name="complainant_name" list="residentsDatalist" placeholder="Search resident or type full name..." autocomplete="off" required value="<?php echo htmlspecialchars($old['complainant_name'] ?? ''); ?>">
+                                <input type="text" id="complainantName" name="complainant_name" list="residentsDatalist" placeholder="Search resident profile or type full name..." autocomplete="off" required value="<?php echo htmlspecialchars($old['complainant_name'] ?? ''); ?>">
                                 <input type="hidden" id="complainantResidentId" name="complainant_resident_id" value="<?php echo htmlspecialchars($old['complainant_resident_id'] ?? ''); ?>">
                             </div>
                             <small class="field-hint">Person filing the complaint.</small>
@@ -137,7 +137,7 @@ include '../../layouts/header.php';
                                 Person Being Complained Against <span class="required-mark">*</span>
                             </label>
                             <div class="party-input-wrap">
-                                <input type="text" id="respondentName" name="respondent_name" list="residentsDatalist" placeholder="Search resident or type full name..." autocomplete="off" required value="<?php echo htmlspecialchars($old['respondent_name'] ?? ''); ?>">
+                                <input type="text" id="respondentName" name="respondent_name" list="residentsDatalist" placeholder="Search resident profile or type full name..." autocomplete="off" required value="<?php echo htmlspecialchars($old['respondent_name'] ?? ''); ?>">
                                 <input type="hidden" id="respondentResidentId" name="respondent_resident_id" value="<?php echo htmlspecialchars($old['respondent_resident_id'] ?? ''); ?>">
                             </div>
                             <small class="field-hint">Person or entity against whom the complaint is filed.</small>
@@ -345,7 +345,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </select>
                     </div>
                     <div class="form-group party-name-col">
-                        <input type="text" name="party_names[]" list="residentsDatalist" placeholder="Party full name..." autocomplete="off" required>
+                        <input type="text" name="party_names[]" list="residentsDatalist" placeholder="Search resident profile or party full name..." autocomplete="off" required>
                         <input type="hidden" name="party_resident_ids[]" value="">
                     </div>
                     <button type="button" class="btn-remove-party" title="Remove party" onclick="document.getElementById('${rowId}').remove()">&times;</button>

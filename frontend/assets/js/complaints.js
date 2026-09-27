@@ -394,7 +394,7 @@ function loadResidents() {
     .then(data => {
         const select = document.getElementById('partyResidentId');
         if (!select) return;
-        let options = '<option value="">Select Resident</option>';
+        let options = '<option value="">Select Resident Profile</option>';
         data.forEach(resident => {
             const name = [resident.first_name, resident.middle_name, resident.last_name].filter(Boolean).join(' ');
             options += `<option value="${resident.resident_id}">${escapeHtml(name)}</option>`;

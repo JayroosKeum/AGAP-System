@@ -28,7 +28,7 @@ $dashboardLink = [1 => '../dashboard/admin-dashboard.php', 2 => '../dashboard/cl
             <details class="nav-group"<?php echo $isGroupActive(['resident-list.php', 'complaint-list.php', 'complaint-create.php', 'complaint-details.php', 'case-list.php', 'create-case.php', 'case-details.php', 'case-assignment.php']) ? ' open' : ''; ?> data-nav-group="case-management">
                 <summary><span class="nav-group-icon" aria-hidden="true">▣</span>Case management</summary>
                 <div class="nav-group-links">
-                    <a href="../residents/resident-list.php"<?php echo $isActive(['resident-list.php']); ?>><span class="nav-icon" aria-hidden="true">♙</span><span class="nav-link-label">Residents</span></a>
+                    <a href="../residents/resident-list.php"<?php echo $isActive(['resident-list.php']); ?>><span class="nav-icon" aria-hidden="true">♙</span><span class="nav-link-label">Resident Profiles</span></a>
                     <a href="../complaints/complaint-list.php"<?php echo $isActive(['complaint-list.php', 'complaint-create.php', 'complaint-details.php']); ?>><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-link-label">Complaints</span></a>
                     <a href="../cases/case-list.php"<?php echo $isActive(['case-list.php', 'create-case.php', 'case-details.php', 'case-assignment.php']); ?>><span class="nav-icon" aria-hidden="true">⚖</span><span class="nav-link-label">Cases and assignments</span></a>
                 </div>

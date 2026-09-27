@@ -1,24 +1,48 @@
 <?php
-
 session_start();
 
 require_once '../../controllers/ResidentController.php';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST')
-{
-    $controller = new ResidentController();
+$isJson = (!empty($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json')) ||
+    (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') ||
+    (isset($_GET['format']) && $_GET['format'] === 'json');
 
-    $result = $controller->store($_POST);
-
-    if ($result['success'])
-    {
-        header(
-            'Location: ../../../frontend/pages/residents/resident-list.php'
-        );
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    if ($isJson) {
+        header('Content-Type: application/json; charset=utf-8');
+        http_response_code(405);
+        echo json_encode(['success' => false, 'message' => 'Method not allowed.']);
         exit;
     }
-
-    http_response_code(422);
-    header('Content-Type: text/plain; charset=utf-8');
-    exit($result['message'] ?? 'Please check the resident information and try again.');
+    header('Location: ../../../frontend/pages/residents/resident-list.php');
+    exit;
 }
+
+if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2], true)) {
+    if ($isJson) {
+        header('Content-Type: application/json; charset=utf-8');
+        http_response_code(401);
+        echo json_encode(['success' => false, 'message' => 'Authentication required.']);
+        exit;
+    }
+    header('Location: ../../../frontend/pages/auth/login.php');
+    exit;
+}
+
+$controller = new ResidentController();
+$result = $controller->store($_POST);
+
+if ($isJson) {
+    header('Content-Type: application/json; charset=utf-8');
+    http_response_code($result['success'] ? 201 : 422);
+    echo json_encode($result);
+    exit;
+}
+
+$_SESSION['resident_flash'] = [
+    'type' => $result['success'] ? 'success' : 'error',
+    'message' => $result['message'],
+];
+
+header('Location: ../../../frontend/pages/residents/resident-list.php');
+exit;

@@ -744,7 +744,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const extraCount = partyEntries.length > 3 ? `<span style="font-size: 0.76rem; color: #64748b;">+${partyEntries.length - 3} more</span>` : '';
             const repeatFlag = Number(row.repeat_party_count || 0) > 1
-                ? `<span class="repeat-alert-badge" title="Resident appeared in multiple cases">Repeat (${Number(row.repeat_party_count)})</span>`
+                ? `<span class="repeat-alert-badge" title="Resident profile appeared in multiple cases">Repeat (${Number(row.repeat_party_count)})</span>`
                 : '';
 
             partiesHtml = `<div class="parties-stack">${renderedParties}${extraCount}${repeatFlag}</div>`;

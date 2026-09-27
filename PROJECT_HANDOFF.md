@@ -259,6 +259,32 @@ write; an edit retains the pin unless it is moved or explicitly cleared.
   `backend/models/User.php`, `backend/models/Complaint.php`, and the associated
   user/resident form JavaScript and API files.
 
+### Resident Profiles Terminology Alignment & Modern UI Redesign (September 2026)
+
+- Clarified module terminology across user-facing views from "Residents" to "Resident Profiles".
+- Rationale & Context: The `residents` table does not represent resident user login accounts. It is strictly a verified registry of identities and addresses (first name, middle name, last name, and address/purok) used during complaint intake and blotter recording to verify involved parties (complainants, respondents, witnesses) and prevent misreporting or issuing summonses to the wrong individual.
+- Navigation & Interface: Sidebar navigation, page titles, tables, forms, modals (Add Resident Profile, View Resident Profile Details, Edit Resident Profile, Delete Resident Profile), and autocomplete datalists now consistently display "Resident Profile(s)".
+- Duplicate Person Prevention: Server-side validation (`Resident::findDuplicate()`) checks for existing profiles with the same identity. Distinct individuals can share similar/identical names provided their distinguishing description (address or purok) is different; duplicate profiles with matching names and matching address/description are rejected with an explicit notice to prevent duplicate records and misreporting.
+- Modernized, Pleasing-to-the-Eyes UI Architecture (`resident-list.php`, `residents.css`, `residents.js`):
+  - **KPI Metrics Summary Cards**: Top metric grid showcasing Total Profiles, Permanent Residents, Tenants, and Active Puroks with custom pastel icon containers, hover lift, and one-click quick filtering of the underlying table.
+  - **Comprehensive Toolbar**: Includes an icon-adorned debounced search input with an instant clear `×` button, dynamic Purok filter dropdown, Residency Type filter dropdown (`Permanent` vs `Tenant`), multi-mode sorting dropdown (Newest First, Oldest First, Name A-Z, Name Z-A, Purok), and a conditional Reset Filters button.
+  - **6-Column Modern Data Table**:
+    1. *Profile ID*: Formatted chip `#RP-XXXX`.
+    2. *Resident Name*: Circular avatar with pastel initials badge, bold full name, and demographics subtext (Gender, Civil Status, and automatically calculated age from birth date).
+    3. *Purok / Address*: Styled Purok pill badge and formatted street address.
+    4. *Contact Details*: Formatted contact number with phone icon and clickable mail address.
+    5. *Residency*: Distinct color-coded pills for Permanent Residents (emerald) vs Tenants (amber).
+    6. *Actions*: Clean button group with View (eye), Edit (pencil), and Delete (trash) actions.
+  - **Strict 25-Item Pagination**: Dedicated pagination component (`#residentPagination`) ensuring only 25 profiles are displayed per page. Features dynamic summary text (`Showing X–Y of Z profiles`), `« First`, `‹ Prev`, smart-windowed numeric page buttons, `Next ›`, `Last »`, smooth scroll-to-table behavior, and automatic page-1 reset upon filtering.
+  - **Polished Accessible Modals**:
+    - *Add/Edit Modals*: Grouped into "Personal Information" and "Residency & Contact Information" with clean 2-column inputs, inline validation hints, duplicate error alerts, and loading buttons.
+    - *View Modal*: Transformed into a clean identity summary card featuring a large avatar circle, badge chips, formatted personal and contact grids, and a direct "Edit This Profile" transition button.
+    - *Delete Modal*: Red caution prompt displaying the target profile's name and ID with explicit deletion guidance.
+  - **Backend Pagination Support**: `Resident::getPage()` and `ResidentController::page()` support pagination requests via `backend/api/residents/list.php?page=X&per_page=25`, while preserving unpaginated array fallback when `page` is omitted for seamless backward compatibility with complaint intake.
+- Search & Placeholders: Complaint search and party input fields provide descriptive guidance ("Search resident profile or type full name...") to assist staff during intake.
+- Schema Stability: Internal database tables (`residents`), foreign key constraints (`complaint_parties.resident_id`), models (`Resident.php`), and API endpoints (`backend/api/residents/*`) remain intact to preserve database integrity and migration compatibility.
+- Relevant files: `frontend/layouts/sidebar.php`, `frontend/pages/residents/resident-list.php`, `frontend/assets/js/residents.js`, `frontend/assets/css/residents.css`, `frontend/pages/complaints/complaint-create.php`, `frontend/pages/complaints/complaint-edit.php`, `frontend/pages/complaints/complaint-list.php`, `frontend/pages/search/records.php`, `frontend/pages/landing/index.php`, `frontend/assets/js/complaints.js`, `frontend/assets/js/search.js`, `backend/models/Resident.php`, `backend/controllers/ResidentController.php`, `backend/api/residents/list.php`, `backend/api/residents/create.php`, `backend/api/residents/update.php`, `backend/api/residents/delete.php`, and `database/schema.sql`.
+
 ### Database change
 
 `database/schema.sql` is the fresh-install source of truth. Apply
