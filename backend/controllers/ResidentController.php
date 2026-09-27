@@ -35,10 +35,10 @@ class ResidentController
         $duplicate = $this->resident->findDuplicate($validated['data']);
         if ($duplicate !== null) {
             $existingName = trim(implode(' ', array_filter([$duplicate['first_name'], $duplicate['middle_name'] ?? '', $duplicate['last_name']])));
-            $details = !empty($duplicate['address']) ? " at {$duplicate['address']}" : (!empty($duplicate['purok']) ? " in Purok {$duplicate['purok']}" : '');
+            $details = !empty($duplicate['address']) ? " at {$duplicate['address']}" : (!empty($duplicate['purok']) ? " in {$duplicate['purok']}" : '');
             return [
                 'success' => false,
-                'message' => "A resident profile for {$existingName}{$details} already exists (Profile #{$duplicate['resident_id']}). To avoid misreporting, duplicate profiles for the same person are not permitted."
+                'message' => "A resident profile with a similar name and address already exists for {$existingName}{$details} (Profile #RP-" . str_pad((string)$duplicate['resident_id'], 4, '0', STR_PAD_LEFT) . "). Profiles with similar names are permitted only with different addresses."
             ];
         }
 
@@ -64,10 +64,10 @@ class ResidentController
         $duplicate = $this->resident->findDuplicate($validated['data'], (int) $residentId);
         if ($duplicate !== null) {
             $existingName = trim(implode(' ', array_filter([$duplicate['first_name'], $duplicate['middle_name'] ?? '', $duplicate['last_name']])));
-            $details = !empty($duplicate['address']) ? " at {$duplicate['address']}" : (!empty($duplicate['purok']) ? " in Purok {$duplicate['purok']}" : '');
+            $details = !empty($duplicate['address']) ? " at {$duplicate['address']}" : (!empty($duplicate['purok']) ? " in {$duplicate['purok']}" : '');
             return [
                 'success' => false,
-                'message' => "Another resident profile for {$existingName}{$details} already exists (Profile #{$duplicate['resident_id']}). Duplicate profiles for the same person are not permitted."
+                'message' => "Another resident profile with a similar name and address already exists for {$existingName}{$details} (Profile #RP-" . str_pad((string)$duplicate['resident_id'], 4, '0', STR_PAD_LEFT) . "). Profiles with similar names are permitted only with different addresses."
             ];
         }
 

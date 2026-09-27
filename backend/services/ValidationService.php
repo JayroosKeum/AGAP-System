@@ -107,6 +107,7 @@ class ValidationService
         if ($civilStatus !== '' && !in_array($civilStatus, ['Single', 'Married', 'Widowed', 'Separated'], true)) return ['success' => false, 'message' => 'Please select a valid civil status.'];
         if (!self::phone($contact) || mb_strlen($contact) > 20) return ['success' => false, 'message' => 'Please enter a valid Philippine telephone number (up to 20 characters).'];
         if ($email !== '' && (mb_strlen($email) > 150 || !self::email($email))) return ['success' => false, 'message' => 'Please enter a valid email address (up to 150 characters).'];
+        if ($address === '') return ['success' => false, 'message' => 'Complete street address is required.'];
         if (!self::address($address)) return ['success' => false, 'message' => 'Please remove unsupported control characters from the address.'];
         if (mb_strlen($purok) > 100 || !self::address($purok)) return ['success' => false, 'message' => 'Please enter a valid purok (up to 100 characters).'];
         if (!in_array($tenant, ['0', '1'], true)) return ['success' => false, 'message' => 'Please select a valid tenant status.'];

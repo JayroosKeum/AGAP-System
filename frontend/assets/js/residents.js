@@ -1,6 +1,7 @@
 /**
  * AGAP Resident Profiles Module
- * Modern, easy to navigate, with 25-item pagination, instant search, and duplicate validation.
+ * Modern, easy to navigate, with 25-item pagination, Tumana purok dropdown,
+ * required address validation, and Leaflet map pin-to-address integration.
  */
 
 let allResidents = [];
@@ -13,6 +14,31 @@ let currentFilters = {
     tenant: '',
     sort: 'id_desc',
     kpi: 'all'
+};
+
+// Barangay Tumana polygon boundary, OpenStreetMap relation 1225795
+const tumanaBoundary = [
+    [14.6554682,121.0857081],[14.6562612,121.0859908],[14.6557911,121.0865123],[14.6566853,121.0867891],
+    [14.6573361,121.0874608],[14.6566672,121.0882081],[14.6596216,121.0912009],[14.6605249,121.0911456],
+    [14.6609324,121.0914765],[14.6617729,121.0920319],[14.6634173,121.0935248],[14.6639892,121.0936321],
+    [14.6643486,121.0936995],[14.6645004,121.0938826],[14.6649347,121.0948585],[14.6652695,121.0952371],
+    [14.6652424,121.0956829],[14.6648805,121.0961861],[14.664908,121.0963356],[14.6645002,121.0966408],
+    [14.6642299,121.0967374],[14.6637829,121.0977901],[14.6629907,121.0988145],[14.6625832,121.0991486],
+    [14.6625136,121.0996819],[14.6625395,121.100022],[14.6623861,121.1006225],[14.6621551,121.1005299],
+    [14.6614757,121.1023379],[14.6602368,121.1019108],[14.6595948,121.1016599],[14.6589154,121.1019614],
+    [14.6581343,121.1022551],[14.6574788,121.102553],[14.6569962,121.1027094],[14.6566377,121.102703],
+    [14.656158,121.1026733],[14.6559169,121.1026982],[14.6553478,121.1027577],[14.6550262,121.1027938],
+    [14.6548318,121.1027249],[14.6541841,121.1025018],[14.6534713,121.1024013],[14.6532707,121.102373],
+    [14.6510737,121.101336],[14.6508768,121.1007973],[14.6507211,121.0992879],[14.650753,121.0989571],
+    [14.6509538,121.098811],[14.6514718,121.0983827],[14.6521496,121.0978851],[14.6527322,121.0972236],
+    [14.6535364,121.0959443],[14.6539003,121.0955034],[14.654028,121.0953166],[14.6537619,121.0950108],
+    [14.6533329,121.0942299],[14.6530062,121.0934184]
+];
+
+// Leaflet map controllers for Add and Edit modals
+const residentMaps = {
+    add: { map: null, marker: null, isOpen: false },
+    edit: { map: null, marker: null, isOpen: false }
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -74,7 +100,6 @@ function initResidentsModule() {
     if (filterTenant) {
         filterTenant.addEventListener('change', () => {
             currentFilters.tenant = filterTenant.value;
-            // Sync with KPI card visual state if needed
             updateKpiCardActiveState();
             currentPage = 1;
             applyFiltersAndRender();
@@ -105,7 +130,11 @@ function setupModalBackdropCloses() {
     document.querySelectorAll('.modal').forEach(modal => {
         modal.addEventListener('click', (e) => {
             if (e.target === modal) {
-                modal.style.display = 'none';
+                if (modal.id === 'addResidentModal') closeAddModal();
+                else if (modal.id === 'editResidentModal') closeEditModal();
+                else if (modal.id === 'viewResidentModal') closeViewModal();
+                else if (modal.id === 'deleteResidentModal') closeDeleteModal();
+                else modal.style.display = 'none';
             }
         });
     });
@@ -114,7 +143,11 @@ function setupModalBackdropCloses() {
         if (e.key === 'Escape') {
             document.querySelectorAll('.modal').forEach(modal => {
                 if (modal.style.display === 'flex') {
-                    modal.style.display = 'none';
+                    if (modal.id === 'addResidentModal') closeAddModal();
+                    else if (modal.id === 'editResidentModal') closeEditModal();
+                    else if (modal.id === 'viewResidentModal') closeViewModal();
+                    else if (modal.id === 'deleteResidentModal') closeDeleteModal();
+                    else modal.style.display = 'none';
                 }
             });
         }
@@ -205,8 +238,11 @@ function setupFormValidation(form) {
     const birthDate = form.querySelector('[name="birth_date"]');
     if (birthDate) birthDate.max = today.toISOString().slice(0, 10);
 
-    form.querySelectorAll('input:not([type="hidden"]):not([type="date"]), textarea').forEach((field) => {
+    form.querySelectorAll('input:not([type="hidden"]):not([type="date"]), textarea, select').forEach((field) => {
         field.addEventListener('input', () => {
+            field.setCustomValidity('');
+        });
+        field.addEventListener('change', () => {
             field.setCustomValidity('');
         });
     });
@@ -214,8 +250,8 @@ function setupFormValidation(form) {
 
 function validateResidentFields(form) {
     let isValid = true;
-    form.querySelectorAll('input:not([type="hidden"]):not([type="date"]), textarea').forEach((field) => {
-        field.value = field.value.trim();
+    form.querySelectorAll('input:not([type="hidden"]):not([type="date"]), textarea, select').forEach((field) => {
+        field.value = (field.value || '').trim();
         field.setCustomValidity('');
 
         if (['first_name', 'middle_name', 'last_name'].includes(field.name)
@@ -226,6 +262,11 @@ function validateResidentFields(form) {
         }
         if (field.name === 'contact_no' && field.value !== '' && !validPhilippinePhone(field.value)) {
             field.setCustomValidity('Please enter a valid Philippine mobile or telephone number.');
+            isValid = false;
+        }
+        // Complete address is strictly required
+        if (field.name === 'address' && field.value === '') {
+            field.setCustomValidity('Please provide a complete street address in Barangay Tumana.');
             isValid = false;
         }
         if (['address', 'purok'].includes(field.name) && /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/.test(field.value)) {
@@ -239,6 +280,210 @@ function validateResidentFields(form) {
     }
     return isValid;
 }
+
+// -------------------------------------------------------------
+// Interactive Leaflet Map for Pinning Location & Obtaining Address
+// -------------------------------------------------------------
+
+function isWithinTumana(lat, lng) {
+    let inside = false;
+    for (let i = 0, j = tumanaBoundary.length - 1; i < tumanaBoundary.length; j = i++) {
+        const [yi, xi] = tumanaBoundary[i];
+        const [yj, xj] = tumanaBoundary[j];
+        const intersect = ((yi > lat) !== (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+    }
+    return inside;
+}
+
+function toggleResidentMap(mode) {
+    const wrap = document.getElementById(mode === 'add' ? 'addResidentMapWrap' : 'editResidentMapWrap');
+    const btn = document.getElementById(mode === 'add' ? 'toggleAddMapBtn' : 'toggleEditMapBtn');
+    const label = document.getElementById(mode === 'add' ? 'addMapBtnText' : 'editMapBtnText');
+    if (!wrap) return;
+
+    const isOpen = wrap.style.display !== 'none';
+    if (isOpen) {
+        wrap.style.display = 'none';
+        if (label) label.textContent = 'Pin on Map to Obtain Address';
+        if (btn) btn.classList.remove('is-active');
+        residentMaps[mode].isOpen = false;
+    } else {
+        wrap.style.display = 'block';
+        if (label) label.textContent = 'Hide Map';
+        if (btn) btn.classList.add('is-active');
+        residentMaps[mode].isOpen = true;
+
+        if (!residentMaps[mode].map) {
+            initResidentLeafletMap(mode);
+        } else {
+            setTimeout(() => {
+                if (residentMaps[mode].map) {
+                    residentMaps[mode].map.invalidateSize();
+                }
+            }, 100);
+        }
+    }
+}
+
+function initResidentLeafletMap(mode) {
+    if (!window.L) return;
+    const containerId = mode === 'add' ? 'addResidentLeafletMap' : 'editResidentLeafletMap';
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const tumanaBounds = L.latLngBounds(tumanaBoundary);
+    const map = L.map(container, {
+        maxBounds: tumanaBounds,
+        maxBoundsViscosity: 1
+    }).fitBounds(tumanaBounds, { padding: [10, 10] });
+
+    map.setMinZoom(map.getZoom());
+
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Blue polygon highlight of Barangay Tumana boundary
+    L.polygon(tumanaBoundary, {
+        color: '#2563eb',
+        weight: 2,
+        fillColor: '#60a5fa',
+        fillOpacity: 0.12,
+        interactive: false
+    }).addTo(map);
+
+    residentMaps[mode].map = map;
+
+    map.on('click', (event) => {
+        handlePinLocation(mode, event.latlng.lat, event.latlng.lng);
+    });
+
+    setTimeout(() => {
+        map.invalidateSize();
+    }, 150);
+}
+
+function handlePinLocation(mode, lat, lng) {
+    const statusBadge = document.getElementById(mode === 'add' ? 'addMapPinStatus' : 'editMapPinStatus');
+
+    if (!isWithinTumana(lat, lng)) {
+        if (statusBadge) {
+            statusBadge.className = 'map-pin-status-badge error';
+            statusBadge.textContent = 'Point is outside Barangay Tumana boundary';
+        }
+        return;
+    }
+
+    const map = residentMaps[mode].map;
+    if (!map) return;
+
+    // Create or move draggable marker
+    if (residentMaps[mode].marker) {
+        residentMaps[mode].marker.setLatLng([lat, lng]);
+    } else {
+        const marker = L.marker([lat, lng], { draggable: true }).addTo(map);
+        marker.on('dragend', (e) => {
+            const pt = e.target.getLatLng();
+            handlePinLocation(mode, pt.lat, pt.lng);
+        });
+        residentMaps[mode].marker = marker;
+    }
+
+    if (statusBadge) {
+        statusBadge.className = 'map-pin-status-badge loading';
+        statusBadge.textContent = 'Obtaining address in Tumana...';
+    }
+
+    // Reverse geocode using Nominatim API
+    fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&zoom=18&addressdetails=1`, {
+        headers: { 'Accept': 'application/json' }
+    })
+    .then(res => res.json())
+    .then(result => {
+        const addr = result.address || {};
+        const houseNo = addr.house_number || '';
+        const road = addr.road || addr.pedestrian || addr.neighbourhood || addr.suburb || '';
+        const quarter = addr.quarter || addr.suburb || '';
+
+        let streetAddress = [houseNo, road].filter(Boolean).join(' ');
+        if (!streetAddress && road) streetAddress = road;
+        if (!streetAddress && quarter) streetAddress = quarter;
+        if (!streetAddress) streetAddress = result.name || 'Barangay Tumana';
+
+        let fullAddress = streetAddress;
+        if (quarter && !fullAddress.toLowerCase().includes(quarter.toLowerCase())) {
+            fullAddress += `, ${quarter}`;
+        }
+        if (!fullAddress.toLowerCase().includes('tumana')) {
+            fullAddress += ', Barangay Tumana';
+        }
+        if (!fullAddress.toLowerCase().includes('marikina')) {
+            fullAddress += ', Marikina City';
+        }
+
+        const addressTextarea = document.getElementById(mode === 'add' ? 'addAddress' : 'editAddress');
+        if (addressTextarea) {
+            addressTextarea.value = fullAddress;
+            addressTextarea.setCustomValidity('');
+        }
+
+        // Try to auto-match and select Purok dropdown
+        autoMatchPurok(mode, fullAddress, quarter, road);
+
+        if (statusBadge) {
+            statusBadge.className = 'map-pin-status-badge success';
+            statusBadge.textContent = `✓ Obtained: ${streetAddress}`;
+        }
+    })
+    .catch(() => {
+        const addressTextarea = document.getElementById(mode === 'add' ? 'addAddress' : 'editAddress');
+        if (addressTextarea && !addressTextarea.value.trim()) {
+            addressTextarea.value = `Barangay Tumana, Marikina City (Coordinates: ${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)})`;
+            addressTextarea.setCustomValidity('');
+        }
+        if (statusBadge) {
+            statusBadge.className = 'map-pin-status-badge success';
+            statusBadge.textContent = `✓ Pin located (${Number(lat).toFixed(4)}, ${Number(lng).toFixed(4)})`;
+        }
+    });
+}
+
+function autoMatchPurok(mode, fullAddress, quarter, road) {
+    const purokSelect = document.getElementById(mode === 'add' ? 'addPurok' : 'editPurok');
+    if (!purokSelect) return;
+    const combined = `${fullAddress} ${quarter || ''} ${road || ''}`.toLowerCase();
+
+    // Check numbered puroks (Purok 1 through 8)
+    for (let i = 1; i <= 8; i++) {
+        if (combined.includes(`purok ${i}`) || combined.includes(`purok-${i}`)) {
+            purokSelect.value = `Purok ${i}`;
+            return;
+        }
+    }
+
+    // Check recognized zones and compounds
+    const namedAreas = [
+        'Doña Petra',
+        'Bagong Farmers',
+        'Bukang Liwayway',
+        'Libis Tumana',
+        'Bagong Purok',
+        'Palay',
+        'Mais',
+        'Singkamas'
+    ];
+    for (const area of namedAreas) {
+        if (combined.includes(area.toLowerCase())) {
+            purokSelect.value = area;
+            return;
+        }
+    }
+}
+
+// -------------------------------------------------------------
+// Form Submissions
+// -------------------------------------------------------------
 
 async function handleAddSubmit(event) {
     event.preventDefault();
@@ -278,7 +523,7 @@ async function handleAddSubmit(event) {
         await loadResidents();
 
         if (window.agapNotify) {
-            window.agapNotify(data.message || 'Resident profile created successfully.', 'success', 'Success');
+            window.agapNotify(data.message || 'Resident profile created successfully in Barangay Tumana.', 'success', 'Success');
         }
     } catch (err) {
         if (alertBox) {
@@ -366,7 +611,6 @@ async function loadResidents() {
         allResidents = Array.isArray(data) ? data : [];
 
         updateKpiMetrics();
-        populatePurokFilterOptions();
         applyFiltersAndRender();
     } catch (err) {
         console.error('Failed to load residents:', err);
@@ -400,7 +644,7 @@ function updateKpiMetrics() {
             permanent++;
         }
         if (r.purok && String(r.purok).trim() !== '') {
-            purokSet.add(String(r.purok).trim().toLowerCase());
+            purokSet.add(normalizePurok(r.purok));
         }
     });
 
@@ -410,39 +654,34 @@ function updateKpiMetrics() {
     if (purokCountEl) purokCountEl.textContent = purokSet.size;
 }
 
-function populatePurokFilterOptions() {
-    const select = document.getElementById('filterPurok');
-    if (!select) return;
+function normalizePurok(val) {
+    if (!val) return '';
+    const clean = String(val).trim().toLowerCase();
+    const m = clean.match(/^purok\s*([0-9]+)$/);
+    if (m) return `purok ${m[1]}`;
+    if (/^[0-9]+$/.test(clean)) return `purok ${clean}`;
+    return clean;
+}
 
-    const currentVal = select.value;
-    const puroks = new Set();
+function normalizePurokValue(val) {
+    if (!val) return '';
+    const clean = String(val).trim();
+    if (/^[0-9]+$/.test(clean)) return `Purok ${clean}`;
+    const m = clean.match(/^purok\s*([0-9]+)$/i);
+    if (m) return `Purok ${m[1]}`;
+    return clean;
+}
 
-    allResidents.forEach(r => {
-        if (r.purok && String(r.purok).trim() !== '') {
-            puroks.add(String(r.purok).trim());
-        }
-    });
-
-    // Sort naturally
-    const sortedPuroks = Array.from(puroks).sort((a, b) => {
-        const numA = parseInt(a, 10);
-        const numB = parseInt(b, 10);
-        if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
-        return a.localeCompare(b);
-    });
-
-    let html = '<option value="">All Puroks</option>';
-    sortedPuroks.forEach(p => {
-        const selected = (currentVal === p) ? 'selected' : '';
-        html += `<option value="${escapeResidentHtml(p)}" ${selected}>Purok ${escapeResidentHtml(p)}</option>`;
-    });
-
-    select.innerHTML = html;
+function formatPurokBadge(purokVal) {
+    if (!purokVal) return '';
+    const clean = String(purokVal).trim();
+    const label = /^purok/i.test(clean) ? clean : (clean.length <= 2 && /^\d+$/.test(clean) ? `Purok ${clean}` : clean);
+    return `<span class="purok-pill">${escapeResidentHtml(label)}</span>`;
 }
 
 function applyFiltersAndRender() {
     const q = (currentFilters.search || '').toLowerCase();
-    const purokFilter = (currentFilters.purok || '').toLowerCase();
+    const purokFilter = normalizePurok(currentFilters.purok);
     const tenantFilter = currentFilters.tenant;
 
     let filtered = allResidents.filter(r => {
@@ -467,7 +706,7 @@ function applyFiltersAndRender() {
 
         // Purok filter
         if (purokFilter) {
-            const residentPurok = (r.purok || '').toLowerCase();
+            const residentPurok = normalizePurok(r.purok);
             if (residentPurok !== purokFilter) return false;
         }
 
@@ -509,7 +748,7 @@ function applyFiltersAndRender() {
     // Update active filter chips & reset button
     renderActiveFilterChips();
 
-    // Pagination calculations (25 items per page)
+    // Pagination calculations (strictly 25 items per page)
     const totalRecords = filtered.length;
     const totalPages = Math.ceil(totalRecords / pageSize) || 1;
 
@@ -553,7 +792,7 @@ function renderActiveFilterChips() {
         hasActiveFilter = true;
         chipsHtml += `
             <span class="filter-chip">
-                Purok ${escapeResidentHtml(currentFilters.purok)}
+                ${escapeResidentHtml(currentFilters.purok)}
                 <span class="filter-chip-remove" onclick="removeFilter('purok')">&times;</span>
             </span>
         `;
@@ -647,8 +886,8 @@ function renderResidentTableRows(residents, totalFiltered) {
         }
         const demoText = demoParts.join(' &bull; ') || 'Identity verified';
 
-        // Location
-        const purokBadge = r.purok ? `<span class="purok-pill">Purok ${escapeResidentHtml(r.purok)}</span>` : '';
+        // Location & Purok
+        const purokBadge = formatPurokBadge(r.purok);
         const streetAddress = r.address ? escapeResidentHtml(r.address) : '<span style="color:#94a3b8; font-style:italic;">No street address</span>';
 
         // Contact info
@@ -754,7 +993,7 @@ function renderPaginationBar(totalRecords, totalPages, startIdx, endIdx) {
     // Clean previous buttons
     controls.innerHTML = '';
 
-    // If only 1 page, no need for extensive controls, but keep summary
+    // If only 1 page, no need for extensive controls
     if (totalPages <= 1) {
         return;
     }
@@ -772,7 +1011,6 @@ function renderPaginationBar(totalRecords, totalPages, startIdx, endIdx) {
             if (!disabled && pageNum !== currentPage) {
                 currentPage = pageNum;
                 applyFiltersAndRender();
-                // Smoothly scroll table into view
                 const tableCard = document.querySelector('.resident-table-card');
                 if (tableCard) tableCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             }
@@ -877,6 +1115,13 @@ function openAddModal() {
 function closeAddModal() {
     const modal = document.getElementById('addResidentModal');
     if (modal) modal.style.display = 'none';
+    const mapWrap = document.getElementById('addResidentMapWrap');
+    if (mapWrap) mapWrap.style.display = 'none';
+    const label = document.getElementById('addMapBtnText');
+    if (label) label.textContent = 'Pin on Map to Obtain Address';
+    const btn = document.getElementById('toggleAddMapBtn');
+    if (btn) btn.classList.remove('is-active');
+    residentMaps.add.isOpen = false;
 }
 
 function viewResident(id) {
@@ -889,6 +1134,7 @@ function viewResident(id) {
             const isTenant = Number(data.is_tenant) === 1;
             const age = calculateAge(data.birth_date);
             const ageDisplay = age !== null ? `${age} years old` : 'Not recorded';
+            const purokBadge = formatPurokBadge(data.purok);
 
             const detailsHtml = `
                 <div class="view-profile-card">
@@ -902,7 +1148,7 @@ function viewResident(id) {
                                     ? '<span class="residency-badge badge-tenant"><span class="residency-dot"></span>Tenant / Renter</span>'
                                     : '<span class="residency-badge badge-permanent"><span class="residency-dot"></span>Permanent Resident</span>'
                                 }
-                                ${data.purok ? `<span class="purok-pill">Purok ${escapeResidentHtml(data.purok)}</span>` : ''}
+                                ${purokBadge}
                             </div>
                         </div>
                     </div>
@@ -933,10 +1179,14 @@ function viewResident(id) {
 
                     <div class="modal-section-title">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-                        Residency & Contact Records
+                        Residency & Contact Records (Barangay Tumana)
                     </div>
 
                     <div class="view-profile-grid">
+                        <div class="view-info-box">
+                            <span class="view-info-label">Purok / Zone</span>
+                            <span class="view-info-value">${data.purok ? escapeResidentHtml(normalizePurokValue(data.purok)) : '—'}</span>
+                        </div>
                         <div class="view-info-box">
                             <span class="view-info-label">Contact Number</span>
                             <span class="view-info-value">${data.contact_no ? `<a href="tel:${escapeResidentHtml(data.contact_no)}" style="color:#1d4ed8; text-decoration:none;">${escapeResidentHtml(data.contact_no)}</a>` : '—'}</span>
@@ -945,9 +1195,13 @@ function viewResident(id) {
                             <span class="view-info-label">Email Address</span>
                             <span class="view-info-value">${data.email ? `<a href="mailto:${escapeResidentHtml(data.email)}" style="color:#1d4ed8; text-decoration:none;">${escapeResidentHtml(data.email)}</a>` : '—'}</span>
                         </div>
+                        <div class="view-info-box">
+                            <span class="view-info-label">Residency Status</span>
+                            <span class="view-info-value">${isTenant ? 'Tenant / Renter' : 'Permanent Resident'}</span>
+                        </div>
                         <div class="view-info-box" style="grid-column: 1 / -1;">
                             <span class="view-info-label">Complete Street Address</span>
-                            <span class="view-info-value">${escapeResidentHtml(data.address || '—')}${data.purok ? ` (Purok ${escapeResidentHtml(data.purok)})` : ''}</span>
+                            <span class="view-info-value">${escapeResidentHtml(data.address || '—')}</span>
                         </div>
                     </div>
 
@@ -1010,9 +1264,42 @@ function editResident(id) {
             document.getElementById('editCivilStatus').value = data.civil_status ?? 'Single';
             document.getElementById('editContactNo').value = data.contact_no ?? '';
             document.getElementById('editEmail').value = data.email ?? '';
-            document.getElementById('editPurok').value = data.purok ?? '';
+
+            // Handle Purok Select with normalization
+            const editPurokSelect = document.getElementById('editPurok');
+            if (editPurokSelect) {
+                const norm = normalizePurokValue(data.purok);
+                editPurokSelect.value = norm;
+                if (!editPurokSelect.value && data.purok) {
+                    let matched = false;
+                    for (const opt of editPurokSelect.options) {
+                        if (opt.value.toLowerCase() === String(data.purok).toLowerCase() || opt.text.toLowerCase() === String(data.purok).toLowerCase()) {
+                            opt.selected = true;
+                            matched = true;
+                            break;
+                        }
+                    }
+                    if (!matched) {
+                        const opt = document.createElement('option');
+                        opt.value = data.purok;
+                        opt.text = data.purok;
+                        opt.selected = true;
+                        editPurokSelect.appendChild(opt);
+                    }
+                }
+            }
+
             document.getElementById('editTenant').value = data.is_tenant ?? '0';
             document.getElementById('editAddress').value = data.address ?? '';
+
+            // Reset edit map state
+            const editMapWrap = document.getElementById('editResidentMapWrap');
+            if (editMapWrap) editMapWrap.style.display = 'none';
+            const label = document.getElementById('editMapBtnText');
+            if (label) label.textContent = 'Pin on Map to Obtain Address';
+            const btn = document.getElementById('toggleEditMapBtn');
+            if (btn) btn.classList.remove('is-active');
+            residentMaps.edit.isOpen = false;
 
             document.getElementById('editResidentModal').style.display = 'flex';
         })
@@ -1025,6 +1312,13 @@ function editResident(id) {
 function closeEditModal() {
     const modal = document.getElementById('editResidentModal');
     if (modal) modal.style.display = 'none';
+    const mapWrap = document.getElementById('editResidentMapWrap');
+    if (mapWrap) mapWrap.style.display = 'none';
+    const label = document.getElementById('editMapBtnText');
+    if (label) label.textContent = 'Pin on Map to Obtain Address';
+    const btn = document.getElementById('toggleEditMapBtn');
+    if (btn) btn.classList.remove('is-active');
+    residentMaps.edit.isOpen = false;
 }
 
 function deleteResident(id) {
@@ -1034,7 +1328,7 @@ function deleteResident(id) {
     if (previewEl) {
         if (resident) {
             const fullName = [resident.first_name, resident.middle_name, resident.last_name].filter(Boolean).join(' ');
-            const loc = resident.purok ? `Purok ${resident.purok}` : (resident.address || 'Barangay resident');
+            const loc = resident.purok ? normalizePurokValue(resident.purok) : (resident.address || 'Barangay Tumana resident');
             previewEl.textContent = `Profile #RP-${String(resident.resident_id).padStart(4, '0')}: ${fullName} (${loc})`;
         } else {
             previewEl.textContent = `Resident Profile #RP-${String(id).padStart(4, '0')}`;

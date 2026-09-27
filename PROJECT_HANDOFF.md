@@ -264,7 +264,7 @@ write; an edit retains the pin unless it is moved or explicitly cleared.
 - Clarified module terminology across user-facing views from "Residents" to "Resident Profiles".
 - Rationale & Context: The `residents` table does not represent resident user login accounts. It is strictly a verified registry of identities and addresses (first name, middle name, last name, and address/purok) used during complaint intake and blotter recording to verify involved parties (complainants, respondents, witnesses) and prevent misreporting or issuing summonses to the wrong individual.
 - Navigation & Interface: Sidebar navigation, page titles, tables, forms, modals (Add Resident Profile, View Resident Profile Details, Edit Resident Profile, Delete Resident Profile), and autocomplete datalists now consistently display "Resident Profile(s)".
-- Duplicate Person Prevention: Server-side validation (`Resident::findDuplicate()`) checks for existing profiles with the same identity. Distinct individuals can share similar/identical names provided their distinguishing description (address or purok) is different; duplicate profiles with matching names and matching address/description are rejected with an explicit notice to prevent duplicate records and misreporting.
+- Duplicate Person Prevention (Allow Similar Names, Block Similar Names & Address): Server-side validation (`Resident::findDuplicate()`, `Resident::areNamesSimilar()`, `Resident::areAddressesSimilar()`) strictly enforces that two resident profiles can share similar or identical names provided their residential addresses are different. However, creating or updating a profile with both a similar name AND a similar address is rejected with an explicit notice to prevent duplicate records for the same individual. Family members sharing the same address but with different first names, as well as distinct individuals sharing similar names residing at different locations, are fully permitted.
 - Modernized, Pleasing-to-the-Eyes UI Architecture (`resident-list.php`, `residents.css`, `residents.js`):
   - **KPI Metrics Summary Cards**: Top metric grid showcasing Total Profiles, Permanent Residents, Tenants, and Active Puroks with custom pastel icon containers, hover lift, and one-click quick filtering of the underlying table.
   - **Comprehensive Toolbar**: Includes an icon-adorned debounced search input with an instant clear `×` button, dynamic Purok filter dropdown, Residency Type filter dropdown (`Permanent` vs `Tenant`), multi-mode sorting dropdown (Newest First, Oldest First, Name A-Z, Name Z-A, Purok), and a conditional Reset Filters button.
@@ -284,6 +284,26 @@ write; an edit retains the pin unless it is moved or explicitly cleared.
 - Search & Placeholders: Complaint search and party input fields provide descriptive guidance ("Search resident profile or type full name...") to assist staff during intake.
 - Schema Stability: Internal database tables (`residents`), foreign key constraints (`complaint_parties.resident_id`), models (`Resident.php`), and API endpoints (`backend/api/residents/*`) remain intact to preserve database integrity and migration compatibility.
 - Relevant files: `frontend/layouts/sidebar.php`, `frontend/pages/residents/resident-list.php`, `frontend/assets/js/residents.js`, `frontend/assets/css/residents.css`, `frontend/pages/complaints/complaint-create.php`, `frontend/pages/complaints/complaint-edit.php`, `frontend/pages/complaints/complaint-list.php`, `frontend/pages/search/records.php`, `frontend/pages/landing/index.php`, `frontend/assets/js/complaints.js`, `frontend/assets/js/search.js`, `backend/models/Resident.php`, `backend/controllers/ResidentController.php`, `backend/api/residents/list.php`, `backend/api/residents/create.php`, `backend/api/residents/update.php`, `backend/api/residents/delete.php`, and `database/schema.sql`.
+
+### Tumana Puroks Dropdown, Required Address Validation & Interactive Leaflet Map Pin (September 2026)
+
+- **Official Tumana Puroks & Compounds Dropdown**:
+  - The freeform `purok` text field in Add and Edit Resident Profile modals was converted into a structured `<select>` dropdown organized into categorized `<optgroup>`s:
+    - *Numbered Puroks*: `Purok 1` through `Purok 8`.
+    - *Recognized Zones & Compounds*: `Doña Petra Compound`, `Bagong Farmers`, `Bukang Liwayway`, `Libis Tumana`, `Sitio Bagong Purok`, `Palay Area`, `Mais Area`, `Singkamas Area`.
+  - The top toolbar Purok filter dropdown (`#filterPurok`) was aligned with the exact same option set.
+  - Client-side normalization (`normalizePurok()`) gracefully maps legacy data formats (e.g., `"1"`, `"purok 1"`, `"Purok 1"`) to the select options without breaking pre-population or filter matches.
+- **Mandatory Complete Street Address**:
+  - Both client-side and server-side validation strictly require a complete street address.
+  - `backend/services/ValidationService.php`: `residentData()` rejects missing or whitespace-only addresses with HTTP 422 (`"Complete street address is required."`).
+  - Add and Edit Resident modals enforce `required` attributes, asterisk indicators (`*`), and HTML5 custom validity checks.
+- **Interactive Leaflet Map Pin with Address Reverse Geocoding**:
+  - Add and Edit modals provide a collapsible "Pin on Map to Obtain Address" section powered by Leaflet 1.9.4 and OpenStreetMap.
+  - **Barangay Tumana Boundary Enforcement**: The map features an official Tumana polygon overlay. Any clicks or pins placed outside the Barangay Tumana boundary are rejected with an explicit warning badge (`"Point is outside Barangay Tumana boundary"`), preventing invalid out-of-jurisdiction addresses.
+  - **Automatic Reverse Geocoding**: When a user clicks within Barangay Tumana, a draggable marker is placed and OpenStreetMap Nominatim reverse geocoding is invoked to resolve the road, house/building number, and quarter into an address string (`"..., Barangay Tumana, Marikina City"`), automatically populating the mandatory address textarea.
+  - **Auto Purok Matching**: If the reverse-geocoded road or quarter matches any of Tumana's numbered puroks or compounds (e.g., "Palay", "Dona Petra", "Purok 3"), the Purok dropdown is automatically selected for the user.
+- Relevant files: `frontend/pages/residents/resident-list.php`, `frontend/assets/js/residents.js`, `frontend/assets/css/residents.css`, and `backend/services/ValidationService.php`.
+
 
 ### Database change
 

@@ -13,6 +13,7 @@ include '../../layouts/header.php';
 
 <link rel="stylesheet" href="../../assets/css/dashboard.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/dashboard.css'); ?>">
 <link rel="stylesheet" href="../../assets/css/residents.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/residents.css'); ?>">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 
 <div class="dashboard-layout">
 
@@ -25,7 +26,7 @@ include '../../layouts/header.php';
         <!-- Modern Page Header -->
         <div class="page-header">
             <div class="page-header-text">
-                <span class="page-eyebrow">Registry / Records</span>
+                <span class="page-eyebrow">Barangay Tumana / Registry</span>
                 <h1>
                     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
@@ -35,7 +36,7 @@ include '../../layouts/header.php';
                     </svg>
                     Resident Profiles
                 </h1>
-                <p>Maintain barangay identity directory and residency details for party verification and dispute proceedings.</p>
+                <p>Maintain Barangay Tumana identity directory and residency details for party verification and dispute proceedings.</p>
             </div>
 
             <button
@@ -135,8 +136,28 @@ include '../../layouts/header.php';
                 </div>
 
                 <div class="resident-filter-group">
-                    <select id="filterPurok" class="resident-select-filter" aria-label="Filter by Purok">
-                        <option value="">All Puroks</option>
+                    <select id="filterPurok" class="resident-select-filter" aria-label="Filter by Purok in Tumana">
+                        <option value="">All Puroks & Areas</option>
+                        <optgroup label="Numbered Puroks">
+                            <option value="Purok 1">Purok 1</option>
+                            <option value="Purok 2">Purok 2</option>
+                            <option value="Purok 3">Purok 3</option>
+                            <option value="Purok 4">Purok 4</option>
+                            <option value="Purok 5">Purok 5</option>
+                            <option value="Purok 6">Purok 6</option>
+                            <option value="Purok 7">Purok 7</option>
+                            <option value="Purok 8">Purok 8</option>
+                        </optgroup>
+                        <optgroup label="Zones & Compounds">
+                            <option value="Doña Petra">Doña Petra Compound</option>
+                            <option value="Bagong Farmers">Bagong Farmers</option>
+                            <option value="Bukang Liwayway">Bukang Liwayway</option>
+                            <option value="Libis Tumana">Libis Tumana</option>
+                            <option value="Bagong Purok">Sitio Bagong Purok</option>
+                            <option value="Palay">Palay Area</option>
+                            <option value="Mais">Mais Area</option>
+                            <option value="Singkamas">Singkamas Area</option>
+                        </optgroup>
                     </select>
 
                     <select id="filterTenant" class="resident-select-filter" aria-label="Filter by Residency Type">
@@ -222,7 +243,7 @@ include '../../layouts/header.php';
         <div class="modal-header">
             <div class="modal-header-text">
                 <h2 id="addModalTitle">Add Resident Profile</h2>
-                <p>Register a resident identity record for party identification and grievance tracking.</p>
+                <p>Register a resident identity record in Barangay Tumana for party verification and dispute proceedings.</p>
             </div>
 
             <button
@@ -307,7 +328,7 @@ include '../../layouts/header.php';
             <!-- Section 2: Residency & Contact Information -->
             <div class="modal-section-title">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-                Residency & Contact Information
+                Residency & Contact Information (Barangay Tumana)
             </div>
 
             <div class="resident-form-grid">
@@ -331,13 +352,32 @@ include '../../layouts/header.php';
                         maxlength="150">
                 </div>
 
+                <!-- Purok Dropdown in Barangay Tumana -->
                 <div class="form-group">
-                    <label>Purok / Zone</label>
-                    <input
-                        type="text"
-                        name="purok"
-                        placeholder="e.g. 1, 2, Riverside"
-                        maxlength="100">
+                    <label for="addPurok">Purok / Zone (Tumana)</label>
+                    <select name="purok" id="addPurok">
+                        <option value="">Select Purok / Area</option>
+                        <optgroup label="Numbered Puroks">
+                            <option value="Purok 1">Purok 1</option>
+                            <option value="Purok 2">Purok 2</option>
+                            <option value="Purok 3">Purok 3</option>
+                            <option value="Purok 4">Purok 4</option>
+                            <option value="Purok 5">Purok 5</option>
+                            <option value="Purok 6">Purok 6</option>
+                            <option value="Purok 7">Purok 7</option>
+                            <option value="Purok 8">Purok 8</option>
+                        </optgroup>
+                        <optgroup label="Zones & Compounds">
+                            <option value="Doña Petra">Doña Petra Compound</option>
+                            <option value="Bagong Farmers">Bagong Farmers</option>
+                            <option value="Bukang Liwayway">Bukang Liwayway</option>
+                            <option value="Libis Tumana">Libis Tumana</option>
+                            <option value="Bagong Purok">Sitio Bagong Purok</option>
+                            <option value="Palay">Palay Area</option>
+                            <option value="Mais">Mais Area</option>
+                            <option value="Singkamas">Singkamas Area</option>
+                        </optgroup>
+                    </select>
                 </div>
 
                 <div class="form-group">
@@ -348,13 +388,42 @@ include '../../layouts/header.php';
                     </select>
                 </div>
 
+                <!-- Complete Address with Pin Location on Map -->
                 <div class="form-group full-width">
-                    <label>Complete Street Address</label>
+                    <div class="address-header-row">
+                        <label for="addAddress">Complete Street Address <span class="required-mark">*</span></label>
+                        <button
+                            type="button"
+                            class="btn-pin-map-toggle"
+                            id="toggleAddMapBtn"
+                            onclick="toggleResidentMap('add')">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                                <circle cx="12" cy="10" r="3"></circle>
+                            </svg>
+                            <span id="addMapBtnText">Pin on Map to Obtain Address</span>
+                        </button>
+                    </div>
+
+                    <!-- Collapsible Interactive Map Box -->
+                    <div id="addResidentMapWrap" class="resident-map-box" style="display: none;">
+                        <div class="map-box-header">
+                            <div class="map-hint-text">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                                Click or drag the pin anywhere in <strong>Barangay Tumana</strong> to auto-fill the street address.
+                            </div>
+                            <span id="addMapPinStatus" class="map-pin-status-badge">Click map to pin</span>
+                        </div>
+                        <div id="addResidentLeafletMap" class="resident-mini-leaflet-map"></div>
+                    </div>
+
                     <textarea
                         name="address"
-                        placeholder="House no., Street name, Subdivision, Landmark..."
-                        rows="3"></textarea>
-                    <span class="form-hint-text">A specific address helps distinguish residents sharing similar names.</span>
+                        id="addAddress"
+                        placeholder="House no., Street name, Subdivision, Landmark in Barangay Tumana..."
+                        rows="3"
+                        required></textarea>
+                    <span class="form-hint-text">Complete street address is required. Similar names are permitted with different addresses; duplicate profiles sharing similar names and address are not allowed.</span>
                 </div>
 
             </div>
@@ -388,7 +457,7 @@ include '../../layouts/header.php';
         <div class="modal-header">
             <div class="modal-header-text">
                 <h2 id="viewModalTitle">Resident Profile Details</h2>
-                <p>Identity verification details and recorded residence information.</p>
+                <p>Identity verification details and recorded residence information in Barangay Tumana.</p>
             </div>
 
             <button
@@ -416,7 +485,7 @@ include '../../layouts/header.php';
         <div class="modal-header">
             <div class="modal-header-text">
                 <h2 id="editModalTitle">Edit Resident Profile</h2>
-                <p>Update personal identity, contact details, or residency address.</p>
+                <p>Update personal identity, contact details, or residency address in Barangay Tumana.</p>
             </div>
 
             <button
@@ -511,7 +580,7 @@ include '../../layouts/header.php';
             <!-- Section 2: Residency & Contact Information -->
             <div class="modal-section-title">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-                Residency & Contact Information
+                Residency & Contact Information (Barangay Tumana)
             </div>
 
             <div class="resident-form-grid">
@@ -535,13 +604,32 @@ include '../../layouts/header.php';
                         maxlength="150">
                 </div>
 
+                <!-- Purok Dropdown in Barangay Tumana -->
                 <div class="form-group">
-                    <label>Purok / Zone</label>
-                    <input
-                        type="text"
-                        name="purok"
-                        id="editPurok"
-                        maxlength="100">
+                    <label for="editPurok">Purok / Zone (Tumana)</label>
+                    <select name="purok" id="editPurok">
+                        <option value="">Select Purok / Area</option>
+                        <optgroup label="Numbered Puroks">
+                            <option value="Purok 1">Purok 1</option>
+                            <option value="Purok 2">Purok 2</option>
+                            <option value="Purok 3">Purok 3</option>
+                            <option value="Purok 4">Purok 4</option>
+                            <option value="Purok 5">Purok 5</option>
+                            <option value="Purok 6">Purok 6</option>
+                            <option value="Purok 7">Purok 7</option>
+                            <option value="Purok 8">Purok 8</option>
+                        </optgroup>
+                        <optgroup label="Zones & Compounds">
+                            <option value="Doña Petra">Doña Petra Compound</option>
+                            <option value="Bagong Farmers">Bagong Farmers</option>
+                            <option value="Bukang Liwayway">Bukang Liwayway</option>
+                            <option value="Libis Tumana">Libis Tumana</option>
+                            <option value="Bagong Purok">Sitio Bagong Purok</option>
+                            <option value="Palay">Palay Area</option>
+                            <option value="Mais">Mais Area</option>
+                            <option value="Singkamas">Singkamas Area</option>
+                        </optgroup>
+                    </select>
                 </div>
 
                 <div class="form-group">
@@ -554,13 +642,42 @@ include '../../layouts/header.php';
                     </select>
                 </div>
 
+                <!-- Complete Address with Pin Location on Map -->
                 <div class="form-group full-width">
-                    <label>Complete Street Address</label>
+                    <div class="address-header-row">
+                        <label for="editAddress">Complete Street Address <span class="required-mark">*</span></label>
+                        <button
+                            type="button"
+                            class="btn-pin-map-toggle"
+                            id="toggleEditMapBtn"
+                            onclick="toggleResidentMap('edit')">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                                <circle cx="12" cy="10" r="3"></circle>
+                            </svg>
+                            <span id="editMapBtnText">Pin on Map to Obtain Address</span>
+                        </button>
+                    </div>
+
+                    <!-- Collapsible Interactive Map Box for Edit -->
+                    <div id="editResidentMapWrap" class="resident-map-box" style="display: none;">
+                        <div class="map-box-header">
+                            <div class="map-hint-text">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                                Click or drag the pin anywhere in <strong>Barangay Tumana</strong> to auto-fill the street address.
+                            </div>
+                            <span id="editMapPinStatus" class="map-pin-status-badge">Click map to pin</span>
+                        </div>
+                        <div id="editResidentLeafletMap" class="resident-mini-leaflet-map"></div>
+                    </div>
+
                     <textarea
                         name="address"
                         id="editAddress"
-                        rows="3"></textarea>
-                    <span class="form-hint-text">A specific address helps distinguish residents sharing similar names.</span>
+                        placeholder="House no., Street name, Subdivision, Landmark in Barangay Tumana..."
+                        rows="3"
+                        required></textarea>
+                    <span class="form-hint-text">Complete street address is required. Similar names are permitted with different addresses; duplicate profiles sharing similar names and address are not allowed.</span>
                 </div>
 
             </div>
@@ -648,6 +765,8 @@ include '../../layouts/header.php';
 
 </div>
 
+<!-- Leaflet JS for Map Pinning -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="../../assets/js/residents.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/residents.js'); ?>"></script>
 
 <?php include '../../layouts/footer.php'; ?>
