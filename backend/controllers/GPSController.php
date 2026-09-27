@@ -32,6 +32,19 @@ class GPSController
         return ['success' => true, 'data' => $summary];
     }
     public function summonsServers(): array { return ['success' => true, 'data' => $this->proof->getSummonsServers()]; }
+    public function defaultLuponClerk(): array
+    {
+        $clerk = $this->proof->getDefaultLuponClerk();
+        return $clerk ? ['success' => true, 'data' => $clerk] : ['success' => false, 'message' => 'No active Lupon Clerk account is available.'];
+    }
+    public function summonsNotices(int $caseId): array { return ['success' => true, 'data' => $this->proof->getSummonsNotices($caseId)]; }
+    public function reopenSummonsNotice(int $caseId, int $documentId, int $userId): array
+    {
+        if (!$caseId || !$documentId) return ['success' => false, 'message' => 'A valid case and summons notice are required.'];
+        if (!$this->document->reopenForService($documentId, $caseId)) return ['success' => false, 'message' => 'Only a failed summons notice may be reopened for service.'];
+        $this->audit->log($userId, 'Reopened failed summons notice for service', 'Summons', $documentId);
+        return ['success' => true, 'message' => 'Summons notice reopened for a new service attempt.'];
+    }
 
     public function location(int $complaintId): array
     {
@@ -86,7 +99,9 @@ class GPSController
         if (!in_array($serviceResult, $allowedResults, true)) {
             $serviceResult = 'Served';
         }
-        $servedBy = filter_var($data['served_by'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: $userId;
+        $clerk = $this->proof->getDefaultLuponClerk();
+        if (!$clerk) return ['success' => false, 'message' => 'An active Lupon Clerk account is required before recording service.'];
+        $servedBy = (int) $clerk['user_id'];
 
         // Allow up to 24 hours in the future to account for clock skew, timezones, and planned service entries
         $maxAllowedDate = (new DateTimeImmutable('now', new DateTimeZone('Asia/Manila')))->modify('+24 hours');

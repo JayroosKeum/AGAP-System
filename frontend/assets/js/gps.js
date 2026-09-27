@@ -50,8 +50,8 @@ async function initProofs() {
     const preselectedCaseId = urlParams.get('case_id');
     const preselectedDocId = urlParams.get('document_id');
 
-    // Load servers
-    await loadSummonsServers();
+    await loadDefaultLuponClerk();
+    await loadSummonsNotices(null);
 
     // Load cases
     try {
@@ -79,13 +79,14 @@ async function initProofs() {
 
     document.getElementById('proofForm').addEventListener('submit', async event => {
         event.preventDefault();
+        const form = event.currentTarget;
         const selectedCaseId = select.value;
         const currentDocId = document.getElementById('proofDocumentId')?.value;
-        const submitBtn = event.currentTarget.querySelector('button[type="submit"]');
+        const submitBtn = form.querySelector('button[type="submit"]');
         if (submitBtn) submitBtn.disabled = true;
 
         try {
-            const formData = new FormData(event.currentTarget);
+            const formData = new FormData(form);
             const docSelect = document.getElementById('proofDocumentId');
             if (docSelect && docSelect.value && !formData.get('document_id')) {
                 formData.set('document_id', docSelect.value);
@@ -104,7 +105,7 @@ async function initProofs() {
             window.agapNotify?.(successMsg, 'success');
 
             // Reset form input values
-            event.currentTarget.reset();
+            form.reset();
 
             // Re-select active case and reset date to now
             select.value = selectedCaseId;
@@ -115,6 +116,7 @@ async function initProofs() {
             // Immediately auto-refresh service documents, service history table, and case summary
             await loadServiceDocuments(selectedCaseId, currentDocId);
             await loadProofs(selectedCaseId);
+            await loadSummonsNotices(selectedCaseId);
             await loadCaseSummary(selectedCaseId);
         } catch (error) {
             setGpsMessage('proofMessage', error.message);
@@ -131,12 +133,20 @@ async function onCaseSelected(caseId, targetDocId = null) {
         document.getElementById('backLink').style.display = 'none';
         await loadServiceDocuments(null);
         await loadProofs(null);
+        await loadSummonsNotices(null);
+        setServiceDetailsEnabled(false);
         return;
     }
 
     await loadCaseSummary(caseId);
     await loadServiceDocuments(caseId, targetDocId);
     await loadProofs(caseId);
+    await loadSummonsNotices(caseId);
+}
+
+function setServiceDetailsEnabled(enabled) {
+    const details = document.getElementById('serviceDetails');
+    if (details) details.disabled = !enabled;
 }
 
 async function loadCaseSummary(caseId) {
@@ -171,22 +181,13 @@ async function loadCaseSummary(caseId) {
     }
 }
 
-async function loadSummonsServers() {
-    const select = document.getElementById('servedBy');
-    if (!select) return;
+async function loadDefaultLuponClerk() {
+    const input = document.getElementById('servedByName');
+    if (!input) return;
     try {
-        const result = await gpsApi('../../../backend/api/gps/proof-service.php?mode=servers');
-        const servers = result.data || [];
-        if (servers.length) {
-            const currentVal = select.value;
-            select.replaceChildren();
-            servers.forEach(s => {
-                const opt = new Option(`${s.full_name} (${s.role_name})`, s.user_id);
-                if (String(s.user_id) === String(currentVal)) opt.selected = true;
-                select.add(opt);
-            });
-        }
-    } catch (_) {}
+        const result = await gpsApi('../../../backend/api/gps/proof-service.php?mode=default-clerk');
+        input.value = `${result.data.full_name} (Lupon Clerk)`;
+    } catch (error) { input.value = 'Lupon Clerk unavailable'; setGpsMessage('proofMessage', error.message); }
 }
 
 async function loadServiceDocuments(caseId, targetDocId = null) {
@@ -218,9 +219,12 @@ async function loadServiceDocuments(caseId, targetDocId = null) {
         } else if (documents.length === 1) {
             select.selectedIndex = 1;
         }
+        setServiceDetailsEnabled(Boolean(select.value));
+        select.onchange = () => setServiceDetailsEnabled(Boolean(select.value));
     } catch (error) {
         select.replaceChildren(new Option(error.message, ''));
         select.disabled = true;
+        setServiceDetailsEnabled(false);
     }
 }
 
@@ -277,4 +281,28 @@ async function loadProofs(caseId) {
     } catch (error) {
         table.innerHTML = `<tr><td colspan="6" class="empty-state" style="color: #ef4444; padding: 16px;">${escapeGpsHtml(error.message)}</td></tr>`;
     }
+}
+
+async function loadSummonsNotices(caseId) {
+    const table = document.getElementById('summonsNoticesTable');
+    if (!table) return;
+    if (!caseId) { table.innerHTML = '<tr><td colspan="5" class="empty-state">Select a case to view its summons notices.</td></tr>'; return; }
+    try {
+        const result = await gpsApi(`../../../backend/api/gps/proof-service.php?case_id=${encodeURIComponent(caseId)}&mode=notices`);
+        const rows = result.data || [];
+        table.innerHTML = rows.length ? rows.map(item => `
+            <tr><td>${formatDateTime(item.generated_at)}</td><td>${escapeGpsHtml(item.template_name)}</td><td>${escapeGpsHtml(item.service_status)}</td><td>${Number(item.attempt_count) || 0}${item.last_attempt_at ? `<br><small>${formatDateTime(item.last_attempt_at)}</small>` : ''}</td><td><button type="button" class="btn-action-view" data-record-service="${Number(item.document_id)}">Record service</button>${item.service_status === 'Service Failed' ? ` <button type="button" class="btn-action-edit" data-reopen-notice="${Number(item.document_id)}">Reopen</button>` : ''}</td></tr>`).join('') : '<tr><td colspan="5" class="empty-state">No summons notices have been issued for this case.</td></tr>';
+        table.querySelectorAll('[data-record-service]').forEach(button => button.addEventListener('click', () => {
+            const select = document.getElementById('proofDocumentId');
+            if (select) { select.value = button.dataset.recordService; select.scrollIntoView({ behavior: 'smooth', block: 'center' }); select.focus(); }
+        }));
+        table.querySelectorAll('[data-reopen-notice]').forEach(button => button.addEventListener('click', async () => {
+            if (!window.confirm('Reopen this failed notice for a new service attempt? The earlier proof record will remain unchanged.')) return;
+            try {
+                const data = new FormData(); data.set('case_id', caseId); data.set('document_id', button.dataset.reopenNotice);
+                const updated = await gpsApi('../../../backend/api/gps/reopen-summons.php', { method: 'POST', body: data });
+                setGpsMessage('proofMessage', updated.message, true); await loadSummonsNotices(caseId); await loadServiceDocuments(caseId, button.dataset.reopenNotice);
+            } catch (error) { setGpsMessage('proofMessage', error.message); }
+        }));
+    } catch (error) { table.innerHTML = `<tr><td colspan="5" class="empty-state">${escapeGpsHtml(error.message)}</td></tr>`; }
 }

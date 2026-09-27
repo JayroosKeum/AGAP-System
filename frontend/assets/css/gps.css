@@ -9,3 +9,7 @@
 .badge-warning { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
 .badge-other { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
 .required-mark { color: #ef4444; font-weight: bold; margin-left: 2px; }
+.proof-details { border:1px solid #dbe3ee; border-radius:10px; margin:22px 0 0; padding:0 18px 18px; }
+.proof-details:disabled { background:#f8fafc; opacity:.7; }
+.proof-details legend { padding:0 7px; font-weight:700; }
+.proof-selection-grid { margin-top:0; }

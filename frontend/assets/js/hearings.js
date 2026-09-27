@@ -91,6 +91,8 @@ async function loadCombinedRecords(page = 1) {
 
         table.querySelectorAll('[data-view]').forEach((button) => button.addEventListener('click', () => viewHearing(button.dataset.view)));
         table.querySelectorAll('[data-edit]').forEach((button) => button.addEventListener('click', () => editHearing(button.dataset.edit)));
+        table.querySelectorAll('[data-nonappearance]').forEach((button) => button.addEventListener('click', () => openNonappearanceModal(button.dataset.nonappearance)));
+        table.querySelectorAll('[data-reissue]').forEach((button) => button.addEventListener('click', () => reissueSummons(button.dataset.reissue)));
 
         renderPagination(pagination);
     } catch (error) {
@@ -153,7 +155,7 @@ function renderActionsCell(item) {
         const id = Number(item.record_id);
         return `
             <button type="button" class="btn-action-view" data-view="${id}">View</button>
-            ${canManageHearings ? `<button type="button" class="btn-action-edit" data-edit="${id}">Edit</button>` : ''}
+            ${canManageHearings ? `<button type="button" class="btn-action-edit" data-edit="${id}">Reschedule</button><button type="button" class="btn-action-view" data-nonappearance="${id}">Record absence</button>${item.has_pending_nonappearance === '1' ? `<button type="button" class="btn-action-edit" data-reissue="${id}">Issue re-summons</button>` : ''}` : ''}
         `;
     }
     return '<span class="empty-cell">—</span>';
@@ -367,7 +369,8 @@ async function viewHearing(id) {
         const item = await getHearing(id);
         const details = document.getElementById('hearingDetails');
         details.replaceChildren();
-        [['Case', item.case_number], ['Complaint', `${item.complaint_number} - ${item.complaint_title}`], ['Type', hearingLabel(item)], ['Date & Time', formatDateTime(item.hearing_date)], ['Venue', item.venue], ['Remarks', item.remarks || 'None']].forEach(([label, value]) => {
+        const absence = item.nonappearance ? `${item.nonappearance.resident_name} (${item.nonappearance.party_type}) - pending action` : 'None recorded';
+        [['Case', item.case_number], ['Complaint', `${item.complaint_number} - ${item.complaint_title}`], ['Type', hearingLabel(item)], ['Date & Time', formatDateTime(item.hearing_date)], ['Venue', item.venue], ['Remarks', item.remarks || 'None'], ['Unjustified non-appearance', absence]].forEach(([label, value]) => {
             const dt = document.createElement('dt'); dt.textContent = label;
             const dd = document.createElement('dd'); dd.textContent = value;
             details.append(dt, dd);
@@ -376,6 +379,28 @@ async function viewHearing(id) {
     } catch (error) {
         setMessage(error.message);
     }
+}
+
+async function openNonappearanceModal(id) {
+    try {
+        const item = await getHearing(id);
+        const select = document.getElementById('nonappearanceResident');
+        select.replaceChildren(new Option('Select an absent party', ''));
+        (item.parties || []).forEach((party) => select.add(new Option(`${party.party_type}: ${party.resident_name}`, party.resident_id)));
+        document.getElementById('nonappearanceHearingId').value = item.hearing_id;
+        document.getElementById('nonappearanceRemarks').value = '';
+        showModal('nonappearanceModal');
+    } catch (error) { setMessage(error.message); }
+}
+
+async function reissueSummons(id) {
+    if (!window.confirm('Issue a follow-up summons for the recorded non-appearance?')) return;
+    try {
+        const data = new FormData(); data.set('hearing_id', id);
+        const result = await api('../../../backend/api/summons/reissue-after-nonappearance.php', { method: 'POST', body: data });
+        setMessage(result.message, true);
+        await Promise.all([loadHearings(), loadCombinedRecords(currentPage)]);
+    } catch (error) { setMessage(error.message); }
 }
 
 async function editHearing(id) {
@@ -528,3 +553,17 @@ function closeReviewHearingModal() {
     hideModal('reviewHearingModal');
     pendingScheduleForm = null;
 }
+
+function closeNonappearanceModal() { hideModal('nonappearanceModal'); }
+
+document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('nonappearanceForm');
+    form?.addEventListener('submit', async (event) => {
+        event.preventDefault(); if (!form.reportValidity()) return;
+        try {
+            const result = await api('../../../backend/api/hearings/nonappearance.php', { method: 'POST', body: new FormData(form) });
+            setMessage(result.message, true); closeNonappearanceModal();
+            await Promise.all([loadHearings(), loadCombinedRecords(currentPage)]);
+        } catch (error) { setMessage(error.message); }
+    });
+});

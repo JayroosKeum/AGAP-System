@@ -207,6 +207,43 @@ class Summons
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
+    /** Creates a fresh service copy after a recorded unjustified non-appearance. */
+    public function issueFollowUpForNonAppearance(int $hearingId, int $userId): array
+    {
+        try {
+            $this->conn->beginTransaction();
+            $hearing = $this->conn->prepare("SELECT h.case_id, c.case_number, c.case_status, hn.nonappearance_id FROM hearings h INNER JOIN cases c ON c.case_id = h.case_id INNER JOIN hearing_nonappearances hn ON hn.hearing_id = h.hearing_id WHERE h.hearing_id = ? AND hn.resolution = 'Pending' FOR UPDATE");
+            $hearing->execute([$hearingId]);
+            $row = $hearing->fetch(PDO::FETCH_ASSOC);
+            if (!$row) { $this->conn->rollBack(); return ['success' => false, 'message' => 'Record an unresolved unjustified non-appearance before issuing another summons.']; }
+            $template = $this->conn->prepare("INSERT INTO document_templates (template_name, description) VALUES ('KP Form 9', 'Summons') ON DUPLICATE KEY UPDATE template_id = LAST_INSERT_ID(template_id)");
+            $template->execute();
+            $templateId = (int) $this->conn->lastInsertId();
+            if (!$templateId) { $find = $this->conn->prepare("SELECT template_id FROM document_templates WHERE template_name = 'KP Form 9'"); $find->execute(); $templateId = (int) $find->fetchColumn(); }
+            $count = $this->conn->prepare('SELECT COUNT(*) FROM generated_documents WHERE case_id = ? AND template_id = ?');
+            $count->execute([$row['case_id'], $templateId]);
+            $number = (int) $count->fetchColumn() + 1;
+            $relativeDir = 'storage/generated-documents/' . date('Y') . '/' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $row['case_number']);
+            $fullDir = dirname(__DIR__, 2) . '/' . $relativeDir;
+            if (!is_dir($fullDir)) @mkdir($fullDir, 0750, true);
+            $filePath = $relativeDir . '/' . sprintf('KP-Form-9-Summons-%d-%s.pdf', $number, date('Ymd-His'));
+            $document = $this->conn->prepare("INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason) VALUES (?, ?, ?, ?, 'For Service', ?)");
+            $document->execute([$row['case_id'], $templateId, $userId, $filePath, 'Re-issued after recorded unjustified non-appearance at hearing #' . $hearingId . '.']);
+            $documentId = (int) $this->conn->lastInsertId();
+            $resolve = $this->conn->prepare("UPDATE hearing_nonappearances SET resolution = 'Re-summons Issued', resolved_by = ?, resolved_at = NOW() WHERE nonappearance_id = ?");
+            $resolve->execute([$userId, $row['nonappearance_id']]);
+            $history = $this->conn->prepare('INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, ?, ?, ?)');
+            $history->execute([$row['case_id'], $row['case_status'], 'Follow-up summons #' . $number . ' issued after unjustified non-appearance.', $userId]);
+            $this->conn->commit();
+            $this->notifySummonsServers($row['case_number'], $number, $userId);
+            return ['success' => true, 'case_id' => (int) $row['case_id'], 'case_number' => $row['case_number'], 'document_id' => $documentId, 'summons_number' => $number, 'message' => 'Follow-up summons issued and assigned for service.'];
+        } catch (Throwable $exception) {
+            if ($this->conn->inTransaction()) $this->conn->rollBack();
+            error_log('Error issuing follow-up summons: ' . $exception->getMessage());
+            return ['success' => false, 'message' => 'Unable to issue the follow-up summons.'];
+        }
+    }
+
     private function notifySummonsServers(string $caseNumber, int $summonsNum, int $actorUserId): void
     {
         try {

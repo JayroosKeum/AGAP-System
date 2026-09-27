@@ -230,6 +230,7 @@ class Hearing
             h.venue,
             CASE WHEN h.hearing_date < NOW() THEN 'Completed' ELSE 'Scheduled' END AS status,
             h.remarks,
+            CASE WHEN EXISTS (SELECT 1 FROM hearing_nonappearances hn WHERE hn.hearing_id = h.hearing_id AND hn.resolution = 'Pending') THEN '1' ELSE '0' END AS has_pending_nonappearance,
             h.created_at
         FROM hearings h
         LEFT JOIN cases c ON c.case_id = h.case_id

@@ -5,18 +5,22 @@ require_once __DIR__ . '/../services/AuditService.php';
 require_once __DIR__ . '/../services/DeadlineService.php';
 require_once __DIR__ . '/../services/NotificationService.php';
 require_once __DIR__ . '/../services/ValidationService.php';
+require_once __DIR__ . '/../models/HearingException.php';
+require_once __DIR__ . '/../services/DeadlineAlertService.php';
 
 class HearingController
 {
     private Hearing $hearing;
     private AuditService $audit;
     private NotificationService $notifications;
+    private HearingException $exceptions;
 
     public function __construct()
     {
         $this->hearing = new Hearing();
         $this->audit = new AuditService();
         $this->notifications = new NotificationService();
+        $this->exceptions = new HearingException();
     }
 
     public function index(array $params = []): array
@@ -50,12 +54,33 @@ class HearingController
         if ($id < 1 || !($record = $this->hearing->getById($id))) {
             return ['success' => false, 'message' => 'Hearing not found.'];
         }
+        $record['nonappearance'] = $this->exceptions->pendingForHearing($id);
+        $record['parties'] = $this->exceptions->partiesForHearing($id);
         return ['success' => true, 'data' => $record];
     }
 
     public function deadlines(?int $caseId = null): array
     {
         return ['success' => true, 'data' => $this->hearing->getDeadlines($caseId)];
+    }
+
+    public function recordNonAppearance(array $data, int $userId): array
+    {
+        $hearingId = filter_var($data['hearing_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $residentId = filter_var($data['resident_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $remarks = trim((string) ($data['remarks'] ?? ''));
+        if (!$hearingId || !$residentId || mb_strlen($remarks) > 2000) return ['success' => false, 'message' => 'Choose a party and provide remarks up to 2,000 characters.'];
+        $result = $this->exceptions->recordUnjustifiedNonAppearance((int) $hearingId, (int) $residentId, $remarks, $userId);
+        if ($result['success']) {
+            $this->audit->log($userId, 'Recorded unjustified non-appearance', 'Hearings', (int) $hearingId);
+            $this->notifications->notifyCaseMembers((int) $result['case_id'], 'Unjustified non-appearance', 'A party was marked absent without justification. Review the hearing for rescheduling or re-summons.', $userId);
+        }
+        return $result;
+    }
+
+    public function dispatchDeadlineAlerts(int $userId): array
+    {
+        return ['success' => true, 'dispatched' => (new DeadlineAlertService())->dispatch($userId)];
     }
 
     public function create(array $data, int $userId): array
@@ -130,9 +155,10 @@ class HearingController
                 $values['hearing_date']
             );
             $this->hearing->update($id, $values, $deadline);
-            $this->audit->log($userId, 'Updated Hearing', 'Hearings', $id);
-            $this->notifyHearingMembers($values, 'Hearing updated', $userId);
-            return ['success' => true, 'message' => 'Hearing updated successfully.'];
+            $this->exceptions->resolveForHearing($id, 'Rescheduled', $userId);
+            $this->audit->log($userId, 'Rescheduled hearing', 'Hearings', $id);
+            $this->notifyHearingMembers($values, 'Hearing rescheduled', $userId);
+            return ['success' => true, 'message' => 'Hearing rescheduled successfully.'];
         } catch (Throwable $exception) {
             error_log($exception->getMessage());
             return ['success' => false, 'message' => 'Unable to update the hearing.'];

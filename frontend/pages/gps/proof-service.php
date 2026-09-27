@@ -43,22 +43,28 @@ include '../../layouts/header.php';
 
         <section class="gps-card">
             <h2>Record Summons Service Attempt</h2>
+            <p class="map-help">Complete the steps in order. Only issued summons notices can be recorded for service.</p>
             <form id="proofForm" enctype="multipart/form-data">
-                <div class="gps-grid">
+                <div class="gps-grid proof-selection-grid">
                     <div class="form-group">
-                        <label for="proofCaseId">Case <span class="required-mark" aria-hidden="true">*</span></label>
+                        <label for="proofCaseId">Select Case <span class="required-mark" aria-hidden="true">*</span></label>
                         <select id="proofCaseId" name="case_id" required>
                             <option value="">Select a case</option>
                         </select>
                     </div>
 
                     <div class="form-group">
-                        <label for="proofDocumentId">Summons / Generated Document <span class="required-mark" aria-hidden="true">*</span></label>
+                        <label for="proofDocumentId">Select Issued Summons Notice <span class="required-mark" aria-hidden="true">*</span></label>
                         <select id="proofDocumentId" name="document_id" required disabled>
                             <option value="">Select a case first</option>
                         </select>
                     </div>
+                </div>
 
+                <fieldset id="serviceDetails" class="proof-details" disabled>
+                    <legend>Service Details</legend>
+                    <p class="map-help">The serving personnel is automatically recorded as the Lupon Clerk.</p>
+                    <div class="gps-grid">
                     <div class="form-group">
                         <label for="serviceResult">Service Result <span class="required-mark" aria-hidden="true">*</span></label>
                         <select id="serviceResult" name="service_result" required>
@@ -72,12 +78,9 @@ include '../../layouts/header.php';
                     </div>
 
                     <div class="form-group">
-                        <label for="servedBy">Server / Assigned Personnel <span class="required-mark" aria-hidden="true">*</span></label>
-                        <select id="servedBy" name="served_by" required>
-                            <option value="<?php echo (int) $_SESSION['user_id']; ?>">
-                                Current User (<?php echo htmlspecialchars($_SESSION['username'] ?? 'Me'); ?>)
-                            </option>
-                        </select>
+                        <label for="servedByName">Server / Assigned Personnel</label>
+                        <input id="servedByName" type="text" value="Lupon Clerk" readonly aria-readonly="true">
+                        <small>The active Lupon Clerk is automatically recorded as the serving personnel.</small>
                     </div>
 
                     <div class="form-group">
@@ -90,15 +93,21 @@ include '../../layouts/header.php';
                         <input id="proofPhoto" type="file" name="photo" accept="image/jpeg,image/png,image/webp">
                         <small>JPG, PNG, or WebP up to 5 MB.</small>
                     </div>
-                </div>
+                    </div>
 
-                <div class="form-group" style="margin-top: 14px;">
-                    <label for="proofRemarks">Remarks / Reason / Field Observations</label>
-                    <textarea id="proofRemarks" name="remarks" maxlength="2000" rows="3" placeholder="Enter service details, recipient remarks, or reason if not served (e.g., respondent relocated, refused signature, etc.)"></textarea>
-                </div>
-
-                <button class="btn-create" type="submit" style="margin-top: 12px;">Save Proof / Service Record</button>
+                    <div class="form-group" style="margin-top: 14px;">
+                        <label for="proofRemarks">Remarks / Reason / Field Observations</label>
+                        <textarea id="proofRemarks" name="remarks" maxlength="2000" rows="3" placeholder="Enter service details, recipient remarks, or reason if not served (e.g., respondent relocated, refused signature, etc.)"></textarea>
+                    </div>
+                    <button class="btn-create" type="submit" style="margin-top: 12px;">Save Service Record</button>
+                </fieldset>
             </form>
+        </section>
+
+        <section class="gps-card">
+            <h2>Summons Notices</h2>
+            <p class="map-help">Issued notices are preserved as official records. Their service state may be updated, but the issued notice itself is not overwritten.</p>
+            <div class="table-container"><table><thead><tr><th>Issued</th><th>Notice</th><th>Status</th><th>Service Attempts</th><th>Actions</th></tr></thead><tbody id="summonsNoticesTable"></tbody></table></div>
         </section>
 
         <section class="gps-card">

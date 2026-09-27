@@ -148,6 +148,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const seen = new Set(JSON.parse(sessionStorage.getItem(seenKey) || '[]'));
     const checkWorkflowNotifications = async () => {
         try {
+            // This endpoint is idempotent: it only creates each due-soon/overdue alert once.
+            await fetch('../../../backend/api/hearings/deadline-alerts.php', { method: 'POST' }).catch(() => null);
             const response = await fetch('../../../backend/api/notifications/list.php');
             const result = await response.json();
             if (!response.ok || result.success === false) return;

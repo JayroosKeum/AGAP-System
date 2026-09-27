@@ -139,6 +139,13 @@ class Document
         return $stmt->execute([$documentId, $caseId]);
     }
 
+    public function reopenForService(int $documentId, int $caseId): bool
+    {
+        $stmt = $this->conn->prepare("UPDATE generated_documents gd INNER JOIN document_templates dt ON dt.template_id = gd.template_id SET gd.service_status = 'For Service' WHERE gd.document_id = ? AND gd.case_id = ? AND gd.service_status = 'Service Failed' AND (dt.template_name = 'KP Form 9' OR dt.template_name LIKE '%Summon%')");
+        $stmt->execute([$documentId, $caseId]);
+        return $stmt->rowCount() === 1;
+    }
+
     public function getGeneratedById(int $documentId): array|false
     {
         $stmt = $this->conn->prepare(

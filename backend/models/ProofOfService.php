@@ -132,4 +132,18 @@ class ProofOfService
         $stmt->execute();
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
+
+    public function getDefaultLuponClerk(): array|false
+    {
+        $stmt = $this->conn->prepare("SELECT u.user_id, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS full_name FROM users u INNER JOIN roles r ON r.role_id = u.role_id WHERE u.status = 'Active' AND r.role_name = 'Lupon Clerk' ORDER BY u.user_id ASC LIMIT 1");
+        $stmt->execute();
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
+    public function getSummonsNotices(int $caseId): array
+    {
+        $stmt = $this->conn->prepare("SELECT gd.document_id, gd.case_id, gd.file_path, gd.generated_at, gd.service_status, dt.template_name, COUNT(p.proof_id) AS attempt_count, MAX(p.served_date) AS last_attempt_at FROM generated_documents gd INNER JOIN document_templates dt ON dt.template_id = gd.template_id LEFT JOIN proof_of_service p ON p.document_id = gd.document_id WHERE gd.case_id = ? AND (dt.template_name = 'KP Form 9' OR dt.template_name LIKE '%Summon%') GROUP BY gd.document_id, gd.case_id, gd.file_path, gd.generated_at, gd.service_status, dt.template_name ORDER BY gd.generated_at DESC, gd.document_id DESC");
+        $stmt->execute([$caseId]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 }

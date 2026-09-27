@@ -12,9 +12,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $mode = $_GET['mode'] ?? '';
     if ($mode === 'servers') {
         $result = $controller->summonsServers();
+    } elseif ($mode === 'default-clerk') {
+        $result = $controller->defaultLuponClerk();
     } elseif ($caseId) {
         if ($mode === 'documents') {
             $result = $controller->documents((int) $caseId);
+        } elseif ($mode === 'notices') {
+            $result = $controller->summonsNotices((int) $caseId);
         } elseif ($mode === 'summary') {
             $result = $controller->caseSummary((int) $caseId);
         } else {

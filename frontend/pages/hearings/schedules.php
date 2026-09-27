@@ -185,6 +185,20 @@ include '../../layouts/header.php';
 </div>
 
 <?php if ($canManageHearings): ?>
+<div id="nonappearanceModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header"><h2>Record Unjustified Non-Appearance</h2><button type="button" class="close-btn" onclick="closeNonappearanceModal()">&times;</button></div>
+        <form id="nonappearanceForm">
+            <input type="hidden" name="hearing_id" id="nonappearanceHearingId">
+            <div class="form-group"><label for="nonappearanceResident">Absent party <span class="required-mark" aria-hidden="true">*</span></label><select id="nonappearanceResident" name="resident_id" required></select></div>
+            <div class="form-group"><label for="nonappearanceRemarks">Remarks <span class="required-mark" aria-hidden="true">*</span></label><textarea id="nonappearanceRemarks" name="remarks" rows="3" maxlength="2000" required placeholder="State the facts supporting the finding."></textarea></div>
+            <button type="submit" class="btn-create">Record Non-Appearance</button>
+        </form>
+    </div>
+</div>
+<?php endif; ?>
+
+<?php if ($canManageHearings): ?>
 <div id="editHearingModal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
