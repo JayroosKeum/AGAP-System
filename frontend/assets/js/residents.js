@@ -515,6 +515,79 @@ function initResidentLeafletMap(mode) {
     }, 150);
 }
 
+/**
+ * Formats a clean, standard Philippine address string for Barangay Tumana:
+ * [House No.] [Street], [Subdivision], [Purok/Zone], Barangay Tumana, Marikina City
+ */
+function formatFullResidentAddress(components) {
+    const parts = [];
+
+    // 1. House Number + Street combination
+    const houseNo = (components.houseNumber || '').trim();
+    let road = (components.street || '').trim();
+
+    // Clean up generic city/barangay names if returned as road
+    if (road.toLowerCase() === 'tumana' || road.toLowerCase() === 'marikina') {
+        road = '';
+    }
+
+    if (houseNo && road) {
+        parts.push(`${houseNo} ${road}`);
+    } else if (road) {
+        parts.push(road);
+    } else if (houseNo) {
+        parts.push(houseNo);
+    }
+
+    // 2. Subdivision / Estate (e.g. Twinville Subdivision, Woodridge Estate)
+    const sub = (components.subdivision || '').trim();
+    if (sub && sub.toLowerCase() !== road.toLowerCase() && sub.toLowerCase() !== 'tumana') {
+        const existingLower = parts.join(' ').toLowerCase();
+        if (!existingLower.includes(sub.toLowerCase())) {
+            let formattedSub = sub;
+            if (!/subdivision|village|estate|compound|purok/i.test(formattedSub)) {
+                formattedSub += ' Subdivision';
+            }
+            parts.push(formattedSub);
+        }
+    }
+
+    // 3. Subdivision / Purok / Zone / Compound
+    const purok = (components.purok || '').trim();
+    if (purok) {
+        let formattedPurok = purok;
+        if (/^\d+$/.test(formattedPurok)) {
+            formattedPurok = `Purok ${formattedPurok}`;
+        } else if (/^purok\s*\d+$/i.test(formattedPurok)) {
+            formattedPurok = formattedPurok.replace(/^purok\s*(\d+)$/i, 'Purok $1');
+        } else if (formattedPurok.toLowerCase().includes('petra') && !formattedPurok.toLowerCase().includes('compound')) {
+            formattedPurok = 'Doña Petra Compound';
+        } else if (['palay', 'mais', 'singkamas'].includes(formattedPurok.toLowerCase())) {
+            formattedPurok = `${formattedPurok} Area`;
+        } else if (formattedPurok.toLowerCase().includes('bagong purok') && !formattedPurok.toLowerCase().includes('sitio')) {
+            formattedPurok = 'Sitio Bagong Purok';
+        }
+
+        const existingLower = parts.join(' ').toLowerCase();
+        if (!existingLower.includes(formattedPurok.toLowerCase())) {
+            parts.push(formattedPurok);
+        }
+    }
+
+    // If neither street nor house nor purok was available, use fallback name or generic landmark
+    if (parts.length === 0 && components.fallbackName) {
+        parts.push(components.fallbackName.trim());
+    }
+
+    // 4. Barangay (always Barangay Tumana)
+    parts.push('Barangay Tumana');
+
+    // 5. City (always Marikina City)
+    parts.push('Marikina City');
+
+    return parts.filter(Boolean).join(', ');
+}
+
 function handlePinLocation(mode, lat, lng) {
     const statusBadge = document.getElementById(mode === 'add' ? 'addMapPinStatus' : 'editMapPinStatus');
 
@@ -546,58 +619,66 @@ function handlePinLocation(mode, lat, lng) {
         statusBadge.textContent = 'Obtaining address in Tumana...';
     }
 
-    // Reverse geocode using Nominatim API
+    // Inspect if textarea currently has an existing house number typed by staff
+    const addressTextarea = document.getElementById(mode === 'add' ? 'addAddress' : 'editAddress');
+    let existingHouseNo = '';
+    if (addressTextarea && addressTextarea.value.trim()) {
+        const m = addressTextarea.value.trim().match(/^((?:#|no\.?|house|lot|blk|block|unit)?\s*\d+[-A-Za-z0-9\/]*)\b/i);
+        if (m) {
+            existingHouseNo = m[1].trim();
+        }
+    }
+
+    // Reverse geocode using OpenStreetMap Nominatim API
     fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&zoom=18&addressdetails=1`, {
         headers: { 'Accept': 'application/json' }
     })
     .then(res => res.json())
     .then(result => {
         const addr = result.address || {};
-        const houseNo = addr.house_number || '';
-        const road = addr.road || addr.pedestrian || addr.neighbourhood || addr.suburb || '';
+        const houseNo = addr.house_number || addr.building || existingHouseNo || '';
+        const road = addr.road || addr.pedestrian || addr.residential || addr.street || addr.neighbourhood || addr.suburb || '';
         const quarter = addr.quarter || addr.suburb || '';
+        const subdivision = addr.subdivision || (quarter !== 'Tumana' && quarter !== road ? quarter : '') || '';
 
-        let streetAddress = [houseNo, road].filter(Boolean).join(' ');
-        if (!streetAddress && road) streetAddress = road;
-        if (!streetAddress && quarter) streetAddress = quarter;
-        if (!streetAddress) streetAddress = result.name || 'Barangay Tumana';
+        // 1. Detect and set Purok dropdown based on road/quarter/coordinates
+        const matchedPurok = autoMatchPurok(mode, road, quarter, road, lat, lng);
 
-        let fullAddress = streetAddress;
-        if (quarter && !fullAddress.toLowerCase().includes(quarter.toLowerCase())) {
-            fullAddress += `, ${quarter}`;
-        }
-        if (!fullAddress.toLowerCase().includes('tumana')) {
-            fullAddress += ', Barangay Tumana';
-        }
-        if (!fullAddress.toLowerCase().includes('marikina')) {
-            fullAddress += ', Marikina City';
-        }
+        // 2. Assemble main address: [House No.] [Street], [Subdivision], [Purok/Zone], Barangay Tumana, Marikina City
+        const fullAddress = formatFullResidentAddress({
+            houseNumber: houseNo,
+            street: road,
+            subdivision: subdivision,
+            purok: matchedPurok,
+            fallbackName: result.name
+        });
 
-        const addressTextarea = document.getElementById(mode === 'add' ? 'addAddress' : 'editAddress');
         if (addressTextarea) {
             addressTextarea.value = fullAddress;
             addressTextarea.setCustomValidity('');
         }
 
-        // Automatically match and select Purok dropdown based on address & coordinates
-        const matchedPurok = autoMatchPurok(mode, fullAddress, quarter, road, lat, lng);
-
         if (statusBadge) {
             statusBadge.className = 'map-pin-status-badge success';
             statusBadge.textContent = matchedPurok
-                ? `✓ Obtained: ${streetAddress} · Purok: ${matchedPurok}`
-                : `✓ Obtained: ${streetAddress}`;
+                ? `✓ Pinned: ${road || matchedPurok} · Purok: ${matchedPurok}`
+                : `✓ Obtained: ${road || 'Barangay Tumana'}`;
         }
     })
     .catch(() => {
-        const addressTextarea = document.getElementById(mode === 'add' ? 'addAddress' : 'editAddress');
+        // Even on network fallback, spatial coordinate matching determines the Purok
+        const matchedPurok = autoMatchPurok(mode, '', '', '', lat, lng);
+        const fallbackAddress = formatFullResidentAddress({
+            houseNumber: existingHouseNo,
+            street: '',
+            purok: matchedPurok,
+            fallbackName: `Coordinates (${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)})`
+        });
+
         if (addressTextarea && !addressTextarea.value.trim()) {
-            addressTextarea.value = `Barangay Tumana, Marikina City (Coordinates: ${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)})`;
+            addressTextarea.value = fallbackAddress;
             addressTextarea.setCustomValidity('');
         }
-
-        // Even on reverse-geocode network fallback, spatial coordinate matching determines the Purok
-        const matchedPurok = autoMatchPurok(mode, '', '', '', lat, lng);
 
         if (statusBadge) {
             statusBadge.className = 'map-pin-status-badge success';

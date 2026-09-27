@@ -300,7 +300,13 @@ write; an edit retains the pin unless it is moved or explicitly cleared.
 - **Interactive Leaflet Map Pin with Address Reverse Geocoding**:
   - Add and Edit modals provide a collapsible "Pin on Map to Obtain Address" section powered by Leaflet 1.9.4 and OpenStreetMap.
   - **Barangay Tumana Boundary Enforcement**: The map features an official Tumana polygon overlay. Any clicks or pins placed outside the Barangay Tumana boundary are rejected with an explicit warning badge (`"Point is outside Barangay Tumana boundary"`), preventing invalid out-of-jurisdiction addresses.
-  - **Automatic Reverse Geocoding**: When a user clicks within Barangay Tumana, a draggable marker is placed and OpenStreetMap Nominatim reverse geocoding is invoked to resolve the road, house/building number, and quarter into an address string (`"..., Barangay Tumana, Marikina City"`), automatically populating the mandatory address textarea.
+  - **Structured Main Address Assembly**: When a user clicks within Barangay Tumana, a draggable marker is placed and OpenStreetMap Nominatim reverse geocoding is invoked to resolve all standard Philippine address components:
+    - *House Number*: Extracted from OpenStreetMap node/building data or preserved from existing user input.
+    - *Street*: Pinned thoroughfare or road name (e.g. `Moscow Street`, `Palay Street`, `Farmers I Street`).
+    - *Subdivision / Purok*: Auto-selected Purok, compound, or subdivision (e.g. `Purok 6`, `Doña Petra Compound`, `Twinville Subdivision`).
+    - *Barangay*: `Barangay Tumana`.
+    - *City*: `Marikina City`.
+    - The components are cleanly assembled into a standard address format: `[House No.] [Street], [Subdivision/Purok], Barangay Tumana, Marikina City` and auto-populated into the mandatory `address` textarea.
   - **Automatic Purok Detection & Selection**: When pinning on the map, the system automatically detects and selects the corresponding Purok in the dropdown using a two-tier strategy:
     1. *Geocoded Road & Area Keywords*: Matches known streets, zones, and compounds (e.g. "Moscow" &rarr; `Purok 6`, "Bagong Farmers" &rarr; `Bagong Farmers`, "Sinag" &rarr; `Bukang Liwayway`, "Palay" &rarr; `Palay`, "Mais" &rarr; `Mais`, "Singkamas" &rarr; `Singkamas`, "Angel Santos" &rarr; `Purok 1`, "Doña Petra" / Acropolis &rarr; `Doña Petra`, "Libis" &rarr; `Libis Tumana`, "Banner" &rarr; `Bagong Purok`).
     2. *Spatial Nearest-Centroid Matching*: Calculates the Euclidean distance from the pinned `[lat, lng]` to high-precision reference points across Barangay Tumana, ensuring 100% of pinned locations inside Tumana automatically populate the Purok dropdown. An animated highlight pulse (`.auto-purok-highlight`) and visual feedback label confirm the auto-selection while still allowing manual user override.

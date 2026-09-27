@@ -421,10 +421,10 @@ include '../../layouts/header.php';
                     <textarea
                         name="address"
                         id="addAddress"
-                        placeholder="House no., Street name, Subdivision, Landmark in Barangay Tumana..."
+                        placeholder="e.g. #24 Moscow Street, Purok 6, Barangay Tumana, Marikina City"
                         rows="3"
                         required></textarea>
-                    <span class="form-hint-text">Complete street address is required. Similar names are permitted with different addresses; duplicate profiles sharing similar names and address are not allowed.</span>
+                    <span class="form-hint-text">Format: [House No.] [Street], [Subdivision/Purok], Barangay Tumana, Marikina City. Pinning the map will automatically assemble and fill these components.</span>
                 </div>
 
             </div>
@@ -676,10 +676,10 @@ include '../../layouts/header.php';
                     <textarea
                         name="address"
                         id="editAddress"
-                        placeholder="House no., Street name, Subdivision, Landmark in Barangay Tumana..."
+                        placeholder="e.g. #24 Moscow Street, Purok 6, Barangay Tumana, Marikina City"
                         rows="3"
                         required></textarea>
-                    <span class="form-hint-text">Complete street address is required. Similar names are permitted with different addresses; duplicate profiles sharing similar names and address are not allowed.</span>
+                    <span class="form-hint-text">Format: [House No.] [Street], [Subdivision/Purok], Barangay Tumana, Marikina City. Pinning the map will automatically assemble and fill these components.</span>
                 </div>
 
             </div>
