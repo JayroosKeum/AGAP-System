@@ -378,6 +378,7 @@ include '../../layouts/header.php';
                             <option value="Singkamas">Singkamas Area</option>
                         </optgroup>
                     </select>
+                    <span class="form-hint-text" id="addPurokHint">Automatically detected when pinning location on the map, or select manually.</span>
                 </div>
 
                 <div class="form-group">
@@ -630,6 +631,7 @@ include '../../layouts/header.php';
                             <option value="Singkamas">Singkamas Area</option>
                         </optgroup>
                     </select>
+                    <span class="form-hint-text" id="editPurokHint">Automatically detected when pinning location on the map, or select manually.</span>
                 </div>
 
                 <div class="form-group">

@@ -35,6 +35,157 @@ const tumanaBoundary = [
     [14.6533329,121.0942299],[14.6530062,121.0934184]
 ];
 
+// High-precision geographic reference centroids for Tumana Puroks and Zones
+const tumanaPurokReferencePoints = [
+    // Palay Area
+    { purok: 'Palay', lat: 14.65368, lng: 121.09599, name: 'Palay Street' },
+    { purok: 'Palay', lat: 14.65364, lng: 121.09657, name: 'Talong Street' },
+
+    // Mais Area
+    { purok: 'Mais', lat: 14.65700, lng: 121.09807, name: 'Mais Street' },
+    { purok: 'Mais', lat: 14.65685, lng: 121.09835, name: 'Malunggay Street' },
+    { purok: 'Mais', lat: 14.65717, lng: 121.09816, name: 'Pipino Street' },
+    { purok: 'Mais', lat: 14.65643, lng: 121.09828, name: 'Monggo Street' },
+
+    // Singkamas Area
+    { purok: 'Singkamas', lat: 14.65618, lng: 121.09704, name: 'Singkamas Street' },
+    { purok: 'Singkamas', lat: 14.65647, lng: 121.09686, name: 'Road Dike North' },
+
+    // Bagong Farmers
+    { purok: 'Bagong Farmers', lat: 14.65571, lng: 121.09832, name: 'Bagong Farmers Avenue I' },
+    { purok: 'Bagong Farmers', lat: 14.65597, lng: 121.09785, name: 'Farmers I Street' },
+    { purok: 'Bagong Farmers', lat: 14.65452, lng: 121.09934, name: 'Farmers II Street' },
+    { purok: 'Bagong Farmers', lat: 14.65500, lng: 121.09816, name: 'Damayan Compound' },
+    { purok: 'Bagong Farmers', lat: 14.65450, lng: 121.09759, name: 'Mustasa Street' },
+    { purok: 'Bagong Farmers', lat: 14.65575, lng: 121.09948, name: 'Pechay Street' },
+
+    // Bukang Liwayway
+    { purok: 'Bukang Liwayway', lat: 14.65786, lng: 121.10182, name: 'Sinag Street' },
+    { purok: 'Bukang Liwayway', lat: 14.65802, lng: 121.10176, name: 'Sinagtala Street' },
+    { purok: 'Bukang Liwayway', lat: 14.65774, lng: 121.10093, name: 'Kislap Street' },
+    { purok: 'Bukang Liwayway', lat: 14.65756, lng: 121.10205, name: 'Kutitap Street' },
+    { purok: 'Bukang Liwayway', lat: 14.65756, lng: 121.10135, name: 'Ilaw Street' },
+
+    // Doña Petra Compound & North Tumana
+    { purok: 'Doña Petra', lat: 14.65894, lng: 121.09994, name: 'Road 2 Iwahig Street' },
+    { purok: 'Doña Petra', lat: 14.66044, lng: 121.10039, name: 'Road 1 Extension' },
+    { purok: 'Doña Petra', lat: 14.66165, lng: 121.09945, name: 'Road 3' },
+    { purok: 'Doña Petra', lat: 14.66273, lng: 121.09325, name: 'Acropolis Street' },
+    { purok: 'Doña Petra', lat: 14.66349, lng: 121.09305, name: 'Apollo Street' },
+    { purok: 'Doña Petra', lat: 14.66223, lng: 121.09446, name: 'Athena Street' },
+    { purok: 'Doña Petra', lat: 14.66317, lng: 121.09589, name: 'Hermes Street' },
+    { purok: 'Doña Petra', lat: 14.66297, lng: 121.09207, name: 'Zeus Street' },
+
+    // Libis Tumana
+    { purok: 'Libis Tumana', lat: 14.65109, lng: 121.10144, name: 'C.I.S. Tumana Footbridge' },
+    { purok: 'Libis Tumana', lat: 14.65322, lng: 121.09914, name: 'Ampalaya Street' },
+    { purok: 'Libis Tumana', lat: 14.65263, lng: 121.10045, name: 'Kangkong Street' },
+    { purok: 'Libis Tumana', lat: 14.65202, lng: 121.09960, name: 'Labanos Street' },
+    { purok: 'Libis Tumana', lat: 14.65356, lng: 121.09955, name: 'Okra Street' },
+    { purok: 'Libis Tumana', lat: 14.65438, lng: 121.09972, name: 'Patola Street' },
+    { purok: 'Libis Tumana', lat: 14.65330, lng: 121.09945, name: 'Sitaw Street' },
+
+    // Sitio Bagong Purok
+    { purok: 'Bagong Purok', lat: 14.65581, lng: 121.09478, name: 'Banner Street' },
+    { purok: 'Bagong Purok', lat: 14.65571, lng: 121.09488, name: 'Crescent Street' },
+    { purok: 'Bagong Purok', lat: 14.65442, lng: 121.09462, name: 'Silverdrop Street' },
+    { purok: 'Bagong Purok', lat: 14.65457, lng: 121.09332, name: 'Checkerspot Street' },
+    { purok: 'Bagong Purok', lat: 14.65562, lng: 121.09362, name: 'Monark Street' },
+
+    // Purok 6 (Moscow & Western Area)
+    { purok: 'Purok 6', lat: 14.65851, lng: 121.09135, name: 'Moscow Street' },
+    { purok: 'Purok 6', lat: 14.65682, lng: 121.09312, name: 'Moscow Villas Street' },
+    { purok: 'Purok 6', lat: 14.65800, lng: 121.09193, name: 'Brazil Street' },
+    { purok: 'Purok 6', lat: 14.65862, lng: 121.09152, name: 'Katipunan Street Extension' },
+    { purok: 'Purok 6', lat: 14.65700, lng: 121.09286, name: 'Monaco Street' },
+    { purok: 'Purok 6', lat: 14.65758, lng: 121.09249, name: 'Nova Scotia Street' },
+
+    // Purok 7 (Northwestern Countries Area)
+    { purok: 'Purok 7', lat: 14.65617, lng: 121.08885, name: 'Finland Street' },
+    { purok: 'Purok 7', lat: 14.65784, lng: 121.08958, name: 'Denmark Street' },
+    { purok: 'Purok 7', lat: 14.65506, lng: 121.08849, name: 'Sweden Street' },
+    { purok: 'Purok 7', lat: 14.65445, lng: 121.08703, name: 'Norway Street' },
+    { purok: 'Purok 7', lat: 14.65554, lng: 121.08583, name: 'Chicago Street' },
+
+    // Purok 1 & Purok 2 (East / Angel Santos / Concepcion Border)
+    { purok: 'Purok 1', lat: 14.65439, lng: 121.10252, name: 'Angel Santos Street' },
+    { purok: 'Purok 1', lat: 14.65516, lng: 121.10220, name: 'Vergara Street' },
+    { purok: 'Purok 1', lat: 14.65662, lng: 121.10249, name: 'Roga Compound' },
+    { purok: 'Purok 1', lat: 14.65687, lng: 121.10215, name: 'Kalamansi Street' },
+    { purok: 'Purok 2', lat: 14.65827, lng: 121.10090, name: 'Piling Santos Street' },
+    { purok: 'Purok 2', lat: 14.66020, lng: 121.10176, name: 'Del Rosario Street' },
+    { purok: 'Purok 2', lat: 14.65902, lng: 121.10163, name: 'Del Rosario Extension' },
+
+    // Purok 3 & 4 & 5 & 8
+    { purok: 'Purok 3', lat: 14.66175, lng: 121.09998, name: 'Cherry Road' },
+    { purok: 'Purok 4', lat: 14.66242, lng: 121.10029, name: 'Daisy' },
+    { purok: 'Purok 5', lat: 14.66390, lng: 121.10124, name: 'Camia Street' },
+    { purok: 'Purok 8', lat: 14.65391, lng: 121.09098, name: 'Oakleaf Street' },
+    { purok: 'Purok 8', lat: 14.65427, lng: 121.09019, name: 'Loyola Grand Villas Border' }
+];
+
+function detectPurokFromLocation(lat, lng, fullAddress, quarter, road) {
+    const combined = `${fullAddress || ''} ${quarter || ''} ${road || ''}`.toLowerCase();
+
+    // 1. Text-based detection from reverse-geocoded road, landmark, or quarter
+    for (let i = 1; i <= 8; i++) {
+        if (combined.includes(`purok ${i}`) || combined.includes(`purok-${i}`)) {
+            return `Purok ${i}`;
+        }
+    }
+
+    const keywordMap = [
+        { purok: 'Palay', keywords: ['palay', 'talong'] },
+        { purok: 'Mais', keywords: ['mais', 'malunggay', 'pipino', 'monggo'] },
+        { purok: 'Singkamas', keywords: ['singkamas'] },
+        { purok: 'Bagong Farmers', keywords: ['farmers', 'bagong farmers', 'mustasa', 'pechay', 'damayan'] },
+        { purok: 'Bukang Liwayway', keywords: ['bukang liwayway', 'sinag', 'sinagtala', 'kislap', 'kutitap', 'ilaw', 'sunbeam'] },
+        { purok: 'Doña Petra', keywords: ['doña petra', 'dona petra', 'iwahig', 'acropolis', 'achilles', 'athena', 'apollo', 'hermes', 'zeus', 'odysseus', 'penelope', 'poseidon', 'titan', 'troy'] },
+        { purok: 'Libis Tumana', keywords: ['libis', 'ampalaya', 'kangkong', 'sitaw', 'labanos', 'okra', 'patola'] },
+        { purok: 'Bagong Purok', keywords: ['bagong purok', 'banner', 'crescent', 'silverdrop', 'checkerspot', 'monark', 'swallowtail'] },
+        { purok: 'Purok 6', keywords: ['moscow', 'monaco', 'nova scotia', 'brazil', 'katipunan extension'] },
+        { purok: 'Purok 7', keywords: ['finland', 'denmark', 'sweden', 'norway', 'chicago'] },
+        { purok: 'Purok 1', keywords: ['angel santos', 'vergara', 'roga', 'kalamansi'] },
+        { purok: 'Purok 2', keywords: ['piling santos', 'del rosario'] },
+        { purok: 'Purok 3', keywords: ['cherry road'] },
+        { purok: 'Purok 4', keywords: ['daisy'] },
+        { purok: 'Purok 5', keywords: ['camia', 'jasmin', 'mil flores'] },
+        { purok: 'Purok 8', keywords: ['oakleaf', 'jewelmark', 'firetip', 'olivewing'] }
+    ];
+
+    for (const item of keywordMap) {
+        for (const kw of item.keywords) {
+            if (combined.includes(kw)) {
+                return item.purok;
+            }
+        }
+    }
+
+    // 2. Spatial nearest centroid matching (100% guarantee for any point in Tumana)
+    const latNum = parseFloat(lat);
+    const lngNum = parseFloat(lng);
+    if (!isNaN(latNum) && !isNaN(lngNum)) {
+        let nearestPurok = null;
+        let minDistanceSq = Infinity;
+
+        for (const ref of tumanaPurokReferencePoints) {
+            const dLat = ref.lat - latNum;
+            const dLng = ref.lng - lngNum;
+            const distSq = dLat * dLat + dLng * dLng;
+            if (distSq < minDistanceSq) {
+                minDistanceSq = distSq;
+                nearestPurok = ref.purok;
+            }
+        }
+
+        if (nearestPurok) {
+            return nearestPurok;
+        }
+    }
+
+    return null;
+}
+
 // Leaflet map controllers for Add and Edit modals
 const residentMaps = {
     add: { map: null, marker: null, isOpen: false },
@@ -428,12 +579,14 @@ function handlePinLocation(mode, lat, lng) {
             addressTextarea.setCustomValidity('');
         }
 
-        // Try to auto-match and select Purok dropdown
-        autoMatchPurok(mode, fullAddress, quarter, road);
+        // Automatically match and select Purok dropdown based on address & coordinates
+        const matchedPurok = autoMatchPurok(mode, fullAddress, quarter, road, lat, lng);
 
         if (statusBadge) {
             statusBadge.className = 'map-pin-status-badge success';
-            statusBadge.textContent = `✓ Obtained: ${streetAddress}`;
+            statusBadge.textContent = matchedPurok
+                ? `✓ Obtained: ${streetAddress} · Purok: ${matchedPurok}`
+                : `✓ Obtained: ${streetAddress}`;
         }
     })
     .catch(() => {
@@ -442,43 +595,57 @@ function handlePinLocation(mode, lat, lng) {
             addressTextarea.value = `Barangay Tumana, Marikina City (Coordinates: ${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)})`;
             addressTextarea.setCustomValidity('');
         }
+
+        // Even on reverse-geocode network fallback, spatial coordinate matching determines the Purok
+        const matchedPurok = autoMatchPurok(mode, '', '', '', lat, lng);
+
         if (statusBadge) {
             statusBadge.className = 'map-pin-status-badge success';
-            statusBadge.textContent = `✓ Pin located (${Number(lat).toFixed(4)}, ${Number(lng).toFixed(4)})`;
+            statusBadge.textContent = matchedPurok
+                ? `✓ Pin located (${Number(lat).toFixed(4)}, ${Number(lng).toFixed(4)}) · Purok: ${matchedPurok}`
+                : `✓ Pin located (${Number(lat).toFixed(4)}, ${Number(lng).toFixed(4)})`;
         }
     });
 }
 
-function autoMatchPurok(mode, fullAddress, quarter, road) {
+function autoMatchPurok(mode, fullAddress, quarter, road, lat, lng) {
     const purokSelect = document.getElementById(mode === 'add' ? 'addPurok' : 'editPurok');
-    if (!purokSelect) return;
-    const combined = `${fullAddress} ${quarter || ''} ${road || ''}`.toLowerCase();
+    if (!purokSelect) return null;
 
-    // Check numbered puroks (Purok 1 through 8)
-    for (let i = 1; i <= 8; i++) {
-        if (combined.includes(`purok ${i}`) || combined.includes(`purok-${i}`)) {
-            purokSelect.value = `Purok ${i}`;
-            return;
+    const detectedPurok = detectPurokFromLocation(lat, lng, fullAddress, quarter, road);
+    if (!detectedPurok) return null;
+
+    // Set value directly
+    purokSelect.value = detectedPurok;
+
+    // If direct value didn't match an option, test case-insensitively
+    if (!purokSelect.value) {
+        for (const opt of purokSelect.options) {
+            if (opt.value.toLowerCase() === detectedPurok.toLowerCase() || opt.text.toLowerCase() === detectedPurok.toLowerCase()) {
+                opt.selected = true;
+                break;
+            }
         }
     }
 
-    // Check recognized zones and compounds
-    const namedAreas = [
-        'Doña Petra',
-        'Bagong Farmers',
-        'Bukang Liwayway',
-        'Libis Tumana',
-        'Bagong Purok',
-        'Palay',
-        'Mais',
-        'Singkamas'
-    ];
-    for (const area of namedAreas) {
-        if (combined.includes(area.toLowerCase())) {
-            purokSelect.value = area;
-            return;
-        }
+    // Add highlight visual feedback class so the user sees the automatic selection
+    purokSelect.classList.remove('auto-purok-highlight');
+    void purokSelect.offsetWidth; // trigger reflow
+    purokSelect.classList.add('auto-purok-highlight');
+    setTimeout(() => {
+        purokSelect.classList.remove('auto-purok-highlight');
+    }, 2000);
+
+    // Dispatch change event to update any dependent logic
+    purokSelect.dispatchEvent(new Event('change', { bubbles: true }));
+
+    // Update hint text under purok field
+    const hintEl = document.getElementById(mode === 'add' ? 'addPurokHint' : 'editPurokHint');
+    if (hintEl) {
+        hintEl.innerHTML = `<span style="color: #059669; font-weight: 600;">✓ Auto-detected from map pin: ${escapeResidentHtml(purokSelect.value || detectedPurok)}</span>`;
     }
+
+    return purokSelect.value || detectedPurok;
 }
 
 // -------------------------------------------------------------
@@ -1122,6 +1289,8 @@ function closeAddModal() {
     const btn = document.getElementById('toggleAddMapBtn');
     if (btn) btn.classList.remove('is-active');
     residentMaps.add.isOpen = false;
+    const hintEl = document.getElementById('addPurokHint');
+    if (hintEl) hintEl.textContent = 'Automatically detected when pinning location on the map, or select manually.';
 }
 
 function viewResident(id) {
@@ -1319,6 +1488,8 @@ function closeEditModal() {
     const btn = document.getElementById('toggleEditMapBtn');
     if (btn) btn.classList.remove('is-active');
     residentMaps.edit.isOpen = false;
+    const hintEl = document.getElementById('editPurokHint');
+    if (hintEl) hintEl.textContent = 'Automatically detected when pinning location on the map, or select manually.';
 }
 
 function deleteResident(id) {
