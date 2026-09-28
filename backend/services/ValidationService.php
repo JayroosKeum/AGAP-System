@@ -110,7 +110,7 @@ class ValidationService
         if ($address === '') return ['success' => false, 'message' => 'Complete street address is required.'];
         if (!self::address($address)) return ['success' => false, 'message' => 'Please remove unsupported control characters from the address.'];
         if (mb_strlen($purok) > 100 || !self::address($purok)) return ['success' => false, 'message' => 'Please enter a valid purok (up to 100 characters).'];
-        if (!in_array($tenant, ['0', '1'], true)) return ['success' => false, 'message' => 'Please select a valid tenant status.'];
+        if (!in_array($tenant, ['0', '1', '2'], true)) return ['success' => false, 'message' => 'Please select a valid residency status.'];
 
         return ['success' => true, 'data' => [
             'first_name' => $first,

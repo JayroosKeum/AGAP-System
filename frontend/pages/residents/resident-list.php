@@ -109,6 +109,21 @@ include '../../layouts/header.php';
                 </div>
             </div>
 
+            <div class="resident-kpi-card" data-resident-filter="non-resident" id="kpiNonResidentCard" title="Click to filter non-residents">
+                <div class="resident-kpi-icon icon-non-resident">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="8.5" cy="7" r="4"></circle>
+                        <line x1="18" y1="8" x2="23" y2="13"></line>
+                        <line x1="23" y1="8" x2="18" y2="13"></line>
+                    </svg>
+                </div>
+                <div class="resident-kpi-content">
+                    <span class="resident-kpi-value" id="kpiNonResidentCount">0</span>
+                    <span class="resident-kpi-label">Non-Residents</span>
+                </div>
+            </div>
+
             <div class="resident-kpi-card" data-resident-filter="purok" id="kpiPurokCard" title="Number of distinct puroks registered">
                 <div class="resident-kpi-icon icon-purok">
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -138,6 +153,7 @@ include '../../layouts/header.php';
                 <div class="resident-filter-group">
                     <select id="filterPurok" class="resident-select-filter" aria-label="Filter by Purok in Tumana">
                         <option value="">All Puroks & Areas</option>
+                        <option value="Non-Resident">Non-Resident / Outside Tumana</option>
                         <optgroup label="Numbered Puroks">
                             <option value="Purok 1">Purok 1</option>
                             <option value="Purok 2">Purok 2</option>
@@ -164,6 +180,7 @@ include '../../layouts/header.php';
                         <option value="">All Residency Types</option>
                         <option value="0">Permanent Resident</option>
                         <option value="1">Tenant</option>
+                        <option value="2">Non-Resident</option>
                     </select>
 
                     <select id="filterSort" class="resident-select-filter" aria-label="Sort Profiles">
@@ -357,6 +374,7 @@ include '../../layouts/header.php';
                     <label for="addPurok">Purok / Zone (Tumana)</label>
                     <select name="purok" id="addPurok">
                         <option value="">Select Purok / Area</option>
+                        <option value="Non-Resident">Non-Resident / Outside Tumana</option>
                         <optgroup label="Numbered Puroks">
                             <option value="Purok 1">Purok 1</option>
                             <option value="Purok 2">Purok 2</option>
@@ -382,10 +400,11 @@ include '../../layouts/header.php';
                 </div>
 
                 <div class="form-group">
-                    <label>Residency Status</label>
-                    <select name="is_tenant">
+                    <label for="addTenant">Residency Status</label>
+                    <select name="is_tenant" id="addTenant" onchange="handleResidencyStatusChange('add', this.value)">
                         <option value="0">Permanent Resident</option>
                         <option value="1">Tenant / Renter</option>
+                        <option value="2">Non-Resident</option>
                     </select>
                 </div>
 
@@ -610,6 +629,7 @@ include '../../layouts/header.php';
                     <label for="editPurok">Purok / Zone (Tumana)</label>
                     <select name="purok" id="editPurok">
                         <option value="">Select Purok / Area</option>
+                        <option value="Non-Resident">Non-Resident / Outside Tumana</option>
                         <optgroup label="Numbered Puroks">
                             <option value="Purok 1">Purok 1</option>
                             <option value="Purok 2">Purok 2</option>
@@ -635,12 +655,14 @@ include '../../layouts/header.php';
                 </div>
 
                 <div class="form-group">
-                    <label>Residency Status</label>
+                    <label for="editTenant">Residency Status</label>
                     <select
                         name="is_tenant"
-                        id="editTenant">
+                        id="editTenant"
+                        onchange="handleResidencyStatusChange('edit', this.value)">
                         <option value="0">Permanent Resident</option>
                         <option value="1">Tenant / Renter</option>
+                        <option value="2">Non-Resident</option>
                     </select>
                 </div>
 

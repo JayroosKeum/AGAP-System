@@ -305,10 +305,40 @@ function setupModalBackdropCloses() {
     });
 }
 
+function handleResidencyStatusChange(mode, value) {
+    const val = String(value);
+    const purokEl = document.getElementById(mode === 'add' ? 'addPurok' : 'editPurok');
+    const purokHintEl = document.getElementById(mode === 'add' ? 'addPurokHint' : 'editPurokHint');
+    const addrEl = document.getElementById(mode === 'add' ? 'addAddress' : 'editAddress');
+
+    if (val === '2') { // Non-Resident
+        if (purokEl && (purokEl.value === '' || !purokEl.value)) {
+            purokEl.value = 'Non-Resident';
+        }
+        if (purokHintEl) {
+            purokHintEl.textContent = 'For non-residents outside Barangay Tumana, select "Non-Resident / Outside Tumana" or leave unselected.';
+        }
+        if (addrEl && (!addrEl.value || addrEl.placeholder.includes('Moscow'))) {
+            addrEl.placeholder = 'e.g. #15 J.P. Rizal St., Brgy. Concepcion Uno, Marikina City (or provincial address)';
+        }
+    } else { // Permanent Resident or Tenant
+        if (purokEl && purokEl.value === 'Non-Resident') {
+            purokEl.value = '';
+        }
+        if (purokHintEl) {
+            purokHintEl.textContent = 'Automatically detected when pinning location on the map, or select manually.';
+        }
+        if (addrEl && (!addrEl.value || addrEl.placeholder.includes('Rizal'))) {
+            addrEl.placeholder = 'e.g. #24 Moscow Street, Purok 6, Barangay Tumana, Marikina City';
+        }
+    }
+}
+
 function initKpiCardClickEvents() {
     const kpiAll = document.getElementById('kpiAllCard');
     const kpiPerm = document.getElementById('kpiPermCard');
     const kpiTenant = document.getElementById('kpiTenantCard');
+    const kpiNonResident = document.getElementById('kpiNonResidentCard');
 
     if (kpiAll) {
         kpiAll.addEventListener('click', () => {
@@ -339,21 +369,37 @@ function initKpiCardClickEvents() {
             applyFiltersAndRender();
         });
     }
+
+    if (kpiNonResident) {
+        kpiNonResident.addEventListener('click', () => {
+            const filterTenant = document.getElementById('filterTenant');
+            if (filterTenant) filterTenant.value = '2';
+            currentFilters.tenant = '2';
+            currentFilters.kpi = 'non-resident';
+            currentPage = 1;
+            updateKpiCardActiveState();
+            applyFiltersAndRender();
+        });
+    }
 }
 
 function updateKpiCardActiveState() {
     const kpiAll = document.getElementById('kpiAllCard');
     const kpiPerm = document.getElementById('kpiPermCard');
     const kpiTenant = document.getElementById('kpiTenantCard');
+    const kpiNonResident = document.getElementById('kpiNonResidentCard');
 
     if (kpiAll) kpiAll.classList.remove('active');
     if (kpiPerm) kpiPerm.classList.remove('active');
     if (kpiTenant) kpiTenant.classList.remove('active');
+    if (kpiNonResident) kpiNonResident.classList.remove('active');
 
     if (currentFilters.tenant === '0') {
         if (kpiPerm) kpiPerm.classList.add('active');
     } else if (currentFilters.tenant === '1') {
         if (kpiTenant) kpiTenant.classList.add('active');
+    } else if (currentFilters.tenant === '2') {
+        if (kpiNonResident) kpiNonResident.classList.add('active');
     } else {
         if (kpiAll) kpiAll.classList.add('active');
     }
@@ -417,7 +463,7 @@ function validateResidentFields(form) {
         }
         // Complete address is strictly required
         if (field.name === 'address' && field.value === '') {
-            field.setCustomValidity('Please provide a complete street address in Barangay Tumana.');
+            field.setCustomValidity('Please provide a complete street address.');
             isValid = false;
         }
         if (['address', 'purok'].includes(field.name) && /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/.test(field.value)) {
@@ -878,20 +924,25 @@ function updateKpiMetrics() {
     const totalCountEl = document.getElementById('kpiTotalCount');
     const permCountEl = document.getElementById('kpiPermanentCount');
     const tenantCountEl = document.getElementById('kpiTenantCount');
+    const nonResidentCountEl = document.getElementById('kpiNonResidentCount');
     const purokCountEl = document.getElementById('kpiPurokCount');
 
     const total = allResidents.length;
     let permanent = 0;
     let tenants = 0;
+    let nonResidents = 0;
     const purokSet = new Set();
 
     allResidents.forEach(r => {
-        if (Number(r.is_tenant) === 1) {
+        const val = Number(r.is_tenant);
+        if (val === 1) {
             tenants++;
+        } else if (val === 2) {
+            nonResidents++;
         } else {
             permanent++;
         }
-        if (r.purok && String(r.purok).trim() !== '') {
+        if (r.purok && String(r.purok).trim() !== '' && String(r.purok).trim().toLowerCase() !== 'non-resident') {
             purokSet.add(normalizePurok(r.purok));
         }
     });
@@ -899,6 +950,7 @@ function updateKpiMetrics() {
     if (totalCountEl) totalCountEl.textContent = total;
     if (permCountEl) permCountEl.textContent = permanent;
     if (tenantCountEl) tenantCountEl.textContent = tenants;
+    if (nonResidentCountEl) nonResidentCountEl.textContent = nonResidents;
     if (purokCountEl) purokCountEl.textContent = purokSet.size;
 }
 
@@ -1048,7 +1100,12 @@ function renderActiveFilterChips() {
 
     if (currentFilters.tenant !== '') {
         hasActiveFilter = true;
-        const tenantLabel = currentFilters.tenant === '1' ? 'Tenants Only' : 'Permanent Only';
+        let tenantLabel = 'Permanent Only';
+        if (currentFilters.tenant === '1') {
+            tenantLabel = 'Tenants Only';
+        } else if (currentFilters.tenant === '2') {
+            tenantLabel = 'Non-Residents Only';
+        }
         chipsHtml += `
             <span class="filter-chip">
                 ${tenantLabel}
@@ -1143,10 +1200,15 @@ function renderResidentTableRows(residents, totalFiltered) {
         const email = r.email ? `<span class="contact-email">${escapeResidentHtml(r.email)}</span>` : '';
 
         // Residency Status
-        const isTenant = Number(r.is_tenant) === 1;
-        const statusBadge = isTenant
-            ? `<span class="residency-badge badge-tenant"><span class="residency-dot"></span>Tenant</span>`
-            : `<span class="residency-badge badge-permanent"><span class="residency-dot"></span>Permanent</span>`;
+        const residencyVal = Number(r.is_tenant);
+        let statusBadge = '';
+        if (residencyVal === 1) {
+            statusBadge = `<span class="residency-badge badge-tenant"><span class="residency-dot"></span>Tenant</span>`;
+        } else if (residencyVal === 2) {
+            statusBadge = `<span class="residency-badge badge-non-resident"><span class="residency-dot"></span>Non-Resident</span>`;
+        } else {
+            statusBadge = `<span class="residency-badge badge-permanent"><span class="residency-dot"></span>Permanent</span>`;
+        }
 
         rowsHtml += `
             <tr>
@@ -1355,6 +1417,10 @@ function openAddModal() {
         alertBox.style.display = 'none';
         alertBox.textContent = '';
     }
+    const addTenantSelect = document.getElementById('addTenant');
+    if (addTenantSelect) {
+        handleResidencyStatusChange('add', addTenantSelect.value);
+    }
     modal.style.display = 'flex';
     const firstInput = modal.querySelector('input[name="first_name"]');
     if (firstInput) setTimeout(() => firstInput.focus(), 50);
@@ -1381,7 +1447,19 @@ function viewResident(id) {
             if (!data) return;
             const fullName = [data.first_name, data.middle_name, data.last_name].filter(Boolean).join(' ');
             const initials = getInitials(data.first_name, data.last_name);
-            const isTenant = Number(data.is_tenant) === 1;
+            const residencyVal = Number(data.is_tenant);
+            let residencyBadge = '';
+            let residencyLabel = '';
+            if (residencyVal === 1) {
+                residencyBadge = '<span class="residency-badge badge-tenant"><span class="residency-dot"></span>Tenant / Renter</span>';
+                residencyLabel = 'Tenant / Renter';
+            } else if (residencyVal === 2) {
+                residencyBadge = '<span class="residency-badge badge-non-resident"><span class="residency-dot"></span>Non-Resident</span>';
+                residencyLabel = 'Non-Resident';
+            } else {
+                residencyBadge = '<span class="residency-badge badge-permanent"><span class="residency-dot"></span>Permanent Resident</span>';
+                residencyLabel = 'Permanent Resident';
+            }
             const age = calculateAge(data.birth_date);
             const ageDisplay = age !== null ? `${age} years old` : 'Not recorded';
             const purokBadge = formatPurokBadge(data.purok);
@@ -1394,10 +1472,7 @@ function viewResident(id) {
                             <h3>${escapeResidentHtml(fullName)}</h3>
                             <div class="view-profile-badges">
                                 <span class="cell-id-badge">#RP-${String(data.resident_id).padStart(4, '0')}</span>
-                                ${isTenant
-                                    ? '<span class="residency-badge badge-tenant"><span class="residency-dot"></span>Tenant / Renter</span>'
-                                    : '<span class="residency-badge badge-permanent"><span class="residency-dot"></span>Permanent Resident</span>'
-                                }
+                                ${residencyBadge}
                                 ${purokBadge}
                             </div>
                         </div>
@@ -1447,7 +1522,7 @@ function viewResident(id) {
                         </div>
                         <div class="view-info-box">
                             <span class="view-info-label">Residency Status</span>
-                            <span class="view-info-value">${isTenant ? 'Tenant / Renter' : 'Permanent Resident'}</span>
+                            <span class="view-info-value">${residencyLabel}</span>
                         </div>
                         <div class="view-info-box" style="grid-column: 1 / -1;">
                             <span class="view-info-label">Complete Street Address</span>
@@ -1539,7 +1614,9 @@ function editResident(id) {
                 }
             }
 
-            document.getElementById('editTenant').value = data.is_tenant ?? '0';
+            const tenantVal = data.is_tenant ?? '0';
+            document.getElementById('editTenant').value = tenantVal;
+            handleResidencyStatusChange('edit', tenantVal);
             document.getElementById('editAddress').value = data.address ?? '';
 
             // Reset edit map state

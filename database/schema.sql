@@ -109,7 +109,7 @@ CREATE TABLE residents (
     email VARCHAR(150) NULL,
     address TEXT NULL,
     purok VARCHAR(100) NULL,
-    is_tenant TINYINT(1) NOT NULL DEFAULT 0,
+    is_tenant TINYINT(1) NOT NULL DEFAULT 0, -- 0 = Permanent Resident, 1 = Tenant / Renter, 2 = Non-Resident
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     KEY idx_residents_name (last_name, first_name)
