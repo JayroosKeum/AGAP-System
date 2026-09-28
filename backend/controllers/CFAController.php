@@ -20,17 +20,16 @@ class CFAController
 
     public function create($data)
     {
-        $result = $this->cfa->create($data);
+        $userId = (int) ($_SESSION['user_id'] ?? 1);
+        $result = $this->cfa->create($data, $userId);
 
-        if ($result) {
-
+        if (!empty($result['success'])) {
             $this->audit->log(
-                $_SESSION['user_id'],
+                $userId,
                 'Issued Certification To File Action',
                 'CFA',
                 $data['case_id']
             );
-
         }
 
         return $result;
@@ -39,5 +38,10 @@ class CFAController
     public function getByCase($caseId)
     {
         return $this->cfa->getByCase($caseId);
+    }
+
+    public function index()
+    {
+        return $this->cfa->getAll();
     }
 }

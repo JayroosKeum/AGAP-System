@@ -128,3 +128,192 @@ button:disabled, button.is-disabled, button[disabled], .btn-create:disabled, .bt
     color: #4b5563;
     line-height: 1.45;
 }
+
+/* 15-day statutory mediation deadline styles */
+.badge-within-period {
+    background-color: #dcfce7 !important;
+    color: #166534 !important;
+    border: 1px solid #86efac !important;
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.badge-expiring-soon {
+    background-color: #fef3c7 !important;
+    color: #92400e !important;
+    border: 1px solid #fcd34d !important;
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.badge-mediation-lapsed {
+    background-color: #fee2e2 !important;
+    color: #991b1b !important;
+    border: 1px solid #fca5a5 !important;
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.badge-paused {
+    background-color: #e0f2fe !important;
+    color: #0369a1 !important;
+    border: 1px solid #7dd3fc !important;
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.status-cfa-issued {
+    background-color: #ede9fe !important;
+    color: #5b21b6 !important;
+}
+
+.status-mediation-lapsed {
+    background-color: #fee2e2 !important;
+    color: #991b1b !important;
+}
+
+.mediation-timer-banner {
+    margin: 0 30px 20px;
+    padding: 16px 20px;
+    border-radius: 10px;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.mediation-timer-banner.lapsed {
+    border-color: #fca5a5;
+    background: #fff5f5;
+}
+
+.mediation-timer-banner.expiring {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.mediation-timer-banner.paused {
+    border-color: #93c5fd;
+    background: #f0f9ff;
+}
+
+.mediation-timer-info h3 {
+    margin: 0 0 6px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 1.05rem;
+}
+
+.mediation-timer-info p {
+    margin: 0;
+    color: #475569;
+    font-size: 0.9rem;
+}
+
+.mediation-timer-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.lapsed-options-card {
+    margin: 0 30px 24px;
+    padding: 18px 22px;
+    border-radius: 10px;
+    background: #fff1f2;
+    border: 1.5px solid #fda4af;
+}
+
+.lapsed-options-card h3 {
+    margin: 0 0 8px;
+    color: #9f1239;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.lapsed-options-card p {
+    margin: 0 0 14px;
+    color: #4c0519;
+    font-size: 0.92rem;
+    line-height: 1.45;
+}
+
+.lapsed-options-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 14px;
+}
+
+.lapsed-option-box {
+    background: #ffffff;
+    border: 1px solid #fecdd3;
+    border-radius: 8px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.lapsed-option-box strong {
+    color: #881337;
+    font-size: 0.95rem;
+    margin-bottom: 4px;
+    display: block;
+}
+
+.lapsed-option-box span {
+    color: #4b5563;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    margin-bottom: 12px;
+    display: block;
+}
+
+.btn-option-a {
+    background: #1e40af;
+    color: #ffffff !important;
+    text-align: center;
+    padding: 8px 14px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.875rem;
+}
+
+.btn-option-b {
+    background: #991b1b;
+    color: #ffffff !important;
+    text-align: center;
+    padding: 8px 14px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.875rem;
+}
+
+.badge-timer {
+    display: inline-block;
+    margin-top: 4px;
+    font-size: 0.75rem;
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-weight: 600;
+}

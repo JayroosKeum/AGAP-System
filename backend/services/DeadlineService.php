@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/MediationDeadlineService.php';
+
 class DeadlineService
 {
     public const INITIAL_HEARING = 'Initial Hearing';
@@ -28,7 +30,7 @@ class DeadlineService
             ],
             'Mediation' => [
                 'deadline_type' => self::MEDIATION,
-                'due_date' => self::addCalendarDays($date, 15),
+                'due_date' => MediationDeadlineService::calculateDeadline($date, 15),
             ],
             'Conciliation' => [
                 'deadline_type' => self::CONCILIATION,

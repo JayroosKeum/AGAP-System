@@ -49,6 +49,26 @@ class ProofOfService
         $historyNote = sprintf('Summons service attempt: %s.%s', $serviceResult, $remarks ? ' Remarks: ' . $remarks : '');
         $historyStmt->execute([$historyNote, $servedBy, $caseId]);
 
+        // Statutory mediation timer pause/resume for summon service status
+        $caseStmt = $this->conn->prepare('SELECT case_id, case_status, is_paused, pause_reason, mediation_start_date FROM cases WHERE case_id = ?');
+        $caseStmt->execute([$caseId]);
+        $targetCase = $caseStmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($targetCase && $targetCase['case_status'] === 'Mediation') {
+            require_once __DIR__ . '/../services/MediationDeadlineService.php';
+            $deadlineService = new MediationDeadlineService($this->conn);
+
+            if ($newDocStatus === 'Service Failed' && empty($targetCase['is_paused'])) {
+                $deadlineService->pauseMediation(
+                    $caseId,
+                    'Summon Unserved',
+                    sprintf('Summons marked Service Failed (%s).%s', $serviceResult, $remarks ? ' ' . $remarks : ''),
+                    $servedBy
+                );
+            } elseif ($newDocStatus === 'Served' && !empty($targetCase['is_paused']) && $targetCase['pause_reason'] === 'Summon Unserved') {
+                $deadlineService->resumeMediation($caseId, $servedBy);
+            }
+        }
 
         return ['success' => true, 'proof_id' => $proofId, 'service_result' => $serviceResult, 'document_status' => $newDocStatus];
     }

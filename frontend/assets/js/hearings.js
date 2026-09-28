@@ -291,7 +291,15 @@ async function loadCases() {
         const response = await fetch('../../../backend/api/cases/list.php'); const cases = await response.json();
         if (!response.ok) throw new Error(cases.message || 'Unable to load cases.');
         select.replaceChildren(new Option('Select a case', ''));
-        cases.filter((item) => item.case_status !== 'Archived').forEach((item) => { const option = new Option(`${item.case_number} - ${item.complaint_title}`, item.case_id); option.dataset.docketDate = item.docket_date || ''; select.add(option); });
+        cases.filter((item) => item.case_status !== 'Archived').forEach((item) => {
+            const option = new Option(`${item.case_number} - ${item.complaint_title}`, item.case_id);
+            option.dataset.docketDate = item.docket_date || '';
+            option.dataset.caseStatus = item.case_status || '';
+            option.dataset.isLapsed = item.mediation_timer?.is_lapsed ? '1' : '0';
+            option.dataset.isPaused = item.mediation_timer?.is_paused ? '1' : '0';
+            option.dataset.pauseReason = item.mediation_timer?.pause_reason || '';
+            select.add(option);
+        });
         const params = new URLSearchParams(window.location.search);
         const caseId = params.get('case_id');
         if (caseId && [...select.options].some((option) => option.value === caseId)) select.value = caseId;
@@ -318,12 +326,48 @@ function updateNextSchedule() {
         if (submitBtn) { submitBtn.disabled = false; submitBtn.title = ''; }
         return;
     }
+
+    const selectedOption = select.selectedOptions[0];
+    const isLapsed = selectedOption?.dataset.isLapsed === '1';
+    const isPaused = selectedOption?.dataset.isPaused === '1';
+    const pauseReason = selectedOption?.dataset.pauseReason || '';
+
     const hearings = calendarHearings.filter((item) => String(item.case_id) === String(caseId));
     const mediationCount = hearings.filter((item) => item.hearing_type === 'Mediation').length;
     const conciliationCount = hearings.filter((item) => item.hearing_type === 'Conciliation').length;
     let typeValue = ''; let label = '';
-    if (mediationCount < 3) { typeValue = 'Mediation'; label = `${ordinal(mediationCount + 1)} Mediation`; }
-    else if (conciliationCount < 3) { typeValue = 'Conciliation'; label = `${ordinal(conciliationCount + 1)} Conciliation`; }
+
+    if (mediationCount < 3) {
+        if (isPaused) {
+            type.add(new Option('Mediation clock paused', ''));
+            type.disabled = true;
+            help.innerHTML = `<span style="color: #b91c1c; font-weight: 600;">The mediation clock is currently paused (${escapeHtml(pauseReason || 'Suspension')}).</span> Resume the clock before scheduling a hearing.`;
+            if (submitBtn) { submitBtn.disabled = true; submitBtn.title = 'Mediation clock is paused.'; }
+            return;
+        }
+
+        if (isLapsed) {
+            type.add(new Option('Mediation period lapsed', ''));
+            type.disabled = true;
+            help.innerHTML = `
+                <span style="color: #b91c1c; font-weight: 600;">The 15-day statutory mediation period has lapsed for this case.</span>
+                Further Punong Barangay mediation is restricted. You must
+                <a href="../cases/case-list.php#caseAssignments" style="color: #1e40af; font-weight: 600; text-decoration: underline;">Constitute Pangkat Tagapagkasundo</a>
+                or
+                <a href="../documents/cfa.php?case_id=${encodeURIComponent(caseId)}" style="color: #991b1b; font-weight: 600; text-decoration: underline;">Issue a CFA</a>.
+            `;
+            if (submitBtn) { submitBtn.disabled = true; submitBtn.title = 'Mediation period has lapsed for this case.'; }
+            return;
+        }
+
+        typeValue = 'Mediation';
+        label = `${ordinal(mediationCount + 1)} Mediation`;
+    }
+    else if (conciliationCount < 3) {
+        typeValue = 'Conciliation';
+        label = `${ordinal(conciliationCount + 1)} Conciliation`;
+    }
+
     if (!typeValue) {
         type.add(new Option('No further schedules permitted', '')); type.disabled = true;
         help.textContent = 'This case already has three mediation and three conciliation schedules.';

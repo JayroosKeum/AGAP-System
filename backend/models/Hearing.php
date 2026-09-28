@@ -6,9 +6,9 @@ class Hearing
 {
     private PDO $conn;
 
-    public function __construct()
+    public function __construct(?PDO $conn = null)
     {
-        $this->conn = (new Database())->connect();
+        $this->conn = $conn ?? (new Database())->connect();
     }
 
     public function getAll(): array
@@ -78,11 +78,36 @@ class Hearing
     {
         try {
             $this->conn->beginTransaction();
-            $case = $this->conn->prepare('SELECT case_id, case_status FROM cases WHERE case_id = ? FOR UPDATE');
-            $case->execute([$data['case_id']]);
-            if (!$case->fetch(PDO::FETCH_ASSOC)) {
+            $caseQuery = $this->conn->prepare('SELECT * FROM cases WHERE case_id = ? FOR UPDATE');
+            $caseQuery->execute([$data['case_id']]);
+            $caseRecord = $caseQuery->fetch(PDO::FETCH_ASSOC);
+            if (!$caseRecord) {
                 $this->conn->rollBack();
                 return ['success' => false, 'message' => 'The selected case does not exist.'];
+            }
+
+            // Statutory mediation safeguards
+            if ($data['hearing_type'] === 'Mediation') {
+                require_once __DIR__ . '/../services/MediationDeadlineService.php';
+                $deadlineService = new MediationDeadlineService($this->conn);
+                $statusInfo = $deadlineService->computeStatus($caseRecord);
+
+                if (!empty($caseRecord['is_paused'])) {
+                    $this->conn->rollBack();
+                    $reason = $caseRecord['pause_reason'] ?: 'Suspended';
+                    return [
+                        'success' => false,
+                        'message' => "The mediation clock is currently paused ({$reason}). Please resume the mediation clock before scheduling a hearing."
+                    ];
+                }
+
+                if ($statusInfo['is_lapsed']) {
+                    $this->conn->rollBack();
+                    return [
+                        'success' => false,
+                        'message' => 'Mediation period has lapsed (15-day limit reached). You must elevate the case to Pangkat Tagapagkasundo or issue a Certificate to File Action (CFA).'
+                    ];
+                }
             }
 
             $counts = $this->conn->prepare(
@@ -102,6 +127,12 @@ class Hearing
             if ($data['hearing_type'] !== $expectedType) {
                 $this->conn->rollBack();
                 return ['success' => false, 'message' => 'The next required schedule is ' . ($scheduled[$expectedType] + 1) . ($scheduled[$expectedType] === 0 ? 'st ' : ($scheduled[$expectedType] === 1 ? 'nd ' : 'rd ')) . $expectedType . '.'];
+            }
+
+            // Initialize clock if 1st Mediation hearing
+            if ($expectedType === 'Mediation' && empty($caseRecord['mediation_start_date'])) {
+                require_once __DIR__ . '/../services/MediationDeadlineService.php';
+                (new MediationDeadlineService($this->conn))->initializeClock((int) $data['case_id'], $data['hearing_date'], $userId);
             }
 
             $stmt = $this->conn->prepare(

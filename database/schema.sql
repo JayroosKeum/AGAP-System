@@ -209,11 +209,19 @@ CREATE TABLE cases (
     case_status ENUM('Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Dismissed', 'CFA Issued', 'Archived') NOT NULL DEFAULT 'Docketed',
     docket_date DATE NOT NULL,
     archived_date DATE NULL,
+    mediation_start_date DATE NULL,
+    mediation_deadline_date DATE NULL,
+    is_paused TINYINT(1) NOT NULL DEFAULT 0,
+    paused_at DATETIME NULL,
+    resumed_at DATETIME NULL,
+    pause_reason VARCHAR(255) NULL,
+    pause_notes TEXT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_cases_complaint_id (complaint_id),
     UNIQUE KEY uq_cases_number (case_number),
     KEY idx_cases_status_docket_date (case_status, docket_date),
+    KEY idx_cases_mediation_deadline (mediation_deadline_date),
     CONSTRAINT fk_cases_complaint
         FOREIGN KEY (complaint_id) REFERENCES complaints (complaint_id) ON DELETE RESTRICT
 ) ENGINE=InnoDB;

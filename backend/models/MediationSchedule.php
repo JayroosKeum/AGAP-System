@@ -104,11 +104,26 @@ class MediationSchedule
             $hearing->execute([$caseId, $hearingDate, $venue, $remarks]);
             $hearingId = (int) $this->conn->lastInsertId();
 
-            // Transition case status to Mediation if currently Docketed
-            if ($existingCase['case_status'] === 'Docketed') {
-                $updateCase = $this->conn->prepare("UPDATE cases SET case_status = 'Mediation' WHERE case_id = ?");
-                $updateCase->execute([$caseId]);
+            $startDate = substr($hearingDate, 0, 10);
+            require_once __DIR__ . '/../services/MediationDeadlineService.php';
+            $deadlineDate = MediationDeadlineService::calculateDeadline($startDate, 15);
 
+            // Transition case status to Mediation and set mediation clock
+            $updateCase = $this->conn->prepare(
+                "UPDATE cases
+                 SET case_status = 'Mediation',
+                     mediation_start_date = COALESCE(mediation_start_date, ?),
+                     mediation_deadline_date = ?,
+                     is_paused = 0,
+                     paused_at = NULL,
+                     resumed_at = NULL,
+                     pause_reason = NULL,
+                     pause_notes = NULL
+                 WHERE case_id = ?"
+            );
+            $updateCase->execute([$startDate, $deadlineDate, $caseId]);
+
+            if ($existingCase['case_status'] === 'Docketed') {
                 $updateComplaint = $this->conn->prepare("UPDATE complaints SET status = 'Mediation' WHERE complaint_id = ?");
                 $updateComplaint->execute([$complaintId]);
             }
@@ -116,10 +131,10 @@ class MediationSchedule
             // Upsert Mediation Period deadline
             $deadline = $this->conn->prepare(
                 "INSERT INTO case_deadlines (case_id, deadline_type, due_date, status)
-                 VALUES (?, 'Mediation Period', DATE_ADD(DATE(?), INTERVAL 15 DAY), 'Pending')
-                 ON DUPLICATE KEY UPDATE due_date = VALUES(due_date)"
+                 VALUES (?, 'Mediation Period', ?, 'Pending')
+                 ON DUPLICATE KEY UPDATE due_date = VALUES(due_date), status = IF(status = 'Completed', 'Completed', 'Pending')"
             );
-            $deadline->execute([$caseId, $hearingDate]);
+            $deadline->execute([$caseId, $deadlineDate]);
 
             // Record in case history
             $history = $this->conn->prepare(

@@ -99,6 +99,28 @@ write; an edit retains the pin unless it is moved or explicitly cleared.
   repeated Conciliation assignment, Edit updates, role restrictions, and
   status transitions in Laragon without using production data.
 
+### 15-Day Statutory Mediation Deadline (September 2026)
+
+- Implemented Katarungang Pambarangay (RA 7160 Section 410(b)) 15-day statutory mediation deadline logic end-to-end:
+  - **Clock Trigger (Day 0)**: Mediation clock begins on the date of the First Scheduled Mediation Hearing (or summon served date), not raw filing.
+  - **Duration & Calendar Math**: 15 calendar days with automatic weekend (Saturday/Sunday) and Philippine public holiday rollover (e.g. New Year, Labor Day, Independence Day, Christmas, Easter Maundy Thursday/Good Friday, National Heroes Day) extending the deadline to the next working day.
+  - **Clock Pauses / Exceptions**:
+    - *Justified Suspension*: Authorized officers (Admin/Clerk) can log an excused pause with notes (e.g., medical emergency, calamity), freezing the day count. Resuming extends the deadline by the elapsed pause days.
+    - *Summon Unserved*: When proof of service is marked "Service Failed" (unserved), the timer is automatically paused with reason `Summon Unserved` until service is completed as `Served`.
+  - **State & Urgency Badges**:
+    - `Within Period` (> 5 days left): Green badge (`X days remaining`).
+    - `Expiring Soon` (<= 5 days left): Amber badge (`X days remaining - Action Needed`).
+    - `Mediation Lapsed` (0 or negative days left): Red badge (`15-day limit reached` / `Mediation Period Lapsed`).
+    - `Paused`: Blue badge with pause reason and resume capability.
+  - **Safeguards & Legal Expiration Actions**:
+    - Scheduling further Punong Barangay mediation hearings is strictly restricted once lapsed, both on the frontend (`case-workspace.js`, `hearings.js`) and backend (`Hearing::createProgression`).
+    - Prominently presents the two statutory next steps on workspace and hearing schedule:
+      - **Option A**: *Constitute Pangkat Tagapagkasundo* (elevate to 3-member Conciliation panel, granting fresh 15-day conciliation period).
+      - **Option B**: *Issue Certificate to File Action (CFA)* (direct link and full issuance workflow on `documents/cfa.php`).
+    - Automated Audit Log: Writes `"15-day mediation period concluded on [Date]. Awaiting elevation to Pangkat or issuance of CFA."` upon lapse detection.
+  - **Database Migration & Schema**: Added `mediation_start_date`, `mediation_deadline_date`, `is_paused`, `paused_at`, `resumed_at`, `pause_reason`, `pause_notes` to `cases` table in `database/schema.sql` and migration `database/migrations/20260928_mediation_statutory_deadline.sql`.
+  - **Relevant Files**: `backend/services/MediationDeadlineService.php`, `backend/services/DeadlineService.php`, `backend/models/MediationSchedule.php`, `backend/models/Hearing.php`, `backend/models/ProofOfService.php`, `backend/models/CaseModel.php`, `backend/models/CFA.php`, `backend/controllers/CFAController.php`, `backend/api/cases/pause-mediation.php`, `backend/api/cases/resume-mediation.php`, `backend/api/documents/cfa.php`, `frontend/pages/cases/case-details.php`, `frontend/assets/js/case-workspace.js`, `frontend/pages/documents/cfa.php`, `frontend/assets/js/cfa.js`, `frontend/assets/js/hearings.js`, `frontend/assets/js/cases.js`, `frontend/assets/css/cases.css`.
+
 ## Other Undocumented Implemented Changes (September 2026)
 
 ### Cases page ordering and pagination

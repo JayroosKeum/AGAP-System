@@ -320,6 +320,13 @@ function renderCaseRow(item) {
                         'Unknown'
                     )}
                 </span>
+                ${item.case_status === 'Mediation' && item.mediation_timer?.badge_label ? `
+                    <div style="margin-top: 4px;">
+                        <span class="badge-timer ${escapeHtml(item.mediation_timer.badge_class)}">
+                            ${escapeHtml(item.mediation_timer.badge_label)}
+                        </span>
+                    </div>
+                ` : ''}
             </td>
 
             <td class="action-buttons">
