@@ -571,44 +571,61 @@ class CaseProgress
             }
         }
 
-        if ($anyServed) {
-            $summonButton['label'] = 'Summons Served';
-            $summonButton['action'] = 'view_proof';
-            $summonButton['disabled'] = false;
-            $summonButton['url'] = '../gps/proof-service.php?case_id=' . $caseId;
-            $summonButton['tooltip'] = 'Summons successfully served. View proof of service history.';
-        } elseif ($summonsCount === 0) {
-            $summonButton['label'] = 'Issue 1st Summon';
-            $summonButton['action'] = 'issue';
-            $summonButton['disabled'] = false;
-            $summonButton['tooltip'] = 'Issue the 1st summons and record proof of service.';
-        } elseif ($summonsCount === 1) {
-            $summonButton['label'] = 'Issue 2nd Summon';
-            $summonButton['action'] = 'issue';
-            $summonButton['disabled'] = false;
-            $summonButton['tooltip'] = 'Issue the 2nd attempt of summons.';
-        } else {
-            $latestSummon = end($summons);
-            $summonButton['label'] = '2nd Summon Issued';
-            $summonButton['action'] = 'view_proof';
-            $summonButton['disabled'] = false;
-            $summonButton['url'] = '../gps/proof-service.php?case_id=' . $caseId . '&document_id=' . ($latestSummon['document_id'] ?? '');
-            $summonButton['tooltip'] = '2nd summons attempt issued. Click to record or view proof of service.';
+        // Build a set of document_ids that have at least one proof-of-service attempt
+        $proofedDocIds = [];
+        foreach ($proofs as $p) {
+            if (!empty($p['document_id'])) {
+                $proofedDocIds[(int)$p['document_id']] = true;
+            }
         }
 
-        // Mediation button state: only clickable after a summon is served
-        $mediationButton = [
-            'label' => 'Schedule 1st Mediation',
-            'disabled' => !$summonsPrerequisiteMet,
-            'prerequisite_met' => $summonsPrerequisiteMet,
-            'tooltip' => $summonsPrerequisiteMet
-                ? 'Proceed to schedule 1st Mediation hearing.'
-                : '1st Mediation is unavailable until a summons has been successfully served.',
-        ];
+        // Check if the most recent summons document has a recorded service attempt
+        $latestSummon = !empty($summons) ? end($summons) : null;
+        $latestDocId  = $latestSummon ? (int)($latestSummon['document_id'] ?? 0) : 0;
+        $latestHasAttempt = $latestDocId && isset($proofedDocIds[$latestDocId]);
+
+        $ordinals = ['', '1st', '2nd', '3rd'];
+
+        if ($anyServed) {
+            $summonButton['label']   = 'Summons Served';
+            $summonButton['action']  = 'view_proof';
+            $summonButton['disabled'] = false;
+            $summonButton['url']     = '../gps/proof-service.php?case_id=' . $caseId;
+            $summonButton['tooltip'] = 'Summons successfully served. View proof of service history.';
+        } elseif ($summonsCount === 0) {
+            $summonButton['label']   = 'Issue 1st Summon';
+            $summonButton['action']  = 'issue';
+            $summonButton['disabled'] = false;
+            $summonButton['tooltip'] = 'Issue the 1st summons and record proof of service.';
+        } elseif ($summonsCount >= 3) {
+            // All 3 summons have been issued — show view only
+            $summonButton['label']   = '3rd Summon Issued';
+            $summonButton['action']  = 'view_proof';
+            $summonButton['disabled'] = false;
+            $summonButton['url']     = '../gps/proof-service.php?case_id=' . $caseId . '&document_id=' . $latestDocId;
+            $summonButton['tooltip'] = 'All 3 summons have been issued. Click to view proof of service history.';
+        } elseif (!$latestHasAttempt) {
+            // Service attempt not yet recorded for the most recent summons — gate the next summons
+            $nextOrdinal = $ordinals[$summonsCount + 1] ?? ($summonsCount + 1) . 'th';
+            $summonButton['label']   = 'Issue ' . $nextOrdinal . ' Summon';
+            $summonButton['action']  = 'view_proof';  // redirect to record proof first
+            $summonButton['disabled'] = true;
+            $summonButton['url']     = '../gps/proof-service.php?case_id=' . $caseId . '&document_id=' . $latestDocId;
+            $summonButton['tooltip'] = 'Record the service attempt for Summons #' . $summonsCount
+                . ' before issuing the next one. Click to go to Proof of Service.';
+        } else {
+            // Latest has an attempt — allow issuing next summons
+            $nextNum     = $summonsCount + 1;
+            $nextOrdinal = $ordinals[$nextNum] ?? $nextNum . 'th';
+            $summonButton['label']   = 'Issue ' . $nextOrdinal . ' Summon';
+            $summonButton['action']  = 'issue';
+            $summonButton['disabled'] = false;
+            $summonButton['tooltip'] = 'Issue the ' . $nextOrdinal . ' summons attempt.';
+        }
 
         return [
             'summon_button' => $summonButton,
-            'mediation_button' => $mediationButton,
+            'mediation_button' => null,
         ];
 
     }

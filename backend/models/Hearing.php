@@ -262,6 +262,10 @@ class Hearing
             CASE WHEN h.hearing_date < NOW() THEN 'Completed' ELSE 'Scheduled' END AS status,
             h.remarks,
             CASE WHEN EXISTS (SELECT 1 FROM hearing_nonappearances hn WHERE hn.hearing_id = h.hearing_id AND hn.resolution = 'Pending') THEN '1' ELSE '0' END AS has_pending_nonappearance,
+            (SELECT COUNT(*) FROM hearing_attendance ha WHERE ha.hearing_id = h.hearing_id) AS attendance_count,
+            (SELECT COUNT(*) FROM hearing_attendance ha WHERE ha.hearing_id = h.hearing_id AND ha.attendance_status = 'Present') AS present_count,
+            (SELECT COUNT(*) FROM hearing_attendance ha WHERE ha.hearing_id = h.hearing_id AND ha.attendance_status = 'Absent' AND ha.is_justified = 0) AS unjustified_absent_count,
+            (SELECT COUNT(*) FROM hearing_attendance ha WHERE ha.hearing_id = h.hearing_id AND (ha.attendance_status = 'Excused' OR ha.is_justified = 1)) AS excused_count,
             h.created_at
         FROM hearings h
         LEFT JOIN cases c ON c.case_id = h.case_id
@@ -286,6 +290,11 @@ class Hearing
                 ELSE 'Pending'
             END AS status,
             NULL AS remarks,
+            '0' AS has_pending_nonappearance,
+            0 AS attendance_count,
+            0 AS present_count,
+            0 AS unjustified_absent_count,
+            0 AS excused_count,
             d.created_at
         FROM case_deadlines d
         LEFT JOIN cases c ON c.case_id = d.case_id
@@ -327,6 +336,17 @@ class Hearing
         if ($dateTo !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTo)) {
             $where[] = 'DATE(schedule_date) <= :date_to';
             $params[':date_to'] = $dateTo;
+        }
+
+        $attendance = trim((string) ($filters['attendance'] ?? ''));
+        if ($attendance === 'present') {
+            $where[] = "(record_type = 'hearing' AND present_count >= 2)";
+        } elseif ($attendance === 'unjustified') {
+            $where[] = "(record_type = 'hearing' AND unjustified_absent_count > 0)";
+        } elseif ($attendance === 'excused') {
+            $where[] = "(record_type = 'hearing' AND excused_count > 0)";
+        } elseif ($attendance === 'pending') {
+            $where[] = "(record_type = 'hearing' AND attendance_count = 0)";
         }
 
         $whereClause = $where ? 'WHERE ' . implode(' AND ', $where) : '';

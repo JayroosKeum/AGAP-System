@@ -284,7 +284,21 @@ class CaseModel
         $case['mediation_timer'] = $deadlineService->computeStatus($case);
         $assignments = $this->conn->prepare("SELECT ca.assignment_role, ca.assigned_date, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS member_name FROM case_assignments ca INNER JOIN users u ON u.user_id = ca.member_id WHERE ca.case_id = ? ORDER BY FIELD(ca.assignment_role, 'Head', 'Secretary', 'Member', 'Mediator'), ca.assigned_date");
         $assignments->execute([$id]);
-        $hearings = $this->conn->prepare("SELECT hearing_id, hearing_type, hearing_date, venue, CASE WHEN hearing_date < NOW() THEN 'Completed' ELSE 'Scheduled' END AS hearing_status FROM hearings WHERE case_id = ? ORDER BY hearing_date ASC");
+        $hearings = $this->conn->prepare("
+            SELECT 
+                h.hearing_id, 
+                h.hearing_type, 
+                h.hearing_date, 
+                h.venue, 
+                CASE WHEN h.hearing_date < NOW() THEN 'Completed' ELSE 'Scheduled' END AS hearing_status,
+                (SELECT COUNT(*) FROM hearing_attendance ha WHERE ha.hearing_id = h.hearing_id) AS attendance_count,
+                (SELECT COUNT(*) FROM hearing_attendance ha WHERE ha.hearing_id = h.hearing_id AND ha.attendance_status = 'Present') AS present_count,
+                (SELECT COUNT(*) FROM hearing_attendance ha WHERE ha.hearing_id = h.hearing_id AND ha.attendance_status = 'Absent' AND ha.is_justified = 0) AS unjustified_absent_count,
+                (SELECT COUNT(*) FROM hearing_attendance ha WHERE ha.hearing_id = h.hearing_id AND (ha.attendance_status = 'Excused' OR ha.is_justified = 1)) AS excused_count
+            FROM hearings h 
+            WHERE h.case_id = ? 
+            ORDER BY h.hearing_date ASC
+        ");
         $hearings->execute([$id]);
         $documents = $this->conn->prepare("SELECT gd.document_id, gd.generated_at, gd.service_status, dt.template_name FROM generated_documents gd INNER JOIN document_templates dt ON dt.template_id = gd.template_id WHERE gd.case_id = ? ORDER BY gd.generated_at DESC");
         $documents->execute([$id]);

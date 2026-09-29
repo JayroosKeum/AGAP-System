@@ -4,11 +4,15 @@ let calendarCursor = new Date(new Date().getFullYear(), new Date().getMonth(), 1
 let pendingScheduleForm = null;
 let currentPage = 1;
 const pageSize = 25;
+let currentAttendanceFilter = 'all';
+let activeHearingAttendanceData = null;
 
 document.addEventListener('DOMContentLoaded', async () => {
     bindCalendarControls();
     bindSearchControls();
-    await Promise.all([loadHearings(), loadCombinedRecords(1)]);
+    bindAttendanceFilterControls();
+    bindAttendanceForm();
+    await Promise.all([loadHearings(), loadCombinedRecords(1), loadAttendanceKPIs()]);
     if (!canManageHearings) return;
     await loadCases();
     bindReviewForm('addHearingForm', closeAddHearingModal);
@@ -19,6 +23,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('case_id')) {
         openAddHearingModal();
+    }
+    if (params.get('hearing_id') && params.get('open_attendance')) {
+        openHearingAttendanceModal(params.get('hearing_id'));
     }
 });
 
@@ -50,7 +57,7 @@ async function loadCombinedRecords(page = 1) {
     const table = document.getElementById('combinedTable');
     if (!table) return;
 
-    table.innerHTML = '<tr><td colspan="7" class="empty-state">Loading hearings and deadlines...</td></tr>';
+    table.innerHTML = '<tr><td colspan="8" class="empty-state">Loading hearings and deadlines...</td></tr>';
 
     const q = document.getElementById('searchKeyword')?.value.trim() || '';
     const status = document.getElementById('searchStatus')?.value || '';
@@ -65,6 +72,9 @@ async function loadCombinedRecords(page = 1) {
     if (hearingType) params.set('hearing_type', hearingType);
     if (dateFrom) params.set('date_from', dateFrom);
     if (dateTo) params.set('date_to', dateTo);
+    if (currentAttendanceFilter && currentAttendanceFilter !== 'all') {
+        params.set('attendance', currentAttendanceFilter);
+    }
 
     try {
         const result = await api('../../../backend/api/hearings/list.php?' + params.toString());
@@ -72,7 +82,7 @@ async function loadCombinedRecords(page = 1) {
         const pagination = result.pagination || { total_records: records.length, per_page: pageSize, current_page: page, total_pages: 1 };
 
         if (!records.length) {
-            table.innerHTML = '<tr><td colspan="7" class="empty-state">No hearings or deadlines found.</td></tr>';
+            table.innerHTML = '<tr><td colspan="8" class="empty-state">No hearings or deadlines found.</td></tr>';
             renderPagination(pagination);
             return;
         }
@@ -85,6 +95,7 @@ async function loadCombinedRecords(page = 1) {
                 <td>${renderDateTimeCell(item)}</td>
                 <td><span class="status-pill-badge ${getStatusBadgeClass(item.status)}">${escapeHtml(item.status)}</span></td>
                 <td>${item.venue ? escapeHtml(item.venue) : '<span class="empty-cell">—</span>'}</td>
+                <td>${renderAttendanceCell(item)}</td>
                 <td class="action-buttons">${renderActionsCell(item)}</td>
             </tr>
         `).join('');
@@ -93,12 +104,37 @@ async function loadCombinedRecords(page = 1) {
         table.querySelectorAll('[data-edit]').forEach((button) => button.addEventListener('click', () => editHearing(button.dataset.edit)));
         table.querySelectorAll('[data-nonappearance]').forEach((button) => button.addEventListener('click', () => openNonappearanceModal(button.dataset.nonappearance)));
         table.querySelectorAll('[data-reissue]').forEach((button) => button.addEventListener('click', () => reissueSummons(button.dataset.reissue)));
+        table.querySelectorAll('[data-attendance]').forEach((button) => button.addEventListener('click', () => openHearingAttendanceModal(button.dataset.attendance)));
 
         renderPagination(pagination);
     } catch (error) {
-        table.innerHTML = `<tr><td colspan="7" class="empty-state">${escapeHtml(error.message)}</td></tr>`;
+        table.innerHTML = `<tr><td colspan="8" class="empty-state">${escapeHtml(error.message)}</td></tr>`;
         renderPagination({ total_records: 0, per_page: pageSize, current_page: 1, total_pages: 1 });
     }
+}
+
+function renderAttendanceCell(item) {
+    if (item.record_type !== 'hearing') {
+        return '<span class="empty-cell">—</span>';
+    }
+    const total = Number(item.attendance_count) || 0;
+    const unjustified = Number(item.unjustified_absent_count) || 0;
+    const excused = Number(item.excused_count) || 0;
+    const present = Number(item.present_count) || 0;
+
+    if (total === 0) {
+        return '<span class="badge-attendance-pending">Pending Intake</span>';
+    }
+    if (unjustified > 0) {
+        return `<span class="badge-attendance-unjustified" title="${unjustified} party unjustified non-appearance">${unjustified} Absent (Unjustified)</span>`;
+    }
+    if (excused > 0) {
+        return `<span class="badge-attendance-excused" title="${excused} party excused / justified absence">${excused} Excused</span>`;
+    }
+    if (present >= 2) {
+        return '<span class="badge-attendance-present" title="Both parties appeared">Both Present</span>';
+    }
+    return `<span class="badge-attendance-present" title="${present} party present">${present} Present</span>`;
 }
 
 function renderComplaintCell(item) {
@@ -155,6 +191,7 @@ function renderActionsCell(item) {
         const id = Number(item.record_id);
         return `
             <button type="button" class="btn-action-view" data-view="${id}">View</button>
+            <button type="button" class="btn-action-view" data-attendance="${id}" style="color:#0369a1; border-color:#bae6fd; background:#f0f9ff; font-weight:600;">Attendance</button>
             ${canManageHearings ? `<button type="button" class="btn-action-edit" data-edit="${id}">Reschedule</button><button type="button" class="btn-action-view" data-nonappearance="${id}">Record absence</button>${item.has_pending_nonappearance === '1' ? `<button type="button" class="btn-action-edit" data-reissue="${id}">Issue re-summons</button>` : ''}` : ''}
         `;
     }
@@ -599,6 +636,532 @@ function closeReviewHearingModal() {
 }
 
 function closeNonappearanceModal() { hideModal('nonappearanceModal'); }
+
+function closeHearingAttendanceModal() {
+    hideModal('hearingAttendanceModal');
+    activeHearingAttendanceData = null;
+}
+
+function bindAttendanceFilterControls() {
+    document.querySelectorAll('.btn-att-filter').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.btn-att-filter').forEach((b) => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentAttendanceFilter = btn.dataset.attFilter || 'all';
+            loadCombinedRecords(1);
+        });
+    });
+}
+
+async function loadAttendanceKPIs() {
+    try {
+        const res = await api('../../../backend/api/hearings/attendance.php?action=overview');
+        const kpis = res.data?.kpis || {
+            total_hearings: 0,
+            both_present: 0,
+            unjustified_absences: 0,
+            excused_count: 0,
+            pending_count: 0
+        };
+        const elTotal = document.getElementById('attKpiTotal');
+        const elPresent = document.getElementById('attKpiPresent');
+        const elUnjustified = document.getElementById('attKpiUnjustified');
+        const elExcused = document.getElementById('attKpiExcused');
+        const elPending = document.getElementById('attKpiPending');
+
+        if (elTotal) elTotal.textContent = kpis.total_hearings;
+        if (elPresent) elPresent.textContent = kpis.both_present;
+        if (elUnjustified) elUnjustified.textContent = kpis.unjustified_absences;
+        if (elExcused) elExcused.textContent = kpis.excused_count;
+        if (elPending) elPending.textContent = kpis.pending_count;
+    } catch (err) {
+        console.error('Failed to load attendance KPIs:', err);
+    }
+}
+
+async function openHearingAttendanceModal(hearingId) {
+    const alertEl = document.getElementById('attModalAlert');
+    if (alertEl) {
+        alertEl.style.display = 'none';
+        alertEl.textContent = '';
+        alertEl.className = 'alert';
+    }
+    const container = document.getElementById('attPartiesContainer');
+    if (container) {
+        container.innerHTML = '<div style="text-align: center; padding: 24px; color: #64748b;">Loading hearing &amp; party records...</div>';
+    }
+    showModal('hearingAttendanceModal');
+
+    try {
+        const res = await api(`../../../backend/api/hearings/attendance.php?hearing_id=${encodeURIComponent(hearingId)}`);
+        const data = res.data;
+        activeHearingAttendanceData = data;
+
+        document.getElementById('attHearingId').value = data.hearing_id;
+        document.getElementById('attMetaCaseNumber').textContent = data.case_number || '—';
+        document.getElementById('attMetaComplaintTitle').textContent = data.complaint_title || (data.complaint_number ? `Complaint #${data.complaint_number}` : '—');
+        document.getElementById('attMetaHearingType').textContent = data.hearing_type || '—';
+        document.getElementById('attMetaDateTime').textContent = data.hearing_date ? formatDateTime(data.hearing_date) : '—';
+        document.getElementById('attMetaVenue').textContent = data.venue || '—';
+
+        const summonsCount = Number(data.summons_count) || 0;
+        document.getElementById('attMetaSummons').textContent = summonsCount > 0
+            ? `${summonsCount} Summons${summonsCount > 1 ? 'es' : ''} Issued`
+            : 'Initial Notice';
+
+        renderAttendanceParties(data.parties || []);
+        evaluateLiveAttendanceSituation();
+    } catch (err) {
+        if (container) {
+            container.innerHTML = `<div class="empty-state" style="color: #dc2626;">Error: ${escapeHtml(err.message)}</div>`;
+        }
+    }
+}
+
+function renderAttendanceParties(parties) {
+    const container = document.getElementById('attPartiesContainer');
+    if (!container) return;
+
+    if (!parties || !parties.length) {
+        container.innerHTML = `
+            <div style="background: #fffbeb; border: 1px solid #fef08a; padding: 14px 18px; border-radius: 8px; color: #854d0e; font-size: 0.88rem;">
+                <strong>Notice:</strong> No registered complainant or respondent profiles are directly linked to this complaint docket. Ensure parties are registered in the resident registry and linked to the complaint.
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = parties.map((p) => {
+        const isComplainant = p.party_type === 'Complainant';
+        const isRespondent = p.party_type === 'Respondent';
+        const cardClass = isComplainant ? 'card-complainant' : (isRespondent ? 'card-respondent' : '');
+        const badgeClass = isComplainant ? 'party-badge-complainant' : (isRespondent ? 'party-badge-respondent' : 'party-badge-witness');
+
+        let currentChoice = '';
+        if (p.attendance_status === 'Present') currentChoice = 'Present';
+        else if (p.attendance_status === 'Late') currentChoice = 'Late';
+        else if (p.attendance_status === 'Absent' && Number(p.is_justified) === 1) currentChoice = 'Excused';
+        else if (p.attendance_status === 'Absent' || p.attendance_status === 'Excused') {
+            currentChoice = (p.attendance_status === 'Excused' || Number(p.is_justified) === 1) ? 'Excused' : 'Unjustified';
+        }
+
+        const isExcused = currentChoice === 'Excused';
+
+        return `
+            <div class="party-att-card ${cardClass}" data-resident-id="${p.resident_id}" data-party-type="${escapeHtml(p.party_type)}" data-party-name="${escapeHtml(p.full_name)}">
+                <input type="hidden" class="att-input-status" name="records[${p.resident_id}][status]" value="${escapeHtml(p.attendance_status || '')}">
+                <input type="hidden" class="att-input-justified" name="records[${p.resident_id}][is_justified]" value="${Number(p.is_justified) === 1 ? '1' : '0'}">
+
+                <div class="party-att-header">
+                    <div>
+                        <span class="${badgeClass}">${escapeHtml(p.party_type)}</span>
+                        <span class="party-att-title" style="margin-left: 6px;">${escapeHtml(p.full_name)}</span>
+                        <div class="party-att-address">
+                            ${p.purok_name ? `Purok: ${escapeHtml(p.purok_name)}` : ''}${p.address ? ` · ${escapeHtml(p.address)}` : ''}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="att-status-pills">
+                    <button type="button" class="att-status-pill-btn ${currentChoice === 'Present' ? 'selected-present' : ''}" data-choice="Present" ${!canManageHearings ? 'disabled' : ''}>
+                        Present
+                    </button>
+                    <button type="button" class="att-status-pill-btn ${currentChoice === 'Unjustified' ? 'selected-unjustified' : ''}" data-choice="Unjustified" ${!canManageHearings ? 'disabled' : ''}>
+                        Absent (Unjustified)
+                    </button>
+                    <button type="button" class="att-status-pill-btn ${currentChoice === 'Excused' ? 'selected-excused' : ''}" data-choice="Excused" ${!canManageHearings ? 'disabled' : ''}>
+                        Excused / Justified
+                    </button>
+                    <button type="button" class="att-status-pill-btn ${currentChoice === 'Late' ? 'selected-late' : ''}" data-choice="Late" ${!canManageHearings ? 'disabled' : ''}>
+                        Late Appearance
+                    </button>
+                </div>
+
+                <div class="att-justification-box" id="justBox_${p.resident_id}" style="${isExcused ? '' : 'display: none;'}">
+                    <label for="justReason_${p.resident_id}">Justification Cause <span class="required-mark">*</span></label>
+                    <select id="justReason_${p.resident_id}" name="records[${p.resident_id}][justification_reason]" class="form-control" style="width: 100%; font-size: 0.84rem; padding: 4px 8px; border: 1px solid #cbd5e1; border-radius: 4px;" ${!canManageHearings ? 'disabled' : ''}>
+                        <option value="Medical Emergency / Illness" ${p.justification_reason === 'Medical Emergency / Illness' ? 'selected' : ''}>Medical Emergency / Illness</option>
+                        <option value="Official Duty / Employment Obligation" ${p.justification_reason === 'Official Duty / Employment Obligation' ? 'selected' : ''}>Official Duty / Employment Obligation</option>
+                        <option value="Force Majeure / Calamity / Severe Weather" ${p.justification_reason === 'Force Majeure / Calamity / Severe Weather' ? 'selected' : ''}>Force Majeure / Calamity / Severe Weather</option>
+                        <option value="Bereavement / Family Emergency" ${p.justification_reason === 'Bereavement / Family Emergency' ? 'selected' : ''}>Bereavement / Family Emergency</option>
+                        <option value="Other Justified Cause" ${p.justification_reason && !['Medical Emergency / Illness', 'Official Duty / Employment Obligation', 'Force Majeure / Calamity / Severe Weather', 'Bereavement / Family Emergency'].includes(p.justification_reason) ? 'selected' : ''}>Other Justified Cause</option>
+                    </select>
+                </div>
+
+                <div class="att-remarks-box">
+                    <input type="text" name="records[${p.resident_id}][remarks]" value="${escapeHtml(p.remarks || '')}" placeholder="Appearance remarks or incident notes (optional)..." style="width: 100%; font-size: 0.82rem; border: 1px solid #cbd5e1; border-radius: 4px; padding: 5px 8px;" ${!canManageHearings ? 'readonly' : ''}>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    // Bind pill button clicks
+    container.querySelectorAll('.party-att-card').forEach((card) => {
+        const resId = card.dataset.residentId;
+        const statusInput = card.querySelector('.att-input-status');
+        const justifiedInput = card.querySelector('.att-input-justified');
+        const justBox = card.querySelector(`#justBox_${resId}`);
+
+        card.querySelectorAll('.att-status-pill-btn').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                if (!canManageHearings) return;
+                const choice = btn.dataset.choice;
+
+                // Toggle selection
+                card.querySelectorAll('.att-status-pill-btn').forEach((b) => {
+                    b.classList.remove('selected-present', 'selected-unjustified', 'selected-excused', 'selected-late');
+                });
+
+                if (choice === 'Present') {
+                    btn.classList.add('selected-present');
+                    statusInput.value = 'Present';
+                    justifiedInput.value = '0';
+                    if (justBox) justBox.style.display = 'none';
+                } else if (choice === 'Unjustified') {
+                    btn.classList.add('selected-unjustified');
+                    statusInput.value = 'Absent';
+                    justifiedInput.value = '0';
+                    if (justBox) justBox.style.display = 'none';
+                } else if (choice === 'Excused') {
+                    btn.classList.add('selected-excused');
+                    statusInput.value = 'Absent';
+                    justifiedInput.value = '1';
+                    if (justBox) justBox.style.display = 'block';
+                } else if (choice === 'Late') {
+                    btn.classList.add('selected-late');
+                    statusInput.value = 'Late';
+                    justifiedInput.value = '0';
+                    if (justBox) justBox.style.display = 'none';
+                }
+
+                evaluateLiveAttendanceSituation();
+            });
+        });
+    });
+}
+
+function evaluateLiveAttendanceSituation() {
+    const cardContainer = document.getElementById('attPartiesContainer');
+    const situationBox = document.getElementById('attSituationCard');
+    const iconEl = document.getElementById('attSituationIcon');
+    const badgeTextEl = document.getElementById('attSituationBadgeText');
+    const refEl = document.getElementById('attSituationRef');
+    const consequencesListEl = document.getElementById('attConsequencesList');
+    const recommendationTextEl = document.getElementById('attRecommendationText');
+    const shortcutsEl = document.getElementById('attActionShortcuts');
+
+    if (!situationBox || !cardContainer) return;
+
+    const cards = cardContainer.querySelectorAll('.party-att-card');
+    if (!cards.length) {
+        situationBox.className = 'att-situation-box sit-neutral';
+        iconEl.textContent = '⚖️';
+        badgeTextEl.textContent = 'No Parties Found';
+        refEl.textContent = 'R.A. 7160';
+        consequencesListEl.innerHTML = '<li>Complaint parties must be registered in the resident database.</li>';
+        recommendationTextEl.textContent = 'Verify complaint parties before proceeding.';
+        shortcutsEl.innerHTML = '';
+        return;
+    }
+
+    let complainantCount = 0;
+    let complainantPresent = 0;
+    let complainantUnjustified = 0;
+    let complainantExcused = 0;
+    let complainantLate = 0;
+
+    let respondentCount = 0;
+    let respondentPresent = 0;
+    let respondentUnjustified = 0;
+    let respondentExcused = 0;
+    let respondentLate = 0;
+
+    cards.forEach((card) => {
+        const type = card.dataset.partyType;
+        const status = card.querySelector('.att-input-status')?.value || '';
+        const isJustified = card.querySelector('.att-input-justified')?.value === '1';
+
+        if (type === 'Complainant') {
+            complainantCount++;
+            if (status === 'Present') complainantPresent++;
+            else if (status === 'Late') complainantLate++;
+            else if (status === 'Absent' && isJustified) complainantExcused++;
+            else if (status === 'Absent' && !isJustified) complainantUnjustified++;
+        } else if (type === 'Respondent') {
+            respondentCount++;
+            if (status === 'Present') respondentPresent++;
+            else if (status === 'Late') respondentLate++;
+            else if (status === 'Absent' && isJustified) respondentExcused++;
+            else if (status === 'Absent' && !isJustified) respondentUnjustified++;
+        }
+    });
+
+    const summonsCount = Number(activeHearingAttendanceData?.summons_count) || 1;
+    const caseId = activeHearingAttendanceData?.case_id;
+    const hearingId = activeHearingAttendanceData?.hearing_id;
+
+    situationBox.className = 'att-situation-box';
+
+    // If completely unrecorded
+    if (complainantPresent === 0 && complainantUnjustified === 0 && complainantExcused === 0 && complainantLate === 0
+        && respondentPresent === 0 && respondentUnjustified === 0 && respondentExcused === 0 && respondentLate === 0) {
+        situationBox.classList.add('sit-neutral');
+        iconEl.textContent = '⚖️';
+        badgeTextEl.textContent = 'Pending Appearance Intake';
+        refEl.textContent = 'R.A. 7160 Sec. 415';
+        consequencesListEl.innerHTML = '<li>Record attendance for Complainant and Respondent to determine statutory proceedings.</li>';
+        recommendationTextEl.textContent = 'Select appearance status for each party above.';
+        shortcutsEl.innerHTML = '';
+        return;
+    }
+
+    // 1. Both Absent (Unjustified)
+    if (complainantUnjustified > 0 && respondentUnjustified > 0) {
+        situationBox.classList.add('sit-danger');
+        iconEl.textContent = '❌';
+        badgeTextEl.textContent = 'Both Parties Absent (Unjustified) — Dismissal Without Prejudice';
+        refEl.textContent = 'R.A. 7160 Sec. 415 / KP Rules';
+        consequencesListEl.innerHTML = `
+            <li>Neither Complainant nor Respondent appeared without justifiable cause despite formal notice.</li>
+            <li>Dispute is dismissed without prejudice for mutual non-appearance and lack of interest.</li>
+            <li>Parties are not barred from filing in the future, but the current docket is closed.</li>
+        `;
+        recommendationTextEl.textContent = 'Dismiss complaint without prejudice and archive proceedings. Parties must re-file to pursue claims.';
+        shortcutsEl.innerHTML = caseId ? `<a href="../cases/case-details.php?id=${encodeURIComponent(caseId)}" class="btn-att-action btn-att-action-danger" target="_blank">Manage Case Dismissal &rarr;</a>` : '';
+        return;
+    }
+
+    // 2. Complainant Absent (Unjustified)
+    if (complainantUnjustified > 0) {
+        situationBox.classList.add('sit-danger');
+        iconEl.textContent = '🛑';
+        badgeTextEl.textContent = 'Complainant Absent (Unjustified) — Dismissal & Judicial Recourse Barred';
+        refEl.textContent = 'R.A. 7160 Sec. 415 / KP Rule VI Sec. 8';
+        consequencesListEl.innerHTML = `
+            <li>Complainant failed to appear at the scheduled conciliation without justifiable cause.</li>
+            <li><strong>STATUTORY BAR:</strong> Complainant is legally barred from filing this complaint in court or seeking judicial recourse.</li>
+            <li>The complaint must be dismissed for failure to prosecute.</li>
+            <li>Respondent is entitled to a Certificate of Barred Action (KP Form 20-A).</li>
+        `;
+        recommendationTextEl.textContent = 'Dismiss the complaint. Issue Certificate of Barred Judicial Recourse to respondent upon request.';
+        shortcutsEl.innerHTML = caseId ? `<a href="../cases/case-details.php?id=${encodeURIComponent(caseId)}" class="btn-att-action btn-att-action-danger" target="_blank">Process Dismissal &amp; Barred Action &rarr;</a>` : '';
+        return;
+    }
+
+    // 3. Respondent Absent (Unjustified)
+    if (respondentUnjustified > 0) {
+        if (summonsCount <= 1) {
+            situationBox.classList.add('sit-warning');
+            iconEl.textContent = '⚠️';
+            badgeTextEl.textContent = 'Respondent Absent (1st Notice) — Issue 2nd Summons with Warning';
+            refEl.textContent = 'R.A. 7160 Sec. 410 / KP Form 9';
+            consequencesListEl.innerHTML = `
+                <li>First unjustified non-appearance of Respondent after due service of 1st Summons.</li>
+                <li>Mediation cannot proceed today, but adverse sanctions cannot yet be finalized without a second notice.</li>
+                <li>A 2nd Summons (KP Form 9) must be issued with statutory warning of Indirect Contempt (Sec. 515) and bar from filing counterclaims (Sec. 415).</li>
+            `;
+            recommendationTextEl.textContent = 'Reset hearing to a new date within the statutory period and issue 2nd Summons with warning.';
+            shortcutsEl.innerHTML = `
+                ${caseId ? `<a href="../documents/summons.php?case_id=${encodeURIComponent(caseId)}" class="btn-att-action btn-att-action-primary" target="_blank">Generate 2nd Summons (KP Form 9) &rarr;</a>` : ''}
+                ${canManageHearings ? `<button type="button" class="btn-att-action btn-att-action-secondary" onclick="closeHearingAttendanceModal(); editHearing(${hearingId});">Reschedule Hearing</button>` : ''}
+            `;
+        } else if (summonsCount === 2) {
+            situationBox.classList.add('sit-warning');
+            iconEl.textContent = '⚠️';
+            badgeTextEl.textContent = 'Respondent Absent (2nd Notice) — Issue 3rd & Final Summons';
+            refEl.textContent = 'R.A. 7160 Sec. 410 / KP Form 9';
+            consequencesListEl.innerHTML = `
+                <li>Second unjustified non-appearance despite two summonses.</li>
+                <li>A 3rd and final Summons (KP Form 9) must be issued — last chance before sanctions apply.</li>
+                <li>Warn Respondent: failure on 3rd notice leads to Indirect Contempt (Sec. 515) and bar from counterclaims (Sec. 415).</li>
+            `;
+            recommendationTextEl.textContent = 'Reschedule hearing and issue 3rd (final) Summons with stern warning.';
+            shortcutsEl.innerHTML = `
+                ${caseId ? `<a href="../documents/summons.php?case_id=${encodeURIComponent(caseId)}" class="btn-att-action btn-att-action-primary" target="_blank">Generate 3rd Summons (KP Form 9) &rarr;</a>` : ''}
+                ${canManageHearings ? `<button type="button" class="btn-att-action btn-att-action-secondary" onclick="closeHearingAttendanceModal(); editHearing(${hearingId});">Reschedule Hearing</button>` : ''}
+            `;
+        } else {
+            situationBox.classList.add('sit-danger');
+            iconEl.textContent = '🚫';
+            badgeTextEl.textContent = 'Respondent Repeated Non-Appearance — Barred Counterclaim & Issue CFA';
+            refEl.textContent = 'R.A. 7160 Sec. 415 & Sec. 515 / KP Form 20';
+            consequencesListEl.innerHTML = `
+                <li>Respondent repeatedly and unjustifiably failed to appear despite all 3 summonses (${summonsCount} issued).</li>
+                <li><strong>STATUTORY BAR:</strong> Respondent is legally barred from filing any counterclaim arising from this dispute in court.</li>
+                <li>Complainant is entitled to an immediate Certificate to File Action (CFA - KP Form 20) permitting direct court filing.</li>
+                <li>Punong Barangay / Lupon may certify Respondent to the Municipal Trial Court (MTC) for Indirect Contempt of Court.</li>
+            `;
+            recommendationTextEl.textContent = 'Issue Certificate to File Action (KP Form 20) to Complainant and certify Respondent for contempt.';
+            shortcutsEl.innerHTML = `
+                ${caseId ? `<a href="../documents/cfa.php?case_id=${encodeURIComponent(caseId)}" class="btn-att-action btn-att-action-danger" target="_blank">Generate Certificate to File Action (CFA) &rarr;</a>` : ''}
+                ${caseId ? `<a href="../cases/case-details.php?id=${encodeURIComponent(caseId)}" class="btn-att-action btn-att-action-secondary" target="_blank">View Case &amp; Certify Contempt</a>` : ''}
+            `;
+        }
+        return;
+    }
+
+    // 4. Excused / Justified Absence
+    if (complainantExcused > 0 || respondentExcused > 0) {
+        situationBox.classList.add('sit-info');
+        iconEl.textContent = 'ℹ️';
+        badgeTextEl.textContent = 'Excused / Justified Absence — Reset Without Sanction';
+        refEl.textContent = 'R.A. 7160 Sec. 410 & KP Rule VI';
+        consequencesListEl.innerHTML = `
+            <li>Party absence is verified as justified (medical emergency, official duty, force majeure).</li>
+            <li>No adverse sanctions, CFA, or counter-claim bars apply to the excused party.</li>
+            <li>The 15-day statutory mediation clock may be officially suspended/paused during verified incapacity.</li>
+        `;
+        recommendationTextEl.textContent = 'Reschedule hearing to the next available date. Log justified suspension on mediation clock if needed.';
+        shortcutsEl.innerHTML = `
+            ${canManageHearings ? `<button type="button" class="btn-att-action btn-att-action-primary" onclick="closeHearingAttendanceModal(); editHearing(${hearingId});">Reschedule Hearing</button>` : ''}
+            ${caseId ? `<a href="../cases/case-details.php?id=${encodeURIComponent(caseId)}" class="btn-att-action btn-att-action-secondary" target="_blank">Case Workspace &amp; Pause Clock &rarr;</a>` : ''}
+        `;
+        return;
+    }
+
+    // 5. Late Appearance
+    if (complainantLate > 0 || respondentLate > 0) {
+        situationBox.classList.add('sit-info');
+        iconEl.textContent = '⏱️';
+        badgeTextEl.textContent = 'Late Appearance Noted — Hearing In Progress';
+        refEl.textContent = 'KP Procedural Rules';
+        consequencesListEl.innerHTML = `
+            <li>Party arrived after scheduled time, but both parties are now available.</li>
+            <li>Session is authorized to proceed or be briefly adjourned to accommodate dialogue.</li>
+        `;
+        recommendationTextEl.textContent = 'Continue mediation session. Remind parties of prompt punctuality.';
+        shortcutsEl.innerHTML = caseId ? `<a href="../cases/case-details.php?id=${encodeURIComponent(caseId)}" class="btn-att-action btn-att-action-secondary" target="_blank">View Case Workspace &rarr;</a>` : '';
+        return;
+    }
+
+    // 6. Both Present
+    if ((complainantPresent > 0 || complainantCount === 0) && (respondentPresent > 0 || respondentCount === 0)) {
+        situationBox.classList.add('sit-success');
+        iconEl.textContent = '✅';
+        badgeTextEl.textContent = 'Both Parties Present — Mediation / Conciliation In Session';
+        refEl.textContent = 'R.A. 7160 Sec. 410(b) / KP Form 16';
+        consequencesListEl.innerHTML = `
+            <li>Both parties appeared. Quorum satisfied; mediation session is legally in session.</li>
+            <li>Punong Barangay / Pangkat Tagapagkasundo facilitates dispute dialogue and compromise.</li>
+            <li>If agreement is reached, execute an Amicable Settlement (KP Form 16), which acquires the force of a final court judgment after 10 days.</li>
+            <li>If no accord is reached within 15 statutory days, elevate to Pangkat Tagapagkasundo or issue CFA.</li>
+        `;
+        recommendationTextEl.textContent = 'Facilitate mediation dialogue. If settled, draft and record Amicable Settlement.';
+        shortcutsEl.innerHTML = `
+            ${caseId ? `<a href="../documents/settlements.php?case_id=${encodeURIComponent(caseId)}" class="btn-att-action btn-att-action-primary" target="_blank">Draft Amicable Settlement (KP Form 16) &rarr;</a>` : ''}
+            ${caseId ? `<a href="../cases/case-details.php?id=${encodeURIComponent(caseId)}" class="btn-att-action btn-att-action-secondary" target="_blank">View Case Workspace</a>` : ''}
+        `;
+        return;
+    }
+
+    // Default neutral
+    situationBox.classList.add('sit-neutral');
+    iconEl.textContent = '⚖️';
+    badgeTextEl.textContent = 'Attendance Incomplete';
+    refEl.textContent = 'R.A. 7160 Sec. 415';
+    consequencesListEl.innerHTML = '<li>Complete attendance selection for all parties to evaluate statutory next steps.</li>';
+    recommendationTextEl.textContent = 'Select appearance status for each party.';
+    shortcutsEl.innerHTML = '';
+}
+
+function bindAttendanceForm() {
+    const form = document.getElementById('hearingAttendanceForm');
+    if (!form) return;
+
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const alertEl = document.getElementById('attModalAlert');
+        const submitBtn = document.getElementById('btnSaveAttendance');
+
+        if (alertEl) {
+            alertEl.style.display = 'none';
+            alertEl.textContent = '';
+            alertEl.className = 'alert';
+        }
+
+        const hearingId = document.getElementById('attHearingId')?.value;
+        if (!hearingId) {
+            if (alertEl) {
+                alertEl.textContent = 'Invalid hearing reference.';
+                alertEl.className = 'alert error';
+                alertEl.style.display = 'block';
+            }
+            return;
+        }
+
+        // Collect records
+        const cards = document.querySelectorAll('#attPartiesContainer .party-att-card');
+        const records = [];
+
+        cards.forEach((card) => {
+            const residentId = card.dataset.residentId;
+            const status = card.querySelector('.att-input-status')?.value || '';
+            const isJustified = card.querySelector('.att-input-justified')?.value === '1' ? 1 : 0;
+            const reason = card.querySelector(`select[name="records[${residentId}][justification_reason]"]`)?.value || '';
+            const remarks = card.querySelector(`input[name="records[${residentId}][remarks]"]`)?.value || '';
+
+            if (status) {
+                records.push({
+                    resident_id: Number(residentId),
+                    attendance_status: status,
+                    is_justified: isJustified,
+                    justification_reason: isJustified ? reason : '',
+                    remarks: remarks.trim()
+                });
+            }
+        });
+
+        if (!records.length) {
+            if (alertEl) {
+                alertEl.textContent = 'Please select attendance status for at least one party.';
+                alertEl.className = 'alert error';
+                alertEl.style.display = 'block';
+            }
+            return;
+        }
+
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Saving...';
+        }
+
+        try {
+            const res = await api('../../../backend/api/hearings/attendance.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    hearing_id: Number(hearingId),
+                    records: records
+                })
+            });
+
+            if (alertEl) {
+                alertEl.textContent = res.message || 'Attendance recorded successfully.';
+                alertEl.className = 'alert success';
+                alertEl.style.display = 'block';
+            }
+
+            // Refresh table and KPIs
+            await Promise.all([loadCombinedRecords(currentPage), loadAttendanceKPIs(), loadHearings()]);
+
+            setTimeout(() => {
+                closeHearingAttendanceModal();
+            }, 1200);
+        } catch (err) {
+            if (alertEl) {
+                alertEl.textContent = err.message || 'Failed to save attendance.';
+                alertEl.className = 'alert error';
+                alertEl.style.display = 'block';
+            }
+        } finally {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Save Attendance & Apply Findings';
+            }
+        }
+    });
+}
+
 
 document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('nonappearanceForm');

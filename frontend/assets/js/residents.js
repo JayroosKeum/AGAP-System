@@ -972,9 +972,10 @@ function normalizePurokValue(val) {
     return clean;
 }
 
-function formatPurokBadge(purokVal) {
-    if (!purokVal) return '';
+function formatPurokBadge(purokVal, fallback = '') {
+    if (!purokVal) return fallback;
     const clean = String(purokVal).trim();
+    if (!clean) return fallback;
     const label = /^purok/i.test(clean) ? clean : (clean.length <= 2 && /^\d+$/.test(clean) ? `Purok ${clean}` : clean);
     return `<span class="purok-pill">${escapeResidentHtml(label)}</span>`;
 }
@@ -1160,7 +1161,7 @@ function renderResidentTableRows(residents, totalFiltered) {
     if (residents.length === 0) {
         table.innerHTML = `
             <tr>
-                <td colspan="6" class="table-empty-wrap">
+                <td colspan="5" class="table-empty-wrap">
                     <div class="empty-icon-circle">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <circle cx="11" cy="11" r="8"></circle>
@@ -1192,12 +1193,8 @@ function renderResidentTableRows(residents, totalFiltered) {
         const demoText = demoParts.join(' &bull; ') || 'Identity verified';
 
         // Location & Purok
-        const purokBadge = formatPurokBadge(r.purok);
+        const purokBadge = formatPurokBadge(r.purok, '<span style="color:#94a3b8; font-style:italic;">—</span>');
         const streetAddress = r.address ? escapeResidentHtml(r.address) : '<span style="color:#94a3b8; font-style:italic;">No street address</span>';
-
-        // Contact info
-        const phone = r.contact_no ? `<span class="contact-phone"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>${escapeResidentHtml(r.contact_no)}</span>` : '<span style="color:#94a3b8;">—</span>';
-        const email = r.email ? `<span class="contact-email">${escapeResidentHtml(r.email)}</span>` : '';
 
         // Residency Status
         const residencyVal = Number(r.is_tenant);
@@ -1213,9 +1210,6 @@ function renderResidentTableRows(residents, totalFiltered) {
         rowsHtml += `
             <tr>
                 <td>
-                    <span class="cell-id-badge">#RP-${String(r.resident_id).padStart(4, '0')}</span>
-                </td>
-                <td>
                     <div class="resident-identity-cell">
                         <div class="resident-avatar ${tintClass}">${initials}</div>
                         <div class="resident-name-meta">
@@ -1225,16 +1219,10 @@ function renderResidentTableRows(residents, totalFiltered) {
                     </div>
                 </td>
                 <td>
-                    <div class="cell-address-wrap">
-                        ${purokBadge}
-                        <div class="street-address-text">${streetAddress}</div>
-                    </div>
+                    <div class="street-address-text">${streetAddress}</div>
                 </td>
                 <td>
-                    <div class="cell-contact-wrap">
-                        ${phone}
-                        ${email}
-                    </div>
+                    ${purokBadge}
                 </td>
                 <td>
                     ${statusBadge}

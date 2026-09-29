@@ -210,17 +210,16 @@ include '../../layouts/header.php';
                 <table class="modern-resident-table">
                     <thead>
                         <tr>
-                            <th style="width: 80px;">Profile ID</th>
                             <th style="min-width: 230px;">Resident Name</th>
-                            <th style="min-width: 220px;">Purok / Address</th>
-                            <th style="min-width: 180px;">Contact Details</th>
-                            <th style="width: 130px;">Residency</th>
-                            <th style="width: 180px; text-align: right;">Actions</th>
+                            <th style="min-width: 250px;">Address</th>
+                            <th style="min-width: 140px;">Purok</th>
+                            <th style="min-width: 130px;">Residency</th>
+                            <th style="min-width: 160px; text-align: right;">Action</th>
                         </tr>
                     </thead>
                     <tbody id="residentTable">
                         <tr>
-                            <td colspan="6" class="table-loading-wrap">
+                            <td colspan="5" class="table-loading-wrap">
                                 <div class="empty-icon-circle">
                                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                         <line x1="12" y1="2" x2="12" y2="6"></line>

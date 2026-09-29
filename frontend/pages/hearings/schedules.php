@@ -106,6 +106,47 @@ include '../../layouts/header.php';
             </form>
         </section>
 
+        <!-- Attendance Monitoring Summary Cards -->
+        <section class="attendance-monitor-summary-card" aria-label="Hearing Attendance Summary">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; background: #e0f2fe; color: #0284c7;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                    </span>
+                    <h2 style="font-size: 1.05rem; font-weight: 700; color: #0f172a; margin: 0;">Attendance Monitor (Mediation &amp; Conciliation)</h2>
+                </div>
+                <div class="attendance-filter-pills" style="display: flex; gap: 6px; flex-wrap: wrap;">
+                    <button type="button" class="btn-att-filter active" data-att-filter="all" onclick="filterAttendanceView('all', this)">All</button>
+                    <button type="button" class="btn-att-filter" data-att-filter="both_present" onclick="filterAttendanceView('both_present', this)">Both Present</button>
+                    <button type="button" class="btn-att-filter" data-att-filter="unjustified" onclick="filterAttendanceView('unjustified', this)">Unjustified Absences</button>
+                    <button type="button" class="btn-att-filter" data-att-filter="excused" onclick="filterAttendanceView('excused', this)">Excused / Justified</button>
+                    <button type="button" class="btn-att-filter" data-att-filter="pending" onclick="filterAttendanceView('pending', this)">Pending Intake</button>
+                </div>
+            </div>
+            <div class="attendance-kpi-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px;">
+                <div class="att-kpi-item" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; border-left: 4px solid #3b82f6;">
+                    <div style="font-size: 0.76rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Total Sessions</div>
+                    <div id="attKpiTotal" style="font-size: 1.4rem; font-weight: 700; color: #1e293b; margin-top: 2px;">0</div>
+                </div>
+                <div class="att-kpi-item" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; border-left: 4px solid #10b981;">
+                    <div style="font-size: 0.76rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Both Present</div>
+                    <div id="attKpiPresent" style="font-size: 1.4rem; font-weight: 700; color: #047857; margin-top: 2px;">0</div>
+                </div>
+                <div class="att-kpi-item" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; border-left: 4px solid #ef4444;">
+                    <div style="font-size: 0.76rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Unjustified Absences</div>
+                    <div id="attKpiUnjustified" style="font-size: 1.4rem; font-weight: 700; color: #b91c1c; margin-top: 2px;">0</div>
+                </div>
+                <div class="att-kpi-item" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; border-left: 4px solid #f59e0b;">
+                    <div style="font-size: 0.76rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Excused / Justified</div>
+                    <div id="attKpiExcused" style="font-size: 1.4rem; font-weight: 700; color: #d97706; margin-top: 2px;">0</div>
+                </div>
+                <div class="att-kpi-item" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; border-left: 4px solid #94a3b8;">
+                    <div style="font-size: 0.76rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Pending Intake</div>
+                    <div id="attKpiPending" style="font-size: 1.4rem; font-weight: 700; color: #475569; margin-top: 2px;">0</div>
+                </div>
+            </div>
+        </section>
+
         <div class="table-section-header">
             <h2>Hearings and Deadlines</h2>
         </div>
@@ -118,13 +159,14 @@ include '../../layouts/header.php';
                         <th>Hearing Type</th>
                         <th>Date and Time</th>
                         <th>Status</th>
+                        <th>Attendance</th>
                         <th>Venue</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="combinedTable">
                     <tr>
-                        <td colspan="7" class="empty-state">Loading hearings and deadlines...</td>
+                        <td colspan="8" class="empty-state">Loading hearings and deadlines...</td>
                     </tr>
                 </tbody>
             </table>
@@ -239,6 +281,90 @@ include '../../layouts/header.php';
     </div>
 </div>
 <?php endif; ?>
+
+<div id="hearingAttendanceModal" class="modal">
+    <div class="modal-content modal-content-lg">
+        <div class="modal-header">
+            <div>
+                <h2 id="attModalTitle" style="margin-bottom: 2px;">Hearing Attendance &amp; KP Compliance Monitor</h2>
+                <p id="attModalSubtitle" style="font-size: 0.84rem; color: #64748b; margin: 0;">Record Complainant &amp; Respondent appearance with automated KP Law (R.A. 7160 Sec. 415) legal evaluation</p>
+            </div>
+            <button type="button" class="close-btn" onclick="closeHearingAttendanceModal()">&times;</button>
+        </div>
+
+        <div id="attModalAlert" style="display: none; margin-bottom: 14px;" class="alert"></div>
+
+        <div id="attHearingMetaCard" class="att-meta-grid">
+            <div class="att-meta-item">
+                <strong>Case Docket</strong>
+                <span id="attMetaCaseNumber">—</span>
+            </div>
+            <div class="att-meta-item">
+                <strong>Complaint Title</strong>
+                <span id="attMetaComplaintTitle">—</span>
+            </div>
+            <div class="att-meta-item">
+                <strong>Hearing Stage</strong>
+                <span id="attMetaHearingType">—</span>
+            </div>
+            <div class="att-meta-item">
+                <strong>Date &amp; Time</strong>
+                <span id="attMetaDateTime">—</span>
+            </div>
+            <div class="att-meta-item">
+                <strong>Hearing Venue</strong>
+                <span id="attMetaVenue">—</span>
+            </div>
+            <div class="att-meta-item">
+                <strong>Summons Issued</strong>
+                <span id="attMetaSummons">—</span>
+            </div>
+        </div>
+
+        <form id="hearingAttendanceForm">
+            <input type="hidden" id="attHearingId" name="hearing_id">
+
+            <div style="margin-bottom: 8px; display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="font-size: 0.95rem; font-weight: 700; color: #1e293b; margin: 0;">Party Attendance Records</h3>
+                <span style="font-size: 0.78rem; color: #64748b;">Click an appearance status for each party</span>
+            </div>
+
+            <div id="attPartiesContainer" class="att-parties-list">
+                <!-- Dynamically populated party cards -->
+                <div style="text-align: center; padding: 20px; color: #64748b;">Loading parties...</div>
+            </div>
+
+            <!-- Dynamic Live KP Situation Box -->
+            <div id="attSituationCard" class="att-situation-box sit-neutral">
+                <div class="att-situation-header">
+                    <div class="att-situation-title">
+                        <span id="attSituationIcon">⚖️</span>
+                        <span id="attSituationBadgeText">Pending Attendance Evaluation</span>
+                    </div>
+                    <span id="attSituationRef" class="att-situation-ref">R.A. 7160 Sec. 415</span>
+                </div>
+                <div class="att-consequences-section">
+                    <div class="att-consequences-title">Legal Consequences &amp; Procedural Status</div>
+                    <ul id="attConsequencesList" class="att-consequences-list">
+                        <li>Record attendance for Complainant and Respondent to determine statutory proceedings.</li>
+                    </ul>
+                </div>
+                <div id="attRecommendationBox" class="att-recommendation-box">
+                    <div class="att-consequences-title" style="margin-bottom: 2px;">Recommended Legal Next Steps</div>
+                    <div id="attRecommendationText" class="att-recommendation-text">Awaiting appearance intake.</div>
+                    <div id="attActionShortcuts" class="att-action-shortcuts"></div>
+                </div>
+            </div>
+
+            <div class="modal-actions" style="margin-top: 20px;">
+                <button type="button" class="btn-secondary" onclick="closeHearingAttendanceModal()">Close</button>
+                <?php if ($canManageHearings): ?>
+                <button type="submit" class="btn-create" id="btnSaveAttendance">Save Attendance &amp; Apply Findings</button>
+                <?php endif; ?>
+            </div>
+        </form>
+    </div>
+</div>
 
 <script>
 window.AGAP_HEARINGS = Object.freeze({

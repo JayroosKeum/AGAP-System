@@ -42,6 +42,64 @@ $residentsStmt = $db->query("
 ");
 $residents = $residentsStmt ? $residentsStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
+$residentsJsonData = [];
+foreach ($residents as $res) {
+    $fullName = trim(implode(' ', array_filter([$res['first_name'], $res['middle_name'] ?? '', $res['last_name']])));
+    $displayName = ($res['last_name'] !== '-')
+        ? ($res['last_name'] . ', ' . $res['first_name'] . (!empty($res['middle_name']) ? ' ' . $res['middle_name'] : ''))
+        : $fullName;
+    $addrParts = [];
+    if (!empty($res['address'])) {
+        $addrParts[] = trim($res['address']);
+    }
+    if (!empty($res['purok']) && (empty($res['address']) || stripos($res['address'], $res['purok']) === false)) {
+        $addrParts[] = trim($res['purok']);
+    }
+    $addressText = !empty($addrParts) ? implode(', ', $addrParts) : 'No address on file';
+    $searchText = strtolower($fullName . ' ' . $displayName . ' ' . ($res['purok'] ?? '') . ' ' . ($res['address'] ?? '') . ' ' . ($res['contact_no'] ?? ''));
+
+    $residentsJsonData[] = [
+        'resident_id' => (int) $res['resident_id'],
+        'name' => $fullName,
+        'display_name' => $displayName,
+        'purok' => $res['purok'] ?? '',
+        'address' => $res['address'] ?? '',
+        'address_text' => $addressText,
+        'contact_no' => $res['contact_no'] ?? '',
+        'search_text' => $searchText,
+    ];
+}
+
+$renderResidentOptions = function(?int $selectedId = null) use ($residents): string {
+    $html = '<option value="">Select Resident Profile...</option>';
+    foreach ($residents as $res) {
+        $fullName = trim(implode(' ', array_filter([$res['first_name'], $res['middle_name'] ?? '', $res['last_name']])));
+        $displayName = ($res['last_name'] !== '-')
+            ? ($res['last_name'] . ', ' . $res['first_name'] . (!empty($res['middle_name']) ? ' ' . $res['middle_name'] : ''))
+            : $fullName;
+        $addrParts = [];
+        if (!empty($res['address'])) {
+            $addrParts[] = trim($res['address']);
+        }
+        if (!empty($res['purok']) && (empty($res['address']) || stripos($res['address'], $res['purok']) === false)) {
+            $addrParts[] = trim($res['purok']);
+        }
+        $addressText = !empty($addrParts) ? implode(', ', $addrParts) : 'No address on file';
+        $optionLabel = $displayName . ' — ' . $addressText;
+        $isSelected = ($selectedId !== null && (int)$selectedId === (int)$res['resident_id']) ? ' selected' : '';
+
+        $html .= '<option value="' . (int)$res['resident_id'] . '"'
+            . ' data-name="' . htmlspecialchars($fullName, ENT_QUOTES) . '"'
+            . ' data-purok="' . htmlspecialchars($res['purok'] ?? '', ENT_QUOTES) . '"'
+            . ' data-address="' . htmlspecialchars($res['address'] ?? '', ENT_QUOTES) . '"'
+            . ' data-contact="' . htmlspecialchars($res['contact_no'] ?? '', ENT_QUOTES) . '"'
+            . $isSelected . '>'
+            . htmlspecialchars($optionLabel, ENT_QUOTES)
+            . '</option>';
+    }
+    return $html;
+};
+
 // Fetch location
 $locStmt = $db->prepare('SELECT latitude, longitude, address FROM incident_locations WHERE complaint_id = ? LIMIT 1');
 $locStmt->execute([$complaintId]);
@@ -287,72 +345,48 @@ include '../../layouts/header.php';
                                 <span class="card-subtitle">Choose from registered resident profiles to avoid misreporting</span>
                             </div>
 
+                            <div id="partyDistinctError" class="alert alert-danger" style="display:none; margin: 0 0 16px; padding: 10px 14px; font-size: 0.88rem; border-radius: 6px; background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5;">
+                                ⚠️ The complainant and respondent cannot be the same resident profile. Please select different individuals.
+                            </div>
+
                             <!-- Primary Complainant Selection -->
-                            <div class="form-group party-intake-group">
-                                <label for="complainantResidentId">
+                            <div class="form-group party-intake-group" id="complainantGroup">
+                                <label for="complainantSearchInput">
                                     <span class="party-badge badge-complainant">Complainant</span>
                                     Resident Profile <span class="required-mark">*</span>
                                 </label>
-                                <div class="party-input-wrap">
-                                    <select id="complainantResidentId" name="complainant_resident_id" required class="party-resident-select" onchange="handleResidentChange(this, 'complainantName', 'complainantPreview')">
-                                        <option value="">Select Resident Profile...</option>
-                                        <?php foreach ($residents as $res): ?>
-                                            <?php
-                                            $fullName = trim(implode(' ', array_filter([$res['first_name'], $res['middle_name'] ?? '', $res['last_name']])));
-                                            $displayName = ($res['last_name'] !== '-')
-                                                ? ($res['last_name'] . ', ' . $res['first_name'] . (!empty($res['middle_name']) ? ' ' . $res['middle_name'] : ''))
-                                                : $fullName;
-                                            $purokInfo = !empty($res['purok']) ? " ({$res['purok']})" : '';
-                                            $isSelected = ((string)$effCompId === (string)$res['resident_id']);
-                                            ?>
-                                            <option value="<?php echo (int)$res['resident_id']; ?>"
-                                                    data-name="<?php echo htmlspecialchars($fullName); ?>"
-                                                    data-purok="<?php echo htmlspecialchars($res['purok'] ?? ''); ?>"
-                                                    data-address="<?php echo htmlspecialchars($res['address'] ?? ''); ?>"
-                                                    data-contact="<?php echo htmlspecialchars($res['contact_no'] ?? ''); ?>"
-                                                    <?php echo $isSelected ? 'selected' : ''; ?>>
-                                                <?php echo htmlspecialchars($displayName . $purokInfo); ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
+                                <div class="party-search-combobox" data-party-role="complainant">
+                                    <div class="party-search-input-wrap">
+                                        <svg class="party-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                                        <input type="text" id="complainantSearchInput" class="party-search-input" placeholder="Type resident name, purok, or address to search..." autocomplete="off">
+                                        <button type="button" class="party-search-clear" title="Clear selection" style="display:none;">&times;</button>
+                                    </div>
+                                    <input type="hidden" id="complainantResidentId" name="complainant_resident_id" required value="<?php echo htmlspecialchars((string)$effCompId); ?>">
                                     <input type="hidden" id="complainantName" name="complainant_name" value="<?php echo htmlspecialchars($effCompName); ?>">
+                                    <div class="party-search-dropdown" style="display:none;"></div>
                                 </div>
                                 <div id="complainantPreview" class="party-selected-preview" style="display:none;"></div>
-                                <small class="field-hint">Person filing the complaint (must be chosen from registered resident profiles).</small>
+                                <small class="field-hint">Person filing the complaint (type to search; only registered resident profiles can be selected).</small>
                             </div>
 
                             <!-- Primary Respondent Selection -->
-                            <div class="form-group party-intake-group">
-                                <label for="respondentResidentId">
+                            <div class="form-group party-intake-group" id="respondentGroup">
+                                <label for="respondentSearchInput">
                                     <span class="party-badge badge-respondent">Respondent</span>
                                     Person Being Complained Against <span class="required-mark">*</span>
                                 </label>
-                                <div class="party-input-wrap">
-                                    <select id="respondentResidentId" name="respondent_resident_id" required class="party-resident-select" onchange="handleResidentChange(this, 'respondentName', 'respondentPreview')">
-                                        <option value="">Select Resident Profile...</option>
-                                        <?php foreach ($residents as $res): ?>
-                                            <?php
-                                            $fullName = trim(implode(' ', array_filter([$res['first_name'], $res['middle_name'] ?? '', $res['last_name']])));
-                                            $displayName = ($res['last_name'] !== '-')
-                                                ? ($res['last_name'] . ', ' . $res['first_name'] . (!empty($res['middle_name']) ? ' ' . $res['middle_name'] : ''))
-                                                : $fullName;
-                                            $purokInfo = !empty($res['purok']) ? " ({$res['purok']})" : '';
-                                            $isSelected = ((string)$effRespId === (string)$res['resident_id']);
-                                            ?>
-                                            <option value="<?php echo (int)$res['resident_id']; ?>"
-                                                    data-name="<?php echo htmlspecialchars($fullName); ?>"
-                                                    data-purok="<?php echo htmlspecialchars($res['purok'] ?? ''); ?>"
-                                                    data-address="<?php echo htmlspecialchars($res['address'] ?? ''); ?>"
-                                                    data-contact="<?php echo htmlspecialchars($res['contact_no'] ?? ''); ?>"
-                                                    <?php echo $isSelected ? 'selected' : ''; ?>>
-                                                <?php echo htmlspecialchars($displayName . $purokInfo); ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
+                                <div class="party-search-combobox" data-party-role="respondent">
+                                    <div class="party-search-input-wrap">
+                                        <svg class="party-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                                        <input type="text" id="respondentSearchInput" class="party-search-input" placeholder="Type resident name, purok, or address to search..." autocomplete="off">
+                                        <button type="button" class="party-search-clear" title="Clear selection" style="display:none;">&times;</button>
+                                    </div>
+                                    <input type="hidden" id="respondentResidentId" name="respondent_resident_id" required value="<?php echo htmlspecialchars((string)$effRespId); ?>">
                                     <input type="hidden" id="respondentName" name="respondent_name" value="<?php echo htmlspecialchars($effRespName); ?>">
+                                    <div class="party-search-dropdown" style="display:none;"></div>
                                 </div>
                                 <div id="respondentPreview" class="party-selected-preview" style="display:none;"></div>
-                                <small class="field-hint">Person or entity against whom the complaint is filed (must be chosen from registered resident profiles).</small>
+                                <small class="field-hint">Person or entity against whom the complaint is filed (type to search; only registered resident profiles can be selected).</small>
                             </div>
 
                             <!-- Dynamic Additional Parties -->
@@ -368,31 +402,20 @@ include '../../layouts/header.php';
                                                 </select>
                                             </div>
                                             <div class="form-group party-name-col">
-                                                <select name="party_resident_ids[]" required class="party-resident-select" onchange="syncPartyName(this)">
-                                                    <option value="">Select Resident Profile...</option>
-                                                    <?php foreach ($residents as $res): ?>
-                                                        <?php
-                                                        $fullName = trim(implode(' ', array_filter([$res['first_name'], $res['middle_name'] ?? '', $res['last_name']])));
-                                                        $displayName = ($res['last_name'] !== '-')
-                                                            ? ($res['last_name'] . ', ' . $res['first_name'] . (!empty($res['middle_name']) ? ' ' . $res['middle_name'] : ''))
-                                                            : $fullName;
-                                                        $purokInfo = !empty($res['purok']) ? " ({$res['purok']})" : '';
-                                                        $isSelected = ((string)($ap['resident_id'] ?? '') === (string)$res['resident_id']);
-                                                        ?>
-                                                        <option value="<?php echo (int)$res['resident_id']; ?>"
-                                                                data-name="<?php echo htmlspecialchars($fullName); ?>"
-                                                                data-purok="<?php echo htmlspecialchars($res['purok'] ?? ''); ?>"
-                                                                data-address="<?php echo htmlspecialchars($res['address'] ?? ''); ?>"
-                                                                data-contact="<?php echo htmlspecialchars($res['contact_no'] ?? ''); ?>"
-                                                                <?php echo $isSelected ? 'selected' : ''; ?>>
-                                                            <?php echo htmlspecialchars($displayName . $purokInfo); ?>
-                                                        </option>
-                                                    <?php endforeach; ?>
-                                                </select>
-                                                <input type="hidden" name="party_names[]" value="<?php echo htmlspecialchars($ap['name']); ?>">
+                                                <div class="party-search-combobox" data-party-role="additional">
+                                                    <div class="party-search-input-wrap">
+                                                        <svg class="party-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                                                        <input type="text" class="party-search-input" placeholder="Type resident name or address to search..." autocomplete="off">
+                                                        <button type="button" class="party-search-clear" title="Clear selection" style="display:none;">&times;</button>
+                                                    </div>
+                                                    <input type="hidden" name="party_resident_ids[]" required value="<?php echo !empty($ap['resident_id']) ? (int)$ap['resident_id'] : ''; ?>">
+                                                    <input type="hidden" name="party_names[]" value="<?php echo htmlspecialchars($ap['name']); ?>">
+                                                    <div class="party-search-dropdown" style="display:none;"></div>
+                                                </div>
                                             </div>
                                             <button type="button" class="btn-remove-party" title="Remove party" onclick="removePartyRow('partyRow_<?php echo $idx; ?>')">&times;</button>
                                         </div>
+                                        <div class="party-selected-preview additional-party-preview" style="display:none;"></div>
                                     </div>
                                 <?php endforeach; ?>
                             </div>
@@ -463,8 +486,43 @@ include '../../layouts/header.php';
                                 <input type="text" id="incidentStreet" name="incident_street" maxlength="255" required placeholder="Street, building, or nearby place" value="<?php echo htmlspecialchars($effStreet); ?>">
                             </div>
                             <div class="form-group">
-                                <label for="incidentPurok">Purok <span class="optional-label">Optional</span></label>
-                                <input type="text" id="incidentPurok" name="incident_purok" maxlength="100" placeholder="e.g. Purok 3" value="<?php echo htmlspecialchars($effPurok); ?>">
+                                <label for="incidentPurok">Purok / Zone (Tumana) <span class="optional-label">Optional</span></label>
+                                <?php
+                                $currPurok = $effPurok;
+                                $knownPuroks = [
+                                    'Non-Resident',
+                                    'Purok 1', 'Purok 2', 'Purok 3', 'Purok 4', 'Purok 5', 'Purok 6', 'Purok 7', 'Purok 8',
+                                    'Doña Petra', 'Bagong Farmers', 'Bukang Liwayway', 'Libis Tumana', 'Bagong Purok', 'Palay', 'Mais', 'Singkamas'
+                                ];
+                                $isCustomPurok = !empty($currPurok) && !in_array($currPurok, $knownPuroks, true);
+                                ?>
+                                <select name="incident_purok" id="incidentPurok">
+                                    <option value="">Select Purok / Area</option>
+                                    <option value="Non-Resident" <?php echo ($currPurok === 'Non-Resident') ? 'selected' : ''; ?>>Non-Resident / Outside Tumana</option>
+                                    <optgroup label="Numbered Puroks">
+                                        <option value="Purok 1" <?php echo ($currPurok === 'Purok 1') ? 'selected' : ''; ?>>Purok 1</option>
+                                        <option value="Purok 2" <?php echo ($currPurok === 'Purok 2') ? 'selected' : ''; ?>>Purok 2</option>
+                                        <option value="Purok 3" <?php echo ($currPurok === 'Purok 3') ? 'selected' : ''; ?>>Purok 3</option>
+                                        <option value="Purok 4" <?php echo ($currPurok === 'Purok 4') ? 'selected' : ''; ?>>Purok 4</option>
+                                        <option value="Purok 5" <?php echo ($currPurok === 'Purok 5') ? 'selected' : ''; ?>>Purok 5</option>
+                                        <option value="Purok 6" <?php echo ($currPurok === 'Purok 6') ? 'selected' : ''; ?>>Purok 6</option>
+                                        <option value="Purok 7" <?php echo ($currPurok === 'Purok 7') ? 'selected' : ''; ?>>Purok 7</option>
+                                        <option value="Purok 8" <?php echo ($currPurok === 'Purok 8') ? 'selected' : ''; ?>>Purok 8</option>
+                                    </optgroup>
+                                    <optgroup label="Zones & Compounds">
+                                        <option value="Doña Petra" <?php echo ($currPurok === 'Doña Petra') ? 'selected' : ''; ?>>Doña Petra Compound</option>
+                                        <option value="Bagong Farmers" <?php echo ($currPurok === 'Bagong Farmers') ? 'selected' : ''; ?>>Bagong Farmers</option>
+                                        <option value="Bukang Liwayway" <?php echo ($currPurok === 'Bukang Liwayway') ? 'selected' : ''; ?>>Bukang Liwayway</option>
+                                        <option value="Libis Tumana" <?php echo ($currPurok === 'Libis Tumana') ? 'selected' : ''; ?>>Libis Tumana</option>
+                                        <option value="Bagong Purok" <?php echo ($currPurok === 'Bagong Purok') ? 'selected' : ''; ?>>Sitio Bagong Purok</option>
+                                        <option value="Palay" <?php echo ($currPurok === 'Palay') ? 'selected' : ''; ?>>Palay Area</option>
+                                        <option value="Mais" <?php echo ($currPurok === 'Mais') ? 'selected' : ''; ?>>Mais Area</option>
+                                        <option value="Singkamas" <?php echo ($currPurok === 'Singkamas') ? 'selected' : ''; ?>>Singkamas Area</option>
+                                    </optgroup>
+                                    <?php if ($isCustomPurok): ?>
+                                        <option value="<?php echo htmlspecialchars($currPurok); ?>" selected><?php echo htmlspecialchars($currPurok); ?> (Existing)</option>
+                                    <?php endif; ?>
+                                </select>
                             </div>
 
                             <div class="form-group">
@@ -595,23 +653,7 @@ include '../../layouts/header.php';
 
         <!-- Template for dynamic additional party resident options -->
         <template id="residentOptionsTemplate">
-            <option value="">Select Resident Profile...</option>
-            <?php foreach ($residents as $res): ?>
-                <?php
-                $fullName = trim(implode(' ', array_filter([$res['first_name'], $res['middle_name'] ?? '', $res['last_name']])));
-                $displayName = ($res['last_name'] !== '-')
-                    ? ($res['last_name'] . ', ' . $res['first_name'] . (!empty($res['middle_name']) ? ' ' . $res['middle_name'] : ''))
-                    : $fullName;
-                $purokInfo = !empty($res['purok']) ? " ({$res['purok']})" : '';
-                ?>
-                <option value="<?php echo (int)$res['resident_id']; ?>"
-                        data-name="<?php echo htmlspecialchars($fullName); ?>"
-                        data-purok="<?php echo htmlspecialchars($res['purok'] ?? ''); ?>"
-                        data-address="<?php echo htmlspecialchars($res['address'] ?? ''); ?>"
-                        data-contact="<?php echo htmlspecialchars($res['contact_no'] ?? ''); ?>">
-                    <?php echo htmlspecialchars($displayName . $purokInfo); ?>
-                </option>
-            <?php endforeach; ?>
+            <?php echo $renderResidentOptions(null); ?>
         </template>
     </div>
 </div>
@@ -684,8 +726,47 @@ function openSaveModal() {
     const form = document.getElementById('editComplaintForm');
     if (!form) return;
 
+    const compId = document.getElementById('complainantResidentId')?.value?.trim();
+    const respId = document.getElementById('respondentResidentId')?.value?.trim();
+    const compSearch = document.getElementById('complainantSearchInput');
+    const respSearch = document.getElementById('respondentSearchInput');
+
+    if (!compId) {
+        if (compSearch) {
+            compSearch.classList.add('is-invalid-unselected');
+            compSearch.focus();
+        }
+        window.agapNotify?.('Please select a registered resident profile for the Complainant.', 'error');
+        return;
+    }
+
+    if (!respId) {
+        if (respSearch) {
+            respSearch.classList.add('is-invalid-unselected');
+            respSearch.focus();
+        }
+        window.agapNotify?.('Please select a registered resident profile for the Respondent.', 'error');
+        return;
+    }
+
     if (!validateDistinctParties()) {
-        form.reportValidity();
+        window.agapNotify?.('The complainant and respondent cannot be the same resident profile.', 'error');
+        if (respSearch) respSearch.focus();
+        return;
+    }
+
+    let invalidAdditional = false;
+    document.querySelectorAll('.additional-party-row').forEach(row => {
+        const hidden = row.querySelector('input[name="party_resident_ids[]"]');
+        const search = row.querySelector('.party-search-input');
+        if (hidden && (!hidden.value || parseInt(hidden.value, 10) <= 0)) {
+            invalidAdditional = true;
+            if (search) search.classList.add('is-invalid-unselected');
+        }
+    });
+
+    if (invalidAdditional) {
+        window.agapNotify?.('Please select a registered resident for all added additional parties, or remove empty party rows.', 'error');
         return;
     }
 
@@ -706,6 +787,10 @@ function closeSaveModal() {
 function confirmAndSubmitForm() {
     const form = document.getElementById('editComplaintForm');
     const btn = document.getElementById('btnConfirmSave');
+    if (!validateDistinctParties()) {
+        closeSaveModal();
+        return;
+    }
     if (btn) {
         btn.disabled = true;
         btn.textContent = 'Saving...';
@@ -732,67 +817,55 @@ function updatePartiesCount() {
     countEl.textContent = baseParties + additionalRows;
 }
 
-function handleResidentChange(selectEl, nameInputId, previewElId) {
-    const hiddenName = document.getElementById(nameInputId);
-    const opt = selectEl.options[selectEl.selectedIndex];
-    if (hiddenName) {
-        hiddenName.value = (opt && selectEl.value) ? (opt.dataset.name || opt.textContent.trim()) : '';
-    }
-    updatePartyPreview(selectEl, previewElId);
-    validateDistinctParties();
-}
-
-function syncPartyName(selectEl) {
-    const opt = selectEl.options[selectEl.selectedIndex];
-    const row = selectEl.closest('.party-row-fields');
-    if (row) {
-        const hidden = row.querySelector('input[name="party_names[]"]');
-        if (hidden) {
-            hidden.value = (opt && selectEl.value) ? (opt.dataset.name || opt.textContent.trim()) : '';
-        }
-    }
-}
-
-function updatePartyPreview(selectEl, previewElId) {
-    const previewEl = document.getElementById(previewElId);
-    if (!previewEl) return;
-    const opt = selectEl.options[selectEl.selectedIndex];
-    if (!opt || !selectEl.value) {
-        previewEl.style.display = 'none';
-        previewEl.innerHTML = '';
-        return;
-    }
-    const name = opt.dataset.name || opt.textContent.trim();
-    const purok = opt.dataset.purok ? `📍 Purok ${escapeHtml(opt.dataset.purok)}` : '';
-    const address = opt.dataset.address ? `🏠 ${escapeHtml(opt.dataset.address)}` : '';
-    const contact = opt.dataset.contact ? `📞 ${escapeHtml(opt.dataset.contact)}` : '';
-    const details = [purok, address, contact].filter(Boolean).join(' &bull; ');
-
-    previewEl.innerHTML = `
-        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-            <div>
-                <strong>${escapeHtml(name)}</strong>
-                ${details ? `<div style="font-size: 0.8rem; color: #475569; margin-top: 2px;">${details}</div>` : ''}
-            </div>
-            <span style="font-size: 0.72rem; background: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 9999px; font-weight: 600; white-space: nowrap;">Verified Profile</span>
-        </div>
-    `;
-    previewEl.style.display = 'block';
-}
-
 function validateDistinctParties() {
-    const compSelect = document.getElementById('complainantResidentId');
-    const respSelect = document.getElementById('respondentResidentId');
-    if (!compSelect || !respSelect) return true;
+    const compInput = document.getElementById('complainantResidentId');
+    const respInput = document.getElementById('respondentResidentId');
+    const respSearch = document.getElementById('respondentSearchInput');
+    const errorBox   = document.getElementById('partyDistinctError');
+    const compGroup  = document.getElementById('complainantGroup');
+    const respGroup  = document.getElementById('respondentGroup');
+    if (!compInput || !respInput) return true;
 
-    if (compSelect.value && respSelect.value && compSelect.value === respSelect.value) {
-        respSelect.setCustomValidity('The complainant and respondent cannot be the same resident profile.');
+    const compVal = compInput.value.trim();
+    const respVal = respInput.value.trim();
+
+    if (compVal && respVal && compVal === respVal) {
+        if (respSearch) respSearch.classList.add('is-invalid-unselected');
+        if (errorBox) {
+            errorBox.innerHTML = '<strong>⚠️ Same person selected!</strong> The complainant and respondent cannot be the same resident profile. Please select different individuals.';
+            errorBox.style.display = 'block';
+        }
+        // Add red border to both party combobox groups
+        [compGroup, respGroup].forEach(g => {
+            if (!g) return;
+            g.style.outline = '2px solid #dc2626';
+            g.style.outlineOffset = '2px';
+            g.style.borderRadius = '6px';
+            const inp = g.querySelector('.party-search-input');
+            if (inp) inp.style.borderColor = '#dc2626';
+        });
         return false;
-    } else {
-        respSelect.setCustomValidity('');
-        return true;
     }
+
+    if (respSearch) respSearch.classList.remove('is-invalid-unselected');
+    if (errorBox) {
+        errorBox.style.display = 'none';
+    }
+    // Remove red border
+    [compGroup, respGroup].forEach(g => {
+        if (!g) return;
+        g.style.outline = '';
+        g.style.outlineOffset = '';
+        const inp = g.querySelector('.party-search-input');
+        if (inp) inp.style.borderColor = '';
+    });
+    return true;
 }
+
+window.validateDistinctParties = validateDistinctParties;
+window.syncDistinctPartyOptions = function() {
+    validateDistinctParties();
+};
 
 async function deleteExistingAttachment(attachmentId, btn) {
     if (!confirm('Are you sure you want to delete this attachment?')) return;
@@ -860,15 +933,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Initialize resident selection previews
-    const compSelect = document.getElementById('complainantResidentId');
-    const respSelect = document.getElementById('respondentResidentId');
-    if (compSelect) {
-        updatePartyPreview(compSelect, 'complainantPreview');
+    // Expose registered residents data for combobox components
+    window.AGAP_RESIDENTS = <?php echo json_encode($residentsJsonData, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
+
+    // Initialize all searchable resident comboboxes
+    if (window.initAllPartyComboboxes) {
+        window.initAllPartyComboboxes();
     }
-    if (respSelect) {
-        updatePartyPreview(respSelect, 'respondentPreview');
-    }
+    updatePartiesCount();
 
     // Dynamic additional parties
     const addPartyBtn = document.getElementById('addPartyBtn');
@@ -879,8 +951,6 @@ document.addEventListener('DOMContentLoaded', () => {
         addPartyBtn.addEventListener('click', () => {
             partyCounter++;
             const rowId = `extraPartyRow_${partyCounter}`;
-            const tpl = document.getElementById('residentOptionsTemplate');
-            const optionsHtml = tpl ? tpl.innerHTML : '<option value="">Select Resident Profile...</option>';
             const div = document.createElement('div');
             div.className = 'additional-party-row';
             div.id = rowId;
@@ -894,15 +964,27 @@ document.addEventListener('DOMContentLoaded', () => {
                         </select>
                     </div>
                     <div class="form-group party-name-col">
-                        <select name="party_resident_ids[]" required class="party-resident-select" onchange="syncPartyName(this)">
-                            ${optionsHtml}
-                        </select>
-                        <input type="hidden" name="party_names[]" value="">
+                        <div class="party-search-combobox" data-party-role="additional">
+                            <div class="party-search-input-wrap">
+                                <svg class="party-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                                <input type="text" class="party-search-input" placeholder="Type resident name or address to search..." autocomplete="off">
+                                <button type="button" class="party-search-clear" title="Clear selection" style="display:none;">&times;</button>
+                            </div>
+                            <input type="hidden" name="party_resident_ids[]" required value="">
+                            <input type="hidden" name="party_names[]" value="">
+                            <div class="party-search-dropdown" style="display:none;"></div>
+                        </div>
                     </div>
                     <button type="button" class="btn-remove-party" title="Remove party" onclick="removePartyRow('${rowId}')">&times;</button>
                 </div>
+                <div class="party-selected-preview additional-party-preview" style="display:none;"></div>
             `;
             container.appendChild(div);
+
+            const newCombobox = div.querySelector('.party-search-combobox');
+            if (newCombobox && window.initPartySearchCombobox) {
+                window.initPartySearchCombobox(newCombobox, window.AGAP_RESIDENTS);
+            }
             updatePartiesCount();
         });
     }

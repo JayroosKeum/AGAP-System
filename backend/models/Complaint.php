@@ -100,6 +100,10 @@ class Complaint
             if (!$mapValidation['success']) {
                 return $mapValidation;
             }
+            $partiesValidation = $this->validatePartiesInput($data);
+            if (!$partiesValidation['success']) {
+                return $partiesValidation;
+            }
 
             if(session_status() === PHP_SESSION_NONE)
             {
@@ -493,57 +497,27 @@ class Complaint
 
         // 1. Complainant
         $compId = filter_var($data['complainant_resident_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
-        $compName = trim((string)($data['complainant_name'] ?? ''));
-        if ($compId || $compName !== '') {
-            $resId = $this->resolveResidentId($compName, $compId);
-            if ($resId) {
-                $partyStmt->execute([$complaintId, $resId, 'Complainant']);
-            }
+        if ($compId && $compId > 0) {
+            $partyStmt->execute([$complaintId, $compId, 'Complainant']);
         }
 
         // 2. Respondent (Person being complained against)
         $respId = filter_var($data['respondent_resident_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
-        $respName = trim((string)($data['respondent_name'] ?? ''));
-        if ($respId || $respName !== '') {
-            $resId = $this->resolveResidentId($respName, $respId);
-            if ($resId) {
-                $partyStmt->execute([$complaintId, $resId, 'Respondent']);
-            }
+        if ($respId && $respId > 0) {
+            $partyStmt->execute([$complaintId, $respId, 'Respondent']);
         }
 
         // 3. Additional parties
         if (!empty($data['party_resident_ids']) && is_array($data['party_resident_ids'])) {
             $types = $data['party_types'] ?? [];
-            $names = $data['party_names'] ?? [];
             foreach ($data['party_resident_ids'] as $index => $pIdRaw) {
                 $pId = filter_var($pIdRaw, FILTER_VALIDATE_INT) ?: null;
-                $pName = trim((string)($names[$index] ?? ''));
                 $pType = trim((string)($types[$index] ?? 'Witness'));
                 if (!in_array($pType, ['Complainant', 'Respondent', 'Witness'], true)) {
                     $pType = 'Witness';
                 }
-                if ($pId || $pName !== '') {
-                    $resId = $this->resolveResidentId($pName, $pId);
-                    if ($resId) {
-                        $partyStmt->execute([$complaintId, $resId, $pType]);
-                    }
-                }
-            }
-        } elseif (!empty($data['party_names']) && is_array($data['party_names'])) {
-            $types = $data['party_types'] ?? [];
-            $ids = $data['party_resident_ids'] ?? [];
-            foreach ($data['party_names'] as $index => $name) {
-                $pName = trim((string)$name);
-                $pType = trim((string)($types[$index] ?? 'Witness'));
-                if (!in_array($pType, ['Complainant', 'Respondent', 'Witness'], true)) {
-                    $pType = 'Witness';
-                }
-                $pId = filter_var($ids[$index] ?? null, FILTER_VALIDATE_INT) ?: null;
-                if ($pName !== '' || $pId) {
-                    $resId = $this->resolveResidentId($pName, $pId);
-                    if ($resId) {
-                        $partyStmt->execute([$complaintId, $resId, $pType]);
-                    }
+                if ($pId && $pId > 0) {
+                    $partyStmt->execute([$complaintId, $pId, $pType]);
                 }
             }
         }
@@ -551,16 +525,10 @@ class Complaint
 
     private function validatePartiesInput(array $data): array
     {
-        $hasPartyData = isset($data['complainant_resident_id']) || isset($data['respondent_resident_id']) ||
-                        isset($data['complainant_name']) || isset($data['respondent_name']);
-        if (!$hasPartyData) {
-            return ['success' => true];
-        }
-
-        // Complainant validation
+        // Complainant validation: MUST be a registered resident profile
         $compId = filter_var($data['complainant_resident_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         if (!$compId) {
-            return ['success' => false, 'message' => 'Please select a valid resident profile for the complainant.'];
+            return ['success' => false, 'message' => 'Please select a registered resident profile for the complainant.'];
         }
         $checkComp = $this->conn->prepare('SELECT resident_id FROM residents WHERE resident_id = ?');
         $checkComp->execute([$compId]);
@@ -568,10 +536,10 @@ class Complaint
             return ['success' => false, 'message' => 'The selected complainant resident profile was not found in the directory.'];
         }
 
-        // Respondent validation
+        // Respondent validation: MUST be a registered resident profile
         $respId = filter_var($data['respondent_resident_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         if (!$respId) {
-            return ['success' => false, 'message' => 'Please select a valid resident profile for the respondent.'];
+            return ['success' => false, 'message' => 'Please select a registered resident profile for the respondent.'];
         }
         $checkResp = $this->conn->prepare('SELECT resident_id FROM residents WHERE resident_id = ?');
         $checkResp->execute([$respId]);
@@ -584,7 +552,7 @@ class Complaint
             return ['success' => false, 'message' => 'The complainant and respondent cannot be the same resident profile.'];
         }
 
-        // Additional parties validation
+        // Additional parties validation: all additional parties must be registered resident profiles
         if (!empty($data['party_resident_ids']) && is_array($data['party_resident_ids'])) {
             $types = $data['party_types'] ?? [];
             foreach ($data['party_resident_ids'] as $idx => $pIdRaw) {

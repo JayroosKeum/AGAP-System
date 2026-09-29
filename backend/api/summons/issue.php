@@ -34,14 +34,21 @@ if (!$complaintId) {
     exit;
 }
 
+$mediationData = [
+    'mediation_date' => trim((string) ($_POST['mediation_date'] ?? '')),
+    'mediation_time' => trim((string) ($_POST['mediation_time'] ?? '')),
+    'venue' => trim((string) ($_POST['venue'] ?? 'Barangay Hall')),
+    'remarks' => trim((string) ($_POST['remarks'] ?? ''))
+];
+
 $summons = new Summons();
-$result = $summons->issueFirstSummon((int) $complaintId, (int) $_SESSION['user_id']);
+$result = $summons->issueFirstSummon((int) $complaintId, (int) $_SESSION['user_id'], $mediationData);
 
 if ($result['success']) {
     $audit = new AuditService();
     $auditAction = ($result['already_issued'] ?? false)
         ? sprintf('Re-opened Summons #%d for Case %s', $result['summons_number'] ?? 1, $result['case_number'] ?? '')
-        : sprintf('Issued Summons #%d for Case %s', $result['summons_number'] ?? 1, $result['case_number'] ?? '');
+        : sprintf('Issued Summons #%d and scheduled 1st Mediation for Case %s', $result['summons_number'] ?? 1, $result['case_number'] ?? '');
     $audit->log((int) $_SESSION['user_id'], $auditAction, 'Summons', $result['document_id'] ?? null);
 }
 

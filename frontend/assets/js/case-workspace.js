@@ -110,7 +110,35 @@ async function loadWorkspace() {
             return `${ord} ${h.hearing_type}`;
         };
 
-        document.getElementById('caseHearings').innerHTML = workspaceList(data.hearings, (h) => `<li><strong>${caseWorkspaceEscape(formatHearingType(h))}</strong> — ${caseWorkspaceEscape(h.hearing_date)}<br>${caseWorkspaceEscape(h.venue || 'Venue pending')} · ${caseWorkspaceEscape(h.hearing_status)}</li>`, 'No hearings are scheduled.');
+        const formatAttendanceSummary = (h) => {
+            const count = Number(h.attendance_count) || 0;
+            const unjustified = Number(h.unjustified_absent_count) || 0;
+            const excused = Number(h.excused_count) || 0;
+            const present = Number(h.present_count) || 0;
+            if (count === 0) {
+                return '<span class="badge" style="background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;padding:2px 6px;border-radius:4px;font-size:0.75rem;">Attendance: Pending Intake</span>';
+            }
+            if (unjustified > 0) {
+                return `<span class="badge" style="background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;padding:2px 6px;border-radius:4px;font-size:0.75rem;">Attendance: ${unjustified} Unjustified Absent</span>`;
+            }
+            if (excused > 0) {
+                return `<span class="badge" style="background:#fef3c7;color:#b45309;border:1px solid #fde68a;padding:2px 6px;border-radius:4px;font-size:0.75rem;">Attendance: ${excused} Excused</span>`;
+            }
+            return `<span class="badge" style="background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;padding:2px 6px;border-radius:4px;font-size:0.75rem;">Attendance: ${present} Present</span>`;
+        };
+
+        document.getElementById('caseHearings').innerHTML = workspaceList(data.hearings, (h) => `
+            <li style="margin-bottom:12px;">
+                <strong>${caseWorkspaceEscape(formatHearingType(h))}</strong> — ${caseWorkspaceEscape(h.hearing_date)}<br>
+                ${caseWorkspaceEscape(h.venue || 'Venue pending')} · ${caseWorkspaceEscape(h.hearing_status)}
+                <div style="margin-top:5px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    ${formatAttendanceSummary(h)}
+                    <a href="../hearings/schedules.php?hearing_id=${encodeURIComponent(h.hearing_id)}&open_attendance=1" style="font-size:0.76rem; font-weight:600; text-decoration:none; color:#0284c7; background:#f0f9ff; border:1px solid #bae6fd; padding:2px 8px; border-radius:4px; display:inline-flex; align-items:center; gap:4px;">
+                        Monitor Attendance &rarr;
+                    </a>
+                </div>
+            </li>
+        `, 'No hearings are scheduled.');
         document.getElementById('caseDocuments').innerHTML = workspaceList(data.documents, (d) => `<li><strong>${caseWorkspaceEscape(d.template_name)}</strong><br>${caseWorkspaceEscape(d.generated_at)} · ${caseWorkspaceEscape(d.service_status)}<br><a href="../gps/proof-service.php?case_id=${encodeURIComponent(item.case_id)}&document_id=${encodeURIComponent(d.document_id)}">Record proof of service</a></li>`, 'No documents have been generated.');
         document.getElementById('caseProofs').innerHTML = workspaceList(data.proofs, (p) => `<li><strong>${caseWorkspaceEscape(p.template_name || 'Legacy service record')}</strong><br>${caseWorkspaceEscape(p.served_date)} by ${caseWorkspaceEscape(p.served_by_name)}${p.remarks ? `<br>${caseWorkspaceEscape(p.remarks)}` : ''}</li>`, 'No proof of service has been recorded.');
     } catch (error) {

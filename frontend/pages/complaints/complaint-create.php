@@ -17,11 +17,69 @@ $categoriesStmt = $db->query('SELECT category_id, category_name FROM complaint_c
 $categories = $categoriesStmt ? $categoriesStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
 $residentsStmt = $db->query("
-    SELECT resident_id, first_name, middle_name, last_name, purok, address
+    SELECT resident_id, first_name, middle_name, last_name, contact_no, purok, address
     FROM residents 
     ORDER BY last_name ASC, first_name ASC
 ");
 $residents = $residentsStmt ? $residentsStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+
+$renderResidentOptions = function(?int $selectedId = null) use ($residents): string {
+    $html = '<option value="">Select Resident Profile...</option>';
+    foreach ($residents as $res) {
+        $fullName = trim(implode(' ', array_filter([$res['first_name'], $res['middle_name'] ?? '', $res['last_name']])));
+        $displayName = ($res['last_name'] !== '-')
+            ? ($res['last_name'] . ', ' . $res['first_name'] . (!empty($res['middle_name']) ? ' ' . $res['middle_name'] : ''))
+            : $fullName;
+        $addrParts = [];
+        if (!empty($res['address'])) {
+            $addrParts[] = trim($res['address']);
+        }
+        if (!empty($res['purok']) && (empty($res['address']) || stripos($res['address'], $res['purok']) === false)) {
+            $addrParts[] = trim($res['purok']);
+        }
+        $addressText = !empty($addrParts) ? implode(', ', $addrParts) : 'No address on file';
+        $optionLabel = $displayName . ' — ' . $addressText;
+        $isSelected = ($selectedId !== null && (int)$selectedId === (int)$res['resident_id']) ? ' selected' : '';
+
+        $html .= '<option value="' . (int)$res['resident_id'] . '"'
+            . ' data-name="' . htmlspecialchars($fullName, ENT_QUOTES) . '"'
+            . ' data-purok="' . htmlspecialchars($res['purok'] ?? '', ENT_QUOTES) . '"'
+            . ' data-address="' . htmlspecialchars($res['address'] ?? '', ENT_QUOTES) . '"'
+            . ' data-contact="' . htmlspecialchars($res['contact_no'] ?? '', ENT_QUOTES) . '"'
+            . $isSelected . '>'
+            . htmlspecialchars($optionLabel, ENT_QUOTES)
+            . '</option>';
+    }
+    return $html;
+};
+
+$residentsJsonData = [];
+foreach ($residents as $res) {
+    $fullName = trim(implode(' ', array_filter([$res['first_name'], $res['middle_name'] ?? '', $res['last_name']])));
+    $displayName = ($res['last_name'] !== '-')
+        ? ($res['last_name'] . ', ' . $res['first_name'] . (!empty($res['middle_name']) ? ' ' . $res['middle_name'] : ''))
+        : $fullName;
+    $addrParts = [];
+    if (!empty($res['address'])) {
+        $addrParts[] = trim($res['address']);
+    }
+    if (!empty($res['purok']) && (empty($res['address']) || stripos($res['address'], $res['purok']) === false)) {
+        $addrParts[] = trim($res['purok']);
+    }
+    $addressText = !empty($addrParts) ? implode(', ', $addrParts) : 'No address on file';
+    $searchText = strtolower($fullName . ' ' . $displayName . ' ' . ($res['purok'] ?? '') . ' ' . ($res['address'] ?? '') . ' ' . ($res['contact_no'] ?? ''));
+
+    $residentsJsonData[] = [
+        'resident_id' => (int) $res['resident_id'],
+        'name' => $fullName,
+        'display_name' => $displayName,
+        'purok' => $res['purok'] ?? '',
+        'address' => $res['address'] ?? '',
+        'address_text' => $addressText,
+        'contact_no' => $res['contact_no'] ?? '',
+        'search_text' => $searchText,
+    ];
+}
 
 $complaintFlash = $_SESSION['complaint_flash'] ?? null;
 $old = $complaintFlash['old'] ?? [];
@@ -114,37 +172,96 @@ include '../../layouts/header.php';
                     <div class="intake-card">
                         <div class="intake-card-header">
                             <h3>2. Involved Parties</h3>
-                            <span class="card-subtitle">Select from resident profiles to avoid misreporting, or enter full name</span>
+                            <span class="card-subtitle">Select from registered resident profiles to avoid misreporting</span>
                         </div>
 
-                        <!-- Complainant Textbox -->
-                        <div class="form-group party-intake-group">
-                            <label for="complainantName">
+                        <div id="partyDistinctError" class="alert alert-danger" style="display:none; margin: 0 0 16px; padding: 10px 14px; font-size: 0.88rem; border-radius: 6px; background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5;">
+                            ⚠️ The complainant and respondent cannot be the same resident profile. Please select different individuals.
+                        </div>
+
+                        <!-- Complainant Searchable Field -->
+                        <div class="form-group party-intake-group" id="complainantGroup">
+                            <label for="complainantSearchInput">
                                 <span class="party-badge badge-complainant">Complainant</span>
-                                Full Name <span class="required-mark">*</span>
+                                Resident Profile <span class="required-mark">*</span>
                             </label>
-                            <div class="party-input-wrap">
-                                <input type="text" id="complainantName" name="complainant_name" list="residentsDatalist" placeholder="Search resident profile or type full name..." autocomplete="off" required value="<?php echo htmlspecialchars($old['complainant_name'] ?? ''); ?>">
-                                <input type="hidden" id="complainantResidentId" name="complainant_resident_id" value="<?php echo htmlspecialchars($old['complainant_resident_id'] ?? ''); ?>">
+                            <div class="party-search-combobox" data-party-role="complainant">
+                                <div class="party-search-input-wrap">
+                                    <svg class="party-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                                    <input type="text" id="complainantSearchInput" class="party-search-input" placeholder="Type resident name, purok, or address to search..." autocomplete="off">
+                                    <button type="button" class="party-search-clear" title="Clear selection" style="display:none;">&times;</button>
+                                </div>
+                                <input type="hidden" id="complainantResidentId" name="complainant_resident_id" required value="<?php echo htmlspecialchars((string)($old['complainant_resident_id'] ?? '')); ?>">
+                                <input type="hidden" id="complainantName" name="complainant_name" value="<?php echo htmlspecialchars($old['complainant_name'] ?? ''); ?>">
+                                <div class="party-search-dropdown" style="display:none;"></div>
                             </div>
-                            <small class="field-hint">Person filing the complaint.</small>
+                            <div id="complainantPreview" class="party-selected-preview" style="display:none;"></div>
+                            <small class="field-hint">Person filing the complaint (type to search; only registered resident profiles can be selected).</small>
                         </div>
 
-                        <!-- Person Being Complained Against (Respondent) Textbox -->
-                        <div class="form-group party-intake-group">
-                            <label for="respondentName">
+                        <!-- Person Being Complained Against (Respondent) Searchable Field -->
+                        <div class="form-group party-intake-group" id="respondentGroup">
+                            <label for="respondentSearchInput">
                                 <span class="party-badge badge-respondent">Respondent</span>
                                 Person Being Complained Against <span class="required-mark">*</span>
                             </label>
-                            <div class="party-input-wrap">
-                                <input type="text" id="respondentName" name="respondent_name" list="residentsDatalist" placeholder="Search resident profile or type full name..." autocomplete="off" required value="<?php echo htmlspecialchars($old['respondent_name'] ?? ''); ?>">
-                                <input type="hidden" id="respondentResidentId" name="respondent_resident_id" value="<?php echo htmlspecialchars($old['respondent_resident_id'] ?? ''); ?>">
+                            <div class="party-search-combobox" data-party-role="respondent">
+                                <div class="party-search-input-wrap">
+                                    <svg class="party-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                                    <input type="text" id="respondentSearchInput" class="party-search-input" placeholder="Type resident name, purok, or address to search..." autocomplete="off">
+                                    <button type="button" class="party-search-clear" title="Clear selection" style="display:none;">&times;</button>
+                                </div>
+                                <input type="hidden" id="respondentResidentId" name="respondent_resident_id" required value="<?php echo htmlspecialchars((string)($old['respondent_resident_id'] ?? '')); ?>">
+                                <input type="hidden" id="respondentName" name="respondent_name" value="<?php echo htmlspecialchars($old['respondent_name'] ?? ''); ?>">
+                                <div class="party-search-dropdown" style="display:none;"></div>
                             </div>
-                            <small class="field-hint">Person or entity against whom the complaint is filed.</small>
+                            <div id="respondentPreview" class="party-selected-preview" style="display:none;"></div>
+                            <small class="field-hint">Person or entity against whom the complaint is filed (type to search; only registered resident profiles can be selected).</small>
                         </div>
 
                         <!-- Dynamic Additional Parties (Optional) -->
-                        <div id="additionalPartiesContainer" class="additional-parties-container"></div>
+                        <div id="additionalPartiesContainer" class="additional-parties-container">
+                            <?php
+                            $oldPartyIds = $old['party_resident_ids'] ?? [];
+                            $oldPartyTypes = $old['party_types'] ?? [];
+                            $oldPartyNames = $old['party_names'] ?? [];
+                            if (is_array($oldPartyIds)) {
+                                foreach ($oldPartyIds as $idx => $rId) {
+                                    $rIdInt = (int)$rId;
+                                    if ($rIdInt <= 0) continue;
+                                    $pType = $oldPartyTypes[$idx] ?? 'Witness';
+                                    $pName = $oldPartyNames[$idx] ?? '';
+                                    ?>
+                                    <div class="additional-party-row" id="additionalParty_<?php echo $idx; ?>">
+                                        <div class="party-row-fields">
+                                            <div class="form-group party-type-col">
+                                                <select name="party_types[]" class="party-type-select">
+                                                    <option value="Witness" <?php echo ($pType === 'Witness') ? 'selected' : ''; ?>>Witness</option>
+                                                    <option value="Complainant" <?php echo ($pType === 'Complainant') ? 'selected' : ''; ?>>Complainant</option>
+                                                    <option value="Respondent" <?php echo ($pType === 'Respondent') ? 'selected' : ''; ?>>Respondent</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group party-name-col">
+                                                <div class="party-search-combobox" data-party-role="additional">
+                                                    <div class="party-search-input-wrap">
+                                                        <svg class="party-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                                                        <input type="text" class="party-search-input" placeholder="Type resident name or address to search..." autocomplete="off">
+                                                        <button type="button" class="party-search-clear" title="Clear selection" style="display:none;">&times;</button>
+                                                    </div>
+                                                    <input type="hidden" name="party_resident_ids[]" required value="<?php echo $rIdInt; ?>">
+                                                    <input type="hidden" name="party_names[]" value="<?php echo htmlspecialchars($pName); ?>">
+                                                    <div class="party-search-dropdown" style="display:none;"></div>
+                                                </div>
+                                            </div>
+                                            <button type="button" class="btn-remove-party" title="Remove party" onclick="document.getElementById('additionalParty_<?php echo $idx; ?>').remove()">&times;</button>
+                                        </div>
+                                        <div class="party-selected-preview additional-party-preview" style="display:none;"></div>
+                                    </div>
+                                    <?php
+                                }
+                            }
+                            ?>
+                        </div>
 
                         <div class="add-party-action-row">
                             <button type="button" id="addPartyBtn" class="btn-outline-sm">
@@ -209,8 +326,43 @@ include '../../layouts/header.php';
                             <input type="text" id="incidentStreet" name="incident_street" maxlength="255" required placeholder="Street, building, or nearby place" value="<?php echo htmlspecialchars($old['incident_street'] ?? $old['incident_location'] ?? ''); ?>">
                         </div>
                         <div class="form-group">
-                            <label for="incidentPurok">Purok <span class="optional-label">Optional</span></label>
-                            <input type="text" id="incidentPurok" name="incident_purok" maxlength="100" placeholder="e.g. Purok 3" value="<?php echo htmlspecialchars($old['incident_purok'] ?? ''); ?>">
+                            <label for="incidentPurok">Purok / Zone (Tumana) <span class="optional-label">Optional</span></label>
+                            <?php
+                            $currPurok = $old['incident_purok'] ?? '';
+                            $knownPuroks = [
+                                'Non-Resident',
+                                'Purok 1', 'Purok 2', 'Purok 3', 'Purok 4', 'Purok 5', 'Purok 6', 'Purok 7', 'Purok 8',
+                                'Doña Petra', 'Bagong Farmers', 'Bukang Liwayway', 'Libis Tumana', 'Bagong Purok', 'Palay', 'Mais', 'Singkamas'
+                            ];
+                            $isCustomPurok = !empty($currPurok) && !in_array($currPurok, $knownPuroks, true);
+                            ?>
+                            <select name="incident_purok" id="incidentPurok">
+                                <option value="">Select Purok / Area</option>
+                                <option value="Non-Resident" <?php echo ($currPurok === 'Non-Resident') ? 'selected' : ''; ?>>Non-Resident / Outside Tumana</option>
+                                <optgroup label="Numbered Puroks">
+                                    <option value="Purok 1" <?php echo ($currPurok === 'Purok 1') ? 'selected' : ''; ?>>Purok 1</option>
+                                    <option value="Purok 2" <?php echo ($currPurok === 'Purok 2') ? 'selected' : ''; ?>>Purok 2</option>
+                                    <option value="Purok 3" <?php echo ($currPurok === 'Purok 3') ? 'selected' : ''; ?>>Purok 3</option>
+                                    <option value="Purok 4" <?php echo ($currPurok === 'Purok 4') ? 'selected' : ''; ?>>Purok 4</option>
+                                    <option value="Purok 5" <?php echo ($currPurok === 'Purok 5') ? 'selected' : ''; ?>>Purok 5</option>
+                                    <option value="Purok 6" <?php echo ($currPurok === 'Purok 6') ? 'selected' : ''; ?>>Purok 6</option>
+                                    <option value="Purok 7" <?php echo ($currPurok === 'Purok 7') ? 'selected' : ''; ?>>Purok 7</option>
+                                    <option value="Purok 8" <?php echo ($currPurok === 'Purok 8') ? 'selected' : ''; ?>>Purok 8</option>
+                                </optgroup>
+                                <optgroup label="Zones & Compounds">
+                                    <option value="Doña Petra" <?php echo ($currPurok === 'Doña Petra') ? 'selected' : ''; ?>>Doña Petra Compound</option>
+                                    <option value="Bagong Farmers" <?php echo ($currPurok === 'Bagong Farmers') ? 'selected' : ''; ?>>Bagong Farmers</option>
+                                    <option value="Bukang Liwayway" <?php echo ($currPurok === 'Bukang Liwayway') ? 'selected' : ''; ?>>Bukang Liwayway</option>
+                                    <option value="Libis Tumana" <?php echo ($currPurok === 'Libis Tumana') ? 'selected' : ''; ?>>Libis Tumana</option>
+                                    <option value="Bagong Purok" <?php echo ($currPurok === 'Bagong Purok') ? 'selected' : ''; ?>>Sitio Bagong Purok</option>
+                                    <option value="Palay" <?php echo ($currPurok === 'Palay') ? 'selected' : ''; ?>>Palay Area</option>
+                                    <option value="Mais" <?php echo ($currPurok === 'Mais') ? 'selected' : ''; ?>>Mais Area</option>
+                                    <option value="Singkamas" <?php echo ($currPurok === 'Singkamas') ? 'selected' : ''; ?>>Singkamas Area</option>
+                                </optgroup>
+                                <?php if ($isCustomPurok): ?>
+                                    <option value="<?php echo htmlspecialchars($currPurok); ?>" selected><?php echo htmlspecialchars($currPurok); ?> (Existing)</option>
+                                <?php endif; ?>
+                            </select>
                         </div>
 
                         <div class="form-group">
@@ -282,18 +434,10 @@ include '../../layouts/header.php';
             </div>
         </form>
 
-        <!-- Datalist for autocomplete -->
-        <datalist id="residentsDatalist">
-            <?php foreach ($residents as $res): ?>
-                <?php
-                $fullName = trim(implode(' ', array_filter([$res['first_name'], $res['middle_name'] ?? '', $res['last_name']])));
-                $purokInfo = !empty($res['purok']) ? " ({$res['purok']})" : '';
-                ?>
-                <option value="<?php echo htmlspecialchars($fullName); ?>" data-resident-id="<?php echo (int)$res['resident_id']; ?>">
-                    <?php echo htmlspecialchars($fullName . $purokInfo); ?>
-                </option>
-            <?php endforeach; ?>
-        </datalist>
+        <!-- Template for dynamic additional parties -->
+        <template id="residentOptionsTemplate">
+            <?php echo $renderResidentOptions(null); ?>
+        </template>
     </div>
 </div>
 
@@ -301,32 +445,75 @@ include '../../layouts/header.php';
 <script src="../../assets/js/complaints.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/complaints.js'); ?>"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    // Autocomplete mapping helper
-    function setupResidentAutocomplete(nameInputId, hiddenIdId) {
-        const nameInput = document.getElementById(nameInputId);
-        const hiddenId = document.getElementById(hiddenIdId);
-        if (!nameInput || !hiddenId) return;
-
-        nameInput.addEventListener('input', () => {
-            const val = nameInput.value.trim().toLowerCase();
-            const option = Array.from(document.querySelectorAll('#residentsDatalist option')).find(opt => {
-                return opt.value.trim().toLowerCase() === val;
-            });
-            if (option) {
-                hiddenId.value = option.getAttribute('data-resident-id') || '';
-            } else {
-                hiddenId.value = '';
-            }
-        });
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>'"]/g, character => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            "'": '&#39;',
+            '"': '&quot;'
+        }[character] || character));
     }
 
-    setupResidentAutocomplete('complainantName', 'complainantResidentId');
-    setupResidentAutocomplete('respondentName', 'respondentResidentId');
+    // Expose registered residents data for combobox components
+    window.AGAP_RESIDENTS = <?php echo json_encode($residentsJsonData, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
+
+    // Distinct parties validation
+    window.validateDistinctParties = function() {
+        const compInput = document.getElementById('complainantResidentId');
+        const respInput = document.getElementById('respondentResidentId');
+        const errorBox  = document.getElementById('partyDistinctError');
+        const compGroup = document.getElementById('complainantGroup');
+        const respGroup = document.getElementById('respondentGroup');
+        if (!compInput || !respInput) return true;
+
+        const compVal = compInput.value.trim();
+        const respVal = respInput.value.trim();
+
+        if (compVal && respVal && compVal === respVal) {
+            if (errorBox) {
+                errorBox.innerHTML = '<strong>⚠️ Same person selected!</strong> The complainant and respondent cannot be the same resident profile. Please select different individuals.';
+                errorBox.style.display = 'block';
+            }
+            // Add red border to both party combobox groups
+            [compGroup, respGroup].forEach(g => {
+                if (!g) return;
+                g.style.outline = '2px solid #dc2626';
+                g.style.outlineOffset = '2px';
+                g.style.borderRadius = '6px';
+                const inp = g.querySelector('.party-search-input');
+                if (inp) inp.style.borderColor = '#dc2626';
+            });
+            return false;
+        }
+
+        if (errorBox) {
+            errorBox.style.display = 'none';
+        }
+        // Remove red border
+        [compGroup, respGroup].forEach(g => {
+            if (!g) return;
+            g.style.outline = '';
+            g.style.outlineOffset = '';
+            const inp = g.querySelector('.party-search-input');
+            if (inp) inp.style.borderColor = '';
+        });
+        return true;
+    };
+
+    window.syncDistinctPartyOptions = function() {
+        window.validateDistinctParties();
+    };
+
+    // Initialize all searchable resident comboboxes
+    if (window.initAllPartyComboboxes) {
+        window.initAllPartyComboboxes();
+    }
 
     // Dynamic additional parties
     const container = document.getElementById('additionalPartiesContainer');
     const addBtn = document.getElementById('addPartyBtn');
-    let partyCount = 0;
+    let partyCount = document.querySelectorAll('.additional-party-row').length;
 
     if (addBtn && container) {
         addBtn.addEventListener('click', () => {
@@ -345,23 +532,82 @@ document.addEventListener('DOMContentLoaded', () => {
                         </select>
                     </div>
                     <div class="form-group party-name-col">
-                        <input type="text" name="party_names[]" list="residentsDatalist" placeholder="Search resident profile or party full name..." autocomplete="off" required>
-                        <input type="hidden" name="party_resident_ids[]" value="">
+                        <div class="party-search-combobox" data-party-role="additional">
+                            <div class="party-search-input-wrap">
+                                <svg class="party-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                                <input type="text" class="party-search-input" placeholder="Type resident name or address to search..." autocomplete="off">
+                                <button type="button" class="party-search-clear" title="Clear selection" style="display:none;">&times;</button>
+                            </div>
+                            <input type="hidden" name="party_resident_ids[]" required value="">
+                            <input type="hidden" name="party_names[]" value="">
+                            <div class="party-search-dropdown" style="display:none;"></div>
+                        </div>
                     </div>
                     <button type="button" class="btn-remove-party" title="Remove party" onclick="document.getElementById('${rowId}').remove()">&times;</button>
                 </div>
+                <div class="party-selected-preview additional-party-preview" style="display:none;"></div>
             `;
             container.appendChild(div);
 
-            const input = div.querySelector('input[type="text"]');
-            const hidden = div.querySelector('input[type="hidden"]');
-            input.addEventListener('input', () => {
-                const val = input.value.trim().toLowerCase();
-                const option = Array.from(document.querySelectorAll('#residentsDatalist option')).find(opt => {
-                    return opt.value.trim().toLowerCase() === val;
-                });
-                hidden.value = option ? (option.getAttribute('data-resident-id') || '') : '';
+            const newCombobox = div.querySelector('.party-search-combobox');
+            if (newCombobox && window.initPartySearchCombobox) {
+                window.initPartySearchCombobox(newCombobox, window.AGAP_RESIDENTS);
+            }
+        });
+    }
+
+    // Form submission validation
+    const createForm = document.getElementById('createComplaintForm');
+    if (createForm) {
+        createForm.addEventListener('submit', (e) => {
+            const compId = document.getElementById('complainantResidentId')?.value?.trim();
+            const respId = document.getElementById('respondentResidentId')?.value?.trim();
+            const compSearch = document.getElementById('complainantSearchInput');
+            const respSearch = document.getElementById('respondentSearchInput');
+
+            if (!compId) {
+                e.preventDefault();
+                if (compSearch) {
+                    compSearch.classList.add('is-invalid-unselected');
+                    compSearch.focus();
+                }
+                window.agapNotify?.('Please select a registered resident profile for the Complainant.', 'error');
+                return;
+            }
+
+            if (!respId) {
+                e.preventDefault();
+                if (respSearch) {
+                    respSearch.classList.add('is-invalid-unselected');
+                    respSearch.focus();
+                }
+                window.agapNotify?.('Please select a registered resident profile for the Respondent.', 'error');
+                return;
+            }
+
+            if (compId === respId) {
+                e.preventDefault();
+                window.validateDistinctParties();
+                window.agapNotify?.('The complainant and respondent cannot be the same resident profile.', 'error');
+                if (respSearch) respSearch.focus();
+                return;
+            }
+
+            let invalidAdditional = false;
+            document.querySelectorAll('.additional-party-row').forEach(row => {
+                const hidden = row.querySelector('input[name="party_resident_ids[]"]');
+                const search = row.querySelector('.party-search-input');
+                if (hidden && (!hidden.value || parseInt(hidden.value, 10) <= 0)) {
+                    invalidAdditional = true;
+                    if (search) search.classList.add('is-invalid-unselected');
+                }
             });
+
+            if (invalidAdditional) {
+                e.preventDefault();
+                window.agapNotify?.('Please select a registered resident for all added additional parties, or remove empty party rows.', 'error');
+                return;
+            }
         });
     }
 

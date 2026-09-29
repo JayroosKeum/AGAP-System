@@ -64,13 +64,30 @@ window.addEventListener('pageshow', (event) => {
         addAttachmentForm.addEventListener('submit', handleAddAttachment);
     }
 
-    const mediationForm = document.getElementById('scheduleMediationForm');
-    if (mediationForm) {
-        mediationForm.addEventListener('submit', reviewMediationSchedule);
-        const dateInput = document.getElementById('mediationDate');
-        if (dateInput) dateInput.min = new Date().toISOString().slice(0, 10);
+    const issueSummonForm = document.getElementById('issueSummonForm');
+    if (issueSummonForm) {
+        const dateInput = document.getElementById('summonMediationDate');
+        const timeInput = document.getElementById('summonMediationTime');
+        const venueInput = document.getElementById('summonMediationVenue');
+        if (dateInput) {
+            const today = new Date();
+            dateInput.min = today.toISOString().slice(0, 10);
+            if (!dateInput.value) {
+                const defaultDate = new Date(today);
+                defaultDate.setDate(defaultDate.getDate() + 3);
+                dateInput.value = defaultDate.toISOString().slice(0, 10);
+            }
+            dateInput.addEventListener('change', checkMediationScheduleConflict);
+        }
+        if (timeInput) {
+            timeInput.addEventListener('input', debouncedCheckMediationScheduleConflict);
+            timeInput.addEventListener('change', checkMediationScheduleConflict);
+        }
+        if (venueInput) {
+            venueInput.addEventListener('input', debouncedCheckMediationScheduleConflict);
+            venueInput.addEventListener('change', checkMediationScheduleConflict);
+        }
     }
-    document.getElementById('confirmMediationButton')?.addEventListener('click', submitMediationSchedule);
 
     initialiseComplaintMaps();
     initialiseNarrativeEnhancement();
@@ -174,7 +191,10 @@ async function loadComplaintDetails() {
         // Status Badge
         const statusEl = document.getElementById('complaintStatusBadge');
         if (statusEl) {
-            const st = String(data.status || 'Filed');
+            let st = String(data.status || 'Filed');
+            if (st === 'Docketed') {
+                st = (data.case_status && data.case_status !== 'Docketed') ? data.case_status : 'Active';
+            }
             const stSlug = st.toLowerCase().replace(/[^a-z0-9]/g, '-');
             statusEl.className = 'status-pill status-' + stSlug;
             statusEl.textContent = st;
@@ -216,11 +236,6 @@ async function loadComplaintDetails() {
         // Load Case Status / Progress Tracker & Action Buttons first
         await loadCaseProgress(complaintId);
 
-        // Schedule Mediation Button configuration
-        const scheduleButton = document.getElementById('scheduleMediationButton');
-        if (scheduleButton) {
-            await configureMediationScheduleButton(scheduleButton, data);
-        }
 
         // Card 1: Incident & Classification Info Grid
         setText('infoComplaintTitle', data.complaint_title);
@@ -229,10 +244,15 @@ async function loadComplaintDetails() {
         setText('infoIncidentDate', data.incident_date ? formatDateReadable(data.incident_date) : 'N/A');
         setText('infoIncidentTime', data.incident_time ? formatTime12(data.incident_time) : 'Not recorded');
         setText('infoDateFiled', data.created_at ? formatDateReadable(data.created_at) : '—');
+        // Store complaint date for summon modal deadline enforcement (15 days from filing)
+        window.complaintCreatedAt = data.created_at || null;
 
         const infoStatusEl = document.getElementById('infoStatus');
         if (infoStatusEl) {
-            const st = String(data.status || 'Filed');
+            let st = String(data.status || 'Filed');
+            if (st === 'Docketed') {
+                st = (data.case_status && data.case_status !== 'Docketed') ? data.case_status : 'Active';
+            }
             const stSlug = st.toLowerCase().replace(/[^a-z0-9]/g, '-');
             infoStatusEl.innerHTML = `<span class="status-pill status-${stSlug}">${escapeHtml(st)}</span>`;
         }
@@ -331,57 +351,8 @@ async function loadComplaintDetails() {
     if (partyComplaintInput) partyComplaintInput.value = complaintId;
     const attachmentComplaintInput = document.getElementById('attachmentComplaintId');
     if (attachmentComplaintInput) attachmentComplaintInput.value = complaintId;
-    const mediationComplaintId = document.getElementById('mediationComplaintId');
-    if (mediationComplaintId) mediationComplaintId.value = complaintId;
-}
-
-async function configureMediationScheduleButton(button, complaint) {
-    button.disabled = false;
-    delete button.dataset.caseId;
-
-    const progress = window.caseProgressData;
-    const isSummonsServed = progress ? Boolean(progress.summons_prerequisite_met) : false;
-
-    if (!complaint.case_id) {
-        button.textContent = 'Schedule 1st Mediation';
-        button.classList.add('btn-disabled');
-        button.title = '1st Mediation is unavailable until a summons has been successfully served.';
-        return;
-    }
-
-    try {
-        const response = await fetch('../../../backend/api/hearings/calendar.php?_t=' + Date.now(), { cache: 'no-store' });
-        const result = await response.json();
-        if (!response.ok || result.success === false) throw new Error(result.message || 'Unable to load hearing progression.');
-        const hearings = (result.data || []).filter((hearing) => String(hearing.case_id) === String(complaint.case_id));
-        const mediationCount = hearings.filter((hearing) => hearing.hearing_type === 'Mediation').length;
-        const conciliationCount = hearings.filter((hearing) => hearing.hearing_type === 'Conciliation').length;
-        let label = '';
-        if (mediationCount < 3) label = `Schedule ${ordinalLabel(mediationCount + 1)} Mediation`;
-        else if (conciliationCount < 3) label = `Schedule ${ordinalLabel(conciliationCount + 1)} Conciliation`;
-
-        if (!label) {
-            button.textContent = 'All schedules completed';
-            button.classList.add('btn-disabled');
-            button.title = 'This case already has three mediation and three conciliation schedules.';
-            return;
-        }
-
-        button.textContent = label;
-        button.dataset.caseId = String(complaint.case_id);
-
-        // 1st Mediation requires summons prerequisite met (at least one Served attempt in DB)
-        if (mediationCount === 0 && !isSummonsServed) {
-            button.classList.add('btn-disabled');
-            button.title = '1st Mediation is unavailable until a summons has been successfully served.';
-        } else {
-            button.classList.remove('btn-disabled');
-            button.title = `Open the hearing scheduler for ${label.replace('Schedule ', '')}.`;
-        }
-    } catch (error) {
-        button.textContent = 'Schedule next hearing';
-        button.title = error.message;
-    }
+    const summonComplaintId = document.getElementById('summonComplaintId');
+    if (summonComplaintId) summonComplaintId.value = complaintId;
 }
 
 function ordinalLabel(number) {
@@ -394,10 +365,16 @@ function loadResidents() {
     .then(data => {
         const select = document.getElementById('partyResidentId');
         if (!select) return;
-        let options = '<option value="">Select Resident Profile</option>';
+        let options = '<option value="">Select Resident Profile...</option>';
         data.forEach(resident => {
             const name = [resident.first_name, resident.middle_name, resident.last_name].filter(Boolean).join(' ');
-            options += `<option value="${resident.resident_id}">${escapeHtml(name)}</option>`;
+            const addrParts = [];
+            if (resident.address) addrParts.push(resident.address.trim());
+            if (resident.purok && (!resident.address || !resident.address.toLowerCase().includes(resident.purok.toLowerCase()))) {
+                addrParts.push(resident.purok.trim());
+            }
+            const addrText = addrParts.length > 0 ? addrParts.join(', ') : 'No address on file';
+            options += `<option value="${resident.resident_id}">${escapeHtml(name + ' — ' + addrText)}</option>`;
         });
         select.innerHTML = options;
     });
@@ -587,65 +564,219 @@ function closeAddAttachmentModal() {
     if (modal) modal.style.display = 'none';
 }
 
-function openScheduleMediationModal() {
-    const button = document.getElementById('scheduleMediationButton');
-    const isFirstMediation = !button || !button.textContent || button.textContent.includes('1st Mediation');
+let conflictCheckDebounceTimer = null;
 
-    // Section 5: Check summons workflow prerequisite
-    if (isFirstMediation && window.caseProgressData && !window.caseProgressData.summons_prerequisite_met) {
-        openSummonsRequiredModal();
-        return;
+async function checkMediationScheduleConflict() {
+    const dateInput = document.getElementById('summonMediationDate');
+    const timeInput = document.getElementById('summonMediationTime');
+    const venueInput = document.getElementById('summonMediationVenue');
+    const complaintInput = document.getElementById('summonComplaintId');
+    const conflictAlert = document.getElementById('summonScheduleConflictAlert');
+    const submitBtn = document.getElementById('submitIssueSummonBtn');
+    const schedulesWrap = document.getElementById('summonDaySchedulesWrap');
+    const slotsCount = document.getElementById('summonDaySlotsCount');
+    const slotsList = document.getElementById('summonDaySlotsList');
+
+    if (!dateInput || !dateInput.value) return;
+
+    const dateVal = dateInput.value;
+    const timeVal = timeInput ? timeInput.value : '';
+    const venueVal = venueInput ? venueInput.value : 'Barangay Hall';
+    const complaintIdVal = complaintInput ? complaintInput.value : '';
+
+    const params = new URLSearchParams();
+    params.set('date', dateVal);
+    if (timeVal) params.set('time', timeVal);
+    if (venueVal) params.set('venue', venueVal);
+    if (complaintIdVal) params.set('complaint_id', complaintIdVal);
+
+    try {
+        const response = await fetch(`../../../backend/api/summons/check-schedule.php?${params.toString()}`);
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            return;
+        }
+
+        // 1. Render day's scheduled mediations
+        if (schedulesWrap && slotsList && slotsCount) {
+            schedulesWrap.style.display = 'block';
+            const scheduled = result.scheduled_mediations || [];
+            slotsCount.textContent = scheduled.length;
+            if (scheduled.length === 0) {
+                slotsList.innerHTML = '<span style="color: #64748b;">No other mediations scheduled on this date. All hours available.</span>';
+            } else {
+                slotsList.innerHTML = scheduled.map(s => `
+                    <div style="margin-top: 4px; padding: 4px 8px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                        <div>
+                            <strong style="color: #1e293b;">${escapeHtml(s.start_time)} – ${escapeHtml(s.end_time)}</strong>
+                            <span style="color: #64748b; font-size: 0.8rem; margin-left: 6px;">Case ${escapeHtml(s.case_number || 'N/A')}</span>
+                        </div>
+                        <span style="font-size: 0.72rem; color: #475569; background: #f1f5f9; padding: 1px 6px; border-radius: 4px;">${escapeHtml(s.venue || 'Barangay Hall')}</span>
+                    </div>
+                `).join('');
+            }
+        }
+
+        // 2. Check for conflict
+        if (result.has_conflict && result.conflict) {
+            const conflictMsg = result.conflict.message || 'The selected time overlaps with an existing scheduled mediation.';
+            if (conflictAlert) {
+                conflictAlert.textContent = `⚠️ Schedule Conflict: ${conflictMsg}`;
+                conflictAlert.style.display = 'block';
+            }
+            if (timeInput) {
+                timeInput.setCustomValidity('Selected time overlaps with another scheduled mediation on this day.');
+            }
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.title = 'Cannot submit: Schedule conflict with an existing mediation on this day.';
+            }
+        } else {
+            if (conflictAlert) {
+                conflictAlert.textContent = '';
+                conflictAlert.style.display = 'none';
+            }
+            if (timeInput) {
+                timeInput.setCustomValidity('');
+            }
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.title = '';
+            }
+        }
+    } catch (err) {
+        console.warn('Failed to check mediation schedule:', err);
+    }
+}
+
+function debouncedCheckMediationScheduleConflict() {
+    clearTimeout(conflictCheckDebounceTimer);
+    conflictCheckDebounceTimer = setTimeout(checkMediationScheduleConflict, 200);
+}
+
+function openIssueSummonModal() {
+    const modal = document.getElementById('issueSummonModal');
+    if (!modal) return;
+    const msg = document.getElementById('issueSummonMessage');
+    const conflictAlert = document.getElementById('summonScheduleConflictAlert');
+    if (msg) msg.textContent = '';
+    if (conflictAlert) {
+        conflictAlert.textContent = '';
+        conflictAlert.style.display = 'none';
     }
 
-    if (button?.dataset.caseId) {
-        window.location.href = `../hearings/schedules.php?case_id=${encodeURIComponent(button.dataset.caseId)}`;
-        return;
+    const dateInput = document.getElementById('summonMediationDate');
+    if (dateInput) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayStr = today.toISOString().slice(0, 10);
+
+        // Compute deadline: complaint filing date + 15 days
+        let deadlineStr = null;
+        let deadlineLabel = '';
+        if (window.complaintCreatedAt) {
+            const filingDate = new Date(window.complaintCreatedAt);
+            filingDate.setHours(0, 0, 0, 0);
+            const deadline = new Date(filingDate);
+            deadline.setDate(deadline.getDate() + 15);
+            deadlineStr = deadline.toISOString().slice(0, 10);
+            deadlineLabel = deadline.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' });
+        }
+
+        dateInput.min = todayStr;
+        if (deadlineStr) dateInput.max = deadlineStr;
+
+        // Set default only if not already set
+        if (!dateInput.value) {
+            const defaultDate = new Date(today);
+            defaultDate.setDate(defaultDate.getDate() + 3);
+            const defaultStr = defaultDate.toISOString().slice(0, 10);
+            // Clamp default to deadline if it exceeds it
+            dateInput.value = (deadlineStr && defaultStr > deadlineStr) ? deadlineStr : defaultStr;
+        } else if (deadlineStr && dateInput.value > deadlineStr) {
+            // Correct any out-of-range existing value
+            dateInput.value = deadlineStr;
+        }
+
+        // Show/update the deadline hint label
+        const hintId = 'summonDateDeadlineHint';
+        let hintEl = document.getElementById(hintId);
+        if (!hintEl) {
+            hintEl = document.createElement('small');
+            hintEl.id = hintId;
+            hintEl.style.cssText = 'display:block; margin-top:4px; color:#b45309; font-size:0.82rem;';
+            dateInput.parentNode.appendChild(hintEl);
+        }
+        if (deadlineLabel) {
+            hintEl.textContent = `⚠️ Mediation must be scheduled within 15 days of filing — deadline: ${deadlineLabel}.`;
+        } else {
+            hintEl.textContent = '';
+        }
     }
-    const form = document.getElementById('scheduleMediationForm');
-    if (!form) return;
-    document.getElementById('mediationMessage').textContent = '';
-    document.getElementById('scheduleMediationModal').style.display = 'flex';
+
+    modal.style.display = 'flex';
+    checkMediationScheduleConflict();
 }
 
-function closeScheduleMediationModal() {
-    document.getElementById('scheduleMediationModal').style.display = 'none';
-}
-
-function openSummonsRequiredModal() {
-    const modal = document.getElementById('summonsRequiredModal');
-    if (modal) modal.style.display = 'flex';
-}
-
-function closeSummonsRequiredModal() {
-    const modal = document.getElementById('summonsRequiredModal');
+function closeIssueSummonModal() {
+    const modal = document.getElementById('issueSummonModal');
     if (modal) modal.style.display = 'none';
 }
 
-async function handleIssueSummonClick() {
+function handleIssueSummonClick() {
     const params = new URLSearchParams(window.location.search);
     const complaintId = params.get('id');
     if (!complaintId) return;
 
-    const btn = document.getElementById('issueSummonButton');
     const progress = window.caseProgressData;
+    const btnInfo  = progress?.actions?.summon_button;
 
-    // If button action is to view existing proof of service
-    if (progress?.actions?.summon_button?.action === 'view_proof' && progress.actions.summon_button.url) {
-        window.location.href = progress.actions.summon_button.url;
+    // If gated: service attempt not yet recorded for previous summons — block and notify only
+    const issueBtn = document.getElementById('issueSummonButton');
+    if (issueBtn?.getAttribute('data-summon-gated') === 'true') {
+        window.agapNotify?.(
+            btnInfo?.tooltip || 'Please record the service attempt for the previous summons before issuing a new one.',
+            'warning'
+        );
         return;
     }
 
-    if (btn) btn.disabled = true;
+    // If button action is to view existing proof of service
+    if (btnInfo?.action === 'view_proof' && btnInfo.url) {
+        window.location.href = btnInfo.url;
+        return;
+    }
+
+    openIssueSummonModal();
+}
+
+async function submitIssueSummon(event) {
+    if (event) event.preventDefault();
+    const form = document.getElementById('issueSummonForm');
+    const submitBtn = document.getElementById('submitIssueSummonBtn');
+    const msg = document.getElementById('issueSummonMessage');
+    const conflictAlert = document.getElementById('summonScheduleConflictAlert');
+    if (msg) msg.textContent = '';
+
+    if (conflictAlert && conflictAlert.style.display !== 'none') {
+        window.agapNotify?.('Please resolve the mediation schedule conflict before proceeding.', 'error');
+        return;
+    }
+
+    if (!form || !form.reportValidity()) return;
+
+    if (submitBtn) submitBtn.disabled = true;
 
     try {
-        const formData = new FormData();
-        formData.append('complaint_id', complaintId);
+        const formData = new FormData(form);
         const result = await complaintApi('../../../backend/api/summons/issue.php', {
             method: 'POST',
             body: formData
         });
 
         window.agapNotify?.(result.message, 'success');
+        closeIssueSummonModal();
 
         const caseId = result.case_id;
         const docId = result.document_id;
@@ -655,10 +786,19 @@ async function handleIssueSummonClick() {
             window.location.href = redirectUrl;
         }, 350);
     } catch (error) {
+        if (msg) {
+            msg.textContent = error.message;
+            msg.style.color = '#dc2626';
+        }
         window.agapNotify?.(error.message, 'error');
-        if (btn) btn.disabled = false;
+        if (submitBtn) submitBtn.disabled = false;
     }
 }
+
+window.openIssueSummonModal = openIssueSummonModal;
+window.closeIssueSummonModal = closeIssueSummonModal;
+window.handleIssueSummonClick = handleIssueSummonClick;
+window.submitIssueSummon = submitIssueSummon;
 
 function toggleStatusTracker() {
     const section = document.getElementById('statusTrackerSection');
@@ -699,34 +839,31 @@ async function loadCaseProgress(complaintId) {
         const progress = result.data;
         window.caseProgressData = progress;
 
-        // Configure Issue 1st Summon button
+        // Configure Issue Summon button
         const issueBtn = document.getElementById('issueSummonButton');
         const issueText = document.getElementById('issueSummonButtonText');
         if (issueBtn && progress.actions?.summon_button) {
             const btnInfo = progress.actions.summon_button;
             if (issueText) issueText.textContent = btnInfo.label;
             issueBtn.title = btnInfo.tooltip || '';
+            // Reset inline overrides each time
+            issueBtn.style.opacity = '';
+            issueBtn.style.cursor = '';
+            issueBtn.removeAttribute('data-summon-gated');
 
-            if (btnInfo.action === 'view_proof') {
+            if (btnInfo.disabled) {
+                // Visually disabled — mark as gated so handleIssueSummonClick can redirect to proof page
+                issueBtn.setAttribute('data-summon-gated', 'true');
+                issueBtn.className = 'btn-secondary';
+                issueBtn.style.opacity = '0.6';
+                issueBtn.style.cursor = 'not-allowed';
+            } else if (btnInfo.action === 'view_proof') {
                 issueBtn.className = 'btn-secondary';
             } else {
                 issueBtn.className = 'btn-create';
             }
         }
 
-        // Configure Schedule 1st Mediation button prerequisite: only clickable after summon is served
-        const scheduleBtn = document.getElementById('scheduleMediationButton');
-        if (scheduleBtn) {
-            scheduleBtn.disabled = false;
-            const isFirstMediation = !scheduleBtn.textContent || scheduleBtn.textContent.includes('1st Mediation');
-            if (isFirstMediation && !progress.summons_prerequisite_met) {
-                scheduleBtn.classList.add('btn-disabled');
-                scheduleBtn.title = '1st Mediation is unavailable until a summons has been successfully served.';
-            } else {
-                scheduleBtn.classList.remove('btn-disabled');
-                scheduleBtn.title = scheduleBtn.textContent || 'Schedule 1st Mediation';
-            }
-        }
 
         // Render Status Tracker
         renderStatusTracker(progress);
@@ -825,54 +962,7 @@ function renderStatusTracker(progress) {
     }
 }
 
-function reviewMediationSchedule(event) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const message = document.getElementById('mediationMessage');
-    message.textContent = '';
-    if (!form.reportValidity()) return;
-    const values = Object.fromEntries(new FormData(form));
-    if (!values.mediation_date || !values.mediation_time) {
-        message.textContent = '1st Mediation date and time are required.';
-        return;
-    }
-    const selected = new Date(`${values.mediation_date}T${values.mediation_time}`);
-    if (Number.isNaN(selected.getTime()) || selected <= new Date()) {
-        message.textContent = 'Choose a future 1st Mediation date and time.';
-        return;
-    }
-    const details = document.getElementById('mediationConfirmationDetails');
-    details.replaceChildren();
-    [['Date and time', selected.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })], ['Venue', values.venue], ['Remarks', values.remarks || 'None']].forEach(([label, value]) => {
-        const term = document.createElement('dt'); term.textContent = label;
-        const description = document.createElement('dd'); description.textContent = value;
-        details.append(term, description);
-    });
-    document.getElementById('confirmMediationModal').style.display = 'flex';
-}
 
-function closeConfirmMediationModal() {
-    document.getElementById('confirmMediationModal').style.display = 'none';
-}
-
-function submitMediationSchedule() {
-    const form = document.getElementById('scheduleMediationForm');
-    const message = document.getElementById('mediationMessage');
-    const button = document.getElementById('confirmMediationButton');
-    if (!form || !button) return;
-    const data = new FormData(form);
-    data.set('schedule_confirmed', '1');
-    button.disabled = true;
-    complaintApi('../../../backend/api/complaints/schedule-mediation.php', { method: 'POST', body: data })
-        .then((result) => {
-            closeConfirmMediationModal();
-            closeScheduleMediationModal();
-            window.agapNotify?.(result.message, 'success');
-            loadComplaintDetails();
-        })
-        .catch((error) => { closeConfirmMediationModal(); message.textContent = error.message; window.agapNotify?.(error.message, 'error'); })
-        .finally(() => { button.disabled = false; });
-}
 
 function handleAddParty(e) {
     e.preventDefault();
@@ -1038,7 +1128,40 @@ function initialiseComplaintMap(mapId, emptyState) {
             if (requestVersion !== lookupVersion || !result.address) return;
             const address = result.address;
             if (street) street.value = [address.house_number, address.road || address.pedestrian || address.neighbourhood].filter(Boolean).join(' ') || street.value;
-            if (purok && address.quarter) purok.value = address.quarter;
+            if (purok) {
+                if (purok.tagName === 'SELECT') {
+                    // Gather all relevant Nominatim fields for matching
+                    const rawArea = [
+                        address.quarter, address.suburb, address.neighbourhood,
+                        address.village, address.road, address.locality
+                    ].filter(Boolean).join(' ').toLowerCase();
+
+                    let matched = false;
+                    // Try each option: check if the option value appears in the raw area string,
+                    // or if a keyword from the raw area appears in the option value
+                    for (const opt of purok.options) {
+                        if (!opt.value) continue;
+                        const optLower = opt.value.toLowerCase();
+                        // Direct: raw area contains option value keyword
+                        if (rawArea.includes(optLower)) {
+                            purok.value = opt.value;
+                            matched = true;
+                            break;
+                        }
+                        // Reverse: option value contains a word from raw area
+                        const rawWords = rawArea.split(/[\s,]+/).filter(w => w.length > 2);
+                        if (rawWords.some(w => optLower.includes(w))) {
+                            purok.value = opt.value;
+                            matched = true;
+                            break;
+                        }
+                    }
+                    // Fire change event so any listeners (e.g., geocodeAddress) know about the update
+                    if (matched) purok.dispatchEvent(new Event('change', { bubbles: true }));
+                } else if (address.quarter) {
+                    purok.value = address.quarter;
+                }
+            }
             if (city) city.value = 'Marikina City';
             if (barangay) barangay.value = 'Tumana';
             setStatus(`Map point selected: ${latitude.value}, ${longitude.value}. Address updated.`);
@@ -1084,10 +1207,16 @@ function initialiseComplaintMap(mapId, emptyState) {
             else setStatus('The typed address is outside Barangay Tumana.');
         } catch (_) { setStatus('Address lookup is unavailable. You can still place the pin on the map.'); }
     };
-    [street, purok].filter(Boolean).forEach((field) => field.addEventListener('input', () => {
-        clearTimeout(geocodeTimer);
-        geocodeTimer = setTimeout(geocodeAddress, 700);
-    }));
+    [street, purok].filter(Boolean).forEach((field) => {
+        field.addEventListener('input', () => {
+            clearTimeout(geocodeTimer);
+            geocodeTimer = setTimeout(geocodeAddress, 700);
+        });
+        field.addEventListener('change', () => {
+            clearTimeout(geocodeTimer);
+            geocodeTimer = setTimeout(geocodeAddress, 300);
+        });
+    });
 
     complaintMaps[mapId] = {
         map,
@@ -1171,3 +1300,315 @@ function confirmDeleteComplaint() {
     const id = document.getElementById('deleteComplaintId').value;
     window.location.href = '../../../backend/api/complaints/delete.php?id=' + id;
 }
+
+/**
+ * Searchable Resident Combobox Component
+ * Allows typing to search residents by name, purok, or address,
+ * but strictly enforces that ONLY a valid registered resident profile can be selected.
+ */
+window.initPartySearchCombobox = function(comboboxEl, residentsList) {
+    if (!comboboxEl || comboboxEl._comboboxInitialized) return;
+    comboboxEl._comboboxInitialized = true;
+
+    residentsList = residentsList || window.AGAP_RESIDENTS || [];
+
+    const searchInput = comboboxEl.querySelector('.party-search-input');
+    const clearBtn = comboboxEl.querySelector('.party-search-clear');
+    const hiddenId = comboboxEl.querySelector('input[type="hidden"][name$="resident_id"], input[type="hidden"][name$="resident_ids[]"]');
+    const hiddenName = comboboxEl.querySelector('input[type="hidden"][name$="name"], input[type="hidden"][name$="names[]"]');
+    const dropdown = comboboxEl.querySelector('.party-search-dropdown');
+    const partyRole = comboboxEl.dataset.partyRole || '';
+
+    if (!searchInput || !hiddenId) return;
+
+    // Find preview element
+    let previewEl = null;
+    if (partyRole === 'complainant') {
+        previewEl = document.getElementById('complainantPreview');
+    } else if (partyRole === 'respondent') {
+        previewEl = document.getElementById('respondentPreview');
+    } else {
+        const row = comboboxEl.closest('.additional-party-row');
+        previewEl = row ? row.querySelector('.additional-party-preview') : null;
+    }
+
+    let highlightedIndex = -1;
+    let currentRenderedItems = [];
+
+    function escapeHtml(val) {
+        return String(val ?? '').replace(/[&<>'"]/g, c => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+        }[c] || c));
+    }
+
+    function renderPreview(res) {
+        if (!previewEl) return;
+        const details = [
+            res.address ? `🏠 ${escapeHtml(res.address)}` : '',
+            res.purok ? `📍 Purok ${escapeHtml(res.purok)}` : '',
+            res.contact_no ? `📞 ${escapeHtml(res.contact_no)}` : ''
+        ].filter(Boolean).join(' &bull; ');
+
+        previewEl.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                <div>
+                    <strong style="color: #0f172a; font-size: 0.92rem;">${escapeHtml(res.name)}</strong>
+                    ${details ? `<div style="font-size: 0.8rem; color: #475569; margin-top: 2px;">${details}</div>` : ''}
+                </div>
+                <span class="party-search-item-badge party-search-badge-verified">Verified Profile</span>
+            </div>
+        `;
+        previewEl.style.display = 'block';
+    }
+
+    function hidePreview() {
+        if (!previewEl) return;
+        previewEl.style.display = 'none';
+        previewEl.innerHTML = '';
+    }
+
+    function selectResident(res, triggerChange = true) {
+        hiddenId.value = res.resident_id;
+        if (hiddenName) hiddenName.value = res.name;
+
+        const displayLabel = res.display_name + (res.address_text ? ' — ' + res.address_text : '');
+        searchInput.value = displayLabel;
+        searchInput.dataset.selectedId = String(res.resident_id);
+        searchInput.dataset.selectedText = displayLabel;
+
+        searchInput.classList.remove('is-invalid-unselected');
+        searchInput.classList.add('is-valid-selected');
+        if (clearBtn) clearBtn.style.display = 'flex';
+
+        renderPreview(res);
+        closeDropdown();
+
+        if (triggerChange) {
+            hiddenId.dispatchEvent(new Event('change', { bubbles: true }));
+            window.syncDistinctPartyOptions?.();
+            window.validateDistinctParties?.();
+        }
+    }
+
+    function clearSelection(triggerChange = true) {
+        hiddenId.value = '';
+        if (hiddenName) hiddenName.value = '';
+        searchInput.value = '';
+        delete searchInput.dataset.selectedId;
+        delete searchInput.dataset.selectedText;
+
+        searchInput.classList.remove('is-valid-selected', 'is-invalid-unselected');
+        if (clearBtn) clearBtn.style.display = 'none';
+
+        hidePreview();
+        closeDropdown();
+
+        if (triggerChange) {
+            hiddenId.dispatchEvent(new Event('change', { bubbles: true }));
+            window.syncDistinctPartyOptions?.();
+            window.validateDistinctParties?.();
+        }
+    }
+
+    function closeDropdown() {
+        if (dropdown) dropdown.style.display = 'none';
+        highlightedIndex = -1;
+    }
+
+    function renderList(query = '') {
+        if (!dropdown) return;
+        const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+
+        let filtered = residentsList;
+        if (tokens.length > 0) {
+            filtered = residentsList.filter(res => {
+                const text = res.search_text || '';
+                return tokens.every(t => text.includes(t));
+            });
+        }
+
+        // Limit results to 30 items
+        const results = filtered.slice(0, 30);
+        currentRenderedItems = results;
+        highlightedIndex = -1;
+
+        if (results.length === 0) {
+            dropdown.innerHTML = `
+                <div class="party-search-no-results">
+                    <strong>No registered resident found matching "${escapeHtml(query)}"</strong>
+                    <span>Only profiles registered in the resident database can be selected.</span>
+                </div>
+            `;
+            dropdown.style.display = 'block';
+            return;
+        }
+
+        // Check mutual exclusion IDs
+        const compVal = document.getElementById('complainantResidentId')?.value;
+        const respVal = document.getElementById('respondentResidentId')?.value;
+
+        dropdown.innerHTML = results.map((res, idx) => {
+            const isSelected = String(res.resident_id) === String(hiddenId.value);
+            let isDisabled = false;
+            let disabledReason = '';
+
+            if (partyRole === 'complainant' && respVal && String(res.resident_id) === String(respVal)) {
+                isDisabled = true;
+                disabledReason = 'Selected as Respondent';
+            } else if (partyRole === 'respondent' && compVal && String(res.resident_id) === String(compVal)) {
+                isDisabled = true;
+                disabledReason = 'Selected as Complainant';
+            }
+
+            return `
+                <div class="party-search-item ${isSelected ? 'is-selected' : ''} ${isDisabled ? 'is-disabled' : ''}" data-index="${idx}" data-resident-id="${res.resident_id}">
+                    <div class="party-search-item-top">
+                        <span class="party-search-item-name">${escapeHtml(res.display_name)}</span>
+                        ${isDisabled 
+                            ? `<span class="party-search-item-badge party-search-badge-disabled">${disabledReason}</span>` 
+                            : `<span class="party-search-item-badge party-search-badge-verified">Resident</span>`}
+                    </div>
+                    <div class="party-search-item-meta">
+                        <span>📍 ${escapeHtml(res.purok ? 'Purok ' + res.purok : 'Barangay Tumana')}</span>
+                        ${res.address ? `<span>🏠 ${escapeHtml(res.address)}</span>` : ''}
+                        ${res.contact_no ? `<span>📞 ${escapeHtml(res.contact_no)}</span>` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        dropdown.querySelectorAll('.party-search-item').forEach(item => {
+            item.addEventListener('click', () => {
+                if (item.classList.contains('is-disabled')) {
+                    window.agapNotify?.('The complainant and respondent cannot be the same resident profile.', 'error');
+                    return;
+                }
+                const resId = Number(item.dataset.residentId);
+                const selected = residentsList.find(r => r.resident_id === resId);
+                if (selected) {
+                    selectResident(selected);
+                }
+            });
+        });
+
+        dropdown.style.display = 'block';
+    }
+
+    function updateHighlight(index) {
+        const items = dropdown.querySelectorAll('.party-search-item:not(.is-disabled)');
+        if (!items.length) return;
+        items.forEach(el => el.classList.remove('highlighted'));
+        if (index >= 0 && index < items.length) {
+            highlightedIndex = index;
+            items[index].classList.add('highlighted');
+            items[index].scrollIntoView({ block: 'nearest' });
+        }
+    }
+
+    // Input Events
+    searchInput.addEventListener('input', () => {
+        if (clearBtn) clearBtn.style.display = searchInput.value ? 'flex' : 'none';
+
+        // If user typed something that doesn't match selectedText, clear hiddenId
+        if (searchInput.value !== searchInput.dataset.selectedText) {
+            hiddenId.value = '';
+            if (hiddenName) hiddenName.value = '';
+            delete searchInput.dataset.selectedId;
+            searchInput.classList.remove('is-valid-selected');
+            hidePreview();
+        }
+
+        renderList(searchInput.value);
+    });
+
+    searchInput.addEventListener('focus', () => {
+        renderList(searchInput.dataset.selectedId ? '' : searchInput.value);
+    });
+
+    searchInput.addEventListener('click', () => {
+        renderList(searchInput.dataset.selectedId ? '' : searchInput.value);
+    });
+
+    searchInput.addEventListener('keydown', (e) => {
+        if (dropdown.style.display !== 'block') {
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                renderList(searchInput.value);
+                e.preventDefault();
+                return;
+            }
+        }
+
+        const items = dropdown.querySelectorAll('.party-search-item:not(.is-disabled)');
+        if (!items.length) return;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            const nextIdx = (highlightedIndex + 1) % items.length;
+            updateHighlight(nextIdx);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            const prevIdx = (highlightedIndex - 1 + items.length) % items.length;
+            updateHighlight(prevIdx);
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (highlightedIndex >= 0 && items[highlightedIndex]) {
+                items[highlightedIndex].click();
+            } else if (items.length === 1) {
+                items[0].click();
+            }
+        } else if (e.key === 'Escape') {
+            closeDropdown();
+        }
+    });
+
+    // Enforce selection from resident profile only
+    searchInput.addEventListener('blur', () => {
+        setTimeout(() => {
+            if (!hiddenId.value) {
+                // Typed arbitrary text without picking a valid profile: reset input!
+                searchInput.value = '';
+                if (clearBtn) clearBtn.style.display = 'none';
+                searchInput.classList.remove('is-valid-selected');
+                delete searchInput.dataset.selectedId;
+                delete searchInput.dataset.selectedText;
+                hidePreview();
+            } else if (searchInput.dataset.selectedText) {
+                searchInput.value = searchInput.dataset.selectedText;
+                searchInput.classList.add('is-valid-selected');
+            }
+            closeDropdown();
+        }, 220);
+    });
+
+    if (clearBtn) {
+        clearBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            clearSelection();
+            searchInput.focus();
+        });
+    }
+
+    // Close on outside click
+    document.addEventListener('click', (e) => {
+        if (!comboboxEl.contains(e.target)) {
+            closeDropdown();
+        }
+    });
+
+    // Initial pre-population
+    if (hiddenId.value) {
+        const found = residentsList.find(r => String(r.resident_id) === String(hiddenId.value));
+        if (found) {
+            selectResident(found, false);
+        }
+    }
+};
+
+window.initAllPartyComboboxes = function() {
+    const list = window.AGAP_RESIDENTS || [];
+    document.querySelectorAll('.party-search-combobox').forEach(el => {
+        window.initPartySearchCombobox(el, list);
+    });
+};
+

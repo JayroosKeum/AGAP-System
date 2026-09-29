@@ -141,7 +141,7 @@ class Search
 
         // Column aliases mapping
         $aliasMap = [
-            'complaint' => 'complaint_number',
+            'complaint' => 'complaint_title',
             'case_no' => 'case_number',
             'category' => 'category_name',
             'date' => 'incident_date',
@@ -157,7 +157,7 @@ class Search
             'complaint_number' => "co.complaint_number {$sortOrder}",
             'case_number' => "c.case_number {$sortOrder}, co.complaint_id {$sortOrder}",
             'category_name' => "cc.category_name {$sortOrder}",
-            'complaint_title' => "co.complaint_title {$sortOrder}",
+            'complaint_title' => "co.complaint_title {$sortOrder}, co.complaint_id {$sortOrder}",
             'parties' => "parties {$sortOrder}",
             'raw_record_status' => "COALESCE(c.case_status, co.status) {$sortOrder}",
             'intake_status' => "CASE WHEN c.case_id IS NOT NULL OR c.case_status = 'Docketed' THEN 2 ELSE 1 END {$sortOrder}",
@@ -225,8 +225,11 @@ class Search
             $intake = 'Docketed';
         }
 
-        // Aggregate labels for tag/pill rendering
-        $labels = [$intake];
+        // Aggregate labels for tag/pill rendering (Docketed is excluded as complaints are already considered docketed)
+        $labels = [];
+        if ($intake !== 'Docketed') {
+            $labels[] = $intake;
+        }
         if ($stage !== 'None') {
             $labels[] = $stage;
         }

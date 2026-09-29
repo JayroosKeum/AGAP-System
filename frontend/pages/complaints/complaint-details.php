@@ -64,7 +64,6 @@ include '../../layouts/header.php';
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                     <span id="issueSummonButtonText">Issue 1st Summon</span>
                 </button>
-                <button type="button" class="btn-create" id="scheduleMediationButton" onclick="openScheduleMediationModal()">Schedule 1st Mediation</button>
                 <button type="button" class="btn-secondary" id="statusTrackerButton" onclick="toggleStatusTracker()" style="display: inline-flex; align-items: center; gap: 6px;">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
                     <span>Status</span>
@@ -267,73 +266,57 @@ include '../../layouts/header.php';
 
 </div>
 
-<div id="scheduleMediationModal" class="modal">
-    <div class="modal-content">
+<div id="issueSummonModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 500px;">
         <div class="modal-header">
-            <h2>Schedule 1st Mediation</h2>
-            <button class="close-btn" onclick="closeScheduleMediationModal()">&times;</button>
+            <h2 id="issueSummonModalTitle">Issue 1st Summon &amp; Schedule Mediation</h2>
+            <button type="button" class="close-btn" onclick="closeIssueSummonModal()">&times;</button>
         </div>
-        <form id="scheduleMediationForm">
-            <input type="hidden" id="mediationComplaintId" name="complaint_id">
+        <form id="issueSummonForm" onsubmit="submitIssueSummon(event)">
+            <input type="hidden" id="summonComplaintId" name="complaint_id" value="<?php echo $complaintId; ?>">
+            <p style="margin: 0 0 16px; font-size: 0.88rem; color: #475569; line-height: 1.5;">
+                In accordance with KP Form 9, issuing a summons sets the appearance date and time for the 1st Mediation hearing before the Punong Barangay.
+            </p>
             <div class="form-group">
-                <label for="mediationDate">1st Mediation Date <span class="required-mark" aria-hidden="true">*</span></label>
-                <input type="date" id="mediationDate" name="mediation_date" required>
+                <label for="summonMediationDate">1st Mediation Date <span class="required-mark" aria-hidden="true">*</span></label>
+                <input type="date" id="summonMediationDate" name="mediation_date" required>
+            </div>
+
+            <!-- Existing Mediations on selected date -->
+            <div id="summonDaySchedulesWrap" style="display: none; margin-bottom: 14px; padding: 10px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.84rem;">
+                <div style="font-weight: 600; color: #334155; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
+                    <span>📅 Scheduled Mediations on this Date:</span>
+                    <span id="summonDaySlotsCount" style="font-size: 0.72rem; background: #e2e8f0; color: #475569; padding: 2px 7px; border-radius: 9999px; font-weight: 600;">0</span>
+                </div>
+                <div id="summonDaySlotsList" style="color: #64748b; font-size: 0.82rem; line-height: 1.5;">
+                    No other mediations scheduled on this day.
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="summonMediationTime">1st Mediation Time <span class="required-mark" aria-hidden="true">*</span></label>
+                <input type="time" id="summonMediationTime" name="mediation_time" value="09:00" required>
+                <small class="field-hint">Standard mediation session is 1 hour (60 minutes). Scheduled times cannot overlap.</small>
+            </div>
+
+            <!-- Conflict Alert Box -->
+            <div id="summonScheduleConflictAlert" class="alert alert-danger" style="display: none; margin: 0 0 14px; padding: 10px 12px; font-size: 0.84rem; border-radius: 6px; background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; line-height: 1.4;">
+            </div>
+
+            <div class="form-group">
+                <label for="summonMediationVenue">Venue <span class="required-mark" aria-hidden="true">*</span></label>
+                <input type="text" id="summonMediationVenue" name="venue" maxlength="255" value="Barangay Hall" required>
             </div>
             <div class="form-group">
-                <label for="mediationTime">1st Mediation Time <span class="required-mark" aria-hidden="true">*</span></label>
-                <input type="time" id="mediationTime" name="mediation_time" required>
-            </div>
-            <div class="form-group">
-                <label for="mediationVenue">Venue <span class="required-mark" aria-hidden="true">*</span></label>
-                <input type="text" id="mediationVenue" name="venue" maxlength="255" value="Barangay Hall" required>
-            </div>
-            <div class="form-group">
-                <label for="mediationRemarks">Remarks</label>
-                <textarea id="mediationRemarks" name="remarks" maxlength="5000" rows="3" placeholder="Optional mediation instructions"></textarea>
+                <label for="summonMediationRemarks">Remarks <span class="optional-label">Optional</span></label>
+                <textarea id="summonMediationRemarks" name="remarks" maxlength="5000" rows="2" placeholder="Optional mediation instructions or notes..."></textarea>
             </div>
             <div class="modal-actions">
-                <button type="button" class="btn-secondary" onclick="closeScheduleMediationModal()">Cancel</button>
-                <button type="submit" class="btn-create">Continue</button>
+                <button type="button" class="btn-secondary" onclick="closeIssueSummonModal()">Cancel</button>
+                <button type="submit" class="btn-create" id="submitIssueSummonBtn">Issue Summon &amp; Schedule</button>
             </div>
-            <p id="mediationMessage" role="status" style="margin-top: 10px;"></p>
+            <p id="issueSummonMessage" role="status" style="margin-top: 10px;"></p>
         </form>
-    </div>
-</div>
-
-<div id="confirmMediationModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h2>Confirm Mediation</h2>
-            <button class="close-btn" onclick="closeConfirmMediationModal()">&times;</button>
-        </div>
-        <p>Are you sure you want to proceed with this 1st Mediation schedule? This will create and docket the case.</p>
-        <dl id="mediationConfirmationDetails" class="hearing-details"></dl>
-        <div class="modal-actions">
-            <button type="button" class="btn-secondary" onclick="closeConfirmMediationModal()">Back</button>
-            <button type="button" class="btn-create" id="confirmMediationButton">Confirm 1st Mediation</button>
-        </div>
-<div id="summonsRequiredModal" class="modal" style="display: none;">
-    <div class="modal-content" style="max-width: 480px;">
-        <div class="modal-header" style="border-bottom: 1px solid #fee2e2; background: #fff5f5;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                <h2 style="color: #991b1b; font-size: 1.15rem; margin: 0;">Summons Required</h2>
-            </div>
-            <button class="close-btn" onclick="closeSummonsRequiredModal()">&times;</button>
-        </div>
-        <div style="padding: 20px 24px;">
-            <p style="margin: 0 0 16px; font-size: 0.95rem; line-height: 1.5; color: #334155;">
-                1st Mediation is unavailable until a summons has been successfully served.
-            </p>
-            <div style="background: #f8fafc; border-left: 3px solid #f59e0b; padding: 12px 14px; border-radius: 4px; font-size: 0.85rem; color: #475569;">
-                <strong>Required Process Sequence:</strong><br>
-                Complaint &rarr; Case/Docket &rarr; Issue Summon &rarr; Serve Summon &rarr; Proof of Service &rarr; 1st Mediation
-            </div>
-        </div>
-        <div class="modal-actions" style="padding: 14px 24px; background: #f8fafc; border-top: 1px solid #e2e8f0;">
-            <button type="button" class="btn-secondary" onclick="closeSummonsRequiredModal()">Close</button>
-            <button type="button" class="btn-create" onclick="closeSummonsRequiredModal(); handleIssueSummonClick();">Issue 1st Summon Now</button>
-        </div>
     </div>
 </div>
 

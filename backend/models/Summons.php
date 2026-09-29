@@ -20,12 +20,12 @@ class Summons
      * the case first, ensuring compliance with the required sequence:
      * Complaint -> Case/Docket -> Issue Summon -> Serve Summon -> Proof of Service.
      */
-    public function issueFirstSummon(int $complaintId, int $userId): array
+    public function issueFirstSummon(int $complaintId, int $userId, array $mediationData = []): array
     {
         try {
             $this->conn->beginTransaction();
 
-            $complaintStmt = $this->conn->prepare('SELECT complaint_id, complaint_number, complaint_title, status, case_type FROM complaints WHERE complaint_id = ? FOR UPDATE');
+            $complaintStmt = $this->conn->prepare('SELECT complaint_id, complaint_number, complaint_title, status, case_type, created_at FROM complaints WHERE complaint_id = ? FOR UPDATE');
             $complaintStmt->execute([$complaintId]);
             $complaint = $complaintStmt->fetch(PDO::FETCH_ASSOC);
 
@@ -34,7 +34,47 @@ class Summons
                 return ['success' => false, 'message' => 'Complaint not found.'];
             }
 
-            // Check if case exists or needs to be docketed
+            // Parse and prepare mediation schedule parameters
+            $medDate = !empty($mediationData['mediation_date']) ? trim((string)$mediationData['mediation_date']) : '';
+            $medTime = !empty($mediationData['mediation_time']) ? trim((string)$mediationData['mediation_time']) : '';
+            $venue = !empty($mediationData['venue']) ? trim((string)$mediationData['venue']) : 'Barangay Hall';
+            $remarks = !empty($mediationData['remarks']) ? trim((string)$mediationData['remarks']) : null;
+
+            if ($medDate === '') {
+                $medDate = date('Y-m-d', strtotime('+3 days'));
+            }
+            if ($medTime === '') {
+                $medTime = '09:00';
+            }
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $medDate) || !preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', $medTime)) {
+                $this->conn->rollBack();
+                return ['success' => false, 'message' => 'Please provide a valid 1st Mediation date and time.'];
+            }
+
+            // Enforce: mediation must be scheduled within 15 days of complaint filing date
+            if (!empty($complaint['created_at'])) {
+                $filingDate   = new \DateTime(substr($complaint['created_at'], 0, 10));
+                $deadlineDate = (clone $filingDate)->modify('+15 days');
+                $scheduledDate = new \DateTime($medDate);
+                if ($scheduledDate > $deadlineDate) {
+                    $this->conn->rollBack();
+                    return [
+                        'success' => false,
+                        'message' => sprintf(
+                            'The mediation date must be within 15 days of the complaint filing date. Deadline: %s.',
+                            $deadlineDate->format('F j, Y')
+                        ),
+                    ];
+                }
+                if ($scheduledDate < new \DateTime('today')) {
+                    $this->conn->rollBack();
+                    return ['success' => false, 'message' => 'The mediation date cannot be in the past.'];
+                }
+            }
+
+            $hearingDateTime = substr($medDate, 0, 10) . ' ' . substr($medTime, 0, 5) . ':00';
+
+            // Check if case exists or needs to be created
             $caseStmt = $this->conn->prepare('SELECT case_id, case_number, case_status FROM cases WHERE complaint_id = ? FOR UPDATE');
             $caseStmt->execute([$complaintId]);
             $case = $caseStmt->fetch(PDO::FETCH_ASSOC);
@@ -60,7 +100,7 @@ class Summons
                     ? $complaint['case_type']
                     : 'Civil';
 
-                $insertCase = $this->conn->prepare("INSERT INTO cases (complaint_id, case_type, case_status, docket_date) VALUES (?, ?, 'Docketed', CURDATE())");
+                $insertCase = $this->conn->prepare("INSERT INTO cases (complaint_id, case_type, case_status, docket_date) VALUES (?, ?, 'Mediation', CURDATE())");
                 $insertCase->execute([$complaintId, $caseType]);
                 $caseId = (int) $this->conn->lastInsertId();
                 $caseNumber = sprintf('KP-%s-%05d', date('Y'), $caseId);
@@ -70,16 +110,87 @@ class Summons
 
                 $headAssignment = $this->conn->prepare("INSERT INTO case_assignments (case_id, member_id, assignment_role, assigned_date) VALUES (?, ?, 'Head', CURDATE())");
                 $headAssignment->execute([$caseId, (int) $administrator['user_id']]);
-
-                $updateComplaint = $this->conn->prepare("UPDATE complaints SET status = 'Docketed' WHERE complaint_id = ?");
-                $updateComplaint->execute([$complaintId]);
-
-                $caseHistory = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, 'Docketed', 'Case docketed upon issuance of 1st Summons.', ?)");
-                $caseHistory->execute([$caseId, $userId]);
             } else {
                 $caseId = (int) $case['case_id'];
                 $caseNumber = $case['case_number'];
             }
+
+            // Automatically schedule the 1st Mediation hearing when issuing the summons
+            $existingMediation = $this->conn->prepare("SELECT hearing_id FROM hearings WHERE case_id = ? AND hearing_type = 'Mediation' LIMIT 1");
+            $existingMediation->execute([$caseId]);
+            $hearingId = $existingMediation->fetchColumn();
+
+            require_once __DIR__ . '/../services/MediationDeadlineService.php';
+            $startDate = substr($hearingDateTime, 0, 10);
+            $deadlineDate = MediationDeadlineService::calculateDeadline($startDate, 15);
+
+            // Check for overlapping mediation on that day
+            $conflict = $this->findMediationConflict(
+                $hearingDateTime,
+                $venue,
+                $caseId,
+                $hearingId ? (int)$hearingId : null
+            );
+
+            if ($conflict) {
+                $this->conn->rollBack();
+                $cStart = date('g:i A', strtotime($conflict['hearing_date']));
+                $cEnd = date('g:i A', strtotime($conflict['hearing_date'] . ' +60 minutes'));
+                $cDate = date('M j, Y', strtotime($conflict['hearing_date']));
+                $caseRef = !empty($conflict['case_number']) ? ' for Case ' . $conflict['case_number'] : '';
+                return [
+                    'success' => false,
+                    'conflict' => true,
+                    'message' => sprintf(
+                        'Schedule conflict: A %s is already scheduled%s on %s from %s to %s (%s). Mediation sessions cannot overlap on the same day. Please select a non-overlapping time slot.',
+                        $conflict['hearing_type'] ?? 'Mediation',
+                        $caseRef,
+                        $cDate,
+                        $cStart,
+                        $cEnd,
+                        $conflict['venue'] ?? 'Barangay Hall'
+                    )
+                ];
+            }
+
+            if (!$hearingId) {
+                $insertHearing = $this->conn->prepare(
+                    "INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, remarks)
+                     VALUES (?, 'Mediation', ?, ?, ?)"
+                );
+                $insertHearing->execute([$caseId, $hearingDateTime, $venue, $remarks ?: '1st Mediation scheduled upon issuance of 1st Summons.']);
+                $hearingId = (int) $this->conn->lastInsertId();
+            } else {
+                $updateHearing = $this->conn->prepare(
+                    "UPDATE hearings SET hearing_date = ?, venue = ?, remarks = COALESCE(?, remarks) WHERE hearing_id = ?"
+                );
+                $updateHearing->execute([$hearingDateTime, $venue, $remarks, $hearingId]);
+            }
+
+            // Set case status to Mediation and activate the 15-day mediation clock
+            $updateCase = $this->conn->prepare(
+                "UPDATE cases
+                 SET case_status = 'Mediation',
+                     mediation_start_date = COALESCE(mediation_start_date, ?),
+                     mediation_deadline_date = ?,
+                     is_paused = 0,
+                     paused_at = NULL,
+                     resumed_at = NULL,
+                     pause_reason = NULL,
+                     pause_notes = NULL
+                 WHERE case_id = ?"
+            );
+            $updateCase->execute([$startDate, $deadlineDate, $caseId]);
+
+            $updateComplaint = $this->conn->prepare("UPDATE complaints SET status = 'Mediation' WHERE complaint_id = ?");
+            $updateComplaint->execute([$complaintId]);
+
+            $deadline = $this->conn->prepare(
+                "INSERT INTO case_deadlines (case_id, deadline_type, due_date, status)
+                 VALUES (?, 'Mediation Period', ?, 'Pending')
+                 ON DUPLICATE KEY UPDATE due_date = VALUES(due_date), status = IF(status = 'Completed', 'Completed', 'Pending')"
+            );
+            $deadline->execute([$caseId, $deadlineDate]);
 
             // Template ID for KP Form 9 (Summons)
             $templateStmt = $this->conn->prepare(
@@ -123,9 +234,26 @@ class Summons
                 ];
             }
 
-            // 2. Allow up to 2 summons attempts:
-            // If already 2 summonses issued, do not issue a 3rd attempt
-            if ($existingCount >= 2) {
+            // 2. Gate: before issuing the next summons, a service attempt must be recorded for the most recent one
+            if ($existingCount >= 1) {
+                $latestDoc = end($existingSummons);
+                $latestDocId = (int) $latestDoc['document_id'];
+                $attemptCheck = $this->conn->prepare(
+                    "SELECT 1 FROM proof_of_service WHERE document_id = ? LIMIT 1"
+                );
+                $attemptCheck->execute([$latestDocId]);
+                if (!$attemptCheck->fetchColumn()) {
+                    $this->conn->commit();
+                    return [
+                        'success' => false,
+                        'message' => 'A service attempt must be recorded for Summons #' . $existingCount
+                            . ' before a new summons can be issued. Please record the proof of service first.',
+                    ];
+                }
+            }
+
+            // 3. Cap at 3 summons per mediation/conciliation
+            if ($existingCount >= 3) {
                 $this->conn->commit();
                 $latest = end($existingSummons);
                 return [
@@ -134,8 +262,8 @@ class Summons
                     'case_id' => $caseId,
                     'case_number' => $caseNumber,
                     'document_id' => (int) $latest['document_id'],
-                    'summons_number' => 2,
-                    'message' => 'Both 1st and 2nd summons attempts have already been issued.',
+                    'summons_number' => 3,
+                    'message' => 'All 3 summons attempts have already been issued. No further summons can be issued.',
                 ];
             }
 
@@ -158,13 +286,12 @@ class Summons
             $documentId = (int) $this->conn->lastInsertId();
 
             // Record in case history
-            $histRemarks = sprintf('Summons #%d issued. Assigned for service.', $summonsNum);
+            $histRemarks = sprintf('Summons #%d issued and 1st Mediation scheduled for %s at %s. Assigned for service.', $summonsNum, date('M j, Y g:i A', strtotime($hearingDateTime)), $venue);
             $histStmt = $this->conn->prepare(
                 "INSERT INTO case_history (case_id, status, remarks, updated_by)
                  SELECT case_id, case_status, ?, ? FROM cases WHERE case_id = ?"
             );
             $histStmt->execute([$histRemarks, $userId, $caseId]);
-
 
             $this->conn->commit();
 
@@ -177,8 +304,9 @@ class Summons
                 'case_id' => $caseId,
                 'case_number' => $caseNumber,
                 'document_id' => $documentId,
+                'hearing_id' => (int) $hearingId,
                 'summons_number' => $summonsNum,
-                'message' => sprintf('Summons #%d has been issued successfully.', $summonsNum),
+                'message' => sprintf('Summons #%d issued and 1st Mediation scheduled for %s.', $summonsNum, date('M j, Y g:i A', strtotime($hearingDateTime))),
             ];
         } catch (Throwable $e) {
             if ($this->conn->inTransaction()) {
@@ -242,6 +370,102 @@ class Summons
             error_log('Error issuing follow-up summons: ' . $exception->getMessage());
             return ['success' => false, 'message' => 'Unable to issue the follow-up summons.'];
         }
+    }
+
+    /**
+     * Checks if a proposed mediation schedule overlaps with other scheduled mediations that day,
+     * or conflicts with any hearing at the same venue.
+     * Mediation sessions are treated as having a standard 60-minute duration.
+     */
+    public function findMediationConflict(
+        string $hearingDateTime,
+        string $venue,
+        ?int $excludeCaseId = null,
+        ?int $excludeHearingId = null
+    ): ?array {
+        $date = substr($hearingDateTime, 0, 10);
+
+        $sql = "
+            SELECT h.hearing_id, h.case_id, h.hearing_date, h.venue, h.hearing_type,
+                   c.case_number, co.complaint_title
+            FROM hearings h
+            INNER JOIN cases c ON c.case_id = h.case_id
+            LEFT JOIN complaints co ON co.complaint_id = c.complaint_id
+            WHERE DATE(h.hearing_date) = ?
+              AND c.case_status NOT IN ('Dismissed', 'Settled')
+              AND (
+                  -- Another mediation on the same day overlapping in time (60-minute session)
+                  (h.hearing_type = 'Mediation' AND ABS(TIMESTAMPDIFF(MINUTE, h.hearing_date, ?)) < 60)
+                  OR
+                  -- Venue conflict at same date/time (60-minute session)
+                  (LOWER(TRIM(h.venue)) = LOWER(TRIM(?)) AND ABS(TIMESTAMPDIFF(MINUTE, h.hearing_date, ?)) < 60)
+              )
+        ";
+        $params = [$date, $hearingDateTime, $venue, $hearingDateTime];
+
+        if ($excludeHearingId !== null && $excludeHearingId > 0) {
+            $sql .= " AND h.hearing_id <> ?";
+            $params[] = $excludeHearingId;
+        } elseif ($excludeCaseId !== null && $excludeCaseId > 0) {
+            $sql .= " AND h.case_id <> ?";
+            $params[] = $excludeCaseId;
+        }
+
+        $sql .= " ORDER BY h.hearing_date ASC LIMIT 1";
+
+        $stmt = $this->conn->prepare($sql);
+        $stmt->execute($params);
+        $conflict = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $conflict ?: null;
+    }
+
+    /**
+     * Retrieves all scheduled mediations for a given date.
+     */
+    public function getScheduledMediationsForDate(string $date, ?int $excludeCaseId = null, ?int $excludeHearingId = null): array
+    {
+        $dateOnly = substr($date, 0, 10);
+        $sql = "
+            SELECT h.hearing_id, h.case_id, h.hearing_date, h.venue, h.hearing_type,
+                   c.case_number, co.complaint_title
+            FROM hearings h
+            INNER JOIN cases c ON c.case_id = h.case_id
+            LEFT JOIN complaints co ON co.complaint_id = c.complaint_id
+            WHERE DATE(h.hearing_date) = ?
+              AND h.hearing_type = 'Mediation'
+              AND c.case_status NOT IN ('Dismissed', 'Settled')
+        ";
+        $params = [$dateOnly];
+
+        if ($excludeHearingId !== null && $excludeHearingId > 0) {
+            $sql .= " AND h.hearing_id <> ?";
+            $params[] = $excludeHearingId;
+        } elseif ($excludeCaseId !== null && $excludeCaseId > 0) {
+            $sql .= " AND h.case_id <> ?";
+            $params[] = $excludeCaseId;
+        }
+
+        $sql .= " ORDER BY h.hearing_date ASC";
+
+        $stmt = $this->conn->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        return array_map(function ($row) {
+            $ts = strtotime($row['hearing_date']);
+            return [
+                'hearing_id' => (int) $row['hearing_id'],
+                'case_id' => (int) $row['case_id'],
+                'case_number' => $row['case_number'],
+                'complaint_title' => $row['complaint_title'],
+                'hearing_date' => $row['hearing_date'],
+                'start_time' => date('g:i A', $ts),
+                'end_time' => date('g:i A', strtotime('+60 minutes', $ts)),
+                'time_24' => date('H:i', $ts),
+                'venue' => $row['venue']
+            ];
+        }, $rows);
     }
 
     private function notifySummonsServers(string $caseNumber, int $summonsNum, int $actorUserId): void

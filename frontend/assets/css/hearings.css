@@ -408,3 +408,373 @@ th { background: #f8fafc; font-weight: 600; color: #334155; }
     .search-field { width: 100%; min-width: 100%; }
 }
 button:disabled, button.is-disabled, button[disabled], .btn-create:disabled, .btn-create.is-disabled, .btn-secondary:disabled, .btn-secondary.is-disabled, a.btn-create.is-disabled, a.btn-create[disabled] { background: #e4e4e7 !important; color: #a1a1aa !important; cursor: not-allowed !important; pointer-events: none !important; opacity: 0.65 !important; box-shadow: none !important; }
+
+/* Attendance Monitor Styles */
+.attendance-monitor-summary-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    margin: 0 20px 20px;
+    padding: 16px 20px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+.btn-att-filter {
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    color: #475569;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.btn-att-filter:hover {
+    background: #e2e8f0;
+    color: #1e293b;
+}
+.btn-att-filter.active {
+    background: #0284c7;
+    border-color: #0284c7;
+    color: #ffffff;
+}
+.badge-attendance-present {
+    color: #15803d;
+    background: #dcfce7;
+    border: 1px solid #bbf7d0;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.badge-attendance-unjustified {
+    color: #b91c1c;
+    background: #fee2e2;
+    border: 1px solid #fca5a5;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.badge-attendance-excused {
+    color: #b45309;
+    background: #fef3c7;
+    border: 1px solid #fde68a;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.badge-attendance-pending {
+    color: #475569;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.party-att-card {
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    padding: 12px 14px;
+    background: #ffffff;
+    transition: border-color 0.15s;
+}
+.party-att-card.card-complainant {
+    border-left: 4px solid #0284c7;
+}
+.party-att-card.card-respondent {
+    border-left: 4px solid #f97316;
+}
+.att-status-pills {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin: 8px 0;
+}
+.att-status-pill-btn {
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    color: #475569;
+    padding: 5px 12px;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.att-status-pill-btn:hover {
+    background: #e2e8f0;
+}
+.att-status-pill-btn.selected-present {
+    background: #16a34a;
+    border-color: #16a34a;
+    color: #ffffff;
+}
+.att-status-pill-btn.selected-unjustified {
+    background: #dc2626;
+    border-color: #dc2626;
+    color: #ffffff;
+}
+.att-status-pill-btn.selected-excused {
+    background: #d97706;
+    border-color: #d97706;
+    color: #ffffff;
+}
+.att-status-pill-btn.selected-late {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #ffffff;
+}
+
+/* Modal and Situation Box Styling */
+.modal-content-lg {
+    max-width: 840px !important;
+    width: 95% !important;
+    max-height: 90vh !important;
+    overflow-y: auto !important;
+}
+
+.att-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px 16px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    font-size: 0.84rem;
+}
+.att-meta-item strong {
+    display: block;
+    color: #64748b;
+    font-size: 0.73rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 2px;
+}
+.att-meta-item span {
+    color: #1e293b;
+    font-weight: 600;
+}
+
+.att-parties-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.party-att-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.party-att-title {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: #1e293b;
+}
+.party-att-address {
+    font-size: 0.78rem;
+    color: #64748b;
+    margin-top: 2px;
+}
+
+.party-badge-complainant {
+    background: #e0f2fe;
+    color: #0369a1;
+    border: 1px solid #bae6fd;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+.party-badge-respondent {
+    background: #ffedd5;
+    color: #c2410c;
+    border: 1px solid #fed7aa;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+.party-badge-witness {
+    background: #f3e8ff;
+    color: #7e22ce;
+    border: 1px solid #e9d5ff;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.att-justification-box {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: #fefce8;
+    border: 1px solid #fef08a;
+    border-radius: 6px;
+}
+.att-justification-box label {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #854d0e;
+    margin-bottom: 4px;
+}
+
+.att-remarks-box {
+    margin-top: 8px;
+}
+.att-remarks-box textarea {
+    width: 100%;
+    font-size: 0.82rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 6px 10px;
+    resize: vertical;
+}
+
+.att-situation-box {
+    border-radius: 10px;
+    padding: 16px;
+    margin-top: 16px;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    transition: all 0.2s ease;
+}
+.att-situation-box.sit-success {
+    background: #f0fdf4;
+    border-color: #86efac;
+}
+.att-situation-box.sit-warning {
+    background: #fffbeb;
+    border-color: #fde68a;
+}
+.att-situation-box.sit-danger {
+    background: #fef2f2;
+    border-color: #fca5a5;
+}
+.att-situation-box.sit-info {
+    background: #f0f9ff;
+    border-color: #bae6fd;
+}
+.att-situation-box.sit-neutral {
+    background: #f8fafc;
+    border-color: #e2e8f0;
+}
+
+.att-situation-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+.att-situation-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #0f172a;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.att-situation-ref {
+    font-size: 0.78rem;
+    color: #64748b;
+    font-weight: 600;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    padding: 2px 8px;
+    border-radius: 9999px;
+}
+
+.att-consequences-section {
+    margin: 10px 0;
+}
+.att-consequences-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #475569;
+    margin-bottom: 6px;
+}
+.att-consequences-list {
+    margin: 0;
+    padding-left: 20px;
+    font-size: 0.84rem;
+    color: #334155;
+    line-height: 1.5;
+}
+.att-consequences-list li {
+    margin-bottom: 4px;
+}
+
+.att-recommendation-box {
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-top: 12px;
+}
+.att-recommendation-text {
+    font-size: 0.86rem;
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 8px;
+}
+.att-action-shortcuts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.btn-att-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 6px;
+    text-decoration: none;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s ease;
+}
+.btn-att-action-primary {
+    background: #0284c7;
+    color: #ffffff;
+}
+.btn-att-action-primary:hover {
+    background: #0369a1;
+}
+.btn-att-action-danger {
+    background: #dc2626;
+    color: #ffffff;
+}
+.btn-att-action-danger:hover {
+    background: #b91c1c;
+}
+.btn-att-action-secondary {
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    color: #334155;
+}
+.btn-att-action-secondary:hover {
+    background: #f1f5f9;
+}
+
