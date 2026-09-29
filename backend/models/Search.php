@@ -4,7 +4,7 @@ require_once __DIR__ . '/../config/database.php';
 
 class Search
 {
-    private $conn;
+    private PDO $conn;
 
     public function __construct()
     {
@@ -250,7 +250,7 @@ class Search
         return $this->resolveLifecycle($row)['status_labels'];
     }
 
-    private function isDate($value): bool
+    private function isDate(mixed $value): bool
     {
         if (!is_string($value) || preg_match('/^\\d{4}-\\d{2}-\\d{2}$/', $value) !== 1) return false;
         $date = DateTimeImmutable::createFromFormat('!Y-m-d', $value);

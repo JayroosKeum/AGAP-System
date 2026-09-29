@@ -4,7 +4,7 @@ require_once __DIR__ . '/../config/database.php';
 
 class CaseModel
 {
-    private $conn;
+    private PDO $conn;
 
     public function __construct()
     {
@@ -202,7 +202,7 @@ class CaseModel
         ];
     }
 
-    public function getById($id)
+    public function getById(int $id): array|false
     {
         $stmt = $this->conn->prepare("
             SELECT
@@ -222,7 +222,7 @@ class CaseModel
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 
-    public function create($data)
+    public function create(array $data): bool
     {
         if ($this->getDocketingError($data['complaint_id'] ?? null) !== null) {
             return false;
@@ -307,7 +307,7 @@ class CaseModel
         return ['case' => $case, 'assignments' => $assignments->fetchAll(PDO::FETCH_ASSOC), 'hearings' => $hearings->fetchAll(PDO::FETCH_ASSOC), 'documents' => $documents->fetchAll(PDO::FETCH_ASSOC), 'proofs' => $proofs->fetchAll(PDO::FETCH_ASSOC)];
     }
 
-    public function getDocketingError($complaintId)
+    public function getDocketingError(mixed $complaintId): ?string
     {
         if (filter_var($complaintId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false) {
             return 'invalid_complaint';
@@ -334,7 +334,7 @@ class CaseModel
         return null;
     }
 
-    public function update($id, $data): array
+    public function update(mixed $id, array $data): array
     {
         $caseId = filter_var($id, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         $caseType = trim((string) ($data['case_type'] ?? ''));
@@ -444,7 +444,7 @@ class CaseModel
         foreach ($team as $role => $memberId) $insert->execute([$pangkatId, $memberId, $positions[$role]]);
     }
 
-    public function archive($id)
+    public function archive(mixed $id): bool
     {
         $stmt = $this->conn->prepare("
             UPDATE cases

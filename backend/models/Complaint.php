@@ -5,7 +5,7 @@ require_once __DIR__ . '/../services/ValidationService.php';
 
 class Complaint
 {
-    private $conn;
+    private PDO $conn;
 
     public function __construct()
     {
@@ -47,7 +47,7 @@ class Complaint
         }
     }
 
-    public function getById($id)
+    public function getById(int $id): array|false
     {
         try {
 
@@ -77,7 +77,7 @@ class Complaint
         }
     }
 
-    public function create($data): array
+    public function create(array $data): array
     {
         try {
             if (!empty($data['incident_datetime'])) {
@@ -190,7 +190,7 @@ class Complaint
         }
     }
 
-    public function update($id, $data): array
+    public function update(mixed $id, array $data): array
     {
         try {
 
@@ -323,7 +323,7 @@ class Complaint
         return ['success' => true, 'message' => 'Complaint review saved.'];
     }
 
-    public function delete($id)
+    public function delete(mixed $id): bool
     {
         try {
 
