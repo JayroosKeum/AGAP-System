@@ -25,7 +25,7 @@ include '../../layouts/header.php';
         <div class="page-header">
             <div>
                 <h1>Hearings and Deadlines</h1>
-                <p>Manage hearings, deadlines, and scheduled case activities.</p>
+                <p>Manage hearings, deadlines, service verification, and scheduled case activities.</p>
             </div>
             <?php if ($canManageHearings): ?>
             <button
@@ -35,17 +35,12 @@ include '../../layouts/header.php';
             >
                 Schedule Hearing
             </button>
-        <?php endif; ?>
+            <?php endif; ?>
         </div>
 
         <div id="hearingMessage" role="alert"></div>
 
-        <section class="hearing-calendar-section">
-            <div class="calendar-toolbar"><button type="button" id="previousMonth" class="btn-secondary" aria-label="Previous month">&larr;</button><h2 id="calendarMonth"></h2><button type="button" id="nextMonth" class="btn-secondary" aria-label="Next month">&rarr;</button></div>
-            <p class="calendar-help"><?php echo $canManageHearings ? 'Select a date to start a new hearing, or select an existing hearing to edit it.' : 'Select a hearing to view its details.'; ?></p>
-            <div class="hearing-calendar" id="hearingCalendar" aria-label="Hearing calendar"></div>
-        </section>
-
+        <!-- Search Controls Placed Directly Above Calendar & Grid -->
         <section class="hearings-search-card" aria-label="Search and filter hearings and deadlines">
             <div class="search-card-header">
                 <h2>Search / Filters</h2>
@@ -147,34 +142,49 @@ include '../../layouts/header.php';
             </div>
         </section>
 
-        <div class="table-section-header">
-            <h2>Hearings and Deadlines</h2>
-        </div>
-        <div class="table-container">
-            <table class="combined-records-table">
-                <thead>
-                    <tr>
-                        <th>Case No.</th>
-                        <th>Complaint</th>
-                        <th>Hearing Type</th>
-                        <th>Date and Time</th>
-                        <th>Status</th>
-                        <th>Attendance</th>
-                        <th>Venue</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="combinedTable">
-                    <tr>
-                        <td colspan="8" class="empty-state">Loading hearings and deadlines...</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
+        <!-- Responsive Side-by-Side Main Grid: Calendar Left (1.35fr), Hearings & Today's Deadlines Table Right (1fr) -->
+        <div class="hearings-main-grid">
+            <section class="hearing-calendar-section">
+                <div class="calendar-toolbar"><button type="button" id="previousMonth" class="btn-secondary" aria-label="Previous month">&larr;</button><h2 id="calendarMonth"></h2><button type="button" id="nextMonth" class="btn-secondary" aria-label="Next month">&rarr;</button></div>
+                <p class="calendar-help"><?php echo $canManageHearings ? 'Select a date to start a new hearing, or select an existing hearing to edit it.' : 'Select a hearing to view its details.'; ?></p>
+                <div class="hearing-calendar" id="hearingCalendar" aria-label="Hearing calendar"></div>
+            </section>
 
-        <div id="hearingPagination" class="complaints-pagination" aria-label="Hearings and deadlines pagination" style="display: none;">
-            <span id="hearingPaginationSummary" class="complaints-pagination-summary" aria-live="polite">Showing 0 records</span>
-            <div id="hearingPaginationControls" class="complaints-pagination-controls"></div>
+            <section class="hearing-table-section">
+                <div class="table-section-header">
+                    <h2>Hearings &amp; Deadlines</h2>
+                    <span class="badge-today-deadline" title="Only deadlines due today are listed in this table">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                        Deadlines Due Today: <?php echo date('F j, Y'); ?> (Current day only)
+                    </span>
+                </div>
+                <div class="table-container">
+                    <table class="combined-records-table">
+                        <thead>
+                            <tr>
+                                <th>Case No.</th>
+                                <th>Complaint</th>
+                                <th>Hearing Type</th>
+                                <th>Date &amp; Time</th>
+                                <th>Status</th>
+                                <th>Venue</th>
+                                <th>Attendance</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="combinedTable">
+                            <tr>
+                                <td colspan="8" class="empty-state">Loading hearings and deadlines...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div id="hearingPagination" class="complaints-pagination" aria-label="Hearings and deadlines pagination" style="display: none;">
+                    <span id="hearingPaginationSummary" class="complaints-pagination-summary" aria-live="polite">Showing 0 records</span>
+                    <div id="hearingPaginationControls" class="complaints-pagination-controls"></div>
+                </div>
+            </section>
         </div>
     </div>
 </div>
@@ -227,67 +237,29 @@ include '../../layouts/header.php';
 </div>
 
 <?php if ($canManageHearings): ?>
-<div id="nonappearanceModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header"><h2>Record Unjustified Non-Appearance</h2><button type="button" class="close-btn" onclick="closeNonappearanceModal()">&times;</button></div>
-        <form id="nonappearanceForm">
-            <input type="hidden" name="hearing_id" id="nonappearanceHearingId">
-            <div class="form-group"><label for="nonappearanceResident">Absent party <span class="required-mark" aria-hidden="true">*</span></label><select id="nonappearanceResident" name="resident_id" required></select></div>
-            <div class="form-group"><label for="nonappearanceRemarks">Remarks <span class="required-mark" aria-hidden="true">*</span></label><textarea id="nonappearanceRemarks" name="remarks" rows="3" maxlength="2000" required placeholder="State the facts supporting the finding."></textarea></div>
-            <button type="submit" class="btn-create">Record Non-Appearance</button>
-        </form>
-    </div>
-</div>
-<?php endif; ?>
-
-<?php if ($canManageHearings): ?>
-<div id="editHearingModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h2>Update Hearing</h2>
-            <button type="button" class="close-btn" onclick="closeEditHearingModal()">&times;</button>
-        </div>
-        <form id="editHearingForm" action="../../../backend/api/hearings/update.php" method="POST">
-            <input type="hidden" name="hearing_id" id="editHearingId">
-            <div class="form-group">
-                <label for="editHearingType">Hearing Type</label>
-                <input type="text" id="editHearingType" readonly>
-            </div>
-            <div class="form-group">
-                <label for="editHearingDate">Date &amp; Time</label>
-                <input type="datetime-local" id="editHearingDate" name="hearing_date" required>
-            </div>
-            <div class="form-group">
-                <label for="editHearingVenue">Venue</label>
-                <input type="text" id="editHearingVenue" name="venue" required>
-            </div>
-            <div class="form-group">
-                <label for="editHearingRemarks">Remarks</label>
-                <textarea id="editHearingRemarks" name="remarks" rows="3"></textarea>
-            </div>
-            <button type="submit" class="btn-create">Review Changes</button>
-        </form>
-    </div>
-</div>
-<?php endif; ?>
-
-<?php if ($canManageHearings): ?>
 <div id="reviewHearingModal" class="modal">
     <div class="modal-content">
-        <div class="modal-header"><h2>Review Hearing Schedule</h2><button type="button" class="close-btn" onclick="closeReviewHearingModal()">&times;</button></div>
+        <div class="modal-header">
+            <h2>Review Hearing Schedule</h2>
+            <button type="button" class="close-btn" onclick="closeReviewHearingModal()">&times;</button>
+        </div>
         <p>Confirm these details before the hearing is scheduled. This will notify the case team.</p>
         <dl id="reviewHearingDetails" class="hearing-details"></dl>
-        <div class="modal-actions"><button type="button" class="btn-secondary" onclick="closeReviewHearingModal()">Back to Edit</button><button type="button" class="btn-create" id="confirmHearingSchedule">Confirm Schedule</button></div>
+        <div class="modal-actions">
+            <button type="button" class="btn-secondary" onclick="closeReviewHearingModal()">Back to Edit</button>
+            <button type="button" class="btn-create" id="confirmHearingSchedule">Confirm Schedule</button>
+        </div>
     </div>
 </div>
 <?php endif; ?>
 
-<div id="hearingAttendanceModal" class="modal">
+<!-- Comprehensive Hearing Update, Service Verification & Attendance Modal -->
+<div id="editHearingModal" class="modal">
     <div class="modal-content modal-content-lg">
         <div class="modal-header">
             <div>
-                <h2 id="attModalTitle" style="margin-bottom: 2px;">Hearing Attendance &amp; KP Compliance Monitor</h2>
-                <p id="attModalSubtitle" style="font-size: 0.84rem; color: #64748b; margin: 0;">Record Complainant &amp; Respondent appearance with automated KP Law (R.A. 7160 Sec. 415) legal evaluation</p>
+                <h2 id="attModalTitle" style="margin-bottom: 2px;">Hearing Session &amp; Service Verification</h2>
+                <p id="attModalSubtitle" style="font-size: 0.84rem; color: #64748b; margin: 0;">Record service attempts, Officer’s Returns, party attendance, and manage statutory case progression.</p>
             </div>
             <button type="button" class="close-btn" onclick="closeHearingAttendanceModal()">&times;</button>
         </div>
@@ -321,16 +293,17 @@ include '../../layouts/header.php';
             </div>
         </div>
 
-        <form id="hearingAttendanceForm">
+        <!-- Attendance & Service Verification Form -->
+        <form id="hearingAttendanceForm" novalidate>
             <input type="hidden" id="attHearingId" name="hearing_id">
 
             <div style="margin-bottom: 8px; display:flex; justify-content:space-between; align-items:center;">
-                <h3 style="font-size: 0.95rem; font-weight: 700; color: #1e293b; margin: 0;">Party Attendance Records</h3>
-                <span style="font-size: 0.78rem; color: #64748b;">Click an appearance status for each party</span>
+                <h3 style="font-size: 0.95rem; font-weight: 700; color: #1e293b; margin: 0;">Parties, Service Verification &amp; Attendance Records</h3>
+                <span style="font-size: 0.78rem; color: #64748b;">Record service attempts &amp; appearance status</span>
             </div>
 
             <div id="attPartiesContainer" class="att-parties-list">
-                <!-- Dynamically populated party cards -->
+                <!-- Dynamically populated party cards with service verification & attendance -->
                 <div style="text-align: center; padding: 20px; color: #64748b;">Loading parties...</div>
             </div>
 
@@ -356,13 +329,52 @@ include '../../layouts/header.php';
                 </div>
             </div>
 
-            <div class="modal-actions" style="margin-top: 20px;">
+            <div id="attModalBottomAlert" style="display: none; margin-top: 14px; margin-bottom: 8px;" class="alert"></div>
+
+            <div class="modal-actions" style="margin-top: 18px; margin-bottom: 18px;">
                 <button type="button" class="btn-secondary" onclick="closeHearingAttendanceModal()">Close</button>
                 <?php if ($canManageHearings): ?>
-                <button type="submit" class="btn-create" id="btnSaveAttendance">Save Attendance &amp; Apply Findings</button>
+                <button type="button" class="btn-create" id="btnSaveAttendance">Save Attendance &amp; Apply Findings</button>
                 <?php endif; ?>
             </div>
         </form>
+
+        <?php if ($canManageHearings): ?>
+        <!-- Reschedule Hearing Section (Creates a new hearing record while preserving original history) -->
+        <details class="reschedule-section-details" style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px 18px; margin-top: 10px;">
+            <summary style="font-weight: 700; color: #1e293b; cursor: pointer; font-size: 0.92rem;">
+                📅 Reschedule This Hearing (Creates New Hearing Event &amp; Preserves Record)
+            </summary>
+            <p style="font-size: 0.8rem; color: #64748b; margin: 8px 0 14px;">
+                Per Katarungang Pambarangay requirements, rescheduling preserves this hearing's attendance and Officer’s Return history, creating a separate new hearing event.
+            </p>
+            <form id="editHearingForm" action="../../../backend/api/hearings/update.php" method="POST" class="hearing-update-fields">
+                <input type="hidden" name="hearing_id" id="editHearingId">
+                <input type="hidden" name="hearing_type" id="editHearingTypeValue">
+                <div class="form-group">
+                    <label for="editHearingType">Hearing Stage</label>
+                    <input type="text" id="editHearingType" readonly>
+                </div>
+                <div class="form-group">
+                    <label for="editHearingDate">New Date &amp; Time <span class="required-mark">*</span></label>
+                    <input type="datetime-local" id="editHearingDate" name="hearing_date" required>
+                </div>
+                <div class="form-group">
+                    <label for="editHearingVenue">New Venue <span class="required-mark">*</span></label>
+                    <input type="text" id="editHearingVenue" name="venue" required maxlength="255">
+                </div>
+                <div class="form-group">
+                    <label for="editHearingRemarks">Remarks</label>
+                    <textarea id="editHearingRemarks" name="remarks" rows="2" placeholder="Optional notes or instructions for the new session"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="rescheduleReason">Rescheduling Reason <span class="required-mark">*</span></label>
+                    <textarea id="rescheduleReason" name="reschedule_reason" rows="2" maxlength="2000" placeholder="State reason for rescheduling (e.g., party excused, service rescheduled, mediation reset)" required></textarea>
+                </div>
+                <button type="submit" class="btn-create">Review Schedule Reschedule</button>
+            </form>
+        </details>
+        <?php endif; ?>
     </div>
 </div>
 

@@ -92,11 +92,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    $parties = $inputData['parties'] ?? [];
+    $parties = $inputData['parties'] ?? $inputData['records'] ?? [];
     if (!is_array($parties) || empty($parties)) {
         http_response_code(422);
         echo json_encode(['success' => false, 'message' => 'Attendance party records are required.']);
         exit;
+    }
+
+    // Normalize if sent as associative array keyed by resident_id
+    if (!isset($parties[0])) {
+        $normalized = [];
+        foreach ($parties as $resId => $pData) {
+            if (is_array($pData)) {
+                if (!isset($pData['resident_id'])) {
+                    $pData['resident_id'] = $resId;
+                }
+                $normalized[] = $pData;
+            }
+        }
+        $parties = $normalized;
     }
 
     $result = $hearingAttendance->recordAttendance((int) $hearingId, $parties, (int) $_SESSION['user_id']);

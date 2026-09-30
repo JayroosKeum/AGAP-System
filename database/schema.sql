@@ -309,18 +309,21 @@ CREATE TABLE hearings (
     hearing_date DATETIME NOT NULL,
     venue VARCHAR(255) NOT NULL,
     remarks TEXT NULL,
+    rescheduled_from_id INT UNSIGNED NULL,
+    reschedule_reason TEXT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     KEY idx_hearings_case_id_date (case_id, hearing_date),
     CONSTRAINT fk_hearings_case
-        FOREIGN KEY (case_id) REFERENCES cases (case_id) ON DELETE CASCADE
+        FOREIGN KEY (case_id) REFERENCES cases (case_id) ON DELETE CASCADE,
+    CONSTRAINT fk_hearings_rescheduled_from FOREIGN KEY (rescheduled_from_id) REFERENCES hearings (hearing_id) ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 
 CREATE TABLE hearing_attendance (
     attendance_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     hearing_id INT UNSIGNED NOT NULL,
     resident_id INT UNSIGNED NOT NULL,
-    attendance_status ENUM('Present', 'Absent', 'Late', 'Excused') NOT NULL,
+    attendance_status ENUM('Present', 'Absent', 'Late', 'Excused', 'Not Served') NOT NULL,
     is_justified TINYINT(1) NOT NULL DEFAULT 0,
     justification_reason VARCHAR(255) NULL,
     remarks TEXT NULL,
@@ -328,11 +331,15 @@ CREATE TABLE hearing_attendance (
     recorded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_hearing_attendance_resident (hearing_id, resident_id),
     KEY idx_hearing_attendance_resident_id (resident_id),
+    KEY idx_hearing_attendance_recorded_by (recorded_by),
     CONSTRAINT fk_hearing_attendance_hearing
         FOREIGN KEY (hearing_id) REFERENCES hearings (hearing_id) ON DELETE CASCADE,
     CONSTRAINT fk_hearing_attendance_resident
-        FOREIGN KEY (resident_id) REFERENCES residents (resident_id) ON DELETE RESTRICT
+        FOREIGN KEY (resident_id) REFERENCES residents (resident_id) ON DELETE RESTRICT,
+    CONSTRAINT fk_hearing_attendance_recorded_by
+        FOREIGN KEY (recorded_by) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
+
 
 CREATE TABLE hearing_nonappearances (
     nonappearance_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -457,6 +464,64 @@ CREATE TABLE proof_of_service (
 -- NOTIFICATIONS, AI, AND REPORTS
 -- =====================================================
 
+CREATE TABLE hearing_party_services (
+    service_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    hearing_id INT UNSIGNED NOT NULL,
+    resident_id INT UNSIGNED NOT NULL,
+    party_type ENUM('Complainant','Respondent') NOT NULL,
+    document_id INT UNSIGNED NOT NULL,
+    service_date DATETIME NOT NULL,
+    service_result ENUM('Served','Not Found','Wrong Address','Refused','Unsuccessful Attempt') NOT NULL,
+    reason TEXT NULL,
+    serving_officer INT UNSIGNED NOT NULL,
+    officer_return TEXT NULL,
+    supporting_file VARCHAR(1024) NULL,
+    assigned_to INT UNSIGNED NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_hearing_party_services_party (hearing_id,resident_id,service_date),
+    CONSTRAINT fk_hps_hearing FOREIGN KEY (hearing_id) REFERENCES hearings(hearing_id) ON DELETE RESTRICT,
+    CONSTRAINT fk_hps_party FOREIGN KEY (resident_id) REFERENCES residents(resident_id) ON DELETE RESTRICT,
+    CONSTRAINT fk_hps_document FOREIGN KEY (document_id) REFERENCES generated_documents(document_id) ON DELETE RESTRICT,
+    CONSTRAINT fk_hps_officer FOREIGN KEY (serving_officer) REFERENCES users(user_id) ON DELETE RESTRICT,
+    CONSTRAINT fk_hps_assigned FOREIGN KEY (assigned_to) REFERENCES users(user_id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE hearing_explanations (
+    explanation_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    hearing_id INT UNSIGNED NOT NULL,
+    resident_id INT UNSIGNED NOT NULL,
+    explanation TEXT NOT NULL,
+    outcome ENUM('Pending','Justified','Unjustified') NOT NULL DEFAULT 'Pending',
+    supporting_file VARCHAR(1024) NULL,
+    decided_by INT UNSIGNED NULL,
+    decided_at DATETIME NULL,
+    created_by INT UNSIGNED NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_hearing_explanations_party (hearing_id,resident_id),
+    CONSTRAINT fk_hex_hearing FOREIGN KEY (hearing_id) REFERENCES hearings(hearing_id) ON DELETE RESTRICT,
+    CONSTRAINT fk_hex_party FOREIGN KEY (resident_id) REFERENCES residents(resident_id) ON DELETE RESTRICT,
+    CONSTRAINT fk_hex_decider FOREIGN KEY (decided_by) REFERENCES users(user_id) ON DELETE SET NULL,
+    CONSTRAINT fk_hex_creator FOREIGN KEY (created_by) REFERENCES users(user_id) ON DELETE RESTRICT
+) ENGINE=InnoDB;
+
+CREATE TABLE hearing_legal_actions (
+    legal_action_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    hearing_id INT UNSIGNED NOT NULL,
+    resident_id INT UNSIGNED NOT NULL,
+    action_type VARCHAR(120) NOT NULL,
+    status ENUM('Pending Review','Approved','Rejected','Recorded') NOT NULL DEFAULT 'Pending Review',
+    details TEXT NOT NULL,
+    reviewed_by INT UNSIGNED NULL,
+    reviewed_at DATETIME NULL,
+    created_by INT UNSIGNED NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_hearing_legal_actions_hearing (hearing_id,created_at),
+    CONSTRAINT fk_hla_hearing FOREIGN KEY (hearing_id) REFERENCES hearings(hearing_id) ON DELETE RESTRICT,
+    CONSTRAINT fk_hla_party FOREIGN KEY (resident_id) REFERENCES residents(resident_id) ON DELETE RESTRICT,
+    CONSTRAINT fk_hla_reviewer FOREIGN KEY (reviewed_by) REFERENCES users(user_id) ON DELETE SET NULL,
+    CONSTRAINT fk_hla_creator FOREIGN KEY (created_by) REFERENCES users(user_id) ON DELETE RESTRICT
+) ENGINE=InnoDB;
+
 CREATE TABLE notifications (
     notification_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id INT UNSIGNED NOT NULL,
@@ -557,7 +622,9 @@ INSERT INTO document_templates (template_name, description) VALUES
     ('KP Form 14', 'Arbitration Agreement'),
     ('KP Form 15', 'Arbitration Award'),
     ('KP Form 16', 'Amicable Settlement'),
+    ('KP Form 18', 'Notice of Hearing (Failure to Appear - Complainant)'),
+    ('KP Form 19', 'Notice of Hearing (Failure to Appear - Respondent)'),
     ('KP Form 20', 'Certificate to File Action'),
-    ('KP Form 21', 'Certificate to File Action'),
-    ('KP Form 22', 'Certificate to File Action')
+    ('KP Form 21', 'Certificate to Bar Action'),
+    ('KP Form 22', 'Certificate to Bar Action Counterclaim')
 ON DUPLICATE KEY UPDATE description = VALUES(description);

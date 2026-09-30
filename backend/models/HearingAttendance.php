@@ -51,6 +51,7 @@ class HearingAttendance
                     r.contact_no, r.purok, r.address,
                     ha.attendance_id, ha.attendance_status, ha.is_justified, ha.justification_reason,
                     ha.remarks AS attendance_remarks, ha.recorded_at,
+                    (SELECT COUNT(*) FROM hearing_party_services hps WHERE hps.hearing_id = ? AND hps.resident_id = cp.resident_id AND hps.service_result = 'Served') AS successful_service_count,
                     TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS recorded_by_name
              FROM complaint_parties cp
              INNER JOIN residents r ON r.resident_id = cp.resident_id
@@ -59,7 +60,7 @@ class HearingAttendance
              WHERE cp.complaint_id = ?
              ORDER BY FIELD(cp.party_type, 'Complainant', 'Respondent', 'Witness'), r.last_name, r.first_name"
         );
-        $partiesStmt->execute([$hearingId, $hearing['complaint_id']]);
+        $partiesStmt->execute([$hearingId, $hearingId, $hearing['complaint_id']]);
         $parties = $partiesStmt->fetchAll(PDO::FETCH_ASSOC);
 
         // Normalize party attendance info
@@ -74,6 +75,7 @@ class HearingAttendance
                 'purok_name' => $p['purok'] ?? '',
                 'address' => $p['address'] ?? '',
                 'attendance_id' => $p['attendance_id'] ? (int) $p['attendance_id'] : null,
+                'service_confirmed' => (int) ($p['successful_service_count'] ?? 0) > 0,
                 'attendance_status' => $p['attendance_status'] ?: 'Pending',
                 'is_justified' => (int) ($p['is_justified'] ?? 0),
                 'justification_reason' => $p['justification_reason'] ?? '',
@@ -83,7 +85,30 @@ class HearingAttendance
             ];
         }, $parties);
 
+        $serviceHistoryStmt = $this->conn->prepare("SELECT s.service_id, s.document_id, s.service_date, s.service_result, s.reason, s.officer_return, s.supporting_file, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS officer_name, dt.template_name FROM hearing_party_services s LEFT JOIN users u ON u.user_id = s.serving_officer LEFT JOIN generated_documents gd ON gd.document_id = s.document_id LEFT JOIN document_templates dt ON dt.template_id = gd.template_id WHERE s.hearing_id = ? AND s.resident_id = ? ORDER BY s.service_date DESC, s.service_id DESC");
+        $explanationsStmt = $this->conn->prepare("SELECT he.explanation_id, he.explanation, he.outcome, he.supporting_file, he.decided_at, he.created_at, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS decided_by_name FROM hearing_explanations he LEFT JOIN users u ON u.user_id = he.decided_by WHERE he.hearing_id = ? AND he.resident_id = ? ORDER BY he.created_at DESC");
+        $legalActionsStmt = $this->conn->prepare("SELECT hla.legal_action_id, hla.action_type, hla.status, hla.details, hla.reviewed_at, hla.created_at, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS reviewed_by_name FROM hearing_legal_actions hla LEFT JOIN users u ON u.user_id = hla.reviewed_by WHERE hla.hearing_id = ? AND hla.resident_id = ? ORDER BY hla.created_at DESC");
+        foreach ($parties as &$party) {
+            if (!in_array($party['party_type'], ['Complainant', 'Respondent'], true)) { $party['service_history'] = []; $party['explanations'] = []; $party['legal_actions'] = []; continue; }
+            $serviceHistoryStmt->execute([$hearingId,$party['resident_id']]);
+            $party['service_history'] = $serviceHistoryStmt->fetchAll(PDO::FETCH_ASSOC);
+            $explanationsStmt->execute([$hearingId, $party['resident_id']]);
+            $party['explanations'] = $explanationsStmt->fetchAll(PDO::FETCH_ASSOC);
+            $legalActionsStmt->execute([$hearingId, $party['resident_id']]);
+            $party['legal_actions'] = $legalActionsStmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+        unset($party);
+
         // Evaluate situation based on primary Complainant & Respondent attendance
+        // Available documents for service dropdown
+        $docStmt = $this->conn->prepare("SELECT gd.document_id, gd.template_id, dt.template_name, gd.service_status, gd.generated_at, gd.file_path FROM generated_documents gd INNER JOIN document_templates dt ON dt.template_id = gd.template_id WHERE gd.case_id = ? ORDER BY gd.generated_at DESC");
+        $docStmt->execute([$hearing['case_id']]);
+        $availableDocuments = $docStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Summons servers for officer dropdown
+        $serversStmt = $this->conn->query("SELECT u.user_id, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS full_name FROM users u INNER JOIN roles r ON r.role_id = u.role_id WHERE u.status = 'Active' AND r.role_name = 'Summons Server' ORDER BY u.first_name, u.last_name");
+        $summonsServers = $serversStmt->fetchAll(PDO::FETCH_ASSOC);
+
         $situation = $this->evaluateSituation($parties, $summonsCount, $hearing['hearing_type'], $hearing['case_status']);
 
         return [
@@ -92,6 +117,8 @@ class HearingAttendance
             'summons_count' => $summonsCount,
             'parties' => $parties,
             'situation' => $situation,
+            'available_documents' => $availableDocuments,
+            'summons_servers' => $summonsServers,
         ];
     }
 
@@ -129,21 +156,7 @@ class HearingAttendance
                      recorded_at = CURRENT_TIMESTAMP"
             );
 
-            $upsertNonappearance = $this->conn->prepare(
-                "INSERT INTO hearing_nonappearances (hearing_id, resident_id, party_type, finding, remarks, resolution, recorded_by, recorded_at)
-                 VALUES (?, ?, ?, 'Unjustified', ?, 'Pending', ?, CURRENT_TIMESTAMP)
-                 ON DUPLICATE KEY UPDATE
-                     remarks = VALUES(remarks),
-                     resolution = 'Pending',
-                     recorded_by = VALUES(recorded_by),
-                     recorded_at = CURRENT_TIMESTAMP,
-                     resolved_by = NULL,
-                     resolved_at = NULL"
-            );
-
-            $deleteNonappearance = $this->conn->prepare(
-                "DELETE FROM hearing_nonappearances WHERE hearing_id = ? AND resident_id = ?"
-            );
+            $serviceLookup = $this->conn->prepare("SELECT COUNT(*) FROM hearing_party_services WHERE hearing_id = ? AND resident_id = ? AND service_result = 'Served'");
 
             $savedCount = 0;
             $updatedParties = [];
@@ -152,19 +165,24 @@ class HearingAttendance
 
             foreach ($records as $item) {
                 $residentId = filter_var($item['resident_id'] ?? null, FILTER_VALIDATE_INT);
-                if (!$residentId) continue;
+                if (!$residentId || !is_array($item)) {
+                    throw new InvalidArgumentException('Each attendance record must identify a valid party.');
+                }
 
                 $partyLookupStmt->execute([$hearing['complaint_id'], $residentId]);
                 $foundType = $partyLookupStmt->fetchColumn();
 
-                $partyType = $foundType ?: trim((string) ($item['party_type'] ?? 'Complainant'));
-                if (!in_array($partyType, ['Complainant', 'Respondent', 'Witness'], true)) {
-                    $partyType = 'Complainant';
+                if (!$foundType) {
+                    throw new InvalidArgumentException('The selected party does not belong to this hearing case.');
                 }
+                $partyType = $foundType;
 
-                $status = in_array($item['attendance_status'] ?? '', ['Present', 'Absent', 'Late', 'Excused'], true)
-                    ? $item['attendance_status']
-                    : 'Present';
+                $status = $item['attendance_status'] ?? '';
+                if (!in_array($status, ['Present', 'Absent', 'Late', 'Excused', 'Not Served'], true)) throw new InvalidArgumentException('Choose a valid attendance status (Present, Absent, Late, Excused, or Not Served).');
+                if ($status === 'Absent' && in_array($partyType, ['Complainant', 'Respondent'], true)) {
+                    $serviceLookup->execute([$hearingId, $residentId]);
+                    if ((int) $serviceLookup->fetchColumn() < 1) throw new InvalidArgumentException('Cannot record Failure to Appear because service for this party has not been confirmed. Record Not Served or verify service first.');
+                }
 
                 $isJustified = !empty($item['is_justified']) || $status === 'Excused' ? 1 : 0;
                 $justificationReason = trim((string) ($item['justification_reason'] ?? ''));
@@ -185,20 +203,6 @@ class HearingAttendance
                     $remarks ?: null,
                     $userId
                 ]);
-
-                // Sync with hearing_nonappearances table (only Complainant and Respondent in enum)
-                if ($status === 'Absent' && !$isJustified && in_array($partyType, ['Complainant', 'Respondent'], true)) {
-                    $nonAppRemarks = $remarks ?: sprintf('Unjustified non-appearance during %s hearing.', $hearing['hearing_type']);
-                    $upsertNonappearance->execute([
-                        $hearingId,
-                        $residentId,
-                        $partyType,
-                        $nonAppRemarks,
-                        $userId
-                    ]);
-                } else {
-                    $deleteNonappearance->execute([$hearingId, $residentId]);
-                }
 
                 $updatedParties[] = [
                     'resident_id' => $residentId,
@@ -248,7 +252,7 @@ class HearingAttendance
                 $this->conn->rollBack();
             }
             error_log('Error recording hearing attendance: ' . $e->getMessage());
-            return ['success' => false, 'message' => 'Unable to record hearing attendance. Please try again.'];
+            return ['success' => false, 'message' => ($e instanceof InvalidArgumentException) ? $e->getMessage() : 'Unable to record hearing attendance. Please try again.'];
         }
     }
 
@@ -287,6 +291,58 @@ class HearingAttendance
                     'Take attendance of complainant and respondent upon their arrival at the Barangay Hall.'
                 ],
                 'action_keys' => ['record_attendance']
+            ];
+        }
+
+        // Situation: Not Served
+        if ($compStatus === 'Not Served' && $respStatus === 'Not Served') {
+            return [
+                'code' => 'BOTH_NOT_SERVED',
+                'title' => 'Both Parties Not Served',
+                'badge' => 'badge-warning',
+                'severity' => 'warning',
+                'summary' => 'Neither the complainant nor the respondent has verified service of notice/summons.',
+                'kp_reference' => 'Sec. 410(b), RA 7160 (Service of Summons)',
+                'legal_consequence' => 'No failure to appear or adverse sanctions may be imposed without verified service.',
+                'recommended_actions' => [
+                    'Review Officer’s Return reasons for service failure.',
+                    'Verify addresses of parties and re-issue notices/summonses for renewed service.'
+                ],
+                'action_keys' => ['reissue_summons', 'reschedule']
+            ];
+        }
+
+        if ($respStatus === 'Not Served') {
+            return [
+                'code' => 'RESPONDENT_NOT_SERVED',
+                'title' => 'Respondent Not Served',
+                'badge' => 'badge-warning',
+                'severity' => 'warning',
+                'summary' => 'Summons or notice has not been successfully served to the respondent. Failure to appear cannot be charged.',
+                'kp_reference' => 'Sec. 410(b), RA 7160 (Due Service Requirement)',
+                'legal_consequence' => 'Proceedings cannot impose sanctions, counter-claim bars, or Certificate to File Action due to lack of verified service.',
+                'recommended_actions' => [
+                    'Review Officer’s Return for failure reason (e.g. wrong address, not found).',
+                    'Re-issue summons with updated address and dispatch Summons Server.'
+                ],
+                'action_keys' => ['reissue_summons', 'reschedule']
+            ];
+        }
+
+        if ($compStatus === 'Not Served') {
+            return [
+                'code' => 'COMPLAINANT_NOT_SERVED',
+                'title' => 'Complainant Not Served',
+                'badge' => 'badge-warning',
+                'severity' => 'warning',
+                'summary' => 'Notice was not successfully served to the complainant. Failure to appear or complaint dismissal cannot be charged.',
+                'kp_reference' => 'Katarungang Pambarangay Rules',
+                'legal_consequence' => 'Complaint cannot be dismissed for failure to prosecute without verified service of notice.',
+                'recommended_actions' => [
+                    'Verify complainant contact information and address.',
+                    'Re-issue notice of hearing and reschedule appearance date.'
+                ],
+                'action_keys' => ['reissue_notice', 'reschedule']
             ];
         }
 

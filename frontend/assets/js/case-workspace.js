@@ -127,16 +127,109 @@ async function loadWorkspace() {
             return `<span class="badge" style="background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;padding:2px 6px;border-radius:4px;font-size:0.75rem;">Attendance: ${present} Present</span>`;
         };
 
+        const renderHearingFindings = (h) => {
+            if (!h.situation || Number(h.attendance_count) === 0) return '';
+            const sit = h.situation;
+            const sev = sit.severity || 'neutral';
+            let icon = '⚖️';
+            if (sev === 'success') icon = '✓';
+            else if (sev === 'warning') icon = '⚠';
+            else if (sev === 'danger') icon = '🛑';
+            else if (sev === 'info') icon = 'ℹ️';
+
+            return `
+                <div class="workspace-hearing-findings findings-${caseWorkspaceEscape(sev)}">
+                    <div class="findings-header">
+                        <span>${icon} <strong>Findings: ${caseWorkspaceEscape(sit.title)}</strong></span>
+                        ${sit.kp_reference ? `<span class="findings-ref-tag">${caseWorkspaceEscape(sit.kp_reference)}</span>` : ''}
+                    </div>
+                    ${sit.legal_consequence ? `<div class="findings-legal-text">${caseWorkspaceEscape(sit.legal_consequence)}</div>` : ''}
+                    ${sit.summary && sit.summary !== sit.legal_consequence ? `<div class="findings-summary-text" style="font-size:0.78rem; color:#475569; margin-top:2px;">${caseWorkspaceEscape(sit.summary)}</div>` : ''}
+                </div>
+            `;
+        };
+
+        const renderHearingParties = (h) => {
+            if (!h.parties || !h.parties.length) return '';
+            return `
+                <div class="workspace-hearing-parties">
+                    <div class="parties-header-label">Party Appearance &amp; Remarks:</div>
+                    <ul class="parties-appearance-list">
+                        ${h.parties.map((p) => {
+                            let statusClass = 'att-badge-pending';
+                            let statusLabel = p.attendance_status || 'Pending';
+                            if (p.attendance_status === 'Present') {
+                                statusClass = 'att-badge-present';
+                            } else if (p.attendance_status === 'Absent') {
+                                if (Number(p.is_justified) === 1) {
+                                    statusClass = 'att-badge-excused';
+                                    statusLabel = 'Excused / Justified';
+                                } else {
+                                    statusClass = 'att-badge-absent';
+                                    statusLabel = 'Failure to Appear';
+                                }
+                            } else if (p.attendance_status === 'Not Served') {
+                                statusClass = 'att-badge-not-served';
+                                statusLabel = 'Not Served';
+                            } else if (p.attendance_status === 'Excused') {
+                                statusClass = 'att-badge-excused';
+                            } else if (p.attendance_status === 'Late') {
+                                statusClass = 'att-badge-late';
+                                statusLabel = 'Late Appearance';
+                            }
+
+                            const partyTypeClass = p.party_type === 'Complainant'
+                                ? 'party-type-complainant'
+                                : (p.party_type === 'Respondent' ? 'party-type-respondent' : 'party-type-witness');
+
+                            return `
+                                <li class="party-appearance-row">
+                                    <div class="party-appearance-main">
+                                        <span class="party-type-pill ${partyTypeClass}">${caseWorkspaceEscape(p.party_type)}</span>
+                                        <span class="party-name">${caseWorkspaceEscape(p.full_name)}</span>
+                                        <span class="att-status-tag ${statusClass}">${caseWorkspaceEscape(statusLabel)}</span>
+                                    </div>
+                                    ${p.remarks ? `
+                                        <div class="party-remarks-bubble">
+                                            <span class="remarks-label">Appearance Remarks:</span> &ldquo;${caseWorkspaceEscape(p.remarks)}&rdquo;
+                                        </div>
+                                    ` : ''}
+                                    ${Number(p.is_justified) === 1 && p.justification_reason ? `
+                                        <div class="party-justification-bubble">
+                                            <span class="justification-label">Justification Cause:</span> ${caseWorkspaceEscape(p.justification_reason)}
+                                        </div>
+                                    ` : ''}
+                                </li>
+                            `;
+                        }).join('')}
+                    </ul>
+                </div>
+            `;
+        };
+
         document.getElementById('caseHearings').innerHTML = workspaceList(data.hearings, (h) => `
-            <li style="margin-bottom:12px;">
-                <strong>${caseWorkspaceEscape(formatHearingType(h))}</strong> — ${caseWorkspaceEscape(h.hearing_date)}<br>
-                ${caseWorkspaceEscape(h.venue || 'Venue pending')} · ${caseWorkspaceEscape(h.hearing_status)}
-                <div style="margin-top:5px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <li class="workspace-hearing-item">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
+                    <div>
+                        <strong style="font-size:0.92rem; color:#0f172a;">${caseWorkspaceEscape(formatHearingType(h))}</strong>
+                        <div style="font-size:0.82rem; color:#475569; margin-top:2px;">
+                            📅 ${caseWorkspaceEscape(h.hearing_date)} · 📍 ${caseWorkspaceEscape(h.venue || 'Venue pending')}
+                        </div>
+                    </div>
+                    <span class="badge ${h.hearing_status === 'Completed' ? 'badge-secondary' : 'badge-primary'}" style="font-size:0.75rem;">
+                        ${caseWorkspaceEscape(h.hearing_status)}
+                    </span>
+                </div>
+
+                <div style="margin-top:8px; display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
                     ${formatAttendanceSummary(h)}
-                    <a href="../hearings/schedules.php?hearing_id=${encodeURIComponent(h.hearing_id)}&open_attendance=1" style="font-size:0.76rem; font-weight:600; text-decoration:none; color:#0284c7; background:#f0f9ff; border:1px solid #bae6fd; padding:2px 8px; border-radius:4px; display:inline-flex; align-items:center; gap:4px;">
-                        Monitor Attendance &rarr;
+                    <a href="../hearings/schedules.php?hearing_id=${encodeURIComponent(h.hearing_id)}&open_attendance=1" class="btn-workspace-hearing-action">
+                        Update Attendance &amp; Findings &rarr;
                     </a>
                 </div>
+
+                ${renderHearingFindings(h)}
+                ${renderHearingParties(h)}
             </li>
         `, 'No hearings are scheduled.');
         document.getElementById('caseDocuments').innerHTML = workspaceList(data.documents, (d) => `<li><strong>${caseWorkspaceEscape(d.template_name)}</strong><br>${caseWorkspaceEscape(d.generated_at)} · ${caseWorkspaceEscape(d.service_status)}<br><a href="../gps/proof-service.php?case_id=${encodeURIComponent(item.case_id)}&document_id=${encodeURIComponent(d.document_id)}">Record proof of service</a></li>`, 'No documents have been generated.');

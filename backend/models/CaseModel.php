@@ -300,11 +300,80 @@ class CaseModel
             ORDER BY h.hearing_date ASC
         ");
         $hearings->execute([$id]);
+        $hearingsList = $hearings->fetchAll(PDO::FETCH_ASSOC);
+
+        require_once __DIR__ . '/HearingAttendance.php';
+        $attendanceModel = new HearingAttendance($this->conn);
+
+        $partyAttendanceStmt = $this->conn->prepare("
+            SELECT 
+                cp.party_type,
+                cp.resident_id,
+                TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS full_name,
+                ha.attendance_status,
+                ha.is_justified,
+                ha.justification_reason,
+                ha.remarks AS appearance_remarks,
+                ha.recorded_at,
+                (
+                    (SELECT COUNT(*) FROM hearing_party_services hps WHERE hps.hearing_id = ? AND hps.resident_id = cp.resident_id AND hps.service_result = 'Served')
+                    +
+                    (SELECT COUNT(*) FROM proof_of_service pos WHERE pos.case_id = ? AND pos.service_result = 'Served')
+                ) AS service_confirmed_count
+            FROM complaint_parties cp
+            INNER JOIN residents r ON r.resident_id = cp.resident_id
+            LEFT JOIN hearing_attendance ha ON ha.hearing_id = ? AND ha.resident_id = cp.resident_id
+            WHERE cp.complaint_id = ?
+            ORDER BY FIELD(cp.party_type, 'Complainant', 'Respondent', 'Witness'), r.last_name, r.first_name
+        ");
+
+        $summonsCountStmt = $this->conn->prepare("
+            SELECT COUNT(*) FROM generated_documents gd
+            INNER JOIN document_templates dt ON dt.template_id = gd.template_id
+            WHERE gd.case_id = ? AND (dt.template_name = 'KP Form 9' OR dt.template_name LIKE '%Summon%')
+        ");
+        $summonsCountStmt->execute([$id]);
+        $summonsCount = (int) $summonsCountStmt->fetchColumn();
+
+        foreach ($hearingsList as &$hItem) {
+            $hId = (int) $hItem['hearing_id'];
+            $partyAttendanceStmt->execute([$hId, $id, $hId, $case['complaint_id']]);
+            $rawParties = $partyAttendanceStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $parties = array_map(function ($p) {
+                return [
+                    'resident_id' => (int) $p['resident_id'],
+                    'party_type' => $p['party_type'],
+                    'full_name' => $p['full_name'],
+                    'attendance_status' => $p['attendance_status'] ?: 'Pending',
+                    'is_justified' => (int) ($p['is_justified'] ?? 0),
+                    'justification_reason' => $p['justification_reason'] ?? '',
+                    'remarks' => $p['appearance_remarks'] ?? '',
+                    'service_confirmed' => (int) ($p['service_confirmed_count'] ?? 0) > 0,
+                    'recorded_at' => $p['recorded_at'] ?? null,
+                ];
+            }, $rawParties);
+
+            $hItem['parties'] = $parties;
+
+            if ((int) $hItem['attendance_count'] > 0) {
+                $hItem['situation'] = $attendanceModel->evaluateSituation(
+                    $parties,
+                    $summonsCount,
+                    $hItem['hearing_type'],
+                    $case['case_status']
+                );
+            } else {
+                $hItem['situation'] = null;
+            }
+        }
+        unset($hItem);
+
         $documents = $this->conn->prepare("SELECT gd.document_id, gd.generated_at, gd.service_status, dt.template_name FROM generated_documents gd INNER JOIN document_templates dt ON dt.template_id = gd.template_id WHERE gd.case_id = ? ORDER BY gd.generated_at DESC");
         $documents->execute([$id]);
         $proofs = $this->conn->prepare("SELECT ps.proof_id, ps.document_id, ps.served_date, ps.remarks, dt.template_name, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS served_by_name FROM proof_of_service ps LEFT JOIN generated_documents gd ON gd.document_id = ps.document_id LEFT JOIN document_templates dt ON dt.template_id = gd.template_id LEFT JOIN users u ON u.user_id = ps.served_by WHERE ps.case_id = ? ORDER BY ps.served_date DESC");
         $proofs->execute([$id]);
-        return ['case' => $case, 'assignments' => $assignments->fetchAll(PDO::FETCH_ASSOC), 'hearings' => $hearings->fetchAll(PDO::FETCH_ASSOC), 'documents' => $documents->fetchAll(PDO::FETCH_ASSOC), 'proofs' => $proofs->fetchAll(PDO::FETCH_ASSOC)];
+        return ['case' => $case, 'assignments' => $assignments->fetchAll(PDO::FETCH_ASSOC), 'hearings' => $hearingsList, 'documents' => $documents->fetchAll(PDO::FETCH_ASSOC), 'proofs' => $proofs->fetchAll(PDO::FETCH_ASSOC)];
     }
 
     public function getDocketingError(mixed $complaintId): ?string

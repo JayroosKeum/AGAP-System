@@ -134,12 +134,15 @@ class HearingController
         $data['case_id'] = $existing['case_id'];
         // A schedule may be rescheduled, but its workflow stage cannot be changed by editing it.
         $data['hearing_type'] = $existing['hearing_type'];
+        $data['reschedule_reason'] = trim((string)($data['reschedule_reason'] ?? ''));
+        if ($data['reschedule_reason'] === '' || mb_strlen($data['reschedule_reason']) > 2000) return ['success'=>false,'message'=>'A rescheduling reason is required (up to 2,000 characters).'];
         $validated = $this->validate($data, true);
         if (!$validated['success']) {
             return $validated;
         }
 
         $values = $validated['data'];
+        $values['reschedule_reason'] = $data['reschedule_reason'];
         $conflict = $this->hearing->findConflict(
             $values['hearing_date'],
             $values['venue'],
@@ -156,8 +159,7 @@ class HearingController
                 $values['hearing_date']
             );
             $this->hearing->update($id, $values, $deadline);
-            $this->exceptions->resolveForHearing($id, 'Rescheduled', $userId);
-            $this->audit->log($userId, 'Rescheduled hearing', 'Hearings', $id);
+            $this->audit->log($userId, 'Created rescheduled hearing event from #' . $id, 'Hearings', $id);
             $this->notifyHearingMembers($values, 'Hearing rescheduled', $userId);
             return ['success' => true, 'message' => 'Hearing rescheduled successfully.'];
         } catch (Throwable $exception) {

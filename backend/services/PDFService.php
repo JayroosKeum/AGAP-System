@@ -60,6 +60,34 @@ class PDFService
         }
     }
 
+    public function generateNotice(
+        string $formCode,
+        array $data,
+        string $absolutePath
+    ): void {
+        $options = new Options();
+        $options->set('isRemoteEnabled', false);
+        $options->set('isHtml5ParserEnabled', true);
+        $options->set('defaultFont', 'DejaVu Sans');
+
+        $dompdf = new Dompdf($options);
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->loadHtml(
+            $this->noticeHtml($formCode, $data),
+            'UTF-8'
+        );
+        $dompdf->render();
+
+        $pdf = $dompdf->output();
+        if ($pdf === '') {
+            throw new RuntimeException('The PDF renderer returned an empty document.');
+        }
+
+        if (file_put_contents($absolutePath, $pdf, LOCK_EX) === false) {
+            throw new RuntimeException('Unable to save the generated PDF.');
+        }
+    }
+
     private function kp12Html(array $data): string
     {
         $complainants = $this->partyLines(
@@ -465,5 +493,164 @@ class PDFService
         ];
 
         return $months[$month] ?? '';
+    }
+
+    private function noticeHtml(string $formCode, array $data): string
+    {
+        $complainants = $this->partyLines($data['complainants'] ?? []);
+        $respondents = $this->partyLines($data['respondents'] ?? []);
+        $caseNumber = $this->escape((string) ($data['case_number'] ?? ''));
+        $title = $this->escape((string) ($data['complaint_title'] ?? ''));
+        $targetParty = $this->escape((string) ($data['target_party_name'] ?? ''));
+        $venue = $this->escape((string) ($data['venue'] ?? 'Tanggapan ng Lupong Tagapamayapa, Barangay Hall'));
+        $officialName = $this->escape((string) ($data['official_name'] ?? $data['chairman_name'] ?? 'Punong Barangay / Lupon Tagapamayapa'));
+
+        $hearingDate = !empty($data['hearing_date']) ? date('F j, Y g:i A', strtotime($data['hearing_date'])) : 'itinakdang pagdinig';
+        $explanationDate = !empty($data['explanation_date']) ? date('F j, Y g:i A', strtotime($data['explanation_date'])) : date('F j, Y g:i A', strtotime('+3 days 09:00:00'));
+        $noticeDate = !empty($data['notice_date']) ? date('F j, Y', strtotime($data['notice_date'])) : date('F j, Y');
+
+        $formTitle = 'Pormularyo ng KP Blg. 19';
+        $subTitle = 'PAUNAWA SA PAGDINIG (Para sa Ipinagsusumbong)';
+        $body = '';
+
+        if ($formCode === 'KP Form 18') {
+            $formTitle = 'Pormularyo ng KP Blg. 18';
+            $subTitle = 'PAUNAWA SA PAGDINIG (Para sa May-sumbong)';
+            $body = '
+                <p>KAY: <strong>' . $targetParty . '</strong> (May-sumbong)</p>
+                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
+                    Kayo ay tinatawagan at inaatasan na humarap sa akin sa ' . $venue . ' sa darating na <strong>' . $explanationDate . '</strong>,
+                    upang ipaliwanag kung bakit hindi dapat ipag-utos ang pagwawalang-bisa sa inyong reklamo o hadlangan ang inyong karapatang maghain
+                    ng nasabing aksyon sa hukuman dahil sa inyong kabiguang humarap sa itinakdang pagdinig noong <strong>' . $hearingDate . '</strong>
+                    nang walang makatwirang dahilan, matapos kayong maabisuhan nang buong husay alinsunod sa Seksiyon 415 ng Batas Republika Blg. 7160.
+                </p>
+            ';
+        } elseif ($formCode === 'KP Form 19') {
+            $formTitle = 'Pormularyo ng KP Blg. 19';
+            $subTitle = 'PAUNAWA SA PAGDINIG (Para sa Ipinagsusumbong)';
+            $body = '
+                <p>KAY: <strong>' . $targetParty . '</strong> (Ipinagsusumbong)</p>
+                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
+                    Kayo ay tinatawagan at inaatasan na humarap sa akin sa ' . $venue . ' sa darating na <strong>' . $explanationDate . '</strong>,
+                    upang ipaliwanag kung bakit hindi dapat ipag-utos ang paghadlang sa inyong karapatang maghain ng ganting-sakdal (counterclaim)
+                    kaugnay ng usaping ito dahil sa inyong kabiguang humarap sa itinakdang pagdinig noong <strong>' . $hearingDate . '</strong>
+                    nang walang makatwirang dahilan, matapos mapatunayang kayo ay maayos na napagsilbihan ng patawag alinsunod sa batas.
+                </p>
+            ';
+        } elseif ($formCode === 'KP Form 21') {
+            $formTitle = 'Pormularyo ng KP Blg. 21';
+            $subTitle = 'KATIBAYAN UPANG HADLANGAN ANG PAGHAHAIN NG AKSYON';
+            $body = '
+                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
+                    Ito ay nagpapatunay na ang may-sumbong na si <strong>' . $targetParty . '</strong> ay nabigong humarap sa itinakdang pagdinig
+                    noong <strong>' . $hearingDate . '</strong> at walang maibigay na makatwiran at sapat na dahilan para sa kanyang hindi pagharap.
+                </p>
+                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
+                    Dahil dito, alinsunod sa itinatakda ng Seksiyon 415 ng Kodigo ng Pamahalaang Lokal ng 1991 (Batas Republika Blg. 7160),
+                    ang may-sumbong ay <strong>HINAHADLANGAN</strong> sa paghahain ng nasabing usapin o aksyon sa hukuman o tanggapan ng pamahalaan.
+                </p>
+            ';
+        } elseif ($formCode === 'KP Form 22') {
+            $formTitle = 'Pormularyo ng KP Blg. 22';
+            $subTitle = 'KATIBAYAN UPANG HADLANGAN ANG GANTING-SAKDAL';
+            $body = '
+                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
+                    Ito ay nagpapatunay na ang ipinagsusumbong na si <strong>' . $targetParty . '</strong> ay nabigong humarap sa itinakdang pagdinig
+                    noong <strong>' . $hearingDate . '</strong> at walang maibigay na makatwiran at sapat na dahilan para sa kanyang hindi pagharap
+                    matapos mapatunayang maayos na napagsilbihan ng patawag.
+                </p>
+                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
+                    Dahil dito, alinsunod sa itinatakda ng Seksiyon 415 ng Kodigo ng Pamahalaang Lokal ng 1991 (Batas Republika Blg. 7160),
+                    ang ipinagsusumbong ay <strong>HINAHADLANGAN</strong> sa paghahain ng ganting-sakdal (counterclaim) na nagmumula sa nasabing sumbong.
+                </p>
+            ';
+        }
+
+        return '<!DOCTYPE html>
+<html lang="tl">
+<head>
+    <meta charset="UTF-8">
+    <title>' . $formTitle . '</title>
+    <style>
+        @page { size: A4 portrait; margin: 18mm 16mm 18mm 16mm; }
+        body { font-family: "DejaVu Sans", sans-serif; font-size: 11pt; color: #111; line-height: 1.4; }
+        .header { text-align: center; font-size: 10pt; line-height: 1.25; margin-bottom: 8mm; }
+        .office-name { font-weight: bold; font-size: 12pt; margin-top: 3mm; letter-spacing: 0.5px; }
+        .form-number { font-size: 9.5pt; font-weight: bold; margin-bottom: 4mm; text-align: right; }
+        .case-grid { width: 100%; border-collapse: collapse; margin-bottom: 8mm; }
+        .case-grid td { vertical-align: top; font-size: 10pt; }
+        .party-box { width: 50%; }
+        .case-meta-box { width: 50%; padding-left: 8mm; }
+        .party-line { font-weight: bold; border-bottom: 1px solid #222; min-height: 5mm; padding-top: 1mm; margin-bottom: 1.5mm; }
+        .party-label { font-size: 9pt; font-style: italic; color: #444; margin-bottom: 2mm; }
+        .versus { font-weight: bold; text-align: center; margin: 3mm 0; }
+        .form-title-box { text-align: center; margin: 6mm 0 6mm; }
+        .form-title-box h2 { font-size: 12pt; margin: 0; text-transform: uppercase; letter-spacing: 0.5px; }
+        .form-body { margin-bottom: 10mm; }
+        .signature-block { width: 45%; margin-left: auto; text-align: center; margin-top: 10mm; }
+        .signature-line { border-top: 1px solid #111; padding-top: 2mm; font-weight: bold; }
+        .officers-return { margin-top: 14mm; border-top: 1px dashed #666; padding-top: 4mm; font-size: 9.5pt; }
+        .officers-return h3 { font-size: 10pt; margin: 0 0 2mm; text-transform: uppercase; }
+    </style>
+</head>
+<body>
+    <div class="form-number">' . $formTitle . '</div>
+    <div class="header">
+        <div>Republika ng Pilipinas</div>
+        <div>Kalakhang Maynila — Lungsod ng Marikina</div>
+        <div>Barangay Tumana</div>
+        <div class="office-name">TANGGAPAN NG LUPONG TAGAPAMAYAPA</div>
+    </div>
+
+    <table class="case-grid">
+        <tr>
+            <td class="party-box">
+                <div class="party-line">' . $complainants . '</div>
+                <div class="party-label">(Mga) Nagrereklamo</div>
+                <div class="versus">- laban kay / kina -</div>
+                <div class="party-line">' . $respondents . '</div>
+                <div class="party-label">(Mga) Ipinagsusumbong</div>
+            </td>
+            <td class="case-meta-box">
+                <div style="margin-bottom: 4mm;">
+                    <strong>Usaping Barangay Blg.:</strong><br>' . $caseNumber . '
+                </div>
+                <div>
+                    <strong>Ukol sa:</strong><br>' . $title . '
+                </div>
+            </td>
+        </tr>
+    </table>
+
+    <div class="form-title-box">
+        <h2>' . $subTitle . '</h2>
+    </div>
+
+    <div class="form-body">
+        ' . $body . '
+        <p style="text-indent: 12mm; margin-top: 6mm;">
+            Iginawad ngayong ika-<strong>' . date('j', strtotime($noticeDate)) . '</strong> ng <strong>' . $this->filipinoMonth((int) date('n', strtotime($noticeDate))) . '</strong>, <strong>' . date('Y', strtotime($noticeDate)) . '</strong>.
+        </p>
+    </div>
+
+    <div class="signature-block">
+        <div class="signature-line">' . $officialName . '</div>
+        <div style="font-size: 9pt; font-style: italic;">Punong Barangay / Tagapangulo ng Lupon</div>
+    </div>
+
+    ' . (in_array($formCode, ['KP Form 18', 'KP Form 19'], true) ? '
+    <div class="officers-return">
+        <h3>Katunayan ng Paglilingkod (Officer’s Return)</h3>
+        <p style="margin: 2mm 0; line-height: 1.4;">
+            Pinatutunayan ko na ang Paunawang ito ay personal / maayos na pinagsilbihan kay <strong>' . $targetParty . '</strong>
+            ngayong ika-______ ng ______________________, 20______.
+        </p>
+        <div style="width: 40%; margin-left: auto; text-align: center; margin-top: 6mm;">
+            <div style="border-top: 1px solid #111; padding-top: 1mm; font-weight: bold;">Summons Server / Tagapaglingkod</div>
+            <div style="font-size: 8.5pt;">Lagda sa ibabaw ng nakalimbag na pangalan</div>
+        </div>
+    </div>' : '') . '
+</body>
+</html>';
     }
 }

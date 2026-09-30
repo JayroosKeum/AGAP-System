@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         openAddHearingModal();
     }
     if (params.get('hearing_id') && params.get('open_attendance')) {
-        openHearingAttendanceModal(params.get('hearing_id'));
+        editHearing(params.get('hearing_id'));
     }
 });
 
@@ -126,7 +126,7 @@ function renderAttendanceCell(item) {
         return '<span class="badge-attendance-pending">Pending Intake</span>';
     }
     if (unjustified > 0) {
-        return `<span class="badge-attendance-unjustified" title="${unjustified} party unjustified non-appearance">${unjustified} Absent (Unjustified)</span>`;
+        return `<span class="badge-attendance-unjustified" title="${unjustified} absent party; service status must be reviewed">${unjustified} Absent — service review</span>`;
     }
     if (excused > 0) {
         return `<span class="badge-attendance-excused" title="${excused} party excused / justified absence">${excused} Excused</span>`;
@@ -190,9 +190,7 @@ function renderActionsCell(item) {
     if (item.record_type === 'hearing') {
         const id = Number(item.record_id);
         return `
-            <button type="button" class="btn-action-view" data-view="${id}">View</button>
-            <button type="button" class="btn-action-view" data-attendance="${id}" style="color:#0369a1; border-color:#bae6fd; background:#f0f9ff; font-weight:600;">Attendance</button>
-            ${canManageHearings ? `<button type="button" class="btn-action-edit" data-edit="${id}">Reschedule</button><button type="button" class="btn-action-view" data-nonappearance="${id}">Record absence</button>${item.has_pending_nonappearance === '1' ? `<button type="button" class="btn-action-edit" data-reissue="${id}">Issue re-summons</button>` : ''}` : ''}
+            <button type="button" class="btn-action-view" ${canManageHearings ? `data-edit="${id}"` : `data-view="${id}"`}>${canManageHearings ? 'Update Hearing' : 'View'}</button>
         `;
     }
     return '<span class="empty-cell">—</span>';
@@ -423,7 +421,7 @@ function bindReviewForm(id, onSuccess) {
 
 function renderScheduleReview(form) {
     const values = Object.fromEntries(new FormData(form)); const caseLabel = form.querySelector('[name="case_id"]')?.selectedOptions?.[0]?.textContent || 'Current case'; const details = document.getElementById('reviewHearingDetails');
-    details.replaceChildren(); [['Case', caseLabel], ['Hearing type', values.hearing_type], ['Date & time', formatDateTime(values.hearing_date)], ['Venue', values.venue], ['Remarks', values.remarks || 'None']].forEach(([label, value]) => { const dt = document.createElement('dt'); dt.textContent = label; const dd = document.createElement('dd'); dd.textContent = value; details.append(dt, dd); });
+    details.replaceChildren(); [['Case', caseLabel], ['Hearing type', values.hearing_type], ['Date & time', formatDateTime(values.hearing_date)], ['Venue', values.venue], ['Remarks', values.remarks || 'None'], ['Rescheduling reason', values.reschedule_reason || 'Not applicable']].forEach(([label, value]) => { const dt = document.createElement('dt'); dt.textContent = label; const dd = document.createElement('dd'); dd.textContent = value; details.append(dt, dd); });
 }
 
 async function confirmHearingSchedule() {
@@ -489,10 +487,12 @@ async function editHearing(id) {
         const item = await getHearing(id);
         document.getElementById('editHearingId').value = item.hearing_id;
         document.getElementById('editHearingType').value = hearingLabel(item);
+        document.getElementById('editHearingTypeValue').value = item.hearing_type;
         document.getElementById('editHearingDate').value = toDateTimeLocal(item.hearing_date);
         document.getElementById('editHearingVenue').value = item.venue || '';
         document.getElementById('editHearingRemarks').value = item.remarks || '';
-        showModal('editHearingModal');
+        document.getElementById('rescheduleReason').value = '';
+        await openHearingAttendanceModal(id);
     } catch (error) {
         setMessage(error.message);
     }
@@ -565,11 +565,40 @@ function openCalendarSchedule(year, month, day) {
     openAddHearingModal();
 }
 
+function showAttendanceModalAlert(message, isSuccess = false) {
+    const topAlert = document.getElementById('attModalAlert');
+    const bottomAlert = document.getElementById('attModalBottomAlert');
+    const className = isSuccess ? 'alert success' : 'alert error';
+
+    [topAlert, bottomAlert].forEach((el) => {
+        if (!el) return;
+        el.textContent = message;
+        el.className = className;
+        el.style.display = message ? 'block' : 'none';
+    });
+
+    if (message) {
+        const targetAlert = bottomAlert && bottomAlert.offsetParent ? bottomAlert : topAlert;
+        if (targetAlert) {
+            targetAlert.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }
+}
+
+function clearAttendanceModalAlert() {
+    showAttendanceModalAlert('', false);
+}
+
 function setMessage(message, success = false) {
     const box = document.getElementById('hearingMessage');
-    if (!box) return;
-    box.textContent = message;
-    box.className = message ? (success ? 'alert success' : 'alert error') : '';
+    if (box) {
+        box.textContent = message;
+        box.className = message ? (success ? 'alert success' : 'alert error') : '';
+    }
+    const modal = document.getElementById('editHearingModal');
+    if (modal && modal.style.display !== 'none') {
+        showAttendanceModalAlert(message, success);
+    }
 }
 
 function escapeHtml(value) {
@@ -638,7 +667,7 @@ function closeReviewHearingModal() {
 function closeNonappearanceModal() { hideModal('nonappearanceModal'); }
 
 function closeHearingAttendanceModal() {
-    hideModal('hearingAttendanceModal');
+    hideModal('editHearingModal');
     activeHearingAttendanceData = null;
 }
 
@@ -680,17 +709,12 @@ async function loadAttendanceKPIs() {
 }
 
 async function openHearingAttendanceModal(hearingId) {
-    const alertEl = document.getElementById('attModalAlert');
-    if (alertEl) {
-        alertEl.style.display = 'none';
-        alertEl.textContent = '';
-        alertEl.className = 'alert';
-    }
+    clearAttendanceModalAlert();
     const container = document.getElementById('attPartiesContainer');
     if (container) {
         container.innerHTML = '<div style="text-align: center; padding: 24px; color: #64748b;">Loading hearing &amp; party records...</div>';
     }
-    showModal('hearingAttendanceModal');
+    showModal('editHearingModal');
 
     try {
         const res = await api(`../../../backend/api/hearings/attendance.php?hearing_id=${encodeURIComponent(hearingId)}`);
@@ -731,6 +755,14 @@ function renderAttendanceParties(parties) {
         return;
     }
 
+    const docOptions = (activeHearingAttendanceData?.available_documents || []).length
+        ? activeHearingAttendanceData.available_documents.map(d => `<option value="${d.document_id}">${escapeHtml(d.template_name)} (#${d.document_id}) - ${escapeHtml(d.service_status)}</option>`).join('')
+        : '<option value="">No generated documents found</option>';
+
+    const officerOptions = (activeHearingAttendanceData?.summons_servers || []).length
+        ? activeHearingAttendanceData.summons_servers.map(s => `<option value="${s.user_id}">${escapeHtml(s.full_name)}</option>`).join('')
+        : '<option value="">Current User / Summons Server</option>';
+
     container.innerHTML = parties.map((p) => {
         const isComplainant = p.party_type === 'Complainant';
         const isRespondent = p.party_type === 'Respondent';
@@ -740,16 +772,28 @@ function renderAttendanceParties(parties) {
         let currentChoice = '';
         if (p.attendance_status === 'Present') currentChoice = 'Present';
         else if (p.attendance_status === 'Late') currentChoice = 'Late';
-        else if (p.attendance_status === 'Absent' && Number(p.is_justified) === 1) currentChoice = 'Excused';
-        else if (p.attendance_status === 'Absent' || p.attendance_status === 'Excused') {
-            currentChoice = (p.attendance_status === 'Excused' || Number(p.is_justified) === 1) ? 'Excused' : 'Unjustified';
-        }
+        else if (p.attendance_status === 'Not Served') currentChoice = 'Not Served';
+        else if (p.attendance_status === 'Excused' || Number(p.is_justified) === 1) currentChoice = 'Excused';
+        else if (p.attendance_status === 'Absent') currentChoice = 'Unjustified';
 
         const isExcused = currentChoice === 'Excused';
+        const initialStatus = ['Present', 'Absent', 'Late', 'Excused', 'Not Served'].includes(p.attendance_status)
+            ? p.attendance_status
+            : (currentChoice === 'Unjustified' ? 'Absent' : currentChoice);
+        const historyMarkup = (p.service_history || []).length
+            ? p.service_history.map((attempt) => `
+                <li style="margin-bottom: 6px;">
+                    <strong>${escapeHtml(attempt.service_result)}</strong> · ${escapeHtml(formatDateTime(attempt.service_date))} · Officer: ${escapeHtml(attempt.officer_name || 'Summons Server')} · ${attempt.template_name ? escapeHtml(attempt.template_name) : `Document #${Number(attempt.document_id)}`}
+                    <br><strong>Return:</strong> ${escapeHtml(attempt.officer_return || '')}
+                    ${attempt.reason ? `<br><span style="color: #b91c1c;">Reason: ${escapeHtml(attempt.reason)}</span>` : ''}
+                    ${attempt.supporting_file ? `<br><a href="../../../${escapeHtml(attempt.supporting_file)}" target="_blank" style="color: #0284c7; text-decoration: underline; font-size: 0.78rem;">📎 View Attached Return File</a>` : ''}
+                </li>
+            `).join('')
+            : '<li>No service attempts recorded for this hearing.</li>';
 
         return `
             <div class="party-att-card ${cardClass}" data-resident-id="${p.resident_id}" data-party-type="${escapeHtml(p.party_type)}" data-party-name="${escapeHtml(p.full_name)}">
-                <input type="hidden" class="att-input-status" name="records[${p.resident_id}][status]" value="${escapeHtml(p.attendance_status || '')}">
+                <input type="hidden" class="att-input-status" name="records[${p.resident_id}][status]" value="${escapeHtml(initialStatus)}">
                 <input type="hidden" class="att-input-justified" name="records[${p.resident_id}][is_justified]" value="${Number(p.is_justified) === 1 ? '1' : '0'}">
 
                 <div class="party-att-header">
@@ -762,12 +806,44 @@ function renderAttendanceParties(parties) {
                     </div>
                 </div>
 
+                ${isComplainant || isRespondent ? `
+                <div class="hearing-service-panel">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span class="service-status-badge ${p.service_confirmed ? 'confirmed' : 'unconfirmed'}">
+                                ${p.service_confirmed ? '✓ Service Confirmed' : '⚠ Service Not Confirmed'}
+                            </span>
+                            <span style="font-size: 0.78rem; color: #64748b;">
+                                ${(p.service_history || []).length} attempt${(p.service_history || []).length === 1 ? '' : 's'} on record
+                            </span>
+                        </div>
+                        <a href="../gps/proof-service.php?case_id=${encodeURIComponent(activeHearingAttendanceData?.case_id || '')}" target="_blank" style="font-size: 0.78rem; font-weight: 600; color: #0284c7; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; background: #f0f9ff; border: 1px solid #bae6fd; padding: 3px 8px; border-radius: 4px;">
+                            Record in Proof of Service &rarr;
+                        </a>
+                    </div>
+
+                    ${(p.service_history || []).length ? `
+                    <details style="margin-top: 6px;">
+                        <summary style="font-size: 0.82rem; font-weight: 600; color: #334155; cursor: pointer;">
+                            Service History &amp; Officer’s Returns (${p.service_history.length})
+                        </summary>
+                        <ul class="party-history-list" style="margin-top: 6px;">
+                            ${historyMarkup}
+                        </ul>
+                    </details>
+                    ` : ''}
+                </div>
+                ` : ''}
+
                 <div class="att-status-pills">
                     <button type="button" class="att-status-pill-btn ${currentChoice === 'Present' ? 'selected-present' : ''}" data-choice="Present" ${!canManageHearings ? 'disabled' : ''}>
                         Present
                     </button>
-                    <button type="button" class="att-status-pill-btn ${currentChoice === 'Unjustified' ? 'selected-unjustified' : ''}" data-choice="Unjustified" ${!canManageHearings ? 'disabled' : ''}>
-                        Absent (Unjustified)
+                    <button type="button" class="att-status-pill-btn ${currentChoice === 'Unjustified' ? 'selected-unjustified' : ''}" data-choice="Unjustified" ${!canManageHearings || (!p.service_confirmed && (isComplainant || isRespondent)) ? 'disabled title="Confirm service for this party before marking Failure to Appear. Select Not Served if party could not be served."' : ''}>
+                        ${p.service_confirmed ? 'Failure to Appear' : 'Failure to Appear (Unverified)'}
+                    </button>
+                    <button type="button" class="att-status-pill-btn ${currentChoice === 'Not Served' ? 'selected-not-served' : ''}" data-choice="Not Served" ${!canManageHearings ? 'disabled' : ''}>
+                        Not Served
                     </button>
                     <button type="button" class="att-status-pill-btn ${currentChoice === 'Excused' ? 'selected-excused' : ''}" data-choice="Excused" ${!canManageHearings ? 'disabled' : ''}>
                         Excused / Justified
@@ -791,11 +867,264 @@ function renderAttendanceParties(parties) {
                 <div class="att-remarks-box">
                     <input type="text" name="records[${p.resident_id}][remarks]" value="${escapeHtml(p.remarks || '')}" placeholder="Appearance remarks or incident notes (optional)..." style="width: 100%; font-size: 0.82rem; border: 1px solid #cbd5e1; border-radius: 4px; padding: 5px 8px;" ${!canManageHearings ? 'readonly' : ''}>
                 </div>
+
+                ${(isComplainant || isRespondent) && canManageHearings ? `
+                <details class="post-absence-box" style="margin-top: 10px;">
+                    <summary style="font-size: 0.85rem; font-weight: 700; color: #1e293b; cursor: pointer;">
+                        ⚙️ Nonappearance &amp; Legal Actions Workflow (${escapeHtml(p.party_type)})
+                    </summary>
+                    <div style="margin-top: 10px;">
+                        <div class="post-absence-tabs">
+                            <button type="button" class="post-absence-tab-btn active" data-tab-target="tabNotice_${p.resident_id}">1. Issue Notice (${isComplainant ? 'KP Form 18' : 'KP Form 19'})</button>
+                            <button type="button" class="post-absence-tab-btn" data-tab-target="tabExplanation_${p.resident_id}">2. Record Explanation</button>
+                            <button type="button" class="post-absence-tab-btn" data-tab-target="tabLegal_${p.resident_id}">3. Legal Action Review</button>
+                        </div>
+
+                        <!-- Tab 1: Issue Notice of Hearing -->
+                        <div id="tabNotice_${p.resident_id}" class="workflow-tab-content" style="display: block;">
+                            <div style="font-size: 0.82rem; color: #475569; margin-bottom: 8px;">
+                                Issue official notice to explain failure to appear (${isComplainant ? 'KP Form 18' : 'KP Form 19'}) and assign to Summons Server.
+                            </div>
+                            <div class="workflow-form-grid">
+                                <div>
+                                    <label style="font-size: 0.78rem; font-weight: 600; color: #334155;">Explanation Hearing Date &amp; Time:</label>
+                                    <input type="datetime-local" class="form-control" data-notice-date style="width: 100%; font-size: 0.82rem; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                                </div>
+                                <div>
+                                    <label style="font-size: 0.78rem; font-weight: 600; color: #334155;">Assign to Summons Server:</label>
+                                    <select class="form-control" data-notice-server style="width: 100%; font-size: 0.82rem; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                                        ${officerOptions}
+                                    </select>
+                                </div>
+                                <button type="button" class="btn-create" data-issue-notice="${p.resident_id}" style="margin-top: 4px;">
+                                    Generate ${isComplainant ? 'KP Form 18' : 'KP Form 19'} &amp; Assign Server
+                                </button>
+                                <div class="notice-download-container" style="margin-top: 6px;"></div>
+                            </div>
+                        </div>
+
+                        <!-- Tab 2: Record Explanation Hearing Outcome -->
+                        <div id="tabExplanation_${p.resident_id}" class="workflow-tab-content" style="display: none;">
+                            <div style="font-size: 0.82rem; color: #475569; margin-bottom: 8px;">
+                                Record the explanation hearing result. If Justified, the original hearing record is preserved and eligible for rescheduling.
+                            </div>
+                            <div class="workflow-form-grid">
+                                <div>
+                                    <label style="font-size: 0.78rem; font-weight: 600; color: #334155;">Explanation Statement:</label>
+                                    <textarea data-explanation-text rows="2" placeholder="Statement of reasons for non-appearance..." style="width: 100%; font-size: 0.82rem; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px;"></textarea>
+                                </div>
+                                <div>
+                                    <label style="font-size: 0.78rem; font-weight: 600; color: #334155;">Finding / Outcome:</label>
+                                    <select data-explanation-outcome class="form-control" style="width: 100%; font-size: 0.82rem; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                                        <option value="Pending">Pending Review</option>
+                                        <option value="Justified">Justified (Excused / Reschedulable)</option>
+                                        <option value="Unjustified">Unjustified (Subject to Statutory Action)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="font-size: 0.78rem; font-weight: 600; color: #334155;">Supporting File (Medical cert, etc.):</label>
+                                    <input type="file" data-explanation-file accept=".pdf,.jpg,.jpeg,.png" style="font-size: 0.8rem;">
+                                </div>
+                                <button type="button" class="btn-create" data-save-explanation="${p.resident_id}" style="margin-top: 4px;">
+                                    Save Explanation Finding
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Tab 3: Authorized Legal Action Review -->
+                        <div id="tabLegal_${p.resident_id}" class="workflow-tab-content" style="display: none;">
+                            <div class="human-review-callout">
+                                ⚖️ <strong>Human Review Required:</strong> AGAP never automatically imposes legal consequences. An authorized official must review and approve adverse certifications or court transmittals.
+                            </div>
+                            <div class="workflow-form-grid">
+                                <div>
+                                    <label style="font-size: 0.78rem; font-weight: 600; color: #334155;">Proposed Legal Action:</label>
+                                    <select data-legal-action-type class="form-control" style="width: 100%; font-size: 0.82rem; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                                        ${isRespondent ? `
+                                        <option value="KP Form 22 - Certificate to Bar Counterclaim">KP Form 22 - Certificate to Bar Counterclaim</option>
+                                        <option value="Indirect Contempt Certification to Court">Indirect Contempt Certification to Court (MTC)</option>
+                                        ` : `
+                                        <option value="KP Form 21 - Certificate to Bar Action">KP Form 21 - Certificate to Bar Action / Complaint Dismissal</option>
+                                        `}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="font-size: 0.78rem; font-weight: 600; color: #334155;">Review Decision:</label>
+                                    <select data-legal-action-status class="form-control" style="width: 100%; font-size: 0.82rem; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                                        <option value="Approved">Approved (Generate Certificate / Execute Action)</option>
+                                        <option value="Pending Review">Pending Review</option>
+                                        <option value="Rejected">Rejected</option>
+                                        <option value="Recorded">Recorded Only</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="font-size: 0.78rem; font-weight: 600; color: #334155;">Review Findings &amp; Rationale:</label>
+                                    <textarea data-legal-action-details rows="2" placeholder="Record official legal review rationale..." style="width: 100%; font-size: 0.82rem; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px;"></textarea>
+                                </div>
+                                <button type="button" class="btn-create" data-save-legal-action="${p.resident_id}" style="margin-top: 4px;">
+                                    Record Authorized Legal Review
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </details>
+                ` : ''}
+
+                ${(p.explanations || []).length ? `
+                <div style="margin-top: 8px; font-size: 0.8rem; background: #f1f5f9; padding: 8px 12px; border-radius: 6px;">
+                    <strong>Recorded Explanations:</strong>
+                    <ul class="party-history-list">
+                        ${p.explanations.map(e => `
+                            <li>
+                                <span class="badge ${e.outcome === 'Justified' ? 'badge-success' : (e.outcome === 'Unjustified' ? 'badge-danger' : 'badge-secondary')}">${escapeHtml(e.outcome)}</span>
+                                ${e.decided_at ? ` · Decided ${escapeHtml(formatDateTime(e.decided_at))} by ${escapeHtml(e.decided_by_name || 'Lupon')}` : ''}
+                                <br>${escapeHtml(e.explanation)}
+                                ${e.supporting_file ? `<br><a href="../../../${escapeHtml(e.supporting_file)}" target="_blank" style="color: #0284c7; text-decoration: underline;">📎 View Attached Explanation File</a>` : ''}
+                            </li>
+                        `).join('')}
+                    </ul>
+                </div>
+                ` : ''}
+
+                ${(p.legal_actions || []).length ? `
+                <div style="margin-top: 8px; font-size: 0.8rem; background: #fef2f2; border: 1px solid #fee2e2; padding: 8px 12px; border-radius: 6px;">
+                    <strong>Authorized Legal Actions:</strong>
+                    <ul class="party-history-list">
+                        ${p.legal_actions.map(a => `
+                            <li>
+                                <strong>${escapeHtml(a.action_type)}</strong>
+                                <span class="badge ${a.status === 'Approved' ? 'badge-danger' : 'badge-secondary'}">${escapeHtml(a.status)}</span>
+                                ${a.reviewed_at ? ` · Reviewed ${escapeHtml(formatDateTime(a.reviewed_at))} by ${escapeHtml(a.reviewed_by_name || 'Authorized Officer')}` : ''}
+                                <br>${escapeHtml(a.details)}
+                            </li>
+                        `).join('')}
+                    </ul>
+                </div>
+                ` : ''}
             </div>
         `;
     }).join('');
 
-    // Bind pill button clicks
+    // Tab switching in post-absence workflow box
+    container.querySelectorAll('.post-absence-tab-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const parent = btn.closest('.post-absence-box');
+            parent.querySelectorAll('.post-absence-tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const targetId = btn.dataset.tabTarget;
+            parent.querySelectorAll('.workflow-tab-content').forEach(c => c.style.display = 'none');
+            const target = parent.querySelector(`#${targetId}`);
+            if (target) target.style.display = 'block';
+        });
+    });
+
+    // Issue Notice of Hearing (KP Form 18/19)
+    container.querySelectorAll('[data-issue-notice]').forEach((button) => {
+        button.addEventListener('click', async () => {
+            const card = button.closest('.party-att-card');
+            const resId = button.dataset.issueNotice;
+            const hearingId = document.getElementById('attHearingId').value;
+            const expDate = card.querySelector('[data-notice-date]')?.value;
+            const assignedServer = card.querySelector('[data-notice-server]')?.value;
+
+            button.disabled = true;
+            button.textContent = 'Generating...';
+            try {
+                const fd = new FormData();
+                fd.set('action', 'issue_notice');
+                fd.set('hearing_id', hearingId);
+                fd.set('resident_id', resId);
+                if (expDate) fd.set('explanation_date', expDate);
+                if (assignedServer) fd.set('assigned_server_id', assignedServer);
+
+                const result = await api('../../../backend/api/hearings/workflow.php', { method: 'POST', body: fd });
+                setMessage(result.message, true);
+                if (result.download_url) {
+                    const downloadContainer = card.querySelector('.notice-download-container');
+                    if (downloadContainer) {
+                        downloadContainer.innerHTML = `<a href="${result.download_url}" target="_blank" class="btn-att-action btn-att-action-primary" style="display:inline-flex;margin-top:6px;">📥 Download Generated ${escapeHtml(result.form_code || 'Notice')} (PDF)</a>`;
+                    }
+                }
+                await openHearingAttendanceModal(hearingId);
+            } catch (error) {
+                setMessage(error.message);
+                button.disabled = false;
+                button.textContent = 'Generate Notice & Assign Server';
+            }
+        });
+    });
+
+    // Record Explanation
+    container.querySelectorAll('[data-save-explanation]').forEach((button) => {
+        button.addEventListener('click', async () => {
+            const card = button.closest('.party-att-card');
+            const resId = button.dataset.saveExplanation;
+            const hearingId = document.getElementById('attHearingId').value;
+            const text = card.querySelector('[data-explanation-text]')?.value?.trim() || '';
+            const outcome = card.querySelector('[data-explanation-outcome]')?.value || 'Pending';
+            const file = card.querySelector('[data-explanation-file]')?.files[0];
+
+            if (!text) { setMessage('Please enter the explanation statement.'); return; }
+
+            button.disabled = true;
+            button.textContent = 'Saving...';
+            try {
+                const fd = new FormData();
+                fd.set('action', 'explanation');
+                fd.set('hearing_id', hearingId);
+                fd.set('resident_id', resId);
+                fd.set('explanation', text);
+                fd.set('outcome', outcome);
+                if (file) fd.set('supporting_file', file);
+
+                const result = await api('../../../backend/api/hearings/workflow.php', { method: 'POST', body: fd });
+                setMessage(result.message, true);
+                await openHearingAttendanceModal(hearingId);
+                await loadCombinedRecords(currentPage);
+            } catch (error) {
+                setMessage(error.message);
+                button.disabled = false;
+                button.textContent = 'Save Explanation Finding';
+            }
+        });
+    });
+
+    // Record Legal Action Review
+    container.querySelectorAll('[data-save-legal-action]').forEach((button) => {
+        button.addEventListener('click', async () => {
+            const card = button.closest('.party-att-card');
+            const resId = button.dataset.saveLegalAction;
+            const hearingId = document.getElementById('attHearingId').value;
+            const type = card.querySelector('[data-legal-action-type]')?.value || '';
+            const status = card.querySelector('[data-legal-action-status]')?.value || 'Pending Review';
+            const details = card.querySelector('[data-legal-action-details]')?.value?.trim() || '';
+
+            if (!details) { setMessage('Please provide official findings/rationale for this legal action.'); return; }
+
+            button.disabled = true;
+            button.textContent = 'Recording...';
+            try {
+                const fd = new FormData();
+                fd.set('action', 'legal_action');
+                fd.set('hearing_id', hearingId);
+                fd.set('resident_id', resId);
+                fd.set('action_type', type);
+                fd.set('status', status);
+                fd.set('details', details);
+
+                const result = await api('../../../backend/api/hearings/workflow.php', { method: 'POST', body: fd });
+                setMessage(result.message, true);
+                await openHearingAttendanceModal(hearingId);
+                await loadCombinedRecords(currentPage);
+            } catch (error) {
+                setMessage(error.message);
+                button.disabled = false;
+                button.textContent = 'Record Authorized Legal Review';
+            }
+        });
+    });
+
+    // Pill Button Clicks
     container.querySelectorAll('.party-att-card').forEach((card) => {
         const resId = card.dataset.residentId;
         const statusInput = card.querySelector('.att-input-status');
@@ -807,9 +1136,12 @@ function renderAttendanceParties(parties) {
                 if (!canManageHearings) return;
                 const choice = btn.dataset.choice;
 
+                // Reset error highlight on selection
+                card.style.border = '';
+
                 // Toggle selection
                 card.querySelectorAll('.att-status-pill-btn').forEach((b) => {
-                    b.classList.remove('selected-present', 'selected-unjustified', 'selected-excused', 'selected-late');
+                    b.classList.remove('selected-present', 'selected-unjustified', 'selected-excused', 'selected-late', 'selected-not-served');
                 });
 
                 if (choice === 'Present') {
@@ -820,6 +1152,11 @@ function renderAttendanceParties(parties) {
                 } else if (choice === 'Unjustified') {
                     btn.classList.add('selected-unjustified');
                     statusInput.value = 'Absent';
+                    justifiedInput.value = '0';
+                    if (justBox) justBox.style.display = 'none';
+                } else if (choice === 'Not Served') {
+                    btn.classList.add('selected-not-served');
+                    statusInput.value = 'Not Served';
                     justifiedInput.value = '0';
                     if (justBox) justBox.style.display = 'none';
                 } else if (choice === 'Excused') {
@@ -869,12 +1206,14 @@ function evaluateLiveAttendanceSituation() {
     let complainantUnjustified = 0;
     let complainantExcused = 0;
     let complainantLate = 0;
+    let complainantNotServed = 0;
 
     let respondentCount = 0;
     let respondentPresent = 0;
     let respondentUnjustified = 0;
     let respondentExcused = 0;
     let respondentLate = 0;
+    let respondentNotServed = 0;
 
     cards.forEach((card) => {
         const type = card.dataset.partyType;
@@ -885,12 +1224,14 @@ function evaluateLiveAttendanceSituation() {
             complainantCount++;
             if (status === 'Present') complainantPresent++;
             else if (status === 'Late') complainantLate++;
+            else if (status === 'Not Served') complainantNotServed++;
             else if (status === 'Absent' && isJustified) complainantExcused++;
             else if (status === 'Absent' && !isJustified) complainantUnjustified++;
         } else if (type === 'Respondent') {
             respondentCount++;
             if (status === 'Present') respondentPresent++;
             else if (status === 'Late') respondentLate++;
+            else if (status === 'Not Served') respondentNotServed++;
             else if (status === 'Absent' && isJustified) respondentExcused++;
             else if (status === 'Absent' && !isJustified) respondentUnjustified++;
         }
@@ -901,10 +1242,11 @@ function evaluateLiveAttendanceSituation() {
     const hearingId = activeHearingAttendanceData?.hearing_id;
 
     situationBox.className = 'att-situation-box';
+    situationBox.style.display = '';
 
     // If completely unrecorded
-    if (complainantPresent === 0 && complainantUnjustified === 0 && complainantExcused === 0 && complainantLate === 0
-        && respondentPresent === 0 && respondentUnjustified === 0 && respondentExcused === 0 && respondentLate === 0) {
+    if (complainantPresent === 0 && complainantUnjustified === 0 && complainantExcused === 0 && complainantLate === 0 && complainantNotServed === 0
+        && respondentPresent === 0 && respondentUnjustified === 0 && respondentExcused === 0 && respondentLate === 0 && respondentNotServed === 0) {
         situationBox.classList.add('sit-neutral');
         iconEl.textContent = '⚖️';
         badgeTextEl.textContent = 'Pending Appearance Intake';
@@ -915,6 +1257,54 @@ function evaluateLiveAttendanceSituation() {
         return;
     }
 
+    // Situation: Both Not Served
+    if (complainantNotServed > 0 && respondentNotServed > 0) {
+        situationBox.classList.add('sit-warning');
+        iconEl.textContent = '⚠️';
+        badgeTextEl.textContent = 'Both Parties Not Served — Re-issue Notices / Summonses';
+        refEl.textContent = 'R.A. 7160 Sec. 410(b)';
+        consequencesListEl.innerHTML = `
+            <li>Neither the Complainant nor Respondent has verified service of hearing notices.</li>
+            <li>Failure to appear cannot be recorded, and no statutory sanctions or dismissal may apply without verified service.</li>
+            <li>Summons Server must attempt service again or verify addresses with the Lupong Tagapamayapa.</li>
+        `;
+        recommendationTextEl.textContent = 'Verify addresses and re-issue notices for a reset appearance date.';
+        shortcutsEl.innerHTML = canManageHearings ? `<button type="button" class="btn-att-action btn-att-action-primary" onclick="closeHearingAttendanceModal(); editHearing(${hearingId});">Reschedule Hearing</button>` : '';
+        return;
+    }
+
+    // Situation: Respondent Not Served
+    if (respondentNotServed > 0) {
+        situationBox.classList.add('sit-warning');
+        iconEl.textContent = '⚠️';
+        badgeTextEl.textContent = 'Respondent Not Served — Failure to Appear Cannot Be Imposed';
+        refEl.textContent = 'R.A. 7160 Sec. 410(b)';
+        consequencesListEl.innerHTML = `
+            <li>Summons has not been successfully served to the respondent for this hearing.</li>
+            <li>Under KP Law, no statutory sanctions, CFA, or counterclaim bars may be imposed without verified service.</li>
+            <li>Review the Officer’s Return reasons (e.g. wrong address, not found) and re-dispatch the Summons Server.</li>
+        `;
+        recommendationTextEl.textContent = 'Re-issue summons with updated address/purok and reschedule appearance date.';
+        shortcutsEl.innerHTML = canManageHearings ? `<button type="button" class="btn-att-action btn-att-action-primary" onclick="closeHearingAttendanceModal(); editHearing(${hearingId});">Reschedule Hearing</button>` : '';
+        return;
+    }
+
+    // Situation: Complainant Not Served
+    if (complainantNotServed > 0) {
+        situationBox.classList.add('sit-warning');
+        iconEl.textContent = '⚠️';
+        badgeTextEl.textContent = 'Complainant Not Served — Complaint Cannot Be Dismissed';
+        refEl.textContent = 'Katarungang Pambarangay Rules';
+        consequencesListEl.innerHTML = `
+            <li>Notice of hearing was not successfully served to the complainant.</li>
+            <li>Complaint cannot be dismissed for failure to prosecute without verified service.</li>
+            <li>Verify complainant contact details and serve notice for the reset session.</li>
+        `;
+        recommendationTextEl.textContent = 'Verify complainant contact information and re-issue notice.';
+        shortcutsEl.innerHTML = canManageHearings ? `<button type="button" class="btn-att-action btn-att-action-primary" onclick="closeHearingAttendanceModal(); editHearing(${hearingId});">Reschedule Hearing</button>` : '';
+        return;
+    }
+
     // 1. Both Absent (Unjustified)
     if (complainantUnjustified > 0 && respondentUnjustified > 0) {
         situationBox.classList.add('sit-danger');
@@ -922,7 +1312,7 @@ function evaluateLiveAttendanceSituation() {
         badgeTextEl.textContent = 'Both Parties Absent (Unjustified) — Dismissal Without Prejudice';
         refEl.textContent = 'R.A. 7160 Sec. 415 / KP Rules';
         consequencesListEl.innerHTML = `
-            <li>Neither Complainant nor Respondent appeared without justifiable cause despite formal notice.</li>
+            <li>Neither Complainant nor Respondent appeared without justifiable cause despite verified service.</li>
             <li>Dispute is dismissed without prejudice for mutual non-appearance and lack of interest.</li>
             <li>Parties are not barred from filing in the future, but the current docket is closed.</li>
         `;
@@ -938,12 +1328,12 @@ function evaluateLiveAttendanceSituation() {
         badgeTextEl.textContent = 'Complainant Absent (Unjustified) — Dismissal & Judicial Recourse Barred';
         refEl.textContent = 'R.A. 7160 Sec. 415 / KP Rule VI Sec. 8';
         consequencesListEl.innerHTML = `
-            <li>Complainant failed to appear at the scheduled conciliation without justifiable cause.</li>
+            <li>Complainant failed to appear at the scheduled session without justifiable cause despite verified service.</li>
             <li><strong>STATUTORY BAR:</strong> Complainant is legally barred from filing this complaint in court or seeking judicial recourse.</li>
-            <li>The complaint must be dismissed for failure to prosecute.</li>
-            <li>Respondent is entitled to a Certificate of Barred Action (KP Form 20-A).</li>
+            <li>The complaint is subject to dismissal for failure to prosecute. Issue KP Form 18 Notice to Explain.</li>
+            <li>Respondent is entitled to a Certificate to Bar Action (KP Form 21) upon authorized human review.</li>
         `;
-        recommendationTextEl.textContent = 'Dismiss the complaint. Issue Certificate of Barred Judicial Recourse to respondent upon request.';
+        recommendationTextEl.textContent = 'Issue KP Form 18 Notice. Following explanation hearing, review dismissal and Certificate to Bar Action.';
         shortcutsEl.innerHTML = caseId ? `<a href="../cases/case-details.php?id=${encodeURIComponent(caseId)}" class="btn-att-action btn-att-action-danger" target="_blank">Process Dismissal &amp; Barred Action &rarr;</a>` : '';
         return;
     }
@@ -953,14 +1343,14 @@ function evaluateLiveAttendanceSituation() {
         if (summonsCount <= 1) {
             situationBox.classList.add('sit-warning');
             iconEl.textContent = '⚠️';
-            badgeTextEl.textContent = 'Respondent Absent (1st Notice) — Issue 2nd Summons with Warning';
-            refEl.textContent = 'R.A. 7160 Sec. 410 / KP Form 9';
+            badgeTextEl.textContent = 'Respondent Absent (1st Notice) — Issue KP Form 19 Notice to Explain';
+            refEl.textContent = 'R.A. 7160 Sec. 410 / KP Form 19';
             consequencesListEl.innerHTML = `
-                <li>First unjustified non-appearance of Respondent after due service of 1st Summons.</li>
-                <li>Mediation cannot proceed today, but adverse sanctions cannot yet be finalized without a second notice.</li>
+                <li>First unjustified non-appearance of Respondent after verified service of summons.</li>
+                <li>Issue Notice of Hearing for Failure to Appear (KP Form 19) to require respondent to explain absence.</li>
                 <li>A 2nd Summons (KP Form 9) must be issued with statutory warning of Indirect Contempt (Sec. 515) and bar from filing counterclaims (Sec. 415).</li>
             `;
-            recommendationTextEl.textContent = 'Reset hearing to a new date within the statutory period and issue 2nd Summons with warning.';
+            recommendationTextEl.textContent = 'Issue KP Form 19 Notice to Explain, and reset hearing date for 2nd Mediation session.';
             shortcutsEl.innerHTML = `
                 ${caseId ? `<a href="../documents/summons.php?case_id=${encodeURIComponent(caseId)}" class="btn-att-action btn-att-action-primary" target="_blank">Generate 2nd Summons (KP Form 9) &rarr;</a>` : ''}
                 ${canManageHearings ? `<button type="button" class="btn-att-action btn-att-action-secondary" onclick="closeHearingAttendanceModal(); editHearing(${hearingId});">Reschedule Hearing</button>` : ''}
@@ -968,14 +1358,14 @@ function evaluateLiveAttendanceSituation() {
         } else if (summonsCount === 2) {
             situationBox.classList.add('sit-warning');
             iconEl.textContent = '⚠️';
-            badgeTextEl.textContent = 'Respondent Absent (2nd Notice) — Issue 3rd & Final Summons';
+            badgeTextEl.textContent = 'Respondent Absent (2nd Notice) — Issue 3rd & Final Summons with Warning';
             refEl.textContent = 'R.A. 7160 Sec. 410 / KP Form 9';
             consequencesListEl.innerHTML = `
-                <li>Second unjustified non-appearance despite two summonses.</li>
-                <li>A 3rd and final Summons (KP Form 9) must be issued — last chance before sanctions apply.</li>
+                <li>Second unjustified non-appearance despite two summons attempts.</li>
+                <li>A 3rd and final Summons (KP Form 9) must be issued — last notice before sanctions and bar apply.</li>
                 <li>Warn Respondent: failure on 3rd notice leads to Indirect Contempt (Sec. 515) and bar from counterclaims (Sec. 415).</li>
             `;
-            recommendationTextEl.textContent = 'Reschedule hearing and issue 3rd (final) Summons with stern warning.';
+            recommendationTextEl.textContent = 'Reschedule hearing and issue 3rd (final) Summons with stern statutory warning.';
             shortcutsEl.innerHTML = `
                 ${caseId ? `<a href="../documents/summons.php?case_id=${encodeURIComponent(caseId)}" class="btn-att-action btn-att-action-primary" target="_blank">Generate 3rd Summons (KP Form 9) &rarr;</a>` : ''}
                 ${canManageHearings ? `<button type="button" class="btn-att-action btn-att-action-secondary" onclick="closeHearingAttendanceModal(); editHearing(${hearingId});">Reschedule Hearing</button>` : ''}
@@ -984,14 +1374,14 @@ function evaluateLiveAttendanceSituation() {
             situationBox.classList.add('sit-danger');
             iconEl.textContent = '🚫';
             badgeTextEl.textContent = 'Respondent Repeated Non-Appearance — Barred Counterclaim & Issue CFA';
-            refEl.textContent = 'R.A. 7160 Sec. 415 & Sec. 515 / KP Form 20';
+            refEl.textContent = 'R.A. 7160 Sec. 415 & Sec. 515 / KP Form 20 & 22';
             consequencesListEl.innerHTML = `
-                <li>Respondent repeatedly and unjustifiably failed to appear despite all 3 summonses (${summonsCount} issued).</li>
-                <li><strong>STATUTORY BAR:</strong> Respondent is legally barred from filing any counterclaim arising from this dispute in court.</li>
+                <li>Respondent repeatedly and unjustifiably failed to appear despite all summonses (${summonsCount} issued).</li>
+                <li><strong>STATUTORY BAR:</strong> Respondent is legally barred from filing any counterclaim arising from this dispute in court (KP Form 22).</li>
                 <li>Complainant is entitled to an immediate Certificate to File Action (CFA - KP Form 20) permitting direct court filing.</li>
                 <li>Punong Barangay / Lupon may certify Respondent to the Municipal Trial Court (MTC) for Indirect Contempt of Court.</li>
             `;
-            recommendationTextEl.textContent = 'Issue Certificate to File Action (KP Form 20) to Complainant and certify Respondent for contempt.';
+            recommendationTextEl.textContent = 'Review and approve KP Form 22 (Bar Counterclaim) and issue CFA (KP Form 20) to Complainant.';
             shortcutsEl.innerHTML = `
                 ${caseId ? `<a href="../documents/cfa.php?case_id=${encodeURIComponent(caseId)}" class="btn-att-action btn-att-action-danger" target="_blank">Generate Certificate to File Action (CFA) &rarr;</a>` : ''}
                 ${caseId ? `<a href="../cases/case-details.php?id=${encodeURIComponent(caseId)}" class="btn-att-action btn-att-action-secondary" target="_blank">View Case &amp; Certify Contempt</a>` : ''}
@@ -1009,7 +1399,7 @@ function evaluateLiveAttendanceSituation() {
         consequencesListEl.innerHTML = `
             <li>Party absence is verified as justified (medical emergency, official duty, force majeure).</li>
             <li>No adverse sanctions, CFA, or counter-claim bars apply to the excused party.</li>
-            <li>The 15-day statutory mediation clock may be officially suspended/paused during verified incapacity.</li>
+            <li>The original hearing record is preserved and the dispute remains eligible for amicable conciliation.</li>
         `;
         recommendationTextEl.textContent = 'Reschedule hearing to the next available date. Log justified suspension on mediation clock if needed.';
         shortcutsEl.innerHTML = `
@@ -1026,7 +1416,7 @@ function evaluateLiveAttendanceSituation() {
         badgeTextEl.textContent = 'Late Appearance Noted — Hearing In Progress';
         refEl.textContent = 'KP Procedural Rules';
         consequencesListEl.innerHTML = `
-            <li>Party arrived after scheduled time, but both parties are now available.</li>
+            <li>Party arrived after scheduled time, but parties are now present.</li>
             <li>Session is authorized to proceed or be briefly adjourned to accommodate dialogue.</li>
         `;
         recommendationTextEl.textContent = 'Continue mediation session. Remind parties of prompt punctuality.';
@@ -1034,23 +1424,9 @@ function evaluateLiveAttendanceSituation() {
         return;
     }
 
-    // 6. Both Present
+    // Both parties present requires no separate legal-consequence panel.
     if ((complainantPresent > 0 || complainantCount === 0) && (respondentPresent > 0 || respondentCount === 0)) {
-        situationBox.classList.add('sit-success');
-        iconEl.textContent = '✅';
-        badgeTextEl.textContent = 'Both Parties Present — Mediation / Conciliation In Session';
-        refEl.textContent = 'R.A. 7160 Sec. 410(b) / KP Form 16';
-        consequencesListEl.innerHTML = `
-            <li>Both parties appeared. Quorum satisfied; mediation session is legally in session.</li>
-            <li>Punong Barangay / Pangkat Tagapagkasundo facilitates dispute dialogue and compromise.</li>
-            <li>If agreement is reached, execute an Amicable Settlement (KP Form 16), which acquires the force of a final court judgment after 10 days.</li>
-            <li>If no accord is reached within 15 statutory days, elevate to Pangkat Tagapagkasundo or issue CFA.</li>
-        `;
-        recommendationTextEl.textContent = 'Facilitate mediation dialogue. If settled, draft and record Amicable Settlement.';
-        shortcutsEl.innerHTML = `
-            ${caseId ? `<a href="../documents/settlements.php?case_id=${encodeURIComponent(caseId)}" class="btn-att-action btn-att-action-primary" target="_blank">Draft Amicable Settlement (KP Form 16) &rarr;</a>` : ''}
-            ${caseId ? `<a href="../cases/case-details.php?id=${encodeURIComponent(caseId)}" class="btn-att-action btn-att-action-secondary" target="_blank">View Case Workspace</a>` : ''}
-        `;
+        situationBox.style.display = 'none';
         return;
     }
 
@@ -1063,44 +1439,46 @@ function evaluateLiveAttendanceSituation() {
     recommendationTextEl.textContent = 'Select appearance status for each party.';
     shortcutsEl.innerHTML = '';
 }
-
 function bindAttendanceForm() {
     const form = document.getElementById('hearingAttendanceForm');
-    if (!form) return;
+    const submitBtn = document.getElementById('btnSaveAttendance');
 
-    form.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const alertEl = document.getElementById('attModalAlert');
-        const submitBtn = document.getElementById('btnSaveAttendance');
-
-        if (alertEl) {
-            alertEl.style.display = 'none';
-            alertEl.textContent = '';
-            alertEl.className = 'alert';
+    const handleSaveAttendance = async (event) => {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
         }
+
+        clearAttendanceModalAlert();
 
         const hearingId = document.getElementById('attHearingId')?.value;
         if (!hearingId) {
-            if (alertEl) {
-                alertEl.textContent = 'Invalid hearing reference.';
-                alertEl.className = 'alert error';
-                alertEl.style.display = 'block';
-            }
+            showAttendanceModalAlert('Invalid hearing reference.');
             return;
         }
 
-        // Collect records
         const cards = document.querySelectorAll('#attPartiesContainer .party-att-card');
+        if (!cards.length) {
+            showAttendanceModalAlert('No party records available for this hearing.');
+            return;
+        }
+
+        const unselectedParties = [];
         const records = [];
 
         cards.forEach((card) => {
             const residentId = card.dataset.residentId;
+            const partyName = card.dataset.partyName || 'Party';
             const status = card.querySelector('.att-input-status')?.value || '';
             const isJustified = card.querySelector('.att-input-justified')?.value === '1' ? 1 : 0;
             const reason = card.querySelector(`select[name="records[${residentId}][justification_reason]"]`)?.value || '';
             const remarks = card.querySelector(`input[name="records[${residentId}][remarks]"]`)?.value || '';
 
-            if (status) {
+            if (!status || status === 'Pending') {
+                unselectedParties.push(partyName);
+                card.style.border = '2px solid #ef4444';
+            } else {
+                card.style.border = '';
                 records.push({
                     resident_id: Number(residentId),
                     attendance_status: status,
@@ -1111,18 +1489,14 @@ function bindAttendanceForm() {
             }
         });
 
-        if (!records.length) {
-            if (alertEl) {
-                alertEl.textContent = 'Please select attendance status for at least one party.';
-                alertEl.className = 'alert error';
-                alertEl.style.display = 'block';
-            }
+        if (unselectedParties.length > 0) {
+            showAttendanceModalAlert(`Please select an appearance status (Present, Failure to Appear, Not Served, Excused, or Late) for: ${unselectedParties.join(', ')}.`);
             return;
         }
 
         if (submitBtn) {
             submitBtn.disabled = true;
-            submitBtn.textContent = 'Saving...';
+            submitBtn.textContent = 'Saving Attendance & Applying Findings...';
         }
 
         try {
@@ -1131,35 +1505,33 @@ function bindAttendanceForm() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     hearing_id: Number(hearingId),
+                    parties: records,
                     records: records
                 })
             });
 
-            if (alertEl) {
-                alertEl.textContent = res.message || 'Attendance recorded successfully.';
-                alertEl.className = 'alert success';
-                alertEl.style.display = 'block';
-            }
-
-            // Refresh table and KPIs
+            // Refresh table and KPIs in background
             await Promise.all([loadCombinedRecords(currentPage), loadAttendanceKPIs(), loadHearings()]);
 
-            setTimeout(() => {
-                closeHearingAttendanceModal();
-            }, 1200);
+            // Re-render modal in place to show updated status, service badges, and statutory findings
+            await openHearingAttendanceModal(hearingId);
+            showAttendanceModalAlert(res.message || 'Attendance recorded and statutory findings applied successfully.', true);
         } catch (err) {
-            if (alertEl) {
-                alertEl.textContent = err.message || 'Failed to save attendance.';
-                alertEl.className = 'alert error';
-                alertEl.style.display = 'block';
-            }
+            showAttendanceModalAlert(err.message || 'Failed to save attendance.');
         } finally {
             if (submitBtn) {
                 submitBtn.disabled = false;
                 submitBtn.textContent = 'Save Attendance & Apply Findings';
             }
         }
-    });
+    };
+
+    if (form) {
+        form.addEventListener('submit', handleSaveAttendance);
+    }
+    if (submitBtn) {
+        submitBtn.addEventListener('click', handleSaveAttendance);
+    }
 }
 
 

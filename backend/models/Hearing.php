@@ -179,17 +179,20 @@ class Hearing
     {
         try {
             $this->conn->beginTransaction();
+            $reason = trim((string)($data['reschedule_reason'] ?? ''));
+            if ($reason === '' || mb_strlen($reason) > 2000) throw new InvalidArgumentException('A rescheduling reason up to 2,000 characters is required.');
             $stmt = $this->conn->prepare(
-                'UPDATE hearings
-                 SET hearing_type = ?, hearing_date = ?, venue = ?, remarks = ?
-                 WHERE hearing_id = ?'
+                'INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, remarks, rescheduled_from_id, reschedule_reason)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)'
             );
             $stmt->execute([
+                $data['case_id'],
                 $data['hearing_type'],
                 $data['hearing_date'],
                 $data['venue'],
                 $data['remarks'],
                 $id,
+                $reason,
             ]);
 
             if ($deadline !== null) {
@@ -201,7 +204,10 @@ class Hearing
             }
 
             $this->conn->commit();
-            return $stmt->rowCount() > 0;
+            $newId = (int)$this->conn->lastInsertId();
+            $history = $this->conn->prepare("INSERT INTO case_history (case_id,status,remarks,updated_by) SELECT case_id,(SELECT case_status FROM cases WHERE case_id=?),?,? FROM hearings WHERE hearing_id=?");
+            $history->execute([$data['case_id'], 'Hearing #' . $id . ' rescheduled as hearing #' . $newId . '. Reason: ' . $reason, $_SESSION['user_id'] ?? null, $newId]);
+            return $newId > 0;
         } catch (Throwable $exception) {
             if ($this->conn->inTransaction()) {
                 $this->conn->rollBack();
@@ -299,6 +305,7 @@ class Hearing
         FROM case_deadlines d
         LEFT JOIN cases c ON c.case_id = d.case_id
         LEFT JOIN complaints co ON co.complaint_id = c.complaint_id
+        WHERE d.due_date = CURDATE()
         ";
 
         $where = [];
