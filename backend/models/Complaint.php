@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../services/ValidationService.php';
+require_once __DIR__ . '/../services/ComplaintLifecycleService.php';
 
 class Complaint
 {
@@ -23,18 +24,27 @@ class Complaint
             $this->conn->prepare("
                 SELECT
                     c.*,
-                    cc.category_name
+                    cc.category_name,
+                    cs.case_id,
+                    cs.case_number,
+                    cs.case_status
                 FROM complaints c
                 LEFT JOIN complaint_categories cc
                     ON c.category_id = cc.category_id
-                ORDER BY created_at DESC
+                LEFT JOIN cases cs
+                    ON cs.complaint_id = c.complaint_id
+                ORDER BY c.created_at DESC
             ");
 
             $stmt->execute();
 
-            return $stmt->fetchAll(
-                PDO::FETCH_ASSOC
-            );
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $lifecycle = new ComplaintLifecycleService($this->conn);
+            foreach ($rows as &$row) {
+                $row['lifecycle_status'] = $lifecycle->forComplaint((int) $row['complaint_id']);
+            }
+            unset($row);
+            return $rows;
 
         }
         catch(Exception $e)
@@ -62,9 +72,11 @@ class Complaint
 
             $stmt->execute([$id]);
 
-            return $stmt->fetch(
-                PDO::FETCH_ASSOC
-            );
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($row) {
+                $row['lifecycle_status'] = (new ComplaintLifecycleService($this->conn))->forComplaint((int) $row['complaint_id']);
+            }
+            return $row;
 
         }
         catch(Exception $e)

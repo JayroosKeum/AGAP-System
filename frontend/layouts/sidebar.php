@@ -25,12 +25,12 @@ $dashboardLink = [1 => '../dashboard/admin-dashboard.php', 2 => '../dashboard/cl
         </details>
 
         <?php if (in_array($roleId, [1, 2], true)): ?>
-            <details class="nav-group"<?php echo $isGroupActive(['resident-list.php', 'complaint-list.php', 'complaint-create.php', 'complaint-details.php', 'case-list.php', 'create-case.php', 'case-details.php', 'case-assignment.php']) ? ' open' : ''; ?> data-nav-group="case-management">
+            <details class="nav-group"<?php echo $isGroupActive(['resident-list.php', 'complaint-list.php', 'complaint-create.php', 'complaint-details.php', 'case-list.php', 'create-case.php', 'case-assignment.php']) ? ' open' : ''; ?> data-nav-group="case-management">
                 <summary>Case management</summary>
                 <div class="nav-group-links">
                     <a href="../residents/resident-list.php"<?php echo $isActive(['resident-list.php']); ?>><span class="nav-icon" aria-hidden="true"><img src="../../assets/icons/resident%20profiles.svg" alt=""></span><span class="nav-link-label">Resident Profiles</span></a>
                     <a href="../complaints/complaint-list.php"<?php echo $isActive(['complaint-list.php', 'complaint-create.php', 'complaint-details.php']); ?>><span class="nav-icon" aria-hidden="true"><img src="../../assets/icons/complaints.svg" alt=""></span><span class="nav-link-label">Complaints</span></a>
-                    <a href="../cases/case-list.php"<?php echo $isActive(['case-list.php', 'create-case.php', 'case-details.php', 'case-assignment.php']); ?>><span class="nav-icon" aria-hidden="true"><img src="../../assets/icons/casesandassignments.svg" alt=""></span><span class="nav-link-label">Cases and assignments</span></a>
+                    <a href="../cases/case-list.php"<?php echo $isActive(['case-list.php', 'create-case.php', 'case-assignment.php']); ?>><span class="nav-icon" aria-hidden="true"><img src="../../assets/icons/casesandassignments.svg" alt=""></span><span class="nav-link-label">Cases and assignments</span></a>
                 </div>
             </details>
             <details class="nav-group"<?php echo $isGroupActive(['schedules.php', 'calendar.php', 'document-center.php', 'summons.php', 'settlements.php', 'cfa.php', 'kp-form-9.php', 'proof-service.php', 'report-list.php']) ? ' open' : ''; ?> data-nav-group="operations">

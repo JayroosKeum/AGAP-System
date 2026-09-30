@@ -61,13 +61,13 @@ include '../../layouts/header.php';
         <?php endif; ?>
 
 
-        <!-- Quick Status Navigation Tabs -->
-        <div class="complaints-nav-tabs" role="tablist">
+        <!-- Standard Complaint Lifecycle Tabs -->
+        <div class="complaints-nav-tabs" role="tablist" aria-label="Complaint lifecycle status">
             <button type="button" class="nav-tab-btn active" data-tab-status="">
                 All <span class="tab-count-pill" id="tabCountAll">0</span>
             </button>
-            <button type="button" class="nav-tab-btn" data-tab-status="Under Review">
-                Under Review <span class="tab-count-pill" id="tabCountReview">0</span>
+            <button type="button" class="nav-tab-btn" data-tab-status="Pending">
+                Pending <span class="tab-count-pill" id="tabCountPending">0</span>
             </button>
             <button type="button" class="nav-tab-btn" data-tab-status="Mediation">
                 Mediation <span class="tab-count-pill" id="tabCountMediation">0</span>
@@ -75,17 +75,11 @@ include '../../layouts/header.php';
             <button type="button" class="nav-tab-btn" data-tab-status="Conciliation">
                 Conciliation <span class="tab-count-pill" id="tabCountConciliation">0</span>
             </button>
-            <button type="button" class="nav-tab-btn" data-tab-status="Arbitration">
-                Arbitration <span class="tab-count-pill" id="tabCountArbitration">0</span>
-            </button>
-            <button type="button" class="nav-tab-btn" data-tab-status="Settled">
-                Settled <span class="tab-count-pill" id="tabCountSettled">0</span>
-            </button>
-            <button type="button" class="nav-tab-btn" data-tab-status="Dismissed">
-                Dismissed <span class="tab-count-pill" id="tabCountDismissed">0</span>
-            </button>
             <button type="button" class="nav-tab-btn" data-tab-status="CFA">
                 CFA <span class="tab-count-pill" id="tabCountCfa">0</span>
+            </button>
+            <button type="button" class="nav-tab-btn" data-tab-status="Resolution / Closed">
+                Resolution / Closed <span class="tab-count-pill" id="tabCountClosed">0</span>
             </button>
         </div>
 

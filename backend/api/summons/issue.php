@@ -5,6 +5,7 @@ header('Content-Type: application/json; charset=utf-8');
 
 require_once '../../models/Summons.php';
 require_once '../../services/AuditService.php';
+require_once '../../services/ComplaintLifecycleService.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -31,6 +32,20 @@ if (!$complaintId && !empty($_POST['case_id'])) {
 if (!$complaintId) {
     http_response_code(422);
     echo json_encode(['success' => false, 'message' => 'A valid complaint ID is required to issue a summons.']);
+    exit;
+}
+
+$lifecycleStatus = (new ComplaintLifecycleService())->forComplaint((int) $complaintId);
+if (in_array($lifecycleStatus, [
+    ComplaintLifecycleService::CONCILIATION,
+    ComplaintLifecycleService::CFA,
+    ComplaintLifecycleService::CLOSED
+], true)) {
+    http_response_code(409);
+    echo json_encode([
+        'success' => false,
+        'message' => 'A summons cannot be issued after the complaint has entered Conciliation or a later status.'
+    ]);
     exit;
 }
 

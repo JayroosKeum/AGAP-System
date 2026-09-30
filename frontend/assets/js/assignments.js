@@ -466,4 +466,25 @@
         .catch((error) => {
             showMessage(error.message);
         });
+
+    // AGAP_UNIFIED_SYNC_ASSIGNMENTS
+    window.addEventListener('agap:data-changed', async (event) => {
+        const changed = event.detail?.modules || [];
+        if (!changed.some((name) => ['complaints', 'cases', 'assignments', 'pangkat', 'hearings', 'deadlines', 'history'].includes(name))) {
+            return;
+        }
+        if (form.dataset.syncRefreshing === '1') return;
+        form.dataset.syncRefreshing = '1';
+        const selectedCaseId = caseSelect.value;
+        try {
+            await Promise.allSettled([loadCases(), loadMembers()]);
+            if (selectedCaseId && casesById.has(String(selectedCaseId))) {
+                caseSelect.value = String(selectedCaseId);
+            }
+            await loadAssignments();
+        } finally {
+            window.setTimeout(() => delete form.dataset.syncRefreshing, 400);
+        }
+    });
+
 })();

@@ -1,3 +1,123 @@
+(() => {
+    const endpoint = '../../../backend/api/sync/state.php';
+    const eventName = 'agap:data-changed';
+    const storageKey = 'agap:data-sync';
+    const pollInterval = 2500;
+    const subscribers = new Set();
+    let currentState = null;
+    let pollTimer = null;
+    let checking = false;
+    let channel = null;
+
+    const changedModules = (previous, next) => {
+        if (!previous?.modules || !next?.modules) return [];
+        return Object.keys(next.modules).filter(
+            (name) => previous.modules[name] !== next.modules[name]
+        );
+    };
+
+    const notify = (payload) => {
+        window.dispatchEvent(new CustomEvent(eventName, { detail: payload }));
+        subscribers.forEach((subscriber) => {
+            try {
+                subscriber(payload);
+            } catch (error) {
+                console.error('AGAP synchronization subscriber failed:', error);
+            }
+        });
+    };
+
+    const broadcast = (payload) => {
+        if (channel) channel.postMessage(payload);
+        try {
+            localStorage.setItem(storageKey, JSON.stringify({
+                ...payload,
+                nonce: `${Date.now()}-${Math.random()}`
+            }));
+        } catch (error) {
+            // Synchronization still works without browser storage.
+        }
+    };
+
+    const checkNow = async (force = false) => {
+        if (checking || (!force && document.hidden)) return;
+        checking = true;
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 8000);
+        try {
+            const response = await window.fetch(`${endpoint}?_t=${Date.now()}`, {
+                method: 'GET',
+                credentials: 'same-origin',
+                cache: 'no-store',
+                headers: { Accept: 'application/json' },
+                signal: controller.signal
+            });
+            const nextState = await response.json().catch(() => null);
+            if (!response.ok || !nextState?.success) return;
+
+            if (currentState && currentState.revision !== nextState.revision) {
+                const payload = {
+                    source: 'server',
+                    revision: nextState.revision,
+                    modules: changedModules(currentState, nextState),
+                    serverTime: nextState.server_time
+                };
+                currentState = nextState;
+                notify(payload);
+                broadcast(payload);
+            } else {
+                currentState = nextState;
+            }
+        } catch (error) {
+            // The next poll retries automatically.
+        } finally {
+            window.clearTimeout(timeout);
+            checking = false;
+        }
+    };
+
+    const acceptRemote = (payload) => {
+        if (!payload || payload.revision === currentState?.revision) return;
+        window.setTimeout(() => checkNow(true), 100);
+    };
+
+    const start = () => {
+        if (pollTimer) return;
+        checkNow(true);
+        pollTimer = window.setInterval(checkNow, pollInterval);
+    };
+
+    window.agapDataSync = {
+        subscribe(callback) {
+            if (typeof callback !== 'function') return () => {};
+            subscribers.add(callback);
+            return () => subscribers.delete(callback);
+        },
+        checkNow: () => checkNow(true),
+        eventName
+    };
+
+    if ('BroadcastChannel' in window) {
+        channel = new BroadcastChannel('agap-data-sync');
+        channel.addEventListener('message', (event) => acceptRemote(event.data));
+    }
+
+    window.addEventListener('storage', (event) => {
+        if (event.key !== storageKey || !event.newValue) return;
+        try {
+            acceptRemote(JSON.parse(event.newValue));
+        } catch (error) {
+            // Ignore malformed synchronization data.
+        }
+    });
+
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) checkNow(true);
+    });
+    window.addEventListener('focus', () => checkNow(true));
+    document.addEventListener('DOMContentLoaded', start);
+})();
+
 window.agapNotify = (message, type = 'info', title = 'AGAP') => {
     if (!message) return;
     let region = document.getElementById('agapToastRegion');

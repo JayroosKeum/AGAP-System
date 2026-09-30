@@ -15,7 +15,14 @@ class Hearing
     {
         $stmt = $this->conn->prepare(
             "SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date,
-                    h.venue, h.remarks, h.created_at, h.updated_at,
+                    h.venue, h.remarks, h.rescheduled_from_id, h.reschedule_reason,
+                    h.status, h.created_at, h.updated_at,
+                    CASE WHEN EXISTS (
+                        SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
+                    ) THEN 1 ELSE 0 END AS is_superseded,
+                    (SELECT next_h.hearing_id FROM hearings next_h
+                     WHERE next_h.rescheduled_from_id = h.hearing_id
+                     ORDER BY next_h.created_at DESC, next_h.hearing_id DESC LIMIT 1) AS superseded_by_id,
                     c.case_number, c.case_status, c.docket_date,
                     co.complaint_number, co.complaint_title
              FROM hearings h
@@ -31,7 +38,13 @@ class Hearing
     {
         $stmt = $this->conn->prepare(
             "SELECT h.*, c.case_number, c.case_status, c.docket_date,
-                    co.complaint_number, co.complaint_title
+                    co.complaint_number, co.complaint_title,
+                    CASE WHEN EXISTS (
+                        SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
+                    ) THEN 1 ELSE 0 END AS is_superseded,
+                    (SELECT next_h.hearing_id FROM hearings next_h
+                     WHERE next_h.rescheduled_from_id = h.hearing_id
+                     ORDER BY next_h.created_at DESC, next_h.hearing_id DESC LIMIT 1) AS superseded_by_id
              FROM hearings h
              INNER JOIN cases c ON c.case_id = h.case_id
              INNER JOIN complaints co ON co.complaint_id = c.complaint_id
@@ -239,6 +252,15 @@ class Hearing
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
+    public function isSuperseded(int $hearingId): bool
+    {
+        $stmt = $this->conn->prepare(
+            'SELECT EXISTS(SELECT 1 FROM hearings WHERE rescheduled_from_id = ?)'
+        );
+        $stmt->execute([$hearingId]);
+        return (bool) $stmt->fetchColumn();
+    }
+
     public function getPaginatedCombined(array $filters = [], int $page = 1, int $perPage = 25): array
     {
         $baseSql = "
@@ -265,8 +287,20 @@ class Hearing
             END AS hearing_type,
             h.hearing_date AS schedule_date,
             h.venue,
-            CASE WHEN h.hearing_date < NOW() THEN 'Completed' ELSE 'Scheduled' END AS status,
+            CASE
+                WHEN EXISTS (SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id) THEN 'Rescheduled'
+                WHEN h.status = 'Cancelled' THEN 'Cancelled'
+                WHEN h.hearing_date < NOW() OR h.status = 'Completed' THEN 'Completed'
+                ELSE 'Scheduled'
+            END AS status,
             h.remarks,
+            h.rescheduled_from_id,
+            CASE WHEN EXISTS (
+                SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
+            ) THEN 1 ELSE 0 END AS is_superseded,
+            (SELECT next_h.hearing_id FROM hearings next_h
+             WHERE next_h.rescheduled_from_id = h.hearing_id
+             ORDER BY next_h.created_at DESC, next_h.hearing_id DESC LIMIT 1) AS superseded_by_id,
             CASE WHEN EXISTS (SELECT 1 FROM hearing_nonappearances hn WHERE hn.hearing_id = h.hearing_id AND hn.resolution = 'Pending') THEN '1' ELSE '0' END AS has_pending_nonappearance,
             (SELECT COUNT(*) FROM hearing_attendance ha WHERE ha.hearing_id = h.hearing_id) AS attendance_count,
             (SELECT COUNT(*) FROM hearing_attendance ha WHERE ha.hearing_id = h.hearing_id AND ha.attendance_status = 'Present') AS present_count,
@@ -296,6 +330,9 @@ class Hearing
                 ELSE 'Pending'
             END AS status,
             NULL AS remarks,
+            NULL AS rescheduled_from_id,
+            0 AS is_superseded,
+            NULL AS superseded_by_id,
             '0' AS has_pending_nonappearance,
             0 AS attendance_count,
             0 AS present_count,

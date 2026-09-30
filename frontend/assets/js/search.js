@@ -33,6 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let debounceTimer = null;
     let cachedGlobalCounts = null;
     let loadedRows = [];
+    let activeRecordsRequest = null;
     let activeSortKey = 'case_no';
     let activeSortDir = 'desc';
 
@@ -312,10 +313,26 @@ document.addEventListener('DOMContentLoaded', () => {
             </tr>
         `;
 
-        fetch('../../../backend/api/search/records.php?' + new URLSearchParams(new FormData(form)))
+        if (activeRecordsRequest) activeRecordsRequest.abort();
+        const requestController = new AbortController();
+        activeRecordsRequest = requestController;
+        const recordsTimeout = window.setTimeout(() => requestController.abort(), 15000);
+
+        fetch('../../../backend/api/search/records.php?' + new URLSearchParams(new FormData(form)), {
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { Accept: 'application/json' },
+            signal: requestController.signal
+        })
             .then(async response => {
-                const data = await response.json();
-                if (!response.ok) throw new Error(data.message || 'The records could not be loaded.');
+                const raw = await response.text();
+                let data;
+                try {
+                    data = JSON.parse(raw);
+                } catch (error) {
+                    throw new Error('The records API returned invalid JSON. Check the PHP error log.');
+                }
+                if (!response.ok) throw new Error(data.message || data.error || 'The records could not be loaded.');
                 return data;
             })
             .then(rows => {
@@ -329,7 +346,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     renderRows(loadedRows);
                 }
             })
-            .catch(() => {
+            .catch((error) => {
                 results.innerHTML = `
                     <tr>
                         <td colspan="${columnCount}" class="table-empty-wrap">
@@ -342,6 +359,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
                 if (paginationContainer) paginationContainer.style.display = 'none';
                 if (summary) summary.textContent = '';
+            })
+            .finally(() => {
+                window.clearTimeout(recordsTimeout);
+                if (activeRecordsRequest === requestController) {
+                    activeRecordsRequest = null;
+                }
             });
     });
 
@@ -503,29 +526,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (isDefaultView || !cachedGlobalCounts) {
             const allCount = rows.length;
-            const reviewCount = rows.filter(r => r.intake_status === 'Under Review').length;
-            const docketedCount = rows.filter(r => r.intake_status === 'Docketed').length;
-            const mediationCount = rows.filter(r => r.current_stage === 'Mediation').length;
-            const conciliationCount = rows.filter(r => r.current_stage === 'Conciliation').length;
-            const arbitrationCount = rows.filter(r => r.current_stage === 'Arbitration').length;
-            const settledCount = rows.filter(r => r.final_disposition === 'Amicable Settlement').length;
-            const dismissedCount = rows.filter(r => r.final_disposition === 'Dismissed / Dropped').length;
-            const cfaCount = rows.filter(r => r.final_disposition === 'Certificate to File Action (CFA)').length;
-            const progressCount = rows.filter(r => {
-                return ['Mediation', 'Conciliation', 'Arbitration'].includes(r.current_stage) || r.intake_status === 'Docketed';
-            }).length;
+            const pendingCount = rows.filter(r => r.lifecycle_status === 'Pending').length;
+            const mediationCount = rows.filter(r => r.lifecycle_status === 'Mediation').length;
+            const conciliationCount = rows.filter(r => r.lifecycle_status === 'Conciliation').length;
+            const cfaCount = rows.filter(r => r.lifecycle_status === 'CFA').length;
+            const closedCount = rows.filter(r => r.lifecycle_status === 'Resolution / Closed').length;
 
             cachedGlobalCounts = {
                 all: allCount,
-                review: reviewCount,
-                docketed: docketedCount,
+                pending: pendingCount,
                 mediation: mediationCount,
                 conciliation: conciliationCount,
-                arbitration: arbitrationCount,
-                settled: settledCount,
-                dismissed: dismissedCount,
                 cfa: cfaCount,
-                progress: progressCount
+                closed: closedCount
             };
         }
 
@@ -536,13 +549,11 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         setEl('tabCountAll', counts.all);
-        setEl('tabCountReview', counts.review);
+        setEl('tabCountPending', counts.pending);
         setEl('tabCountMediation', counts.mediation);
         setEl('tabCountConciliation', counts.conciliation);
-        setEl('tabCountArbitration', counts.arbitration);
-        setEl('tabCountSettled', counts.settled);
-        setEl('tabCountDismissed', counts.dismissed);
         setEl('tabCountCfa', counts.cfa);
+        setEl('tabCountClosed', counts.closed);
     }
 
     function renderPaginatedRows() {
@@ -675,9 +686,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 1. Case No.
         const caseNumberHtml = row.case_number
-            ? (row.case_id
-                ? `<a href="../cases/case-details.php?id=${encodeURIComponent(row.case_id)}" class="badge-case-docket case-link-badge" title="View docketed case details">${escapeHtml(row.case_number)}</a>`
-                : `<span class="badge-case-docket">${escapeHtml(row.case_number)}</span>`)
+            ? `<span class="badge-case-docket">${escapeHtml(row.case_number)}</span>`
             : `<span class="badge-case-none">Undocketed</span>`;
 
         // 2. Complaint (Title of complaint / short description)
@@ -718,51 +727,23 @@ document.addEventListener('DOMContentLoaded', () => {
             partiesHtml = `<div class="parties-stack">${renderedParties}${extraCount}${repeatFlag}</div>`;
         }
 
-        // 4. Status (Docketed is excluded as complaints are already considered docketed)
-        const intake = row.intake_status || (row.case_id ? 'Docketed' : 'Under Review');
-        const showUnderReview = (intake === 'Under Review');
-
-        const medCount = Number(row.mediation_count || 0);
-        const conCount = Number(row.conciliation_count || 0);
-        const isStageExhausted = Boolean(row.is_stage_exhausted) || (conCount >= 3) || (medCount >= 3 && conCount >= 3);
-
-        const stage = isStageExhausted ? 'None' : (row.current_stage || 'None');
-        let stageClass = 'badge-stage-none';
-        if (stage === 'Mediation') stageClass = 'badge-stage-mediation';
-        else if (stage === 'Conciliation') stageClass = 'badge-stage-conciliation';
-        else if (stage === 'Arbitration') stageClass = 'badge-stage-arbitration';
-
-        const disp = row.final_disposition || 'Pending';
-        let dispClass = 'badge-disp-pending';
-        let dispLabel = 'Pending';
-        if (disp === 'Amicable Settlement' || disp === 'Settled') {
-            dispClass = 'badge-disp-settled';
-            dispLabel = 'Amicable Settlement';
-        } else if (disp === 'Arbitration Award') {
-            dispClass = 'badge-disp-arbitration';
-            dispLabel = 'Arbitration Award';
-        } else if (disp.includes('CFA') || disp.includes('Certificate')) {
-            dispClass = 'badge-disp-cfa';
-            dispLabel = 'CFA Issued';
-        } else if (disp.includes('Dismissed') || disp.includes('Dropped')) {
-            dispClass = 'badge-disp-dismissed';
-            dispLabel = 'Dismissed';
-        }
-
-        const badges = [];
-        if (showUnderReview) {
-            badges.push(`<span class="lifecycle-badge badge-intake-under-review">Under Review</span>`);
-        }
-        if (stage !== 'None') {
-            badges.push(`<span class="lifecycle-badge ${stageClass}">${escapeHtml(stage)}</span>`);
-        }
-        badges.push(`<span class="lifecycle-badge ${dispClass}">${escapeHtml(dispLabel)}</span>`);
-
+        // 4. Standardized lifecycle status: exactly one of five values.
+        const lifecycleStatus = [
+            'Pending',
+            'Mediation',
+            'Conciliation',
+            'CFA',
+            'Resolution / Closed'
+        ].includes(row.lifecycle_status) ? row.lifecycle_status : 'Pending';
+        const lifecycleClass = lifecycleStatus
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-|-$/g, '');
         const statusHtml = `
             <div class="lifecycle-group">
-                <div class="lifecycle-subrow">
-                    ${badges.join(' ')}
-                </div>
+                <span class="lifecycle-badge badge-lifecycle-${lifecycleClass}">
+                    ${escapeHtml(lifecycleStatus)}
+                </span>
             </div>
         `;
 
@@ -816,4 +797,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Automatically load initial dataset
     if (complaintView) form.requestSubmit();
+});
+
+
+// AGAP_UNIFIED_SYNC_SEARCH
+window.addEventListener('agap:data-changed', (event) => {
+    const changed = event.detail?.modules || [];
+    if (!changed.some((name) => ['complaints', 'cases', 'assignments', 'pangkat', 'hearings', 'deadlines', 'history'].includes(name))) {
+        return;
+    }
+    const form = document.getElementById('recordsSearchForm');
+    if (form && !form.dataset.syncRefreshing) {
+        form.dataset.syncRefreshing = '1';
+        form.requestSubmit();
+        window.setTimeout(() => delete form.dataset.syncRefreshing, 750);
+    }
 });

@@ -191,10 +191,10 @@ async function loadComplaintDetails() {
         // Status Badge
         const statusEl = document.getElementById('complaintStatusBadge');
         if (statusEl) {
-            let st = String(data.status || 'Filed');
-            if (st === 'Docketed') {
-                st = (data.case_status && data.case_status !== 'Docketed') ? data.case_status : 'Active';
-            }
+            const allowedLifecycleStatuses = ['Pending', 'Mediation', 'Conciliation', 'CFA', 'Resolution / Closed'];
+            const st = allowedLifecycleStatuses.includes(data.lifecycle_status)
+                ? data.lifecycle_status
+                : 'Pending';
             const stSlug = st.toLowerCase().replace(/[^a-z0-9]/g, '-');
             statusEl.className = 'status-pill status-' + stSlug;
             statusEl.textContent = st;
@@ -207,26 +207,15 @@ async function loadComplaintDetails() {
         const catEl = document.getElementById('complaintCategoryBadge');
         if (catEl) catEl.textContent = data.category_name || (data.category_id ? 'Category #' + data.category_id : 'General');
 
-        // Linked Case Actions & Badges
+        // Linked case badge only. The Case Workspace page has been removed.
         const caseNumber = data.case_number || (data.case_id ? 'KP-' + String(data.case_id).padStart(5, '0') : null);
         const caseLinkEl = document.getElementById('complaintCaseLink');
-        const viewCaseBtn = document.getElementById('viewCaseBtn');
         const caseBadgeText = document.getElementById('caseNumberBadgeText');
-
-        if (data.case_id) {
-            const caseUrl = '../cases/case-details.php?id=' + encodeURIComponent(data.case_id);
-            if (caseLinkEl) {
-                caseLinkEl.href = caseUrl;
-                caseLinkEl.style.display = 'inline-flex';
-                if (caseBadgeText) caseBadgeText.textContent = caseNumber || data.case_id;
-            }
-            if (viewCaseBtn) {
-                viewCaseBtn.href = caseUrl;
-                viewCaseBtn.style.display = 'inline-flex';
-            }
-        } else {
-            if (caseLinkEl) caseLinkEl.style.display = 'none';
-            if (viewCaseBtn) viewCaseBtn.style.display = 'none';
+        if (caseLinkEl) {
+            caseLinkEl.style.display = data.case_id ? 'inline-flex' : 'none';
+        }
+        if (caseBadgeText && data.case_id) {
+            caseBadgeText.textContent = caseNumber || data.case_id;
         }
 
         // Edit link
@@ -249,10 +238,10 @@ async function loadComplaintDetails() {
 
         const infoStatusEl = document.getElementById('infoStatus');
         if (infoStatusEl) {
-            let st = String(data.status || 'Filed');
-            if (st === 'Docketed') {
-                st = (data.case_status && data.case_status !== 'Docketed') ? data.case_status : 'Active';
-            }
+            const allowedLifecycleStatuses = ['Pending', 'Mediation', 'Conciliation', 'CFA', 'Resolution / Closed'];
+            const st = allowedLifecycleStatuses.includes(data.lifecycle_status)
+                ? data.lifecycle_status
+                : 'Pending';
             const stSlug = st.toLowerCase().replace(/[^a-z0-9]/g, '-');
             infoStatusEl.innerHTML = `<span class="status-pill status-${stSlug}">${escapeHtml(st)}</span>`;
         }
@@ -260,7 +249,7 @@ async function loadComplaintDetails() {
         const infoDocketEl = document.getElementById('infoDocketCase');
         if (infoDocketEl) {
             if (data.case_id) {
-                infoDocketEl.innerHTML = `<a href="../cases/case-details.php?id=${encodeURIComponent(data.case_id)}" class="meta-pill case-pill" style="display:inline-flex;">📁 ${escapeHtml(caseNumber || ('Case #' + data.case_id))} &rarr;</a>`;
+                infoDocketEl.innerHTML = `<span class="meta-pill case-pill" style="display:inline-flex;">${escapeHtml(caseNumber || ('Case #' + data.case_id))}</span>`;
             } else {
                 infoDocketEl.textContent = 'Not yet docketed';
             }
@@ -839,10 +828,13 @@ async function loadCaseProgress(complaintId) {
         const progress = result.data;
         window.caseProgressData = progress;
 
-        // Configure Issue Summon button
+        // Remove Issue Summon when the complaint has reached Conciliation or a later terminal stage.
         const issueBtn = document.getElementById('issueSummonButton');
         const issueText = document.getElementById('issueSummonButtonText');
-        if (issueBtn && progress.actions?.summon_button) {
+        if (issueBtn) {
+            issueBtn.style.display = progress.hide_issue_summon ? 'none' : 'inline-flex';
+        }
+        if (issueBtn && !progress.hide_issue_summon && progress.actions?.summon_button) {
             const btnInfo = progress.actions.summon_button;
             if (issueText) issueText.textContent = btnInfo.label;
             issueBtn.title = btnInfo.tooltip || '';
@@ -881,58 +873,42 @@ function renderStatusTracker(progress) {
     const stageDetailsEl = document.getElementById('highlightStageDetails');
     const historyCountEl = document.getElementById('historyEventCount');
     const historyTimelineEl = document.getElementById('caseHistoryTimeline');
+    if (!track) return;
 
-    if (!track || !progress.stages) return;
+    const statuses = ['Pending', 'Mediation', 'Conciliation', 'CFA', 'Resolution / Closed'];
+    const currentStatus = statuses.includes(progress.lifecycle_status)
+        ? progress.lifecycle_status
+        : 'Pending';
+    const currentIndex = statuses.indexOf(currentStatus);
 
-    const stages = progress.stages;
-    const currentIdx = progress.current_stage_index ?? 0;
-    const currentStage = stages[currentIdx] || stages[0];
-
-    // Current stage badge
-    if (badge && currentStage) {
-        const titleSlug = currentStage.title.toLowerCase().replace(/[^a-z0-9]/g, '-');
-        badge.className = `status-pill status-${titleSlug}`;
-        badge.textContent = `Stage ${currentStage.number}: ${currentStage.title}`;
+    if (badge) {
+        const slug = currentStatus.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        badge.className = `status-pill status-${slug}`;
+        badge.textContent = currentStatus;
     }
 
-    // Render 9 horizontal steps
-    track.innerHTML = stages.map((st, idx) => {
-        const isCompleted = st.state === 'completed';
-        const isCurrent = st.state === 'current';
-        const isLast = idx === stages.length - 1;
-        const flagClass = st.flag ? `flag-${st.flag}` : '';
-
-        let circleContent = '';
-        if (isCompleted) {
-            circleContent = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
-        } else if (isCurrent) {
-            circleContent = '<span class="circle-dot"></span>';
-        } else {
-            circleContent = '<span class="circle-empty"></span>';
-        }
-
+    track.innerHTML = statuses.map((status, index) => {
+        const state = index < currentIndex ? 'completed' : (index === currentIndex ? 'current' : 'upcoming');
+        const circleContent = state === 'completed'
+            ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>'
+            : (state === 'current' ? '<span class="circle-dot"></span>' : '<span class="circle-empty"></span>');
         return `
-            <div class="stepper-step-item ${st.state} ${flagClass}" data-step-id="${escapeHtml(st.id)}">
+            <div class="stepper-step-item ${state}" data-step-id="${escapeHtml(status)}">
                 <div class="stepper-node-wrap">
-                    <div class="stepper-circle" title="${escapeHtml(st.title + ': ' + (st.subtitle || st.state))}">${circleContent}</div>
-                    ${!isLast ? '<div class="stepper-connector-line"></div>' : ''}
+                    <div class="stepper-circle" title="${escapeHtml(status)}">${circleContent}</div>
+                    ${index < statuses.length - 1 ? '<div class="stepper-connector-line"></div>' : ''}
                 </div>
                 <div class="stepper-label-wrap">
-                    <span class="stepper-step-title">${escapeHtml(st.title)}</span>
-                    <span class="stepper-step-sub">${escapeHtml(st.subtitle || '—')}</span>
+                    <span class="stepper-step-title">${escapeHtml(status)}</span>
                 </div>
             </div>
         `;
     }).join('');
 
-    // Highlight info
-    if (highlightBox && currentStage) {
-        highlightBox.style.display = 'block';
-        if (stageNameEl) stageNameEl.textContent = `Current Stage: ${currentStage.title} (${currentStage.subtitle || currentStage.state})`;
-        if (stageDetailsEl) stageDetailsEl.textContent = currentStage.details || 'Awaiting procedural actions.';
-    }
+    if (highlightBox) highlightBox.style.display = 'block';
+    if (stageNameEl) stageNameEl.textContent = `Current Status: ${currentStatus}`;
+    if (stageDetailsEl) stageDetailsEl.textContent = progress.lifecycle_description || 'Complaint workflow status.';
 
-    // History Timeline
     const historyEvents = progress.history || [];
     if (historyCountEl) historyCountEl.textContent = historyEvents.length;
     if (historyTimelineEl) {
@@ -950,9 +926,9 @@ function renderStatusTracker(progress) {
                                 <span class="history-event-date">${escapeHtml(dateStr)}</span>
                             </div>
                             <div class="history-event-details">
-                                <span class="status-pill ${escapeHtml(badgeClass)}" style="font-size:0.72rem; padding: 2px 7px; margin-right: 6px;">${escapeHtml(evt.badge || evt.category)}</span>
+                                <span class="status-pill ${escapeHtml(badgeClass)}" style="font-size:0.72rem; padding:2px 7px; margin-right:6px;">${escapeHtml(evt.badge || evt.category)}</span>
                                 <span>${escapeHtml(evt.details || '')}</span>
-                                ${evt.actor ? `<span style="color:#94a3b8; font-size:0.75rem; margin-left: 6px;">· Recorded by ${escapeHtml(evt.actor)}</span>` : ''}
+                                ${evt.actor ? `<span style="color:#94a3b8; font-size:0.75rem; margin-left:6px;">· Recorded by ${escapeHtml(evt.actor)}</span>` : ''}
                             </div>
                         </div>
                     </div>
@@ -961,8 +937,6 @@ function renderStatusTracker(progress) {
         }
     }
 }
-
-
 
 function handleAddParty(e) {
     e.preventDefault();
@@ -1612,3 +1586,19 @@ window.initAllPartyComboboxes = function() {
     });
 };
 
+
+// AGAP_UNIFIED_SYNC_COMPLAINTS
+window.addEventListener('agap:data-changed', async (event) => {
+    const changed = event.detail?.modules || [];
+    if (!changed.some((name) => ['complaints', 'cases', 'assignments', 'pangkat', 'hearings', 'deadlines', 'history'].includes(name))) {
+        return;
+    }
+    const complaintId = new URLSearchParams(window.location.search).get('id');
+    if (!complaintId || document.body.dataset.complaintSyncRefreshing === '1') return;
+    document.body.dataset.complaintSyncRefreshing = '1';
+    try {
+        await loadComplaintDetails();
+    } finally {
+        window.setTimeout(() => delete document.body.dataset.complaintSyncRefreshing, 400);
+    }
+});

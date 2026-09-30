@@ -1,308 +1,878 @@
-const gpsApi = async (url, options = {}) => {
-    let fetchUrl = url;
-    if (!options.method || options.method.toUpperCase() === 'GET') {
-        const sep = fetchUrl.includes('?') ? '&' : '?';
-        fetchUrl = `${fetchUrl}${sep}_t=${Date.now()}`;
-    }
-    const fetchOptions = {
-        cache: 'no-store',
-        ...options,
-        headers: {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache',
-            ...(options.headers || {})
-        }
-    };
-    const response = await fetch(fetchUrl, fetchOptions);
-    const data = await response.json().catch(() => ({ success: false, message: 'Invalid server response.' }));
-    if (!response.ok || data.success === false) throw new Error(data.message || 'Request failed.');
-    return data;
-};
+const proofApiUrl = '../../../backend/api/gps/proof-service.php';
 
-const escapeGpsHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, character => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#039;', '"': '&quot;'
-})[character]);
-
-const formatDateTime = (value) => value
-    ? new Date(value.replace(' ', 'T')).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
-    : '—';
-
-const setGpsMessage = (id, message, success = false) => {
-    const box = document.getElementById(id);
-    if (!box) return;
-    box.textContent = message;
-    box.className = message ? `alert ${success ? 'alert-success' : 'alert-error'}` : '';
-};
-
-document.addEventListener('DOMContentLoaded', () => {
-    if (document.getElementById('proofForm')) initProofs();
-});
-
-async function initProofs() {
-    const select = document.getElementById('proofCaseId');
-    const servedDateInput = document.getElementById('servedDate');
-    if (servedDateInput) {
-        servedDateInput.value = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-    }
-
-    // Check for query parameters (?case_id=X&document_id=Y)
-    const urlParams = new URLSearchParams(window.location.search);
-    const preselectedCaseId = urlParams.get('case_id');
-    const preselectedDocId = urlParams.get('document_id');
-
-    await loadDefaultLuponClerk();
-    await loadSummonsNotices(null);
-
-    // Load cases
-    try {
-        const result = await gpsApi('../../../backend/api/gps/proof-service.php');
-        select.replaceChildren(new Option('Select a case', ''));
-        (result.data || []).forEach(item => {
-            const opt = new Option(`${item.case_number} — ${item.complaint_title}`, item.case_id);
-            select.add(opt);
-        });
-
-        if (preselectedCaseId) {
-            select.value = preselectedCaseId;
-            if (select.value) {
-                await onCaseSelected(preselectedCaseId, preselectedDocId);
-            }
-        }
-    } catch (error) {
-        setGpsMessage('proofMessage', error.message);
-    }
-
-    select.addEventListener('change', async () => {
-        const cid = select.value;
-        await onCaseSelected(cid);
-    });
-
-    document.getElementById('proofForm').addEventListener('submit', async event => {
-        event.preventDefault();
-        const form = event.currentTarget;
-        const selectedCaseId = select.value;
-        const currentDocId = document.getElementById('proofDocumentId')?.value;
-        const submitBtn = form.querySelector('button[type="submit"]');
-        if (submitBtn) submitBtn.disabled = true;
-
-        try {
-            const formData = new FormData(form);
-            const docSelect = document.getElementById('proofDocumentId');
-            if (docSelect && docSelect.value && !formData.get('document_id')) {
-                formData.set('document_id', docSelect.value);
-            }
-            if (select && select.value && !formData.get('case_id')) {
-                formData.set('case_id', select.value);
-            }
-
-            const result = await gpsApi('../../../backend/api/gps/proof-service.php', {
-                method: 'POST',
-                body: formData
-            });
-
-            const successMsg = result.message || 'Proof of service recorded successfully.';
-            setGpsMessage('proofMessage', successMsg, true);
-            window.agapNotify?.(successMsg, 'success');
-
-            // Reset form input values
-            form.reset();
-
-            // Re-select active case and reset date to now
-            select.value = selectedCaseId;
-            if (servedDateInput) {
-                servedDateInput.value = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-            }
-
-            // Immediately auto-refresh service documents, service history table, and case summary
-            await loadServiceDocuments(selectedCaseId, currentDocId);
-            await loadProofs(selectedCaseId);
-            await loadSummonsNotices(selectedCaseId);
-            await loadCaseSummary(selectedCaseId);
-        } catch (error) {
-            setGpsMessage('proofMessage', error.message);
-            window.agapNotify?.(error.message, 'error');
-        } finally {
-            if (submitBtn) submitBtn.disabled = false;
-        }
-    });
+function escapeGpsHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 
-async function onCaseSelected(caseId, targetDocId = null) {
-    if (!caseId) {
-        document.getElementById('caseSummaryCard').style.display = 'none';
-        document.getElementById('backLink').style.display = 'none';
-        await loadServiceDocuments(null);
-        await loadProofs(null);
-        await loadSummonsNotices(null);
-        setServiceDetailsEnabled(false);
+async function gpsApi(url) {
+    const separator = url.includes('?') ? '&' : '?';
+
+    const response = await fetch(
+        `${url}${separator}_t=${Date.now()}`,
+        {
+            method: 'GET',
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: {
+                Accept: 'application/json'
+            }
+        }
+    );
+
+    let data;
+
+    try {
+        data = await response.json();
+    } catch (error) {
+        throw new Error(
+            'The server returned an invalid response.'
+        );
+    }
+
+    if (!response.ok || data.success === false) {
+        throw new Error(
+            data.message ||
+            'Unable to load proof-of-service details.'
+        );
+    }
+
+    return data;
+}
+
+function setGpsMessage(message = '', type = 'error') {
+    const target =
+        document.getElementById('proofMessage');
+
+    if (!target) {
         return;
     }
 
-    await loadCaseSummary(caseId);
-    await loadServiceDocuments(caseId, targetDocId);
-    await loadProofs(caseId);
-    await loadSummonsNotices(caseId);
+    target.textContent = message;
+
+    target.className = message
+        ? `proof-message is-visible ${
+            type === 'success'
+                ? 'is-success'
+                : 'is-error'
+        }`
+        : 'proof-message';
+
+    if (
+        message &&
+        typeof window.agapNotify === 'function'
+    ) {
+        window.agapNotify(
+            message,
+            type === 'success'
+                ? 'success'
+                : 'error',
+            'Proof of Service'
+        );
+    }
 }
 
-function setServiceDetailsEnabled(enabled) {
-    const details = document.getElementById('serviceDetails');
-    if (details) details.disabled = !enabled;
+function formatDateTime(value) {
+    if (!value) {
+        return 'Not recorded';
+    }
+
+    const normalized = String(value).includes('T')
+        ? String(value)
+        : String(value).replace(' ', 'T');
+
+    const date = new Date(normalized);
+
+    if (Number.isNaN(date.getTime())) {
+        return String(value);
+    }
+
+    return new Intl.DateTimeFormat('en-PH', {
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit',
+        hour: 'numeric',
+        minute: '2-digit'
+    }).format(date);
+}
+
+function serviceResultClass(result) {
+    const normalized = String(
+        result || ''
+    ).toLowerCase();
+
+    if (normalized === 'served') {
+        return 'badge-served';
+    }
+
+    if (normalized === 'not served') {
+        return 'badge-not-served';
+    }
+
+    if (normalized === 'refused') {
+        return 'badge-refused';
+    }
+
+    if (
+        normalized === 'respondent not found' ||
+        normalized === 'address problem'
+    ) {
+        return 'badge-warning';
+    }
+
+    return 'badge-other';
+}
+
+function serviceStatusClass(status) {
+    const normalized = String(
+        status || ''
+    ).toLowerCase();
+
+    if (normalized === 'served') {
+        return 'badge-served';
+    }
+
+    if (normalized === 'service failed') {
+        return 'badge-not-served';
+    }
+
+    if (normalized === 'for service') {
+        return 'badge-warning';
+    }
+
+    return 'badge-other';
+}
+
+function setEmptyState(
+    tableId,
+    colspan,
+    message
+) {
+    const table =
+        document.getElementById(tableId);
+
+    if (!table) {
+        return;
+    }
+
+    table.innerHTML = `
+        <tr>
+            <td
+                colspan="${colspan}"
+                class="empty-state"
+            >
+                ${escapeGpsHtml(message)}
+            </td>
+        </tr>
+    `;
+}
+
+function pluralize(
+    count,
+    singular,
+    plural = `${singular}s`
+) {
+    return `${count} ${
+        count === 1 ? singular : plural
+    }`;
+}
+
+function updateCounts(
+    noticeCount = 0,
+    historyCount = 0
+) {
+    const notices =
+        document.getElementById('noticeCount');
+
+    const history =
+        document.getElementById('historyCount');
+
+    if (notices) {
+        notices.textContent = pluralize(
+            noticeCount,
+            'notice'
+        );
+    }
+
+    if (history) {
+        history.textContent = pluralize(
+            historyCount,
+            'attempt'
+        );
+    }
+}
+
+function resetCaseView() {
+    const summary =
+        document.getElementById(
+            'caseSummaryCard'
+        );
+
+    const backLink =
+        document.getElementById('backLink');
+
+    if (summary) {
+        summary.hidden = true;
+    }
+
+    if (backLink) {
+        backLink.hidden = true;
+    }
+
+    updateCounts(0, 0);
+
+    setEmptyState(
+        'summonsNoticesTable',
+        5,
+        'Select a case to view its summons notices.'
+    );
+
+    setEmptyState(
+        'proofHistoryTable',
+        7,
+        'Select a case to view its service history.'
+    );
+}
+
+async function loadCases(
+    preselectedCaseId = ''
+) {
+    const select =
+        document.getElementById('proofCaseId');
+
+    if (!select) {
+        return;
+    }
+
+    const result =
+        await gpsApi(proofApiUrl);
+
+    const cases =
+        Array.isArray(result.data)
+            ? result.data
+            : [];
+
+    select.innerHTML =
+        '<option value="">Select a case</option>' +
+        cases
+            .map((item) => {
+                const caseNumber =
+                    item.case_number ||
+                    `Case ${item.case_id}`;
+
+                const complaintTitle =
+                    item.complaint_title ||
+                    'Untitled complaint';
+
+                const label =
+                    `${caseNumber} - ${complaintTitle}`;
+
+                return `
+                    <option value="${Number(item.case_id)}">
+                        ${escapeGpsHtml(label)}
+                    </option>
+                `;
+            })
+            .join('');
+
+    const validPreselectedCase =
+        preselectedCaseId &&
+        cases.some(
+            (item) =>
+                Number(item.case_id) ===
+                Number(preselectedCaseId)
+        );
+
+    if (validPreselectedCase) {
+        select.value =
+            String(preselectedCaseId);
+
+        await loadCaseView(
+            preselectedCaseId
+        );
+    }
 }
 
 async function loadCaseSummary(caseId) {
-    const card = document.getElementById('caseSummaryCard');
-    const backLink = document.getElementById('backLink');
-    if (!caseId) {
-        if (card) card.style.display = 'none';
-        if (backLink) backLink.style.display = 'none';
-        return;
+    const result = await gpsApi(
+        `${proofApiUrl}?case_id=${
+            encodeURIComponent(caseId)
+        }&mode=summary`
+    );
+
+    const data = result.data || {};
+
+    const caseNumberElement =
+        document.getElementById(
+            'summaryCaseNumber'
+        );
+
+    const complaintNumberElement =
+        document.getElementById(
+            'summaryComplaintNumber'
+        );
+
+    const complaintTitleElement =
+        document.getElementById(
+            'summaryComplaintTitle'
+        );
+
+    const complainantsElement =
+        document.getElementById(
+            'summaryComplainants'
+        );
+
+    const respondentsElement =
+        document.getElementById(
+            'summaryRespondents'
+        );
+
+    const caseStatusElement =
+        document.getElementById(
+            'summaryCaseStatus'
+        );
+
+    const complaintStatusElement =
+        document.getElementById(
+            'summaryComplaintStatus'
+        );
+
+    if (caseNumberElement) {
+        caseNumberElement.textContent =
+            data.case_number
+                ? `Case ${data.case_number}`
+                : `Case ${caseId}`;
     }
 
-    try {
-        const result = await gpsApi(`../../../backend/api/gps/proof-service.php?case_id=${encodeURIComponent(caseId)}&mode=summary`);
-        const data = result.data;
-        if (!data) return;
+    if (complaintNumberElement) {
+        complaintNumberElement.textContent =
+            data.complaint_number ||
+            `Complaint ${data.complaint_id || ''}`;
+    }
 
-        document.getElementById('summaryCaseNumber').textContent = data.case_number ? `Case #${data.case_number}` : `Case #${caseId}`;
-        document.getElementById('summaryComplaintNumber').textContent = data.complaint_number || `CMP-${data.complaint_id}`;
-        document.getElementById('summaryComplaintTitle').textContent = data.complaint_title || 'Untitled Complaint';
-        document.getElementById('summaryComplainants').textContent = (data.complainants && data.complainants.length) ? data.complainants.join(', ') : 'None listed';
-        document.getElementById('summaryRespondents').textContent = (data.respondents && data.respondents.length) ? data.respondents.join(', ') : 'None listed';
+    if (complaintTitleElement) {
+        complaintTitleElement.textContent =
+            data.complaint_title ||
+            'Untitled Complaint';
+    }
 
-        if (card) card.style.display = 'block';
+    if (complainantsElement) {
+        complainantsElement.textContent =
+            Array.isArray(data.complainants) &&
+            data.complainants.length
+                ? data.complainants.join(', ')
+                : 'None listed';
+    }
 
-        if (backLink && data.complaint_id) {
-            backLink.href = `../complaints/complaint-details.php?id=${encodeURIComponent(data.complaint_id)}`;
-            document.getElementById('backLinkLabel').textContent = `Back to Complaint #${data.complaint_number || data.complaint_id}`;
-            backLink.style.display = 'inline-flex';
+    if (respondentsElement) {
+        respondentsElement.textContent =
+            Array.isArray(data.respondents) &&
+            data.respondents.length
+                ? data.respondents.join(', ')
+                : 'None listed';
+    }
+
+    if (caseStatusElement) {
+        caseStatusElement.textContent =
+            data.case_status ||
+            'Not available';
+    }
+
+    if (complaintStatusElement) {
+        complaintStatusElement.textContent =
+            data.complaint_status ||
+            'Not available';
+    }
+
+    const complaintId =
+        Number(data.complaint_id) || 0;
+
+    const complaintLink =
+        document.getElementById(
+            'viewComplaintLink'
+        );
+
+    const backLink =
+        document.getElementById(
+            'backLink'
+        );
+
+    if (complaintId) {
+        const complaintUrl =
+            `../complaints/complaint-details.php` +
+            `?id=${complaintId}`;
+
+        if (complaintLink) {
+            complaintLink.href =
+                complaintUrl;
         }
-    } catch (_) {
-        if (card) card.style.display = 'none';
-    }
-}
 
-async function loadDefaultLuponClerk() {
-    const input = document.getElementById('servedByName');
-    if (!input) return;
-    try {
-        const result = await gpsApi('../../../backend/api/gps/proof-service.php?mode=default-clerk');
-        input.value = `${result.data.full_name} (Lupon Clerk)`;
-    } catch (error) { input.value = 'Lupon Clerk unavailable'; setGpsMessage('proofMessage', error.message); }
-}
+        if (backLink) {
+            backLink.href =
+                complaintUrl;
 
-async function loadServiceDocuments(caseId, targetDocId = null) {
-    const select = document.getElementById('proofDocumentId');
-    if (!select) return;
-    select.replaceChildren(new Option(caseId ? 'Loading documents…' : 'Select a case first', ''));
-    select.disabled = !caseId;
-    if (!caseId) return;
-
-    try {
-        const result = await gpsApi(`../../../backend/api/gps/proof-service.php?case_id=${encodeURIComponent(caseId)}&mode=documents`);
-        const documents = result.data || [];
-        select.replaceChildren(new Option(documents.length ? 'Select a summons / generated document' : 'No documents available for service', ''));
-
-        documents.forEach(item => {
-            const statusLabel = item.service_status ? `[${item.service_status}]` : '';
-            const opt = new Option(`${item.template_name} ${statusLabel} — Issued ${item.generated_at ? item.generated_at.slice(0, 10) : ''}`, item.document_id);
-            if (targetDocId && String(item.document_id) === String(targetDocId)) {
-                opt.selected = true;
-            }
-            select.add(opt);
-        });
-
-        select.disabled = documents.length === 0;
-
-        // Auto-select if only 1 document or target specified
-        if (targetDocId) {
-            select.value = targetDocId;
-        } else if (documents.length === 1) {
-            select.selectedIndex = 1;
+            backLink.hidden = false;
         }
-        setServiceDetailsEnabled(Boolean(select.value));
-        select.onchange = () => setServiceDetailsEnabled(Boolean(select.value));
-    } catch (error) {
-        select.replaceChildren(new Option(error.message, ''));
-        select.disabled = true;
-        setServiceDetailsEnabled(false);
-    }
-}
-
-async function loadProofs(caseId) {
-    const table = document.getElementById('proofsTable');
-    if (!table) return;
-    if (!caseId) {
-        table.innerHTML = '<tr><td colspan="6" class="empty-state" style="text-align: center; padding: 24px; color: #64748b;">Select a case to view service history.</td></tr>';
-        return;
-    }
-    try {
-        const result = await gpsApi(`../../../backend/api/gps/proof-service.php?case_id=${encodeURIComponent(caseId)}`);
-        const rows = result.data || [];
-        if (!rows.length) {
-            table.innerHTML = '<tr><td colspan="6" class="empty-state" style="text-align: center; padding: 24px; color: #64748b;">No summons service attempts recorded for this case yet.</td></tr>';
-            return;
+    } else {
+        if (complaintLink) {
+            complaintLink.href =
+                '../complaints/complaint-list.php';
         }
 
-        table.innerHTML = rows.map((item, idx) => {
-            const res = item.service_result || 'Served';
-            let badgeClass = 'badge-other';
-            let badgeIcon = '●';
-            if (res === 'Served') {
-                badgeClass = 'badge-served';
-                badgeIcon = '✓';
-            } else if (res === 'Not Served') {
-                badgeClass = 'badge-not-served';
-                badgeIcon = '✕';
-            } else if (res === 'Refused') {
-                badgeClass = 'badge-refused';
-                badgeIcon = '⚠';
-            } else if (res === 'Respondent Not Found' || res === 'Address Problem') {
-                badgeClass = 'badge-warning';
-                badgeIcon = '!';
-            }
+        if (backLink) {
+            backLink.hidden = true;
+        }
+    }
 
-            const imageHtml = item.image_path
-                ? `<a target="_blank" rel="noopener" href="../../../backend/api/gps/proof-image.php?id=${Number(item.proof_id)}"><img class="proof-image" src="../../../backend/api/gps/proof-image.php?id=${Number(item.proof_id)}" alt="Proof photo"></a>`
-                : '<span style="color:#94a3b8; font-size:0.85rem;">None</span>';
+    const summaryCard =
+        document.getElementById(
+            'caseSummaryCard'
+        );
 
-            const docName = item.template_name || 'Summons Document';
-
-            return `
-                <tr>
-                    <td><strong>${formatDateTime(item.served_date)}</strong><br><small style="color:#64748b;">Attempt #${rows.length - idx}</small></td>
-                    <td>${escapeGpsHtml(docName)}</td>
-                    <td>${escapeGpsHtml(item.served_by_name || 'Barangay Server')}</td>
-                    <td><span class="service-result-badge ${badgeClass}">${badgeIcon} ${escapeGpsHtml(res)}</span></td>
-                    <td>${escapeGpsHtml(item.remarks || '—')}</td>
-                    <td>${imageHtml}</td>
-                </tr>
-            `;
-        }).join('');
-    } catch (error) {
-        table.innerHTML = `<tr><td colspan="6" class="empty-state" style="color: #ef4444; padding: 16px;">${escapeGpsHtml(error.message)}</td></tr>`;
+    if (summaryCard) {
+        summaryCard.hidden = false;
     }
 }
 
 async function loadSummonsNotices(caseId) {
-    const table = document.getElementById('summonsNoticesTable');
-    if (!table) return;
-    if (!caseId) { table.innerHTML = '<tr><td colspan="5" class="empty-state">Select a case to view its summons notices.</td></tr>'; return; }
-    try {
-        const result = await gpsApi(`../../../backend/api/gps/proof-service.php?case_id=${encodeURIComponent(caseId)}&mode=notices`);
-        const rows = result.data || [];
-        table.innerHTML = rows.length ? rows.map(item => `
-            <tr><td>${formatDateTime(item.generated_at)}</td><td>${escapeGpsHtml(item.template_name)}</td><td>${escapeGpsHtml(item.service_status)}</td><td>${Number(item.attempt_count) || 0}${item.last_attempt_at ? `<br><small>${formatDateTime(item.last_attempt_at)}</small>` : ''}</td><td><button type="button" class="btn-action-view" data-record-service="${Number(item.document_id)}">Record service</button>${item.service_status === 'Service Failed' ? ` <button type="button" class="btn-action-edit" data-reopen-notice="${Number(item.document_id)}">Reopen</button>` : ''}</td></tr>`).join('') : '<tr><td colspan="5" class="empty-state">No summons notices have been issued for this case.</td></tr>';
-        table.querySelectorAll('[data-record-service]').forEach(button => button.addEventListener('click', () => {
-            const select = document.getElementById('proofDocumentId');
-            if (select) { select.value = button.dataset.recordService; select.scrollIntoView({ behavior: 'smooth', block: 'center' }); select.focus(); }
-        }));
-        table.querySelectorAll('[data-reopen-notice]').forEach(button => button.addEventListener('click', async () => {
-            if (!window.confirm('Reopen this failed notice for a new service attempt? The earlier proof record will remain unchanged.')) return;
-            try {
-                const data = new FormData(); data.set('case_id', caseId); data.set('document_id', button.dataset.reopenNotice);
-                const updated = await gpsApi('../../../backend/api/gps/reopen-summons.php', { method: 'POST', body: data });
-                setGpsMessage('proofMessage', updated.message, true); await loadSummonsNotices(caseId); await loadServiceDocuments(caseId, button.dataset.reopenNotice);
-            } catch (error) { setGpsMessage('proofMessage', error.message); }
-        }));
-    } catch (error) { table.innerHTML = `<tr><td colspan="5" class="empty-state">${escapeGpsHtml(error.message)}</td></tr>`; }
+    const table =
+        document.getElementById(
+            'summonsNoticesTable'
+        );
+
+    const result = await gpsApi(
+        `${proofApiUrl}?case_id=${
+            encodeURIComponent(caseId)
+        }&mode=notices`
+    );
+
+    const rows =
+        Array.isArray(result.data)
+            ? result.data
+            : [];
+
+    const noticeCount =
+        document.getElementById(
+            'noticeCount'
+        );
+
+    if (noticeCount) {
+        noticeCount.textContent =
+            pluralize(
+                rows.length,
+                'notice'
+            );
+    }
+
+    if (!rows.length) {
+        setEmptyState(
+            'summonsNoticesTable',
+            5,
+            'No summons notices have been issued for this case.'
+        );
+
+        return;
+    }
+
+    if (!table) {
+        return;
+    }
+
+    table.innerHTML = rows
+        .map((item) => {
+            const documentId =
+                Number(item.document_id) || 0;
+
+            const attempts =
+                Number(item.attempt_count) || 0;
+
+            const status =
+                item.service_status ||
+                'Generated';
+
+            const lastAttempt =
+                item.last_attempt_at
+                    ? `
+                        <span class="table-subtext">
+                            Last:
+                            ${
+                                escapeGpsHtml(
+                                    formatDateTime(
+                                        item.last_attempt_at
+                                    )
+                                )
+                            }
+                        </span>
+                    `
+                    : `
+                        <span class="table-subtext">
+                            No recorded attempt
+                        </span>
+                    `;
+
+            const documentLink =
+                documentId > 0
+                    ? `
+                        <a
+                            class="btn-table-link"
+                            href="../../../backend/api/documents/download.php?id=${documentId}"
+                            target="_blank"
+                            rel="noopener"
+                        >
+                            View PDF
+                        </a>
+                    `
+                    : `
+                        <span class="muted-value">
+                            Unavailable
+                        </span>
+                    `;
+
+            return `
+                <tr>
+                    <td>
+                        ${
+                            escapeGpsHtml(
+                                formatDateTime(
+                                    item.generated_at
+                                )
+                            )
+                        }
+                    </td>
+
+                    <td>
+                        <strong>
+                            ${
+                                escapeGpsHtml(
+                                    item.template_name ||
+                                    'Summons Notice'
+                                )
+                            }
+                        </strong>
+
+                        <span class="table-subtext">
+                            ${
+                                documentId > 0
+                                    ? `Document #${documentId}`
+                                    : 'Document ID unavailable'
+                            }
+                        </span>
+                    </td>
+
+                    <td>
+                        <span
+                            class="service-result-badge ${
+                                serviceStatusClass(status)
+                            }"
+                        >
+                            ${escapeGpsHtml(status)}
+                        </span>
+                    </td>
+
+                    <td>
+                        <strong>${attempts}</strong>
+                        ${lastAttempt}
+                    </td>
+
+                    <td>
+                        ${documentLink}
+                    </td>
+                </tr>
+            `;
+        })
+        .join('');
 }
+
+async function loadProofs(caseId) {
+    const table =
+        document.getElementById(
+            'proofHistoryTable'
+        );
+
+    const result = await gpsApi(
+        `${proofApiUrl}?case_id=${
+            encodeURIComponent(caseId)
+        }`
+    );
+
+    const rows =
+        Array.isArray(result.data)
+            ? result.data
+            : [];
+
+    const historyCount =
+        document.getElementById(
+            'historyCount'
+        );
+
+    if (historyCount) {
+        historyCount.textContent =
+            pluralize(
+                rows.length,
+                'attempt'
+            );
+    }
+
+    if (!rows.length) {
+        setEmptyState(
+            'proofHistoryTable',
+            7,
+            'No proof-of-service attempts have been recorded for this case.'
+        );
+
+        return;
+    }
+
+    if (!table) {
+        return;
+    }
+
+    table.innerHTML = rows
+        .map((item, index) => {
+            const proofId =
+                Number(item.proof_id) || 0;
+
+            const attemptNumber =
+                rows.length - index;
+
+            const resultLabel =
+                item.service_result ||
+                'Not recorded';
+
+            const documentId =
+                Number(item.document_id) || 0;
+
+            const documentLabel =
+                documentId > 0
+                    ? `Document #${documentId}`
+                    : 'Document not recorded';
+
+            const proofLink =
+                item.image_path &&
+                proofId > 0
+                    ? `
+                        <a
+                            class="proof-image-link"
+                            href="../../../backend/api/gps/proof-image.php?id=${proofId}"
+                            target="_blank"
+                            rel="noopener"
+                        >
+                            <img
+                                class="proof-image"
+                                src="../../../backend/api/gps/proof-image.php?id=${proofId}"
+                                alt="Proof image for attempt ${attemptNumber}"
+                                loading="lazy"
+                            >
+
+                            <span>Open image</span>
+                        </a>
+                    `
+                    : `
+                        <span class="muted-value">
+                            No image
+                        </span>
+                    `;
+
+            const remarks =
+                item.remarks
+                    ? escapeGpsHtml(
+                        item.remarks
+                    )
+                    : `
+                        <span class="muted-value">
+                            No remarks
+                        </span>
+                    `;
+
+            return `
+                <tr>
+                    <td>
+                        <span class="attempt-chip">
+                            #${attemptNumber}
+                        </span>
+                    </td>
+
+                    <td>
+                        <strong>
+                            ${
+                                escapeGpsHtml(
+                                    item.template_name ||
+                                    'Summons Notice'
+                                )
+                            }
+                        </strong>
+
+                        <span class="table-subtext">
+                            ${escapeGpsHtml(documentLabel)}
+                        </span>
+                    </td>
+
+                    <td>
+                        ${
+                            escapeGpsHtml(
+                                formatDateTime(
+                                    item.served_date
+                                )
+                            )
+                        }
+                    </td>
+
+                    <td>
+                        ${
+                            escapeGpsHtml(
+                                item.served_by_name ||
+                                'Not recorded'
+                            )
+                        }
+                    </td>
+
+                    <td>
+                        <span
+                            class="service-result-badge ${
+                                serviceResultClass(
+                                    resultLabel
+                                )
+                            }"
+                        >
+                            ${
+                                escapeGpsHtml(
+                                    resultLabel
+                                )
+                            }
+                        </span>
+                    </td>
+
+                    <td class="remarks-cell">
+                        ${remarks}
+                    </td>
+
+                    <td>
+                        ${proofLink}
+                    </td>
+                </tr>
+            `;
+        })
+        .join('');
+}
+
+async function loadCaseView(caseId) {
+    if (!caseId) {
+        resetCaseView();
+
+        const resetUrl =
+            new URL(
+                window.location.href
+            );
+
+        resetUrl.searchParams.delete(
+            'case_id'
+        );
+
+        window.history.replaceState(
+            {},
+            '',
+            resetUrl
+        );
+
+        return;
+    }
+
+    setGpsMessage('');
+
+    const summaryCard =
+        document.getElementById(
+            'caseSummaryCard'
+        );
+
+    if (summaryCard) {
+        summaryCard.hidden = true;
+    }
+
+    setEmptyState(
+        'summonsNoticesTable',
+        5,
+        'Loading summons notices...'
+    );
+
+    setEmptyState(
+        'proofHistoryTable',
+        7,
+        'Loading service history...'
+    );
+
+    try {
+        await Promise.all([
+            loadCaseSummary(caseId),
+            loadSummonsNotices(caseId),
+            loadProofs(caseId)
+        ]);
+
+        const url =
+            new URL(
+                window.location.href
+            );
+
+        url.searchParams.set(
+            'case_id',
+            caseId
+        );
+
+        window.history.replaceState(
+            {},
+            '',
+            url
+        );
+    } catch (error) {
+        resetCaseView();
+
+        setGpsMessage(
+            error.message ||
+            'Unable to load the selected case.'
+        );
+    }
+}
+
+document.addEventListener(
+    'DOMContentLoaded',
+    async () => {
+        const select =
+            document.getElementById(
+                'proofCaseId'
+            );
+
+        if (!select) {
+            return;
+        }
+
+        const requestedCaseId =
+            new URLSearchParams(
+                window.location.search
+            ).get('case_id') || '';
+
+        select.addEventListener(
+            'change',
+            () => {
+                loadCaseView(
+                    select.value
+                );
+            }
+        );
+
+        try {
+            await loadCases(
+                requestedCaseId
+            );
+        } catch (error) {
+            resetCaseView();
+
+            setGpsMessage(
+                error.message ||
+                'Unable to load available cases.'
+            );
+        }
+    }
+);

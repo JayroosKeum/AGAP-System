@@ -1317,7 +1317,7 @@ function evaluateLiveAttendanceSituation() {
             <li>Parties are not barred from filing in the future, but the current docket is closed.</li>
         `;
         recommendationTextEl.textContent = 'Dismiss complaint without prejudice and archive proceedings. Parties must re-file to pursue claims.';
-        shortcutsEl.innerHTML = caseId ? `<a href="../cases/case-details.php?id=${encodeURIComponent(caseId)}" class="btn-att-action btn-att-action-danger" target="_blank">Manage Case Dismissal &rarr;</a>` : '';
+        shortcutsEl.innerHTML = caseId ? `<a href="../cases/case-list.php" class="btn-att-action btn-att-action-danger" target="_blank">Open Cases &amp; Assignments &rarr;</a>` : '';
         return;
     }
 
@@ -1334,7 +1334,7 @@ function evaluateLiveAttendanceSituation() {
             <li>Respondent is entitled to a Certificate to Bar Action (KP Form 21) upon authorized human review.</li>
         `;
         recommendationTextEl.textContent = 'Issue KP Form 18 Notice. Following explanation hearing, review dismissal and Certificate to Bar Action.';
-        shortcutsEl.innerHTML = caseId ? `<a href="../cases/case-details.php?id=${encodeURIComponent(caseId)}" class="btn-att-action btn-att-action-danger" target="_blank">Process Dismissal &amp; Barred Action &rarr;</a>` : '';
+        shortcutsEl.innerHTML = caseId ? `<a href="../cases/case-list.php" class="btn-att-action btn-att-action-danger" target="_blank">Open Cases &amp; Assignments &rarr;</a>` : '';
         return;
     }
 
@@ -1384,7 +1384,7 @@ function evaluateLiveAttendanceSituation() {
             recommendationTextEl.textContent = 'Review and approve KP Form 22 (Bar Counterclaim) and issue CFA (KP Form 20) to Complainant.';
             shortcutsEl.innerHTML = `
                 ${caseId ? `<a href="../documents/cfa.php?case_id=${encodeURIComponent(caseId)}" class="btn-att-action btn-att-action-danger" target="_blank">Generate Certificate to File Action (CFA) &rarr;</a>` : ''}
-                ${caseId ? `<a href="../cases/case-details.php?id=${encodeURIComponent(caseId)}" class="btn-att-action btn-att-action-secondary" target="_blank">View Case &amp; Certify Contempt</a>` : ''}
+                ${caseId ? `<a href="../cases/case-list.php" class="btn-att-action btn-att-action-secondary" target="_blank">Open Cases &amp; Assignments</a>` : ''}
             `;
         }
         return;
@@ -1404,7 +1404,7 @@ function evaluateLiveAttendanceSituation() {
         recommendationTextEl.textContent = 'Reschedule hearing to the next available date. Log justified suspension on mediation clock if needed.';
         shortcutsEl.innerHTML = `
             ${canManageHearings ? `<button type="button" class="btn-att-action btn-att-action-primary" onclick="closeHearingAttendanceModal(); editHearing(${hearingId});">Reschedule Hearing</button>` : ''}
-            ${caseId ? `<a href="../cases/case-details.php?id=${encodeURIComponent(caseId)}" class="btn-att-action btn-att-action-secondary" target="_blank">Case Workspace &amp; Pause Clock &rarr;</a>` : ''}
+            ${caseId ? `<a href="../cases/case-list.php" class="btn-att-action btn-att-action-secondary" target="_blank">Open Cases &amp; Assignments &rarr;</a>` : ''}
         `;
         return;
     }
@@ -1420,7 +1420,7 @@ function evaluateLiveAttendanceSituation() {
             <li>Session is authorized to proceed or be briefly adjourned to accommodate dialogue.</li>
         `;
         recommendationTextEl.textContent = 'Continue mediation session. Remind parties of prompt punctuality.';
-        shortcutsEl.innerHTML = caseId ? `<a href="../cases/case-details.php?id=${encodeURIComponent(caseId)}" class="btn-att-action btn-att-action-secondary" target="_blank">View Case Workspace &rarr;</a>` : '';
+        shortcutsEl.innerHTML = caseId ? `<a href="../cases/case-list.php" class="btn-att-action btn-att-action-secondary" target="_blank">Open Cases &amp; Assignments &rarr;</a>` : '';
         return;
     }
 
@@ -1545,4 +1545,26 @@ document.addEventListener('DOMContentLoaded', () => {
             await Promise.all([loadHearings(), loadCombinedRecords(currentPage)]);
         } catch (error) { setMessage(error.message); }
     });
+});
+
+
+// AGAP_UNIFIED_SYNC_HEARINGS
+window.addEventListener('agap:data-changed', async (event) => {
+    const changed = event.detail?.modules || [];
+    if (!changed.some((name) => ['complaints', 'cases', 'assignments', 'pangkat', 'hearings', 'deadlines', 'history'].includes(name))) {
+        return;
+    }
+    if (document.body.dataset.hearingSyncRefreshing === '1') return;
+    document.body.dataset.hearingSyncRefreshing = '1';
+    try {
+        await Promise.allSettled([
+            loadHearings(),
+            loadDeadlines(),
+            loadCombinedRecords(currentPage),
+            loadCases(),
+            loadAttendanceKPIs()
+        ]);
+    } finally {
+        window.setTimeout(() => delete document.body.dataset.hearingSyncRefreshing, 400);
+    }
 });

@@ -332,13 +332,6 @@ function renderCaseRow(item) {
             <td class="action-buttons">
                 <button
                     type="button"
-                    onclick="openCaseWorkspace(${caseId})"
-                >
-                    Open Workspace
-                </button>
-
-                <button
-                    type="button"
                     onclick="editCase(${caseId})"
                 >
                     Edit
@@ -528,24 +521,6 @@ function closeEditCaseModal() {
 
 function closeArchiveCaseModal() {
     hideModal('archiveCaseModal');
-}
-
-function openCaseWorkspace(id) {
-    const caseId = Number(id);
-
-    if (!Number.isInteger(caseId) || caseId < 1) {
-        window.agapNotify?.(
-            'A valid case is required.',
-            'error',
-            'Unable to open case'
-        );
-
-        return;
-    }
-
-    window.location.href =
-        'case-details.php?id=' +
-        encodeURIComponent(caseId);
 }
 
 function getCase(id) {
@@ -779,3 +754,22 @@ function openCaseAssignments(caseId) {
 
     window.openCaseAssignments(id);
 }
+
+
+// AGAP_UNIFIED_SYNC_CASES
+window.addEventListener('agap:data-changed', async (event) => {
+    const changed = event.detail?.modules || [];
+    if (!changed.some((name) => ['complaints', 'cases', 'assignments', 'pangkat', 'hearings', 'deadlines', 'history'].includes(name))) {
+        return;
+    }
+    if (document.body.dataset.caseSyncRefreshing === '1') return;
+    document.body.dataset.caseSyncRefreshing = '1';
+    try {
+        const table = document.getElementById('caseTable');
+        const jobs = [loadComplaintsForDocketing()];
+        if (table) jobs.push(loadCaseList(table));
+        await Promise.allSettled(jobs);
+    } finally {
+        window.setTimeout(() => delete document.body.dataset.caseSyncRefreshing, 400);
+    }
+});

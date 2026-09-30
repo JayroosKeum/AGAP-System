@@ -130,6 +130,12 @@ class HearingController
         if (!$existing) {
             return ['success' => false, 'message' => 'Hearing not found.'];
         }
+        if (!empty($existing['is_superseded']) || $this->hearing->isSuperseded($id)) {
+            return [
+                'success' => false,
+                'message' => 'This hearing was superseded by a newer schedule and is permanently locked.'
+            ];
+        }
 
         $data['case_id'] = $existing['case_id'];
         // A schedule may be rescheduled, but its workflow stage cannot be changed by editing it.

@@ -238,9 +238,9 @@ include '../../layouts/header.php';
                     <span id="headerCaseTypeBadge" class="meta-pill type-pill"><?php echo htmlspecialchars($effCaseType); ?></span>
                     <span id="headerCategoryBadge" class="meta-pill category-pill"><?php echo htmlspecialchars($currentCategoryName); ?></span>
                     <?php if (!empty($linkedCase)): ?>
-                        <a id="complaintCaseLink" href="../cases/case-details.php?id=<?php echo (int)$linkedCase['case_id']; ?>" class="meta-pill case-pill" title="View linked case workspace">
+                        <span id="complaintCaseLink" class="meta-pill case-pill">
                             📁 Case #<?php echo htmlspecialchars($linkedCase['case_number'] ?: ('KP-' . str_pad($linkedCase['case_id'], 5, '0', STR_PAD_LEFT))); ?> &rarr;
-                        </a>
+                        </span>
                     <?php endif; ?>
                 </div>
             </div>
@@ -327,9 +327,9 @@ include '../../layouts/header.php';
                                     <span class="detail-info-label">Docketed Case</span>
                                     <span class="detail-info-value">
                                         <?php if (!empty($linkedCase)): ?>
-                                            <a href="../cases/case-details.php?id=<?php echo (int)$linkedCase['case_id']; ?>" class="meta-pill case-pill" style="display:inline-flex;">
+                                            <span class="meta-pill case-pill" style="display:inline-flex;">
                                                 📁 <?php echo htmlspecialchars($linkedCase['case_number'] ?: ('Case #' . $linkedCase['case_id'])); ?> &rarr;
-                                            </a>
+                                            </span>
                                         <?php else: ?>
                                             Not yet docketed
                                         <?php endif; ?>
