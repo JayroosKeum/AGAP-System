@@ -142,7 +142,7 @@ CREATE TABLE complaints (
     narrative LONGTEXT NOT NULL,
     additional_details LONGTEXT NULL,
     review_notes TEXT NULL,
-    status ENUM('Filed', 'Under Review', 'Needs Information', 'Accepted', 'Rejected', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Dismissed', 'CFA Issued', 'Archived') NOT NULL DEFAULT 'Filed',
+    status ENUM('Filed', 'Under Review', 'Needs Information', 'Accepted', 'Rejected', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Dismissed', 'CFA Issued', 'Archived', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT') NOT NULL DEFAULT 'Filed',
     encoded_by INT UNSIGNED NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -206,7 +206,7 @@ CREATE TABLE cases (
     -- Assigned immediately after insert by the model so database-generated IDs remain race-safe.
     case_number VARCHAR(50) NULL,
     case_type ENUM('Civil', 'Criminal') NOT NULL,
-    case_status ENUM('Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Dismissed', 'CFA Issued', 'Archived') NOT NULL DEFAULT 'Docketed',
+    case_status ENUM('Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Dismissed', 'CFA Issued', 'Archived', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT') NOT NULL DEFAULT 'Docketed',
     docket_date DATE NOT NULL,
     archived_date DATE NULL,
     mediation_start_date DATE NULL,
@@ -305,18 +305,68 @@ CREATE TABLE pangkat_members (
 CREATE TABLE hearings (
     hearing_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     case_id INT UNSIGNED NOT NULL,
-    hearing_type ENUM('Initial Hearing', 'Mediation', 'Conciliation', 'Arbitration') NOT NULL,
+    hearing_type ENUM('Initial Hearing', 'Mediation', 'Conciliation', 'Arbitration', 'Show Cause (Complainant)', 'Show Cause (Respondent)') NOT NULL,
     hearing_date DATETIME NOT NULL,
     venue VARCHAR(255) NOT NULL,
     remarks TEXT NULL,
     rescheduled_from_id INT UNSIGNED NULL,
     reschedule_reason TEXT NULL,
+    status ENUM('Scheduled', 'Completed', 'Rescheduled', 'Cancelled') NOT NULL DEFAULT 'Scheduled',
+    complainant_attendance ENUM('Pending', 'Present', 'Absent') NOT NULL DEFAULT 'Pending',
+    respondent_attendance ENUM('Pending', 'Present', 'Absent') NOT NULL DEFAULT 'Pending',
+    attendance_recorded_at DATETIME NULL,
+    attendance_notes TEXT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     KEY idx_hearings_case_id_date (case_id, hearing_date),
     CONSTRAINT fk_hearings_case
         FOREIGN KEY (case_id) REFERENCES cases (case_id) ON DELETE CASCADE,
     CONSTRAINT fk_hearings_rescheduled_from FOREIGN KEY (rescheduled_from_id) REFERENCES hearings (hearing_id) ON DELETE RESTRICT
+) ENGINE=InnoDB;
+
+CREATE TABLE summon_deliveries (
+    delivery_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    hearing_id INT UNSIGNED NOT NULL,
+    party_type ENUM('Complainant', 'Respondent') NOT NULL,
+    resident_id INT UNSIGNED NULL,
+    form_type ENUM('Notice of Hearing', 'Summon', 'KP Form 18', 'KP Form 19') NOT NULL,
+    delivery_status ENUM('Pending', 'Served Personal', 'Served Substituted', 'Served Refused', 'Unserved') NOT NULL DEFAULT 'Pending',
+    served_at DATETIME NULL,
+    served_by INT UNSIGNED NULL,
+    recipient_name VARCHAR(150) NULL,
+    relationship VARCHAR(100) NULL,
+    unserved_reason ENUM('Moved Out', 'Wrong Address', 'No One Home', 'Other') NULL,
+    failure_notes TEXT NULL,
+    remarks TEXT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_hearing_party_form (hearing_id, party_type, form_type),
+    KEY idx_summon_deliveries_hearing_status (hearing_id, delivery_status),
+    KEY idx_summon_deliveries_served_by (served_by),
+    CONSTRAINT fk_summon_deliveries_hearing FOREIGN KEY (hearing_id) REFERENCES hearings (hearing_id) ON DELETE CASCADE,
+    CONSTRAINT fk_summon_deliveries_resident FOREIGN KEY (resident_id) REFERENCES residents (resident_id) ON DELETE SET NULL,
+    CONSTRAINT fk_summon_deliveries_served_by FOREIGN KEY (served_by) REFERENCES users (user_id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE show_cause_evaluations (
+    evaluation_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    hearing_id INT UNSIGNED NOT NULL,
+    case_id INT UNSIGNED NOT NULL,
+    party_type ENUM('Complainant', 'Respondent') NOT NULL,
+    form_type ENUM('KP Form 18', 'KP Form 19') NOT NULL,
+    is_justified TINYINT(1) NOT NULL,
+    justification_category ENUM('Medical Emergency', 'Force Majeure', 'Official Duty', 'Unjustified Absence', 'Willful Refusal', 'Other') NOT NULL,
+    justification_notes TEXT NULL,
+    rescheduled_hearing_id INT UNSIGNED NULL,
+    action_taken ENUM('Rescheduled', 'Barred Action', 'Respondent Default', 'CFA Issued') NOT NULL,
+    evaluated_by INT UNSIGNED NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_show_cause_hearing (hearing_id),
+    KEY idx_show_cause_case (case_id),
+    CONSTRAINT fk_show_cause_hearing FOREIGN KEY (hearing_id) REFERENCES hearings (hearing_id) ON DELETE CASCADE,
+    CONSTRAINT fk_show_cause_case FOREIGN KEY (case_id) REFERENCES cases (case_id) ON DELETE CASCADE,
+    CONSTRAINT fk_show_cause_rescheduled FOREIGN KEY (rescheduled_hearing_id) REFERENCES hearings (hearing_id) ON DELETE SET NULL,
+    CONSTRAINT fk_show_cause_evaluated_by FOREIGN KEY (evaluated_by) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE hearing_attendance (

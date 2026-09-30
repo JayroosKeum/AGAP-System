@@ -287,10 +287,23 @@ class CaseModel
         $hearings = $this->conn->prepare("
             SELECT 
                 h.hearing_id, 
-                h.hearing_type, 
-                h.hearing_date, 
-                h.venue, 
-                CASE WHEN h.hearing_date < NOW() THEN 'Completed' ELSE 'Scheduled' END AS hearing_status,
+                h.hearing_type,
+                h.hearing_date,
+                h.venue,
+                h.status AS hearing_status_code,
+                CASE
+                    WHEN h.status = 'Completed' THEN 'Completed'
+                    WHEN h.status = 'Rescheduled' THEN 'Rescheduled'
+                    WHEN h.status = 'Cancelled' THEN 'Cancelled'
+                    WHEN h.hearing_date < NOW() THEN 'Completed'
+                    ELSE 'Scheduled'
+                END AS hearing_status,
+                h.complainant_attendance,
+                h.respondent_attendance,
+                h.attendance_recorded_at,
+                h.attendance_notes,
+                h.rescheduled_from_id,
+                h.reschedule_reason,
                 (SELECT COUNT(*) FROM hearing_attendance ha WHERE ha.hearing_id = h.hearing_id) AS attendance_count,
                 (SELECT COUNT(*) FROM hearing_attendance ha WHERE ha.hearing_id = h.hearing_id AND ha.attendance_status = 'Present') AS present_count,
                 (SELECT COUNT(*) FROM hearing_attendance ha WHERE ha.hearing_id = h.hearing_id AND ha.attendance_status = 'Absent' AND ha.is_justified = 0) AS unjustified_absent_count,
@@ -316,7 +329,7 @@ class CaseModel
                 ha.remarks AS appearance_remarks,
                 ha.recorded_at,
                 (
-                    (SELECT COUNT(*) FROM hearing_party_services hps WHERE hps.hearing_id = ? AND hps.resident_id = cp.resident_id AND hps.service_result = 'Served')
+                    (SELECT COUNT(*) FROM summon_deliveries sd WHERE sd.hearing_id = ? AND (sd.resident_id = cp.resident_id OR sd.party_type = cp.party_type) AND sd.delivery_status IN ('Served Personal', 'Served Substituted', 'Served Refused'))
                     +
                     (SELECT COUNT(*) FROM proof_of_service pos WHERE pos.case_id = ? AND pos.service_result = 'Served')
                 ) AS service_confirmed_count
@@ -325,6 +338,22 @@ class CaseModel
             LEFT JOIN hearing_attendance ha ON ha.hearing_id = ? AND ha.resident_id = cp.resident_id
             WHERE cp.complaint_id = ?
             ORDER BY FIELD(cp.party_type, 'Complainant', 'Respondent', 'Witness'), r.last_name, r.first_name
+        ");
+
+        $deliveriesStmt = $this->conn->prepare("
+            SELECT sd.*, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS served_by_name
+            FROM summon_deliveries sd
+            LEFT JOIN users u ON u.user_id = sd.served_by
+            WHERE sd.hearing_id = ?
+            ORDER BY FIELD(sd.party_type, 'Complainant', 'Respondent')
+        ");
+
+        $evaluationsStmt = $this->conn->prepare("
+            SELECT sce.*, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS evaluated_by_name
+            FROM show_cause_evaluations sce
+            LEFT JOIN users u ON u.user_id = sce.evaluated_by
+            WHERE sce.hearing_id = ?
+            ORDER BY sce.created_at DESC
         ");
 
         $summonsCountStmt = $this->conn->prepare("
@@ -355,6 +384,12 @@ class CaseModel
             }, $rawParties);
 
             $hItem['parties'] = $parties;
+
+            $deliveriesStmt->execute([$hId]);
+            $hItem['deliveries'] = $deliveriesStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $evaluationsStmt->execute([$hId]);
+            $hItem['evaluations'] = $evaluationsStmt->fetchAll(PDO::FETCH_ASSOC);
 
             if ((int) $hItem['attendance_count'] > 0) {
                 $hItem['situation'] = $attendanceModel->evaluateSituation(

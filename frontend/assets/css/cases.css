@@ -515,3 +515,251 @@ button:disabled, button.is-disabled, button[disabled], .btn-create:disabled, .bt
     background: #e0f2fe;
     border-color: #7dd3fc;
 }
+
+/* KP Workflow Stepper / Timeline */
+.kp-stepper-container {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+    margin: 0 30px 20px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+.kp-stepper-title {
+    font-size: 0.88rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #475569;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.kp-stepper {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+    overflow-x: auto;
+    padding-bottom: 4px;
+}
+.kp-step {
+    flex: 1;
+    min-width: 130px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    position: relative;
+}
+.kp-step:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    top: 18px;
+    left: calc(50% + 18px);
+    width: calc(100% - 36px);
+    height: 3px;
+    background: #e2e8f0;
+    z-index: 1;
+}
+.kp-step.completed:not(:last-child)::after {
+    background: #10b981;
+}
+.kp-step.failed:not(:last-child)::after {
+    background: #ef4444;
+}
+.kp-step-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #f1f5f9;
+    border: 2px solid #cbd5e1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: #64748b;
+    z-index: 2;
+    transition: all 0.2s ease;
+}
+.kp-step.completed .kp-step-icon {
+    background: #10b981;
+    border-color: #10b981;
+    color: #ffffff;
+}
+.kp-step.active .kp-step-icon {
+    background: #0284c7;
+    border-color: #0284c7;
+    color: #ffffff;
+    box-shadow: 0 0 0 4px rgba(2, 132, 199, 0.2);
+}
+.kp-step.failed .kp-step-icon {
+    background: #ef4444;
+    border-color: #ef4444;
+    color: #ffffff;
+}
+.kp-step.locked .kp-step-icon {
+    background: #f8fafc;
+    border-color: #e2e8f0;
+    color: #94a3b8;
+}
+.kp-step-label {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #475569;
+    margin-top: 0.5rem;
+}
+.kp-step.active .kp-step-label {
+    color: #0284c7;
+    font-weight: 700;
+}
+.kp-step.completed .kp-step-label {
+    color: #059669;
+}
+.kp-step.failed .kp-step-label {
+    color: #dc2626;
+}
+.kp-step-sub {
+    font-size: 0.73rem;
+    color: #64748b;
+    margin-top: 2px;
+}
+
+/* Delivery & Attendance Badges */
+.delivery-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 4px;
+}
+.delivery-badge-served {
+    background: #ecfdf5;
+    color: #065f46;
+    border: 1px solid #a7f3d0;
+}
+.delivery-badge-refused {
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fde68a;
+}
+.delivery-badge-unserved {
+    background: #fef2f2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+}
+.delivery-badge-pending {
+    background: #f1f5f9;
+    color: #475569;
+    border: 1px solid #cbd5e1;
+}
+
+/* Attendance Toggle Controls */
+.attendance-toggle-group {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+}
+.att-toggle-btn {
+    flex: 1;
+    padding: 10px 14px;
+    border: 2px solid #cbd5e1;
+    background: #ffffff;
+    border-radius: 6px;
+    font-size: 0.92rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+.att-toggle-btn.btn-present.selected {
+    background: #10b981;
+    border-color: #059669;
+    color: #ffffff;
+}
+.att-toggle-btn.btn-absent.selected {
+    background: #ef4444;
+    border-color: #dc2626;
+    color: #ffffff;
+}
+.att-toggle-btn:not(.selected):hover {
+    background: #f8fafc;
+    border-color: #94a3b8;
+}
+
+.notice-box {
+    padding: 12px 16px;
+    border-radius: 6px;
+    font-size: 0.88rem;
+    margin-bottom: 1rem;
+    line-height: 1.45;
+}
+.notice-box-warning {
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    color: #92400e;
+}
+.notice-box-danger {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #991b1b;
+}
+.notice-box-info {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    color: #1e40af;
+}
+
+.action-chip-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: background 0.15s;
+}
+.action-chip-primary {
+    background: #e0f2fe;
+    color: #0369a1;
+    border-color: #bae6fd;
+}
+.action-chip-primary:hover {
+    background: #bae6fd;
+}
+.action-chip-warning {
+    background: #fef3c7;
+    color: #92400e;
+    border-color: #fde68a;
+}
+.action-chip-warning:hover {
+    background: #fde68a;
+}
+.action-chip-danger {
+    background: #fee2e2;
+    color: #991b1b;
+    border-color: #fecaca;
+}
+.action-chip-danger:hover {
+    background: #fecaca;
+}
+.action-chip-secondary {
+    background: #f1f5f9;
+    color: #334155;
+    border-color: #cbd5e1;
+}
+.action-chip-secondary:hover {
+    background: #e2e8f0;
+}

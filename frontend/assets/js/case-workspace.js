@@ -8,6 +8,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const pauseForm = document.getElementById('pauseMediationForm');
     pauseForm?.addEventListener('submit', handlePauseSubmit);
+
+    const deliveryForm = document.getElementById('summonDeliveryForm');
+    deliveryForm?.addEventListener('submit', handleDeliverySubmit);
+
+    const attendanceForm = document.getElementById('hearingAttendanceForm');
+    attendanceForm?.addEventListener('submit', handleAttendanceSubmit);
+
+    const showCauseForm = document.getElementById('showCauseForm');
+    showCauseForm?.addEventListener('submit', handleShowCauseSubmit);
 });
 
 async function loadWorkspace() {
@@ -26,10 +35,11 @@ async function loadWorkspace() {
 
         const timer = item.mediation_timer || {};
         renderMediationTimer(item, timer);
+        renderKpStepper(item, data);
 
         const hearingLink = document.getElementById('hearingLink');
         if (hearingLink) {
-            const isClosed = ['Archived', 'Settled', 'Dismissed', 'CFA Issued'].includes(item.case_status);
+            const isClosed = ['Archived', 'Settled', 'Dismissed', 'CFA Issued', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT'].includes(item.case_status);
             const mediationHearings = (data.hearings || []).filter((h) => h.hearing_type === 'Mediation');
             const conciliationHearings = (data.hearings || []).filter((h) => h.hearing_type === 'Conciliation');
             const mCount = mediationHearings.length;
@@ -87,6 +97,24 @@ async function loadWorkspace() {
             if (timer.mediation_deadline_date) {
                 overviewExtra += `<p><strong>Statutory Deadline:</strong> ${caseWorkspaceEscape(timer.mediation_deadline_date)} (Day 15)</p>`;
             }
+        } else if (item.case_status === 'RESPONDENT_DEFAULT') {
+            overviewExtra = `<div class="notice-box notice-box-danger" style="margin-top: 10px;">
+                <strong>RESPONDENT IN DEFAULT:</strong> Respondent willfully failed to appear. Complainant is eligible to receive Certificate to File Action (CFA).
+                <div style="margin-top: 6px;">
+                    <a href="../documents/cfa.php?case_id=${encodeURIComponent(item.case_id)}" class="action-chip-btn action-chip-danger">
+                        Issue Certificate to File Action (CFA) &rarr;
+                    </a>
+                </div>
+            </div>`;
+        } else if (item.case_status === 'DISMISSED_BARRED') {
+            overviewExtra = `<div class="notice-box notice-box-danger" style="margin-top: 10px;">
+                <strong>DISMISSED &amp; ACTION BARRED:</strong> Complainant failed to appear without justifiable ground. Barred from refiling under KP Form 21.
+                <div style="margin-top: 6px;">
+                    <a href="../../backend/api/documents/kp-form.php?case_id=${encodeURIComponent(item.case_id)}&form_code=KP+Form+21" target="_blank" class="action-chip-btn action-chip-secondary">
+                        Print KP Form 21 &rarr;
+                    </a>
+                </div>
+            </div>`;
         }
 
         document.getElementById('caseOverview').innerHTML = `
@@ -110,43 +138,103 @@ async function loadWorkspace() {
             return `${ord} ${h.hearing_type}`;
         };
 
-        const formatAttendanceSummary = (h) => {
-            const count = Number(h.attendance_count) || 0;
-            const unjustified = Number(h.unjustified_absent_count) || 0;
-            const excused = Number(h.excused_count) || 0;
-            const present = Number(h.present_count) || 0;
-            if (count === 0) {
-                return '<span class="badge" style="background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;padding:2px 6px;border-radius:4px;font-size:0.75rem;">Attendance: Pending Intake</span>';
+        const renderHearingDeliveries = (h) => {
+            const deliveries = h.deliveries || [];
+            if (!deliveries.length) {
+                return `
+                    <div style="margin-top: 8px; font-size: 0.8rem; color: #64748b; background: #f8fafc; padding: 6px 10px; border-radius: 4px; border: 1px dashed #cbd5e1;">
+                        ✉️ <strong>Summon / Notice Delivery:</strong> Not recorded yet.
+                    </div>
+                `;
             }
-            if (unjustified > 0) {
-                return `<span class="badge" style="background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;padding:2px 6px;border-radius:4px;font-size:0.75rem;">Attendance: ${unjustified} Unjustified Absent</span>`;
-            }
-            if (excused > 0) {
-                return `<span class="badge" style="background:#fef3c7;color:#b45309;border:1px solid #fde68a;padding:2px 6px;border-radius:4px;font-size:0.75rem;">Attendance: ${excused} Excused</span>`;
-            }
-            return `<span class="badge" style="background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;padding:2px 6px;border-radius:4px;font-size:0.75rem;">Attendance: ${present} Present</span>`;
-        };
-
-        const renderHearingFindings = (h) => {
-            if (!h.situation || Number(h.attendance_count) === 0) return '';
-            const sit = h.situation;
-            const sev = sit.severity || 'neutral';
-            let icon = '⚖️';
-            if (sev === 'success') icon = '✓';
-            else if (sev === 'warning') icon = '⚠';
-            else if (sev === 'danger') icon = '🛑';
-            else if (sev === 'info') icon = 'ℹ️';
 
             return `
-                <div class="workspace-hearing-findings findings-${caseWorkspaceEscape(sev)}">
-                    <div class="findings-header">
-                        <span>${icon} <strong>Findings: ${caseWorkspaceEscape(sit.title)}</strong></span>
-                        ${sit.kp_reference ? `<span class="findings-ref-tag">${caseWorkspaceEscape(sit.kp_reference)}</span>` : ''}
+                <div style="margin-top: 8px; background: #f8fafc; padding: 8px 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                    <div style="font-size: 0.78rem; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 4px;">
+                        ✉️ Delivery Status (What-If Matrix):
                     </div>
-                    ${sit.legal_consequence ? `<div class="findings-legal-text">${caseWorkspaceEscape(sit.legal_consequence)}</div>` : ''}
-                    ${sit.summary && sit.summary !== sit.legal_consequence ? `<div class="findings-summary-text" style="font-size:0.78rem; color:#475569; margin-top:2px;">${caseWorkspaceEscape(sit.summary)}</div>` : ''}
+                    <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                        ${deliveries.map((d) => {
+                            let badgeClass = 'delivery-badge-pending';
+                            let statusText = d.delivery_status;
+                            if (['Served Personal', 'Served Substituted'].includes(d.delivery_status)) {
+                                badgeClass = 'delivery-badge-served';
+                            } else if (d.delivery_status === 'Served Refused') {
+                                badgeClass = 'delivery-badge-refused';
+                                statusText = 'Refused to Sign (Served)';
+                            } else if (d.delivery_status === 'Unserved') {
+                                badgeClass = 'delivery-badge-unserved';
+                                statusText = `Unserved (${d.unserved_reason || 'Failed'})`;
+                            }
+
+                            return `
+                                <div class="delivery-badge ${badgeClass}" title="${caseWorkspaceEscape(d.failure_notes || d.remarks || '')}">
+                                    <strong>${caseWorkspaceEscape(d.party_type)}:</strong> ${caseWorkspaceEscape(statusText)}
+                                    ${d.recipient_name ? ` · <em>${caseWorkspaceEscape(d.recipient_name)}</em>` : ''}
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
                 </div>
             `;
+        };
+
+        const renderHearingActionButtons = (h) => {
+            const isShowCause = h.hearing_type.includes('Show Cause');
+            const deliveries = h.deliveries || [];
+            const bothServed = deliveries.length >= 2 && deliveries.every((d) => ['Served Personal', 'Served Substituted', 'Served Refused'].includes(d.delivery_status));
+            const hasUnserved = deliveries.some((d) => d.delivery_status === 'Unserved');
+
+            let buttons = [];
+
+            // 1. Deliver Summons / Notice button
+            if (window.canManageDeliveries) {
+                buttons.push(`
+                    <button type="button" class="action-chip-btn action-chip-primary" onclick="openDeliveryModal(${Number(h.hearing_id)})">
+                        ✉️ Deliver Summons / Notice
+                    </button>
+                `);
+            }
+
+            // 2. Attendance or Show-Cause Decision button
+            if (window.canManageAttendance) {
+                if (isShowCause) {
+                    const party = h.hearing_type.includes('Complainant') ? 'Complainant' : 'Respondent';
+                    const formCode = party === 'Complainant' ? 'KP Form 18' : 'KP Form 19';
+                    buttons.push(`
+                        <button type="button" class="action-chip-btn action-chip-warning" onclick="openShowCauseModal(${Number(h.hearing_id)}, '${party}')">
+                            ⚖️ Evaluate Show-Cause Decision
+                        </button>
+                    `);
+                    buttons.push(`
+                        <a href="../../backend/api/documents/kp-form.php?case_id=${encodeURIComponent(item.case_id)}&hearing_id=${encodeURIComponent(h.hearing_id)}&form_code=${encodeURIComponent(formCode)}" target="_blank" class="action-chip-btn action-chip-secondary">
+                            🖨️ Print ${formCode}
+                        </a>
+                    `);
+                } else {
+                    if (bothServed) {
+                        buttons.push(`
+                            <button type="button" class="action-chip-btn action-chip-primary" onclick="openAttendanceModal(${Number(h.hearing_id)})">
+                                📋 Record Attendance
+                            </button>
+                        `);
+                    } else if (hasUnserved) {
+                        buttons.push(`
+                            <button type="button" class="action-chip-btn action-chip-secondary" disabled title="Locked: Summons failed delivery. Unexcused absence cannot be recorded.">
+                                🔒 Attendance Locked (Summon Unserved)
+                            </button>
+                        `);
+                    } else {
+                        buttons.push(`
+                            <button type="button" class="action-chip-btn action-chip-secondary" disabled title="Please record summon delivery first.">
+                                🔒 Record Attendance (Awaiting Service)
+                            </button>
+                        `);
+                    }
+                }
+            }
+
+            return `<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">${buttons.join('')}</div>`;
         };
 
         const renderHearingParties = (h) => {
@@ -191,7 +279,7 @@ async function loadWorkspace() {
                                     </div>
                                     ${p.remarks ? `
                                         <div class="party-remarks-bubble">
-                                            <span class="remarks-label">Appearance Remarks:</span> &ldquo;${caseWorkspaceEscape(p.remarks)}&rdquo;
+                                            <span class="remarks-label">Remarks:</span> &ldquo;${caseWorkspaceEscape(p.remarks)}&rdquo;
                                         </div>
                                     ` : ''}
                                     ${Number(p.is_justified) === 1 && p.justification_reason ? `
@@ -221,25 +309,179 @@ async function loadWorkspace() {
                     </span>
                 </div>
 
-                <div style="margin-top:8px; display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
-                    ${formatAttendanceSummary(h)}
-                    <a href="../hearings/schedules.php?hearing_id=${encodeURIComponent(h.hearing_id)}&open_attendance=1" class="btn-workspace-hearing-action">
-                        Update Attendance &amp; Findings &rarr;
-                    </a>
-                </div>
-
-                ${renderHearingFindings(h)}
+                ${renderHearingDeliveries(h)}
+                ${renderHearingActionButtons(h)}
                 ${renderHearingParties(h)}
             </li>
         `, 'No hearings are scheduled.');
-        document.getElementById('caseDocuments').innerHTML = workspaceList(data.documents, (d) => `<li><strong>${caseWorkspaceEscape(d.template_name)}</strong><br>${caseWorkspaceEscape(d.generated_at)} · ${caseWorkspaceEscape(d.service_status)}<br><a href="../gps/proof-service.php?case_id=${encodeURIComponent(item.case_id)}&document_id=${encodeURIComponent(d.document_id)}">Record proof of service</a></li>`, 'No documents have been generated.');
-        document.getElementById('caseProofs').innerHTML = workspaceList(data.proofs, (p) => `<li><strong>${caseWorkspaceEscape(p.template_name || 'Legacy service record')}</strong><br>${caseWorkspaceEscape(p.served_date)} by ${caseWorkspaceEscape(p.served_by_name)}${p.remarks ? `<br>${caseWorkspaceEscape(p.remarks)}` : ''}</li>`, 'No proof of service has been recorded.');
+
+        document.getElementById('caseDocuments').innerHTML = workspaceList(data.documents, (d) => `
+            <li style="margin-bottom: 8px;">
+                <strong>${caseWorkspaceEscape(d.template_name)}</strong><br>
+                ${caseWorkspaceEscape(d.generated_at)} · ${caseWorkspaceEscape(d.service_status)}<br>
+                <div style="display: flex; gap: 6px; margin-top: 4px;">
+                    <a href="../../backend/api/documents/download.php?id=${encodeURIComponent(d.document_id)}" target="_blank" class="action-chip-btn action-chip-primary">
+                        Download PDF
+                    </a>
+                    ${d.template_name.includes('KP Form') ? `
+                        <a href="../../backend/api/documents/kp-form.php?document_id=${encodeURIComponent(d.document_id)}" target="_blank" class="action-chip-btn action-chip-secondary">
+                            Print / View
+                        </a>
+                    ` : ''}
+                    <a href="../gps/proof-service.php?case_id=${encodeURIComponent(item.case_id)}&document_id=${encodeURIComponent(d.document_id)}" class="action-chip-btn action-chip-secondary">
+                        Record proof
+                    </a>
+                </div>
+            </li>
+        `, 'No documents have been generated.');
+
+        document.getElementById('caseProofs').innerHTML = workspaceList(data.proofs, (p) => `
+            <li>
+                <strong>${caseWorkspaceEscape(p.template_name || 'Legacy service record')}</strong><br>
+                ${caseWorkspaceEscape(p.served_date)} by ${caseWorkspaceEscape(p.served_by_name)}
+                ${p.remarks ? `<br><em>${caseWorkspaceEscape(p.remarks)}</em>` : ''}
+            </li>
+        `, 'No proof of service has been recorded.');
+
     } catch (error) {
         if (message) {
             message.textContent = error.message;
             message.className = 'page-alert page-alert-danger';
         }
     }
+}
+
+/**
+ * Renders the KP Katarungang Pambarangay Workflow Timeline / Stepper:
+ * Summon Issued -> Delivery Status -> Hearing Attendance -> (If Absent: KP 18/19 Issued) -> Show-Cause Decision -> Next Action
+ */
+function renderKpStepper(item, data) {
+    const container = document.getElementById('kpStepperContainer');
+    if (!container) return;
+
+    const hearings = data.hearings || [];
+    const documents = data.documents || [];
+    const latestHearing = hearings[hearings.length - 1] || null;
+
+    // Step 1: Summon Issued
+    const hasSummonDoc = documents.some((d) => d.template_name === 'KP Form 9' || d.template_name.includes('Summon') || d.template_name === 'KP Form 8');
+    const step1Completed = hasSummonDoc || hearings.length > 0;
+    const step1 = {
+        icon: step1Completed ? '✓' : '1',
+        label: 'Summons Issued',
+        sub: step1Completed ? 'Notice & Summon Created' : 'Awaiting Summon',
+        cls: step1Completed ? 'completed' : 'active'
+    };
+
+    // Step 2: Delivery Status
+    let step2 = { icon: '2', label: 'Delivery Status', sub: 'Pending Service', cls: 'locked' };
+    if (latestHearing && latestHearing.deliveries && latestHearing.deliveries.length > 0) {
+        const deliveries = latestHearing.deliveries;
+        const allServed = deliveries.every((d) => ['Served Personal', 'Served Substituted', 'Served Refused'].includes(d.delivery_status));
+        const hasUnserved = deliveries.some((d) => d.delivery_status === 'Unserved');
+
+        if (allServed) {
+            step2 = { icon: '✓', label: 'Delivery Status', sub: 'Both Parties Served', cls: 'completed' };
+        } else if (hasUnserved) {
+            step2 = { icon: '!', label: 'Delivery Status', sub: 'Summon Unserved (Paused)', cls: 'failed' };
+        } else {
+            step2 = { icon: '2', label: 'Delivery Status', sub: 'In Transit / Pending', cls: 'active' };
+        }
+    } else if (step1Completed) {
+        step2 = { icon: '2', label: 'Delivery Status', sub: 'Awaiting Delivery Log', cls: 'active' };
+    }
+
+    // Step 3: Hearing Attendance
+    let step3 = { icon: '3', label: 'Attendance', sub: 'Awaiting Hearing', cls: 'locked' };
+    let hasAbsence = false;
+    let attendanceCompleted = false;
+
+    if (latestHearing) {
+        const compAtt = latestHearing.complainant_attendance;
+        const respAtt = latestHearing.respondent_attendance;
+        if (compAtt && compAtt !== 'Pending' && respAtt && respAtt !== 'Pending') {
+            attendanceCompleted = true;
+            if (compAtt === 'Present' && respAtt === 'Present') {
+                step3 = { icon: '✓', label: 'Attendance', sub: 'Both Appeared', cls: 'completed' };
+            } else {
+                hasAbsence = true;
+                const absentNames = [];
+                if (compAtt === 'Absent') absentNames.push('Complainant');
+                if (respAtt === 'Absent') absentNames.push('Respondent');
+                step3 = { icon: '!', label: 'Attendance', sub: `${absentNames.join('/')} Absent`, cls: 'failed' };
+            }
+        } else if (step2.cls === 'completed') {
+            step3 = { icon: '3', label: 'Attendance', sub: 'Ready for Hearing', cls: 'active' };
+        }
+    }
+
+    // Step 4: KP Form 18/19 Issued
+    let step4 = { icon: '4', label: 'KP 18/19 Issued', sub: 'Not Required', cls: 'locked' };
+    const hasKp18Or19 = documents.some((d) => d.template_name.includes('KP Form 18') || d.template_name.includes('KP Form 19'));
+    if (hasAbsence) {
+        if (hasKp18Or19) {
+            step4 = { icon: '✓', label: 'KP 18/19 Issued', sub: 'Show-Cause Issued', cls: 'completed' };
+        } else {
+            step4 = { icon: '4', label: 'KP 18/19 Issued', sub: 'Pending Notice Generation', cls: 'active' };
+        }
+    } else if (attendanceCompleted) {
+        step4 = { icon: '✓', label: 'KP 18/19 Issued', sub: 'N/A (Both Appeared)', cls: 'completed' };
+    }
+
+    // Step 5: Show-Cause Decision
+    let step5 = { icon: '5', label: 'Show-Cause Decision', sub: 'Not Required', cls: 'locked' };
+    const showCauseHearings = hearings.filter((h) => h.hearing_type.includes('Show Cause'));
+    if (showCauseHearings.length > 0) {
+        const latestSc = showCauseHearings[showCauseHearings.length - 1];
+        if (latestSc.evaluations && latestSc.evaluations.length > 0) {
+            const ev = latestSc.evaluations[0];
+            if (Number(ev.is_justified) === 1) {
+                step5 = { icon: '✓', label: 'Show-Cause Decision', sub: 'Justified (Rescheduled)', cls: 'completed' };
+            } else {
+                step5 = { icon: '!', label: 'Show-Cause Decision', sub: `Unjustified (${ev.action_taken})`, cls: 'failed' };
+            }
+        } else {
+            step5 = { icon: '5', label: 'Show-Cause Decision', sub: 'Awaiting Finding', cls: 'active' };
+        }
+    } else if (attendanceCompleted && !hasAbsence) {
+        step5 = { icon: '✓', label: 'Show-Cause Decision', sub: 'N/A', cls: 'completed' };
+    }
+
+    // Step 6: Next Action / Legal Stage
+    let step6 = { icon: '6', label: 'Next Action', sub: 'Pending', cls: 'locked' };
+    if (item.case_status === 'DISMISSED_BARRED') {
+        step6 = { icon: '🛑', label: 'Case Barred', sub: 'KP Form 21 Issued', cls: 'failed' };
+    } else if (item.case_status === 'RESPONDENT_DEFAULT') {
+        step6 = { icon: '⚡', label: 'Respondent Default', sub: 'CFA Unlocked', cls: 'completed' };
+    } else if (item.case_status === 'CFA Issued') {
+        step6 = { icon: '✓', label: 'CFA Issued', sub: 'Endorsed to Court', cls: 'completed' };
+    } else if (item.case_status === 'Settled') {
+        step6 = { icon: '✓', label: 'Settled', sub: 'Amicable Settlement', cls: 'completed' };
+    } else if (item.case_status === 'Conciliation') {
+        step6 = { icon: '⚖️', label: 'Conciliation', sub: 'Pangkat Formed', cls: 'active' };
+    } else {
+        step6 = { icon: '⚖️', label: 'Mediation', sub: 'In Progress', cls: 'active' };
+    }
+
+    const steps = [step1, step2, step3, step4, step5, step6];
+
+    container.innerHTML = `
+        <div class="kp-stepper-container">
+            <div class="kp-stepper-title">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                Dispute Escalation Workflow (Katarungang Pambarangay)
+            </div>
+            <div class="kp-stepper">
+                ${steps.map((s) => `
+                    <div class="kp-step ${s.cls}">
+                        <div class="kp-step-icon">${s.icon}</div>
+                        <div class="kp-step-label">${caseWorkspaceEscape(s.label)}</div>
+                        <div class="kp-step-sub">${caseWorkspaceEscape(s.sub)}</div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
 }
 
 function renderMediationTimer(item, timer) {
@@ -353,6 +595,7 @@ function renderMediationTimer(item, timer) {
     `;
 }
 
+/* Pause & Resume Modal Handlers */
 function openPauseModal() {
     const modal = document.getElementById('pauseMediationModal');
     if (modal) modal.style.display = 'flex';
@@ -415,5 +658,281 @@ async function resumeMediationClock() {
         await loadWorkspace();
     } catch (err) {
         window.agapNotify?.(err.message, 'error', 'Resume Failed');
+    }
+}
+
+/* Summon Delivery Modal Handlers */
+let activeHearingDeliveries = null;
+
+async function openDeliveryModal(hearingId) {
+    const modal = document.getElementById('summonDeliveryModal');
+    if (!modal) return;
+
+    document.getElementById('deliveryHearingId').value = hearingId;
+    document.getElementById('deliveryRecipientName').value = '';
+    document.getElementById('deliveryRelationship').value = '';
+    document.getElementById('deliveryFailureNotes').value = '';
+    document.getElementById('deliveryRemarks').value = '';
+    document.getElementById('deliveryServedAt').value = new Date().toISOString().slice(0, 16);
+
+    try {
+        const res = await fetch(`../../../backend/api/hearings/deliveries.php?hearing_id=${encodeURIComponent(hearingId)}`);
+        const json = await res.json();
+        if (json.success && json.deliveries) {
+            activeHearingDeliveries = json.deliveries;
+            handleDeliveryPartyChange();
+        }
+    } catch (e) {
+        console.error('Failed to fetch deliveries:', e);
+    }
+
+    handleDeliveryStatusChange();
+    modal.style.display = 'flex';
+}
+
+function closeDeliveryModal() {
+    const modal = document.getElementById('summonDeliveryModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function handleDeliveryPartyChange() {
+    const partyType = document.getElementById('deliveryPartyType').value;
+    if (!activeHearingDeliveries) return;
+
+    const existing = activeHearingDeliveries.find((d) => d.party_type === partyType);
+    if (existing) {
+        document.getElementById('deliveryStatusSelect').value = existing.delivery_status !== 'Pending' ? existing.delivery_status : 'Served Personal';
+        document.getElementById('deliveryRecipientName').value = existing.recipient_name || (existing.party_profile?.resident_name || '');
+        document.getElementById('deliveryRelationship').value = existing.relationship || '';
+        document.getElementById('deliveryFailureNotes').value = existing.failure_notes || '';
+        document.getElementById('deliveryRemarks').value = existing.remarks || '';
+        if (existing.unserved_reason) {
+            document.getElementById('deliveryUnservedReason').value = existing.unserved_reason;
+        }
+    }
+    handleDeliveryStatusChange();
+}
+
+function handleDeliveryStatusChange() {
+    const status = document.getElementById('deliveryStatusSelect').value;
+    const servedFields = document.getElementById('servedFieldsGroup');
+    const unservedFields = document.getElementById('unservedFieldsGroup');
+    const relationshipGroup = document.getElementById('relationshipGroup');
+
+    if (status === 'Unserved') {
+        servedFields.style.display = 'none';
+        unservedFields.style.display = 'block';
+    } else {
+        servedFields.style.display = 'block';
+        unservedFields.style.display = 'none';
+        relationshipGroup.style.display = (status === 'Served Substituted') ? 'block' : 'none';
+    }
+}
+
+async function handleDeliverySubmit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submitBtn = document.getElementById('btnSubmitDelivery');
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
+        const formData = new FormData(form);
+        const payload = Object.fromEntries(formData.entries());
+
+        const response = await fetch('../../../backend/api/hearings/deliveries.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.message || 'Unable to save summon delivery.');
+        }
+
+        closeDeliveryModal();
+        window.agapNotify?.(result.message || 'Delivery record saved.', 'success', 'Delivery Updated');
+        await loadWorkspace();
+    } catch (err) {
+        window.agapNotify?.(err.message, 'error', 'Delivery Update Failed');
+    } finally {
+        if (submitBtn) submitBtn.disabled = false;
+    }
+}
+
+/* Hearing Attendance Modal Handlers */
+let activeAttendanceHearing = null;
+
+async function openAttendanceModal(hearingId) {
+    const modal = document.getElementById('hearingAttendanceModal');
+    if (!modal) return;
+
+    document.getElementById('attendanceHearingId').value = hearingId;
+    document.getElementById('attendanceNotes').value = '';
+
+    // Check delivery status
+    try {
+        const res = await fetch(`../../../backend/api/hearings/deliveries.php?hearing_id=${encodeURIComponent(hearingId)}`);
+        const json = await res.json();
+        const banner = document.getElementById('attendanceLockBanner');
+        const submitBtn = document.getElementById('btnSubmitAttendance');
+
+        if (!json.success || !json.attendance_unlocked) {
+            banner.style.display = 'block';
+            banner.innerHTML = `<strong>Service Incomplete:</strong> ${caseWorkspaceEscape(json.service_notice || 'Summons unserved. Attendance locked.')}`;
+            submitBtn.disabled = true;
+        } else {
+            banner.style.display = 'none';
+            submitBtn.disabled = false;
+        }
+
+        if (json.deliveries) {
+            json.deliveries.forEach((d) => {
+                if (d.party_type === 'Complainant') {
+                    document.getElementById('complainantNameLabel').textContent = d.party_profile?.resident_name || 'Complainant';
+                    document.getElementById('complainantServiceTag').textContent = `Notice: ${d.delivery_status}`;
+                    document.getElementById('complainantServiceTag').className = `delivery-badge delivery-badge-served`;
+                } else if (d.party_type === 'Respondent') {
+                    document.getElementById('respondentNameLabel').textContent = d.party_profile?.resident_name || 'Respondent';
+                    document.getElementById('respondentServiceTag').textContent = `Summon: ${d.delivery_status}`;
+                    document.getElementById('respondentServiceTag').className = `delivery-badge delivery-badge-served`;
+                }
+            });
+        }
+    } catch (e) {
+        console.error(e);
+    }
+
+    // Default to both present
+    setPartyAttendance('Complainant', 'Present');
+    setPartyAttendance('Respondent', 'Present');
+
+    // Default show cause dates (+3 calendar days)
+    const defShowCause = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 16);
+    document.getElementById('compShowCauseDate').value = defShowCause;
+    document.getElementById('respShowCauseDate').value = defShowCause;
+
+    modal.style.display = 'flex';
+}
+
+function closeAttendanceModal() {
+    const modal = document.getElementById('hearingAttendanceModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function setPartyAttendance(partyType, status) {
+    const isComp = partyType === 'Complainant';
+    const input = document.getElementById(isComp ? 'complainantAttendanceInput' : 'respondentAttendanceInput');
+    const btnPresent = document.getElementById(isComp ? 'btnCompPresent' : 'btnRespPresent');
+    const btnAbsent = document.getElementById(isComp ? 'btnCompAbsent' : 'btnRespAbsent');
+    const notice = document.getElementById(isComp ? 'compAbsentNotice' : 'respAbsentNotice');
+
+    input.value = status;
+    if (status === 'Present') {
+        btnPresent.classList.add('selected');
+        btnAbsent.classList.remove('selected');
+        notice.style.display = 'none';
+    } else {
+        btnPresent.classList.remove('selected');
+        btnAbsent.classList.add('selected');
+        notice.style.display = 'block';
+    }
+}
+
+async function handleAttendanceSubmit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submitBtn = document.getElementById('btnSubmitAttendance');
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
+        const formData = new FormData(form);
+        const payload = Object.fromEntries(formData.entries());
+
+        const response = await fetch('../../../backend/api/hearings/attendance.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.message || 'Unable to record attendance.');
+        }
+
+        closeAttendanceModal();
+        window.agapNotify?.(result.message || 'Attendance successfully saved.', 'success', 'Attendance Recorded');
+        await loadWorkspace();
+    } catch (err) {
+        window.agapNotify?.(err.message, 'error', 'Attendance Failed');
+    } finally {
+        if (submitBtn) submitBtn.disabled = false;
+    }
+}
+
+/* Show-Cause Evaluation Modal Handlers */
+function openShowCauseModal(hearingId, partyType) {
+    const modal = document.getElementById('showCauseModal');
+    if (!modal) return;
+
+    document.getElementById('showCauseHearingId').value = hearingId;
+    document.getElementById('showCausePartyType').value = partyType;
+    document.getElementById('showCauseSubtitle').textContent = `Determine justification for ${partyType}'s failure to appear under KP Form ${partyType === 'Complainant' ? '18' : '19'}.`;
+    document.getElementById('scJustificationNotes').value = '';
+
+    const defReschedule = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 16);
+    document.getElementById('scRescheduleDate').value = defReschedule;
+
+    const consequenceText = partyType === 'Complainant'
+        ? 'Case status becomes DISMISSED_BARRED. KP Form 21 (Bar Action) will be issued. Complainant will be locked from refiling or taking matter to court.'
+        : 'Case status becomes RESPONDENT_DEFAULT. Complainant is authorized to receive Certificate to File Action (CFA). KP Form 22 (Bar Counterclaim) issued.';
+    document.getElementById('unjustifiedConsequenceText').textContent = consequenceText;
+
+    handleJustifiedOutcomeChange(true);
+    modal.style.display = 'flex';
+}
+
+function closeShowCauseModal() {
+    const modal = document.getElementById('showCauseModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function handleJustifiedOutcomeChange(isJustified) {
+    const group = document.getElementById('rescheduleFieldsGroup');
+    const category = document.getElementById('scJustificationCategory');
+    if (isJustified) {
+        group.style.display = 'block';
+        category.value = 'Medical Emergency';
+    } else {
+        group.style.display = 'none';
+        category.value = 'Unjustified Absence';
+    }
+}
+
+async function handleShowCauseSubmit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submitBtn = document.getElementById('btnSubmitShowCause');
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
+        const formData = new FormData(form);
+        const payload = Object.fromEntries(formData.entries());
+
+        const response = await fetch('../../../backend/api/hearings/show-cause.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.message || 'Unable to record show-cause decision.');
+        }
+
+        closeShowCauseModal();
+        window.agapNotify?.(result.message || 'Show-cause decision applied.', 'success', 'Decision Recorded');
+        await loadWorkspace();
+    } catch (err) {
+        window.agapNotify?.(err.message, 'error', 'Show-Cause Evaluation Failed');
+    } finally {
+        if (submitBtn) submitBtn.disabled = false;
     }
 }

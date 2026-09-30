@@ -92,10 +92,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    // Independent toggles for Complainant and Respondent (KP Form 18 & 19 workflow)
+    if (isset($inputData['complainant_attendance'], $inputData['respondent_attendance'])) {
+        require_once __DIR__ . '/../../services/ShowCauseService.php';
+        $showCauseService = new ShowCauseService();
+        $result = $showCauseService->recordAttendance((int) $hearingId, $inputData, (int) $_SESSION['user_id']);
+        http_response_code($result['success'] ? 200 : 422);
+        echo json_encode($result);
+        exit;
+    }
+
     $parties = $inputData['parties'] ?? $inputData['records'] ?? [];
     if (!is_array($parties) || empty($parties)) {
         http_response_code(422);
-        echo json_encode(['success' => false, 'message' => 'Attendance party records are required.']);
+        echo json_encode(['success' => false, 'message' => 'Attendance party records or Complainant/Respondent attendance are required.']);
         exit;
     }
 
