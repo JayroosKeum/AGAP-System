@@ -80,3 +80,284 @@
     .gps-card { margin-left: 12px; margin-right: 12px; border-radius: 11px; }
     .proof-message { margin-left: 12px; margin-right: 12px; }
 }
+
+/* Officer's Return & Summon Deliveries */
+.hearing-deliveries-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+    margin-top: 14px;
+}
+
+.delivery-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.delivery-card:hover {
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+    border-color: #cbd5e1;
+}
+
+.delivery-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.delivery-party-role {
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #6366f1;
+    margin-bottom: 2px;
+}
+
+.delivery-party-name {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #0f172a;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.delivery-form-type {
+    display: inline-block;
+    padding: 3px 8px;
+    background: #f1f5f9;
+    color: #475569;
+    border-radius: 6px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    margin-top: 4px;
+}
+
+.delivery-card-body {
+    flex: 1;
+    margin-bottom: 16px;
+}
+
+.delivery-status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.delivery-detail-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    font-size: 0.84rem;
+    color: #475569;
+}
+
+.delivery-detail-list li {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 0;
+    border-bottom: 1px dashed #f1f5f9;
+}
+
+.delivery-detail-list li:last-child {
+    border-bottom: none;
+}
+
+.delivery-detail-label {
+    font-weight: 600;
+    color: #64748b;
+}
+
+.delivery-detail-val {
+    font-weight: 500;
+    color: #1e293b;
+    text-align: right;
+    max-width: 60%;
+    overflow-wrap: anywhere;
+}
+
+.delivery-card-footer {
+    padding-top: 12px;
+    border-top: 1px solid #f1f5f9;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.btn-log-return {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: #2563eb;
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.84rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.btn-log-return:hover {
+    background: #1d4ed8;
+}
+
+.service-status-banner {
+    padding: 14px 18px;
+    border-radius: 10px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.status-banner-served {
+    background: #ecfdf5;
+    border: 1px solid #a7f3d0;
+    color: #065f46;
+}
+
+.status-banner-unserved {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #991b1b;
+}
+
+.status-banner-pending {
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    color: #92400e;
+}
+
+/* Modal styling for Proof of Service */
+.proof-modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+    backdrop-filter: blur(2px);
+    justify-content: center;
+    align-items: center;
+    z-index: 1050;
+    padding: 16px;
+}
+
+.proof-modal-overlay.is-open {
+    display: flex;
+}
+
+.proof-modal-content {
+    background: #ffffff;
+    width: 600px;
+    max-width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    border-radius: 14px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+.proof-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 20px 24px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.proof-modal-header h3 {
+    margin: 0;
+    font-size: 1.15rem;
+    color: #0f172a;
+}
+
+.proof-modal-header p {
+    margin: 4px 0 0;
+    font-size: 0.82rem;
+    color: #64748b;
+}
+
+.proof-modal-close {
+    background: transparent;
+    border: none;
+    font-size: 1.5rem;
+    color: #94a3b8;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0 4px;
+}
+
+.proof-modal-close:hover {
+    color: #1e293b;
+}
+
+.proof-modal-body {
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.proof-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 16px 24px;
+    border-top: 1px solid #e2e8f0;
+    background: #f8fafc;
+    border-radius: 0 0 14px 14px;
+}
+
+.residency-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+.residency-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.badge-resident {
+    color: #15803d;
+    background: #dcfce7;
+}
+.badge-resident .residency-dot {
+    background: #16a34a;
+}
+
+.badge-tenant {
+    color: #0369a1;
+    background: #e0f2fe;
+}
+.badge-tenant .residency-dot {
+    background: #0284c7;
+}
+
+.badge-non-resident {
+    color: #c2410c;
+    background: #ffedd5;
+}
+.badge-non-resident .residency-dot {
+    background: #ea580c;
+}

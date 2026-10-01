@@ -553,6 +553,29 @@ function closeAddAttachmentModal() {
     if (modal) modal.style.display = 'none';
 }
 
+function calculateBusinessDays(startDate, daysToAdd = 15, holidayList = null) {
+    const fixedHolidays = holidayList || [
+        '01-01', '04-09', '05-01', '06-12', '08-21', '11-01', '11-02', '11-30', '12-08', '12-25', '12-30', '12-31'
+    ];
+    let cur = new Date(startDate);
+    cur.setHours(0, 0, 0, 0);
+    let added = 0;
+    while (added < daysToAdd) {
+        cur.setDate(cur.getDate() + 1);
+        const day = cur.getDay(); // 0 = Sun, 6 = Sat
+        if (day === 0 || day === 6) continue;
+        const mm = String(cur.getMonth() + 1).padStart(2, '0');
+        const dd = String(cur.getDate()).padStart(2, '0');
+        if (fixedHolidays.includes(`${mm}-${dd}`)) continue;
+        added++;
+    }
+    const yyyy = cur.getFullYear();
+    const mm = String(cur.getMonth() + 1).padStart(2, '0');
+    const dd = String(cur.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+}
+window.calculateBusinessDays = calculateBusinessDays;
+
 let conflictCheckDebounceTimer = null;
 
 async function checkMediationScheduleConflict() {
@@ -573,6 +596,58 @@ async function checkMediationScheduleConflict() {
     const venueVal = venueInput ? venueInput.value : 'Barangay Hall';
     const complaintIdVal = complaintInput ? complaintInput.value : '';
 
+    // 1. Weekend check client-side
+    const parsedDate = new Date(dateVal + 'T00:00:00');
+    const dayOfWeek = parsedDate.getDay();
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+        if (conflictAlert) {
+            conflictAlert.textContent = '⚠️ Weekend Selected: Mediation hearings can only be scheduled on weekdays (Monday to Friday) during office hours.';
+            conflictAlert.style.display = 'block';
+        }
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.title = 'Hearings cannot be scheduled on weekends.';
+        }
+        return;
+    }
+
+    // 2. Office hours check for 1-hour slots: strictly 8am-12pm and 1pm-5pm (latest start 16:00)
+    if (timeVal) {
+        const [hStr, mStr] = timeVal.split(':');
+        const totalMinutes = parseInt(hStr, 10) * 60 + parseInt(mStr || '0', 10);
+        const morningStart = 8 * 60;   // 08:00
+        const morningEnd = 12 * 60;    // 12:00 (latest start 11:00 for 1-hr slot)
+        const afternoonStart = 13 * 60; // 13:00
+        const afternoonEnd = 17 * 60;  // 17:00 (latest start 16:00 for 1-hr slot)
+
+        const isMorning = totalMinutes >= morningStart && (totalMinutes + 60) <= morningEnd;
+        const isAfternoon = totalMinutes >= afternoonStart && (totalMinutes + 60) <= afternoonEnd;
+
+        if (totalMinutes >= 12 * 60 && totalMinutes < 13 * 60) {
+            if (conflictAlert) {
+                conflictAlert.textContent = '⚠️ Lunch Break: Mediation sessions cannot be scheduled between 12:00 PM and 1:00 PM.';
+                conflictAlert.style.display = 'block';
+            }
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.title = 'Cannot schedule during lunch break.';
+            }
+            return;
+        }
+
+        if (!isMorning && !isAfternoon) {
+            if (conflictAlert) {
+                conflictAlert.textContent = '⚠️ Office Hours Only: 1-hour sessions must be scheduled within 8:00 AM – 12:00 PM or 1:00 PM – 5:00 PM (Monday–Friday).';
+                conflictAlert.style.display = 'block';
+            }
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.title = 'Outside office hours.';
+            }
+            return;
+        }
+    }
+
     const params = new URLSearchParams();
     params.set('date', dateVal);
     if (timeVal) params.set('time', timeVal);
@@ -584,21 +659,35 @@ async function checkMediationScheduleConflict() {
         const result = await response.json();
 
         if (!response.ok || !result.success) {
+            if (conflictAlert && result.message) {
+                conflictAlert.textContent = `⚠️ Notice: ${result.message}`;
+                conflictAlert.style.display = 'block';
+                if (submitBtn) submitBtn.disabled = true;
+            }
             return;
         }
 
-        // 1. Render day's scheduled mediations
+        // 3. Render day's capacity & scheduled mediations
+        const bookedCount = result.total_booked ?? (result.scheduled_mediations ? result.scheduled_mediations.length : 0);
+        const maxSlots = result.max_slots || 8;
+        const availSlots = result.available_slots ?? Math.max(0, maxSlots - bookedCount);
+
         if (schedulesWrap && slotsList && slotsCount) {
             schedulesWrap.style.display = 'block';
+            slotsCount.textContent = `${availSlots} of ${maxSlots} slots available`;
+            slotsCount.style.background = availSlots > 2 ? '#dcfce7' : (availSlots > 0 ? '#fef3c7' : '#fee2e2');
+            slotsCount.style.color = availSlots > 2 ? '#15803d' : (availSlots > 0 ? '#92400e' : '#b91c1c');
+
             const scheduled = result.scheduled_mediations || [];
-            slotsCount.textContent = scheduled.length;
             if (scheduled.length === 0) {
-                slotsList.innerHTML = '<span style="color: #64748b;">No other mediations scheduled on this date. All hours available.</span>';
+                slotsList.innerHTML = `<span style="color: #166534; font-weight: 500;">✓ All 8 session slots available on this date (${dateVal}).</span>`;
             } else {
-                slotsList.innerHTML = scheduled.map(s => `
+                slotsList.innerHTML = `
+                    <div style="margin-bottom: 6px; font-weight: 600; color: #475569;">${availSlots} of ${maxSlots} slots available for this date:</div>
+                ` + scheduled.map(s => `
                     <div style="margin-top: 4px; padding: 4px 8px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                         <div>
-                            <strong style="color: #1e293b;">${escapeHtml(s.start_time)} – ${escapeHtml(s.end_time)}</strong>
+                            <strong style="color: #1e293b;">${escapeHtml(s.start_time || '')} – ${escapeHtml(s.end_time || '')}</strong>
                             <span style="color: #64748b; font-size: 0.8rem; margin-left: 6px;">Case ${escapeHtml(s.case_number || 'N/A')}</span>
                         </div>
                         <span style="font-size: 0.72rem; color: #475569; background: #f1f5f9; padding: 1px 6px; border-radius: 4px;">${escapeHtml(s.venue || 'Barangay Hall')}</span>
@@ -607,7 +696,20 @@ async function checkMediationScheduleConflict() {
             }
         }
 
-        // 2. Check for conflict
+        // 4. Capacity limit check: Max 8 sessions per day
+        if (result.is_fully_booked || bookedCount >= maxSlots) {
+            if (conflictAlert) {
+                conflictAlert.textContent = `⚠️ Date Fully Booked: All ${maxSlots} daily mediation slots on this date are occupied. Please select another working date.`;
+                conflictAlert.style.display = 'block';
+            }
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.title = 'Cannot submit: Maximum daily capacity of 8 mediation sessions reached for this date.';
+            }
+            return;
+        }
+
+        // 5. Conflict check
         if (result.has_conflict && result.conflict) {
             const conflictMsg = result.conflict.message || 'The selected time overlaps with an existing scheduled mediation.';
             if (conflictAlert) {
@@ -661,30 +763,22 @@ function openIssueSummonModal() {
         today.setHours(0, 0, 0, 0);
         const todayStr = today.toISOString().slice(0, 10);
 
-        // Compute deadline: complaint filing date + 15 days
+        // Compute deadline: strictly 15 business days (skipping weekends & holidays)
         let deadlineStr = null;
         let deadlineLabel = '';
-        if (window.complaintCreatedAt) {
-            const filingDate = new Date(window.complaintCreatedAt);
-            filingDate.setHours(0, 0, 0, 0);
-            const deadline = new Date(filingDate);
-            deadline.setDate(deadline.getDate() + 15);
-            deadlineStr = deadline.toISOString().slice(0, 10);
-            deadlineLabel = deadline.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' });
-        }
+        const baseDate = window.complaintCreatedAt ? new Date(window.complaintCreatedAt) : today;
+        deadlineStr = calculateBusinessDays(baseDate, 15);
+        const deadlineDateObj = new Date(deadlineStr + 'T00:00:00');
+        deadlineLabel = deadlineDateObj.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' });
 
         dateInput.min = todayStr;
         if (deadlineStr) dateInput.max = deadlineStr;
 
-        // Set default only if not already set
+        // Set default to next business day if not set
         if (!dateInput.value) {
-            const defaultDate = new Date(today);
-            defaultDate.setDate(defaultDate.getDate() + 3);
-            const defaultStr = defaultDate.toISOString().slice(0, 10);
-            // Clamp default to deadline if it exceeds it
-            dateInput.value = (deadlineStr && defaultStr > deadlineStr) ? deadlineStr : defaultStr;
+            const nextBizDay = calculateBusinessDays(today, 2);
+            dateInput.value = (deadlineStr && nextBizDay > deadlineStr) ? deadlineStr : nextBizDay;
         } else if (deadlineStr && dateInput.value > deadlineStr) {
-            // Correct any out-of-range existing value
             dateInput.value = deadlineStr;
         }
 
@@ -698,7 +792,7 @@ function openIssueSummonModal() {
             dateInput.parentNode.appendChild(hintEl);
         }
         if (deadlineLabel) {
-            hintEl.textContent = `⚠️ Mediation must be scheduled within 15 days of filing — deadline: ${deadlineLabel}.`;
+            hintEl.textContent = `⚠️ 15-day statutory mediation deadline (working days): ${deadlineLabel}.`;
         } else {
             hintEl.textContent = '';
         }
@@ -1083,8 +1177,7 @@ function initialiseComplaintMap(mapId, emptyState) {
     const city = form.querySelector('[name="incident_city"]');
     const barangay = form.querySelector('[name="incident_barangay"]');
     const tumanaBounds = L.latLngBounds(tumanaBoundary);
-    const map = L.map(element, { maxBounds: tumanaBounds, maxBoundsViscosity: 1 }).fitBounds(tumanaBounds, { padding: [8, 8] });
-    map.setMinZoom(map.getZoom());
+    const map = L.map(element).fitBounds(tumanaBounds, { padding: [8, 8] });
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
@@ -1099,30 +1192,74 @@ function initialiseComplaintMap(mapId, emptyState) {
         try {
             const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&zoom=18&addressdetails=1`, { headers: { Accept: 'application/json' } });
             const result = await response.json();
-            if (requestVersion !== lookupVersion || !result.address) return;
-            const address = result.address;
-            if (street) street.value = [address.house_number, address.road || address.pedestrian || address.neighbourhood].filter(Boolean).join(' ') || street.value;
-            if (purok) {
-                if (purok.tagName === 'SELECT') {
-                    // Gather all relevant Nominatim fields for matching
+            if (requestVersion !== lookupVersion) return;
+
+            const addr = result.address || {};
+            const fullAddress = (result.display_name || '').toLowerCase();
+            const cityCandidates = [addr.city, addr.town, addr.municipality, addr.county, addr.city_district].filter(Boolean).map(s => s.toLowerCase());
+
+            const isMarikinaCity = cityCandidates.some(c => c.includes('marikina')) || fullAddress.includes('marikina');
+            const isWithinMarikinaBox = (lat >= 14.610 && lat <= 14.690 && lng >= 121.075 && lng <= 121.155);
+
+            const otherCities = ['quezon city', 'pasig', 'san mateo', 'antipolo', 'cainta', 'rodriguez', 'taguig', 'makati', 'city of manila'];
+            const inOtherCity = cityCandidates.some(c => otherCities.some(oc => c.includes(oc))) && !isMarikinaCity;
+
+            const isMarikina = (isMarikinaCity || isWithinMarikinaBox) && !inOtherCity;
+
+            // Case C: Outside Marikina City
+            if (!isMarikina) {
+                if (marker) {
+                    map.removeLayer(marker);
+                    marker = null;
+                }
+                latitude.value = '';
+                longitude.value = '';
+                state.value = (mapId === 'editComplaintMap' ? 'clear' : 'none');
+                setStatus('Incident location must be within Marikina City.');
+                window.agapNotify?.('Incident location must be within Marikina City.', 'error');
+                return;
+            }
+
+            if (street) {
+                street.value = [addr.house_number, addr.road || addr.pedestrian || addr.neighbourhood].filter(Boolean).join(' ') || street.value;
+            }
+            if (city) {
+                city.value = 'Marikina City';
+            }
+
+            const inTumana = isWithinTumana(lat, lng);
+
+            if (inTumana) {
+                // Case A: Pin is within Barangay Tumana
+                if (barangay) {
+                    barangay.value = 'Tumana';
+                    barangay.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+
+                if (purok && purok.tagName === 'SELECT') {
+                    const outsideOpt = purok.querySelector('option[value="Outside Tumana"]') || purok.querySelector('#purokOutsideTumanaOption');
+                    if (outsideOpt) {
+                        outsideOpt.disabled = true;
+                        outsideOpt.hidden = true;
+                    }
+                    if (purok.value === 'Outside Tumana' || purok.value === 'Non-Resident') {
+                        purok.value = '';
+                    }
+
                     const rawArea = [
-                        address.quarter, address.suburb, address.neighbourhood,
-                        address.village, address.road, address.locality
+                        addr.quarter, addr.suburb, addr.neighbourhood,
+                        addr.village, addr.road, addr.locality
                     ].filter(Boolean).join(' ').toLowerCase();
 
                     let matched = false;
-                    // Try each option: check if the option value appears in the raw area string,
-                    // or if a keyword from the raw area appears in the option value
                     for (const opt of purok.options) {
-                        if (!opt.value) continue;
+                        if (!opt.value || opt.value === 'Outside Tumana' || opt.value === 'Non-Resident') continue;
                         const optLower = opt.value.toLowerCase();
-                        // Direct: raw area contains option value keyword
                         if (rawArea.includes(optLower)) {
                             purok.value = opt.value;
                             matched = true;
                             break;
                         }
-                        // Reverse: option value contains a word from raw area
                         const rawWords = rawArea.split(/[\s,]+/).filter(w => w.length > 2);
                         if (rawWords.some(w => optLower.includes(w))) {
                             purok.value = opt.value;
@@ -1130,58 +1267,164 @@ function initialiseComplaintMap(mapId, emptyState) {
                             break;
                         }
                     }
-                    // Fire change event so any listeners (e.g., geocodeAddress) know about the update
-                    if (matched) purok.dispatchEvent(new Event('change', { bubbles: true }));
-                } else if (address.quarter) {
-                    purok.value = address.quarter;
+                    if (matched) {
+                        purok.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                }
+                setStatus(`Map point selected: ${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)} (Barangay Tumana). Address updated.`);
+            } else {
+                // Case B: Pin is outside Tumana, but still within Marikina City
+                const detectedCandidates = [addr.suburb, addr.village, addr.quarter, addr.neighbourhood, addr.city_district].filter(Boolean).join(' ');
+                const detectedLower = (detectedCandidates + ' ' + fullAddress).toLowerCase();
+
+                let detectedBgy = '';
+                if (detectedLower.includes('concepcion dos') || detectedLower.includes('concepcion ii') || detectedLower.includes('concepcion 2')) {
+                    detectedBgy = 'Concepcion Dos';
+                } else if (detectedLower.includes('concepcion uno') || detectedLower.includes('concepcion i') || detectedLower.includes('concepcion 1')) {
+                    detectedBgy = 'Concepcion Uno';
+                } else if (detectedLower.includes('santo niño') || detectedLower.includes('santo nino') || detectedLower.includes('sto. niño') || detectedLower.includes('sto nino') || detectedLower.includes('sto. nino')) {
+                    detectedBgy = 'Santo Niño';
+                } else if (detectedLower.includes('santa elena') || detectedLower.includes('sta. elena') || detectedLower.includes('sta elena')) {
+                    detectedBgy = 'Santa Elena';
+                } else if (detectedLower.includes('jesus dela peña') || detectedLower.includes('jesus dela pena') || detectedLower.includes('j. dela peña') || detectedLower.includes('j. dela pena')) {
+                    detectedBgy = 'Jesus Dela Peña';
+                } else if (detectedLower.includes('industrial valley') || detectedLower.includes('ivc')) {
+                    detectedBgy = 'Industrial Valley Complex';
+                } else if (detectedLower.includes('marikina heights')) {
+                    detectedBgy = 'Marikina Heights';
+                } else {
+                    const simpleBgys = ['Barangka', 'Calumpang', 'Fortune', 'Malanday', 'Nangka', 'Parang', 'San Roque', 'Tañong'];
+                    for (const b of simpleBgys) {
+                        if (detectedLower.includes(b.toLowerCase()) || (b === 'Tañong' && detectedLower.includes('tanong'))) {
+                            detectedBgy = b;
+                            break;
+                        }
+                    }
+                }
+
+                if (barangay) {
+                    if (detectedBgy) {
+                        barangay.value = detectedBgy;
+                    }
+                    barangay.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+
+                if (purok && purok.tagName === 'SELECT') {
+                    const outsideOpt = purok.querySelector('option[value="Outside Tumana"]') || purok.querySelector('#purokOutsideTumanaOption');
+                    if (outsideOpt) {
+                        outsideOpt.disabled = false;
+                        outsideOpt.hidden = false;
+                    }
+                    purok.value = 'Outside Tumana';
+                    purok.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+
+                const bgyLabel = detectedBgy ? `Barangay ${detectedBgy}` : 'Outside Tumana';
+                setStatus(`Map point selected: ${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)} (${bgyLabel}). Address updated.`);
+            }
+        } catch (_) {
+            const inTumana = isWithinTumana(lat, lng);
+            if (city) city.value = 'Marikina City';
+            if (inTumana) {
+                if (barangay) {
+                    barangay.value = 'Tumana';
+                    barangay.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            } else {
+                if (purok && purok.tagName === 'SELECT') {
+                    const outsideOpt = purok.querySelector('option[value="Outside Tumana"]') || purok.querySelector('#purokOutsideTumanaOption');
+                    if (outsideOpt) {
+                        outsideOpt.disabled = false;
+                        outsideOpt.hidden = false;
+                    }
+                    purok.value = 'Outside Tumana';
+                    purok.dispatchEvent(new Event('change', { bubbles: true }));
                 }
             }
-            if (city) city.value = 'Marikina City';
-            if (barangay) barangay.value = 'Tumana';
-            setStatus(`Map point selected: ${latitude.value}, ${longitude.value}. Address updated.`);
-        } catch (_) {
-            setStatus(`Map point selected: ${latitude.value}, ${longitude.value}. Address lookup is unavailable.`);
+            setStatus(`Map point selected: ${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}. Address lookup is unavailable.`);
         }
     };
+
     const setPoint = (lat, lng, mapState = 'selected', syncAddress = false) => {
-        if (!isWithinTumana(lat, lng)) {
-            setStatus('Choose a point within Barangay Tumana.');
+        const latNum = Number(lat);
+        const lngNum = Number(lng);
+        if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) return false;
+
+        // Immediate bounding box check for Marikina City (Lat 14.610 to 14.690, Lng 121.075 to 121.155)
+        if (latNum < 14.610 || latNum > 14.690 || lngNum < 121.075 || lngNum > 121.155) {
+            window.agapNotify?.('Incident location must be within Marikina City.', 'error');
+            if (marker) {
+                map.removeLayer(marker);
+                marker = null;
+            }
+            latitude.value = '';
+            longitude.value = '';
+            state.value = (mapId === 'editComplaintMap' ? 'clear' : 'none');
+            setStatus('Incident location must be within Marikina City.');
             return false;
         }
-        if (marker) marker.setLatLng([lat, lng]);
+
+        if (marker) marker.setLatLng([latNum, lngNum]);
         else {
-            marker = L.marker([lat, lng], { draggable: true }).addTo(map);
+            marker = L.marker([latNum, lngNum], { draggable: true }).addTo(map);
             marker.on('dragend', (event) => {
                 const point = event.target.getLatLng();
-                if (!setPoint(point.lat, point.lng, 'selected', true) && marker) marker.setLatLng([Number(latitude.value), Number(longitude.value)]);
+                if (!setPoint(point.lat, point.lng, 'selected', true) && marker) {
+                    if (Number.isFinite(Number(latitude.value)) && Number.isFinite(Number(longitude.value))) {
+                        marker.setLatLng([Number(latitude.value), Number(longitude.value)]);
+                    }
+                }
             });
         }
-        latitude.value = Number(lat).toFixed(8);
-        longitude.value = Number(lng).toFixed(8);
+        latitude.value = latNum.toFixed(8);
+        longitude.value = lngNum.toFixed(8);
         state.value = mapState;
         setStatus(`Map point selected: ${latitude.value}, ${longitude.value}`);
-        map.setView([lat, lng], Math.max(map.getZoom(), 16));
-        if (syncAddress) updateAddressFromPoint(lat, lng);
+        map.setView([latNum, lngNum], Math.max(map.getZoom(), 16));
+        if (syncAddress) updateAddressFromPoint(latNum, lngNum);
         return true;
     };
+
+    // Synchronize Purok dropdown with manual Barangay selection
+    if (barangay && purok && purok.tagName === 'SELECT') {
+        const syncPurokWithBarangay = () => {
+            const outsideOpt = purok.querySelector('option[value="Outside Tumana"]') || purok.querySelector('#purokOutsideTumanaOption');
+            if (barangay.value === 'Tumana') {
+                if (outsideOpt) {
+                    outsideOpt.disabled = true;
+                    outsideOpt.hidden = true;
+                }
+                if (purok.value === 'Outside Tumana' || purok.value === 'Non-Resident') {
+                    purok.value = '';
+                }
+            } else if (barangay.value !== '') {
+                if (outsideOpt) {
+                    outsideOpt.disabled = false;
+                    outsideOpt.hidden = false;
+                }
+                purok.value = 'Outside Tumana';
+            }
+        };
+        barangay.addEventListener('change', syncPurokWithBarangay);
+        syncPurokWithBarangay();
+    }
 
     const geocodeAddress = async () => {
         const streetValue = street?.value.trim() || '';
         const purokValue = purok?.value.trim() || '';
+        const barangayValue = barangay?.value.trim() || 'Barangay Tumana';
         if (streetValue.length < 3) return;
-        const query = [streetValue, purokValue, 'Barangay Tumana', 'Marikina City', 'Metro Manila', 'Philippines'].filter(Boolean).join(', ');
-        const box = `${tumanaBounds.getWest()},${tumanaBounds.getNorth()},${tumanaBounds.getEast()},${tumanaBounds.getSouth()}`;
+        const query = [streetValue, (purokValue !== 'Outside Tumana' && purokValue !== 'Non-Resident') ? purokValue : '', barangayValue, 'Marikina City', 'Metro Manila', 'Philippines'].filter(Boolean).join(', ');
         const requestVersion = ++lookupVersion;
         try {
-            const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&bounded=1&viewbox=${encodeURIComponent(box)}&q=${encodeURIComponent(query)}`, { headers: { Accept: 'application/json' } });
+            const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(query)}`, { headers: { Accept: 'application/json' } });
             const results = await response.json();
             if (requestVersion !== lookupVersion || !results[0]) return;
             const lat = Number(results[0].lat), lng = Number(results[0].lon);
-            if (isWithinTumana(lat, lng)) setPoint(lat, lng, 'selected');
-            else setStatus('The typed address is outside Barangay Tumana.');
+            setPoint(lat, lng, 'selected');
         } catch (_) { setStatus('Address lookup is unavailable. You can still place the pin on the map.'); }
     };
-    [street, purok].filter(Boolean).forEach((field) => {
+    [street, purok, barangay].filter(Boolean).forEach((field) => {
         field.addEventListener('input', () => {
             clearTimeout(geocodeTimer);
             geocodeTimer = setTimeout(geocodeAddress, 700);
@@ -1226,7 +1469,7 @@ function initialiseComplaintMap(mapId, emptyState) {
     enableExistingMarkerDrag();
     const savedLat = Number(latitude.value);
     const savedLng = Number(longitude.value);
-    if (state.value === 'unchanged' && Number.isFinite(savedLat) && Number.isFinite(savedLng) && isWithinTumana(savedLat, savedLng)) {
+    if (state.value === 'unchanged' && Number.isFinite(savedLat) && Number.isFinite(savedLng)) {
         marker = L.marker([savedLat, savedLng], { draggable: true }).addTo(map);
         enableExistingMarkerDrag();
         setStatus(`Saved map point: ${savedLat.toFixed(8)}, ${savedLng.toFixed(8)}`);
@@ -1323,13 +1566,27 @@ window.initPartySearchCombobox = function(comboboxEl, residentsList) {
             res.contact_no ? `📞 ${escapeHtml(res.contact_no)}` : ''
         ].filter(Boolean).join(' &bull; ');
 
+        let resBadge = '';
+        const isTenant = Number(res.is_tenant);
+        const purok = (res.purok || '').trim().toLowerCase();
+        if (isTenant === 2 || purok === 'non-resident') {
+            resBadge = '<span class="residency-badge badge-non-resident"><span class="residency-dot"></span>Non-Resident</span>';
+        } else if (isTenant === 1) {
+            resBadge = '<span class="residency-badge badge-tenant"><span class="residency-dot"></span>Tenant - Tumana</span>';
+        } else {
+            resBadge = '<span class="residency-badge badge-resident"><span class="residency-dot"></span>Resident</span>';
+        }
+
         previewEl.innerHTML = `
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                 <div>
-                    <strong style="color: #0f172a; font-size: 0.92rem;">${escapeHtml(res.name)}</strong>
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <strong style="color: #0f172a; font-size: 0.92rem;">${escapeHtml(res.name)}</strong>
+                        ${resBadge}
+                    </div>
                     ${details ? `<div style="font-size: 0.8rem; color: #475569; margin-top: 2px;">${details}</div>` : ''}
                 </div>
-                <span class="party-search-item-badge party-search-badge-verified">Verified Profile</span>
+                <span class="party-search-item-badge party-search-badge-verified">Verified</span>
             </div>
         `;
         previewEl.style.display = 'block';
@@ -1394,8 +1651,17 @@ window.initPartySearchCombobox = function(comboboxEl, residentsList) {
         const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
 
         let filtered = residentsList;
+        // Strictly restrict respondent to verified residents and tenants living within Barangay Tumana
+        if (partyRole === 'respondent') {
+            filtered = filtered.filter(res => {
+                const isTenant = Number(res.is_tenant);
+                const purok = (res.purok || '').trim().toLowerCase();
+                return (isTenant === 0 || isTenant === 1) && purok !== 'non-resident';
+            });
+        }
+
         if (tokens.length > 0) {
-            filtered = residentsList.filter(res => {
+            filtered = filtered.filter(res => {
                 const text = res.search_text || '';
                 return tokens.every(t => text.includes(t));
             });
@@ -1407,10 +1673,13 @@ window.initPartySearchCombobox = function(comboboxEl, residentsList) {
         highlightedIndex = -1;
 
         if (results.length === 0) {
+            const noResMsg = partyRole === 'respondent'
+                ? 'Only residents and tenants living within Barangay Tumana can be named as respondents in this barangay.'
+                : 'Only registered profiles can be selected.';
             dropdown.innerHTML = `
                 <div class="party-search-no-results">
-                    <strong>No registered resident found matching "${escapeHtml(query)}"</strong>
-                    <span>Only profiles registered in the resident database can be selected.</span>
+                    <strong>No matching profile found for "${escapeHtml(query)}"</strong>
+                    <span>${noResMsg}</span>
                 </div>
             `;
             dropdown.style.display = 'block';
@@ -1434,13 +1703,24 @@ window.initPartySearchCombobox = function(comboboxEl, residentsList) {
                 disabledReason = 'Selected as Complainant';
             }
 
+            let itemBadge = '';
+            const isTenant = Number(res.is_tenant);
+            const purok = (res.purok || '').trim().toLowerCase();
+            if (isTenant === 2 || purok === 'non-resident') {
+                itemBadge = '<span class="party-search-item-badge badge-non-resident">Non-Resident</span>';
+            } else if (isTenant === 1) {
+                itemBadge = '<span class="party-search-item-badge badge-tenant">Tenant - Tumana</span>';
+            } else {
+                itemBadge = '<span class="party-search-item-badge badge-resident">Resident</span>';
+            }
+
             return `
                 <div class="party-search-item ${isSelected ? 'is-selected' : ''} ${isDisabled ? 'is-disabled' : ''}" data-index="${idx}" data-resident-id="${res.resident_id}">
                     <div class="party-search-item-top">
                         <span class="party-search-item-name">${escapeHtml(res.display_name)}</span>
                         ${isDisabled 
                             ? `<span class="party-search-item-badge party-search-badge-disabled">${disabledReason}</span>` 
-                            : `<span class="party-search-item-badge party-search-badge-verified">Resident</span>`}
+                            : itemBadge}
                     </div>
                     <div class="party-search-item-meta">
                         <span>📍 ${escapeHtml(res.purok ? 'Purok ' + res.purok : 'Barangay Tumana')}</span>
@@ -1454,7 +1734,7 @@ window.initPartySearchCombobox = function(comboboxEl, residentsList) {
         dropdown.querySelectorAll('.party-search-item').forEach(item => {
             item.addEventListener('click', () => {
                 if (item.classList.contains('is-disabled')) {
-                    window.agapNotify?.('The complainant and respondent cannot be the same resident profile.', 'error');
+                    window.agapNotify?.('The complainant and respondent cannot be the same profile.', 'error');
                     return;
                 }
                 const resId = Number(item.dataset.residentId);

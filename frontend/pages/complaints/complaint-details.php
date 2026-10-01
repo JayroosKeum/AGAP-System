@@ -73,9 +73,14 @@ include '../../layouts/header.php';
         </div>
 
         <?php if ($complaintFlash && !empty($complaintFlash['message'])): ?>
-            <div class="alert alert-<?php echo htmlspecialchars($complaintFlash['type'] ?? 'success'); ?>" role="alert" style="margin: 0 30px 20px;">
-                <?php echo htmlspecialchars($complaintFlash['message']); ?>
-            </div>
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    window.agapNotify && window.agapNotify(
+                        <?php echo json_encode($complaintFlash['message']); ?>,
+                        <?php echo json_encode(($complaintFlash['type'] ?? '') === 'success' ? 'success' : 'error'); ?>
+                    );
+                });
+            </script>
         <?php endif; ?>
 
         <!-- Collapsible Case Status / Progress Section -->

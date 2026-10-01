@@ -54,10 +54,14 @@ include '../../layouts/header.php';
         </div>
 
         <?php if ($complaintFlash && !empty($complaintFlash['message'])): ?>
-            <div class="complaint-alert-banner alert-banner-<?php echo (($complaintFlash['type'] ?? '') === 'success') ? 'success' : 'error'; ?>" role="alert">
-                <span><?php echo htmlspecialchars($complaintFlash['message']); ?></span>
-                <button type="button" class="alert-close-btn" onclick="this.parentElement.remove()" aria-label="Close alert">&times;</button>
-            </div>
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    window.agapNotify && window.agapNotify(
+                        <?php echo json_encode($complaintFlash['message']); ?>,
+                        <?php echo json_encode((($complaintFlash['type'] ?? '') === 'success') ? 'success' : 'error'); ?>
+                    );
+                });
+            </script>
         <?php endif; ?>
 
 

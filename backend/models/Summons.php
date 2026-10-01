@@ -51,17 +51,74 @@ class Summons
                 return ['success' => false, 'message' => 'Please provide a valid 1st Mediation date and time.'];
             }
 
-            // Enforce: mediation must be scheduled within 15 days of complaint filing date
+            require_once __DIR__ . '/../services/MediationDeadlineService.php';
+
+            // Check non-working day (weekends & holidays)
+            $scheduledDateObj = new \DateTimeImmutable($medDate);
+            if (MediationDeadlineService::isNonWorkingDay($scheduledDateObj)) {
+                $this->conn->rollBack();
+                $isWeekend = in_array((int)$scheduledDateObj->format('N'), [6, 7], true);
+                return [
+                    'success' => false,
+                    'message' => $isWeekend
+                        ? 'Mediation hearings can only be scheduled on weekdays (Monday to Friday).'
+                        : 'The selected date is an official regular holiday / non-working day. Please select a regular working day.'
+                ];
+            }
+
+            // Check 1-hour office hour slot (8:00 AM - 12:00 PM or 1:00 PM - 5:00 PM)
+            $timeParts = explode(':', $medTime);
+            $hours = (int) $timeParts[0];
+            $minutes = (int) ($timeParts[1] ?? 0);
+            $totalMinutes = $hours * 60 + $minutes;
+
+            if ($totalMinutes >= 720 && $totalMinutes < 780) {
+                $this->conn->rollBack();
+                return [
+                    'success' => false,
+                    'message' => 'Mediation sessions cannot be scheduled during lunch break (12:00 PM – 1:00 PM).'
+                ];
+            }
+
+            $isMorning = ($totalMinutes >= 480 && ($totalMinutes + 60) <= 720);
+            $isAfternoon = ($totalMinutes >= 780 && ($totalMinutes + 60) <= 1020);
+            if (!$isMorning && !$isAfternoon) {
+                $this->conn->rollBack();
+                return [
+                    'success' => false,
+                    'message' => '1-hour mediation sessions must be scheduled within office hours (8:00 AM – 12:00 PM or 1:00 PM – 5:00 PM).'
+                ];
+            }
+
+            // Check daily 8-slot capacity limit
+            $capacityStmt = $this->conn->prepare("
+                SELECT COUNT(*) FROM hearings h
+                INNER JOIN cases c ON c.case_id = h.case_id
+                WHERE DATE(h.hearing_date) = ?
+                  AND h.hearing_type = 'Mediation'
+                  AND c.case_status NOT IN ('Dismissed', 'Settled')
+            ");
+            $capacityStmt->execute([$medDate]);
+            if ((int) $capacityStmt->fetchColumn() >= 8) {
+                $this->conn->rollBack();
+                return [
+                    'success' => false,
+                    'message' => 'Daily capacity limit reached: All 8 mediation slots for this date are fully booked. Please select another date.'
+                ];
+            }
+
+            // Enforce: mediation must be scheduled within 15 working days of complaint filing date
             if (!empty($complaint['created_at'])) {
-                $filingDate   = new \DateTime(substr($complaint['created_at'], 0, 10));
-                $deadlineDate = (clone $filingDate)->modify('+15 days');
+                $filingDateStr = substr($complaint['created_at'], 0, 10);
+                $filingDeadline = MediationDeadlineService::calculateDeadline($filingDateStr, 15);
                 $scheduledDate = new \DateTime($medDate);
+                $deadlineDate = new \DateTime($filingDeadline);
                 if ($scheduledDate > $deadlineDate) {
                     $this->conn->rollBack();
                     return [
                         'success' => false,
                         'message' => sprintf(
-                            'The mediation date must be within 15 days of the complaint filing date. Deadline: %s.',
+                            'The mediation date must be within 15 working days of the complaint filing date. Deadline: %s.',
                             $deadlineDate->format('F j, Y')
                         ),
                     ];

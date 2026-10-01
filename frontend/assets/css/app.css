@@ -35,7 +35,19 @@
 }
 
 /* Required field indicators and inline browser validation feedback. */
-.agap-toast-region { bottom:22px; display:grid; gap:10px; max-width:min(390px, calc(100vw - 32px)); position:fixed; right:22px; z-index:1200; }.agap-toast { animation:agap-toast-in .2s ease-out; background:#18181b; border-left:4px solid #a1a1aa; border-radius:9px; box-shadow:0 10px 30px rgba(0,0,0,.22); color:#fff; min-width:280px; padding:13px 40px 13px 14px; position:relative; }.agap-toast.success { border-left-color:#22c55e; }.agap-toast.error { border-left-color:#ef4444; }.agap-toast.info { border-left-color:#38bdf8; }.agap-toast strong { display:block; font-size:13px; margin-bottom:3px; }.agap-toast p { color:#e4e4e7; font-size:12px; line-height:1.45; margin:0; }.agap-toast-close { background:transparent; border:0; color:#d4d4d8; cursor:pointer; font-size:22px; line-height:1; padding:4px; position:absolute; right:8px; top:8px; }.agap-toast-close:hover { color:#fff; } @keyframes agap-toast-in { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+.agap-toast-region { bottom:22px; display:grid; gap:10px; max-width:min(390px, calc(100vw - 32px)); position:fixed; right:22px; z-index:1200; }
+.agap-toast { animation:agap-toast-in .25s cubic-bezier(0.16, 1, 0.3, 1); background:#18181b; border-left:4px solid #a1a1aa; border-radius:9px; box-shadow:0 10px 30px rgba(0,0,0,.22); color:#fff; min-width:280px; padding:13px 40px 13px 14px; position:relative; transition: opacity .25s ease, transform .25s ease; }
+.agap-toast.success { border-left-color:#22c55e; }
+.agap-toast.error { border-left-color:#ef4444; }
+.agap-toast.warning { border-left-color:#f59e0b; }
+.agap-toast.info { border-left-color:#38bdf8; }
+.agap-toast strong { display:block; font-size:13px; margin-bottom:3px; }
+.agap-toast p { color:#e4e4e7; font-size:12px; line-height:1.45; margin:0; }
+.agap-toast-close { background:transparent; border:0; color:#d4d4d8; cursor:pointer; font-size:22px; line-height:1; padding:4px; position:absolute; right:8px; top:8px; }
+.agap-toast-close:hover { color:#fff; }
+.agap-toast.is-leaving { animation: agap-toast-out .25s ease-in forwards; }
+@keyframes agap-toast-in { from { opacity:0; transform:translateY(12px) scale(0.96); } to { opacity:1; transform:translateY(0) scale(1); } }
+@keyframes agap-toast-out { from { opacity:1; transform:translateY(0) scale(1); } to { opacity:0; transform:translateY(8px) scale(0.96); } }
 .sidebar-nav a { align-items:center; display:flex; gap:10px; }
 .nav-icon { align-items:center; display:inline-flex; flex:0 0 20px; height:20px; justify-content:center; line-height:1; text-align:center; width:20px; }
 .nav-icon img { display:block; filter:invert(1); height:20px; object-fit:contain; width:20px; }

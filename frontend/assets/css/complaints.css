@@ -264,10 +264,24 @@ button:disabled, button.is-disabled, button[disabled], .btn-create:disabled, .bt
     color: #b91c1c;
     border: 1px solid #fca5a5;
 }
-.party-search-badge-verified {
+.party-search-badge-verified,
+.party-search-badge-resident,
+.badge-resident {
     background: #dcfce7;
     color: #15803d;
     border: 1px solid #bbf7d0;
+}
+.party-search-badge-tenant,
+.badge-tenant {
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fde68a;
+}
+.party-search-badge-non-resident,
+.badge-non-resident {
+    background: #f1f5f9;
+    color: #334155;
+    border: 1px solid #cbd5e1;
 }
 .party-search-no-results {
     padding: 16px;

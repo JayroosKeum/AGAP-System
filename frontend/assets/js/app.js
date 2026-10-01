@@ -118,7 +118,7 @@
     document.addEventListener('DOMContentLoaded', start);
 })();
 
-window.agapNotify = (message, type = 'info', title = 'AGAP') => {
+window.agapNotify = (message, type = 'info', title = null) => {
     if (!message) return;
     let region = document.getElementById('agapToastRegion');
     if (!region) {
@@ -131,12 +131,30 @@ window.agapNotify = (message, type = 'info', title = 'AGAP') => {
     }
     const toast = document.createElement('article');
     toast.className = `agap-toast ${type}`;
-    const heading = document.createElement('strong'); heading.textContent = title;
-    const text = document.createElement('p'); text.textContent = message;
-    const close = document.createElement('button'); close.type = 'button'; close.className = 'agap-toast-close'; close.setAttribute('aria-label', 'Dismiss notification'); close.textContent = '×';
-    close.addEventListener('click', () => toast.remove());
-    toast.append(heading, text, close); region.appendChild(toast);
-    window.setTimeout(() => toast.remove(), type === 'error' ? 8500 : 5500);
+
+    const defaultTitle = title || (type === 'success' ? 'Success' : (type === 'error' ? 'Notice' : (type === 'warning' ? 'Warning' : 'AGAP')));
+    const heading = document.createElement('strong');
+    heading.textContent = defaultTitle;
+    const text = document.createElement('p');
+    text.textContent = message;
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'agap-toast-close';
+    close.setAttribute('aria-label', 'Dismiss notification');
+    close.textContent = '×';
+
+    const dismissToast = () => {
+        if (toast.classList.contains('is-leaving')) return;
+        toast.classList.add('is-leaving');
+        window.setTimeout(() => toast.remove(), 250);
+    };
+
+    close.addEventListener('click', dismissToast);
+    toast.append(heading, text, close);
+    region.appendChild(toast);
+
+    // Auto-dismiss after 4 seconds (4000ms) with smooth fade-out
+    window.setTimeout(dismissToast, 4000);
 };
 
 document.addEventListener('DOMContentLoaded', () => {

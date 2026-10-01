@@ -18,35 +18,48 @@ if (!in_array((int) $_SESSION['role_id'], [1, 2, 4], true)) {
     exit;
 }
 
-if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
-    http_response_code(405);
-    header('Allow: GET');
-    echo json_encode([
-        'success' => false,
-        'message' => 'Proof of Service is currently view-only. New service actions are disabled.'
-    ]);
+$controller = new GPSController();
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = trim((string) ($_POST['action'] ?? ''));
+    if ($action === 'officer_return' || isset($_POST['party_type'])) {
+        $result = $controller->recordOfficerReturn($_POST, $_FILES['proof_image'] ?? [], (int) $_SESSION['user_id']);
+    } else {
+        $result = $controller->saveProof($_POST, $_FILES['proof_image'] ?? [], (int) $_SESSION['user_id']);
+    }
+
+    http_response_code($result['success'] ? 200 : 422);
+    echo json_encode($result);
     exit;
 }
 
-$controller = new GPSController();
-$caseId = filter_input(INPUT_GET, 'case_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-$mode = trim((string) ($_GET['mode'] ?? ''));
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    $caseId = filter_input(INPUT_GET, 'case_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $mode = trim((string) ($_GET['mode'] ?? ''));
 
-if ($caseId) {
-    if ($mode === 'notices') {
-        $result = $controller->summonsNotices((int) $caseId);
-    } elseif ($mode === 'summary') {
-        $result = $controller->caseSummary((int) $caseId);
+    if ($caseId) {
+        if ($mode === 'deliveries') {
+            $result = $controller->caseDeliveries((int) $caseId);
+        } elseif ($mode === 'notices') {
+            $result = $controller->summonsNotices((int) $caseId);
+        } elseif ($mode === 'summary') {
+            $result = $controller->caseSummary((int) $caseId);
+        } elseif ($mode === '') {
+            $result = $controller->proofs((int) $caseId);
+        } else {
+            $result = ['success' => false, 'message' => 'Unsupported view mode.'];
+        }
     } elseif ($mode === '') {
-        $result = $controller->proofs((int) $caseId);
+        $result = $controller->cases();
     } else {
-        $result = ['success' => false, 'message' => 'Unsupported view mode.'];
+        $result = ['success' => false, 'message' => 'A valid case is required.'];
     }
-} elseif ($mode === '') {
-    $result = $controller->cases();
-} else {
-    $result = ['success' => false, 'message' => 'A valid case is required.'];
+
+    http_response_code($result['success'] ? 200 : 422);
+    echo json_encode($result);
+    exit;
 }
 
-http_response_code($result['success'] ? 200 : 422);
-echo json_encode($result);
+http_response_code(405);
+header('Allow: GET, POST');
+echo json_encode(['success' => false, 'message' => 'Method not allowed.']);

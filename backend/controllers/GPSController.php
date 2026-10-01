@@ -46,6 +46,100 @@ class GPSController
         return ['success' => true, 'message' => 'Summons notice reopened for a new service attempt.'];
     }
 
+    public function caseDeliveries(int $caseId): array
+    {
+        require_once __DIR__ . '/../services/SummonDeliveryService.php';
+        require_once __DIR__ . '/../config/database.php';
+        $db = (new Database())->connect();
+
+        $stmt = $db->prepare("
+            SELECT hearing_id, hearing_type, hearing_date, venue, status
+            FROM hearings
+            WHERE case_id = ?
+            ORDER BY hearing_date DESC, hearing_id DESC
+        ");
+        $stmt->execute([$caseId]);
+        $hearings = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if (empty($hearings)) {
+            return [
+                'success' => true,
+                'data' => [
+                    'hearings' => [],
+                    'has_hearings' => false,
+                    'message' => 'No hearings scheduled yet for this case. Issue a summons to schedule 1st Mediation.'
+                ]
+            ];
+        }
+
+        $deliveryService = new SummonDeliveryService($db);
+        $hearingsWithDeliveries = [];
+        foreach ($hearings as $h) {
+            $hearingId = (int) $h['hearing_id'];
+            $delivResult = $deliveryService->getHearingDeliveries($hearingId);
+            if ($delivResult['success']) {
+                $hearingsWithDeliveries[] = [
+                    'hearing_id' => $hearingId,
+                    'hearing_type' => $h['hearing_type'],
+                    'hearing_date' => $h['hearing_date'],
+                    'venue' => $h['venue'],
+                    'status' => $h['status'],
+                    'deliveries' => $delivResult['deliveries'],
+                    'attendance_unlocked' => $delivResult['attendance_unlocked'],
+                    'service_notice' => $delivResult['service_notice'],
+                ];
+            }
+        }
+
+        return [
+            'success' => true,
+            'data' => [
+                'hearings' => $hearingsWithDeliveries,
+                'has_hearings' => true
+            ]
+        ];
+    }
+
+    public function recordOfficerReturn(array $input, array $file, int $userId): array
+    {
+        require_once __DIR__ . '/../services/SummonDeliveryService.php';
+        require_once __DIR__ . '/../config/database.php';
+        $db = (new Database())->connect();
+
+        $hearingId = filter_var($input['hearing_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
+        $caseId = filter_var($input['case_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
+
+        if (!$hearingId && $caseId) {
+            $stmt = $db->prepare("SELECT hearing_id FROM hearings WHERE case_id = ? ORDER BY hearing_date DESC, hearing_id DESC LIMIT 1");
+            $stmt->execute([$caseId]);
+            $hearingId = (int) $stmt->fetchColumn() ?: null;
+        }
+
+        if (!$hearingId) {
+            return ['success' => false, 'message' => 'No active hearing found for this case to record summon delivery against.'];
+        }
+
+        // Upload proof image if provided
+        $imagePath = null;
+        if (!empty($file['tmp_name'])) {
+            $upload = $this->storeImage($file);
+            if (!$upload['success']) {
+                return $upload;
+            }
+            $imagePath = $upload['path'];
+        }
+
+        $deliveryService = new SummonDeliveryService($db);
+        $result = $deliveryService->recordDelivery($hearingId, $input, $userId);
+
+        if ($result['success'] && $imagePath && $caseId) {
+            $upd = $db->prepare("UPDATE proof_of_service SET image_path = ? WHERE case_id = ? ORDER BY proof_id DESC LIMIT 1");
+            $upd->execute([$imagePath, $caseId]);
+        }
+
+        return $result;
+    }
+
     public function location(int $complaintId): array
     {
         if (!$this->location->complaintExists($complaintId)) return ['success' => false, 'message' => 'Complaint not found.'];

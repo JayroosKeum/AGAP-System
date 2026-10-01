@@ -74,20 +74,40 @@ class MediationDeadlineService
     }
 
     /**
+     * Calculates deadline excluding weekends (Saturdays & Sundays) and official holidays (strictly working days).
+     *
+     * @param string|DateTimeInterface $startDate
+     * @param int $daysToAdd
+     * @param array|null $holidayList Optional list of custom holiday MM-DD strings
+     * @return string Y-m-d format
+     */
+    public static function calculateBusinessDays(string|DateTimeInterface $startDate, int $daysToAdd = 15, ?array $holidayList = null): string
+    {
+        if (is_string($startDate)) {
+            $cur = new DateTimeImmutable(substr($startDate, 0, 10));
+        } else {
+            $cur = DateTimeImmutable::createFromInterface($startDate);
+        }
+
+        $added = 0;
+        while ($added < $daysToAdd) {
+            $cur = $cur->modify('+1 day');
+            if (self::isNonWorkingDay($cur)) {
+                continue;
+            }
+            $added++;
+        }
+
+        return $cur->format('Y-m-d');
+    }
+
+    /**
      * Calculates the statutory 15-day mediation deadline.
-     * Duration: 15 calendar days from start date (Day 0).
-     * If Day 15 falls on a weekend or public holiday, extends to the next working day.
+     * Duration: 15 working days from start date (Day 0), excluding weekends and holidays.
      */
     public static function calculateDeadline(string $startDate, int $calendarDays = 15): string
     {
-        $dt = new DateTimeImmutable(substr($startDate, 0, 10));
-        $deadline = $dt->modify("+{$calendarDays} days");
-
-        while (self::isNonWorkingDay($deadline)) {
-            $deadline = $deadline->modify('+1 day');
-        }
-
-        return $deadline->format('Y-m-d');
+        return self::calculateBusinessDays($startDate, $calendarDays);
     }
 
     /**

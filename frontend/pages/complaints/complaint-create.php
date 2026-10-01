@@ -17,14 +17,14 @@ $categoriesStmt = $db->query('SELECT category_id, category_name FROM complaint_c
 $categories = $categoriesStmt ? $categoriesStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
 $residentsStmt = $db->query("
-    SELECT resident_id, first_name, middle_name, last_name, contact_no, purok, address
+    SELECT resident_id, first_name, middle_name, last_name, contact_no, purok, address, is_tenant
     FROM residents 
     ORDER BY last_name ASC, first_name ASC
 ");
 $residents = $residentsStmt ? $residentsStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
 $renderResidentOptions = function(?int $selectedId = null) use ($residents): string {
-    $html = '<option value="">Select Resident Profile...</option>';
+    $html = '<option value="">Select Profile...</option>';
     foreach ($residents as $res) {
         $fullName = trim(implode(' ', array_filter([$res['first_name'], $res['middle_name'] ?? '', $res['last_name']])));
         $displayName = ($res['last_name'] !== '-')
@@ -38,7 +38,16 @@ $renderResidentOptions = function(?int $selectedId = null) use ($residents): str
             $addrParts[] = trim($res['purok']);
         }
         $addressText = !empty($addrParts) ? implode(', ', $addrParts) : 'No address on file';
-        $optionLabel = $displayName . ' — ' . $addressText;
+        $isTenantInt = (int)($res['is_tenant'] ?? 0);
+        $purokVal = trim((string)($res['purok'] ?? ''));
+        if ($isTenantInt === 2 || strcasecmp($purokVal, 'Non-Resident') === 0) {
+            $residencyTag = 'Non-Resident';
+        } elseif ($isTenantInt === 1) {
+            $residencyTag = 'Tenant - Tumana';
+        } else {
+            $residencyTag = 'Resident';
+        }
+        $optionLabel = $displayName . ' [' . $residencyTag . '] — ' . $addressText;
         $isSelected = ($selectedId !== null && (int)$selectedId === (int)$res['resident_id']) ? ' selected' : '';
 
         $html .= '<option value="' . (int)$res['resident_id'] . '"'
@@ -46,6 +55,7 @@ $renderResidentOptions = function(?int $selectedId = null) use ($residents): str
             . ' data-purok="' . htmlspecialchars($res['purok'] ?? '', ENT_QUOTES) . '"'
             . ' data-address="' . htmlspecialchars($res['address'] ?? '', ENT_QUOTES) . '"'
             . ' data-contact="' . htmlspecialchars($res['contact_no'] ?? '', ENT_QUOTES) . '"'
+            . ' data-is-tenant="' . (int)($res['is_tenant'] ?? 0) . '"'
             . $isSelected . '>'
             . htmlspecialchars($optionLabel, ENT_QUOTES)
             . '</option>';
@@ -69,6 +79,10 @@ foreach ($residents as $res) {
     $addressText = !empty($addrParts) ? implode(', ', $addrParts) : 'No address on file';
     $searchText = strtolower($fullName . ' ' . $displayName . ' ' . ($res['purok'] ?? '') . ' ' . ($res['address'] ?? '') . ' ' . ($res['contact_no'] ?? ''));
 
+    $isTenantInt = (int)($res['is_tenant'] ?? 0);
+    $purokVal = trim((string)($res['purok'] ?? ''));
+    $resLabel = ($isTenantInt === 2 || strcasecmp($purokVal, 'Non-Resident') === 0) ? 'Non-Resident' : ($isTenantInt === 1 ? 'Tenant - Tumana' : 'Resident');
+
     $residentsJsonData[] = [
         'resident_id' => (int) $res['resident_id'],
         'name' => $fullName,
@@ -77,6 +91,8 @@ foreach ($residents as $res) {
         'address' => $res['address'] ?? '',
         'address_text' => $addressText,
         'contact_no' => $res['contact_no'] ?? '',
+        'is_tenant' => $isTenantInt,
+        'residency_label' => $resLabel,
         'search_text' => $searchText,
     ];
 }
@@ -110,9 +126,11 @@ include '../../layouts/header.php';
         </div>
 
         <?php if ($complaintFlash && !empty($complaintFlash['message'])): ?>
-            <div class="alert alert-<?php echo htmlspecialchars($complaintFlash['type'] ?? 'error'); ?>" role="alert" style="margin: 0 30px 20px;">
-                <?php echo htmlspecialchars($complaintFlash['message']); ?>
-            </div>
+            <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                window.agapNotify?.(<?php echo json_encode($complaintFlash['message']); ?>, <?php echo json_encode($complaintFlash['type'] ?? 'error'); ?>, 'Complaint Intake');
+            });
+            </script>
         <?php endif; ?>
 
         <form id="createComplaintForm" action="../../../backend/api/complaints/create.php" method="POST" enctype="multipart/form-data" class="complaint-intake-form">
@@ -133,7 +151,7 @@ include '../../layouts/header.php';
                                     <option value="">Select Category</option>
                                     <?php foreach ($categories as $cat): ?>
                                         <option value="<?php echo (int)$cat['category_id']; ?>" <?php echo ((string)($old['category_id'] ?? '') === (string)$cat['category_id']) ? 'selected' : ''; ?>>
-                                            <?php echo htmlspecialchars($cat['category_name']); ?>
+                                             <?php echo htmlspecialchars($cat['category_name']); ?>
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
@@ -161,9 +179,10 @@ include '../../layouts/header.php';
                                 if (!$defaultDt && !empty($old['incident_date'])) {
                                     $defaultDt = $old['incident_date'] . (!empty($old['incident_time']) ? 'T' . substr($old['incident_time'], 0, 5) : 'T00:00');
                                 }
+                                $maxDt = date('Y-m-d\TH:i');
                                 ?>
-                                <input type="datetime-local" id="incidentDateTime" name="incident_datetime" required value="<?php echo htmlspecialchars($defaultDt); ?>">
-                                <small class="field-hint">Merged incident date and time of occurrence.</small>
+                                <input type="datetime-local" id="incidentDateTime" name="incident_datetime" required max="<?php echo $maxDt; ?>" value="<?php echo htmlspecialchars($defaultDt); ?>">
+                                <small class="field-hint">Merged incident date and time (cannot be in the future).</small>
                             </div>
                         </div>
                     </div>
@@ -172,23 +191,23 @@ include '../../layouts/header.php';
                     <div class="intake-card">
                         <div class="intake-card-header">
                             <h3>2. Involved Parties</h3>
-                            <span class="card-subtitle">Select from registered resident profiles to avoid misreporting</span>
+                            <span class="card-subtitle">Select registered profiles for the dispute parties</span>
                         </div>
 
                         <div id="partyDistinctError" class="alert alert-danger" style="display:none; margin: 0 0 16px; padding: 10px 14px; font-size: 0.88rem; border-radius: 6px; background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5;">
-                            ⚠️ The complainant and respondent cannot be the same resident profile. Please select different individuals.
+                            ⚠️ The complainant and respondent cannot be the same profile. Please select different individuals.
                         </div>
 
                         <!-- Complainant Searchable Field -->
                         <div class="form-group party-intake-group" id="complainantGroup">
                             <label for="complainantSearchInput">
-                                <span class="party-badge badge-complainant">Complainant</span>
-                                Resident Profile <span class="required-mark">*</span>
+                                <span class="party-badge badge-complainant">Complainant Details</span>
+                                Profile <span class="required-mark">*</span>
                             </label>
                             <div class="party-search-combobox" data-party-role="complainant">
                                 <div class="party-search-input-wrap">
                                     <svg class="party-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                                    <input type="text" id="complainantSearchInput" class="party-search-input" placeholder="Type resident name, purok, or address to search..." autocomplete="off">
+                                    <input type="text" id="complainantSearchInput" class="party-search-input" placeholder="Type complainant name, purok, or address to search..." autocomplete="off">
                                     <button type="button" class="party-search-clear" title="Clear selection" style="display:none;">&times;</button>
                                 </div>
                                 <input type="hidden" id="complainantResidentId" name="complainant_resident_id" required value="<?php echo htmlspecialchars((string)($old['complainant_resident_id'] ?? '')); ?>">
@@ -196,13 +215,13 @@ include '../../layouts/header.php';
                                 <div class="party-search-dropdown" style="display:none;"></div>
                             </div>
                             <div id="complainantPreview" class="party-selected-preview" style="display:none;"></div>
-                            <small class="field-hint">Person filing the complaint (type to search; only registered resident profiles can be selected).</small>
+                            <small class="field-hint">Person filing the complaint (can be a resident, tenant, or non-resident with dispute standing).</small>
                         </div>
 
                         <!-- Person Being Complained Against (Respondent) Searchable Field -->
                         <div class="form-group party-intake-group" id="respondentGroup">
                             <label for="respondentSearchInput">
-                                <span class="party-badge badge-respondent">Respondent</span>
+                                <span class="party-badge badge-respondent">Respondent Details</span>
                                 Person Being Complained Against <span class="required-mark">*</span>
                             </label>
                             <div class="party-search-combobox" data-party-role="respondent">
@@ -216,10 +235,13 @@ include '../../layouts/header.php';
                                 <div class="party-search-dropdown" style="display:none;"></div>
                             </div>
                             <div id="respondentPreview" class="party-selected-preview" style="display:none;"></div>
-                            <small class="field-hint">Person or entity against whom the complaint is filed (type to search; only registered resident profiles can be selected).</small>
+                            <small class="field-hint">Person or entity against whom the complaint is filed (strictly restricted to verified residents of Barangay Tumana).</small>
                         </div>
 
-                        <!-- Dynamic Additional Parties (Optional) -->
+                        <!-- Dynamic Additional Parties: Witnesses & Extra Parties -->
+                        <div class="witness-section-header" style="margin: 14px 0 6px;">
+                            <span class="party-badge" style="background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd;">Witness(es) &amp; Additional Parties</span>
+                        </div>
                         <div id="additionalPartiesContainer" class="additional-parties-container">
                             <?php
                             $oldPartyIds = $old['party_resident_ids'] ?? [];
@@ -245,7 +267,7 @@ include '../../layouts/header.php';
                                                 <div class="party-search-combobox" data-party-role="additional">
                                                     <div class="party-search-input-wrap">
                                                         <svg class="party-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                                                        <input type="text" class="party-search-input" placeholder="Type resident name or address to search..." autocomplete="off">
+                                                        <input type="text" class="party-search-input" placeholder="Type name or address to search..." autocomplete="off">
                                                         <button type="button" class="party-search-clear" title="Clear selection" style="display:none;">&times;</button>
                                                     </div>
                                                     <input type="hidden" name="party_resident_ids[]" required value="<?php echo $rIdInt; ?>">
@@ -265,7 +287,7 @@ include '../../layouts/header.php';
 
                         <div class="add-party-action-row">
                             <button type="button" id="addPartyBtn" class="btn-outline-sm">
-                                + Add Another Party (Witness / Extra Party)
+                                + Add Witness / Extra Party
                             </button>
                         </div>
                     </div>
@@ -318,7 +340,32 @@ include '../../layouts/header.php';
                             </div>
                             <div class="form-group">
                                 <label for="incidentBarangay">Barangay <span class="required-mark">*</span></label>
-                                <input type="text" id="incidentBarangay" name="incident_barangay" maxlength="100" required readonly value="<?php echo htmlspecialchars($old['incident_barangay'] ?? 'Tumana'); ?>">
+                                <?php
+                                $marikinaBarangays = [
+                                    'Tumana',
+                                    'Barangka',
+                                    'Calumpang',
+                                    'Concepcion Uno',
+                                    'Concepcion Dos',
+                                    'Fortune',
+                                    'Industrial Valley Complex',
+                                    'Jesus Dela Peña',
+                                    'Malanday',
+                                    'Marikina Heights',
+                                    'Nangka',
+                                    'Parang',
+                                    'San Roque',
+                                    'Santa Elena',
+                                    'Santo Niño',
+                                    'Tañong'
+                                ];
+                                $currBgy = $old['incident_barangay'] ?? 'Tumana';
+                                ?>
+                                <select id="incidentBarangay" name="incident_barangay" required>
+                                    <?php foreach ($marikinaBarangays as $bgy): ?>
+                                        <option value="<?php echo htmlspecialchars($bgy); ?>" <?php echo ($currBgy === $bgy) ? 'selected' : ''; ?>><?php echo htmlspecialchars($bgy); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
                             </div>
                         </div>
                         <div class="form-group">
@@ -330,6 +377,7 @@ include '../../layouts/header.php';
                             <?php
                             $currPurok = $old['incident_purok'] ?? '';
                             $knownPuroks = [
+                                'Outside Tumana',
                                 'Non-Resident',
                                 'Purok 1', 'Purok 2', 'Purok 3', 'Purok 4', 'Purok 5', 'Purok 6', 'Purok 7', 'Purok 8',
                                 'Doña Petra', 'Bagong Farmers', 'Bukang Liwayway', 'Libis Tumana', 'Bagong Purok', 'Palay', 'Mais', 'Singkamas'
@@ -338,7 +386,7 @@ include '../../layouts/header.php';
                             ?>
                             <select name="incident_purok" id="incidentPurok">
                                 <option value="">Select Purok / Area</option>
-                                <option value="Non-Resident" <?php echo ($currPurok === 'Non-Resident') ? 'selected' : ''; ?>>Non-Resident / Outside Tumana</option>
+                                <option value="Outside Tumana" id="purokOutsideTumanaOption" <?php echo ($currPurok === 'Outside Tumana' || $currPurok === 'Non-Resident') ? 'selected' : ''; ?>>Outside Tumana</option>
                                 <optgroup label="Numbered Puroks">
                                     <option value="Purok 1" <?php echo ($currPurok === 'Purok 1') ? 'selected' : ''; ?>>Purok 1</option>
                                     <option value="Purok 2" <?php echo ($currPurok === 'Purok 2') ? 'selected' : ''; ?>>Purok 2</option>
@@ -377,7 +425,7 @@ include '../../layouts/header.php';
                             <input type="hidden" name="location_latitude" value="<?php echo htmlspecialchars($old['location_latitude'] ?? ''); ?>" data-map-latitude>
                             <input type="hidden" name="location_longitude" value="<?php echo htmlspecialchars($old['location_longitude'] ?? ''); ?>" data-map-longitude>
                             
-                            <p class="map-help">Type an address to place a pin, or click/drag the pin to fill the address. Pins are limited to Barangay Tumana.</p>
+                            <p class="map-help">Click on the map or drag the pin to set the exact coordinates, or type the address above.</p>
                             
                             <div id="addComplaintMap" class="complaint-location-map compact-map" aria-label="Map for selecting the exact incident location"></div>
                             
@@ -560,6 +608,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const createForm = document.getElementById('createComplaintForm');
     if (createForm) {
         createForm.addEventListener('submit', (e) => {
+            const incidentDtInput = document.getElementById('incidentDateTime');
+            if (incidentDtInput && incidentDtInput.value) {
+                const selectedDt = new Date(incidentDtInput.value);
+                const now = new Date();
+                if (selectedDt > now) {
+                    e.preventDefault();
+                    incidentDtInput.focus();
+                    window.agapNotify?.('Incident date and time cannot be in the future.', 'error');
+                    return;
+                }
+            }
+
             const compId = document.getElementById('complainantResidentId')?.value?.trim();
             const respId = document.getElementById('respondentResidentId')?.value?.trim();
             const compSearch = document.getElementById('complainantSearchInput');
@@ -571,7 +631,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     compSearch.classList.add('is-invalid-unselected');
                     compSearch.focus();
                 }
-                window.agapNotify?.('Please select a registered resident profile for the Complainant.', 'error');
+                window.agapNotify?.('Please select a registered profile for the Complainant.', 'error');
                 return;
             }
 
@@ -581,14 +641,50 @@ document.addEventListener('DOMContentLoaded', () => {
                     respSearch.classList.add('is-invalid-unselected');
                     respSearch.focus();
                 }
-                window.agapNotify?.('Please select a registered resident profile for the Respondent.', 'error');
+                window.agapNotify?.('Please select a verified resident for the Respondent.', 'error');
                 return;
+            }
+
+            // Check that respondent is strictly a resident or tenant living within Barangay Tumana
+            const selectedResp = window.AGAP_RESIDENTS?.find(r => String(r.resident_id) === String(respId));
+            if (selectedResp) {
+                const isTenant = Number(selectedResp.is_tenant);
+                const purok = (selectedResp.purok || '').trim().toLowerCase();
+                if (isTenant === 2 || purok === 'non-resident' || (isTenant !== 0 && isTenant !== 1)) {
+                    e.preventDefault();
+                    if (respSearch) {
+                        respSearch.classList.add('is-invalid-unselected');
+                        respSearch.focus();
+                    }
+                    window.agapNotify?.('Only residents and tenants living within Barangay Tumana can be named as respondents in this barangay.', 'error');
+                    return;
+                }
+            }
+
+            const cityInput = document.getElementById('incidentCity');
+            if (cityInput && (!cityInput.value || !cityInput.value.toLowerCase().includes('marikina'))) {
+                e.preventDefault();
+                window.agapNotify?.('Incident location must be within Marikina City.', 'error');
+                return;
+            }
+
+            const mapStateInput = document.querySelector('[data-map-state]');
+            const mapLatInput = document.querySelector('[data-map-latitude]');
+            const mapLngInput = document.querySelector('[data-map-longitude]');
+            if (mapStateInput && mapStateInput.value === 'selected' && mapLatInput && mapLngInput) {
+                const latVal = parseFloat(mapLatInput.value);
+                const lngVal = parseFloat(mapLngInput.value);
+                if (isNaN(latVal) || isNaN(lngVal) || latVal < 14.610 || latVal > 14.690 || lngVal < 121.075 || lngVal > 121.155) {
+                    e.preventDefault();
+                    window.agapNotify?.('Incident location must be within Marikina City.', 'error');
+                    return;
+                }
             }
 
             if (compId === respId) {
                 e.preventDefault();
                 window.validateDistinctParties();
-                window.agapNotify?.('The complainant and respondent cannot be the same resident profile.', 'error');
+                window.agapNotify?.('The complainant and respondent cannot be the same profile.', 'error');
                 if (respSearch) respSearch.focus();
                 return;
             }
@@ -605,7 +701,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (invalidAdditional) {
                 e.preventDefault();
-                window.agapNotify?.('Please select a registered resident for all added additional parties, or remove empty party rows.', 'error');
+                window.agapNotify?.('Please select a registered profile for all added additional parties, or remove empty party rows.', 'error');
                 return;
             }
         });

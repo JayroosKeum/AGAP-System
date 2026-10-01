@@ -1148,11 +1148,11 @@ function renderResidentTableRows(residents, totalFiltered) {
 
     if (metaSummary) {
         if (totalFiltered === 0) {
-            metaSummary.textContent = 'Showing 0 resident profiles';
+            metaSummary.textContent = 'Showing 0 profiles';
         } else {
             const start = ((currentPage - 1) * pageSize) + 1;
             const end = Math.min(currentPage * pageSize, totalFiltered);
-            metaSummary.textContent = `Showing ${start}–${end} of ${totalFiltered} resident profile${totalFiltered === 1 ? '' : 's'}`;
+            metaSummary.textContent = `Showing ${start}–${end} of ${totalFiltered} profile${totalFiltered === 1 ? '' : 's'}`;
         }
     }
 
@@ -1168,7 +1168,7 @@ function renderResidentTableRows(residents, totalFiltered) {
                             <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                         </svg>
                     </div>
-                    <div class="empty-state-title">No resident profiles found</div>
+                    <div class="empty-state-title">No profiles found</div>
                     <div class="empty-state-desc">Try adjusting your search criteria or clear active filters.</div>
                 </td>
             </tr>
@@ -1204,7 +1204,7 @@ function renderResidentTableRows(residents, totalFiltered) {
         } else if (residencyVal === 2) {
             statusBadge = `<span class="residency-badge badge-non-resident"><span class="residency-dot"></span>Non-Resident</span>`;
         } else {
-            statusBadge = `<span class="residency-badge badge-permanent"><span class="residency-dot"></span>Permanent</span>`;
+            statusBadge = `<span class="residency-badge badge-permanent"><span class="residency-dot"></span>Resident</span>`;
         }
 
         rowsHtml += `
@@ -1445,8 +1445,8 @@ function viewResident(id) {
                 residencyBadge = '<span class="residency-badge badge-non-resident"><span class="residency-dot"></span>Non-Resident</span>';
                 residencyLabel = 'Non-Resident';
             } else {
-                residencyBadge = '<span class="residency-badge badge-permanent"><span class="residency-dot"></span>Permanent Resident</span>';
-                residencyLabel = 'Permanent Resident';
+                residencyBadge = '<span class="residency-badge badge-permanent"><span class="residency-dot"></span>Resident</span>';
+                residencyLabel = 'Resident';
             }
             const age = calculateAge(data.birth_date);
             const ageDisplay = age !== null ? `${age} years old` : 'Not recorded';

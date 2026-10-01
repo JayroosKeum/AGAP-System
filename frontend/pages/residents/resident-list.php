@@ -34,9 +34,9 @@ include '../../layouts/header.php';
                         <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
                         <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
                     </svg>
-                    Resident Profiles
+                    Profiles
                 </h1>
-                <p>Maintain Barangay Tumana identity directory and residency details for party verification and dispute proceedings.</p>
+                <p>Maintain identity directory and residency details for party verification and dispute proceedings.</p>
             </div>
 
             <button
@@ -47,7 +47,7 @@ include '../../layouts/header.php';
                     <line x1="12" y1="5" x2="12" y2="19"></line>
                     <line x1="5" y1="12" x2="19" y2="12"></line>
                 </svg>
-                Add Resident Profile
+                Add Profile
             </button>
         </div>
 
@@ -55,12 +55,13 @@ include '../../layouts/header.php';
             <?php
             $flash = $_SESSION['resident_flash'];
             unset($_SESSION['resident_flash']);
-            $flashClass = ($flash['type'] === 'success') ? 'alert-success' : 'alert-danger';
+            $flashType = ($flash['type'] === 'success') ? 'success' : 'error';
             ?>
-            <div class="resident-flash <?php echo $flashClass; ?>">
-                <span><?php echo htmlspecialchars($flash['message']); ?></span>
-                <button type="button" class="alert-close-btn" onclick="this.parentElement.remove()" style="background:transparent;border:0;cursor:pointer;font-size:18px;">&times;</button>
-            </div>
+            <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                window.agapNotify?.(<?php echo json_encode($flash['message']); ?>, <?php echo json_encode($flashType); ?>, 'Profiles');
+            });
+            </script>
         <?php endif; ?>
 
         <!-- KPI Metrics Summary Grid -->
@@ -210,7 +211,7 @@ include '../../layouts/header.php';
                 <table class="modern-resident-table">
                     <thead>
                         <tr>
-                            <th style="min-width: 230px;">Resident Name</th>
+                            <th style="min-width: 230px;">Profile Name</th>
                             <th style="min-width: 250px;">Address</th>
                             <th style="min-width: 140px;">Purok</th>
                             <th style="min-width: 130px;">Residency</th>
@@ -232,7 +233,7 @@ include '../../layouts/header.php';
                                         <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
                                     </svg>
                                 </div>
-                                <div class="empty-state-title">Loading resident profiles...</div>
+                                <div class="empty-state-title">Loading profiles...</div>
                                 <div class="empty-state-desc">Fetching identity directory from database</div>
                             </td>
                         </tr>
@@ -242,7 +243,7 @@ include '../../layouts/header.php';
         </div>
 
         <!-- Modern Pagination Bar (Strictly 25 items per page) -->
-        <div id="residentPagination" class="resident-pagination" aria-label="Resident profiles pagination" style="display: none;">
+        <div id="residentPagination" class="resident-pagination" aria-label="Profiles pagination" style="display: none;">
             <span id="residentPaginationSummary" class="resident-pagination-summary" aria-live="polite">Showing 0 profiles</span>
             <div id="residentPaginationControls" class="resident-pagination-controls"></div>
         </div>
@@ -258,8 +259,8 @@ include '../../layouts/header.php';
 
         <div class="modal-header">
             <div class="modal-header-text">
-                <h2 id="addModalTitle">Add Resident Profile</h2>
-                <p>Register a resident identity record in Barangay Tumana for party verification and dispute proceedings.</p>
+                <h2 id="addModalTitle">Add Profile</h2>
+                <p>Register an identity record for party verification and dispute proceedings.</p>
             </div>
 
             <button
@@ -458,7 +459,7 @@ include '../../layouts/header.php';
                 <button
                     type="submit"
                     class="btn-create-profile">
-                    Save Resident Profile
+                    Save Profile
                 </button>
             </div>
 
@@ -475,8 +476,8 @@ include '../../layouts/header.php';
 
         <div class="modal-header">
             <div class="modal-header-text">
-                <h2 id="viewModalTitle">Resident Profile Details</h2>
-                <p>Identity verification details and recorded residence information in Barangay Tumana.</p>
+                <h2 id="viewModalTitle">Profile Details</h2>
+                <p>Identity verification details and recorded residence information.</p>
             </div>
 
             <button
@@ -503,8 +504,8 @@ include '../../layouts/header.php';
 
         <div class="modal-header">
             <div class="modal-header-text">
-                <h2 id="editModalTitle">Edit Resident Profile</h2>
-                <p>Update personal identity, contact details, or residency address in Barangay Tumana.</p>
+                <h2 id="editModalTitle">Edit Profile</h2>
+                <p>Update personal identity, contact details, or residency address.</p>
             </div>
 
             <button
@@ -716,7 +717,7 @@ include '../../layouts/header.php';
                 <button
                     type="submit"
                     class="btn-create-profile">
-                    Update Resident Profile
+                    Update Profile
                 </button>
             </div>
 
@@ -741,7 +742,7 @@ include '../../layouts/header.php';
 
         <div class="modal-header" style="border-bottom: 0; padding-bottom: 0; margin-bottom: 8px;">
             <div class="modal-header-text">
-                <h2 id="deleteModalTitle" style="color: #dc2626;">Delete Resident Profile</h2>
+                <h2 id="deleteModalTitle" style="color: #dc2626;">Delete Profile</h2>
             </div>
 
             <button
@@ -753,7 +754,7 @@ include '../../layouts/header.php';
             </button>
         </div>
 
-        <p>Are you sure you want to delete this resident profile from the directory?</p>
+        <p>Are you sure you want to delete this profile from the directory?</p>
 
         <div id="deleteResidentNamePreview" class="delete-target-preview">
             Loading profile information...

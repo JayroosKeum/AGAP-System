@@ -160,7 +160,7 @@ class Complaint
                 $data['incident_date'],
                 trim((string) ($data['incident_time'] ?? '')) ?: null,
                 $this->buildIncidentAddress($data),
-                trim((string) ($data['incident_city'] ?? 'Marikina City')),
+                (stripos(trim((string)($data['incident_city'] ?? '')), 'Marikina') !== false ? 'Marikina City' : trim((string)($data['incident_city'] ?? 'Marikina City'))),
                 trim((string) ($data['incident_barangay'] ?? 'Tumana')),
                 trim((string) ($data['incident_street'] ?? '')) ?: null,
                 trim((string) ($data['incident_purok'] ?? '')) ?: null,
@@ -274,7 +274,7 @@ class Complaint
                 $data['incident_date'],
                 trim((string) ($data['incident_time'] ?? '')) ?: null,
                 $this->buildIncidentAddress($data),
-                trim((string) ($data['incident_city'] ?? 'Marikina City')),
+                (stripos(trim((string)($data['incident_city'] ?? '')), 'Marikina') !== false ? 'Marikina City' : trim((string)($data['incident_city'] ?? 'Marikina City'))),
                 trim((string) ($data['incident_barangay'] ?? 'Tumana')),
                 trim((string) ($data['incident_street'] ?? '')) ?: null,
                 trim((string) ($data['incident_purok'] ?? '')) ?: null,
@@ -391,11 +391,18 @@ class Complaint
         $parsedDate = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
         if (!$parsedDate || $parsedDate->format('Y-m-d') !== $date) return ['success' => false, 'message' => 'Incident date is invalid.'];
         if ($time !== '' && !preg_match('/^([01]\\d|2[0-3]):[0-5]\\d$/', $time)) return ['success' => false, 'message' => 'Incident time is invalid.'];
+
+        $incidentDt = DateTimeImmutable::createFromFormat('Y-m-d H:i', $time !== '' ? "$date $time" : "$date 00:00")
+            ?: DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $time !== '' ? "$date $time" : "$date 00:00:00");
+        $now = new DateTimeImmutable('now');
+        if ($incidentDt && $incidentDt > $now) {
+            return ['success' => false, 'message' => 'Incident date and time cannot be in the future.'];
+        }
         $city = trim((string) ($data['incident_city'] ?? ''));
         $barangay = trim((string) ($data['incident_barangay'] ?? ''));
         $street = trim((string) ($data['incident_street'] ?? ''));
-        if ($city !== 'Marikina City') return ['success' => false, 'message' => 'Incident city must be Marikina City.'];
-        if ($barangay !== 'Tumana') return ['success' => false, 'message' => 'Incident barangay must be Tumana.'];
+        if ($city === '' || stripos($city, 'Marikina') === false) return ['success' => false, 'message' => 'Incident city must be Marikina City.'];
+        if ($barangay === '') return ['success' => false, 'message' => 'Incident barangay is required.'];
         if ($street === '') return ['success' => false, 'message' => 'Street or specific incident location is required.'];
         if (!ValidationService::address($street)) return ['success' => false, 'message' => 'Please remove unsupported control characters from the street address.'];
         if ($narrative === '') return ['success' => false, 'message' => 'Incident narrative is required.'];
@@ -429,8 +436,8 @@ class Complaint
                 || $latitudeValue < -90 || $latitudeValue > 90 || $longitudeValue < -180 || $longitudeValue > 180) {
                 return ['success' => false, 'message' => 'Select a valid point on the map.'];
             }
-            if (!$this->isWithinTumana((float) $latitudeValue, (float) $longitudeValue)) {
-                return ['success' => false, 'message' => 'Map pins must be located within Barangay Tumana.'];
+            if ($latitudeValue < 14.610 || $latitudeValue > 14.690 || $longitudeValue < 121.075 || $longitudeValue > 121.155) {
+                return ['success' => false, 'message' => 'Incident location must be within Marikina City.'];
             }
         } elseif ($state === 'unchanged') {
             if ($latitude !== '' || $longitude !== '') {
@@ -537,31 +544,37 @@ class Complaint
 
     private function validatePartiesInput(array $data): array
     {
-        // Complainant validation: MUST be a registered resident profile
+        // Complainant validation: MUST be a registered profile (Resident, Tenant, or Non-Resident)
         $compId = filter_var($data['complainant_resident_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         if (!$compId) {
-            return ['success' => false, 'message' => 'Please select a registered resident profile for the complainant.'];
+            return ['success' => false, 'message' => 'Please select a registered profile for the complainant.'];
         }
         $checkComp = $this->conn->prepare('SELECT resident_id FROM residents WHERE resident_id = ?');
         $checkComp->execute([$compId]);
         if (!$checkComp->fetchColumn()) {
-            return ['success' => false, 'message' => 'The selected complainant resident profile was not found in the directory.'];
+            return ['success' => false, 'message' => 'The selected complainant profile was not found in the directory.'];
         }
 
-        // Respondent validation: MUST be a registered resident profile
+        // Respondent validation: MUST be a verified resident or tenant living within Barangay Tumana (is_tenant IN (0, 1) and purok != 'Non-Resident')
         $respId = filter_var($data['respondent_resident_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         if (!$respId) {
-            return ['success' => false, 'message' => 'Please select a registered resident profile for the respondent.'];
+            return ['success' => false, 'message' => 'Please select a registered profile for the respondent.'];
         }
-        $checkResp = $this->conn->prepare('SELECT resident_id FROM residents WHERE resident_id = ?');
+        $checkResp = $this->conn->prepare('SELECT resident_id, is_tenant, purok FROM residents WHERE resident_id = ?');
         $checkResp->execute([$respId]);
-        if (!$checkResp->fetchColumn()) {
-            return ['success' => false, 'message' => 'The selected respondent resident profile was not found in the directory.'];
+        $respRow = $checkResp->fetch(PDO::FETCH_ASSOC);
+        if (!$respRow) {
+            return ['success' => false, 'message' => 'The selected respondent profile was not found in the directory.'];
+        }
+        $isTenant = (int) $respRow['is_tenant'];
+        $purok = trim((string)($respRow['purok'] ?? ''));
+        if ($isTenant === 2 || strcasecmp($purok, 'Non-Resident') === 0 || !in_array($isTenant, [0, 1], true)) {
+            return ['success' => false, 'message' => 'Only residents and tenants living within Barangay Tumana can be named as respondents in this barangay.'];
         }
 
         // Distinctness check
         if ($compId === $respId) {
-            return ['success' => false, 'message' => 'The complainant and respondent cannot be the same resident profile.'];
+            return ['success' => false, 'message' => 'The complainant and respondent cannot be the same profile.'];
         }
 
         // Additional parties validation: all additional parties must be registered resident profiles

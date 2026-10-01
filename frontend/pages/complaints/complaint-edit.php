@@ -36,7 +36,7 @@ $categories = $categoriesStmt ? $categoriesStmt->fetchAll(PDO::FETCH_ASSOC) : []
 
 // Fetch residents for selection
 $residentsStmt = $db->query("
-    SELECT resident_id, first_name, middle_name, last_name, contact_no, purok, address
+    SELECT resident_id, first_name, middle_name, last_name, contact_no, purok, address, is_tenant
     FROM residents 
     ORDER BY last_name ASC, first_name ASC
 ");
@@ -58,6 +58,10 @@ foreach ($residents as $res) {
     $addressText = !empty($addrParts) ? implode(', ', $addrParts) : 'No address on file';
     $searchText = strtolower($fullName . ' ' . $displayName . ' ' . ($res['purok'] ?? '') . ' ' . ($res['address'] ?? '') . ' ' . ($res['contact_no'] ?? ''));
 
+    $isTenantInt = (int)($res['is_tenant'] ?? 0);
+    $purokVal = trim((string)($res['purok'] ?? ''));
+    $resLabel = ($isTenantInt === 2 || strcasecmp($purokVal, 'Non-Resident') === 0) ? 'Non-Resident' : ($isTenantInt === 1 ? 'Tenant - Tumana' : 'Resident');
+
     $residentsJsonData[] = [
         'resident_id' => (int) $res['resident_id'],
         'name' => $fullName,
@@ -66,12 +70,14 @@ foreach ($residents as $res) {
         'address' => $res['address'] ?? '',
         'address_text' => $addressText,
         'contact_no' => $res['contact_no'] ?? '',
+        'is_tenant' => $isTenantInt,
+        'residency_label' => $resLabel,
         'search_text' => $searchText,
     ];
 }
 
 $renderResidentOptions = function(?int $selectedId = null) use ($residents): string {
-    $html = '<option value="">Select Resident Profile...</option>';
+    $html = '<option value="">Select Profile...</option>';
     foreach ($residents as $res) {
         $fullName = trim(implode(' ', array_filter([$res['first_name'], $res['middle_name'] ?? '', $res['last_name']])));
         $displayName = ($res['last_name'] !== '-')
@@ -85,7 +91,17 @@ $renderResidentOptions = function(?int $selectedId = null) use ($residents): str
             $addrParts[] = trim($res['purok']);
         }
         $addressText = !empty($addrParts) ? implode(', ', $addrParts) : 'No address on file';
-        $optionLabel = $displayName . ' — ' . $addressText;
+
+        $isTenantInt = (int)($res['is_tenant'] ?? 0);
+        $purokVal = trim((string)($res['purok'] ?? ''));
+        if ($isTenantInt === 2 || strcasecmp($purokVal, 'Non-Resident') === 0) {
+            $residencyTag = 'Non-Resident';
+        } elseif ($isTenantInt === 1) {
+            $residencyTag = 'Tenant - Tumana';
+        } else {
+            $residencyTag = 'Resident';
+        }
+        $optionLabel = $displayName . ' [' . $residencyTag . '] — ' . $addressText;
         $isSelected = ($selectedId !== null && (int)$selectedId === (int)$res['resident_id']) ? ' selected' : '';
 
         $html .= '<option value="' . (int)$res['resident_id'] . '"'
@@ -93,6 +109,7 @@ $renderResidentOptions = function(?int $selectedId = null) use ($residents): str
             . ' data-purok="' . htmlspecialchars($res['purok'] ?? '', ENT_QUOTES) . '"'
             . ' data-address="' . htmlspecialchars($res['address'] ?? '', ENT_QUOTES) . '"'
             . ' data-contact="' . htmlspecialchars($res['contact_no'] ?? '', ENT_QUOTES) . '"'
+            . ' data-is-tenant="' . $isTenantInt . '"'
             . $isSelected . '>'
             . htmlspecialchars($optionLabel, ENT_QUOTES)
             . '</option>';
@@ -107,7 +124,7 @@ $location = $locStmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
 // Fetch parties
 $partyStmt = $db->prepare("
-    SELECT cp.party_id, cp.party_type, cp.resident_id, r.first_name, r.middle_name, r.last_name, r.contact_no, r.purok, r.address
+    SELECT cp.party_id, cp.party_type, cp.resident_id, r.first_name, r.middle_name, r.last_name, r.contact_no, r.purok, r.address, r.is_tenant
     FROM complaint_parties cp
     LEFT JOIN residents r ON r.resident_id = cp.resident_id
     WHERE cp.complaint_id = ?
@@ -257,9 +274,14 @@ include '../../layouts/header.php';
         </div>
 
         <?php if ($complaintFlash && !empty($complaintFlash['message'])): ?>
-            <div class="alert alert-<?php echo htmlspecialchars($complaintFlash['type'] ?? 'error'); ?>" role="alert" style="margin: 0 30px 20px;">
-                <?php echo htmlspecialchars($complaintFlash['message']); ?>
-            </div>
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    window.agapNotify && window.agapNotify(
+                        <?php echo json_encode($complaintFlash['message']); ?>,
+                        <?php echo json_encode(($complaintFlash['type'] ?? '') === 'success' ? 'success' : 'error') ?>
+                    );
+                });
+            </script>
         <?php endif; ?>
 
         <form id="editComplaintForm" action="../../../backend/api/complaints/update.php" method="POST" enctype="multipart/form-data" class="complaint-intake-form">
@@ -478,7 +500,32 @@ include '../../layouts/header.php';
                                 </div>
                                 <div class="form-group">
                                     <label for="incidentBarangay">Barangay <span class="required-mark">*</span></label>
-                                    <input type="text" id="incidentBarangay" name="incident_barangay" maxlength="100" required readonly value="<?php echo htmlspecialchars($effBarangay); ?>">
+                                    <?php
+                                    $marikinaBarangays = [
+                                        'Tumana',
+                                        'Barangka',
+                                        'Calumpang',
+                                        'Concepcion Uno',
+                                        'Concepcion Dos',
+                                        'Fortune',
+                                        'Industrial Valley Complex',
+                                        'Jesus Dela Peña',
+                                        'Malanday',
+                                        'Marikina Heights',
+                                        'Nangka',
+                                        'Parang',
+                                        'San Roque',
+                                        'Santa Elena',
+                                        'Santo Niño',
+                                        'Tañong'
+                                    ];
+                                    $currBgy = $effBarangay ?: 'Tumana';
+                                    ?>
+                                    <select id="incidentBarangay" name="incident_barangay" required>
+                                        <?php foreach ($marikinaBarangays as $bgy): ?>
+                                            <option value="<?php echo htmlspecialchars($bgy); ?>" <?php echo ($currBgy === $bgy) ? 'selected' : ''; ?>><?php echo htmlspecialchars($bgy); ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
                                 </div>
                             </div>
                             <div class="form-group">
@@ -490,6 +537,7 @@ include '../../layouts/header.php';
                                 <?php
                                 $currPurok = $effPurok;
                                 $knownPuroks = [
+                                    'Outside Tumana',
                                     'Non-Resident',
                                     'Purok 1', 'Purok 2', 'Purok 3', 'Purok 4', 'Purok 5', 'Purok 6', 'Purok 7', 'Purok 8',
                                     'Doña Petra', 'Bagong Farmers', 'Bukang Liwayway', 'Libis Tumana', 'Bagong Purok', 'Palay', 'Mais', 'Singkamas'
@@ -498,7 +546,7 @@ include '../../layouts/header.php';
                                 ?>
                                 <select name="incident_purok" id="incidentPurok">
                                     <option value="">Select Purok / Area</option>
-                                    <option value="Non-Resident" <?php echo ($currPurok === 'Non-Resident') ? 'selected' : ''; ?>>Non-Resident / Outside Tumana</option>
+                                    <option value="Outside Tumana" id="purokOutsideTumanaOption" <?php echo ($currPurok === 'Outside Tumana' || $currPurok === 'Non-Resident') ? 'selected' : ''; ?>>Outside Tumana</option>
                                     <optgroup label="Numbered Puroks">
                                         <option value="Purok 1" <?php echo ($currPurok === 'Purok 1') ? 'selected' : ''; ?>>Purok 1</option>
                                         <option value="Purok 2" <?php echo ($currPurok === 'Purok 2') ? 'selected' : ''; ?>>Purok 2</option>
@@ -537,7 +585,7 @@ include '../../layouts/header.php';
                                 <input type="hidden" name="location_latitude" id="locationLatitude" value="<?php echo htmlspecialchars($savedLat); ?>" data-map-latitude>
                                 <input type="hidden" name="location_longitude" id="locationLongitude" value="<?php echo htmlspecialchars($savedLng); ?>" data-map-longitude>
 
-                                <p class="map-help">Type an address to move the pin, or click/drag the pin to fill the address. Pins are limited to Barangay Tumana.</p>
+                                <p class="map-help">Click on the map or drag the pin to set the exact coordinates in Marikina City, or type the address above.</p>
 
                                 <div id="editComplaintMap" class="complaint-location-map compact-map" aria-label="Map for selecting the exact incident location"></div>
 
@@ -745,8 +793,41 @@ function openSaveModal() {
             respSearch.classList.add('is-invalid-unselected');
             respSearch.focus();
         }
-        window.agapNotify?.('Please select a registered resident profile for the Respondent.', 'error');
+        window.agapNotify?.('Please select a registered profile for the Respondent.', 'error');
         return;
+    }
+
+    // Check that respondent is strictly a resident or tenant living within Barangay Tumana
+    const selectedResp = window.AGAP_RESIDENTS?.find(r => String(r.resident_id) === String(respId));
+    if (selectedResp) {
+        const isTenant = Number(selectedResp.is_tenant);
+        const purok = (selectedResp.purok || '').trim().toLowerCase();
+        if (isTenant === 2 || purok === 'non-resident' || (isTenant !== 0 && isTenant !== 1)) {
+            if (respSearch) {
+                respSearch.classList.add('is-invalid-unselected');
+                respSearch.focus();
+            }
+            window.agapNotify?.('Only residents and tenants living within Barangay Tumana can be named as respondents in this barangay.', 'error');
+            return;
+        }
+    }
+
+    const cityInput = document.getElementById('incidentCity');
+    if (cityInput && (!cityInput.value || !cityInput.value.toLowerCase().includes('marikina'))) {
+        window.agapNotify?.('Incident location must be within Marikina City.', 'error');
+        return;
+    }
+
+    const mapStateInput = document.querySelector('[data-map-state]');
+    const mapLatInput = document.querySelector('[data-map-latitude]');
+    const mapLngInput = document.querySelector('[data-map-longitude]');
+    if (mapStateInput && mapStateInput.value === 'selected' && mapLatInput && mapLngInput) {
+        const latVal = parseFloat(mapLatInput.value);
+        const lngVal = parseFloat(mapLngInput.value);
+        if (isNaN(latVal) || isNaN(lngVal) || latVal < 14.610 || latVal > 14.690 || lngVal < 121.075 || lngVal > 121.155) {
+            window.agapNotify?.('Incident location must be within Marikina City.', 'error');
+            return;
+        }
     }
 
     if (!validateDistinctParties()) {
