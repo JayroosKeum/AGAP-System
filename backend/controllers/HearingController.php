@@ -216,6 +216,20 @@ class HearingController
         if (!$case || $case['case_status'] === 'Archived') {
             return ['success' => false, 'message' => 'The selected case does not exist or is archived.'];
         }
+
+        // Before booking a Conciliation hearing, a 3-member Lupon team must be chosen; Admin is for Mediation only.
+        if ($type === 'Conciliation') {
+            require_once __DIR__ . '/../models/Assignment.php';
+            $assignmentModel = new Assignment();
+            $teamValidation = $assignmentModel->validateConciliationTeam((int) $caseId);
+            if (!$teamValidation['valid']) {
+                return [
+                    'success' => false,
+                    'message' => $teamValidation['message']
+                ];
+            }
+        }
+
         return [
             'success' => true,
             'data' => [

@@ -285,7 +285,7 @@ include '../../layouts/header.php';
                                 <h3>6. Case Team Assignment</h3>
                                 <span class="card-subtitle">Required 3-member Lupon panel for this case</span>
                             </div>
-                            <a href="../cases/case-list.php#caseAssignments" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+                            <a href="../cases/case-list.php#caseAssignments" id="cwManageTeamLink" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
                                 Manage Team &rarr;
                             </a>
                         </div>

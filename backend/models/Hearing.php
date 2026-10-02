@@ -132,7 +132,12 @@ class Hearing
                 $scheduled[$row['hearing_type']] = (int) $row['total'];
             }
 
-            $expectedType = $scheduled['Mediation'] < 3 ? 'Mediation' : ($scheduled['Conciliation'] < 3 ? 'Conciliation' : null);
+            if ($caseRecord['case_status'] === 'Conciliation') {
+                $expectedType = $scheduled['Conciliation'] < 3 ? 'Conciliation' : null;
+            } else {
+                $expectedType = $scheduled['Mediation'] < 3 ? 'Mediation' : ($scheduled['Conciliation'] < 3 ? 'Conciliation' : null);
+            }
+
             if ($expectedType === null) {
                 $this->conn->rollBack();
                 return ['success' => false, 'message' => 'All three mediation and all three conciliation schedules have already been completed for this case.'];
@@ -140,6 +145,20 @@ class Hearing
             if ($data['hearing_type'] !== $expectedType) {
                 $this->conn->rollBack();
                 return ['success' => false, 'message' => 'The next required schedule is ' . ($scheduled[$expectedType] + 1) . ($scheduled[$expectedType] === 0 ? 'st ' : ($scheduled[$expectedType] === 1 ? 'nd ' : 'rd ')) . $expectedType . '.'];
+            }
+
+            // Conciliation case team validation: Lupon team must be chosen first; Administrator is for Mediation only.
+            if ($expectedType === 'Conciliation' || $data['hearing_type'] === 'Conciliation') {
+                require_once __DIR__ . '/Assignment.php';
+                $assignmentModel = new Assignment();
+                $teamValidation = $assignmentModel->validateConciliationTeam((int) $data['case_id']);
+                if (!$teamValidation['valid']) {
+                    $this->conn->rollBack();
+                    return [
+                        'success' => false,
+                        'message' => $teamValidation['message']
+                    ];
+                }
             }
 
             // Initialize clock if 1st Mediation hearing

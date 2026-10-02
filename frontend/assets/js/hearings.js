@@ -363,6 +363,8 @@ async function loadCases() {
             option.dataset.isLapsed = item.mediation_timer?.is_lapsed ? '1' : '0';
             option.dataset.isPaused = item.mediation_timer?.is_paused ? '1' : '0';
             option.dataset.pauseReason = item.mediation_timer?.pause_reason || '';
+            option.dataset.hasConciliationTeam = item.has_conciliation_team ? '1' : '0';
+            option.dataset.conciliationTeamMessage = item.conciliation_team_message || '';
             select.add(option);
         });
         const params = new URLSearchParams(window.location.search);
@@ -393,16 +395,24 @@ function updateNextSchedule() {
     }
 
     const selectedOption = select.selectedOptions[0];
+    const caseStatus = selectedOption?.dataset.caseStatus || '';
     const isLapsed = selectedOption?.dataset.isLapsed === '1';
     const isPaused = selectedOption?.dataset.isPaused === '1';
     const pauseReason = selectedOption?.dataset.pauseReason || '';
+    const hasConciliationTeam = selectedOption?.dataset.hasConciliationTeam === '1';
 
     const hearings = calendarHearings.filter((item) => String(item.case_id) === String(caseId));
     const mediationCount = hearings.filter((item) => item.hearing_type === 'Mediation').length;
     const conciliationCount = hearings.filter((item) => item.hearing_type === 'Conciliation').length;
     let typeValue = ''; let label = '';
 
-    if (mediationCount < 3) {
+    // If case is in Conciliation or has completed 3 mediations
+    if (caseStatus === 'Conciliation' || mediationCount >= 3) {
+        if (conciliationCount < 3) {
+            typeValue = 'Conciliation';
+            label = `${ordinal(conciliationCount + 1)} Conciliation`;
+        }
+    } else if (mediationCount < 3) {
         if (isPaused) {
             type.add(new Option('Mediation clock paused', ''));
             type.disabled = true;
@@ -417,7 +427,7 @@ function updateNextSchedule() {
             help.innerHTML = `
                 <span style="color: #b91c1c; font-weight: 600;">The 15-day statutory mediation period has lapsed for this case.</span>
                 Further Punong Barangay mediation is restricted. You must
-                <a href="../cases/case-list.php#caseAssignments" style="color: #1e40af; font-weight: 600; text-decoration: underline;">Constitute Pangkat Tagapagkasundo</a>
+                <a href="../cases/case-list.php?assign_case_id=${encodeURIComponent(caseId)}#caseAssignments" style="color: #1e40af; font-weight: 600; text-decoration: underline;">Constitute Pangkat Tagapagkasundo (Lupon Case Team)</a>
                 or
                 <a href="../documents/cfa.php?case_id=${encodeURIComponent(caseId)}" style="color: #991b1b; font-weight: 600; text-decoration: underline;">Issue a CFA</a>.
             `;
@@ -427,8 +437,7 @@ function updateNextSchedule() {
 
         typeValue = 'Mediation';
         label = `${ordinal(mediationCount + 1)} Mediation`;
-    }
-    else if (conciliationCount < 3) {
+    } else if (conciliationCount < 3) {
         typeValue = 'Conciliation';
         label = `${ordinal(conciliationCount + 1)} Conciliation`;
     }
@@ -439,6 +448,31 @@ function updateNextSchedule() {
         if (submitBtn) { submitBtn.disabled = true; submitBtn.title = 'All schedules completed for this case.'; }
         return;
     }
+
+    // Validation: Admin is for Mediation ONLY. Before booking Conciliation, Lupon team must be chosen.
+    if (typeValue === 'Conciliation' && !hasConciliationTeam) {
+        type.add(new Option(`${label} (Lupon team required)`, ''));
+        type.disabled = true;
+        help.innerHTML = `
+            <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 10px 12px; margin-top: 6px;">
+                <strong style="color: #991b1b; display: block; margin-bottom: 4px; font-size: 0.88rem;">⚠️ Lupon Case Team Required:</strong>
+                <span style="color: #7f1d1d; font-size: 0.84rem; display: block; line-height: 1.45;">
+                    Before you can book a Conciliation hearing, you must choose your 3-member Lupon team on Case Team Assignment first.
+                    The Administrator is for Mediation only.
+                </span>
+                <a href="../cases/case-list.php?assign_case_id=${encodeURIComponent(caseId)}#caseAssignments"
+                   style="display: inline-block; margin-top: 6px; color: #1e40af; font-weight: 600; text-decoration: underline; font-size: 0.84rem;">
+                    Assign Lupon Team in Case Assignments &rarr;
+                </a>
+            </div>
+        `;
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.title = 'A 3-member Lupon team must be assigned before booking Conciliation.';
+        }
+        return;
+    }
+
     type.add(new Option(label, typeValue)); type.disabled = false;
     help.textContent = `The next permitted schedule is ${label}.`;
     if (submitBtn) { submitBtn.disabled = false; submitBtn.title = ''; }

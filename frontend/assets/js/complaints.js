@@ -575,13 +575,17 @@ function renderCaseWorkspace(workspace, complaint) {
 
     // Card 6: Case Team Assignment
     const teamContainer = document.getElementById('cwTeamContainer');
+    const manageTeamLink = document.getElementById('cwManageTeamLink');
+    if (manageTeamLink && complaint.case_id) {
+        manageTeamLink.href = `../cases/case-list.php?assign_case_id=${encodeURIComponent(complaint.case_id)}#caseAssignments`;
+    }
     if (teamContainer) {
         const assignments = workspace.assignments || [];
         if (!assignments.length) {
             teamContainer.innerHTML = `
                 <div class="empty-detail-state" style="text-align: center; padding: 20px; color: #64748b;">
                     <p style="margin: 0 0 10px; font-size: 0.88rem;">No case team has been assigned yet. 3 active Lupon Members are required.</p>
-                    <a href="../cases/case-list.php#caseAssignments" class="btn-create" style="font-size: 0.82rem; padding: 6px 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
+                    <a href="../cases/case-list.php?assign_case_id=${encodeURIComponent(complaint.case_id)}#caseAssignments" class="btn-create" style="font-size: 0.82rem; padding: 6px 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
                         Assign 3-Member Team &rarr;
                     </a>
                 </div>

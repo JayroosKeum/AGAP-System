@@ -87,9 +87,18 @@ class CaseModel
         $stmt->execute();
         $cases = $stmt->fetchAll(PDO::FETCH_ASSOC);
         require_once __DIR__ . '/../services/MediationDeadlineService.php';
+        require_once __DIR__ . '/Assignment.php';
         $deadlineService = new MediationDeadlineService($this->conn);
+        $assignmentModel = new Assignment();
+        $caseIds = array_map(fn($c) => (int) $c['case_id'], $cases);
+        $teamValidations = $assignmentModel->validateConciliationTeams($caseIds);
+
         foreach ($cases as &$caseItem) {
             $caseItem['mediation_timer'] = $deadlineService->computeStatus($caseItem);
+            $cid = (int) $caseItem['case_id'];
+            $val = $teamValidations[$cid] ?? ['valid' => false, 'message' => ''];
+            $caseItem['has_conciliation_team'] = $val['valid'];
+            $caseItem['conciliation_team_message'] = $val['message'];
         }
         unset($caseItem);
 
@@ -181,9 +190,18 @@ class CaseModel
         $cases = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         require_once __DIR__ . '/../services/MediationDeadlineService.php';
+        require_once __DIR__ . '/Assignment.php';
         $deadlineService = new MediationDeadlineService($this->conn);
+        $assignmentModel = new Assignment();
+        $caseIds = array_map(fn($c) => (int) $c['case_id'], $cases);
+        $teamValidations = $assignmentModel->validateConciliationTeams($caseIds);
+
         foreach ($cases as &$caseItem) {
             $caseItem['mediation_timer'] = $deadlineService->computeStatus($caseItem);
+            $cid = (int) $caseItem['case_id'];
+            $val = $teamValidations[$cid] ?? ['valid' => false, 'message' => ''];
+            $caseItem['has_conciliation_team'] = $val['valid'];
+            $caseItem['conciliation_team_message'] = $val['message'];
         }
         unset($caseItem);
 
@@ -467,6 +485,9 @@ class CaseModel
 
             $updateCase = $this->conn->prepare('UPDATE cases SET case_type = ?, case_status = ? WHERE case_id = ?');
             $updateCase->execute([$caseType, $caseStatus, $caseId]);
+
+            $updateComplaint = $this->conn->prepare('UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = ? WHERE c.case_id = ?');
+            $updateComplaint->execute([$caseStatus, $caseId]);
 
             if ($automaticHeadStage) {
                 $teamUpdated = true;

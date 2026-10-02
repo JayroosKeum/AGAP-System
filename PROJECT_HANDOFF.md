@@ -142,6 +142,18 @@ write; an edit retains the pin unless it is moved or explicitly cleared.
   - Verified and fixed closing template literal tags in `frontend/assets/js/complaints.js` (`renderAttachments`), resolving browser script parse failures on `complaint-details.php`.
 - **Relevant Files**: `frontend/pages/complaints/complaint-details.php`, `frontend/assets/js/complaints.js`, `backend/controllers/ComplaintController.php`, `backend/models/CaseModel.php`, `backend/api/cases/workspace.php`, `frontend/pages/cases/case-list.php`, `frontend/assets/js/cases.js`, `frontend/pages/gps/proof-service.php`, `frontend/assets/js/gps.js`, `backend/models/HearingAttendance.php`, `frontend/assets/js/hearings.js`, `frontend/assets/css/hearings.css`.
 
+- **Conciliation Hearing Case Team Assignment Validation (October 2026)**:
+  - **Mediation vs Conciliation Roles**: The Administrator account represents the Barangay Captain / Punong Barangay for Mediation ONLY. When a case transitions from Mediation to Conciliation (e.g., following mediation failure, lapse of the 15-day statutory period, or constitution of the Pangkat Tagapagkasundo), staff must assign a dedicated 3-member Lupon panel (Head, Secretary, Member) composed exclusively of active users with the `Lupon Member` role.
+  - **Pre-Booking Enforcement**: Booking a Conciliation hearing is strictly blocked until a valid 3-member Lupon team is assigned.
+    - `backend/models/Assignment.php`: Added `validateConciliationTeam(int $caseId): array` and `validateConciliationTeams(array $caseIds): array`. Verifies that exactly 3 distinct active users with role `Lupon Member` are assigned as Head, Secretary, and Member, and rejects any panel containing an Administrator.
+    - `backend/models/Assignment.php`: Updated `replaceCaseTeam` to support assigning a 3-member Lupon panel for Conciliation, automatically transitioning case and complaint status to `Conciliation`. Fixed existing team check to differentiate between Mediation's single Administrator Head and a full 3-member Conciliation panel.
+    - `backend/controllers/HearingController.php`: Updated `validate()` to block scheduling `Conciliation` hearings when `validateConciliationTeam` returns invalid.
+    - `backend/models/Hearing.php`: Atomic transactional validation in `createProgression()` rejects Conciliation scheduling attempts if the Lupon team has not been constituted.
+    - `backend/models/CaseModel.php`: Enriched case list and pagination outputs with `has_conciliation_team` and `conciliation_team_message`.
+    - `frontend/assets/js/hearings.js`: When a case requires Conciliation and lacks a 3-member Lupon panel, disables the Conciliation hearing type option, disables the submit button, and displays an informative alert with a direct deep-link to Case Team Assignment (`../cases/case-list.php?assign_case_id=<id>#caseAssignments`).
+    - `frontend/assets/js/assignments.js`: Added URL query parameter auto-selection (`assign_case_id` or `case_id`). Updated assignment mode logic so that cases in Conciliation or with lapsed mediation unlock the Head, Secretary, and Member dropdowns for Lupon member selection.
+
+
 ## Other Undocumented Implemented Changes (September 2026)
 
 ### Cases page ordering and pagination

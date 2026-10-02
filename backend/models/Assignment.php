@@ -157,31 +157,20 @@ class Assignment
             ];
         }
 
-        if (in_array($case['case_status'], ['Docketed', 'Mediation'], true)) {
+        if ($case['case_status'] === 'Docketed') {
             return [
                 'success' => false,
-                'message' => 'Lupon assignment is automatic for Docketed and Mediation cases. The Barangay Captain is automatically assigned as Head.'
+                'message' => 'Lupon assignment is automatic for Docketed cases. The Barangay Captain is automatically assigned as Head.'
             ];
         }
 
-        $isMediation = in_array($case['case_status'], ['Docketed', 'Mediation'], true);
+        $isMediationOnly = false; // Admin is for Mediation only; Conciliation requires 3 Lupon Members
 
-        if ($isMediation) {
-            $administrator = $this->getLuponHead();
-            if (!$administrator) {
-                return [
-                    'success' => false,
-                    'message' => 'The active Administrator or Barangay Captain account could not be found.'
-                ];
-            }
-            $headId = (int) $administrator['member_id'];
-        } else {
-            $headId = filter_var(
-                $members['head_id'] ?? null,
-                FILTER_VALIDATE_INT,
-                ['options' => ['min_range' => 1]]
-            );
-        }
+        $headId = filter_var(
+            $members['head_id'] ?? null,
+            FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => 1]]
+        );
 
         $secretaryId = filter_var(
             $members['secretary_id'] ?? null,
@@ -198,9 +187,7 @@ class Assignment
         if (!$headId || !$secretaryId || !$memberId) {
             return [
                 'success' => false,
-                'message' => $isMediation
-                    ? 'Select the Secretary and Member.'
-                    : 'Select the Head, Secretary, and Member.'
+                'message' => 'Select the Head, Secretary, and Member from active Lupon Members.'
             ];
         }
 
@@ -212,17 +199,11 @@ class Assignment
             ];
         }
 
-        if ($isMediation) {
-            if (!$this->isEligibleMediationHead((int) $headId)) {
-                return [
-                    'success' => false,
-                    'message' => 'The Mediation Head must be the active Administrator or Barangay Captain.'
-                ];
-            }
-        } elseif (!$this->isEligibleMember((int) $headId)) {
+        // The Administrator is for Mediation only. For Conciliation, all 3 must be active Lupon Members.
+        if (!$this->isEligibleMember((int) $headId)) {
             return [
                 'success' => false,
-                'message' => 'The selected Head must be an active Lupon Member.'
+                'message' => 'The Administrator is for Mediation only. When a case goes to Conciliation, the Head must be an active Lupon Member.'
             ];
         }
 
@@ -246,12 +227,17 @@ class Assignment
 
             if ($case['case_status'] === 'Conciliation') {
                 $existingTeam = $this->conn->prepare(
-                    "SELECT assignment_id FROM case_assignments
-                     WHERE case_id = ? AND assignment_role IN ('Head', 'Secretary', 'Member')
-                     LIMIT 1 FOR UPDATE"
+                    "SELECT COUNT(DISTINCT ca.assignment_role)
+                     FROM case_assignments ca
+                     INNER JOIN users u ON u.user_id = ca.member_id
+                     INNER JOIN roles r ON r.role_id = u.role_id
+                     WHERE ca.case_id = ?
+                       AND ca.assignment_role IN ('Head', 'Secretary', 'Member')
+                       AND r.role_name = 'Lupon Member'
+                       AND u.status = 'Active'"
                 );
                 $existingTeam->execute([$caseId]);
-                if ($existingTeam->fetchColumn()) {
+                if ((int) $existingTeam->fetchColumn() === 3) {
                     $this->conn->rollBack();
                     return [
                         'success' => false,
@@ -301,13 +287,22 @@ class Assignment
                 $memberInsert->execute([$pangkatId, $team[$assignmentRole], $position]);
             }
 
+            if ($case['case_status'] === 'Mediation') {
+                $statusUpdate = $this->conn->prepare("UPDATE cases SET case_status = 'Conciliation' WHERE case_id = ?");
+                $statusUpdate->execute([$caseId]);
+                $complaintStatus = $this->conn->prepare("UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = 'Conciliation' WHERE c.case_id = ?");
+                $complaintStatus->execute([$caseId]);
+                $history = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, 'Conciliation', ?, ?)");
+                $history->execute([$caseId, 'Case moved to conciliation with assigned 3-member Lupon team.', $_SESSION['user_id'] ?? null]);
+            }
+
             $this->conn->commit();
 
             return [
                 'success' => true,
-                'message' => $isMediation
-                    ? 'Case team saved. The Administrator or Barangay Captain remains the automatic Head for Mediation.'
-                    : 'Case team saved successfully.'
+                'message' => $case['case_status'] === 'Mediation'
+                    ? '3-member Lupon case team saved. Case transitioned to Conciliation.'
+                    : '3-member Lupon case team saved successfully.'
             ];
         } catch (Throwable $exception) {
             if ($this->conn->inTransaction()) {
@@ -571,5 +566,160 @@ class Assignment
         $stmt->execute([$memberId]);
 
         return (bool) $stmt->fetchColumn();
+    }
+
+    /**
+     * Batch validation for multiple cases to check if each has a valid 3-member Lupon team for Conciliation.
+     * Requirements:
+     * 1. Exactly 3 distinct members for Head, Secretary, and Member.
+     * 2. All 3 must be active users with role name "Lupon Member".
+     * 3. The Administrator is for Mediation only and cannot be on the Conciliation team.
+     *
+     * @param array $caseIds
+     * @return array [case_id => ['valid' => bool, 'message' => string, 'members' => array]]
+     */
+    public function validateConciliationTeams(array $caseIds): array
+    {
+        $caseIds = array_values(array_unique(array_filter(array_map('intval', $caseIds), fn($id) => $id > 0)));
+        if (empty($caseIds)) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($caseIds), '?'));
+        $stmt = $this->conn->prepare(
+            "SELECT
+                ca.assignment_id,
+                ca.case_id,
+                ca.assignment_role,
+                ca.member_id,
+                u.status AS user_status,
+                r.role_name,
+                CONCAT_WS(' ', u.first_name, u.last_name) AS member_name
+             FROM case_assignments ca
+             INNER JOIN users u ON u.user_id = ca.member_id
+             INNER JOIN roles r ON r.role_id = u.role_id
+             WHERE ca.case_id IN ($placeholders)
+               AND ca.assignment_role IN ('Head', 'Secretary', 'Member')"
+        );
+        $stmt->execute($caseIds);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $grouped = [];
+        foreach ($caseIds as $cid) {
+            $grouped[$cid] = [];
+        }
+        foreach ($rows as $row) {
+            $grouped[(int) $row['case_id']][] = $row;
+        }
+
+        $results = [];
+        foreach ($grouped as $cid => $assignments) {
+            if (empty($assignments)) {
+                $results[$cid] = [
+                    'valid' => false,
+                    'message' => 'No Lupon team has been chosen yet. Before you can book a conciliation hearing, you must choose your Lupon team on Case Team Assignment first.',
+                    'members' => []
+                ];
+                continue;
+            }
+
+            $assignedRoles = [];
+            $memberIds = [];
+            $hasAdmin = false;
+            $hasInactive = false;
+            $nonLuponMember = false;
+
+            foreach ($assignments as $a) {
+                $role = $a['assignment_role'];
+                $assignedRoles[$role] = $a;
+                $memberIds[] = (int) $a['member_id'];
+
+                if ($a['role_name'] === 'Administrator') {
+                    $hasAdmin = true;
+                } elseif ($a['role_name'] !== 'Lupon Member') {
+                    $nonLuponMember = true;
+                }
+
+                if ($a['user_status'] !== 'Active') {
+                    $hasInactive = true;
+                }
+            }
+
+            if ($hasAdmin) {
+                $results[$cid] = [
+                    'valid' => false,
+                    'message' => 'The Administrator is for Mediation only. When a complaint goes to Conciliation, you must choose a 3-member Lupon team (Head, Secretary, Member) of active Lupon Members on Case Team Assignment before booking a conciliation hearing.',
+                    'members' => $assignments
+                ];
+                continue;
+            }
+
+            $requiredRoles = ['Head', 'Secretary', 'Member'];
+            $missingRoles = [];
+            foreach ($requiredRoles as $reqRole) {
+                if (!isset($assignedRoles[$reqRole])) {
+                    $missingRoles[] = $reqRole;
+                }
+            }
+
+            if (!empty($missingRoles)) {
+                $results[$cid] = [
+                    'valid' => false,
+                    'message' => 'Incomplete case team: ' . implode(', ', $missingRoles) . ' missing. A complete 3-member Lupon team must be chosen on Case Team Assignment before booking a conciliation hearing.',
+                    'members' => $assignments
+                ];
+                continue;
+            }
+
+            if (count(array_unique($memberIds)) !== 3) {
+                $results[$cid] = [
+                    'valid' => false,
+                    'message' => 'Head, Secretary, and Member must be assigned to different active Lupon Members.',
+                    'members' => $assignments
+                ];
+                continue;
+            }
+
+            if ($nonLuponMember || $hasInactive) {
+                $results[$cid] = [
+                    'valid' => false,
+                    'message' => 'All three assigned team members (Head, Secretary, Member) must be active Lupon Members.',
+                    'members' => $assignments
+                ];
+                continue;
+            }
+
+            $results[$cid] = [
+                'valid' => true,
+                'message' => 'Valid Conciliation Lupon team assigned.',
+                'members' => $assignments
+            ];
+        }
+
+        return $results;
+    }
+
+    /**
+     * Checks whether a single case has a valid 3-member Lupon team for Conciliation.
+     *
+     * @param int $caseId
+     * @return array ['valid' => bool, 'message' => string, 'members' => array]
+     */
+    public function validateConciliationTeam(int $caseId): array
+    {
+        if ($caseId < 1) {
+            return [
+                'valid' => false,
+                'message' => 'A valid case is required.',
+                'members' => []
+            ];
+        }
+
+        $results = $this->validateConciliationTeams([$caseId]);
+        return $results[$caseId] ?? [
+            'valid' => false,
+            'message' => 'Case team not found.',
+            'members' => []
+        ];
     }
 }
