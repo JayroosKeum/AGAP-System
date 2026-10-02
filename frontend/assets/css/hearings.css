@@ -40,18 +40,86 @@ th { background: #f8fafc; font-weight: 600; color: #334155; }
     background: #ffffff;
     border: 1px solid #e2e8f0;
     border-radius: 12px;
-    margin: 0 20px 20px;
-    padding: 16px 20px;
+    margin: 0 20px 18px;
+    padding: 0;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+    overflow: hidden;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.search-card-header {
-    margin-bottom: 14px;
+.hearings-search-card:hover {
+    border-color: #cbd5e1;
+}
+.hearings-search-card summary.search-card-header {
+    margin-bottom: 0;
+    padding: 13px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    background: #ffffff;
+    transition: background-color 0.15s ease;
+}
+.hearings-search-card summary.search-card-header::-webkit-details-marker,
+.hearings-search-card summary.search-card-header::marker {
+    display: none;
+}
+.hearings-search-card summary.search-card-header:hover {
+    background-color: #f8fafc;
+}
+.hearings-search-card[open] summary.search-card-header {
+    border-bottom: 1px solid #f1f5f9;
+}
+.search-card-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.search-header-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: #f1f5f9;
+    color: #475569;
 }
 .search-card-header h2 {
-    font-size: 1.05rem;
+    font-size: 1.02rem;
     font-weight: 700;
     color: #1e293b;
     margin: 0;
+}
+.filter-count-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    background: #e0f2fe;
+    color: #0369a1;
+    border-radius: 9999px;
+    border: 1px solid #bae6fd;
+}
+.search-toggle-action {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #64748b;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+.search-toggle-chevron {
+    transition: transform 0.2s ease;
+    color: #64748b;
+}
+.hearings-search-card[open] .search-toggle-chevron {
+    transform: rotate(180deg);
+}
+.search-card-body {
+    padding: 16px 20px 20px;
 }
 .hearings-search-form {
     display: flex;

@@ -13,7 +13,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindSearchControls();
     bindAttendanceFilterControls();
     bindAttendanceForm();
-    await Promise.all([loadHearings(), loadCombinedRecords(1), loadAttendanceKPIs()]);
+    await Promise.all([loadHearings(), loadCombinedRecords(1)]);
     if (!canManageHearings) return;
     await loadCases();
     bindReviewForm('addHearingForm', closeAddHearingModal);
@@ -33,6 +33,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     if (params.get('hearing_id') && params.get('open_attendance')) {
         editHearing(params.get('hearing_id'));
+    }
+
+    if (params.get('q') || params.get('status') || params.get('hearing_type') || params.get('date_from') || params.get('date_to')) {
+        const details = document.getElementById('hearingsSearchCard');
+        if (details) details.open = true;
+        if (params.get('q')) {
+            const kw = document.getElementById('searchKeyword');
+            if (kw) kw.value = params.get('q');
+            const clearBtn = document.getElementById('clearSearchInput');
+            if (clearBtn) clearBtn.style.display = 'block';
+        }
+        if (params.get('status')) {
+            const st = document.getElementById('searchStatus');
+            if (st) st.value = params.get('status');
+        }
+        if (params.get('hearing_type')) {
+            const ht = document.getElementById('searchHearingType');
+            if (ht) ht.value = params.get('hearing_type');
+        }
+        if (params.get('date_from')) {
+            const df = document.getElementById('searchDateFrom');
+            if (df) df.value = params.get('date_from');
+        }
+        if (params.get('date_to')) {
+            const dt = document.getElementById('searchDateTo');
+            if (dt) dt.value = params.get('date_to');
+        }
+        if (typeof updateActiveFilterBadge === 'function') {
+            updateActiveFilterBadge();
+        }
     }
 });
 
@@ -310,26 +340,44 @@ function renderPagination(pagination) {
 }
 
 function bindSearchControls() {
+    const details = document.getElementById('hearingsSearchCard');
     const form = document.getElementById('hearingsSearchForm');
     const keywordInput = document.getElementById('searchKeyword');
     const clearInputBtn = document.getElementById('clearSearchInput');
     const clearBtn = document.getElementById('btnClearSearch');
+    const toggleText = document.getElementById('searchToggleText');
+
+    if (details && toggleText) {
+        details.addEventListener('toggle', () => {
+            toggleText.textContent = details.open ? 'Hide Filters' : 'Show Filters';
+        });
+    }
 
     if (keywordInput && clearInputBtn) {
         keywordInput.addEventListener('input', () => {
             clearInputBtn.style.display = keywordInput.value.trim() ? 'block' : 'none';
+            updateActiveFilterBadge();
         });
 
         clearInputBtn.addEventListener('click', () => {
             keywordInput.value = '';
             clearInputBtn.style.display = 'none';
+            updateActiveFilterBadge();
             loadCombinedRecords(1);
         });
     }
 
+    ['searchStatus', 'searchHearingType', 'searchDateFrom', 'searchDateTo'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('change', updateActiveFilterBadge);
+        }
+    });
+
     if (form) {
         form.addEventListener('submit', (event) => {
             event.preventDefault();
+            updateActiveFilterBadge();
             loadCombinedRecords(1);
         });
     }
@@ -351,8 +399,42 @@ function bindSearchControls() {
             document.querySelectorAll('.calendar-day-selected').forEach((c) => c.classList.remove('calendar-day-selected'));
             updateScheduleBadgeText('');
 
+            updateActiveFilterBadge();
             loadCombinedRecords(1, '');
         });
+    }
+
+    updateActiveFilterBadge();
+}
+
+function updateActiveFilterBadge() {
+    const q = document.getElementById('searchKeyword')?.value.trim() || '';
+    const status = document.getElementById('searchStatus')?.value || '';
+    const hearingType = document.getElementById('searchHearingType')?.value || '';
+    const dateFrom = document.getElementById('searchDateFrom')?.value || '';
+    const dateTo = document.getElementById('searchDateTo')?.value || '';
+
+    let activeCount = 0;
+    if (q) activeCount++;
+    if (status) activeCount++;
+    if (hearingType) activeCount++;
+    if (dateFrom) activeCount++;
+    if (dateTo) activeCount++;
+
+    const badge = document.getElementById('activeFilterBadge');
+    if (badge) {
+        if (activeCount > 0) {
+            badge.textContent = `${activeCount} filter${activeCount > 1 ? 's' : ''} active`;
+            badge.style.display = 'inline-flex';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+
+    const details = document.getElementById('hearingsSearchCard');
+    const toggleText = document.getElementById('searchToggleText');
+    if (details && toggleText) {
+        toggleText.textContent = details.open ? 'Hide Filters' : 'Show Filters';
     }
 }
 

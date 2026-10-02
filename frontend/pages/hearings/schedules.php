@@ -40,107 +40,78 @@ include '../../layouts/header.php';
 
         <div id="hearingMessage" role="alert"></div>
 
-        <!-- Search Controls Placed Directly Above Calendar & Grid -->
-        <section class="hearings-search-card" aria-label="Search and filter hearings and deadlines">
-            <div class="search-card-header">
-                <h2>Search / Filters</h2>
-            </div>
-            <form id="hearingsSearchForm" class="hearings-search-form">
-                <div class="search-form-row">
-                    <div class="search-field keyword-field">
-                        <label for="searchKeyword">Keyword</label>
-                        <div class="search-box-wrap">
-                            <svg class="search-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                            <input type="search" id="searchKeyword" name="q" class="search-input-field" placeholder="Case no., complaint no., or venue" autocomplete="off">
-                            <button type="button" id="clearSearchInput" class="search-clear-btn" title="Clear keyword">&times;</button>
+        <!-- Collapsible Search & Filter Controls -->
+        <details class="hearings-search-card" id="hearingsSearchCard" aria-label="Search and filter hearings and deadlines">
+            <summary class="search-card-header" id="searchSummaryToggle">
+                <div class="search-card-title-wrap">
+                    <span class="search-header-icon" aria-hidden="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    </span>
+                    <h2>Search / Filters</h2>
+                    <span id="activeFilterBadge" class="filter-count-badge" style="display: none;">0 active</span>
+                </div>
+                <div class="search-toggle-action">
+                    <span id="searchToggleText" class="search-toggle-text">Show Filters</span>
+                    <svg class="search-toggle-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </div>
+            </summary>
+            <div class="search-card-body">
+                <form id="hearingsSearchForm" class="hearings-search-form">
+                    <div class="search-form-row">
+                        <div class="search-field keyword-field">
+                            <label for="searchKeyword">Keyword</label>
+                            <div class="search-box-wrap">
+                                <svg class="search-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                                <input type="search" id="searchKeyword" name="q" class="search-input-field" placeholder="Case no., complaint no., or venue" autocomplete="off">
+                                <button type="button" id="clearSearchInput" class="search-clear-btn" title="Clear keyword">&times;</button>
+                            </div>
+                        </div>
+
+                        <div class="search-field status-field">
+                            <label for="searchStatus">Status</label>
+                            <select id="searchStatus" name="status" class="toolbar-select">
+                                <option value="">All statuses</option>
+                                <option value="Scheduled">Scheduled</option>
+                                <option value="Pending">Pending</option>
+                                <option value="Completed">Completed</option>
+                                <option value="Overdue">Overdue</option>
+                            </select>
                         </div>
                     </div>
 
-                    <div class="search-field status-field">
-                        <label for="searchStatus">Status</label>
-                        <select id="searchStatus" name="status" class="toolbar-select">
-                            <option value="">All statuses</option>
-                            <option value="Scheduled">Scheduled</option>
-                            <option value="Pending">Pending</option>
-                            <option value="Completed">Completed</option>
-                            <option value="Overdue">Overdue</option>
-                        </select>
-                    </div>
-                </div>
+                    <div class="search-form-row">
+                        <div class="search-field hearing-type-field">
+                            <label for="searchHearingType">Hearing Type</label>
+                            <select id="searchHearingType" name="hearing_type" class="toolbar-select">
+                                <option value="">All types</option>
+                                <option value="Mediation">Mediation</option>
+                                <option value="Conciliation">Conciliation</option>
+                                <option value="Initial Hearing">Initial Hearing</option>
+                                <option value="Arbitration">Arbitration</option>
+                                <option value="Mediation Period">Mediation Period</option>
+                                <option value="Conciliation Period">Conciliation Period</option>
+                                <option value="Conciliation Extension">Conciliation Extension</option>
+                            </select>
+                        </div>
 
-                <div class="search-form-row">
-                    <div class="search-field hearing-type-field">
-                        <label for="searchHearingType">Hearing Type</label>
-                        <select id="searchHearingType" name="hearing_type" class="toolbar-select">
-                            <option value="">All types</option>
-                            <option value="Mediation">Mediation</option>
-                            <option value="Conciliation">Conciliation</option>
-                            <option value="Initial Hearing">Initial Hearing</option>
-                            <option value="Arbitration">Arbitration</option>
-                            <option value="Mediation Period">Mediation Period</option>
-                            <option value="Conciliation Period">Conciliation Period</option>
-                            <option value="Conciliation Extension">Conciliation Extension</option>
-                        </select>
-                    </div>
+                        <div class="search-field date-field">
+                            <label for="searchDateFrom">Date From</label>
+                            <input type="date" id="searchDateFrom" name="date_from" class="search-input-field search-date-input">
+                        </div>
 
-                    <div class="search-field date-field">
-                        <label for="searchDateFrom">Date From</label>
-                        <input type="date" id="searchDateFrom" name="date_from" class="search-input-field search-date-input">
+                        <div class="search-field date-field">
+                            <label for="searchDateTo">Date To</label>
+                            <input type="date" id="searchDateTo" name="date_to" class="search-input-field search-date-input">
+                        </div>
                     </div>
 
-                    <div class="search-field date-field">
-                        <label for="searchDateTo">Date To</label>
-                        <input type="date" id="searchDateTo" name="date_to" class="search-input-field search-date-input">
+                    <div class="search-actions-row">
+                        <button type="submit" class="btn-create" id="btnSearch">Search</button>
+                        <button type="button" class="btn-secondary" id="btnClearSearch">Clear</button>
                     </div>
-                </div>
-
-                <div class="search-actions-row">
-                    <button type="submit" class="btn-create" id="btnSearch">Search</button>
-                    <button type="button" class="btn-secondary" id="btnClearSearch">Clear</button>
-                </div>
-            </form>
-        </section>
-
-        <!-- Attendance Monitoring Summary Cards -->
-        <section class="attendance-monitor-summary-card" aria-label="Hearing Attendance Summary">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; background: #e0f2fe; color: #0284c7;">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-                    </span>
-                    <h2 style="font-size: 1.05rem; font-weight: 700; color: #0f172a; margin: 0;">Attendance Monitor (Mediation &amp; Conciliation)</h2>
-                </div>
-                <div class="attendance-filter-pills" style="display: flex; gap: 6px; flex-wrap: wrap;">
-                    <button type="button" class="btn-att-filter active" data-att-filter="all" onclick="filterAttendanceView('all', this)">All</button>
-                    <button type="button" class="btn-att-filter" data-att-filter="both_present" onclick="filterAttendanceView('both_present', this)">Both Present</button>
-                    <button type="button" class="btn-att-filter" data-att-filter="unjustified" onclick="filterAttendanceView('unjustified', this)">Unjustified Absences</button>
-                    <button type="button" class="btn-att-filter" data-att-filter="excused" onclick="filterAttendanceView('excused', this)">Excused / Justified</button>
-                    <button type="button" class="btn-att-filter" data-att-filter="pending" onclick="filterAttendanceView('pending', this)">Pending Intake</button>
-                </div>
+                </form>
             </div>
-            <div class="attendance-kpi-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px;">
-                <div class="att-kpi-item" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; border-left: 4px solid #3b82f6;">
-                    <div style="font-size: 0.76rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Total Sessions</div>
-                    <div id="attKpiTotal" style="font-size: 1.4rem; font-weight: 700; color: #1e293b; margin-top: 2px;">0</div>
-                </div>
-                <div class="att-kpi-item" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; border-left: 4px solid #10b981;">
-                    <div style="font-size: 0.76rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Both Present</div>
-                    <div id="attKpiPresent" style="font-size: 1.4rem; font-weight: 700; color: #047857; margin-top: 2px;">0</div>
-                </div>
-                <div class="att-kpi-item" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; border-left: 4px solid #ef4444;">
-                    <div style="font-size: 0.76rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Unjustified Absences</div>
-                    <div id="attKpiUnjustified" style="font-size: 1.4rem; font-weight: 700; color: #b91c1c; margin-top: 2px;">0</div>
-                </div>
-                <div class="att-kpi-item" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; border-left: 4px solid #f59e0b;">
-                    <div style="font-size: 0.76rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Excused / Justified</div>
-                    <div id="attKpiExcused" style="font-size: 1.4rem; font-weight: 700; color: #d97706; margin-top: 2px;">0</div>
-                </div>
-                <div class="att-kpi-item" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; border-left: 4px solid #94a3b8;">
-                    <div style="font-size: 0.76rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Pending Intake</div>
-                    <div id="attKpiPending" style="font-size: 1.4rem; font-weight: 700; color: #475569; margin-top: 2px;">0</div>
-                </div>
-            </div>
-        </section>
+        </details>
 
         <!-- Responsive Side-by-Side Main Grid: Calendar Left (1.35fr), Hearings & Today's Deadlines Table Right (1fr) -->
         <div class="hearings-main-grid">
