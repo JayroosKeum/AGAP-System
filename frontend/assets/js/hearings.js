@@ -6,6 +6,7 @@ let currentPage = 1;
 const pageSize = 25;
 let currentAttendanceFilter = 'all';
 let activeHearingAttendanceData = null;
+let selectedCalendarDate = '';
 
 document.addEventListener('DOMContentLoaded', async () => {
     bindCalendarControls();
@@ -52,12 +53,15 @@ async function loadDeadlines() {
     return [];
 }
 
-async function loadCombinedRecords(page = 1) {
+async function loadCombinedRecords(page = 1, targetDate = null) {
     currentPage = page;
+    if (targetDate !== null) {
+        selectedCalendarDate = targetDate;
+    }
     const table = document.getElementById('combinedTable');
     if (!table) return;
 
-    table.innerHTML = '<tr><td colspan="8" class="empty-state">Loading hearings and deadlines...</td></tr>';
+    table.innerHTML = '<tr><td colspan="4" class="empty-state">Loading hearings and deadlines...</td></tr>';
 
     const q = document.getElementById('searchKeyword')?.value.trim() || '';
     const status = document.getElementById('searchStatus')?.value || '';
@@ -75,6 +79,9 @@ async function loadCombinedRecords(page = 1) {
     if (currentAttendanceFilter && currentAttendanceFilter !== 'all') {
         params.set('attendance', currentAttendanceFilter);
     }
+    if (selectedCalendarDate) {
+        params.set('date', selectedCalendarDate);
+    }
 
     try {
         const result = await api('../../../backend/api/hearings/list.php?' + params.toString());
@@ -82,7 +89,10 @@ async function loadCombinedRecords(page = 1) {
         const pagination = result.pagination || { total_records: records.length, per_page: pageSize, current_page: page, total_pages: 1 };
 
         if (!records.length) {
-            table.innerHTML = '<tr><td colspan="8" class="empty-state">No hearings or deadlines found.</td></tr>';
+            const emptyLabel = selectedCalendarDate
+                ? `No scheduled hearings or deadlines for ${formatFriendlyDate(selectedCalendarDate)}.`
+                : 'No deadlines due today.';
+            table.innerHTML = `<tr><td colspan="4" class="empty-state">${escapeHtml(emptyLabel)}</td></tr>`;
             renderPagination(pagination);
             return;
         }
@@ -90,13 +100,9 @@ async function loadCombinedRecords(page = 1) {
         table.innerHTML = records.map((item) => `
             <tr>
                 <td>${item.case_number ? `<span class="badge-case-docket">${escapeHtml(item.case_number)}</span>` : '<span class="empty-cell">—</span>'}</td>
-                <td>${renderComplaintCell(item)}</td>
                 <td><span class="hearing-type ${getTypeBadgeClass(item)}">${escapeHtml(item.hearing_type)}</span></td>
-                <td>${renderDateTimeCell(item)}</td>
-                <td><span class="status-pill-badge ${getStatusBadgeClass(item.status)}">${escapeHtml(item.status)}</span></td>
-                <td>${item.venue ? escapeHtml(item.venue) : '<span class="empty-cell">—</span>'}</td>
-                <td>${renderAttendanceCell(item)}</td>
-                <td class="action-buttons">${renderActionsCell(item)}</td>
+                <td>${renderTimeCell(item)}</td>
+                <td class="action-cell">${renderActionsCell(item)}</td>
             </tr>
         `).join('');
 
@@ -108,7 +114,7 @@ async function loadCombinedRecords(page = 1) {
 
         renderPagination(pagination);
     } catch (error) {
-        table.innerHTML = `<tr><td colspan="8" class="empty-state">${escapeHtml(error.message)}</td></tr>`;
+        table.innerHTML = `<tr><td colspan="4" class="empty-state">${escapeHtml(error.message)}</td></tr>`;
         renderPagination({ total_records: 0, per_page: pageSize, current_page: 1, total_pages: 1 });
     }
 }
@@ -186,12 +192,32 @@ function getTypeBadgeClass(item) {
     return 'hearing-type-default';
 }
 
+function renderTimeCell(item) {
+    if (!item.schedule_date) return '<span class="empty-cell">—</span>';
+    if (item.record_type === 'deadline') {
+        return '<span class="time-due-badge">Due Today</span>';
+    }
+    const dateObj = new Date(item.schedule_date.replace(' ', 'T'));
+    if (isNaN(dateObj.getTime())) {
+        return escapeHtml(item.schedule_date);
+    }
+    const timeStr = dateObj.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+    });
+    return `<span class="hearing-time-text">${escapeHtml(timeStr)}</span>`;
+}
+
 function renderActionsCell(item) {
     if (item.record_type === 'hearing') {
         const id = Number(item.record_id);
         return `
-            <button type="button" class="btn-action-view" ${canManageHearings ? `data-edit="${id}"` : `data-view="${id}"`}>${canManageHearings ? 'Update Hearing' : 'View'}</button>
+            <button type="button" class="btn-action-view" ${canManageHearings ? `data-edit="${id}" title="Update Hearing Session"` : `data-view="${id}" title="View Hearing Details"`}>${canManageHearings ? 'Update' : 'View'}</button>
         `;
+    }
+    if (item.case_id) {
+        return `<a href="../cases/case-details.php?id=${encodeURIComponent(item.case_id)}" class="btn-action-view" style="text-decoration:none; display:inline-flex;" title="View Case Details">View</a>`;
     }
     return '<span class="empty-cell">—</span>';
 }
@@ -315,7 +341,11 @@ function bindSearchControls() {
             const dateToInput = document.getElementById('searchDateTo');
             if (dateToInput) dateToInput.value = '';
 
-            loadCombinedRecords(1);
+            selectedCalendarDate = '';
+            document.querySelectorAll('.calendar-day-selected').forEach((c) => c.classList.remove('calendar-day-selected'));
+            updateScheduleBadgeText('');
+
+            loadCombinedRecords(1, '');
         });
     }
 }
@@ -501,6 +531,9 @@ async function editHearing(id) {
 function bindCalendarControls() {
     document.getElementById('previousMonth')?.addEventListener('click', () => { calendarCursor.setMonth(calendarCursor.getMonth() - 1); renderCalendar(); });
     document.getElementById('nextMonth')?.addEventListener('click', () => { calendarCursor.setMonth(calendarCursor.getMonth() + 1); renderCalendar(); });
+    document.getElementById('scheduleDateBadge')?.addEventListener('click', () => {
+        resetToToday();
+    });
 }
 
 function renderCalendar() {
@@ -527,11 +560,24 @@ function renderCalendar() {
     for (let blank = 0; blank < firstDay; blank += 1) calendar.appendChild(document.createElement('div'));
     for (let day = 1; day <= days; day += 1) {
         const cell = document.createElement('div');
-        cell.className = 'calendar-day';
-        if (canManageHearings) {
-            cell.classList.add('calendar-day-actionable');
-            cell.addEventListener('click', () => openCalendarSchedule(year, month, day));
+        cell.className = 'calendar-day calendar-day-actionable';
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        cell.dataset.date = dateStr;
+
+        if (selectedCalendarDate === dateStr) {
+            cell.classList.add('calendar-day-selected');
         }
+
+        cell.addEventListener('click', () => {
+            selectCalendarDate(year, month, day, dateStr);
+        });
+
+        if (canManageHearings) {
+            cell.addEventListener('dblclick', () => {
+                openCalendarSchedule(year, month, day);
+            });
+        }
+
         const number = document.createElement('strong');
         number.textContent = day;
         cell.appendChild(number);
@@ -549,6 +595,62 @@ function renderCalendar() {
         });
         calendar.appendChild(cell);
     }
+}
+
+function selectCalendarDate(year, month, day, dateStr) {
+    selectedCalendarDate = dateStr;
+
+    document.querySelectorAll('.calendar-day').forEach((c) => {
+        if (c.dataset.date === dateStr) {
+            c.classList.add('calendar-day-selected');
+        } else {
+            c.classList.remove('calendar-day-selected');
+        }
+    });
+
+    const input = document.getElementById('hearingDate');
+    if (input) {
+        const selected = new Date(year, month, day, 9, 0);
+        selected.setMinutes(selected.getMinutes() - selected.getTimezoneOffset());
+        input.value = selected.toISOString().slice(0, 16);
+    }
+
+    updateScheduleBadgeText(dateStr);
+    loadCombinedRecords(1, dateStr);
+}
+
+function updateScheduleBadgeText(dateStr) {
+    const badgeLabel = document.getElementById('scheduleDateBadgeLabel');
+    if (!badgeLabel) return;
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    if (!dateStr || dateStr === todayStr) {
+        const todayFormatted = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+        badgeLabel.textContent = `Deadlines Due Today: ${todayFormatted} (Current day only)`;
+    } else {
+        const friendly = formatFriendlyDate(dateStr);
+        badgeLabel.textContent = `Scheduled on: ${friendly} (Click to reset to today)`;
+    }
+}
+
+function resetToToday() {
+    selectedCalendarDate = '';
+    document.querySelectorAll('.calendar-day-selected').forEach((c) => c.classList.remove('calendar-day-selected'));
+    updateScheduleBadgeText('');
+    loadCombinedRecords(1, '');
+}
+
+function formatFriendlyDate(dateStr) {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+        const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        if (!isNaN(d.getTime())) {
+            return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+        }
+    }
+    return dateStr;
 }
 
 function openCalendarSchedule(year, month, day) {

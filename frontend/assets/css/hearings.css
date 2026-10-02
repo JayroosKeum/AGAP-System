@@ -793,7 +793,7 @@ button:disabled, button.is-disabled, button[disabled], .btn-create:disabled, .bt
 /* Hearings & Deadlines Side-by-Side Main Grid */
 .hearings-main-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
     gap: 20px;
     margin: 0 20px 24px;
     align-items: start;
@@ -810,7 +810,7 @@ button:disabled, button.is-disabled, button[disabled], .btn-create:disabled, .bt
     background: #ffffff;
     border: 1px solid #e5e7eb;
     border-radius: 10px;
-    padding: 20px;
+    padding: 16px 14px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
     overflow: hidden;
 }
@@ -820,7 +820,7 @@ button:disabled, button.is-disabled, button[disabled], .btn-create:disabled, .bt
     justify-content: space-between;
     flex-wrap: wrap;
     gap: 8px;
-    margin-bottom: 14px;
+    margin-bottom: 12px;
 }
 .hearing-table-section .table-section-header h2 {
     font-size: 1.05rem;
@@ -831,18 +831,172 @@ button:disabled, button.is-disabled, button[disabled], .btn-create:disabled, .bt
 .badge-today-deadline {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
+    gap: 5px;
+    padding: 3px 8px;
     border-radius: 9999px;
     background: #fef3c7;
     color: #92400e;
-    font-size: 0.78rem;
+    font-size: 0.74rem;
     font-weight: 600;
     border: 1px solid #fde68a;
+    max-width: 100%;
 }
 .hearing-table-section .table-container {
     padding: 0;
-    margin: 0 0 14px 0;
+    margin: 0 0 12px 0;
+    overflow-x: hidden !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+}
+.hearing-table-section .complaints-pagination {
+    margin: 8px 0 0 0;
+    padding: 8px 10px;
+    gap: 8px;
+}
+.hearing-table-section .complaints-pagination-summary {
+    font-size: 0.78rem;
+}
+.hearing-table-section .complaints-page-btn {
+    min-width: 28px;
+    height: 28px;
+    padding: 0 6px;
+    font-size: 0.76rem;
+}
+.hearing-table-section .complaints-page-nav-btn {
+    padding: 0 8px;
+    font-size: 0.74rem;
+}
+
+/* Calendar Date Selection Styling */
+.calendar-day.calendar-day-selected {
+    background: #eff6ff !important;
+    border: 2px solid #2563eb !important;
+    box-shadow: inset 0 0 0 1px #2563eb;
+    position: relative;
+    z-index: 2;
+}
+.calendar-day.calendar-day-selected strong {
+    color: #1d4ed8 !important;
+    font-weight: 800 !important;
+}
+
+/* Minimized Hearings & Deadlines Schedule Table */
+.minimized-schedule-table {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    border-collapse: collapse;
+    font-size: 0.76rem;
+    table-layout: fixed;
+    box-sizing: border-box;
+}
+.minimized-schedule-table th,
+.minimized-schedule-table td {
+    padding: 5px 4px !important;
+    border: 1px solid #e2e8f0;
+    text-align: left;
+    vertical-align: middle;
+    box-sizing: border-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.minimized-schedule-table th {
+    background: #f8fafc;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: #475569;
+    white-space: nowrap;
+}
+.minimized-schedule-table colgroup col:nth-child(1),
+.minimized-schedule-table th:first-child,
+.minimized-schedule-table td:first-child {
+    width: 26%;
+    text-align: left;
+}
+.minimized-schedule-table colgroup col:nth-child(2),
+.minimized-schedule-table th:nth-child(2),
+.minimized-schedule-table td:nth-child(2) {
+    width: 28%;
+    text-align: left;
+}
+.minimized-schedule-table colgroup col:nth-child(3),
+.minimized-schedule-table th:nth-child(3),
+.minimized-schedule-table td:nth-child(3) {
+    width: 22%;
+    text-align: left;
+}
+.minimized-schedule-table colgroup col:nth-child(4),
+.minimized-schedule-table th:last-child,
+.minimized-schedule-table td:last-child {
+    text-align: right;
+    width: 24%;
+}
+.minimized-schedule-table td.action-cell,
+.minimized-schedule-table td.action-buttons,
+.minimized-schedule-table td:last-child {
+    text-align: right;
+    white-space: nowrap;
+}
+.minimized-schedule-table .badge-case-docket {
+    font-size: 0.70rem;
+    padding: 2px 4px;
+    letter-spacing: -0.02em;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: inline-block;
+    vertical-align: middle;
+    box-sizing: border-box;
+    white-space: nowrap;
+}
+.minimized-schedule-table .hearing-type {
+    font-size: 0.68rem;
+    padding: 2px 4px;
+    line-height: 1.2;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: inline-block;
+    vertical-align: middle;
+    box-sizing: border-box;
+    white-space: nowrap;
+}
+.minimized-schedule-table .hearing-time-text {
+    font-weight: 600;
+    color: #1e293b;
+    font-size: 0.72rem;
+    white-space: nowrap;
+    display: inline-block;
+}
+.minimized-schedule-table .time-due-badge {
+    display: inline-block;
+    padding: 2px 4px;
+    border-radius: 9999px;
+    background: #fef3c7;
+    color: #92400e;
+    font-size: 0.65rem;
+    font-weight: 600;
+    border: 1px solid #fde68a;
+    white-space: nowrap;
+}
+.minimized-schedule-table .action-cell button,
+.minimized-schedule-table .action-cell a,
+.minimized-schedule-table .action-buttons button,
+.minimized-schedule-table .action-buttons a,
+.minimized-schedule-table .btn-action-view {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 6px;
+    font-size: 0.70rem;
+    font-weight: 600;
+    border-radius: 4px;
+    white-space: nowrap;
+    line-height: 1.2;
+    box-sizing: border-box;
 }
 
 /* Service Verification & Post-Nonappearance Workflow Panels */

@@ -263,6 +263,19 @@ class Hearing
 
     public function getPaginatedCombined(array $filters = [], int $page = 1, int $perPage = 25): array
     {
+        $params = [];
+        $selectedDate = trim((string) ($filters['date'] ?? ''));
+        $hasCustomDate = ($selectedDate !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $selectedDate));
+        if ($hasCustomDate) {
+            $dateConditionHearing = 'DATE(h.hearing_date) = :filter_date_h';
+            $dateConditionDeadline = 'd.due_date = :filter_date_d';
+            $params[':filter_date_h'] = $selectedDate;
+            $params[':filter_date_d'] = $selectedDate;
+        } else {
+            $dateConditionHearing = 'DATE(h.hearing_date) = CURDATE()';
+            $dateConditionDeadline = 'd.due_date = CURDATE()';
+        }
+
         $baseSql = "
         SELECT
             'hearing' AS record_type,
@@ -271,20 +284,8 @@ class Hearing
             c.case_number,
             co.complaint_number,
             co.complaint_title,
-            h.hearing_type AS raw_type,
-            CASE
-                WHEN h.hearing_type IN ('Mediation', 'Conciliation') THEN
-                    CONCAT(
-                        CASE ROW_NUMBER() OVER (PARTITION BY h.case_id, h.hearing_type ORDER BY h.created_at ASC, h.hearing_id ASC)
-                            WHEN 1 THEN '1st '
-                            WHEN 2 THEN '2nd '
-                            WHEN 3 THEN '3rd '
-                            ELSE CONCAT(ROW_NUMBER() OVER (PARTITION BY h.case_id, h.hearing_type ORDER BY h.created_at ASC, h.hearing_id ASC), 'th ')
-                        END,
-                        h.hearing_type
-                    )
-                ELSE h.hearing_type
-            END AS hearing_type,
+            h.raw_type,
+            h.hearing_type,
             h.hearing_date AS schedule_date,
             h.venue,
             CASE
@@ -307,9 +308,35 @@ class Hearing
             (SELECT COUNT(*) FROM hearing_attendance ha WHERE ha.hearing_id = h.hearing_id AND ha.attendance_status = 'Absent' AND ha.is_justified = 0) AS unjustified_absent_count,
             (SELECT COUNT(*) FROM hearing_attendance ha WHERE ha.hearing_id = h.hearing_id AND (ha.attendance_status = 'Excused' OR ha.is_justified = 1)) AS excused_count,
             h.created_at
-        FROM hearings h
+        FROM (
+            SELECT
+                h_sub.hearing_id,
+                h_sub.case_id,
+                h_sub.hearing_type AS raw_type,
+                CASE
+                    WHEN h_sub.hearing_type IN ('Mediation', 'Conciliation') THEN
+                        CONCAT(
+                            CASE ROW_NUMBER() OVER (PARTITION BY h_sub.case_id, h_sub.hearing_type ORDER BY h_sub.created_at ASC, h_sub.hearing_id ASC)
+                                WHEN 1 THEN '1st '
+                                WHEN 2 THEN '2nd '
+                                WHEN 3 THEN '3rd '
+                                ELSE CONCAT(ROW_NUMBER() OVER (PARTITION BY h_sub.case_id, h_sub.hearing_type ORDER BY h_sub.created_at ASC, h_sub.hearing_id ASC), 'th ')
+                            END,
+                            h_sub.hearing_type
+                        )
+                    ELSE h_sub.hearing_type
+                END AS hearing_type,
+                h_sub.hearing_date,
+                h_sub.venue,
+                h_sub.remarks,
+                h_sub.rescheduled_from_id,
+                h_sub.status,
+                h_sub.created_at
+            FROM hearings h_sub
+        ) h
         LEFT JOIN cases c ON c.case_id = h.case_id
         LEFT JOIN complaints co ON co.complaint_id = c.complaint_id
+        WHERE {$dateConditionHearing}
 
         UNION ALL
 
@@ -342,11 +369,10 @@ class Hearing
         FROM case_deadlines d
         LEFT JOIN cases c ON c.case_id = d.case_id
         LEFT JOIN complaints co ON co.complaint_id = c.complaint_id
-        WHERE d.due_date = CURDATE()
+        WHERE {$dateConditionDeadline}
         ";
 
         $where = [];
-        $params = [];
 
         $q = trim((string) ($filters['q'] ?? ''));
         if ($q !== '') {

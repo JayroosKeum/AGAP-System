@@ -153,28 +153,30 @@ include '../../layouts/header.php';
             <section class="hearing-table-section">
                 <div class="table-section-header">
                     <h2>Hearings &amp; Deadlines</h2>
-                    <span class="badge-today-deadline" title="Only deadlines due today are listed in this table">
+                    <span id="scheduleDateBadge" class="badge-today-deadline" title="Showing schedule for this date (click to reset to today)" style="cursor: pointer;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                        Deadlines Due Today: <?php echo date('F j, Y'); ?> (Current day only)
+                        <span id="scheduleDateBadgeLabel">Deadlines Due Today: <?php echo date('F j, Y'); ?> (Current day only)</span>
                     </span>
                 </div>
                 <div class="table-container">
-                    <table class="combined-records-table">
+                    <table class="combined-records-table minimized-schedule-table">
+                        <colgroup>
+                            <col style="width: 26%;">
+                            <col style="width: 28%;">
+                            <col style="width: 22%;">
+                            <col style="width: 24%;">
+                        </colgroup>
                         <thead>
                             <tr>
                                 <th>Case No.</th>
-                                <th>Complaint</th>
                                 <th>Hearing Type</th>
-                                <th>Date &amp; Time</th>
-                                <th>Status</th>
-                                <th>Venue</th>
-                                <th>Attendance</th>
+                                <th>Time</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody id="combinedTable">
                             <tr>
-                                <td colspan="8" class="empty-state">Loading hearings and deadlines...</td>
+                                <td colspan="4" class="empty-state">Loading hearings and deadlines...</td>
                             </tr>
                         </tbody>
                     </table>

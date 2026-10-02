@@ -34,6 +34,7 @@ class HearingController
             'date_from' => trim((string) ($params['date_from'] ?? '')),
             'date_to' => trim((string) ($params['date_to'] ?? '')),
             'attendance' => trim((string) ($params['attendance'] ?? '')),
+            'date' => trim((string) ($params['date'] ?? '')),
         ];
 
         $result = $this->hearing->getPaginatedCombined($filters, $page, $perPage);
