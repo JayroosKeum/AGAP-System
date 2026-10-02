@@ -93,12 +93,25 @@ class CaseModel
         $caseIds = array_map(fn($c) => (int) $c['case_id'], $cases);
         $teamValidations = $assignmentModel->validateConciliationTeams($caseIds);
 
+        $latestHearingsStmt = $this->conn->prepare("
+            SELECT h.case_id, MAX(h.hearing_date) AS latest_hearing_date
+            FROM hearings h
+            WHERE h.status != 'Cancelled'
+              AND NOT EXISTS (
+                  SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
+              )
+            GROUP BY h.case_id
+        ");
+        $latestHearingsStmt->execute();
+        $latestHearingMap = $latestHearingsStmt->fetchAll(PDO::FETCH_KEY_PAIR);
+
         foreach ($cases as &$caseItem) {
             $caseItem['mediation_timer'] = $deadlineService->computeStatus($caseItem);
             $cid = (int) $caseItem['case_id'];
             $val = $teamValidations[$cid] ?? ['valid' => false, 'message' => ''];
             $caseItem['has_conciliation_team'] = $val['valid'];
             $caseItem['conciliation_team_message'] = $val['message'];
+            $caseItem['latest_hearing_date'] = $latestHearingMap[$cid] ?? null;
         }
         unset($caseItem);
 
@@ -196,12 +209,25 @@ class CaseModel
         $caseIds = array_map(fn($c) => (int) $c['case_id'], $cases);
         $teamValidations = $assignmentModel->validateConciliationTeams($caseIds);
 
+        $latestHearingsStmt = $this->conn->prepare("
+            SELECT h.case_id, MAX(h.hearing_date) AS latest_hearing_date
+            FROM hearings h
+            WHERE h.status != 'Cancelled'
+              AND NOT EXISTS (
+                  SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
+              )
+            GROUP BY h.case_id
+        ");
+        $latestHearingsStmt->execute();
+        $latestHearingMap = $latestHearingsStmt->fetchAll(PDO::FETCH_KEY_PAIR);
+
         foreach ($cases as &$caseItem) {
             $caseItem['mediation_timer'] = $deadlineService->computeStatus($caseItem);
             $cid = (int) $caseItem['case_id'];
             $val = $teamValidations[$cid] ?? ['valid' => false, 'message' => ''];
             $caseItem['has_conciliation_team'] = $val['valid'];
             $caseItem['conciliation_team_message'] = $val['message'];
+            $caseItem['latest_hearing_date'] = $latestHearingMap[$cid] ?? null;
         }
         unset($caseItem);
 

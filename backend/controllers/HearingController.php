@@ -143,7 +143,7 @@ class HearingController
         $data['hearing_type'] = $existing['hearing_type'];
         $data['reschedule_reason'] = trim((string)($data['reschedule_reason'] ?? ''));
         if ($data['reschedule_reason'] === '' || mb_strlen($data['reschedule_reason']) > 2000) return ['success'=>false,'message'=>'A rescheduling reason is required (up to 2,000 characters).'];
-        $validated = $this->validate($data, true);
+        $validated = $this->validate($data, true, $id);
         if (!$validated['success']) {
             return $validated;
         }
@@ -175,7 +175,7 @@ class HearingController
         }
     }
 
-    private function validate(array $data, bool $allowExistingTypes = false): array
+    private function validate(array $data, bool $allowExistingTypes = false, ?int $excludeHearingId = null): array
     {
         $caseId = filter_var($data['case_id'] ?? null, FILTER_VALIDATE_INT, [
             'options' => ['min_range' => 1],
@@ -197,6 +197,8 @@ class HearingController
             $date = DateTimeImmutable::createFromFormat('Y-m-d\TH:i', $rawDate);
         } elseif (ValidationService::dateTime($rawDate, 'Y-m-d H:i:s')) {
             $date = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $rawDate);
+        } elseif (ValidationService::dateTime($rawDate, 'Y-m-d H:i')) {
+            $date = DateTimeImmutable::createFromFormat('Y-m-d H:i', $rawDate);
         }
 
         if (!$caseId || !in_array($type, $types, true) || !$date) {
@@ -210,6 +212,15 @@ class HearingController
         }
         if ($date <= new DateTimeImmutable()) {
             return ['success' => false, 'message' => 'Hearing date must be in the future.'];
+        }
+
+        // Validation: Hearings cannot be booked on Saturday/Sunday and must be between 8:00 AM and 5:00 PM.
+        $hoursValidation = $this->hearing->validateHearingOperatingHours($date->format('Y-m-d H:i:s'));
+        if (!$hoursValidation['valid']) {
+            return [
+                'success' => false,
+                'message' => $hoursValidation['message'],
+            ];
         }
 
         $case = $this->hearing->getCase((int) $caseId);
@@ -226,6 +237,27 @@ class HearingController
                 return [
                     'success' => false,
                     'message' => $teamValidation['message']
+                ];
+            }
+        }
+
+        // Validation: If a hearing is already booked for a case, users cannot schedule another hearing
+        // for that case on the same day or on any prior date.
+        if (!$allowExistingTypes) {
+            $dateProgression = $this->hearing->validateHearingDateProgression((int) $caseId, $date->format('Y-m-d H:i:s'));
+            if (!$dateProgression['valid']) {
+                return [
+                    'success' => false,
+                    'message' => $dateProgression['message'],
+                ];
+            }
+        } else {
+            // When rescheduling, ensure the hearing does not conflict on the same day as another hearing of this case
+            $dateProgression = $this->hearing->validateHearingDateProgression((int) $caseId, $date->format('Y-m-d H:i:s'), $excludeHearingId);
+            if (!$dateProgression['valid'] && !empty($dateProgression['same_day'])) {
+                return [
+                    'success' => false,
+                    'message' => $dateProgression['message'],
                 ];
             }
         }

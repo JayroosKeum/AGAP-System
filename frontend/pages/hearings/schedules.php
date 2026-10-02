@@ -213,6 +213,7 @@ include '../../layouts/header.php';
             <div class="form-group">
                 <label for="hearingDate">Date &amp; Time <span class="required-mark" aria-hidden="true">*</span></label>
                 <input type="datetime-local" id="hearingDate" name="hearing_date" required>
+                <small style="color: #64748b; font-size: 0.8rem; display: block; margin-top: 4px;">Office hours: Monday to Friday, 8:00 AM – 5:00 PM (excluding weekends).</small>
             </div>
             <div class="form-group">
                 <label for="hearingVenue">Venue <span class="required-mark" aria-hidden="true">*</span></label>
@@ -360,6 +361,7 @@ include '../../layouts/header.php';
                 <div class="form-group">
                     <label for="editHearingDate">New Date &amp; Time <span class="required-mark">*</span></label>
                     <input type="datetime-local" id="editHearingDate" name="hearing_date" required>
+                    <small style="color: #64748b; font-size: 0.8rem; display: block; margin-top: 4px;">Office hours: Monday to Friday, 8:00 AM – 5:00 PM (excluding weekends).</small>
                 </div>
                 <div class="form-group">
                     <label for="editHearingVenue">New Venue <span class="required-mark">*</span></label>

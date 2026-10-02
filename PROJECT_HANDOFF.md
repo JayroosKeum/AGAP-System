@@ -151,7 +151,37 @@ write; an edit retains the pin unless it is moved or explicitly cleared.
     - `backend/models/Hearing.php`: Atomic transactional validation in `createProgression()` rejects Conciliation scheduling attempts if the Lupon team has not been constituted.
     - `backend/models/CaseModel.php`: Enriched case list and pagination outputs with `has_conciliation_team` and `conciliation_team_message`.
     - `frontend/assets/js/hearings.js`: When a case requires Conciliation and lacks a 3-member Lupon panel, disables the Conciliation hearing type option, disables the submit button, and displays an informative alert with a direct deep-link to Case Team Assignment (`../cases/case-list.php?assign_case_id=<id>#caseAssignments`).
-    - `frontend/assets/js/assignments.js`: Added URL query parameter auto-selection (`assign_case_id` or `case_id`). Updated assignment mode logic so that cases in Conciliation or with lapsed mediation unlock the Head, Secretary, and Member dropdowns for Lupon member selection.
+- **Hearing Date Progression Validation: No Same-Day or Prior-Date Schedules (October 2026)**:
+  - **Rule Definition**: If a hearing is already booked for a case (active or completed), users cannot schedule another hearing for that case on the same day or on any prior date. All subsequent hearing schedules must strictly be set on a future calendar date following the latest booked hearing.
+  - **Model & Database Enforcement (`backend/models/Hearing.php`)**:
+    - Added `getLatestBookedHearing(int $caseId): ?array`: retrieves the latest active or completed booked hearing for a case (excluding cancelled and superseded hearings).
+    - Added `validateHearingDateProgression(int $caseId, string $hearingDate, ?int $excludeHearingId = null): array`: checks both (1) same-day conflicts against any booked hearing, and (2) whether the target date is on or before the latest booked hearing date.
+    - Updated `createProgression`: added atomic transaction-level check with `FOR UPDATE` case locking before `INSERT INTO hearings`, rolling back if same-day or prior date is provided.
+  - **Controller & API Gate (`backend/controllers/HearingController.php`)**:
+    - Updated `validate()`: intercepts hearing schedule creation (`!$allowExistingTypes`) and returns HTTP 422 with a descriptive error message (`A hearing for this case is already booked on [Date]. You cannot schedule another hearing for this case on the same day or on any prior date.`). Also validates rescheduled updates so that they do not conflict on the same day as another hearing of the case.
+    - Added support for `Y-m-d H:i` string format alongside `Y-m-d\TH:i` and `Y-m-d H:i:s`.
+  - **Case Enrichment (`backend/models/CaseModel.php`)**:
+    - Enriched `getAll()` and `getPage()` with `latest_hearing_date`, computed efficiently in bulk via indexed `GROUP BY` and `PDO::FETCH_KEY_PAIR`.
+  - **Frontend UI & Interactive Restrictions (`frontend/assets/js/hearings.js`)**:
+    - Updated `loadCases()`: caches `latest_hearing_date` on case dropdown option dataset.
+    - Added `getCaseLatestHearingDate(caseId)`: retrieves latest hearing from `calendarHearings` or dataset fallback.
+    - Added `updateDateRestrictions()` & `validateHearingDateInput()`: dynamically computes the earliest allowed date (day after the latest booked hearing, 08:00 AM) and sets `hearingDate.min`.
+    - Added real-time client-side validity checks on `input` and `change`, as well as on form submit interceptor in `bindReviewForm`.
+    - Enhanced `updateNextSchedule()` help box: displays an informative blue indicator with the latest booked hearing date and the earliest permitted new hearing date.
+  - **Relevant Files**: `backend/models/Hearing.php`, `backend/controllers/HearingController.php`, `backend/models/CaseModel.php`, `frontend/assets/js/hearings.js`.
+
+- **Hearing Schedule Office Hours & Weekday Validation (October 2026)**:
+  - **Rule Definition**: Hearings cannot be booked on Saturdays or Sundays, and can strictly only be scheduled during office hours from 8:00 AM to 5:00 PM (08:00 to 17:00).
+  - **Model & Database Enforcement (`backend/models/Hearing.php`)**:
+    - Added `validateHearingOperatingHours(string $hearingDate): array`: checks `$dt->format('N')` to reject Saturday (6) and Sunday (7), and checks `$dt->format('H:i')` to enforce `08:00 <= time <= 17:00`.
+    - Integrated into `createProgression()` and `update()` (rescheduling) to prevent weekend and out-of-hours inserts at the model layer.
+  - **Controller & API Gate (`backend/controllers/HearingController.php`)**:
+    - Updated `validate()`: intercepts both new bookings and reschedules, returning HTTP 422 if Saturday/Sunday or outside 8:00 AM – 5:00 PM is submitted.
+  - **Frontend UI & Interactive Restrictions (`frontend/assets/js/hearings.js` & `schedules.php`)**:
+    - Updated `validateHearingDateInput()`: validates input in real-time on `input`, `change`, and modal submit; sets custom validity and reports invalid states.
+    - Updated `updateDateRestrictions()`: skips weekends when computing the minimum next date (advancing Friday to Monday 8:00 AM).
+    - Added office hours helper notes beneath the date inputs in `frontend/pages/hearings/schedules.php`.
+  - **Relevant Files**: `backend/models/Hearing.php`, `backend/controllers/HearingController.php`, `frontend/assets/js/hearings.js`, `frontend/pages/hearings/schedules.php`.
 
 
 ## Other Undocumented Implemented Changes (September 2026)

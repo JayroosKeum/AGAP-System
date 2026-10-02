@@ -87,6 +87,159 @@ class Hearing
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 
+    /**
+     * Retrieves the latest active/completed booked hearing for a given case.
+     * Excludes cancelled and superseded hearings.
+     */
+    public function getLatestBookedHearing(int $caseId): ?array
+    {
+        $stmt = $this->conn->prepare(
+            "SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.status,
+                    DATE(h.hearing_date) AS hearing_day
+             FROM hearings h
+             WHERE h.case_id = ?
+               AND h.status != 'Cancelled'
+               AND NOT EXISTS (
+                   SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
+               )
+             ORDER BY h.hearing_date DESC
+             LIMIT 1"
+        );
+        $stmt->execute([$caseId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
+    /**
+     * Validates that if a hearing is already booked for a case, users cannot
+     * schedule another hearing for that case on the same day or on any prior date.
+     *
+     * @param int $caseId
+     * @param string $hearingDate Target hearing datetime
+     * @param int|null $excludeHearingId Optional hearing ID to exclude (e.g., during rescheduling)
+     * @return array ['valid' => bool, 'same_day' => bool, 'prior_date' => bool, 'message' => string, 'latest_hearing' => ?array]
+     */
+    public function validateHearingDateProgression(int $caseId, string $hearingDate, ?int $excludeHearingId = null): array
+    {
+        try {
+            $targetDateObj = new DateTimeImmutable($hearingDate);
+        } catch (Throwable) {
+            return [
+                'valid' => false,
+                'same_day' => false,
+                'prior_date' => false,
+                'message' => 'Invalid hearing date format.',
+                'latest_hearing' => null,
+            ];
+        }
+
+        $targetDay = $targetDateObj->format('Y-m-d');
+
+        $sql = "SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.status,
+                       DATE(h.hearing_date) AS hearing_day, c.case_number
+                FROM hearings h
+                INNER JOIN cases c ON c.case_id = h.case_id
+                WHERE h.case_id = ?
+                  AND h.status != 'Cancelled'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
+                  )";
+        $params = [$caseId];
+
+        if ($excludeHearingId !== null) {
+            $sql .= " AND h.hearing_id != ?";
+            $params[] = $excludeHearingId;
+        }
+
+        $sql .= " ORDER BY h.hearing_date DESC";
+
+        $stmt = $this->conn->prepare($sql);
+        $stmt->execute($params);
+        $bookedHearings = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if (empty($bookedHearings)) {
+            return [
+                'valid' => true,
+                'same_day' => false,
+                'prior_date' => false,
+                'message' => '',
+                'latest_hearing' => null,
+            ];
+        }
+
+        // Check if the target date is on the same day as ANY existing booked hearing for this case
+        foreach ($bookedHearings as $hearing) {
+            if ($hearing['hearing_day'] === $targetDay) {
+                $matchedDate = date('F j, Y', strtotime($hearing['hearing_date']));
+                return [
+                    'valid' => false,
+                    'same_day' => true,
+                    'prior_date' => false,
+                    'message' => "A hearing for this case is already booked on this day ({$matchedDate}). You cannot schedule another hearing for this case on the same day or on any prior date.",
+                    'latest_hearing' => $hearing,
+                ];
+            }
+        }
+
+        // When scheduling another hearing, check if target date is prior to the latest booked hearing
+        $latest = $bookedHearings[0];
+        $latestDay = $latest['hearing_day'];
+        if ($targetDay < $latestDay) {
+            $formattedDate = date('F j, Y', strtotime($latest['hearing_date']));
+            return [
+                'valid' => false,
+                'same_day' => false,
+                'prior_date' => true,
+                'message' => "A hearing for this case is already booked on {$formattedDate}. You cannot schedule another hearing for this case on the same day or on any prior date.",
+                'latest_hearing' => $latest,
+            ];
+        }
+
+        return [
+            'valid' => true,
+            'same_day' => false,
+            'prior_date' => false,
+            'message' => '',
+            'latest_hearing' => $latest,
+        ];
+    }
+
+    /**
+     * Validates that the hearing date/time is on a weekday (Monday to Friday)
+     * and strictly within office hours (8:00 AM to 5:00 PM).
+     *
+     * @param string $hearingDate Target hearing datetime
+     * @return array ['valid' => bool, 'message' => string]
+     */
+    public function validateHearingOperatingHours(string $hearingDate): array
+    {
+        try {
+            $dt = new DateTimeImmutable($hearingDate);
+        } catch (Throwable) {
+            return ['valid' => false, 'message' => 'Invalid hearing date format.'];
+        }
+
+        // 1 (Monday) to 7 (Sunday)
+        $dayOfWeek = (int) $dt->format('N');
+        if ($dayOfWeek === 6 || $dayOfWeek === 7) {
+            return [
+                'valid' => false,
+                'message' => 'Hearings cannot be scheduled on weekends (Saturday or Sunday). Please select a weekday (Monday to Friday).',
+            ];
+        }
+
+        // Office hours: 08:00 to 17:00 (8:00 AM - 5:00 PM)
+        $timeStr = $dt->format('H:i');
+        if ($timeStr < '08:00' || $timeStr > '17:00') {
+            return [
+                'valid' => false,
+                'message' => 'Hearings can only be scheduled during office hours (8:00 AM to 5:00 PM).',
+            ];
+        }
+
+        return ['valid' => true, 'message' => ''];
+    }
+
     public function createProgression(array $data, ?array $deadline, int $userId): array
     {
         try {
@@ -167,6 +320,26 @@ class Hearing
                 (new MediationDeadlineService($this->conn))->initializeClock((int) $data['case_id'], $data['hearing_date'], $userId);
             }
 
+            // Progression date validation: cannot schedule on the same day or any prior date relative to already booked hearings.
+            $dateProgression = $this->validateHearingDateProgression((int) $data['case_id'], $data['hearing_date']);
+            if (!$dateProgression['valid']) {
+                $this->conn->rollBack();
+                return [
+                    'success' => false,
+                    'message' => $dateProgression['message'],
+                ];
+            }
+
+            // Operating hours and weekday validation: weekdays only, 8:00 AM to 5:00 PM.
+            $hoursValidation = $this->validateHearingOperatingHours($data['hearing_date']);
+            if (!$hoursValidation['valid']) {
+                $this->conn->rollBack();
+                return [
+                    'success' => false,
+                    'message' => $hoursValidation['message'],
+                ];
+            }
+
             $stmt = $this->conn->prepare(
                 'INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, remarks)
                  VALUES (?, ?, ?, ?, ?)'
@@ -213,6 +386,10 @@ class Hearing
             $this->conn->beginTransaction();
             $reason = trim((string)($data['reschedule_reason'] ?? ''));
             if ($reason === '' || mb_strlen($reason) > 2000) throw new InvalidArgumentException('A rescheduling reason up to 2,000 characters is required.');
+            $hoursValidation = $this->validateHearingOperatingHours($data['hearing_date']);
+            if (!$hoursValidation['valid']) {
+                throw new InvalidArgumentException($hoursValidation['message']);
+            }
             $stmt = $this->conn->prepare(
                 'INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, remarks, rescheduled_from_id, reschedule_reason)
                  VALUES (?, ?, ?, ?, ?, ?, ?)'

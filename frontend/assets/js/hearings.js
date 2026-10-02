@@ -21,6 +21,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('confirmHearingSchedule')?.addEventListener('click', confirmHearingSchedule);
     configureCreateDateValidation();
 
+    const editDateInput = document.getElementById('editHearingDate');
+    if (editDateInput) {
+        editDateInput.addEventListener('input', () => validateHearingDateInput(editDateInput));
+        editDateInput.addEventListener('change', () => validateHearingDateInput(editDateInput));
+    }
+
     const params = new URLSearchParams(window.location.search);
     if (params.get('case_id')) {
         openAddHearingModal();
@@ -365,6 +371,7 @@ async function loadCases() {
             option.dataset.pauseReason = item.mediation_timer?.pause_reason || '';
             option.dataset.hasConciliationTeam = item.has_conciliation_team ? '1' : '0';
             option.dataset.conciliationTeamMessage = item.conciliation_team_message || '';
+            option.dataset.latestHearingDate = item.latest_hearing_date || '';
             select.add(option);
         });
         const params = new URLSearchParams(window.location.search);
@@ -374,11 +381,119 @@ async function loadCases() {
     } catch (error) { select.replaceChildren(new Option(error.message, '')); }
 }
 
-function configureCreateDateValidation() {
-    const date = document.getElementById('hearingDate'); const caseSelect = document.getElementById('hearingCaseId');
+function getCaseLatestHearingDate(caseId) {
+    if (!caseId) return '';
+    const activeHearings = calendarHearings.filter(
+        (item) => String(item.case_id) === String(caseId) &&
+                  item.status !== 'Cancelled' &&
+                  Number(item.is_superseded) !== 1
+    );
+    if (activeHearings.length) {
+        activeHearings.sort((a, b) => new Date(b.hearing_date.replace(' ', 'T')) - new Date(a.hearing_date.replace(' ', 'T')));
+        return activeHearings[0].hearing_date;
+    }
+    const select = document.getElementById('hearingCaseId');
+    const opt = select?.querySelector(`option[value="${caseId}"]`);
+    return opt?.dataset.latestHearingDate || '';
+}
+
+function validateHearingDateInput(dateInput) {
+    if (!dateInput) return true;
+    const value = dateInput.value;
+    if (!value) {
+        dateInput.setCustomValidity('');
+        return true;
+    }
+
+    const dateObj = new Date(value);
+    if (isNaN(dateObj.getTime())) {
+        dateInput.setCustomValidity('Please enter a valid date and time.');
+        return false;
+    }
+
+    // 1. Weekend check: Saturday (6) and Sunday (0) are not permitted
+    const dayOfWeek = dateObj.getDay();
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+        const msg = 'Hearings cannot be scheduled on weekends (Saturday or Sunday). Please select a weekday (Monday to Friday).';
+        dateInput.setCustomValidity(msg);
+        return false;
+    }
+
+    // 2. Office hours check: 8:00 AM to 5:00 PM (08:00 to 17:00)
+    const hours = dateObj.getHours();
+    const minutes = dateObj.getMinutes();
+    const timeMinutes = hours * 60 + minutes;
+    const minMinutes = 8 * 60;   // 08:00 AM
+    const maxMinutes = 17 * 60;  // 05:00 PM
+
+    if (timeMinutes < minMinutes || timeMinutes > maxMinutes) {
+        const msg = 'Hearings can only be scheduled during office hours (8:00 AM to 5:00 PM).';
+        dateInput.setCustomValidity(msg);
+        return false;
+    }
+
+    // 3. Existing hearing date progression check (same day or prior date relative to booked hearings)
+    const latestDay = dateInput.dataset.latestHearingDay;
+    const latestFormatted = dateInput.dataset.latestHearingFormatted || latestDay;
+    if (latestDay) {
+        const selectedDay = value.slice(0, 10);
+        if (selectedDay <= latestDay) {
+            const msg = `A hearing for this case is already booked on ${latestFormatted}. You cannot schedule another hearing on the same day or on any prior date.`;
+            dateInput.setCustomValidity(msg);
+            return false;
+        }
+    }
+
+    dateInput.setCustomValidity('');
+    return true;
+}
+
+function updateDateRestrictions() {
+    const date = document.getElementById('hearingDate');
+    const caseSelect = document.getElementById('hearingCaseId');
     if (!date || !caseSelect) return;
-    const now = new Date(); now.setMinutes(now.getMinutes() - now.getTimezoneOffset()); date.min = now.toISOString().slice(0, 16);
-    caseSelect.addEventListener('change', updateNextSchedule);
+
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    const minNowIso = now.toISOString().slice(0, 16);
+
+    const caseId = caseSelect.value;
+    const latestDateStr = getCaseLatestHearingDate(caseId);
+
+    if (caseId && latestDateStr) {
+        const latestDay = latestDateStr.slice(0, 10);
+        const nextDay = new Date(latestDay + 'T00:00:00');
+        nextDay.setDate(nextDay.getDate() + 1);
+        // Advance past weekends if nextDay is Saturday or Sunday
+        while (nextDay.getDay() === 0 || nextDay.getDay() === 6) {
+            nextDay.setDate(nextDay.getDate() + 1);
+        }
+        const nextDayStr = `${nextDay.getFullYear()}-${String(nextDay.getMonth() + 1).padStart(2, '0')}-${String(nextDay.getDate()).padStart(2, '0')}`;
+        const minAllowedIso = `${nextDayStr}T08:00`;
+        date.min = minAllowedIso > minNowIso ? minAllowedIso : minNowIso;
+        date.dataset.latestHearingDay = latestDay;
+        date.dataset.latestHearingFormatted = formatFriendlyDate(latestDay);
+    } else {
+        date.min = minNowIso;
+        delete date.dataset.latestHearingDay;
+        delete date.dataset.latestHearingFormatted;
+    }
+
+    validateHearingDateInput(date);
+}
+
+function configureCreateDateValidation() {
+    const date = document.getElementById('hearingDate');
+    const caseSelect = document.getElementById('hearingCaseId');
+    if (!date || !caseSelect) return;
+
+    date.addEventListener('input', () => validateHearingDateInput(date));
+    date.addEventListener('change', () => validateHearingDateInput(date));
+    caseSelect.addEventListener('change', () => {
+        updateDateRestrictions();
+        updateNextSchedule();
+    });
+    updateDateRestrictions();
 }
 
 function updateNextSchedule() {
@@ -387,6 +502,8 @@ function updateNextSchedule() {
     if (!select || !type || !help) return;
     const caseId = select.value;
     type.replaceChildren();
+    updateDateRestrictions();
+
     if (!caseId) {
         type.add(new Option('Select a case first', '')); type.disabled = true;
         help.textContent = 'Select a case to see its next permitted schedule.';
@@ -474,13 +591,42 @@ function updateNextSchedule() {
     }
 
     type.add(new Option(label, typeValue)); type.disabled = false;
-    help.textContent = `The next permitted schedule is ${label}.`;
+    let helpContent = `The next permitted schedule is ${label}.`;
+    const latestDateStr = getCaseLatestHearingDate(caseId);
+    if (latestDateStr) {
+        const latestDay = latestDateStr.slice(0, 10);
+        const nextDay = new Date(latestDay + 'T00:00:00');
+        nextDay.setDate(nextDay.getDate() + 1);
+        while (nextDay.getDay() === 0 || nextDay.getDay() === 6) {
+            nextDay.setDate(nextDay.getDate() + 1);
+        }
+        const nextDayStr = `${nextDay.getFullYear()}-${String(nextDay.getMonth() + 1).padStart(2, '0')}-${String(nextDay.getDate()).padStart(2, '0')}`;
+        helpContent += `
+            <div style="margin-top: 8px; color: #1e3a8a; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 8px 10px; font-size: 0.83rem;">
+                📅 <strong>Latest booked hearing:</strong> ${escapeHtml(formatFriendlyDate(latestDay))}.<br>
+                <span>New hearings must be scheduled on or after <strong>${escapeHtml(formatFriendlyDate(nextDayStr))}</strong> (Monday – Friday, 8:00 AM – 5:00 PM).</span>
+            </div>
+        `;
+    }
+
+    help.innerHTML = helpContent;
     if (submitBtn) { submitBtn.disabled = false; submitBtn.title = ''; }
 }
 
 function bindReviewForm(id, onSuccess) {
     const form = document.getElementById(id); if (!form) return;
-    form.addEventListener('submit', (event) => { event.preventDefault(); if (!form.reportValidity()) return; pendingScheduleForm = { form, onSuccess }; renderScheduleReview(form); showModal('reviewHearingModal'); });
+    form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const dateInput = form.querySelector('[name="hearing_date"]');
+        if (dateInput && !validateHearingDateInput(dateInput)) {
+            dateInput.reportValidity();
+            return;
+        }
+        if (!form.reportValidity()) return;
+        pendingScheduleForm = { form, onSuccess };
+        renderScheduleReview(form);
+        showModal('reviewHearingModal');
+    });
 }
 
 function renderScheduleReview(form) {
@@ -552,7 +698,14 @@ async function editHearing(id) {
         document.getElementById('editHearingId').value = item.hearing_id;
         document.getElementById('editHearingType').value = hearingLabel(item);
         document.getElementById('editHearingTypeValue').value = item.hearing_type;
-        document.getElementById('editHearingDate').value = toDateTimeLocal(item.hearing_date);
+        const editDateInput = document.getElementById('editHearingDate');
+        if (editDateInput) {
+            editDateInput.value = toDateTimeLocal(item.hearing_date);
+            const now = new Date();
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            editDateInput.min = now.toISOString().slice(0, 16);
+            validateHearingDateInput(editDateInput);
+        }
         document.getElementById('editHearingVenue').value = item.venue || '';
         document.getElementById('editHearingRemarks').value = item.remarks || '';
         document.getElementById('rescheduleReason').value = '';
