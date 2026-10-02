@@ -844,6 +844,24 @@ async function openHearingAttendanceModal(hearingId) {
     }
 }
 
+function getHearingSummonDeliveryBadge(p) {
+    const status = p.summon_delivery_status || (p.service_confirmed ? 'Served' : 'Pending');
+    if (status === 'Served Personal' || status === 'Served — Personal') {
+        return `<span class="service-status-badge confirmed" title="Personally served to recipient">✓ Served — Personal</span>`;
+    } else if (status === 'Served Substituted' || status === 'Served — Substituted') {
+        return `<span class="service-status-badge confirmed" title="Substituted service to household/authorized person">✓ Served — Substituted</span>`;
+    } else if (status === 'Served Refused' || status === 'Refused to Receive') {
+        return `<span class="service-status-badge confirmed" title="Summon tendered; recipient refused to sign or receive">✓ Refused to Receive</span>`;
+    } else if (status === 'Served') {
+        return `<span class="service-status-badge confirmed" title="Service confirmed">✓ Served</span>`;
+    } else if (status === 'Unserved') {
+        const reason = p.summon_unserved_reason ? ` (${p.summon_unserved_reason})` : '';
+        return `<span class="service-status-badge unserved" title="Hearing summon unserved">✕ Unserved${escapeHtml(reason)}</span>`;
+    } else {
+        return `<span class="service-status-badge pending" title="Hearing summon delivery pending">⏳ Pending Delivery</span>`;
+    }
+}
+
 function renderAttendanceParties(parties) {
     const container = document.getElementById('attPartiesContainer');
     if (!container) return;
@@ -879,9 +897,11 @@ function renderAttendanceParties(parties) {
         else if (p.attendance_status === 'Absent') currentChoice = 'Unjustified';
 
         const isExcused = currentChoice === 'Excused';
-        const initialStatus = ['Present', 'Absent', 'Late', 'Excused', 'Not Served'].includes(p.attendance_status)
-            ? p.attendance_status
-            : (currentChoice === 'Unjustified' ? 'Absent' : currentChoice);
+        const initialStatus = p.party_type === 'Witness'
+            ? (p.attendance_status && p.attendance_status !== 'Pending' ? p.attendance_status : 'Present')
+            : (['Present', 'Absent', 'Late', 'Excused', 'Not Served'].includes(p.attendance_status)
+                ? p.attendance_status
+                : (currentChoice === 'Unjustified' ? 'Absent' : currentChoice));
         const historyMarkup = (p.service_history || []).length
             ? p.service_history.map((attempt) => `
                 <li style="margin-bottom: 6px;">
@@ -911,13 +931,9 @@ function renderAttendanceParties(parties) {
                 ${isComplainant || isRespondent ? `
                 <div class="hearing-service-panel">
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                        <div style="display: flex; align-items: center; gap: 6px;">
-                            <span class="service-status-badge ${p.service_confirmed ? 'confirmed' : 'unconfirmed'}">
-                                ${p.service_confirmed ? '✓ Service Confirmed' : '⚠ Service Not Confirmed'}
-                            </span>
-                            <span style="font-size: 0.78rem; color: #64748b;">
-                                ${(p.service_history || []).length} attempt${(p.service_history || []).length === 1 ? '' : 's'} on record
-                            </span>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 0.78rem; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.03em;">Summon Delivery Status:</span>
+                            ${getHearingSummonDeliveryBadge(p)}
                         </div>
                         <a href="../gps/proof-service.php?case_id=${encodeURIComponent(activeHearingAttendanceData?.case_id || '')}" target="_blank" style="font-size: 0.78rem; font-weight: 600; color: #0284c7; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; background: #f0f9ff; border: 1px solid #bae6fd; padding: 3px 8px; border-radius: 4px;">
                             Record in Proof of Service &rarr;
@@ -937,12 +953,13 @@ function renderAttendanceParties(parties) {
                 </div>
                 ` : ''}
 
+                ${(isComplainant || isRespondent) ? `
                 <div class="att-status-pills">
                     <button type="button" class="att-status-pill-btn ${currentChoice === 'Present' ? 'selected-present' : ''}" data-choice="Present" ${!canManageHearings ? 'disabled' : ''}>
                         Present
                     </button>
-                    <button type="button" class="att-status-pill-btn ${currentChoice === 'Unjustified' ? 'selected-unjustified' : ''}" data-choice="Unjustified" ${!canManageHearings || (!p.service_confirmed && (isComplainant || isRespondent)) ? 'disabled title="Confirm service for this party before marking Failure to Appear. Select Not Served if party could not be served."' : ''}>
-                        ${p.service_confirmed ? 'Failure to Appear' : 'Failure to Appear (Unverified)'}
+                    <button type="button" class="att-status-pill-btn ${currentChoice === 'Unjustified' ? 'selected-unjustified' : ''}" data-choice="Unjustified" ${!canManageHearings || (!p.service_confirmed && (isComplainant || isRespondent)) ? 'disabled title="Confirm delivery for this party before marking Failure to Appear. Select Not Served if party could not be served."' : ''}>
+                        Failure to Appear
                     </button>
                     <button type="button" class="att-status-pill-btn ${currentChoice === 'Not Served' ? 'selected-not-served' : ''}" data-choice="Not Served" ${!canManageHearings ? 'disabled' : ''}>
                         Not Served
@@ -965,9 +982,10 @@ function renderAttendanceParties(parties) {
                         <option value="Other Justified Cause" ${p.justification_reason && !['Medical Emergency / Illness', 'Official Duty / Employment Obligation', 'Force Majeure / Calamity / Severe Weather', 'Bereavement / Family Emergency'].includes(p.justification_reason) ? 'selected' : ''}>Other Justified Cause</option>
                     </select>
                 </div>
+                ` : ''}
 
                 <div class="att-remarks-box">
-                    <input type="text" name="records[${p.resident_id}][remarks]" value="${escapeHtml(p.remarks || '')}" placeholder="Appearance remarks or incident notes (optional)..." style="width: 100%; font-size: 0.82rem; border: 1px solid #cbd5e1; border-radius: 4px; padding: 5px 8px;" ${!canManageHearings ? 'readonly' : ''}>
+                    <input type="text" name="records[${p.resident_id}][remarks]" value="${escapeHtml(p.remarks || '')}" placeholder="${(isComplainant || isRespondent) ? 'Appearance remarks or incident notes (optional)...' : 'Witness testimony notes / remarks (optional)...'}" style="width: 100%; font-size: 0.82rem; border: 1px solid #cbd5e1; border-radius: 4px; padding: 5px 8px;" ${!canManageHearings ? 'readonly' : ''}>
                 </div>
 
                 ${(isComplainant || isRespondent) && canManageHearings ? `
@@ -1571,10 +1589,23 @@ function bindAttendanceForm() {
         cards.forEach((card) => {
             const residentId = card.dataset.residentId;
             const partyName = card.dataset.partyName || 'Party';
+            const partyType = card.dataset.partyType || '';
             const status = card.querySelector('.att-input-status')?.value || '';
             const isJustified = card.querySelector('.att-input-justified')?.value === '1' ? 1 : 0;
             const reason = card.querySelector(`select[name="records[${residentId}][justification_reason]"]`)?.value || '';
             const remarks = card.querySelector(`input[name="records[${residentId}][remarks]"]`)?.value || '';
+
+            if (partyType === 'Witness') {
+                card.style.border = '';
+                records.push({
+                    resident_id: Number(residentId),
+                    attendance_status: status && status !== 'Pending' ? status : 'Present',
+                    is_justified: 0,
+                    justification_reason: '',
+                    remarks: remarks.trim()
+                });
+                return;
+            }
 
             if (!status || status === 'Pending') {
                 unselectedParties.push(partyName);

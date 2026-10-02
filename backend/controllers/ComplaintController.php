@@ -42,6 +42,12 @@ class ComplaintController
         $complaint['parties'] = $this->complaintParty->getByComplaint($id);
         $complaint['attachments'] = $this->attachment->getByComplaint($id);
         $complaint['location'] = $this->location->getByComplaint($id);
+        if (!empty($complaint['case_id'])) {
+            require_once __DIR__ . '/../models/CaseModel.php';
+            $complaint['case_workspace'] = (new CaseModel())->getWorkspace((int) $complaint['case_id']);
+        } else {
+            $complaint['case_workspace'] = null;
+        }
         return $complaint;
     }
 

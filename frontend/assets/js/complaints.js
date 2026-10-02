@@ -326,6 +326,9 @@ async function loadComplaintDetails() {
         const attachments = data.attachments || [];
         renderParties(parties);
         renderAttachments(attachments);
+
+        // Render Combined Case Workspace if docketed
+        renderCaseWorkspace(data.case_workspace, data);
     } catch (err) {
         console.error('Error loading complaint details:', err);
     }
@@ -499,6 +502,247 @@ function renderAttachments(attachments) {
         `;
     });
     container.innerHTML = cards;
+}
+
+function formatDateTimeReadable(str) {
+    if (!str) return '—';
+    try {
+        const d = new Date(str.replace(' ', 'T'));
+        if (isNaN(d.getTime())) return str;
+        return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) + ' at ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true });
+    } catch (e) {
+        return str;
+    }
+}
+
+function renderCaseWorkspace(workspace, complaint) {
+    const section = document.getElementById('caseWorkspaceSection');
+    if (!section) return;
+
+    if (!complaint || !complaint.case_id || !workspace) {
+        section.style.display = 'none';
+        return;
+    }
+
+    section.style.display = 'block';
+
+    const caseData = workspace.case || {};
+    const caseNum = caseData.case_number || (complaint.case_number || ('KP-' + String(complaint.case_id).padStart(5, '0')));
+
+    // Header
+    const heading = document.getElementById('cwCaseNumberHeading');
+    if (heading) heading.textContent = 'Case #' + caseNum;
+
+    const subtext = document.getElementById('cwCaseMetaSubtext');
+    if (subtext) {
+        const docketDate = caseData.docket_date ? formatDateReadable(caseData.docket_date) : (complaint.created_at ? formatDateReadable(complaint.created_at) : 'N/A');
+        const caseType = caseData.case_type || complaint.case_type || 'Civil';
+        const caseStatus = caseData.case_status || complaint.status || 'Docketed';
+        subtext.textContent = `Docket Date: ${docketDate} · Case Type: ${caseType} · Case Status: ${caseStatus}`;
+    }
+
+    // Mediation Countdown Timer
+    const timerWrap = document.getElementById('cwMediationTimerBadgeWrap');
+    if (timerWrap) {
+        if (caseData.mediation_timer) {
+            const timer = caseData.mediation_timer;
+            timerWrap.innerHTML = `
+                <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+                    <span style="font-size: 0.74rem; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.03em;">15-Day Statutory Mediation:</span>
+                    <span class="badge-timer ${escapeHtml(timer.badge_class || '')}" style="font-size: 0.84rem; padding: 4px 10px; font-weight: 700; border-radius: 4px; display: inline-flex; align-items: center; gap: 5px;">
+                        ${escapeHtml(timer.badge_label || '')}
+                    </span>
+                    ${timer.mediation_deadline_date ? `<span style="font-size: 0.75rem; color: #64748b;">Statutory Limit: <strong>${escapeHtml(formatDateReadable(timer.mediation_deadline_date))}</strong></span>` : ''}
+                </div>
+            `;
+        } else {
+            timerWrap.innerHTML = '';
+        }
+    }
+
+    // Update Card 1 Docketed Case entry with Mediation Timer as well
+    const infoDocketEl = document.getElementById('infoDocketCase');
+    if (infoDocketEl) {
+        let timerHtml = '';
+        if (caseData.mediation_timer) {
+            timerHtml = ` <span class="badge-timer ${escapeHtml(caseData.mediation_timer.badge_class || '')}" style="font-size: 0.75rem; padding: 2px 7px; margin-left: 6px;">${escapeHtml(caseData.mediation_timer.badge_label || '')}</span>`;
+        }
+        infoDocketEl.innerHTML = `
+            <a href="#caseWorkspaceSection" class="meta-pill case-pill" style="display:inline-flex; text-decoration: none;">${escapeHtml(caseNum)} &darr;</a>
+            ${timerHtml}
+        `;
+    }
+
+    // Card 6: Case Team Assignment
+    const teamContainer = document.getElementById('cwTeamContainer');
+    if (teamContainer) {
+        const assignments = workspace.assignments || [];
+        if (!assignments.length) {
+            teamContainer.innerHTML = `
+                <div class="empty-detail-state" style="text-align: center; padding: 20px; color: #64748b;">
+                    <p style="margin: 0 0 10px; font-size: 0.88rem;">No case team has been assigned yet. 3 active Lupon Members are required.</p>
+                    <a href="../cases/case-list.php#caseAssignments" class="btn-create" style="font-size: 0.82rem; padding: 6px 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
+                        Assign 3-Member Team &rarr;
+                    </a>
+                </div>
+            `;
+        } else {
+            let teamHtml = '';
+            assignments.forEach((m) => {
+                const role = m.assignment_role || 'Member';
+                let roleColor = '#64748b';
+                let roleBg = '#f1f5f9';
+                if (role === 'Head') {
+                    roleColor = '#15803d';
+                    roleBg = '#dcfce7';
+                } else if (role === 'Secretary') {
+                    roleColor = '#1d4ed8';
+                    roleBg = '#dbeafe';
+                } else if (role === 'Member') {
+                    roleColor = '#7e22ce';
+                    roleBg = '#f3e8ff';
+                }
+
+                teamHtml += `
+                    <div class="party-detail-card" style="margin-bottom: 10px;">
+                        <div class="party-detail-left">
+                            <span class="party-badge" style="background: ${roleBg}; color: ${roleColor}; font-weight: 800;">
+                                ${escapeHtml(role.toUpperCase())}
+                            </span>
+                            <div class="party-detail-info">
+                                <div class="party-detail-name" style="font-size: 0.95rem; font-weight: 600;">
+                                    ${escapeHtml(m.member_name || 'Assigned Lupon Member')}
+                                </div>
+                                <div class="party-detail-sub">
+                                    <span>📅 Assigned: ${m.assigned_date ? escapeHtml(formatDateReadable(m.assigned_date)) : 'N/A'}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            teamContainer.innerHTML = teamHtml;
+        }
+    }
+
+    // Card 7: Case Documents & KP Forms
+    const docContainer = document.getElementById('cwDocumentsContainer');
+    const docCountBadge = document.getElementById('cwDocCountBadge');
+    if (docContainer) {
+        const docs = workspace.documents || [];
+        if (docCountBadge) docCountBadge.textContent = `${docs.length} form${docs.length === 1 ? '' : 's'}`;
+
+        if (!docs.length) {
+            docContainer.innerHTML = `
+                <div class="empty-detail-state" style="text-align: center; padding: 20px; color: #64748b;">
+                    <p style="margin: 0; font-size: 0.88rem;">No official KP documents have been generated for this case yet.</p>
+                </div>
+            `;
+        } else {
+            let docCards = '';
+            docs.forEach((doc) => {
+                const docStatus = doc.service_status || 'Issued';
+                const statusColor = docStatus === 'Served' ? '#15803d' : (docStatus === 'Pending' ? '#b45309' : '#475569');
+                const statusBg = docStatus === 'Served' ? '#dcfce7' : (docStatus === 'Pending' ? '#fef3c7' : '#f1f5f9');
+
+                docCards += `
+                    <div class="attachment-detail-card" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 8px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="font-size: 1.25rem;">📄</span>
+                            <div>
+                                <div style="font-weight: 600; font-size: 0.9rem; color: #1e293b;">
+                                    ${escapeHtml(doc.template_name || 'KP Form Document')}
+                                </div>
+                                <div style="font-size: 0.78rem; color: #64748b; margin-top: 2px;">
+                                    Generated: ${doc.generated_at ? escapeHtml(formatDateReadable(doc.generated_at)) : 'N/A'}
+                                    <span style="display: inline-block; margin-left: 8px; padding: 1px 6px; border-radius: 4px; font-weight: 700; font-size: 0.72rem; background: ${statusBg}; color: ${statusColor};">
+                                        ${escapeHtml(docStatus)}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            ${doc.file_path ? `
+                                <a href="../../../${escapeHtml(doc.file_path)}" target="_blank" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 9px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+                                    Download / View &rarr;
+                                </a>
+                            ` : `
+                                <a href="../documents/document-center.php" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 9px; text-decoration: none;">
+                                    View in Docs &rarr;
+                                </a>
+                            `}
+                        </div>
+                    </div>
+                `;
+            });
+            docContainer.innerHTML = docCards;
+        }
+    }
+
+    // Card 8: Hearings & Deadlines Schedule
+    const hearingsContainer = document.getElementById('cwHearingsContainer');
+    const openHearingsLink = document.getElementById('cwOpenHearingsLink');
+    if (openHearingsLink && complaint.case_id) {
+        openHearingsLink.href = `../hearings/schedules.php?case_id=${encodeURIComponent(complaint.case_id)}`;
+    }
+
+    if (hearingsContainer) {
+        const hearings = workspace.hearings || [];
+        if (!hearings.length) {
+            hearingsContainer.innerHTML = `
+                <div class="empty-detail-state" style="text-align: center; padding: 24px 16px; color: #64748b;">
+                    <p style="margin: 0 0 10px; font-size: 0.88rem;">No hearings have been scheduled for this case yet.</p>
+                    <button type="button" class="btn-create" onclick="handleIssueSummonClick()" style="font-size: 0.82rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 5px;">
+                        Issue 1st Summon &amp; Schedule &rarr;
+                    </button>
+                </div>
+            `;
+        } else {
+            let hearingsHtml = '<div style="display: flex; flex-direction: column; gap: 12px;">';
+            hearings.forEach((h) => {
+                const status = h.hearing_status || 'Scheduled';
+                let statusBadgeStyle = 'background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe;';
+                if (status === 'Completed') statusBadgeStyle = 'background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0;';
+                else if (status === 'Rescheduled') statusBadgeStyle = 'background: #f3e8ff; color: #7e22ce; border: 1px solid #e9d5ff;';
+                else if (status === 'Cancelled') statusBadgeStyle = 'background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5;';
+
+                const hearingDateFormatted = h.hearing_date ? formatDateTimeReadable(h.hearing_date) : 'Date Pending';
+                const presentCount = Number(h.present_count || 0);
+                const absentCount = Number(h.unjustified_absent_count || h.absent_count || 0);
+
+                hearingsHtml += `
+                    <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;">
+                            <div>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <strong style="font-size: 0.95rem; color: #0f172a;">${escapeHtml(h.hearing_type || 'Hearing Session')}</strong>
+                                    <span style="font-size: 0.72rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; ${statusBadgeStyle}">
+                                        ${escapeHtml(status)}
+                                    </span>
+                                </div>
+                                <div style="font-size: 0.82rem; color: #475569; margin-top: 4px;">
+                                    📅 <strong>${escapeHtml(hearingDateFormatted)}</strong> · 📍 ${escapeHtml(h.venue || 'Barangay Hall')}
+                                </div>
+                            </div>
+                            <a href="../hearings/schedules.php?case_id=${encodeURIComponent(complaint.case_id)}&hearing_id=${encodeURIComponent(h.hearing_id)}" class="btn-secondary" style="font-size: 0.76rem; padding: 4px 8px; text-decoration: none; white-space: nowrap;">
+                                View Session &rarr;
+                            </a>
+                        </div>
+
+                        ${(presentCount > 0 || absentCount > 0) ? `
+                            <div style="display: flex; align-items: center; gap: 12px; font-size: 0.78rem; border-top: 1px solid #f1f5f9; padding-top: 6px; color: #64748b;">
+                                <span>Attendance:</span>
+                                <span style="color: #15803d; font-weight: 600;">✓ ${presentCount} Present</span>
+                                ${absentCount > 0 ? `<span style="color: #b91c1c; font-weight: 600;">✕ ${absentCount} Non-appearance</span>` : ''}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            });
+            hearingsHtml += '</div>';
+            hearingsContainer.innerHTML = hearingsHtml;
+        }
+    }
 }
 
 function openAddPartyModal() {

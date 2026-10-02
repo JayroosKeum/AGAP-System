@@ -1028,6 +1028,16 @@ button:disabled, button.is-disabled, button[disabled], .btn-create:disabled, .bt
     color: #92400e;
     border: 1px solid #fde68a;
 }
+.service-status-badge.unserved {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fca5a5;
+}
+.service-status-badge.pending {
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fde68a;
+}
 .party-history-list {
     margin: 8px 0 0;
     padding-left: 18px;

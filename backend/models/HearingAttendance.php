@@ -52,6 +52,9 @@ class HearingAttendance
                     ha.attendance_id, ha.attendance_status, ha.is_justified, ha.justification_reason,
                     ha.remarks AS attendance_remarks, ha.recorded_at,
                     (SELECT COUNT(*) FROM hearing_party_services hps WHERE hps.hearing_id = ? AND hps.resident_id = cp.resident_id AND hps.service_result = 'Served') AS successful_service_count,
+                    (SELECT sd.delivery_status FROM summon_deliveries sd WHERE sd.hearing_id = ? AND (sd.resident_id = cp.resident_id OR sd.party_type = cp.party_type) ORDER BY sd.delivery_id DESC LIMIT 1) AS summon_delivery_status,
+                    (SELECT sd.unserved_reason FROM summon_deliveries sd WHERE sd.hearing_id = ? AND (sd.resident_id = cp.resident_id OR sd.party_type = cp.party_type) ORDER BY sd.delivery_id DESC LIMIT 1) AS summon_unserved_reason,
+                    (SELECT sd.served_at FROM summon_deliveries sd WHERE sd.hearing_id = ? AND (sd.resident_id = cp.resident_id OR sd.party_type = cp.party_type) ORDER BY sd.delivery_id DESC LIMIT 1) AS summon_served_at,
                     TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS recorded_by_name
              FROM complaint_parties cp
              INNER JOIN residents r ON r.resident_id = cp.resident_id
@@ -60,11 +63,15 @@ class HearingAttendance
              WHERE cp.complaint_id = ?
              ORDER BY FIELD(cp.party_type, 'Complainant', 'Respondent', 'Witness'), r.last_name, r.first_name"
         );
-        $partiesStmt->execute([$hearingId, $hearingId, $hearing['complaint_id']]);
+        $partiesStmt->execute([$hearingId, $hearingId, $hearingId, $hearingId, $hearingId, $hearing['complaint_id']]);
         $parties = $partiesStmt->fetchAll(PDO::FETCH_ASSOC);
 
         // Normalize party attendance info
         $parties = array_map(function ($p) {
+            $summonStatus = $p['summon_delivery_status'] ?? null;
+            $summonServed = in_array($summonStatus, ['Served Personal', 'Served Substituted', 'Served Refused'], true);
+            $serviceConfirmed = ((int) ($p['successful_service_count'] ?? 0) > 0) || $summonServed;
+
             return [
                 'resident_id' => (int) $p['resident_id'],
                 'resident_name' => $p['resident_name'] ?: 'Resident #' . $p['resident_id'],
@@ -75,7 +82,10 @@ class HearingAttendance
                 'purok_name' => $p['purok'] ?? '',
                 'address' => $p['address'] ?? '',
                 'attendance_id' => $p['attendance_id'] ? (int) $p['attendance_id'] : null,
-                'service_confirmed' => (int) ($p['successful_service_count'] ?? 0) > 0,
+                'service_confirmed' => $serviceConfirmed,
+                'summon_delivery_status' => $summonStatus ?: 'Pending',
+                'summon_unserved_reason' => $p['summon_unserved_reason'] ?? '',
+                'summon_served_at' => $p['summon_served_at'] ?? null,
                 'attendance_status' => $p['attendance_status'] ?: 'Pending',
                 'is_justified' => (int) ($p['is_justified'] ?? 0),
                 'justification_reason' => $p['justification_reason'] ?? '',
@@ -156,7 +166,13 @@ class HearingAttendance
                      recorded_at = CURRENT_TIMESTAMP"
             );
 
-            $serviceLookup = $this->conn->prepare("SELECT COUNT(*) FROM hearing_party_services WHERE hearing_id = ? AND resident_id = ? AND service_result = 'Served'");
+            $serviceLookup = $this->conn->prepare("
+                SELECT (
+                    (SELECT COUNT(*) FROM hearing_party_services WHERE hearing_id = ? AND resident_id = ? AND service_result = 'Served')
+                    +
+                    (SELECT COUNT(*) FROM summon_deliveries WHERE hearing_id = ? AND (resident_id = ? OR party_type = ?) AND delivery_status IN ('Served Personal', 'Served Substituted', 'Served Refused'))
+                ) AS total_served
+            ");
 
             $savedCount = 0;
             $updatedParties = [];
@@ -178,10 +194,20 @@ class HearingAttendance
                 $partyType = $foundType;
 
                 $status = $item['attendance_status'] ?? '';
-                if (!in_array($status, ['Present', 'Absent', 'Late', 'Excused', 'Not Served'], true)) throw new InvalidArgumentException('Choose a valid attendance status (Present, Absent, Late, Excused, or Not Served).');
-                if ($status === 'Absent' && in_array($partyType, ['Complainant', 'Respondent'], true)) {
-                    $serviceLookup->execute([$hearingId, $residentId]);
-                    if ((int) $serviceLookup->fetchColumn() < 1) throw new InvalidArgumentException('Cannot record Failure to Appear because service for this party has not been confirmed. Record Not Served or verify service first.');
+                if ($partyType === 'Witness') {
+                    if (!in_array($status, ['Present', 'Absent', 'Late', 'Excused', 'Not Served'], true)) {
+                        $status = 'Present';
+                    }
+                } else {
+                    if (!in_array($status, ['Present', 'Absent', 'Late', 'Excused', 'Not Served'], true)) {
+                        throw new InvalidArgumentException('Choose a valid attendance status (Present, Absent, Late, Excused, or Not Served).');
+                    }
+                    if ($status === 'Absent') {
+                        $serviceLookup->execute([$hearingId, $residentId, $hearingId, $residentId, $partyType]);
+                        if ((int) $serviceLookup->fetchColumn() < 1) {
+                            throw new InvalidArgumentException('Cannot record Failure to Appear because service for this party has not been confirmed. Record Not Served or verify service first.');
+                        }
+                    }
                 }
 
                 $isJustified = !empty($item['is_justified']) || $status === 'Excused' ? 1 : 0;

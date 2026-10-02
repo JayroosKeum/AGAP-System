@@ -121,6 +121,27 @@ write; an edit retains the pin unless it is moved or explicitly cleared.
   - **Database Migration & Schema**: Added `mediation_start_date`, `mediation_deadline_date`, `is_paused`, `paused_at`, `resumed_at`, `pause_reason`, `pause_notes` to `cases` table in `database/schema.sql` and migration `database/migrations/20260928_mediation_statutory_deadline.sql`.
   - **Relevant Files**: `backend/services/MediationDeadlineService.php`, `backend/services/DeadlineService.php`, `backend/models/MediationSchedule.php`, `backend/models/Hearing.php`, `backend/models/ProofOfService.php`, `backend/models/CaseModel.php`, `backend/models/CFA.php`, `backend/controllers/CFAController.php`, `backend/api/cases/pause-mediation.php`, `backend/api/cases/resume-mediation.php`, `backend/api/documents/cfa.php`, `frontend/pages/cases/case-details.php`, `frontend/assets/js/case-workspace.js`, `frontend/pages/documents/cfa.php`, `frontend/assets/js/cfa.js`, `frontend/assets/js/hearings.js`, `frontend/assets/js/cases.js`, `frontend/assets/css/cases.css`.
 
+### Proof of Service & Hearing Attendance Modal Updates (October 2026)
+
+- **Proof of Service Page Refinement (`proof-service.php`)**:
+  - Removed the redundant "Issued Documents / Summons Notices" table section (`#summonsNoticesTable`). The page now focuses exclusively on Officer's Return & Hearing Summon Deliveries and Recorded Activity (Service History & Attempts).
+  - Safeguarded `frontend/assets/js/gps.js` with early null checks in `loadSummonsNotices(caseId)` when `#summonsNoticesTable` is absent from the DOM.
+- **Hearing Session & Service Verification Modal (`#editHearingModal`)**:
+  - Replaced the generic "Service Not Confirmed" badge with an explicit **Summon Delivery Status** indicator (`✓ Served — Personal`, `✓ Served — Substituted`, `✓ Refused to Receive`, `✕ Unserved (reason)`, or `⏳ Pending Delivery`).
+  - Integrated `summon_deliveries` into `backend/models/HearingAttendance.php` (`getHearingAttendance` and `recordAttendance`), ensuring service logged via Proof of Service directly confirms hearing service.
+  - Streamlined **Witness** party cards by removing attendance pills (`Present`, `Failure to Appear`, `Not Served`, `Excused`, `Late`) and justification selectors. Witnesses now display their name, role, address, and an optional testimony notes/remarks field.
+  - Handled witness records gracefully during attendance save (`handleSaveAttendance`), defaulting to `Present` without requiring status selection or triggering failure-to-appear validation blocks.
+- **Consolidation of Case Workspace into Complaint Details (`complaint-details.php`)**:
+  - Removed standalone Case Workspace navigation fragments. When a complaint is docketed as a case, all case management features are consolidated directly into `frontend/pages/complaints/complaint-details.php`.
+  - Added **Docketed Case Record & 15-Day Statutory Mediation Clock** section with live countdown badge (`Within Period`, `Expiring Soon`, `Mediation Lapsed`, `Paused`) and deadline dates.
+  - Added **Card 6: Case Team Assignment**: displays the active 3-member Lupon panel (Head, Secretary, Member) with direct link to manage assignments.
+  - Added **Card 7: Case Documents & KP Forms**: lists generated forms and summons notices with direct file view/download links.
+  - Added **Card 8: Hearings & Deadlines Schedule**: displays scheduled hearing sessions with dates, venues, status badges, attendance counts, and direct links into Hearings & Deadlines.
+  - Updated `ComplaintController::show` to automatically embed `case_workspace` data from `CaseModel::getWorkspace` in `backend/api/complaints/view.php`.
+  - Added "View Details" button in `case-list.php` table actions to route directly to `../complaints/complaint-details.php?id=<complaint_id>`, unifying the workflow.
+  - Verified and fixed closing template literal tags in `frontend/assets/js/complaints.js` (`renderAttachments`), resolving browser script parse failures on `complaint-details.php`.
+- **Relevant Files**: `frontend/pages/complaints/complaint-details.php`, `frontend/assets/js/complaints.js`, `backend/controllers/ComplaintController.php`, `backend/models/CaseModel.php`, `backend/api/cases/workspace.php`, `frontend/pages/cases/case-list.php`, `frontend/assets/js/cases.js`, `frontend/pages/gps/proof-service.php`, `frontend/assets/js/gps.js`, `backend/models/HearingAttendance.php`, `frontend/assets/js/hearings.js`, `frontend/assets/css/hearings.css`.
+
 ## Other Undocumented Implemented Changes (September 2026)
 
 ### Cases page ordering and pagination

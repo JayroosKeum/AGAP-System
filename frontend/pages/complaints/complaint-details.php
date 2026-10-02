@@ -25,6 +25,7 @@ include '../../layouts/header.php';
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="../../assets/css/dashboard.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/dashboard.css'); ?>">
 <link rel="stylesheet" href="../../assets/css/complaints.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/complaints.css'); ?>">
+<link rel="stylesheet" href="../../assets/css/cases.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/cases.css'); ?>">
 
 <div class="dashboard-layout">
 
@@ -49,8 +50,8 @@ include '../../layouts/header.php';
                 <div class="complaint-header-badges">
                     <span id="complaintCaseTypeBadge" class="meta-pill type-pill">Civil</span>
                     <span id="complaintCategoryBadge" class="meta-pill category-pill">Category</span>
-                    <a id="complaintCaseLink" href="#" class="meta-pill case-pill" style="display:none;" title="View linked case workspace">
-                        📁 Case #<span id="caseNumberBadgeText"></span> &rarr;
+                    <a id="complaintCaseLink" href="#caseWorkspaceSection" class="meta-pill case-pill" style="display:none;" title="Jump to Case Details &amp; Lupon Team">
+                        📁 Case #<span id="caseNumberBadgeText"></span> &darr;
                     </a>
                 </div>
             </div>
@@ -248,6 +249,81 @@ include '../../layouts/header.php';
                         </div>
                         <div id="attachmentsListContainer" class="attachments-detail-list">
                             <div class="empty-detail-state">Loading attachments...</div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Combined Case Workspace Section (Visible when complaint is docketed as a case) -->
+        <div id="caseWorkspaceSection" class="case-workspace-section" style="display: none; margin: 0 30px 28px;">
+            <div class="case-workspace-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; margin-bottom: 20px; padding: 16px 20px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+                        <span style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; background: #dbeafe; color: #1e40af; padding: 3px 8px; border-radius: 4px;">
+                            📁 Docketed Case Workspace
+                        </span>
+                        <h2 id="cwCaseNumberHeading" style="margin: 0; font-size: 1.18rem; color: #0f172a; font-weight: 700;">Case #—</h2>
+                    </div>
+                    <p id="cwCaseMetaSubtext" style="margin: 0; font-size: 0.84rem; color: #64748b;">
+                        Docket Date: — · Case Type: — · Case Status: —
+                    </p>
+                </div>
+                <div id="cwMediationTimerBadgeWrap" style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+                    <!-- Live Statutory Mediation Countdown Badge -->
+                </div>
+            </div>
+
+            <div class="complaint-intake-grid" style="margin: 0; gap: 24px;">
+                <!-- LEFT COLUMN: Case Team & KP Documents -->
+                <div class="intake-col">
+                    <!-- CARD 6: Case Team Assignment -->
+                    <div class="intake-card">
+                        <div class="intake-card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <h3>6. Case Team Assignment</h3>
+                                <span class="card-subtitle">Required 3-member Lupon panel for this case</span>
+                            </div>
+                            <a href="../cases/case-list.php#caseAssignments" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+                                Manage Team &rarr;
+                            </a>
+                        </div>
+                        <div id="cwTeamContainer" class="parties-detail-list">
+                            <div class="empty-detail-state">Loading assigned team...</div>
+                        </div>
+                    </div>
+
+                    <!-- CARD 7: Case Documents & KP Forms -->
+                    <div class="intake-card">
+                        <div class="intake-card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <h3>7. Case Documents &amp; KP Forms</h3>
+                                <span class="card-subtitle">Official forms and notices issued for this case</span>
+                            </div>
+                            <span id="cwDocCountBadge" style="font-size: 0.78rem; background: #e2e8f0; color: #475569; padding: 2px 8px; border-radius: 9999px; font-weight: 600;">0 forms</span>
+                        </div>
+                        <div id="cwDocumentsContainer" class="attachments-detail-list">
+                            <div class="empty-detail-state">Loading documents...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RIGHT COLUMN: Hearings & Deadlines Schedule -->
+                <div class="intake-col">
+                    <!-- CARD 8: Hearings & Deadlines Schedule -->
+                    <div class="intake-card">
+                        <div class="intake-card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <h3>8. Hearings &amp; Deadlines Schedule</h3>
+                                <span class="card-subtitle">Mediation, conciliation, and session records</span>
+                            </div>
+                            <a id="cwOpenHearingsLink" href="../hearings/schedules.php" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+                                Open Schedule &rarr;
+                            </a>
+                        </div>
+                        <div id="cwHearingsContainer">
+                            <div class="empty-detail-state">Loading scheduled hearings...</div>
                         </div>
                     </div>
                 </div>

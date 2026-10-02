@@ -271,17 +271,21 @@ function renderCaseRow(item) {
 
             <td>
                 <strong>
-                    ${escapeHtml(
-                        item.complaint_number ||
-                        'No complaint number'
-                    )}
+                    <a href="../complaints/complaint-details.php?id=${encodeURIComponent(item.complaint_id)}" style="color: inherit; text-decoration: none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">
+                        ${escapeHtml(
+                            item.complaint_number ||
+                            'No complaint number'
+                        )}
+                    </a>
                 </strong>
 
                 <div class="case-table-secondary">
-                    ${escapeHtml(
-                        item.complaint_title ||
-                        'Untitled complaint'
-                    )}
+                    <a href="../complaints/complaint-details.php?id=${encodeURIComponent(item.complaint_id)}" style="color: inherit; text-decoration: none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">
+                        ${escapeHtml(
+                            item.complaint_title ||
+                            'Untitled complaint'
+                        )}
+                    </a>
                 </div>
             </td>
 
@@ -330,6 +334,15 @@ function renderCaseRow(item) {
             </td>
 
             <td class="action-buttons">
+                <a
+                    href="../complaints/complaint-details.php?id=${encodeURIComponent(item.complaint_id)}"
+                    class="btn-table-action"
+                    style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 4px; background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; text-decoration: none; font-size: 0.78rem; font-weight: 600;"
+                    title="View complete complaint and case workspace"
+                >
+                    View Details
+                </a>
+
                 <button
                     type="button"
                     onclick="editCase(${caseId})"
@@ -626,6 +639,11 @@ function viewCase(id) {
                         )}
                     </dd>
                 </dl>
+                <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid #e2e8f0; text-align: right;">
+                    <a href="../complaints/complaint-details.php?id=${encodeURIComponent(item.complaint_id)}" class="btn-create" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem;">
+                        Open Complaint &amp; Case Workspace &rarr;
+                    </a>
+                </div>
             `;
 
             showModal('viewCaseModal');

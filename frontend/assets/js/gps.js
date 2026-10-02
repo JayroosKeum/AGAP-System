@@ -451,6 +451,10 @@ async function loadSummonsNotices(caseId) {
             'summonsNoticesTable'
         );
 
+    if (!table) {
+        return;
+    }
+
     const result = await gpsApi(
         `${proofApiUrl}?case_id=${
             encodeURIComponent(caseId)

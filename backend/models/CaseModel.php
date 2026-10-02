@@ -404,7 +404,7 @@ class CaseModel
         }
         unset($hItem);
 
-        $documents = $this->conn->prepare("SELECT gd.document_id, gd.generated_at, gd.service_status, dt.template_name FROM generated_documents gd INNER JOIN document_templates dt ON dt.template_id = gd.template_id WHERE gd.case_id = ? ORDER BY gd.generated_at DESC");
+        $documents = $this->conn->prepare("SELECT gd.document_id, gd.generated_at, gd.service_status, gd.file_path, dt.template_name FROM generated_documents gd INNER JOIN document_templates dt ON dt.template_id = gd.template_id WHERE gd.case_id = ? ORDER BY gd.generated_at DESC");
         $documents->execute([$id]);
         $proofs = $this->conn->prepare("SELECT ps.proof_id, ps.document_id, ps.served_date, ps.remarks, dt.template_name, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS served_by_name FROM proof_of_service ps LEFT JOIN generated_documents gd ON gd.document_id = ps.document_id LEFT JOIN document_templates dt ON dt.template_id = gd.template_id LEFT JOIN users u ON u.user_id = ps.served_by WHERE ps.case_id = ? ORDER BY ps.served_date DESC");
         $proofs->execute([$id]);

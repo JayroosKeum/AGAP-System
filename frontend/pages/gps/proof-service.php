@@ -106,34 +106,6 @@ include '../../layouts/header.php';
             </div>
         </section>
 
-        <section class="gps-card" aria-labelledby="summonsNoticesTitle">
-            <div class="section-heading">
-                <div>
-                    <span class="section-kicker">Issued documents</span>
-                    <h2 id="summonsNoticesTitle">Summons Notices</h2>
-                    <p>Review issued summons records and their current service state.</p>
-                </div>
-                <span id="noticeCount" class="count-badge">0 notices</span>
-            </div>
-
-            <div class="table-responsive">
-                <table class="data-table proof-table">
-                    <thead>
-                        <tr>
-                            <th>Date Issued</th>
-                            <th>Document</th>
-                            <th>Service Status</th>
-                            <th>Attempts</th>
-                            <th>Document</th>
-                        </tr>
-                    </thead>
-                    <tbody id="summonsNoticesTable">
-                        <tr><td colspan="5" class="empty-state">Select a case to view its summons notices.</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </section>
-
         <section class="gps-card" aria-labelledby="serviceHistoryTitle">
             <div class="section-heading">
                 <div>
