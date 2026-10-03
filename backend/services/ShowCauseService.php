@@ -68,6 +68,14 @@ class ShowCauseService
         $attendanceNotes = trim($data['attendance_notes'] ?? '');
         $now = date('Y-m-d H:i:s');
 
+        // Determine the correct hearing status:
+        // - 'Completed'            → both parties present; no follow-up hearing needed.
+        // - 'Attendance Recorded'  → at least one party absent; a Show Cause hearing will
+        //                           be spawned, so the original hearing is not yet resolved.
+        $hearingStatus = ($complainantAtt === 'Present' && $respondentAtt === 'Present')
+            ? 'Completed'
+            : 'Attendance Recorded';
+
         // Update hearings record
         $updateHearing = $this->conn->prepare("
             UPDATE hearings
@@ -75,7 +83,7 @@ class ShowCauseService
                 respondent_attendance = ?,
                 attendance_recorded_at = ?,
                 attendance_notes = ?,
-                status = 'Completed'
+                status = ?
             WHERE hearing_id = ?
         ");
         $updateHearing->execute([
@@ -83,6 +91,7 @@ class ShowCauseService
             $respondentAtt,
             $now,
             $attendanceNotes ?: null,
+            $hearingStatus,
             $hearingId,
         ]);
 

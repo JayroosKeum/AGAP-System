@@ -1205,3 +1205,41 @@ button:disabled, button.is-disabled, button[disabled], .btn-create:disabled, .bt
     cursor: not-allowed !important;
     opacity: .72;
 }
+
+/* -- Inline date validation hint ---------------------------------------- */
+.date-validation-hint {
+    display: none;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 6px;
+    padding: 7px 10px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+    color: #9a3412;
+    animation: hint-fadein 0.18s ease;
+}
+.date-validation-hint.is-active { display: flex; }
+.date-validation-hint.is-valid {
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+    color: #166534;
+}
+.date-validation-hint svg { flex-shrink: 0; margin-top: 1px; }
+.date-validation-hint .hint-msg { flex: 1; }
+input[type="datetime-local"].date-input-error {
+    border-color: #f97316 !important;
+    box-shadow: 0 0 0 2px rgba(249,115,22,0.18);
+    outline: none;
+}
+input[type="datetime-local"].date-input-valid {
+    border-color: #22c55e !important;
+    box-shadow: 0 0 0 2px rgba(34,197,94,0.14);
+    outline: none;
+}
+@keyframes hint-fadein {
+    from { opacity: 0; transform: translateY(-3px); }
+    to   { opacity: 1; transform: translateY(0); }
+}

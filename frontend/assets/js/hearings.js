@@ -482,23 +482,63 @@ function getCaseLatestHearingDate(caseId) {
 function validateHearingDateInput(dateInput) {
     if (!dateInput) return true;
     const value = dateInput.value;
+
+    // -- Helper: render the inline hint element associated with this input --
+    // Convention: the hint element immediately follows the input in the DOM,
+    // identified by data-for="<input.id>" or by being the next .date-validation-hint sibling.
+    const hintEl = dateInput.id
+        ? document.querySelector(`.date-validation-hint[data-for="${dateInput.id}"]`)
+        : null;
+
+    const setHint = (msg, valid = false) => {
+        if (!hintEl) return;
+        if (!msg) {
+            hintEl.classList.remove('is-active', 'is-valid');
+            hintEl.querySelector('.hint-msg').textContent = '';
+        } else {
+            hintEl.classList.add('is-active');
+            hintEl.classList.toggle('is-valid', valid);
+            hintEl.querySelector('.hint-msg').textContent = msg;
+        }
+    };
+
+    const markError = (msg) => {
+        dateInput.setCustomValidity(msg);
+        dateInput.classList.add('date-input-error');
+        dateInput.classList.remove('date-input-valid');
+        setHint(msg, false);
+        return false;
+    };
+
+    const markValid = (msg = '') => {
+        dateInput.setCustomValidity('');
+        dateInput.classList.remove('date-input-error');
+        if (value) {
+            dateInput.classList.add('date-input-valid');
+            setHint(msg || 'Valid schedule — weekday, within office hours.', true);
+        } else {
+            dateInput.classList.remove('date-input-valid');
+            setHint('');
+        }
+        return true;
+    };
+
     if (!value) {
         dateInput.setCustomValidity('');
+        dateInput.classList.remove('date-input-error', 'date-input-valid');
+        setHint('');
         return true;
     }
 
     const dateObj = new Date(value);
     if (isNaN(dateObj.getTime())) {
-        dateInput.setCustomValidity('Please enter a valid date and time.');
-        return false;
+        return markError('Please enter a valid date and time.');
     }
 
     // 1. Weekend check: Saturday (6) and Sunday (0) are not permitted
     const dayOfWeek = dateObj.getDay();
     if (dayOfWeek === 0 || dayOfWeek === 6) {
-        const msg = 'Hearings cannot be scheduled on weekends (Saturday or Sunday). Please select a weekday (Monday to Friday).';
-        dateInput.setCustomValidity(msg);
-        return false;
+        return markError('Hearings cannot be scheduled on weekends (Saturday or Sunday). Please select a weekday (Monday to Friday).');
     }
 
     // 2. Office hours check: 8:00 AM to 5:00 PM (08:00 to 17:00)
@@ -509,9 +549,7 @@ function validateHearingDateInput(dateInput) {
     const maxMinutes = 17 * 60;  // 05:00 PM
 
     if (timeMinutes < minMinutes || timeMinutes > maxMinutes) {
-        const msg = 'Hearings can only be scheduled during office hours (8:00 AM to 5:00 PM).';
-        dateInput.setCustomValidity(msg);
-        return false;
+        return markError('Hearings can only be scheduled during office hours (8:00 AM to 5:00 PM).');
     }
 
     // 3. Existing hearing date progression check (same day or prior date relative to booked hearings)
@@ -520,15 +558,13 @@ function validateHearingDateInput(dateInput) {
     if (latestDay) {
         const selectedDay = value.slice(0, 10);
         if (selectedDay <= latestDay) {
-            const msg = `A hearing for this case is already booked on ${latestFormatted}. You cannot schedule another hearing on the same day or on any prior date.`;
-            dateInput.setCustomValidity(msg);
-            return false;
+            return markError(`A hearing for this case is already booked on ${latestFormatted}. You cannot schedule another hearing on the same day or on any prior date.`);
         }
     }
 
-    dateInput.setCustomValidity('');
-    return true;
+    return markValid();
 }
+
 
 function updateDateRestrictions() {
     const date = document.getElementById('hearingDate');

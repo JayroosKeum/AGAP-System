@@ -184,7 +184,11 @@ include '../../layouts/header.php';
             <div class="form-group">
                 <label for="hearingDate">Date &amp; Time <span class="required-mark" aria-hidden="true">*</span></label>
                 <input type="datetime-local" id="hearingDate" name="hearing_date" required>
-                <small style="color: #64748b; font-size: 0.8rem; display: block; margin-top: 4px;">Office hours: Monday to Friday, 8:00 AM – 5:00 PM (excluding weekends).</small>
+                <small id="hearingDateStaticHint" style="color: #64748b; font-size: 0.8rem; display: block; margin-top: 4px;">Office hours: Monday to Friday, 8:00 AM – 5:00 PM (excluding weekends).</small>
+                <div class="date-validation-hint" data-for="hearingDate" role="alert" aria-live="polite">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    <span class="hint-msg"></span>
+                </div>
             </div>
             <div class="form-group">
                 <label for="hearingVenue">Venue <span class="required-mark" aria-hidden="true">*</span></label>
@@ -332,7 +336,11 @@ include '../../layouts/header.php';
                 <div class="form-group">
                     <label for="editHearingDate">New Date &amp; Time <span class="required-mark">*</span></label>
                     <input type="datetime-local" id="editHearingDate" name="hearing_date" required>
-                    <small style="color: #64748b; font-size: 0.8rem; display: block; margin-top: 4px;">Office hours: Monday to Friday, 8:00 AM – 5:00 PM (excluding weekends).</small>
+                    <small id="editHearingDateStaticHint" style="color: #64748b; font-size: 0.8rem; display: block; margin-top: 4px;">Office hours: Monday to Friday, 8:00 AM – 5:00 PM (excluding weekends).</small>
+                    <div class="date-validation-hint" data-for="editHearingDate" role="alert" aria-live="polite">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        <span class="hint-msg"></span>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label for="editHearingVenue">New Venue <span class="required-mark">*</span></label>

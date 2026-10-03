@@ -479,7 +479,12 @@ class CaseProgress
                 'date' => null,
                 'details' => 'Certificate to File Action issued.',
             ];
-        } elseif (count($mediationHearings) >= 3 && count($conciliationHearings) >= 3 && empty($settlement)) {
+        } elseif (
+            empty($settlement) && (
+                count($mediationHearings) >= 2 ||
+                count($conciliationHearings) >= 3
+            )
+        ) {
             $stages[] = [
                 'id' => 'cfa',
                 'number' => 8,
@@ -487,7 +492,7 @@ class CaseProgress
                 'subtitle' => 'Eligible for CFA',
                 'state' => 'current',
                 'date' => null,
-                'details' => 'Mediation and conciliation sessions exhausted without settlement; eligible for Certificate to File Action.',
+                'details' => 'Mediation or conciliation sessions exhausted without settlement; eligible for Certificate to File Action.',
             ];
         } else {
             $stages[] = [
@@ -698,6 +703,15 @@ class CaseProgress
 
         // 5. Hearings & Attendance
         foreach ($hearings as $h) {
+            $attDetails = [];
+            if (isset($h['present_count']) && ((int)$h['present_count'] > 0 || (int)$h['absent_count'] > 0)) {
+                $attDetails[] = sprintf('%d Present, %d Absent', (int)$h['present_count'], (int)$h['absent_count']);
+            }
+            if (!empty($h['status'])) {
+                $attDetails[] = 'Status: ' . $h['status'];
+            }
+            $attSummary = !empty($attDetails) ? ' [' . implode(', ', $attDetails) . ']' : '';
+
             $events[] = [
                 'category' => 'Hearing',
                 'title' => sprintf('%s Hearing Scheduled', $h['hearing_type']),
@@ -705,12 +719,19 @@ class CaseProgress
                 'actor' => 'Hearing Officer',
                 'badge' => $h['hearing_type'],
                 'badge_class' => 'badge-primary',
-                'details' => sprintf('Venue: %s.%s', $h['venue'], $h['remarks'] ? ' Remarks: ' . $h['remarks'] : ''),
+                'details' => sprintf('Venue: %s.%s%s', $h['venue'], $h['remarks'] ? ' Remarks: ' . $h['remarks'] : '', $attSummary),
             ];
         }
 
         // 6. Settlements
         if ($settlement) {
+            $agDetails = $settlement['agreement_details'] ?? '';
+            if (function_exists('mb_strlen') && mb_strlen($agDetails) > 200) {
+                $agDetails = mb_substr($agDetails, 0, 200) . '…';
+            } elseif (strlen($agDetails) > 200) {
+                $agDetails = substr($agDetails, 0, 200) . '…';
+            }
+
             $events[] = [
                 'category' => 'Resolution',
                 'title' => 'Amicable Settlement Reached',
@@ -718,7 +739,7 @@ class CaseProgress
                 'actor' => 'Lupong Tagapamayapa',
                 'badge' => 'Settled',
                 'badge_class' => 'badge-success',
-                'details' => 'Agreement details: ' . $settlement['agreement_details'],
+                'details' => 'Agreement details: ' . $agDetails,
             ];
         }
 
