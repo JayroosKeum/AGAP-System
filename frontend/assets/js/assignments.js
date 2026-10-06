@@ -206,32 +206,34 @@
         const cases = await api('../../../backend/api/cases/list.php');
         const rows = Array.isArray(cases) ? cases : [];
 
-        casesById = new Map(rows.map((item) => [String(item.case_id), item]));
+        const ongoingRows = rows.filter((item) =>
+            !['Settled', 'Dismissed', 'DISMISSED_BARRED', 'Archived'].includes(String(item.case_status || '').trim())
+        );
+
+        casesById = new Map(ongoingRows.map((item) => [String(item.case_id), item]));
 
         caseSelect.replaceChildren(new Option('Select a case', ''));
 
-        rows
-            .filter((item) => item.case_status !== 'Archived')
-            .forEach((item) => {
-                const caseId = Number(item.case_id);
-                if (!Number.isInteger(caseId) || caseId < 1) {
-                    return;
-                }
+        ongoingRows.forEach((item) => {
+            const caseId = Number(item.case_id);
+            if (!Number.isInteger(caseId) || caseId < 1) {
+                return;
+            }
 
-                const caseNumber = item.case_number || 'No case number';
-                const complaintTitle = item.complaint_title || 'Untitled complaint';
-                const complainants = item.complainant_names || 'No complainant recorded';
-                const respondents = item.respondent_names || 'No respondent recorded';
+            const caseNumber = item.case_number || 'No case number';
+            const complaintTitle = item.complaint_title || 'Untitled complaint';
+            const complainants = item.complainant_names || 'No complainant recorded';
+            const respondents = item.respondent_names || 'No respondent recorded';
 
-                const label = [
-                    caseNumber,
-                    complaintTitle,
-                    `Complainant: ${complainants}`,
-                    `Respondent: ${respondents}`
-                ].join(' | ');
+            const label = [
+                caseNumber,
+                complaintTitle,
+                `Complainant: ${complainants}`,
+                `Respondent: ${respondents}`
+            ].join(' | ');
 
-                caseSelect.add(new Option(label, caseId));
-            });
+            caseSelect.add(new Option(label, caseId));
+        });
     }
 
     async function loadMembers() {

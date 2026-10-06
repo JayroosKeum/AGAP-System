@@ -245,25 +245,25 @@ include '../../layouts/header.php';
     </div>
 </div>
 
-<!-- DELETE MODAL -->
-<div id="deleteComplaintModal" class="modal">
+<!-- ARCHIVE COMPLAINT MODAL -->
+<div id="archiveComplaintModal" class="modal">
     <div class="modal-content" style="width: 440px;">
         <div class="modal-header" style="border-bottom: 0; padding-bottom: 0;">
-            <h2 style="color: #b91c1c; display: flex; align-items: center; gap: 8px;">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-                Delete Complaint
+            <h2 style="color: #c2410c; display: flex; align-items: center; gap: 8px;">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
+                Archive Complaint
             </h2>
-            <button class="close-btn" onclick="closeDeleteComplaintModal()">&times;</button>
+            <button class="close-btn" onclick="closeArchiveComplaintModal()">&times;</button>
         </div>
         <div style="padding: 10px 0 20px;">
             <p style="margin: 0; color: #475569; font-size: 0.95rem; line-height: 1.5;">
-                Are you sure you want to delete this complaint record? This action cannot be undone.
+                Archive this complaint record? It will be safely moved to archived records and removed from active processing.
             </p>
-            <input type="hidden" id="deleteComplaintId">
+            <input type="hidden" id="archiveComplaintId">
         </div>
         <div class="modal-actions" style="margin-top: 0; border-top: 1px solid #f1f5f9; padding-top: 16px;">
-            <button type="button" class="btn-secondary" onclick="closeDeleteComplaintModal()">Cancel</button>
-            <button type="button" class="btn-danger" onclick="confirmDeleteComplaint()">Delete Complaint</button>
+            <button type="button" class="btn-secondary" onclick="closeArchiveComplaintModal()">Cancel</button>
+            <button type="button" class="btn-warning" style="background: #ea580c; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer;" onclick="confirmArchiveComplaint()">Archive Complaint</button>
         </div>
     </div>
 </div>

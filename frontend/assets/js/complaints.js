@@ -1752,19 +1752,45 @@ function closeEditComplaintModal() {
     document.getElementById('editComplaintModal').style.display = 'none';
 }
 
+function archiveComplaint(id) {
+    const modal = document.getElementById('archiveComplaintModal') || document.getElementById('deleteComplaintModal');
+    const input = document.getElementById('archiveComplaintId') || document.getElementById('deleteComplaintId');
+    if (input) input.value = id;
+    if (modal) modal.style.display = 'flex';
+}
+
+function closeArchiveComplaintModal() {
+    const modal = document.getElementById('archiveComplaintModal') || document.getElementById('deleteComplaintModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function confirmArchiveComplaint() {
+    const input = document.getElementById('archiveComplaintId') || document.getElementById('deleteComplaintId');
+    const id = input ? input.value : '';
+    if (!id) return;
+    window.location.href = '../../../backend/api/complaints/archive.php?id=' + encodeURIComponent(id);
+}
+
+window.archiveComplaint = archiveComplaint;
+window.closeArchiveComplaintModal = closeArchiveComplaintModal;
+window.confirmArchiveComplaint = confirmArchiveComplaint;
+
+// Backward-compatibility aliases
 function deleteComplaint(id) {
-    document.getElementById('deleteComplaintId').value = id;
-    document.getElementById('deleteComplaintModal').style.display = 'flex';
+    archiveComplaint(id);
 }
 
 function closeDeleteComplaintModal() {
-    document.getElementById('deleteComplaintModal').style.display = 'none';
+    closeArchiveComplaintModal();
 }
 
 function confirmDeleteComplaint() {
-    const id = document.getElementById('deleteComplaintId').value;
-    window.location.href = '../../../backend/api/complaints/delete.php?id=' + id;
+    confirmArchiveComplaint();
 }
+
+window.deleteComplaint = archiveComplaint;
+window.closeDeleteComplaintModal = closeArchiveComplaintModal;
+window.confirmDeleteComplaint = confirmArchiveComplaint;
 
 /**
  * Searchable Resident Combobox Component

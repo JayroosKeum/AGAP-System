@@ -360,6 +360,37 @@ class Complaint
         }
     }
 
+    public function archive(mixed $id): bool
+    {
+        try {
+            $stmt = $this->conn->prepare("
+                UPDATE complaints
+                SET status = 'Archived'
+                WHERE complaint_id = ?
+            ");
+            $success = $stmt->execute([$id]);
+
+            // Also synchronize any linked case status to Archived
+            if ($success) {
+                try {
+                    $caseStmt = $this->conn->prepare("
+                        UPDATE cases
+                        SET case_status = 'Archived', archived_date = CURDATE()
+                        WHERE complaint_id = ? AND case_status != 'Archived'
+                    ");
+                    $caseStmt->execute([$id]);
+                } catch (Exception $e) {
+                    error_log('Error syncing case archive: ' . $e->getMessage());
+                }
+            }
+
+            return $success;
+        } catch (Exception $e) {
+            error_log($e->getMessage());
+            return false;
+        }
+    }
+
     private function validateIncidentInput(array $data): array
     {
         $categoryId = filter_var($data['category_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);

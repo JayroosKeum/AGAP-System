@@ -175,14 +175,20 @@ function loadCaseList(table) {
             return response.json();
         })
         .then((result) => {
-            allLoadedCases = Array.isArray(result)
+            const rawCases = Array.isArray(result)
                 ? result
                 : (Array.isArray(result.cases) ? result.cases : []);
 
             docketedComplaintIds = new Set(
-                allLoadedCases.map((item) => String(item.complaint_id || ''))
+                rawCases.map((item) => String(item.complaint_id || ''))
             );
             renderComplaintOptions();
+
+            // ONLY show ongoing cases: exclude Settled, Dismissed, DISMISSED_BARRED, Archived
+            allLoadedCases = rawCases.filter((item) => {
+                const status = String(item.case_status || '').trim();
+                return !['Settled', 'Dismissed', 'DISMISSED_BARRED', 'Archived'].includes(status);
+            });
 
             const urlParams = new URLSearchParams(window.location.search);
             const initialCaseId = urlParams.get('assign_case_id') || urlParams.get('case_id') || window.activeAssignedCaseId;
@@ -195,7 +201,7 @@ function loadCaseList(table) {
         .catch((error) => {
             table.innerHTML = `
                 <tr>
-                    <td colspan="8" class="empty-state">
+                    <td colspan="6" class="empty-state">
                         ${escapeHtml(error.message)}
                         Please refresh and try again.
                     </td>
@@ -338,12 +344,12 @@ function renderCurrentCasesPage(table) {
     if (!total) {
         table.innerHTML = `
             <tr>
-                <td colspan="8" class="empty-state">
-                    No cases found matching your search criteria.
+                <td colspan="6" class="empty-state">
+                    No ongoing cases found matching your search criteria.
                 </td>
             </tr>
         `;
-        if (summary) summary.textContent = 'No matching cases found';
+        if (summary) summary.textContent = 'No matching ongoing cases';
         if (paginationEl) paginationEl.hidden = true;
         return;
     }
@@ -370,9 +376,9 @@ function renderCurrentCasesPage(table) {
 
     if (summary) {
         if (isFiltered) {
-            summary.textContent = `Showing ${total === 1 ? '1 case' : `${startIdx + 1}–${endIdx} of ${total} cases`} (filtered from ${allLoadedCases.length} total cases)`;
+            summary.textContent = `Showing ${total === 1 ? '1 ongoing case' : `${startIdx + 1}–${endIdx} of ${total} ongoing cases`} (filtered from ${allLoadedCases.length} total ongoing cases)`;
         } else {
-            summary.textContent = `Showing ${startIdx + 1}–${endIdx} of ${total} cases`;
+            summary.textContent = `Showing ${startIdx + 1}–${endIdx} of ${total} ongoing cases`;
         }
     }
 
@@ -450,48 +456,24 @@ function renderCaseRow(item, isSelected = false) {
                 type="button"
                 class="btn-table-assign"
                 onclick="openCaseAssignments(${caseId})"
-                title="Select case and assign/manage team below"
+                title="Select case and assign/manage team above"
             >
                 Assign
-            </button>
-
-            <button
-                type="button"
-                class="archive-button"
-                onclick="archiveCase(${caseId})"
-            >
-                Archive
             </button>
         `;
 
     return `
         <tr id="case-row-${caseId}" class="${selectedClass}">
             <td>
-                <strong>
-                    ${escapeHtml(
-                        item.case_number || 'Not assigned'
-                    )}
-                </strong>
-            </td>
-
-            <td>
-                <strong>
-                    <a href="../complaints/complaint-details.php?id=${encodeURIComponent(item.complaint_id)}" style="color: inherit; text-decoration: none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">
-                        ${escapeHtml(
-                            item.complaint_number ||
-                            'No complaint number'
-                        )}
-                    </a>
-                </strong>
-
-                <div class="case-table-secondary">
-                    <a href="../complaints/complaint-details.php?id=${encodeURIComponent(item.complaint_id)}" style="color: inherit; text-decoration: none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">
-                        ${escapeHtml(
-                            item.complaint_title ||
-                            'Untitled complaint'
-                        )}
-                    </a>
-                </div>
+                <a
+                    href="../complaints/complaint-details.php?id=${encodeURIComponent(item.complaint_id)}"
+                    style="color: #2563eb; font-weight: 700; text-decoration: none;"
+                    onmouseover="this.style.textDecoration='underline'"
+                    onmouseout="this.style.textDecoration='none'"
+                    title="View complaint details for ${escapeHtml(item.case_number || '')}"
+                >
+                    ${escapeHtml(item.case_number || 'Case #' + item.case_id)}
+                </a>
             </td>
 
             <td>
@@ -511,13 +493,6 @@ function renderCaseRow(item, isSelected = false) {
             <td>
                 ${escapeHtml(
                     item.case_type ||
-                    'Not recorded'
-                )}
-            </td>
-
-            <td>
-                ${escapeHtml(
-                    item.docket_date ||
                     'Not recorded'
                 )}
             </td>
@@ -547,13 +522,6 @@ function renderCaseRow(item, isSelected = false) {
                 >
                     View Details
                 </a>
-
-                <button
-                    type="button"
-                    onclick="editCase(${caseId})"
-                >
-                    Edit
-                </button>
 
                 ${activeCaseActions}
             </td>

@@ -1035,6 +1035,16 @@ button:disabled, button.is-disabled, button[disabled], .btn-create:disabled, .bt
 .btn-row-action.btn-delete-action:hover {
     background: #fee2e2;
 }
+.btn-row-action.btn-archive-action {
+    border-color: #fed7aa;
+    color: #c2410c;
+    background: #fff;
+}
+.btn-row-action.btn-archive-action:hover {
+    background: #fff7ed;
+    border-color: #fb923c;
+    color: #9a3412;
+}
 
 /* Empty Table State */
 .table-empty-wrap {

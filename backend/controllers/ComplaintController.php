@@ -172,8 +172,27 @@ class ComplaintController
 
         if ($result) {
             $this->audit->log(
-                $_SESSION['user_id'],
+                $_SESSION['user_id'] ?? 1,
                 'Deleted Complaint',
+                'Complaints',
+                $id
+            );
+        }
+
+        return (bool) $result;
+    }
+
+    public function archive(int $id): bool
+    {
+        if ($id <= 0) {
+            return false;
+        }
+        $result = $this->complaint->archive($id);
+
+        if ($result) {
+            $this->audit->log(
+                $_SESSION['user_id'] ?? 1,
+                'Archived Complaint',
                 'Complaints',
                 $id
             );
