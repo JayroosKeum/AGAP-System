@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../services/NotificationService.php';
+require_once __DIR__ . '/CaseModel.php';
 
 class Summons
 {
@@ -160,7 +161,7 @@ class Summons
                 $insertCase = $this->conn->prepare("INSERT INTO cases (complaint_id, case_type, case_status, docket_date) VALUES (?, ?, 'Mediation', CURDATE())");
                 $insertCase->execute([$complaintId, $caseType]);
                 $caseId = (int) $this->conn->lastInsertId();
-                $caseNumber = sprintf('KP-%s-%05d', date('Y'), $caseId);
+                $caseNumber = CaseModel::generateCaseNumber($this->conn, date('Y-m-d'), $caseId);
 
                 $updateCaseNum = $this->conn->prepare('UPDATE cases SET case_number = ? WHERE case_id = ?');
                 $updateCaseNum->execute([$caseNumber, $caseId]);
@@ -249,6 +250,20 @@ class Summons
             );
             $deadline->execute([$caseId, $deadlineDate]);
 
+            // Template ID for KP Form 8 (Notice of Hearing)
+            $kp8TplStmt = $this->conn->prepare(
+                "INSERT INTO document_templates (template_name, description)
+                 VALUES ('KP Form 8', 'Notice of Hearing')
+                 ON DUPLICATE KEY UPDATE description = VALUES(description), template_id = LAST_INSERT_ID(template_id)"
+            );
+            $kp8TplStmt->execute();
+            $kp8TemplateId = (int) $this->conn->lastInsertId();
+            if ($kp8TemplateId === 0) {
+                $getKp8Tpl = $this->conn->prepare("SELECT template_id FROM document_templates WHERE template_name = 'KP Form 8' LIMIT 1");
+                $getKp8Tpl->execute();
+                $kp8TemplateId = (int) $getKp8Tpl->fetchColumn();
+            }
+
             // Template ID for KP Form 9 (Summons)
             $templateStmt = $this->conn->prepare(
                 "INSERT INTO document_templates (template_name, description)
@@ -295,10 +310,17 @@ class Summons
             if ($existingCount >= 1) {
                 $latestDoc = end($existingSummons);
                 $latestDocId = (int) $latestDoc['document_id'];
-                $attemptCheck = $this->conn->prepare(
-                    "SELECT 1 FROM proof_of_service WHERE document_id = ? LIMIT 1"
-                );
-                $attemptCheck->execute([$latestDocId]);
+                $attemptCheck = $this->conn->prepare("
+                    SELECT 1 FROM proof_of_service WHERE document_id = ?
+                    UNION
+                    SELECT 1 FROM proof_of_service WHERE case_id = ?
+                    UNION
+                    SELECT 1 FROM summon_deliveries sd
+                    INNER JOIN hearings h ON h.hearing_id = sd.hearing_id
+                    WHERE h.case_id = ? AND sd.party_type = 'Respondent' AND sd.delivery_status <> 'Pending'
+                    LIMIT 1
+                ");
+                $attemptCheck->execute([$latestDocId, $caseId, $caseId]);
                 if (!$attemptCheck->fetchColumn()) {
                     $this->conn->commit();
                     return [
@@ -324,26 +346,148 @@ class Summons
                 ];
             }
 
-
             $summonsNum = $existingCount + 1;
             $relativeDir = 'storage/generated-documents/' . date('Y') . '/' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $caseNumber);
             $fullDir = dirname(__DIR__, 2) . '/' . $relativeDir;
             if (!is_dir($fullDir)) {
                 @mkdir($fullDir, 0750, true);
             }
-            $fileName = sprintf('KP-Form-9-Summons-%d-%s.pdf', $summonsNum, date('Ymd-His'));
-            $filePath = $relativeDir . '/' . $fileName;
 
-            // Insert generated document
-            $docStmt = $this->conn->prepare(
+            // Fetch parties for PDF generation and delivery initialization
+            $partiesStmt = $this->conn->prepare("
+                SELECT cp.party_type, cp.resident_id,
+                       TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS full_name
+                FROM complaint_parties cp
+                INNER JOIN residents r ON r.resident_id = cp.resident_id
+                WHERE cp.complaint_id = ? AND cp.party_type IN ('Complainant', 'Respondent')
+                ORDER BY FIELD(cp.party_type, 'Complainant', 'Respondent'), cp.party_id ASC
+            ");
+            $partiesStmt->execute([$complaintId]);
+            $allParties = $partiesStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $complainants = [];
+            $respondents = [];
+            $primaryComplainant = null;
+            $primaryRespondent = null;
+
+            foreach ($allParties as $p) {
+                if ($p['party_type'] === 'Complainant') {
+                    $complainants[] = $p;
+                    if ($primaryComplainant === null) {
+                        $primaryComplainant = $p;
+                    }
+                } elseif ($p['party_type'] === 'Respondent') {
+                    $respondents[] = $p;
+                    if ($primaryRespondent === null) {
+                        $primaryRespondent = $p;
+                    }
+                }
+            }
+
+            // Presiding official / Barangay Captain name
+            $officialStmt = $this->conn->prepare("
+                SELECT TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS official_name
+                FROM users u
+                INNER JOIN roles r ON r.role_id = u.role_id
+                WHERE u.status = 'Active' AND r.role_name = 'Administrator'
+                ORDER BY u.user_id ASC
+                LIMIT 1
+            ");
+            $officialStmt->execute();
+            $officialName = (string) ($officialStmt->fetchColumn() ?: 'Punong Barangay');
+
+            require_once __DIR__ . '/../services/PDFService.php';
+            $pdfService = new PDFService();
+            $timestamp = date('Ymd-His');
+
+            // 1. Generate KP Form 8 (Notice of Hearing for Complainant)
+            $kp8FileName = sprintf('KP-Form-8-Notice-%s.pdf', $timestamp);
+            $kp8FilePath = $relativeDir . '/' . $kp8FileName;
+            $kp8FullPath = $fullDir . '/' . $kp8FileName;
+
+            $kp8Data = [
+                'case_number' => $caseNumber,
+                'complaint_title' => $complaint['complaint_title'],
+                'complainants' => $complainants,
+                'respondents' => $respondents,
+                'target_party_name' => $primaryComplainant['full_name'] ?? '',
+                'venue' => $venue,
+                'hearing_date' => $hearingDateTime,
+                'notice_date' => date('Y-m-d'),
+                'official_name' => $officialName,
+            ];
+
+            try {
+                $pdfService->generateNotice('KP Form 8', $kp8Data, $kp8FullPath);
+            } catch (Throwable $pe) {
+                error_log('Error generating KP Form 8 PDF: ' . $pe->getMessage());
+                @file_put_contents($kp8FullPath, '%PDF-1.4 KP Form 8 Notice of Hearing for ' . $caseNumber);
+            }
+
+            $docKp8Stmt = $this->conn->prepare(
                 "INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status)
                  VALUES (?, ?, ?, ?, 'For Service')"
             );
-            $docStmt->execute([$caseId, $templateId, $userId, $filePath]);
+            $docKp8Stmt->execute([$caseId, $kp8TemplateId, $userId, $kp8FilePath]);
+            $kp8DocumentId = (int) $this->conn->lastInsertId();
+
+            // 2. Generate KP Form 9 (Summons for Respondent)
+            $kp9FileName = sprintf('KP-Form-9-Summons-%d-%s.pdf', $summonsNum, $timestamp);
+            $kp9FilePath = $relativeDir . '/' . $kp9FileName;
+            $kp9FullPath = $fullDir . '/' . $kp9FileName;
+
+            $kp9Data = [
+                'case_number' => $caseNumber,
+                'complaint_title' => $complaint['complaint_title'],
+                'complainants' => $complainants,
+                'respondents' => $respondents,
+                'target_party_name' => $primaryRespondent['full_name'] ?? '',
+                'venue' => $venue,
+                'hearing_date' => $hearingDateTime,
+                'notice_date' => date('Y-m-d'),
+                'official_name' => $officialName,
+            ];
+
+            try {
+                $pdfService->generateNotice('KP Form 9', $kp9Data, $kp9FullPath);
+            } catch (Throwable $pe) {
+                error_log('Error generating KP Form 9 PDF: ' . $pe->getMessage());
+                @file_put_contents($kp9FullPath, '%PDF-1.4 KP Form 9 Summons for ' . $caseNumber);
+            }
+
+            $docKp9Stmt = $this->conn->prepare(
+                "INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status)
+                 VALUES (?, ?, ?, ?, 'For Service')"
+            );
+            $docKp9Stmt->execute([$caseId, $templateId, $userId, $kp9FilePath]);
             $documentId = (int) $this->conn->lastInsertId();
 
+            // Initialize summon_deliveries for both parties for this scheduled hearing
+            if ($primaryComplainant) {
+                $compDelivStmt = $this->conn->prepare("
+                    INSERT INTO summon_deliveries (hearing_id, party_type, resident_id, form_type, delivery_status)
+                    VALUES (?, 'Complainant', ?, 'Notice of Hearing', 'Pending')
+                    ON DUPLICATE KEY UPDATE resident_id = COALESCE(VALUES(resident_id), resident_id)
+                ");
+                $compDelivStmt->execute([$hearingId, (int) $primaryComplainant['resident_id']]);
+            }
+
+            if ($primaryRespondent) {
+                $respDelivStmt = $this->conn->prepare("
+                    INSERT INTO summon_deliveries (hearing_id, party_type, resident_id, form_type, delivery_status)
+                    VALUES (?, 'Respondent', ?, 'Summon', 'Pending')
+                    ON DUPLICATE KEY UPDATE resident_id = COALESCE(VALUES(resident_id), resident_id)
+                ");
+                $respDelivStmt->execute([$hearingId, (int) $primaryRespondent['resident_id']]);
+            }
+
             // Record in case history
-            $histRemarks = sprintf('Summons #%d issued and 1st Mediation scheduled for %s at %s. Assigned for service.', $summonsNum, date('M j, Y g:i A', strtotime($hearingDateTime)), $venue);
+            $histRemarks = sprintf(
+                'Issued KP Form 8 (Notice of Hearing) and KP Form 9 (Summons #%d); 1st Mediation scheduled for %s at %s. Assigned for service.',
+                $summonsNum,
+                date('M j, Y g:i A', strtotime($hearingDateTime)),
+                $venue
+            );
             $histStmt = $this->conn->prepare(
                 "INSERT INTO case_history (case_id, status, remarks, updated_by)
                  SELECT case_id, case_status, ?, ? FROM cases WHERE case_id = ?"
@@ -361,9 +505,15 @@ class Summons
                 'case_id' => $caseId,
                 'case_number' => $caseNumber,
                 'document_id' => $documentId,
+                'kp8_document_id' => $kp8DocumentId,
+                'kp9_document_id' => $documentId,
                 'hearing_id' => (int) $hearingId,
                 'summons_number' => $summonsNum,
-                'message' => sprintf('Summons #%d issued and 1st Mediation scheduled for %s.', $summonsNum, date('M j, Y g:i A', strtotime($hearingDateTime))),
+                'message' => sprintf(
+                    'KP Form 8 (Notice of Hearing) and KP Form 9 (Summons #%d) issued. 1st Mediation scheduled for %s.',
+                    $summonsNum,
+                    date('M j, Y g:i A', strtotime($hearingDateTime))
+                ),
             ];
         } catch (Throwable $e) {
             if ($this->conn->inTransaction()) {
@@ -411,7 +561,45 @@ class Summons
             $relativeDir = 'storage/generated-documents/' . date('Y') . '/' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $row['case_number']);
             $fullDir = dirname(__DIR__, 2) . '/' . $relativeDir;
             if (!is_dir($fullDir)) @mkdir($fullDir, 0750, true);
-            $filePath = $relativeDir . '/' . sprintf('KP-Form-9-Summons-%d-%s.pdf', $number, date('Ymd-His'));
+            $fileName = sprintf('KP-Form-9-Summons-%d-%s.pdf', $number, date('Ymd-His'));
+            $filePath = $relativeDir . '/' . $fileName;
+            $fullPath = $fullDir . '/' . $fileName;
+
+            try {
+                require_once __DIR__ . '/../services/PDFService.php';
+                $pdfService = new PDFService();
+                $partiesStmt = $this->conn->prepare("
+                    SELECT cp.party_type, TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS full_name
+                    FROM complaint_parties cp
+                    INNER JOIN residents r ON r.resident_id = cp.resident_id
+                    INNER JOIN cases c ON c.complaint_id = cp.complaint_id
+                    WHERE c.case_id = ? AND cp.party_type IN ('Complainant', 'Respondent')
+                ");
+                $partiesStmt->execute([$row['case_id']]);
+                $allParties = $partiesStmt->fetchAll(PDO::FETCH_ASSOC);
+                $compList = array_values(array_filter($allParties, fn($p) => $p['party_type'] === 'Complainant'));
+                $respList = array_values(array_filter($allParties, fn($p) => $p['party_type'] === 'Respondent'));
+                $firstResp = reset($respList);
+
+                $hDateStmt = $this->conn->prepare("SELECT hearing_date, venue FROM hearings WHERE hearing_id = ?");
+                $hDateStmt->execute([$hearingId]);
+                $hInfo = $hDateStmt->fetch(PDO::FETCH_ASSOC);
+
+                $pdfService->generateNotice('KP Form 9', [
+                    'case_number' => $row['case_number'],
+                    'complaint_title' => 'Follow-up Summons',
+                    'complainants' => $compList,
+                    'respondents' => $respList,
+                    'target_party_name' => $firstResp['full_name'] ?? '',
+                    'venue' => $hInfo['venue'] ?? 'Barangay Hall',
+                    'hearing_date' => $hInfo['hearing_date'] ?? date('Y-m-d 09:00:00', strtotime('+3 days')),
+                    'notice_date' => date('Y-m-d'),
+                ], $fullPath);
+            } catch (Throwable $pe) {
+                error_log('Error generating follow-up KP Form 9 PDF: ' . $pe->getMessage());
+                @file_put_contents($fullPath, '%PDF-1.4 Follow-up KP Form 9 Summons');
+            }
+
             $document = $this->conn->prepare("INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason) VALUES (?, ?, ?, ?, 'For Service', ?)");
             $document->execute([$row['case_id'], $templateId, $userId, $filePath, 'Re-issued after recorded unjustified non-appearance at hearing #' . $hearingId . '.']);
             $documentId = (int) $this->conn->lastInsertId();

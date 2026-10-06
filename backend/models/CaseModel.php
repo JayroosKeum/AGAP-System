@@ -296,7 +296,8 @@ class CaseModel
             ]);
 
             $caseId = (int) $this->conn->lastInsertId();
-            $caseNumber = sprintf('KP-%s-%05d', date('Y'), $caseId);
+            $docketDate = date('Y-m-d');
+            $caseNumber = self::generateCaseNumber($this->conn, $docketDate, $caseId);
             $numberStatement = $this->conn->prepare(
                 'UPDATE cases SET case_number = ? WHERE case_id = ?'
             );
@@ -606,5 +607,44 @@ class CaseModel
         ");
 
         return $stmt->execute([$id]);
+    }
+
+    /**
+     * Generates a case number in the format MM-SS-YYYY
+     * (e.g. 10-01-2026 for 1st case filed in October 2026,
+     *  or 10-45-2026 for the 45th case filed in 2026).
+     */
+    public static function generateCaseNumber(PDO $conn, string $docketDate, int $caseId): string
+    {
+        $docketTimestamp = strtotime($docketDate) ?: time();
+        $year = (int) date('Y', $docketTimestamp);
+        $month = (int) date('m', $docketTimestamp);
+
+        $stmt = $conn->prepare("
+            SELECT case_number 
+            FROM cases 
+            WHERE YEAR(docket_date) = ? AND case_id != ? AND case_number IS NOT NULL
+            FOR UPDATE
+        ");
+        $stmt->execute([$year, $caseId]);
+        $rows = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        $maxSeries = 0;
+        foreach ($rows as $cn) {
+            if (preg_match('/^\d{2}-(\d+)-\d{4}$/', (string) $cn, $m)) {
+                $seriesNum = (int) $m[1];
+                if ($seriesNum > $maxSeries) {
+                    $maxSeries = $seriesNum;
+                }
+            } elseif (preg_match('/^KP-\d{4}-(\d+)$/', (string) $cn, $m)) {
+                $seriesNum = (int) $m[1];
+                if ($seriesNum > $maxSeries) {
+                    $maxSeries = $seriesNum;
+                }
+            }
+        }
+
+        $series = $maxSeries + 1;
+        return sprintf('%02d-%02d-%04d', $month, $series, $year);
     }
 }

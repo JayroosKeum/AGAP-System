@@ -95,7 +95,48 @@ class ProofOfService
 
     public function getAvailableCases(): array
     {
-        $stmt = $this->conn->prepare("SELECT c.case_id, c.case_number, c.case_status, co.complaint_title, co.complaint_number FROM cases c INNER JOIN complaints co ON co.complaint_id = c.complaint_id WHERE c.case_status <> 'Archived' ORDER BY c.docket_date DESC, c.case_id DESC");
+        $stmt = $this->conn->prepare("
+            SELECT 
+                c.case_id,
+                c.case_number,
+                c.case_status,
+                co.complaint_id,
+                co.complaint_number,
+                co.complaint_title,
+                h.hearing_id,
+                h.hearing_date,
+                h.hearing_type,
+                h.status AS hearing_status,
+                (
+                    SELECT GROUP_CONCAT(TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) SEPARATOR ', ')
+                    FROM complaint_parties cp
+                    INNER JOIN residents r ON r.resident_id = cp.resident_id
+                    WHERE cp.complaint_id = c.complaint_id AND cp.party_type = 'Complainant'
+                ) AS complainant_names,
+                (
+                    SELECT GROUP_CONCAT(TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) SEPARATOR ', ')
+                    FROM complaint_parties cp
+                    INNER JOIN residents r ON r.resident_id = cp.resident_id
+                    WHERE cp.complaint_id = c.complaint_id AND cp.party_type = 'Respondent'
+                ) AS respondent_names
+            FROM cases c
+            INNER JOIN complaints co ON co.complaint_id = c.complaint_id
+            LEFT JOIN (
+                SELECT h1.*
+                FROM hearings h1
+                INNER JOIN (
+                    SELECT case_id, MIN(hearing_date) AS min_date
+                    FROM hearings
+                    WHERE status = 'Scheduled'
+                    GROUP BY case_id
+                ) h2 ON h1.case_id = h2.case_id AND h1.hearing_date = h2.min_date
+            ) h ON h.case_id = c.case_id
+            WHERE c.case_status NOT IN ('Settled', 'Dismissed', 'Archived', 'DISMISSED_BARRED')
+            ORDER BY 
+                CASE WHEN h.hearing_date IS NOT NULL THEN 0 ELSE 1 END,
+                h.hearing_date ASC,
+                c.case_id DESC
+        ");
         $stmt->execute();
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }

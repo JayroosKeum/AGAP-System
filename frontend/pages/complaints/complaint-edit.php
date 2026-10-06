@@ -256,7 +256,7 @@ include '../../layouts/header.php';
                     <span id="headerCategoryBadge" class="meta-pill category-pill"><?php echo htmlspecialchars($currentCategoryName); ?></span>
                     <?php if (!empty($linkedCase)): ?>
                         <span id="complaintCaseLink" class="meta-pill case-pill">
-                            📁 Case #<?php echo htmlspecialchars($linkedCase['case_number'] ?: ('KP-' . str_pad($linkedCase['case_id'], 5, '0', STR_PAD_LEFT))); ?> &rarr;
+                            📁 Case #<?php echo htmlspecialchars($linkedCase['case_number'] ?: ('Case #' . $linkedCase['case_id'])); ?> &rarr;
                         </span>
                     <?php endif; ?>
                 </div>

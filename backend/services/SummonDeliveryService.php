@@ -327,6 +327,29 @@ class SummonDeliveryService
 
         $caseId = (int) $hearing['case_id'];
 
+        // Associate with corresponding generated document (e.g. KP Form 9 for Respondent, KP Form 8 for Complainant)
+        $docId = !empty($data['document_id']) ? (int) $data['document_id'] : null;
+        if (!$docId) {
+            $targetTpl = ($partyType === 'Respondent') ? 'KP Form 9' : 'KP Form 8';
+            $likeTpl = ($partyType === 'Respondent') ? '%Summon%' : '%Notice%';
+            $docStmt = $this->conn->prepare("
+                SELECT gd.document_id
+                FROM generated_documents gd
+                INNER JOIN document_templates dt ON dt.template_id = gd.template_id
+                WHERE gd.case_id = ? AND (dt.template_name = ? OR dt.template_name LIKE ?)
+                ORDER BY gd.document_id DESC
+                LIMIT 1
+            ");
+            $docStmt->execute([$caseId, $targetTpl, $likeTpl]);
+            $docId = (int) $docStmt->fetchColumn() ?: null;
+
+            if (!$docId) {
+                $fallbackDoc = $this->conn->prepare("SELECT gd.document_id FROM generated_documents gd WHERE gd.case_id = ? ORDER BY gd.document_id DESC LIMIT 1");
+                $fallbackDoc->execute([$caseId]);
+                $docId = (int) $fallbackDoc->fetchColumn() ?: null;
+            }
+        }
+
         // SCENARIO B: Delivery Failed (Unserved)
         // Automatically PAUSE mediation hearing & mediation clock
         if ($deliveryStatus === 'Unserved') {
@@ -337,14 +360,21 @@ class SummonDeliveryService
 
             // Also record in proof_of_service as Service Failed
             $posStmt = $this->conn->prepare("
-                INSERT INTO proof_of_service (case_id, service_result, served_by, served_date, remarks)
-                VALUES (?, 'Service Failed', ?, NOW(), ?)
+                INSERT INTO proof_of_service (case_id, document_id, service_result, served_by, served_date, remarks)
+                VALUES (?, ?, 'Service Failed', ?, NOW(), ?)
             ");
             $posStmt->execute([
                 $caseId,
+                $docId,
                 $servedBy,
                 "Summon unserved for {$partyType}: {$unservedReason}. Notes: {$failureNotes}"
             ]);
+
+            // Update generated_documents status
+            if ($docId) {
+                $updDoc = $this->conn->prepare("UPDATE generated_documents SET service_status = 'Service Failed' WHERE document_id = ?");
+                $updDoc->execute([$docId]);
+            }
 
             $this->audit->log(
                 $actorUserId,
@@ -356,15 +386,22 @@ class SummonDeliveryService
             // SCENARIO A: Served (Personal, Substituted, or Refused)
             // Record in proof_of_service
             $posStmt = $this->conn->prepare("
-                INSERT INTO proof_of_service (case_id, service_result, served_by, served_date, remarks)
-                VALUES (?, 'Served', ?, ?, ?)
+                INSERT INTO proof_of_service (case_id, document_id, service_result, served_by, served_date, remarks)
+                VALUES (?, ?, 'Served', ?, ?, ?)
             ");
             $posStmt->execute([
                 $caseId,
+                $docId,
                 $servedBy,
                 $servedAt,
                 "{$partyType} ({$formType}) {$deliveryStatus}. Recipient: {$recipientName} " . ($relationship ? "({$relationship})" : "")
             ]);
+
+            // Update generated_documents status
+            if ($docId) {
+                $updDoc = $this->conn->prepare("UPDATE generated_documents SET service_status = 'Served' WHERE document_id = ?");
+                $updDoc->execute([$docId]);
+            }
 
             // Check if BOTH are now served
             $serviceCheck = $this->checkServiceStatus($hearingId);

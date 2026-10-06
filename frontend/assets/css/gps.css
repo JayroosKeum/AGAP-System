@@ -361,3 +361,14 @@
 .badge-non-resident .residency-dot {
     background: #ea580c;
 }
+
+/* Selected row in cases requiring summons table */
+.case-table-row-selected {
+    background-color: #f0fdf4 !important;
+}
+.case-table-row-selected td {
+    background-color: #f0fdf4 !important;
+    border-top: 1px solid #86efac;
+    border-bottom: 1px solid #86efac;
+}
+

@@ -88,6 +88,20 @@ class PDFService
         }
     }
 
+    public function generateKp8(
+        array $data,
+        string $absolutePath
+    ): void {
+        $this->generateNotice('KP Form 8', $data, $absolutePath);
+    }
+
+    public function generateKp9(
+        array $data,
+        string $absolutePath
+    ): void {
+        $this->generateNotice('KP Form 9', $data, $absolutePath);
+    }
+
     public function generateKp10(
         array|int $dataOrCaseId,
         string|int $pathOrUserId = '',
@@ -605,14 +619,49 @@ class PDFService
         $officialName = $this->escape((string) ($data['official_name'] ?? $data['chairman_name'] ?? 'Punong Barangay / Lupon Tagapamayapa'));
 
         $hearingDate = !empty($data['hearing_date']) ? date('F j, Y g:i A', strtotime($data['hearing_date'])) : 'itinakdang pagdinig';
+        $hearingTimestamp = !empty($data['hearing_date']) ? strtotime($data['hearing_date']) : null;
+        $hearingDateFormatted = $hearingTimestamp
+            ? 'ika-' . date('j', $hearingTimestamp) . ' ng ' . $this->filipinoMonth((int) date('n', $hearingTimestamp)) . ', ' . date('Y', $hearingTimestamp) . ' sa ganap na ika-' . date('g:i A', $hearingTimestamp)
+            : 'itinakdang pagdinig';
         $explanationDate = !empty($data['explanation_date']) ? date('F j, Y g:i A', strtotime($data['explanation_date'])) : date('F j, Y g:i A', strtotime('+3 days 09:00:00'));
         $noticeDate = !empty($data['notice_date']) ? date('F j, Y', strtotime($data['notice_date'])) : date('F j, Y');
 
-        $formTitle = 'Pormularyo ng KP Blg. 19';
-        $subTitle = 'PAUNAWA SA PAGDINIG (Para sa Ipinagsusumbong)';
+        $formTitle = 'Pormularyo ng KP Blg. 9';
+        $subTitle = 'PATAWAG (Para sa Ipinagsusumbong)';
         $body = '';
 
-        if ($formCode === 'KP Form 18') {
+        if ($formCode === 'KP Form 8') {
+            $formTitle = 'Pormularyo ng KP Blg. 8';
+            $subTitle = 'PATALASTAS NG PAGDINIG (Para sa May-sumbong)';
+            $targetPartyDisplay = $targetParty !== '' ? $targetParty : '(May-sumbong)';
+            $body = '
+                <p>KAY: <strong>' . $targetPartyDisplay . '</strong> (May-sumbong)</p>
+                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
+                    Kayo ay tinatawagan at inaatasan na humarap sa akin sa <strong>' . $venue . '</strong> sa darating na <strong>' . $hearingDateFormatted . '</strong>,
+                    para sa unang pagdinig at pamamagitan (1st Mediation) ng inyong inihain na sumbong.
+                </p>
+                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
+                    Pinapaalalahanan kayo na ang inyong kabiguang humarap nang walang makatwirang dahilan ay maaaring maging sanhi ng pagpapawalang-saysay
+                    sa inyong sumbong at paghadlang sa inyong karapatang maghain ng nasabing aksyon sa hukuman alinsunod sa Seksiyon 415 ng Batas Republika Blg. 7160.
+                </p>
+            ';
+        } elseif ($formCode === 'KP Form 9') {
+            $formTitle = 'Pormularyo ng KP Blg. 9';
+            $subTitle = 'PATAWAG (Para sa Ipinagsusumbong)';
+            $targetPartyDisplay = $targetParty !== '' ? $targetParty : '(Ipinagsusumbong)';
+            $body = '
+                <p>KAY: <strong>' . $targetPartyDisplay . '</strong> (Ipinagsusumbong)</p>
+                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
+                    Kayo ay tinatawagan at inaatasan na humarap sa akin nang personal sa <strong>' . $venue . '</strong> sa darating na <strong>' . $hearingDateFormatted . '</strong>,
+                    upang sagutin ang sumbong na inihain laban sa inyo (na ang kalakip na sipi ay ibinibigay sa inyo), at upang makilahok sa pag-aayos at pamamagitan (1st Mediation) ng inyong alitan.
+                </p>
+                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
+                    Kayo ay binabalaan na ang inyong pagtanggi o kabiguang humarap bilang pagtalima sa patawag na ito nang walang makatwirang dahilan ay magbubunga ng
+                    paghadlang sa inyong karapatang magharap ng anumang ganting-sakdal (counterclaim) na nagmumula sa nasabing sumbong, at maaari kayong isuplong sa hukuman para sa
+                    hindi tuwirang paglapastangan (indirect contempt) alinsunod sa Seksiyon 410 at 415 ng Batas Republika Blg. 7160.
+                </p>
+            ';
+        } elseif ($formCode === 'KP Form 18') {
             $formTitle = 'Pormularyo ng KP Blg. 18';
             $subTitle = 'PAUNAWA SA PAGDINIG (Para sa May-sumbong)';
             $body = '
@@ -754,11 +803,11 @@ class PDFService
         <div style="font-size: 9pt; font-style: italic;">Punong Barangay / Tagapangulo ng Lupon</div>
     </div>
 
-    ' . (in_array($formCode, ['KP Form 18', 'KP Form 19'], true) ? '
+    ' . (in_array($formCode, ['KP Form 8', 'KP Form 9', 'KP Form 18', 'KP Form 19'], true) ? '
     <div class="officers-return">
         <h3>Katunayan ng Paglilingkod (Officer’s Return)</h3>
         <p style="margin: 2mm 0; line-height: 1.4;">
-            Pinatutunayan ko na ang Paunawang ito ay personal / maayos na pinagsilbihan kay <strong>' . $targetParty . '</strong>
+            Pinatutunayan ko na ang ' . ($formCode === 'KP Form 9' ? 'Patawag' : ($formCode === 'KP Form 8' ? 'Patalastas' : 'Paunawa')) . ' na ito ay personal / maayos na pinagsilbihan kay <strong>' . ($targetParty ?: ($formCode === 'KP Form 9' ? 'Ipinagsusumbong' : 'May-sumbong')) . '</strong>
             ngayong ika-______ ng ______________________, 20______.
         </p>
         <div style="width: 40%; margin-left: auto; text-align: center; margin-top: 6mm;">

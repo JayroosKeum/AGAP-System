@@ -89,6 +89,20 @@ class CaseProgress
             $hearings = $hearingStmt->fetchAll(PDO::FETCH_ASSOC);
         }
 
+        // 5b. Fetch Summon Deliveries
+        $deliveries = [];
+        if ($caseId) {
+            $delivStmt = $this->conn->prepare("
+                SELECT sd.*
+                FROM summon_deliveries sd
+                INNER JOIN hearings h ON h.hearing_id = sd.hearing_id
+                WHERE h.case_id = ?
+                ORDER BY sd.delivery_id ASC
+            ");
+            $delivStmt->execute([$caseId]);
+            $deliveries = $delivStmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+
         // 6. Fetch Pangkat Group
         $pangkat = null;
         if ($caseId) {
@@ -153,6 +167,14 @@ class CaseProgress
                 }
             }
         }
+        if (!$anyServed) {
+            foreach ($deliveries as $d) {
+                if (in_array($d['delivery_status'] ?? '', ['Served Personal', 'Served Substituted', 'Served Refused'], true)) {
+                    $anyServed = true;
+                    break;
+                }
+            }
+        }
         $summonsPrerequisiteMet = $anyServed;
 
 
@@ -172,7 +194,7 @@ class CaseProgress
         }
 
         // Determine button actions
-        $actions = $this->computeButtonActions($complaint, $case, $summons, $proofs, $hearings, $summonsPrerequisiteMet);
+        $actions = $this->computeButtonActions($complaint, $case, $summons, $proofs, $hearings, $summonsPrerequisiteMet, $deliveries);
 
         return [
             'complaint_id' => (int) $complaint['complaint_id'],
@@ -554,7 +576,8 @@ class CaseProgress
         array $summons,
         array $proofs,
         array $hearings,
-        bool $summonsPrerequisiteMet
+        bool $summonsPrerequisiteMet,
+        array $deliveries = []
     ): array {
         $caseId = $case ? (int) $case['case_id'] : null;
         $summonsCount = count($summons);
@@ -575,6 +598,14 @@ class CaseProgress
                 break;
             }
         }
+        if (!$anyServed) {
+            foreach ($deliveries as $d) {
+                if (in_array($d['delivery_status'] ?? '', ['Served Personal', 'Served Substituted', 'Served Refused'], true)) {
+                    $anyServed = true;
+                    break;
+                }
+            }
+        }
 
         // Build a set of document_ids that have at least one proof-of-service attempt
         $proofedDocIds = [];
@@ -588,6 +619,21 @@ class CaseProgress
         $latestSummon = !empty($summons) ? end($summons) : null;
         $latestDocId  = $latestSummon ? (int)($latestSummon['document_id'] ?? 0) : 0;
         $latestHasAttempt = $latestDocId && isset($proofedDocIds[$latestDocId]);
+
+        // Fallback 1: If proof_of_service records exist for this case without document_id
+        if (!$latestHasAttempt && count($proofs) >= $summonsCount && $summonsCount > 0) {
+            $latestHasAttempt = true;
+        }
+
+        // Fallback 2: Check summon_deliveries for recorded attempt (Unserved / Served)
+        if (!$latestHasAttempt && !empty($deliveries)) {
+            $recordedDeliveries = array_filter($deliveries, function ($d) {
+                return ($d['delivery_status'] ?? 'Pending') !== 'Pending';
+            });
+            if (count($recordedDeliveries) > 0) {
+                $latestHasAttempt = true;
+            }
+        }
 
         $ordinals = ['', '1st', '2nd', '3rd'];
 

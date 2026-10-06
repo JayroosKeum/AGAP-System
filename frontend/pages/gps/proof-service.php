@@ -38,52 +38,64 @@ include '../../layouts/header.php';
 
         <div id="proofMessage" class="proof-message" role="alert" aria-live="polite"></div>
 
-        <section class="gps-card proof-filter-card" aria-labelledby="caseSelectionTitle">
-            <div class="section-heading compact-heading">
-                <div>
-                    <span class="section-kicker">Case lookup</span>
-                    <h2 id="caseSelectionTitle">Select a case to inspect</h2>
-                    <p>Select a case to inspect summon delivery status, record officer returns, and review service attempts.</p>
-                </div>
+        <!-- Search Toolbar -->
+        <section class="gps-card proof-search-card" style="margin-bottom: 20px; padding: 18px 24px;">
+            <div style="display: flex; gap: 12px; align-items: center; position: relative;">
+                <svg style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; color: #94a3b8; pointer-events: none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input
+                    id="summonCaseSearch"
+                    type="search"
+                    class="search-input-field"
+                    placeholder="Search by KP number, complainant, or respondent..."
+                    autocomplete="off"
+                    style="width: 100%; padding: 10px 40px 10px 42px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.92rem; outline: none;"
+                >
+                <button
+                    type="button"
+                    id="clearSummonSearch"
+                    title="Clear search"
+                    style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; font-size: 20px; line-height: 1; color: #94a3b8; cursor: pointer; display: none;"
+                >&times;</button>
             </div>
-
-            <div class="form-group proof-case-picker">
-                <label for="proofCaseId">Case</label>
-                <select id="proofCaseId" name="case_id">
-                    <option value="">Select a case</option>
-                </select>
-            </div>
+            <!-- Hidden select for script backward-compatibility -->
+            <select id="proofCaseId" name="case_id" hidden aria-hidden="true">
+                <option value="">Select a case</option>
+            </select>
         </section>
 
-        <section id="caseSummaryCard" class="gps-card case-summary-card" hidden aria-labelledby="summaryComplaintTitle">
-            <div class="case-summary-header">
+        <!-- Cases Needing Summons Delivery Table -->
+        <section class="gps-card" id="casesNeedingSummonsSection" style="margin-bottom: 24px;">
+            <div class="section-heading" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px;">
                 <div>
-                    <div class="summary-pills">
-                        <span class="meta-pill case-pill" id="summaryCaseNumber">Case</span>
-                        <span class="meta-pill complaint-pill" id="summaryComplaintNumber">Complaint</span>
-                    </div>
-                    <h2 id="summaryComplaintTitle">Complaint Details</h2>
+                    <span class="section-kicker" style="text-transform: uppercase; font-size: 0.75rem; font-weight: 700; color: #2563eb; letter-spacing: 0.5px;">Pending Field Service</span>
+                    <h2 style="font-size: 1.25rem; font-weight: 700; color: #1e293b; margin: 2px 0 0;">Cases Requiring Summons Delivery</h2>
+                    <p style="margin: 4px 0 0; color: #64748b; font-size: 0.85rem;">Select a case to inspect summon delivery status and record officer returns.</p>
                 </div>
-                <a id="viewComplaintLink" class="btn-secondary-link" href="../complaints/complaint-details.php">View Complaint</a>
+                <span id="casesNeedingSummonsCount" class="count-badge" style="background: #eff6ff; color: #1d4ed8; font-weight: 600; padding: 4px 12px; border-radius: 20px; font-size: 0.82rem; border: 1px solid #bfdbfe;">0 cases</span>
             </div>
 
-            <div class="summary-grid">
-                <div class="summary-item">
-                    <span class="summary-label">Complainant</span>
-                    <strong id="summaryComplainants">Not available</strong>
-                </div>
-                <div class="summary-item">
-                    <span class="summary-label">Respondent</span>
-                    <strong id="summaryRespondents">Not available</strong>
-                </div>
-                <div class="summary-item">
-                    <span class="summary-label">Case Status</span>
-                    <strong id="summaryCaseStatus">Not available</strong>
-                </div>
-                <div class="summary-item">
-                    <span class="summary-label">Incident Location</span>
-                    <strong id="summaryIncidentLocation">Not available</strong>
-                </div>
+            <div class="table-responsive" style="border: 1px solid #e2e8f0; border-radius: 8px; overflow-x: auto; background: #fff;">
+                <table class="data-table proof-table" style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #f8fafc; border-bottom: 1px solid #e2e8f0;">
+                            <th style="padding: 12px 16px; text-align: left; font-weight: 600; font-size: 0.82rem; color: #475569; text-transform: uppercase; letter-spacing: 0.03em;">KP Number</th>
+                            <th style="padding: 12px 16px; text-align: left; font-weight: 600; font-size: 0.82rem; color: #475569; text-transform: uppercase; letter-spacing: 0.03em;">Complainant</th>
+                            <th style="padding: 12px 16px; text-align: left; font-weight: 600; font-size: 0.82rem; color: #475569; text-transform: uppercase; letter-spacing: 0.03em;">Respondent</th>
+                            <th style="padding: 12px 16px; text-align: left; font-weight: 600; font-size: 0.82rem; color: #475569; text-transform: uppercase; letter-spacing: 0.03em;">Hearing Date</th>
+                            <th style="padding: 12px 16px; text-align: center; font-weight: 600; font-size: 0.82rem; color: #475569; text-transform: uppercase; letter-spacing: 0.03em;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="casesNeedingSummonsTable">
+                        <tr>
+                            <td colspan="5" class="empty-state" style="padding: 30px; text-align: center; color: #94a3b8;">
+                                Loading cases requiring summons...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </section>
 
@@ -103,36 +115,6 @@ include '../../layouts/header.php';
             <!-- Delivery Cards Grid -->
             <div id="hearingDeliveriesContainer" class="hearing-deliveries-grid">
                 <!-- Dynamically populated by gps.js: Complainant card & Respondent card -->
-            </div>
-        </section>
-
-        <section class="gps-card" aria-labelledby="serviceHistoryTitle">
-            <div class="section-heading">
-                <div>
-                    <span class="section-kicker">Recorded activity</span>
-                    <h2 id="serviceHistoryTitle">Service History &amp; Attempts</h2>
-                    <p>All recorded attempts are shown in reverse chronological order.</p>
-                </div>
-                <span id="historyCount" class="count-badge">0 attempts</span>
-            </div>
-
-            <div class="table-responsive">
-                <table class="data-table proof-table history-table">
-                    <thead>
-                        <tr>
-                            <th>Attempt</th>
-                            <th>Summons</th>
-                            <th>Service Date</th>
-                            <th>Served By</th>
-                            <th>Result</th>
-                            <th>Remarks</th>
-                            <th>Proof Image</th>
-                        </tr>
-                    </thead>
-                    <tbody id="proofHistoryTable">
-                        <tr><td colspan="7" class="empty-state">Select a case to view its service history.</td></tr>
-                    </tbody>
-                </table>
             </div>
         </section>
     </div>

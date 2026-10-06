@@ -245,62 +245,205 @@ function resetCaseView() {
     );
 }
 
+let allLoadedSummonCases = [];
+let activeSelectedCaseId = '';
+
+function renderSummonCasesTable(cases, selectedCaseId = '') {
+    const tbody = document.getElementById('casesNeedingSummonsTable');
+    const countBadge = document.getElementById('casesNeedingSummonsCount');
+
+    if (countBadge) {
+        countBadge.textContent = pluralize(cases.length, 'case');
+    }
+
+    if (!tbody) return;
+
+    if (!cases.length) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="5" class="empty-state" style="padding: 30px; text-align: center; color: #94a3b8;">
+                    No cases requiring summons delivery found.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    tbody.innerHTML = cases
+        .map((item) => {
+            const caseId = Number(item.case_id);
+            const isSelected = String(caseId) === String(selectedCaseId || activeSelectedCaseId);
+            const selectedClass = isSelected ? 'case-table-row-selected' : '';
+            const kpNumber = item.case_number || (item.case_id ? `Case #${item.case_id}` : 'N/A');
+            const complainant = item.complainant_names || 'Not recorded';
+            const respondent = item.respondent_names || 'Not recorded';
+            const hearingDate = item.hearing_date
+                ? `
+                    <div style="font-weight: 600; color: #0f172a; font-size: 0.88rem;">
+                        ${escapeGpsHtml(formatDateTime(item.hearing_date))}
+                    </div>
+                    ${item.hearing_type ? `<span style="font-size: 0.72rem; padding: 2px 7px; background: #e0f2fe; color: #0369a1; border-radius: 4px; display: inline-block; margin-top: 3px; font-weight: 600;">${escapeGpsHtml(item.hearing_type)}</span>` : ''}
+                `
+                : '<span style="color: #94a3b8; font-style: italic; font-size: 0.84rem;">Pending schedule</span>';
+
+            return `
+                <tr id="summon-row-${caseId}" class="${selectedClass}" style="cursor: pointer; transition: background 0.15s ease;" onclick="selectSummonCase(${caseId})">
+                    <td style="padding: 12px 16px;">
+                        <strong style="color: #2563eb; font-size: 0.92rem;">
+                            ${escapeGpsHtml(kpNumber)}
+                        </strong>
+                        ${item.complaint_title ? `<div style="font-size: 0.78rem; color: #64748b; margin-top: 2px;">${escapeGpsHtml(item.complaint_title)}</div>` : ''}
+                    </td>
+                    <td style="padding: 12px 16px; font-weight: 500; color: #1e293b;">
+                        ${escapeGpsHtml(complainant)}
+                    </td>
+                    <td style="padding: 12px 16px; font-weight: 500; color: #1e293b;">
+                        ${escapeGpsHtml(respondent)}
+                    </td>
+                    <td style="padding: 12px 16px;">
+                        ${hearingDate}
+                    </td>
+                    <td style="padding: 12px 16px; text-align: center;" onclick="event.stopPropagation();">
+                        <button
+                            type="button"
+                            class="btn-table-action"
+                            onclick="selectSummonCase(${caseId})"
+                            style="background: #2563eb; color: #fff; border: none; padding: 6px 14px; border-radius: 6px; font-size: 0.82rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; transition: background 0.15s ease;"
+                            onmouseover="this.style.background='#1d4ed8'"
+                            onmouseout="this.style.background='#2563eb'"
+                            title="Inspect and record summon delivery for ${escapeGpsHtml(kpNumber)}"
+                        >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14 2 14 8 20 8"></polyline>
+                                <line x1="16" y1="13" x2="8" y2="13"></line>
+                                <line x1="16" y1="17" x2="8" y2="17"></line>
+                                <polyline points="10 9 9 9 8 9"></polyline>
+                            </svg>
+                            Deliver Summon
+                        </button>
+                    </td>
+                </tr>
+            `;
+        })
+        .join('');
+}
+
+function selectSummonCase(caseId) {
+    if (!caseId) return;
+    activeSelectedCaseId = String(caseId);
+
+    // Highlight row
+    const tbody = document.getElementById('casesNeedingSummonsTable');
+    if (tbody) {
+        tbody.querySelectorAll('tr').forEach((tr) => tr.classList.remove('case-table-row-selected'));
+        const targetRow = document.getElementById(`summon-row-${caseId}`);
+        if (targetRow) targetRow.classList.add('case-table-row-selected');
+    }
+
+    const select = document.getElementById('proofCaseId');
+    if (select) select.value = String(caseId);
+
+    loadCaseView(caseId);
+
+    const delivSection = document.getElementById('hearingDeliveriesSection');
+    if (delivSection) {
+        delivSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+}
+window.selectSummonCase = selectSummonCase;
+
+function setupSummonCaseSearch() {
+    const searchInput = document.getElementById('summonCaseSearch');
+    const clearBtn = document.getElementById('clearSummonSearch');
+    if (!searchInput || searchInput.dataset.bound) return;
+    searchInput.dataset.bound = '1';
+
+    const handleFilter = () => {
+        const query = searchInput.value.trim().toLowerCase();
+        if (clearBtn) clearBtn.style.display = query ? 'block' : 'none';
+
+        if (!query) {
+            renderSummonCasesTable(allLoadedSummonCases, activeSelectedCaseId);
+            return;
+        }
+
+        const filtered = allLoadedSummonCases.filter((item) => {
+            const kp = String(item.case_number || '').toLowerCase();
+            const comp = String(item.complainant_names || '').toLowerCase();
+            const resp = String(item.respondent_names || '').toLowerCase();
+            const title = String(item.complaint_title || '').toLowerCase();
+            const date = String(item.hearing_date || '').toLowerCase();
+            return kp.includes(query) || comp.includes(query) || resp.includes(query) || title.includes(query) || date.includes(query);
+        });
+
+        renderSummonCasesTable(filtered, activeSelectedCaseId);
+    };
+
+    searchInput.addEventListener('input', handleFilter);
+
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+            searchInput.value = '';
+            handleFilter();
+            searchInput.focus();
+        });
+    }
+}
+
 async function loadCases(
     preselectedCaseId = ''
 ) {
     const select =
         document.getElementById('proofCaseId');
 
-    if (!select) {
-        return;
-    }
-
     const result =
         await gpsApi(proofApiUrl);
 
-    const cases =
+    allLoadedSummonCases =
         Array.isArray(result.data)
             ? result.data
             : [];
 
-    select.innerHTML =
-        '<option value="">Select a case</option>' +
-        cases
-            .map((item) => {
-                const caseNumber =
-                    item.case_number ||
-                    `Case ${item.case_id}`;
+    if (select) {
+        select.innerHTML =
+            '<option value="">Select a case</option>' +
+            allLoadedSummonCases
+                .map((item) => {
+                    const caseNumber =
+                        item.case_number ||
+                        `Case ${item.case_id}`;
 
-                const complaintTitle =
-                    item.complaint_title ||
-                    'Untitled complaint';
+                    const complaintTitle =
+                        item.complaint_title ||
+                        'Untitled complaint';
 
-                const label =
-                    `${caseNumber} - ${complaintTitle}`;
+                    const label =
+                        `${caseNumber} - ${complaintTitle}`;
 
-                return `
-                    <option value="${Number(item.case_id)}">
-                        ${escapeGpsHtml(label)}
-                    </option>
-                `;
-            })
-            .join('');
+                    return `
+                        <option value="${Number(item.case_id)}">
+                            ${escapeGpsHtml(label)}
+                        </option>
+                    `;
+                })
+                .join('');
+    }
+
+    setupSummonCaseSearch();
+
+    renderSummonCasesTable(allLoadedSummonCases, preselectedCaseId);
 
     const validPreselectedCase =
         preselectedCaseId &&
-        cases.some(
+        allLoadedSummonCases.some(
             (item) =>
                 Number(item.case_id) ===
                 Number(preselectedCaseId)
         );
 
     if (validPreselectedCase) {
-        select.value =
-            String(preselectedCaseId);
-
-        await loadCaseView(
-            preselectedCaseId
-        );
+        selectSummonCase(preselectedCaseId);
     }
 }
 

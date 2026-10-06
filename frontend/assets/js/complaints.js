@@ -208,7 +208,7 @@ async function loadComplaintDetails() {
         if (catEl) catEl.textContent = data.category_name || (data.category_id ? 'Category #' + data.category_id : 'General');
 
         // Linked case badge only. The Case Workspace page has been removed.
-        const caseNumber = data.case_number || (data.case_id ? 'KP-' + String(data.case_id).padStart(5, '0') : null);
+        const caseNumber = data.case_number || (data.case_id ? String(data.case_id) : null);
         const caseLinkEl = document.getElementById('complaintCaseLink');
         const caseBadgeText = document.getElementById('caseNumberBadgeText');
         if (caseLinkEl) {
@@ -527,7 +527,7 @@ function renderCaseWorkspace(workspace, complaint) {
     section.style.display = 'block';
 
     const caseData = workspace.case || {};
-    const caseNum = caseData.case_number || (complaint.case_number || ('KP-' + String(complaint.case_id).padStart(5, '0')));
+    const caseNum = caseData.case_number || complaint.case_number || (complaint.case_id ? String(complaint.case_id) : 'N/A');
 
     // Header
     const heading = document.getElementById('cwCaseNumberHeading');

@@ -914,66 +914,114 @@ The Complaint Details and Proof of Service modules provide an integrated, end-to
 
 ---
 
+## Recent Increments (September 28 – October 6, 2026)
+
+### 1. Case Number Format Standardization (`MM-SS-YYYY`)
+- **Format Structure**: Conforms to the standard formula: `month(10)-series(01)-year(2026)` (e.g. `10-01-2026`, `10-45-2026`).
+  - **Month (`MM`)**: 2-digit month of docket date.
+  - **Series (`SS`)**: 2-or-more digit sequential case number filed in that calendar year, zero-padded to at least 2 digits (`01` through `45`, `100+`).
+  - **Year (`YYYY`)**: 4-digit calendar year.
+- **Backend Generator Engine**: Implemented `CaseModel::generateCaseNumber(PDO $conn, string $docketDate, int $caseId): string`:
+  - Atomically calculates the next series for the target calendar year (`maxSeries + 1`) using row-level locking (`FOR UPDATE`) inside transactions.
+  - Generates the number during complaint docketing (`CaseModel::docketComplaint`) and first summon issuance (`Summons::issueFirstSummon`).
+- **Database & Storage Migration**:
+  - Migrated existing case numbers in `cases`: `KP-2026-00001` &rarr; `10-01-2026`, `KP-2026-00002` &rarr; `10-02-2026`, `KP-2026-00003` &rarr; `10-03-2026`.
+  - Updated storage folder structures and document paths in `generated_documents` (`storage/generated-documents/2026/10-01-2026/`, etc.).
+  - Migrated historical notifications referencing legacy case numbers.
+  - Updated frontend fallbacks in `complaints.js`, `complaint-edit.php`, and `gps.js` to eliminate legacy `KP-` strings.
+
+### 2. Dual Notice Generation on 1st Summon (KP Form 8 & KP Form 9)
+- **Automatic Form Generation**: Triggering `Issue 1st Summon` automatically generates:
+  1. **KP Form 8 (Notice of Hearing for Complainant)**: Sent to the complainant notifying them of the initial mediation session.
+  2. **KP Form 9 (Summons for Respondent)**: Sent to the respondent commanding their appearance.
+- **Workflow Automation**:
+  - Initializes `summon_deliveries` records for both parties (`Complainant` &rarr; `Notice of Hearing`; `Respondent` &rarr; `Summon`) with status `Pending`.
+  - Automatically schedules the 1st Mediation hearing in the database within the same transaction.
+  - Produces PDF documents saved under `storage/generated-documents/<year>/<case-number>/` and inserts corresponding `generated_documents` records.
+
+### 3. Hearing Attendance, Service Verification & Show-Cause Lifecycle (KP Forms 18, 19, 21)
+- **Independent Party Attendance**:
+  - Attendance is tracked separately for Complainants and Respondents (`Present`, `Failure to Appear`, `Not Served`, `Excused`, `Late`).
+  - Attendance recording requires verified summon delivery status; if a party was not served, the status defaults to `Not Served` and prompts for follow-up service.
+- **Non-Appearance & Show-Cause Hearings**:
+  - When a properly served Complainant fails to appear without prior justification, the system auto-generates **KP Form 18** (Notice of Hearing for Failure to Appear - Complainant) and schedules a Show-Cause explanation hearing.
+  - When a properly served Respondent fails to appear without prior justification, the system auto-generates **KP Form 19** (Notice of Hearing for Failure to Appear - Respondent) and schedules a Show-Cause explanation hearing.
+- **Legal Consequences**:
+  - If Complainant's absence remains unjustified: **KP Form 21 (Certificate to Bar Action)** is generated and case status transitions to `DISMISSED_BARRED`.
+  - If Respondent's absence remains unjustified: The case is flagged for consequence determination/indirect contempt evaluation.
+  - Rescheduling a hearing creates a new hearing record and preserves complete historical service and attendance records.
+
+### 4. Strict Scheduling Validation & Office Logistics
+- **Operating Hours & Days**:
+  - Enforces weekday-only scheduling (Monday to Friday); rejects weekend bookings (Saturday and Sunday).
+  - Enforces official barangay operating hours: 8:00 AM to 5:00 PM.
+- **Strict Chronological Sequence**:
+  - Rejects hearing bookings on the same day as an existing hearing for the case or on any prior date.
+- **Logistics Conflict Detection (`OfficeLogisticsService.php`)**:
+  - Verifies venue availability and flags room collisions.
+  - Validates presider schedule conflicts across concurrent hearings.
+
+### 5. Summons Server Interface Overhaul (`proof-service.php` & `gps.js`)
+- **Instant Search Bar**: Replaced legacy case lookup dropdown with a debounced live search bar filtering by case number, party names, title, and hearing date.
+- **Pending Deliveries Table**:
+  - Dedicated table displaying all cases needing summons service.
+  - Columns: KP/Case No., Complainant, Respondent, Hearing Date, and an inline "Deliver Summon" button.
+- **Simplified Workflow**:
+  - Cleaned summon server interface by removing redundant complaint details and recorded activity tables from their view.
+  - Inline "Deliver Summon" action immediately selects the case and smoothly scrolls to the Officer's Return form.
+  - Fixed Proof of Service registration and attempt counting.
+
+### 6. Case & Team Assignments Redesign (`case-list.php` & `assignments.js`)
+- **Top Search Feature**: Search bar positioned directly above the case team assignment table.
+- **Ongoing Cases Filter**: Table filtered to only display active/ongoing cases (`Docketed`, `Mediation`, `Conciliation`, `Arbitration`); settled, dismissed, and archived cases are excluded.
+- **Streamlined 3-Column Table**:
+  - Columns: Case No., Status, and Action.
+  - Case Number is a clickable link navigating directly to the Complaint Details view.
+  - Removed redundant complaint detail card (e.g. `CMP-2026-00003`), docket date, and edit buttons.
+- **Layout Inversion**: "Team Assignment for Selected Case" is positioned prominently beneath the search bar, with "Case Team Assignment & Details" placed below.
+- **Substitute Presider**: Modal relocated to the Case Team Assignment view with refined UI.
+
+### 7. Complaints Action Toolbar: Archive Action
+- On `frontend/pages/complaints/complaint-list.php`, the Delete button under the Actions column was replaced with the **Archive** button.
+- Retains consistent icon styling, confirmation modal, and triggers the transactional case archive endpoint.
+
+---
+
 ## Present but Incomplete or Requiring Verification
 
 - Project-wide RBAC remains inconsistent, but broad RBAC hardening is not the immediate priority.
-- Complaint party and attachment workflows require full Laragon/MySQL verification.
-- Hearing attendance storage exists, but complete attendance and missed-hearing workflows remain incomplete.
-- GPS/proof workflows need Laragon acceptance testing, including actual image
-  upload and authorized/denied role scenarios.
+- Complaint party and attachment workflows have active browser/MySQL tests; additional stress-testing on edge cases is recommended.
+- GPS mobile field-device capture (camera/geolocation) operates in browser environments; device-level offline caching remains an enhancement.
 - AI calls Gemini, but production-grade monitoring and rate limiting are incomplete.
-- Case history and deadline structures exist, but all automatic status-transition rules are not connected.
-- KP Form 12 is implemented but needs successful PDF generation and visual acceptance testing with complete case data.
+- KP Form 10, 12, 18, 19, and 21 generate successfully; ongoing visual verification with varied text lengths is recommended.
 
 ---
 
 ## Missing Module Development Features
 
-The following are still missing or not complete enough to be considered implemented:
+The following remain missing from the complete Module Development specification:
 
-- Resident self-service complaint filing and status tracking.
-- Remaining official KP forms and generated-document templates.
-- Complete attendance, missed-hearing, deadline-completion, and case-status workflow.
-- Automated tests, user acceptance testing, deployment, and backup procedures.
+- Resident self-service complaint filing and status tracking portal.
+- Remaining optional KP forms (e.g., KP Forms 13, 14, 15, 16, 17, 20, 22, 23).
+- Automated end-to-end integration test suite, deployment pipelines, and automated database backup routines.
 
 ---
 
 ## Next Development Step
 
-Move temporarily away from adding KP forms and implement another missing Module Development feature.
-
 ### Recommended Next Module: Resident Self-Service Complaint Filing and Status Tracking
 
-Implement a resident-facing complaint filing and status-tracking workflow.
-First confirm the resident account/authentication approach in the Module
-Development requirements and existing schema before adding new tables or roles.
-
-### Scope Control for the Next Increment
-
-Do not perform broad unrelated hardening. Only add security and validation
-directly required by the resident self-service feature.
-
-Do not:
-
-- rewrite the hearing or account-security workflows;
-- add more KP forms;
-- restructure unrelated models;
-- replace the canonical schema;
-- introduce duplicate report or document tables; or
-- overwrite uncommitted changes.
-
-The next missing-feature priority remains resident self-service complaint
-filing and status tracking.
+Implement a resident-facing complaint filing and status-tracking portal.
+Confirm the resident authentication approach (resident portal login vs. complaint tracking code) from the specification before adding new tables or roles.
 
 ---
 
 ## Feature-Focused Development Order
 
 1. Complete resident self-service complaint filing and status tracking.
-2. Complete summons and service/delivery workflow.
-3. Return to remaining official KP forms one form at a time.
-4. Complete attendance, missed-hearing, and advanced status/deadline automation as needed.
-5. Add broader testing, security review, deployment, and backup procedures.
+2. Implement remaining official KP forms (KP Form 13 through 17, 20, 22, 23).
+3. Advanced deadline notifications and automated SMS/email alerts.
+4. Comprehensive automated testing, security audit, deployment scripts, and backup procedures.
 
 This order prioritizes missing Module Development features. It does not mean existing defects should be ignored when a defect blocks the current feature.
 

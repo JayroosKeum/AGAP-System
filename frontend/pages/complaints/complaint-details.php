@@ -352,7 +352,7 @@ include '../../layouts/header.php';
         <form id="issueSummonForm" onsubmit="submitIssueSummon(event)">
             <input type="hidden" id="summonComplaintId" name="complaint_id" value="<?php echo $complaintId; ?>">
             <p style="margin: 0 0 16px; font-size: 0.88rem; color: #475569; line-height: 1.5;">
-                In accordance with KP Form 9, issuing a summons sets the appearance date and time for the 1st Mediation hearing before the Punong Barangay.
+                In accordance with Katarungang Pambarangay rules, issuing a summons sets the 1st Mediation hearing and automatically generates <strong>KP Form 8 (Notice of Hearing for Complainant)</strong> and <strong>KP Form 9 (Summons for Respondent)</strong> for service.
             </p>
             <div class="form-group">
                 <label for="summonMediationDate">1st Mediation Date <span class="required-mark" aria-hidden="true">*</span></label>

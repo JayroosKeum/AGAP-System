@@ -57,38 +57,59 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
     4. **Parties** (Complainant, Respondent, and Witness pills with role tags)
     5. **Incident Date** (Formatted date)
     6. **Status** (Clean color-coded badges for Intake, Dispute Stage, and Final Outcome without label prefixes; stage automatically expires and hides after 3 mediations and 3 conciliations)
-    7. **Actions** (View Details, Edit Page, Delete modal trigger)
+    7. **Actions** (View Details, Edit Page, and Archive modal trigger)
 - **Complaint Workspace (`complaint-details.php`)**:
   - Multi-stage review gate: `Filed` $\rightarrow$ `Under Review` / `Needs Information` $\rightarrow$ `Accepted` / `Rejected`.
   - Secure evidence upload vault supporting images (JPG, PNG), videos (MP4, WebM), and PDF documents up to 25 MB with MIME verification.
 
 ### 2. Mediation & Conciliation Progression Engine
 
+- **Case Numbering Convention (`MM-SS-YYYY`)**:
+  - Format: `month(10)-series(01)-year(2026)` (e.g., `10-01-2026`, `10-45-2026`).
+  - Thread-safe atomic generation via `CaseModel::generateCaseNumber()` incrementing sequential cases per calendar year.
 - **Statutory Hearing Progression**:
   - **Mediation Stage**: 1st Mediation $\rightarrow$ 2nd Mediation $\rightarrow$ 3rd Mediation (up to 3 mediation sessions conducted by the Punong Barangay).
   - **Progression to Conciliation**: Unresolved cases advance to conciliation: 1st Conciliation $\rightarrow$ 2nd Conciliation $\rightarrow$ 3rd Conciliation (up to 3 conciliation sessions conducted by the Pangkat Tagapagkasundo).
   - **Scheduling Ceiling**: Once the 3rd Conciliation hearing is scheduled, the scheduling engine permanently halts further hearing additions, enforcing KP statutory limits.
-- **Automatic Case Docketing Trigger**:
-  - Scheduling the **1st Mediation** hearing automatically triggers case docketing (`cases.case_status = 'Docketed'`) and updates complaint status (`complaints.status = 'Docketed'`) within the same database transaction.
-- **Hearing Conflict & Deadline Management**:
-  - Prevents double-booking of cases or venues at identical date/times.
-  - Automated calculation of statutory deadlines (`case_deadlines`) for Initial Hearings, Mediation, and Conciliation.
+- **Dual Notice Auto-Generation on 1st Summon**:
+  - Triggering `Issue 1st Summon` automatically generates both **KP Form 8 (Notice of Hearing for Complainant)** and **KP Form 9 (Summons for Respondent)**, initializes delivery tracking, and schedules the 1st Mediation session.
+- **Attendance & Show-Cause Lifecycle (KP Forms 18, 19, 21)**:
+  - Separate Complainant and Respondent attendance tracking (`Present`, `Failure to Appear`, `Not Served`, `Excused`, `Late`).
+  - Auto-generation of **KP Form 18** (Notice of Hearing for Failure to Appear - Complainant) and **KP Form 19** (Notice of Hearing for Failure to Appear - Respondent) when a properly served party fails to appear without prior justification.
+  - Automatically schedules Show-Cause explanation hearings.
+  - Unjustified non-appearance consequences: issuance of **KP Form 21 (Certificate to Bar Action)** (`DISMISSED_BARRED`) for complainants, and default consequence determination for respondents.
+- **Office Logistics & Strict Scheduling Constraints**:
+  - Enforces weekday-only scheduling (Monday to Friday, 8:00 AM to 5:00 PM).
+  - Rejects hearings scheduled on the same date as an existing hearing for the case or on any prior date.
+  - Room collision and presider conflict detection powered by `OfficeLogisticsService`.
 
 ### 3. Case Management & Unified Case Teams
 
 - **Case Workspace (`case-details.php`)**: Centralized command center presenting case facts, active case team, hearing schedules, generated KP forms, and proof-of-service records.
+- **Case & Team Assignments (`case-list.php`)**:
+  - Live search bar positioned directly above the case team assignment table.
+  - Filtered to display ongoing cases only (settled, dismissed, and archived cases are excluded).
+  - Simplified 3-column table: Case No. (clickable link to Complaint Details), Status, and Action.
+  - Integrated Substitute Presider assignment modal.
 - **Unified Case Teams**:
   - Mediation stages assign the active `Administrator` as Punong Barangay/Head.
   - Conciliation stages require a three-member team (Head, Secretary, Member) selected from active users with the `Lupon Member` role, atomically validated and stored in `case_assignments`.
 
 ### 4. KP Document Generation & Proof of Service
 
-- **Document Center (`document-center.php`)**:
-  - Automated generation of official Katarungang Pambarangay forms (e.g., KP Form 12 - Notice of Hearing for Conciliation Proceedings).
-  - Dynamic template binding with Dompdf, generating secure PDFs archived under `storage/generated-documents/<year>/<case-number>/`.
-- **Proof of Service**:
-  - Tracks service of notices and summonses (`Generated`, `For Service`, `Served`, `Service Failed`).
-  - Mobile-friendly proof capture with photo evidence uploads (JPG, PNG, WebP up to 5 MB) stored securely.
+- **Official Katarungang Pambarangay (KP) Forms**:
+  - **KP Form 8**: Notice of Hearing (Complainant).
+  - **KP Form 9**: Summons for Respondent.
+  - **KP Form 10**: Notice for Constitution of Pangkat.
+  - **KP Form 12**: Notice of Hearing (Conciliation Proceedings).
+  - **KP Form 18**: Notice of Hearing for Failure to Appear (Complainant).
+  - **KP Form 19**: Notice of Hearing for Failure to Appear (Respondent).
+  - **KP Form 21**: Certificate to Bar Action (for Complainant default).
+- **Summons Server Interface (`proof-service.php`)**:
+  - Live search bar filtering pending deliveries.
+  - Dedicated table of cases needing summons service with inline "Deliver Summon" action.
+  - Officer's Return tracking service results (`Served - Personal`, `Served - Substituted`, `Refused to Receive`, `Unserved`) by party and hearing.
+  - Secure photo proof upload (JPG, PNG, WebP up to 5 MB).
 
 ### 5. Security, Audit Trails & Notifications
 

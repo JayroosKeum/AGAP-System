@@ -337,13 +337,37 @@ const api = (url, options) => fetch(url, options).then(async (response) => {
   - Scheduling the `1st Mediation` hearing automatically triggers case docketing
     (`cases.case_status = 'Docketed'`) and updates complaint status (`complaints.status = 'Docketed'`)
     in the same database transaction.
-- The Hearings and Deadlines page (`frontend/pages/hearings/schedules.php`) keeps
-  the month calendar first, followed by shared search filters and one combined
-  hearings/deadlines table. Search filters include keyword, status, hearing type,
-  and date range; Clear restores unfiltered results. The combined read API uses a
-  `UNION`-based query and server-side pagination of 25 rows per page. Calendar
-  month events remain independently loaded and are not constrained by the table's
-  current page. Preserve the existing scheduling and role permissions.
+- **Case Number Format Convention (`MM-SS-YYYY`)**:
+  - All case numbers must strictly follow the format `month(10)-series(01)-year(2026)` (e.g. `10-01-2026`, `10-45-2026`).
+  - Generated via `CaseModel::generateCaseNumber(PDO $conn, string $docketDate, int $caseId): string`.
+  - Atomically calculates the next sequential case series for the calendar year (`maxSeries + 1`) using row-locking (`FOR UPDATE`) within database transactions.
+  - Series is zero-padded to at least 2 digits (`%02d`), ensuring proper sorting and identification (`01` through `45`, `100+`).
+  - Legacy `KP-YYYY-0000X` format is obsolete and replaced system-wide.
+- **Dual Notice Generation on 1st Summon (KP Form 8 & KP Form 9)**:
+  - Triggering `Issue 1st Summon` automatically produces **both KP Form 8 (Notice of Hearing for Complainant)** and **KP Form 9 (Summons for Respondent)**.
+  - Initializes corresponding `summon_deliveries` records for both parties and automatically schedules the 1st Mediation hearing in one transaction.
+- **Attendance, Service Verification & Non-Appearance Lifecycle (KP Forms 18, 19, 21)**:
+  - Hearing attendance is recorded independently for Complainants and Respondents (`Present`, `Failure to Appear`, `Not Served`, `Excused`, `Late`).
+  - If a properly served party fails to appear, the system triggers **KP Form 18** (Complainant) or **KP Form 19** (Respondent), logs the non-appearance to `case_history`, and auto-schedules a Show-Cause Explanation hearing.
+  - Justified vs. Unjustified evaluation: Unjustified failure by a complainant allows issuance of **KP Form 21 (Certificate to Bar Action)** (`DISMISSED_BARRED`); unjustified failure by a respondent flags the case for default consequence determination.
+  - Rescheduling preserves complete historical hearing and service records.
+- **Office Logistics & Strict Scheduling Constraints**:
+  - Weekday only: Hearings cannot be scheduled on weekends (Saturday or Sunday).
+  - Operating hours: Hearings must be scheduled between 8:00 AM and 5:00 PM.
+  - Strict chronological sequence: A hearing cannot be scheduled on the same date as an existing hearing for the case or on any prior date.
+  - Conflict detection: `OfficeLogisticsService` validates against venue collisions and presider double-booking.
+- **Summons Server Interface (`proof-service.php` / `gps.js`)**:
+  - Live search bar on top replaces legacy case dropdown lookup.
+  - Features a dedicated table of cases requiring summons service (displaying KP/Case No., Complainant, Respondent, Hearing Date, and inline "Deliver Summon" action).
+  - Cleaned summon server workflow by hiding redundant complaint details and recorded activity tables from their view.
+- **Case & Team Assignments Interface (`case-list.php` / `assignments.js`)**:
+  - Integrated search on top of Case Team Assignment.
+  - Filtered to display ongoing cases only (settled, dismissed, and archived cases are excluded).
+  - Simplified table columns: Case No. (clickable link to Complaint Details), Status, and Action.
+  - Selected Case Team Assignment placed directly beneath the search feature.
+  - Substitute Presider modal relocated to the Case Team Assignment view.
+- **Complaints Page Actions: Archive Integration**:
+  - The Delete button under Actions on `complaint-list.php` is replaced by the Archive button, maintaining consistent icon and modal styling.
 - Use the shared `window.agapNotify(message, type, title)` toast layer for
   user-facing workflow feedback. It converts module status/alert messages into
   dismissible popups and polls the authenticated notification inbox for newly
