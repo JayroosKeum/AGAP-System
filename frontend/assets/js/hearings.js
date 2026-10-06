@@ -1051,6 +1051,8 @@ function hideModal(id) {
 
 function openAddHearingModal() {
     updateNextSchedule();
+    loadPresiders();
+    handleHearingDateOrDurationChange();
     showModal('addHearingModal');
 }
 
@@ -1139,6 +1141,11 @@ async function openHearingAttendanceModal(hearingId) {
         document.getElementById('attMetaSummons').textContent = summonsCount > 0
             ? `${summonsCount} Summons${summonsCount > 1 ? 'es' : ''} Issued`
             : 'Initial Notice';
+
+        const elevateBtn = document.getElementById('btnElevateToPangkatQuick');
+        if (elevateBtn) {
+            elevateBtn.style.display = (data.hearing_type === 'Mediation') ? 'inline-flex' : 'none';
+        }
 
         renderAttendanceParties(data.parties || []);
         evaluateLiveAttendanceSituation();
@@ -1984,6 +1991,440 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) { setMessage(error.message); }
     });
 });
+
+
+// ========================================================
+// OFFICE LOGISTICS, SESSION MINUTES & STATUTORY WORKFLOWS
+// ========================================================
+
+function closeModal(id) {
+    hideModal(id);
+}
+window.closeModal = closeModal;
+
+function handleHearingTypeChange(type) {
+    const durationSelect = document.getElementById('hearingDuration');
+    const venueInput = document.getElementById('hearingVenue');
+    if (type === 'Mediation') {
+        if (durationSelect) durationSelect.value = '45';
+        if (venueInput && !venueInput.value) {
+            venueInput.value = "Punong Barangay / Barangay Captain's Office";
+        }
+    } else if (type === 'Conciliation') {
+        if (durationSelect) durationSelect.value = '60';
+        if (venueInput && !venueInput.value) {
+            venueInput.value = 'Lupon Office';
+        }
+    }
+    handleHearingDateOrDurationChange();
+}
+window.handleHearingTypeChange = handleHearingTypeChange;
+
+function setVenuePreset(type) {
+    const venueInput = document.getElementById('hearingVenue') || document.getElementById('editHearingVenue');
+    if (!venueInput) return;
+    if (type === 'Mediation') {
+        venueInput.value = "Punong Barangay / Barangay Captain's Office";
+    } else if (type === 'Conciliation') {
+        venueInput.value = 'Lupon Office';
+    }
+}
+window.setVenuePreset = setVenuePreset;
+
+function setApprovedBlock(block) {
+    const dateInput = document.getElementById('hearingDate') || document.getElementById('editHearingDate');
+    if (!dateInput) return;
+    let baseDate = dateInput.value ? dateInput.value.slice(0, 10) : '';
+    if (!baseDate) {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        while (tomorrow.getDay() === 0 || tomorrow.getDay() === 6) {
+            tomorrow.setDate(tomorrow.getDate() + 1);
+        }
+        baseDate = tomorrow.toISOString().slice(0, 10);
+    }
+    const time = block === 'morning' ? '09:00' : '13:30';
+    dateInput.value = `${baseDate}T${time}`;
+    handleHearingDateOrDurationChange();
+    validateHearingDateInput(dateInput);
+}
+window.setApprovedBlock = setApprovedBlock;
+
+function handleHearingDateOrDurationChange() {
+    const dateInput = document.getElementById('hearingDate');
+    const durationSelect = document.getElementById('hearingDuration');
+    const endText = document.getElementById('calculatedEndTimeText');
+    const exceedGroup = document.getElementById('durationExceedGroup');
+    const typeSelect = document.getElementById('hearingType');
+
+    if (!dateInput || !durationSelect) return;
+    const dateVal = dateInput.value;
+    const durationMins = parseInt(durationSelect.value, 10) || 45;
+
+    if (dateVal) {
+        const start = new Date(dateVal);
+        if (!isNaN(start.getTime())) {
+            const end = new Date(start.getTime() + durationMins * 60000);
+            const endTimeStr = end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+            if (endText) {
+                endText.textContent = `Expected End: ${endTimeStr} (${durationMins} mins)`;
+            }
+        }
+    }
+
+    const hType = typeSelect?.value || 'Mediation';
+    const isExceeded = (hType === 'Mediation' && durationMins > 60) || (hType === 'Conciliation' && durationMins > 90);
+    if (exceedGroup) {
+        exceedGroup.style.display = isExceeded ? 'block' : 'none';
+        const reasonInput = document.getElementById('durationExceedReason');
+        if (reasonInput) reasonInput.required = isExceeded;
+    }
+}
+window.handleHearingDateOrDurationChange = handleHearingDateOrDurationChange;
+
+async function loadPresiders() {
+    try {
+        const members = await api('../../../backend/api/assignments/lupon-members.php');
+        const rows = Array.isArray(members) ? members : [];
+        const presiderSelect = document.getElementById('hearingPresidingOfficer');
+        const substituteSelect = document.getElementById('substitutePresiderId');
+
+        [presiderSelect, substituteSelect].forEach(select => {
+            if (!select) return;
+            const currentVal = select.value;
+            select.replaceChildren(new Option(select === presiderSelect ? 'Current Presider / Assigned Mediator' : 'Select an active Lupon Member', ''));
+            rows.forEach(m => {
+                const name = [m.last_name, m.first_name, m.middle_name].filter(Boolean).join(', ');
+                select.add(new Option(name || 'Lupon Member', m.member_id));
+            });
+            if (currentVal) select.value = currentVal;
+        });
+    } catch (e) {
+        console.warn('Could not load presiders:', e);
+    }
+}
+window.loadPresiders = loadPresiders;
+
+function openSessionMinutesModalCurrent() {
+    if (!activeHearingAttendanceData?.hearing_id) return;
+    openSessionMinutesModal(activeHearingAttendanceData.hearing_id, activeHearingAttendanceData.case_id);
+}
+window.openSessionMinutesModalCurrent = openSessionMinutesModalCurrent;
+
+function openSubstitutePresiderModalCurrent() {
+    if (!activeHearingAttendanceData?.hearing_id) return;
+    openSubstitutePresiderModal(activeHearingAttendanceData.hearing_id);
+}
+window.openSubstitutePresiderModalCurrent = openSubstitutePresiderModalCurrent;
+
+function openOfficeCancelModalCurrent() {
+    if (!activeHearingAttendanceData?.hearing_id) return;
+    openOfficeCancelModal(activeHearingAttendanceData.hearing_id);
+}
+window.openOfficeCancelModalCurrent = openOfficeCancelModalCurrent;
+
+function openFailMediationModalCurrent() {
+    if (!activeHearingAttendanceData?.hearing_id) return;
+    openFailMediationModal(activeHearingAttendanceData.hearing_id);
+}
+window.openFailMediationModalCurrent = openFailMediationModalCurrent;
+
+function viewCaseTransferPackageCurrent() {
+    if (!activeHearingAttendanceData?.case_id) return;
+    viewCaseTransferPackage(activeHearingAttendanceData.case_id);
+}
+window.viewCaseTransferPackageCurrent = viewCaseTransferPackageCurrent;
+
+function openOfficeCancelModal(hearingId) {
+    const input = document.getElementById('officeCancelHearingId');
+    const reason = document.getElementById('officeCancelReason');
+    const resched = document.getElementById('officeCancelRescheduleDate');
+    const alertBox = document.getElementById('officeCancelAlert');
+    if (input) input.value = hearingId;
+    if (reason) reason.value = '';
+    if (resched) resched.value = '';
+    if (alertBox) alertBox.style.display = 'none';
+    showModal('officeCancelModal');
+}
+window.openOfficeCancelModal = openOfficeCancelModal;
+
+async function handleOfficeCancelSubmit(event) {
+    if (event) event.preventDefault();
+    const form = document.getElementById('officeCancelForm');
+    const alertBox = document.getElementById('officeCancelAlert');
+    if (!form) return;
+
+    try {
+        const formData = new FormData(form);
+        const result = await api('../../../backend/api/hearings/office-cancel.php', {
+            method: 'POST',
+            body: formData
+        });
+        closeModal('officeCancelModal');
+        setMessage(result.message || 'Hearing cancelled by office without party penalties.', true);
+        await Promise.all([loadHearings(), loadCombinedRecords(currentPage), loadAttendanceKPIs()]);
+        if (activeHearingAttendanceData?.hearing_id) {
+            await openHearingAttendanceModal(activeHearingAttendanceData.hearing_id);
+        }
+    } catch (err) {
+        if (alertBox) {
+            alertBox.textContent = err.message || 'Office cancellation failed.';
+            alertBox.className = 'alert error';
+            alertBox.style.display = 'block';
+        }
+    }
+}
+window.handleOfficeCancelSubmit = handleOfficeCancelSubmit;
+
+function openSubstitutePresiderModal(hearingId) {
+    const input = document.getElementById('substituteHearingId');
+    const presiderSelect = document.getElementById('substitutePresiderId');
+    const reason = document.getElementById('substituteReason');
+    const consent = document.getElementById('partiesConsentCheckbox');
+    const alertBox = document.getElementById('substituteAlert');
+    if (input) input.value = hearingId;
+    if (presiderSelect) presiderSelect.value = '';
+    if (reason) reason.value = '';
+    if (consent) consent.checked = false;
+    if (alertBox) alertBox.style.display = 'none';
+    loadPresiders();
+    showModal('substitutePresiderModal');
+}
+window.openSubstitutePresiderModal = openSubstitutePresiderModal;
+
+async function handleSubstituteSubmit(event) {
+    if (event) event.preventDefault();
+    const form = document.getElementById('substitutePresiderForm');
+    const alertBox = document.getElementById('substituteAlert');
+    if (!form) return;
+
+    const consent = document.getElementById('partiesConsentCheckbox');
+    if (!consent || !consent.checked) {
+        if (alertBox) {
+            alertBox.textContent = 'Mandatory party consent checkbox must be verified before proceeding.';
+            alertBox.className = 'alert error';
+            alertBox.style.display = 'block';
+        }
+        return;
+    }
+
+    try {
+        const formData = new FormData(form);
+        const result = await api('../../../backend/api/hearings/substitute.php', {
+            method: 'POST',
+            body: formData
+        });
+        closeModal('substitutePresiderModal');
+        setMessage(result.message || 'Substitute presider designated with mutual party consent.', true);
+        await Promise.all([loadHearings(), loadCombinedRecords(currentPage)]);
+        if (activeHearingAttendanceData?.hearing_id) {
+            await openHearingAttendanceModal(activeHearingAttendanceData.hearing_id);
+        }
+    } catch (err) {
+        if (alertBox) {
+            alertBox.textContent = err.message || 'Substitute presider assignment failed.';
+            alertBox.className = 'alert error';
+            alertBox.style.display = 'block';
+        }
+    }
+}
+window.handleSubstituteSubmit = handleSubstituteSubmit;
+
+async function openSessionMinutesModal(hearingId, caseId) {
+    const hearingInput = document.getElementById('minutesHearingId');
+    const caseInput = document.getElementById('minutesCaseId');
+    const alertBox = document.getElementById('minutesAlert');
+    if (hearingInput) hearingInput.value = hearingId;
+    if (caseInput) caseInput.value = caseId || (activeHearingAttendanceData?.case_id || '');
+    if (alertBox) alertBox.style.display = 'none';
+
+    document.getElementById('min_opening').checked = false;
+    document.getElementById('min_id_verified').checked = false;
+    document.getElementById('min_complaint_read').checked = false;
+    document.getElementById('minComplainantStmt').value = '';
+    document.getElementById('minRespondentStmt').value = '';
+    document.getElementById('minDisputeSummary').value = '';
+    document.getElementById('minNewProposal').value = '';
+    document.getElementById('minCounterOffer').value = '';
+    document.getElementById('min_caucus').checked = false;
+    document.getElementById('minOutcome').value = 'Continue Mediation';
+    document.getElementById('minActualEndTime').value = '';
+    document.getElementById('minDurationExceedReason').value = '';
+    document.getElementById('minNotes').value = '';
+
+    try {
+        const res = await api(`../../../backend/api/hearings/minutes.php?hearing_id=${encodeURIComponent(hearingId)}`);
+        if (res.data) {
+            const m = res.data;
+            if (document.getElementById('min_opening')) document.getElementById('min_opening').checked = Number(m.opening_conducted) === 1;
+            if (document.getElementById('min_id_verified')) document.getElementById('min_id_verified').checked = Number(m.parties_identified) === 1;
+            if (document.getElementById('min_complaint_read')) document.getElementById('min_complaint_read').checked = Number(m.complaint_read_confirmed) === 1;
+            if (document.getElementById('minComplainantStmt')) document.getElementById('minComplainantStmt').value = m.complainant_statement_summary || '';
+            if (document.getElementById('minRespondentStmt')) document.getElementById('minRespondentStmt').value = m.respondent_statement_summary || '';
+            if (document.getElementById('minDisputeSummary')) document.getElementById('minDisputeSummary').value = m.dispute_summary || '';
+            if (document.getElementById('minNewProposal')) document.getElementById('minNewProposal').value = m.new_proposal || '';
+            if (document.getElementById('minCounterOffer')) document.getElementById('minCounterOffer').value = m.counter_offer || '';
+            if (document.getElementById('min_caucus')) document.getElementById('min_caucus').checked = Number(m.caucus_conducted) === 1;
+            if (document.getElementById('minOutcome') && m.session_outcome) document.getElementById('minOutcome').value = m.session_outcome;
+            if (document.getElementById('minActualEndTime') && m.actual_end_time) document.getElementById('minActualEndTime').value = toDateTimeLocal(m.actual_end_time);
+            if (document.getElementById('minDurationExceedReason')) document.getElementById('minDurationExceedReason').value = m.duration_exceed_reason || '';
+            if (document.getElementById('minNotes')) document.getElementById('minNotes').value = m.session_notes || '';
+        }
+    } catch (e) {
+        console.info('No existing minutes or error fetching:', e);
+    }
+    showModal('sessionMinutesModal');
+}
+window.openSessionMinutesModal = openSessionMinutesModal;
+
+async function handleSaveMinutes(event) {
+    if (event) event.preventDefault();
+    const form = document.getElementById('sessionMinutesForm');
+    const alertBox = document.getElementById('minutesAlert');
+    if (!form) return;
+
+    try {
+        const formData = new FormData(form);
+        const result = await api('../../../backend/api/hearings/minutes.php', {
+            method: 'POST',
+            body: formData
+        });
+        closeModal('sessionMinutesModal');
+        setMessage(result.message || 'Session minutes saved successfully.', true);
+        await Promise.all([loadHearings(), loadCombinedRecords(currentPage)]);
+        if (activeHearingAttendanceData?.hearing_id) {
+            await openHearingAttendanceModal(activeHearingAttendanceData.hearing_id);
+        }
+    } catch (err) {
+        if (alertBox) {
+            alertBox.textContent = err.message || 'Failed to save session minutes.';
+            alertBox.className = 'alert error';
+            alertBox.style.display = 'block';
+        }
+    }
+}
+window.handleSaveMinutes = handleSaveMinutes;
+
+function openFailMediationModal(hearingId) {
+    const input = document.getElementById('failMediationHearingId');
+    const alertBox = document.getElementById('failMediationAlert');
+    if (input) input.value = hearingId;
+    if (alertBox) alertBox.style.display = 'none';
+    showModal('failMediationModal');
+}
+window.openFailMediationModal = openFailMediationModal;
+
+async function handleFailMediationSubmit(event) {
+    if (event) event.preventDefault();
+    const form = document.getElementById('failMediationForm');
+    const alertBox = document.getElementById('failMediationAlert');
+    if (!form) return;
+
+    try {
+        const formData = new FormData(form);
+        const result = await api('../../../backend/api/hearings/fail-mediation.php', {
+            method: 'POST',
+            body: formData
+        });
+        closeModal('failMediationModal');
+        setMessage(result.message || 'Mediation declared failed. Case elevated to Conciliation and KP Form 10 generated.', true);
+        await Promise.all([loadHearings(), loadCombinedRecords(currentPage)]);
+        if (activeHearingAttendanceData?.case_id) {
+            await viewCaseTransferPackage(activeHearingAttendanceData.case_id);
+        }
+    } catch (err) {
+        if (alertBox) {
+            alertBox.textContent = err.message || 'Failed to terminate mediation.';
+            alertBox.className = 'alert error';
+            alertBox.style.display = 'block';
+        }
+    }
+}
+window.handleFailMediationSubmit = handleFailMediationSubmit;
+
+async function viewCaseTransferPackage(caseId) {
+    if (!caseId) {
+        setMessage('A valid case reference is required.');
+        return;
+    }
+    const container = document.getElementById('transferPackageContent');
+    if (container) {
+        container.innerHTML = '<div style="text-align: center; padding: 20px; color: #64748b;">Loading case transfer package...</div>';
+    }
+    showModal('transferPackageModal');
+    try {
+        const res = await api(`../../../backend/api/hearings/transfer-package.php?case_id=${encodeURIComponent(caseId)}`);
+        const pkg = res.data;
+        if (!container) return;
+
+        const c = pkg.case || {};
+        const hearings = pkg.hearings || [];
+        const docs = pkg.documents || [];
+
+        let hearingsHtml = hearings.length ? hearings.map(h => `
+            <tr>
+                <td><strong>${escapeHtml(h.hearing_type)}</strong></td>
+                <td>${escapeHtml(formatDateTime(h.hearing_date))}</td>
+                <td>${escapeHtml(h.presider_name || 'Presider')} ${h.substitute_name ? `<br><small style="color: #b45309;">(Sub: ${escapeHtml(h.substitute_name)})</small>` : ''}</td>
+                <td><span class="badge ${h.status === 'Completed' ? 'badge-success' : (h.status === 'Office Cancelled' ? 'badge-warning' : 'badge-secondary')}">${escapeHtml(h.status || 'Scheduled')}</span></td>
+                <td>${escapeHtml(h.session_outcome || '—')}</td>
+            </tr>
+        `).join('') : '<tr><td colspan="5" class="empty-state">No mediation sessions on record.</td></tr>';
+
+        let docsHtml = docs.length ? docs.map(d => `
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; margin-bottom: 6px;">
+                <div>
+                    <strong>${escapeHtml(d.template_name || 'Document')}</strong>
+                    <div style="font-size: 0.78rem; color: #64748b;">Generated: ${escapeHtml(formatDateTime(d.created_at))} · Status: ${escapeHtml(d.service_status || 'Generated')}</div>
+                </div>
+                ${d.file_path ? `<a href="../../../${escapeHtml(d.file_path)}" target="_blank" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 10px;">📄 View PDF</a>` : ''}
+            </div>
+        `).join('') : '<div class="empty-state">No generated documents yet.</div>';
+
+        container.innerHTML = `
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 16px;">
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px;">
+                    <h3 style="margin: 0 0 8px; font-size: 1rem; color: #1e293b;">Case Docket #${escapeHtml(c.case_number || '—')}</h3>
+                    <div style="font-size: 0.86rem; color: #334155; line-height: 1.6;">
+                        <strong>Complaint:</strong> ${escapeHtml(c.complaint_title || '—')}<br>
+                        <strong>Complainant:</strong> ${escapeHtml(c.complainant_name || '—')} (${escapeHtml(c.complainant_contact || 'N/A')})<br>
+                        <strong>Respondent:</strong> ${escapeHtml(c.respondent_name || '—')} (${escapeHtml(c.respondent_contact || 'N/A')})<br>
+                        <strong>Relief Sought:</strong> ${escapeHtml(c.relief_sought || '—')}
+                    </div>
+                </div>
+                <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 14px;">
+                    <h4 style="margin: 0 0 6px; font-size: 0.88rem; color: #1e40af;">Pangkat Handover Status</h4>
+                    <p style="font-size: 0.82rem; color: #1e3a8a; margin: 0 0 8px; line-height: 1.45;">
+                        Mediation before Punong Barangay concluded. Case is ready for 3-member Pangkat Tagapagkasundo constitution.
+                    </p>
+                    <a href="../cases/case-list.php?assign_case_id=${encodeURIComponent(c.case_id)}#caseAssignments" class="btn-create" style="display: block; text-align: center; text-decoration: none; font-size: 0.82rem; padding: 6px 10px;">
+                        Constitute Pangkat in Case Assignments &rarr;
+                    </a>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 16px;">
+                <h4 style="font-size: 0.9rem; font-weight: 700; color: #1e293b; margin: 0 0 8px;">1. Mediation Session History (${hearings.length})</h4>
+                <div class="table-container" style="max-height: 200px; overflow-y: auto;">
+                    <table>
+                        <thead><tr><th>Session</th><th>Date &amp; Time</th><th>Presider</th><th>Status</th><th>Outcome</th></tr></thead>
+                        <tbody>${hearingsHtml}</tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div>
+                <h4 style="font-size: 0.9rem; font-weight: 700; color: #1e293b; margin: 0 0 8px;">2. Transferred Documents &amp; Notices (${docs.length})</h4>
+                ${docsHtml}
+            </div>
+        `;
+    } catch (err) {
+        if (container) {
+            container.innerHTML = `<div class="alert error">${escapeHtml(err.message)}</div>`;
+        }
+    }
+}
+window.viewCaseTransferPackage = viewCaseTransferPackage;
 
 
 // AGAP_UNIFIED_SYNC_HEARINGS

@@ -227,6 +227,24 @@ class SummonDeliveryService
         $failureNotes = trim($data['failure_notes'] ?? '');
         $remarks = trim($data['remarks'] ?? '');
 
+        // Official summons delivery window (8:00 AM - 6:00 PM) and attempt interval validation
+        if ($deliveryStatus !== 'Unserved' && $servedAt !== null) {
+            require_once __DIR__ . '/OfficeLogisticsService.php';
+            $logistics = new OfficeLogisticsService($this->conn);
+            $prevStmt = $this->conn->prepare("
+                SELECT served_at FROM summon_deliveries 
+                WHERE hearing_id = ? AND party_type = ? AND served_at IS NOT NULL 
+                ORDER BY served_at DESC LIMIT 1
+            ");
+            $prevStmt->execute([$hearingId, $partyType]);
+            $prevAttemptDate = $prevStmt->fetchColumn() ?: null;
+
+            $attemptVal = $logistics->validateSummonsServiceAttempt($servedAt, 1, $prevAttemptDate);
+            if (!$attemptVal['valid']) {
+                return ['success' => false, 'message' => $attemptVal['message']];
+            }
+        }
+
         // Validations per delivery scenario
         if ($deliveryStatus === 'Unserved') {
             $allowedReasons = ['Moved Out', 'Wrong Address', 'No One Home', 'Other'];

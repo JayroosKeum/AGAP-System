@@ -53,6 +53,14 @@ class ComplaintController
 
     public function store(array $data, array $files = []): array
     {
+        // Lupon Office Hours check: M-F 8:00 AM-5:00 PM (Saturdays permitted for skeletal/tanod desk operations)
+        require_once __DIR__ . '/../services/OfficeLogisticsService.php';
+        $isSkeletal = !empty($data['is_skeletal_desk']) || (!empty($_SESSION['role_name']) && $_SESSION['role_name'] === 'Barangay Tanod');
+        $officeCheck = OfficeLogisticsService::validateOfficeHours(date('Y-m-d H:i:s'), $isSkeletal);
+        if (!$officeCheck['valid'] && empty($data['bypass_office_hours'])) {
+            return ['success' => false, 'message' => $officeCheck['message']];
+        }
+
         $evidenceFiles = [];
         if (!empty($files['evidence'])) {
             $evidenceFiles = $this->normalizeFilesArray($files['evidence']);

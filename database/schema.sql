@@ -92,6 +92,14 @@ CREATE TABLE audit_trails (
         FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
+CREATE TABLE system_settings (
+    setting_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    setting_key VARCHAR(64) NOT NULL UNIQUE,
+    setting_value TEXT NOT NULL,
+    description TEXT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
 -- =====================================================
 -- PEOPLE AND COMPLAINT INTAKE
 -- =====================================================
@@ -281,6 +289,10 @@ CREATE TABLE pangkat_groups (
     pangkat_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     case_id INT UNSIGNED NOT NULL,
     formation_date DATE NOT NULL,
+    selection_method ENUM('Party Agreement', 'PB Assignment', 'Raffle Draw') NOT NULL DEFAULT 'Party Agreement',
+    selection_notes TEXT NULL,
+    quorum_size TINYINT UNSIGNED NOT NULL DEFAULT 3,
+    quorum_exception_reason TEXT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_pangkat_groups_case_id (case_id),
@@ -307,11 +319,27 @@ CREATE TABLE hearings (
     case_id INT UNSIGNED NOT NULL,
     hearing_type ENUM('Initial Hearing', 'Mediation', 'Conciliation', 'Arbitration', 'Show Cause (Complainant)', 'Show Cause (Respondent)') NOT NULL,
     hearing_date DATETIME NOT NULL,
+    end_time DATETIME NULL,
+    duration_minutes INT UNSIGNED NULL DEFAULT 45,
+    actual_end_time DATETIME NULL,
+    duration_exceed_reason TEXT NULL,
     venue VARCHAR(255) NOT NULL,
     remarks TEXT NULL,
+    presiding_officer_id INT UNSIGNED NULL,
+    substitute_presider_id INT UNSIGNED NULL,
+    substitute_reason TEXT NULL,
+    parties_consent_to_substitute TINYINT(1) NOT NULL DEFAULT 0,
     rescheduled_from_id INT UNSIGNED NULL,
     reschedule_reason TEXT NULL,
-    status ENUM('Scheduled', 'Completed', 'Rescheduled', 'Cancelled') NOT NULL DEFAULT 'Scheduled',
+    rescheduled_by_party ENUM('Complainant', 'Respondent', 'Office', 'Both') NULL,
+    reschedule_justification_category VARCHAR(100) NULL,
+    reschedule_document_path VARCHAR(1024) NULL,
+    reschedule_approved_by INT UNSIGNED NULL,
+    reschedule_approved_at DATETIME NULL,
+    status ENUM('Scheduled', 'Completed', 'Rescheduled', 'Cancelled', 'Office Cancelled', 'Attendance Recorded') NOT NULL DEFAULT 'Scheduled',
+    cancelled_by INT UNSIGNED NULL,
+    cancellation_reason TEXT NULL,
+    cancellation_notice_sent TINYINT(1) NOT NULL DEFAULT 0,
     complainant_attendance ENUM('Pending', 'Present', 'Absent') NOT NULL DEFAULT 'Pending',
     respondent_attendance ENUM('Pending', 'Present', 'Absent') NOT NULL DEFAULT 'Pending',
     attendance_recorded_at DATETIME NULL,
@@ -319,9 +347,44 @@ CREATE TABLE hearings (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     KEY idx_hearings_case_id_date (case_id, hearing_date),
+    KEY idx_hearings_presiding (presiding_officer_id),
     CONSTRAINT fk_hearings_case
         FOREIGN KEY (case_id) REFERENCES cases (case_id) ON DELETE CASCADE,
-    CONSTRAINT fk_hearings_rescheduled_from FOREIGN KEY (rescheduled_from_id) REFERENCES hearings (hearing_id) ON DELETE RESTRICT
+    CONSTRAINT fk_hearings_rescheduled_from FOREIGN KEY (rescheduled_from_id) REFERENCES hearings (hearing_id) ON DELETE RESTRICT,
+    CONSTRAINT fk_hearings_presiding FOREIGN KEY (presiding_officer_id) REFERENCES users (user_id) ON DELETE SET NULL,
+    CONSTRAINT fk_hearings_substitute FOREIGN KEY (substitute_presider_id) REFERENCES users (user_id) ON DELETE SET NULL,
+    CONSTRAINT fk_hearings_cancelled_by FOREIGN KEY (cancelled_by) REFERENCES users (user_id) ON DELETE SET NULL,
+    CONSTRAINT fk_hearings_reschedule_approved_by FOREIGN KEY (reschedule_approved_by) REFERENCES users (user_id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE hearing_minutes (
+    minute_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    hearing_id INT UNSIGNED NOT NULL UNIQUE,
+    case_id INT UNSIGNED NOT NULL,
+    session_type ENUM('1st Mediation', '2nd Mediation', '3rd Mediation', 'Conciliation', 'Arbitration', 'Show Cause') NOT NULL,
+    opening_conducted TINYINT(1) NOT NULL DEFAULT 0,
+    identity_verified TINYINT(1) NOT NULL DEFAULT 0,
+    complaint_reviewed TINYINT(1) NOT NULL DEFAULT 0,
+    complainant_statement TEXT NULL,
+    respondent_statement TEXT NULL,
+    main_dispute_identified TEXT NULL,
+    settlement_discussion_notes TEXT NULL,
+    caucus_conducted TINYINT(1) NOT NULL DEFAULT 0,
+    caucus_notes TEXT NULL,
+    previous_proposal TEXT NULL,
+    new_proposal TEXT NULL,
+    counteroffer TEXT NULL,
+    additional_evidence_notes TEXT NULL,
+    session_outcome ENUM('Settled', 'Continue Mediation', 'Failed', 'Party Absent', 'Rescheduled', 'Elevate to Pangkat', 'Pending') NOT NULL DEFAULT 'Pending',
+    outcome_remarks TEXT NULL,
+    actual_end_time DATETIME NULL,
+    recorded_by INT UNSIGNED NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_hm_case (case_id),
+    CONSTRAINT fk_hm_hearing FOREIGN KEY (hearing_id) REFERENCES hearings (hearing_id) ON DELETE CASCADE,
+    CONSTRAINT fk_hm_case FOREIGN KEY (case_id) REFERENCES cases (case_id) ON DELETE CASCADE,
+    CONSTRAINT fk_hm_recorded_by FOREIGN KEY (recorded_by) REFERENCES users (user_id) ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 
 CREATE TABLE summon_deliveries (
@@ -429,12 +492,82 @@ CREATE TABLE settlements (
     case_id INT UNSIGNED NOT NULL,
     settlement_date DATE NOT NULL,
     agreement_details LONGTEXT NOT NULL,
-    compliance_status ENUM('Pending', 'Complied', 'Violated') NOT NULL DEFAULT 'Pending',
+    terms_read_to_parties TINYINT(1) NOT NULL DEFAULT 0,
+    complainant_signed TINYINT(1) NOT NULL DEFAULT 0,
+    respondent_signed TINYINT(1) NOT NULL DEFAULT 0,
+    pb_attested TINYINT(1) NOT NULL DEFAULT 0,
+    pb_attested_by INT UNSIGNED NULL,
+    pb_attested_at DATETIME NULL,
+    barangay_sealed TINYINT(1) NOT NULL DEFAULT 0,
+    original_in_case_folder TINYINT(1) NOT NULL DEFAULT 0,
+    certified_copies_issued TINYINT(1) NOT NULL DEFAULT 0,
+    total_amount DECIMAL(12,2) NULL DEFAULT 0.00,
+    responsible_party ENUM('Respondent', 'Complainant', 'Both') NOT NULL DEFAULT 'Respondent',
+    has_installment TINYINT(1) NOT NULL DEFAULT 0,
+    compliance_due_date DATE NULL,
+    compliance_date DATE NULL,
+    repudiation_deadline DATE NULL,
+    repudiation_status ENUM('Within Repudiation Period', 'Repudiation Expired', 'Repudiated', 'Enforceable') NOT NULL DEFAULT 'Within Repudiation Period',
+    repudiated_by INT UNSIGNED NULL,
+    repudiation_reason TEXT NULL,
+    repudiation_date DATETIME NULL,
+    supporting_document_path VARCHAR(1024) NULL,
+    compliance_status ENUM('Pending', 'Partially Paid', 'Fully Paid', 'Overdue', 'Breached', 'Complied', 'Violated') NOT NULL DEFAULT 'Pending',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_settlements_case_id (case_id),
     CONSTRAINT fk_settlements_case
-        FOREIGN KEY (case_id) REFERENCES cases (case_id) ON DELETE CASCADE
+        FOREIGN KEY (case_id) REFERENCES cases (case_id) ON DELETE CASCADE,
+    CONSTRAINT fk_settlements_pb_attested_by
+        FOREIGN KEY (pb_attested_by) REFERENCES users (user_id) ON DELETE SET NULL,
+    CONSTRAINT fk_settlements_repudiated_by
+        FOREIGN KEY (repudiated_by) REFERENCES residents (resident_id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE settlement_installments (
+    installment_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    settlement_id INT UNSIGNED NOT NULL,
+    installment_number INT UNSIGNED NOT NULL,
+    due_date DATE NOT NULL,
+    amount_due DECIMAL(12,2) NOT NULL,
+    amount_paid DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    payment_date DATETIME NULL,
+    payment_status ENUM('Pending', 'Partially Paid', 'Paid', 'Overdue') NOT NULL DEFAULT 'Pending',
+    receipt_number VARCHAR(100) NULL,
+    receipt_path VARCHAR(1024) NULL,
+    notes TEXT NULL,
+    recorded_by INT UNSIGNED NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_si_settlement (settlement_id),
+    KEY idx_si_due_date (due_date),
+    CONSTRAINT fk_si_settlement FOREIGN KEY (settlement_id) REFERENCES settlements (settlement_id) ON DELETE CASCADE,
+    CONSTRAINT fk_si_recorded_by FOREIGN KEY (recorded_by) REFERENCES users (user_id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE settlement_executions (
+    execution_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    settlement_id INT UNSIGNED NOT NULL,
+    case_id INT UNSIGNED NOT NULL,
+    obligation_violated TEXT NOT NULL,
+    due_date DATE NOT NULL,
+    amount_or_requirement TEXT NOT NULL,
+    evidence_notes TEXT NULL,
+    evidence_file_path VARCHAR(1024) NULL,
+    motion_date DATE NOT NULL,
+    motion_filed_by INT UNSIGNED NOT NULL,
+    notice_of_execution_date DATE NULL,
+    execution_status ENUM('Motion Filed', 'Notice Issued', 'Execution In Progress', 'Complied Under Execution', 'Execution Failed', 'Endorsed to Court') NOT NULL DEFAULT 'Motion Filed',
+    action_taken TEXT NULL,
+    officer_assigned INT UNSIGNED NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_se_settlement (settlement_id),
+    KEY idx_se_case (case_id),
+    CONSTRAINT fk_se_settlement FOREIGN KEY (settlement_id) REFERENCES settlements (settlement_id) ON DELETE CASCADE,
+    CONSTRAINT fk_se_case FOREIGN KEY (case_id) REFERENCES cases (case_id) ON DELETE CASCADE,
+    CONSTRAINT fk_se_resident FOREIGN KEY (motion_filed_by) REFERENCES residents (resident_id) ON DELETE RESTRICT,
+    CONSTRAINT fk_se_officer FOREIGN KEY (officer_assigned) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE arbitration_records (
@@ -518,6 +651,7 @@ CREATE TABLE hearing_party_services (
     service_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     hearing_id INT UNSIGNED NOT NULL,
     resident_id INT UNSIGNED NOT NULL,
+    attempt_number TINYINT UNSIGNED NOT NULL DEFAULT 1,
     party_type ENUM('Complainant','Respondent') NOT NULL,
     document_id INT UNSIGNED NOT NULL,
     service_date DATETIME NOT NULL,
@@ -669,6 +803,7 @@ INSERT INTO document_templates (template_name, description) VALUES
     ('KP Form 7', 'Complaint'),
     ('KP Form 8', 'Notice of Hearing'),
     ('KP Form 9', 'Summons'),
+    ('KP Form 10', 'Notice to Constitute the Pangkat Tagapagkasundo'),
     ('KP Form 14', 'Arbitration Agreement'),
     ('KP Form 15', 'Arbitration Award'),
     ('KP Form 16', 'Amicable Settlement'),
@@ -678,3 +813,17 @@ INSERT INTO document_templates (template_name, description) VALUES
     ('KP Form 21', 'Certificate to Bar Action'),
     ('KP Form 22', 'Certificate to Bar Action Counterclaim')
 ON DUPLICATE KEY UPDATE description = VALUES(description);
+
+INSERT INTO system_settings (setting_key, setting_value, description) VALUES
+    ('daily_hearing_capacity', '14', 'Maximum total hearings allowed per day across the barangay (10-18)'),
+    ('officer_daily_hearing_capacity', '6', 'Maximum hearings per presiding officer per day (5-8)'),
+    ('mediation_default_duration_min', '45', 'Default duration for mediation session in minutes (30-60)'),
+    ('mediation_max_duration_min', '60', 'Maximum duration before logged justification is required for mediation'),
+    ('conciliation_default_duration_min', '60', 'Default duration for conciliation session in minutes (45-90)'),
+    ('conciliation_max_duration_min', '90', 'Maximum duration before logged justification is required for conciliation'),
+    ('mediation_session_interval_days', '3', 'Recommended minimum calendar days between mediation sessions (3-5)'),
+    ('party_reschedule_limit', '2', 'Maximum allowed reschedules per party before authorized review is required (1-2)'),
+    ('summons_max_attempts', '3', 'Maximum service attempts before escalation (2-3)'),
+    ('summons_attempt_interval_days', '1', 'Minimum days between summons service attempts (1-3)')
+ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value);
+

@@ -184,22 +184,50 @@ class Assignment
             ['options' => ['min_range' => 1]]
         );
 
-        if (!$headId || !$secretaryId || !$memberId) {
-            return [
-                'success' => false,
-                'message' => 'Select the Head, Secretary, and Member from active Lupon Members.'
-            ];
+        $quorumSize = (!empty($members['quorum_size']) && (int) $members['quorum_size'] === 2) ? 2 : 3;
+        $quorumReason = trim((string) ($members['quorum_exception_reason'] ?? ''));
+        $selectionMethod = in_array($members['selection_method'] ?? '', ['Party Agreement', 'PB Assignment', 'Raffle Draw'], true) 
+            ? $members['selection_method'] 
+            : 'Party Agreement';
+        $selectionNotes = trim((string) ($members['selection_notes'] ?? ''));
+
+        if ($quorumSize === 2) {
+            if (!$headId || !$secretaryId) {
+                return [
+                    'success' => false,
+                    'message' => 'For a 2-member quorum, both Head/Chairman and Secretary must be selected.'
+                ];
+            }
+            if ($quorumReason === '') {
+                return [
+                    'success' => false,
+                    'message' => 'A valid justification or party agreement is required when proceeding with a 2-member quorum.'
+                ];
+            }
+            $selectedIds = array_filter([(int) $headId, (int) $secretaryId]);
+            if ($memberId) {
+                $selectedIds[] = (int) $memberId;
+            }
+            if (count(array_unique($selectedIds)) !== count($selectedIds)) {
+                return ['success' => false, 'message' => 'Assigned Lupon members must be different users.'];
+            }
+        } else {
+            if (!$headId || !$secretaryId || !$memberId) {
+                return [
+                    'success' => false,
+                    'message' => 'Select the Head, Secretary, and Member from active Lupon Members.'
+                ];
+            }
+            $selectedIds = [(int) $headId, (int) $secretaryId, (int) $memberId];
+            if (count(array_unique($selectedIds)) !== 3) {
+                return [
+                    'success' => false,
+                    'message' => 'Head, Secretary, and Member must be different users.'
+                ];
+            }
         }
 
-        $selectedIds = [(int) $headId, (int) $secretaryId, (int) $memberId];
-        if (count(array_unique($selectedIds)) !== 3) {
-            return [
-                'success' => false,
-                'message' => 'Head, Secretary, and Member must be different users.'
-            ];
-        }
-
-        // The Administrator is for Mediation only. For Conciliation, all 3 must be active Lupon Members.
+        // The Administrator is for Mediation only. For Conciliation, all assigned must be active Lupon Members.
         if (!$this->isEligibleMember((int) $headId)) {
             return [
                 'success' => false,
@@ -207,7 +235,7 @@ class Assignment
             ];
         }
 
-        if (!$this->isEligibleMember((int) $secretaryId) || !$this->isEligibleMember((int) $memberId)) {
+        if (!$this->isEligibleMember((int) $secretaryId) || ($memberId && !$this->isEligibleMember((int) $memberId))) {
             return [
                 'success' => false,
                 'message' => 'Secretary and Member must be active Lupon Members.'
@@ -260,20 +288,29 @@ class Assignment
 
             $team = [
                 'Head' => (int) $headId,
-                'Secretary' => (int) $secretaryId,
-                'Member' => (int) $memberId
+                'Secretary' => (int) $secretaryId
             ];
+            if ($memberId) {
+                $team['Member'] = (int) $memberId;
+            }
 
             foreach ($team as $assignmentRole => $teamMemberId) {
                 $insert->execute([$caseId, $teamMemberId, $assignmentRole]);
             }
 
-            // Keep the legacy Pangkat record in sync for existing KP document templates.
+            // Sync Pangkat record with selection method and quorum details
             $group = $this->conn->prepare(
-                'INSERT INTO pangkat_groups (case_id, formation_date) VALUES (?, CURDATE())
-                 ON DUPLICATE KEY UPDATE formation_date = VALUES(formation_date), pangkat_id = LAST_INSERT_ID(pangkat_id)'
+                'INSERT INTO pangkat_groups (case_id, formation_date, selection_method, selection_notes, quorum_size, quorum_exception_reason) 
+                 VALUES (?, CURDATE(), ?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE 
+                    formation_date = VALUES(formation_date),
+                    selection_method = VALUES(selection_method),
+                    selection_notes = VALUES(selection_notes),
+                    quorum_size = VALUES(quorum_size),
+                    quorum_exception_reason = VALUES(quorum_exception_reason),
+                    pangkat_id = LAST_INSERT_ID(pangkat_id)'
             );
-            $group->execute([$caseId]);
+            $group->execute([$caseId, $selectionMethod, $selectionNotes ?: null, $quorumSize, $quorumReason ?: null]);
             $pangkatId = (int) $this->conn->lastInsertId();
 
             $this->conn->prepare('DELETE FROM pangkat_members WHERE pangkat_id = ?')->execute([$pangkatId]);
@@ -283,8 +320,8 @@ class Assignment
                 'Secretary' => 'Secretary',
                 'Member' => 'Member'
             ];
-            foreach ($positions as $assignmentRole => $position) {
-                $memberInsert->execute([$pangkatId, $team[$assignmentRole], $position]);
+            foreach ($team as $assignmentRole => $teamMemberId) {
+                $memberInsert->execute([$pangkatId, $teamMemberId, $positions[$assignmentRole]]);
             }
 
             if ($case['case_status'] === 'Mediation') {
@@ -293,7 +330,7 @@ class Assignment
                 $complaintStatus = $this->conn->prepare("UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = 'Conciliation' WHERE c.case_id = ?");
                 $complaintStatus->execute([$caseId]);
                 $history = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, 'Conciliation', ?, ?)");
-                $history->execute([$caseId, 'Case moved to conciliation with assigned 3-member Lupon team.', $_SESSION['user_id'] ?? null]);
+                $history->execute([$caseId, "Case moved to conciliation with assigned {$quorumSize}-member Lupon team (Method: {$selectionMethod}).", $_SESSION['user_id'] ?? null]);
             }
 
             $this->conn->commit();
@@ -301,8 +338,8 @@ class Assignment
             return [
                 'success' => true,
                 'message' => $case['case_status'] === 'Mediation'
-                    ? '3-member Lupon case team saved. Case transitioned to Conciliation.'
-                    : '3-member Lupon case team saved successfully.'
+                    ? "{$quorumSize}-member Lupon case team saved. Case transitioned to Conciliation."
+                    : "{$quorumSize}-member Lupon case team saved successfully."
             ];
         } catch (Throwable $exception) {
             if ($this->conn->inTransaction()) {
@@ -336,10 +373,25 @@ class Assignment
                 u.middle_name,
                 u.last_name,
                 u.username,
-                r.role_name
+                r.role_name,
+                latest_h.hearing_id,
+                latest_h.substitute_presider_id,
+                latest_h.substitute_reason,
+                latest_h.parties_consent_to_substitute,
+                sub_u.first_name AS substitute_first_name,
+                sub_u.middle_name AS substitute_middle_name,
+                sub_u.last_name AS substitute_last_name
              FROM case_assignments ca
              INNER JOIN users u ON u.user_id = ca.member_id
              INNER JOIN roles r ON r.role_id = u.role_id
+             LEFT JOIN (
+                 SELECT h1.case_id, h1.hearing_id, h1.substitute_presider_id, h1.substitute_reason, h1.parties_consent_to_substitute
+                 FROM hearings h1
+                 WHERE h1.case_id = ?
+                 ORDER BY (h1.substitute_presider_id IS NOT NULL) DESC, (h1.status = 'Scheduled') DESC, h1.hearing_date DESC, h1.hearing_id DESC
+                 LIMIT 1
+             ) latest_h ON latest_h.case_id = ca.case_id
+             LEFT JOIN users sub_u ON sub_u.user_id = latest_h.substitute_presider_id
              WHERE ca.case_id = ?
              ORDER BY
                 FIELD(ca.assignment_role, 'Head', 'Secretary', 'Member', 'Mediator'),
@@ -347,7 +399,7 @@ class Assignment
                 ca.assignment_id"
         );
 
-        $stmt->execute([$caseId]);
+        $stmt->execute([$caseId, $caseId]);
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
@@ -604,6 +656,13 @@ class Assignment
         $stmt->execute($caseIds);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+        $pangkatStmt = $this->conn->prepare("SELECT case_id, quorum_size FROM pangkat_groups WHERE case_id IN ($placeholders)");
+        $pangkatStmt->execute($caseIds);
+        $pangkatQuorums = [];
+        foreach ($pangkatStmt->fetchAll(PDO::FETCH_ASSOC) as $pRow) {
+            $pangkatQuorums[(int) $pRow['case_id']] = (int) $pRow['quorum_size'];
+        }
+
         $grouped = [];
         foreach ($caseIds as $cid) {
             $grouped[$cid] = [];
@@ -648,13 +707,16 @@ class Assignment
             if ($hasAdmin) {
                 $results[$cid] = [
                     'valid' => false,
-                    'message' => 'The Administrator is for Mediation only. When a complaint goes to Conciliation, you must choose a 3-member Lupon team (Head, Secretary, Member) of active Lupon Members on Case Team Assignment before booking a conciliation hearing.',
+                    'message' => 'The Administrator is for Mediation only. When a complaint goes to Conciliation, you must choose a Lupon team (Head, Secretary, Member) of active Lupon Members on Case Team Assignment before booking a conciliation hearing.',
                     'members' => $assignments
                 ];
                 continue;
             }
 
-            $requiredRoles = ['Head', 'Secretary', 'Member'];
+            $isQuorumTwo = (isset($pangkatQuorums[$cid]) && $pangkatQuorums[$cid] === 2);
+            $requiredRoles = $isQuorumTwo ? ['Head', 'Secretary'] : ['Head', 'Secretary', 'Member'];
+            $expectedCount = $isQuorumTwo ? 2 : 3;
+
             $missingRoles = [];
             foreach ($requiredRoles as $reqRole) {
                 if (!isset($assignedRoles[$reqRole])) {
@@ -665,16 +727,16 @@ class Assignment
             if (!empty($missingRoles)) {
                 $results[$cid] = [
                     'valid' => false,
-                    'message' => 'Incomplete case team: ' . implode(', ', $missingRoles) . ' missing. A complete 3-member Lupon team must be chosen on Case Team Assignment before booking a conciliation hearing.',
+                    'message' => 'Incomplete case team: ' . implode(', ', $missingRoles) . " missing. A complete {$expectedCount}-member Lupon team must be chosen on Case Team Assignment before booking a conciliation hearing.",
                     'members' => $assignments
                 ];
                 continue;
             }
 
-            if (count(array_unique($memberIds)) !== 3) {
+            if (count(array_unique($memberIds)) < $expectedCount) {
                 $results[$cid] = [
                     'valid' => false,
-                    'message' => 'Head, Secretary, and Member must be assigned to different active Lupon Members.',
+                    'message' => 'Assigned Lupon team members must be different active Lupon Members.',
                     'members' => $assignments
                 ];
                 continue;

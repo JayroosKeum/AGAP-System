@@ -327,47 +327,15 @@ class ShowCauseService
                 $this->logCaseHistory($caseId, 'DISMISSED_BARRED', $hist, $actorUserId);
                 $this->audit->log($actorUserId, "Complainant barred from action for Case #{$hearing['case_number']}. Status set to DISMISSED_BARRED.", 'Hearings', $caseId);
             } else {
-                // Respondent Unjustified: Respondent Default, Unlock CFA for complainant, auto-generate KP Form 22 & KP Form 20
+                // Section M Fix: Route to authorized human consequence determination instead of auto-generating CFA or defaulting
                 $actionTaken = 'Respondent Default';
-                $newStatus = 'RESPONDENT_DEFAULT';
+                $newStatus = $hearing['case_status'];
 
-                // Update case and complaint status
-                $uCase = $this->conn->prepare("UPDATE cases SET case_status = 'RESPONDENT_DEFAULT' WHERE case_id = ?");
-                $uCase->execute([$caseId]);
-
-                $uComp = $this->conn->prepare("UPDATE complaints SET status = 'RESPONDENT_DEFAULT' WHERE complaint_id = ?");
-                $uComp->execute([$complaintId]);
-
-                // Auto-generate KP Form 22 (Certificate to Bar Action Counterclaim)
-                $doc22 = $this->generateKpForm(
-                    $caseId,
-                    $hearingId,
-                    'KP Form 22',
-                    'Respondent',
-                    $parties,
-                    $hearing,
-                    null,
-                    null,
-                    $actorUserId
-                );
-
-                // Auto-generate KP Form 20 (Certificate to File Action) for Complainant
-                $doc20 = $this->generateKpForm(
-                    $caseId,
-                    $hearingId,
-                    'KP Form 20',
-                    'Complainant',
-                    $parties,
-                    $hearing,
-                    null,
-                    null,
-                    $actorUserId
-                );
-
-                $clientMessage = "Respondent declared in DEFAULT due to unjustified absence. Certificate to File Action (CFA) UNLOCKED for Complainant. Respondent barred from counterclaim (KP Form 22). Flagged for indirect contempt.";
-                $hist = "Respondent absence unjustified ({$justificationCategory}). Case status set to RESPONDENT_DEFAULT. Complainant authorized to receive CFA (KP Form 20). Respondent barred from counterclaim (KP Form 22). Flagged for indirect contempt.";
-                $this->logCaseHistory($caseId, 'RESPONDENT_DEFAULT', $hist, $actorUserId);
-                $this->audit->log($actorUserId, "Respondent declared in default for Case #{$hearing['case_number']}. CFA unlocked.", 'Hearings', $caseId);
+                // Flag the case for Authorized Consequence Review without auto-generating KP Form 20 (CFA)
+                $clientMessage = "Respondent absence evaluated as UNJUSTIFIED. Flagged for consequence determination by authorized personnel (Punong Barangay / Lupon). Automatic CFA generation withheld.";
+                $hist = "Respondent absence unjustified ({$justificationCategory}). Flagged for authorized consequence determination. Auto-generation of CFA suppressed per KP guidelines.";
+                $this->logCaseHistory($caseId, $newStatus, $hist, $actorUserId);
+                $this->audit->log($actorUserId, "Respondent unjustified absence recorded for Case #{$hearing['case_number']}. Flagged for consequence determination.", 'Hearings', $caseId);
             }
         }
 

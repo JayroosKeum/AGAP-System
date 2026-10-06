@@ -1,12 +1,20 @@
 let complaintIds = new Set();
 let docketedComplaintIds = new Set();
 let complaintsForDocket = [];
+let allLoadedCases = [];
+let filteredCases = [];
+let activeSelectedCaseId = null;
+const casesPageSize = 10;
+let casesCurrentPage = 1;
+let caseSearchDebounceTimer = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     const table = document.getElementById('caseTable');
     const complaintInput = document.getElementById('complaintId');
     const complaintSelect = document.getElementById('availableComplaints');
     const docketForm = document.getElementById('docketCaseForm');
+
+    initCaseSearchToolbar();
 
     if (table) {
         loadCaseList(table);
@@ -71,16 +79,35 @@ async function saveCaseEdit(event) {
     event.preventDefault();
     const form = event.currentTarget;
     const status = document.getElementById('editCaseStatus')?.value;
-    const fields = ['editHeadId', 'editSecretaryId', 'editMemberId'];
+    const quorumSize = document.getElementById('editQuorumSize')?.value || '3';
+    const quorumReason = document.getElementById('editQuorumExceptionReason')?.value?.trim() || '';
     if (status === 'Conciliation') {
-        const selected = fields.map((id) => document.getElementById(id)?.value || '');
-        if (selected.some((value) => !value)) {
-            window.agapNotify?.('Select a Head, Secretary, and Member for Conciliation.', 'error', 'Check the Lupon team');
-            return;
-        }
-        if (new Set(selected).size !== 3) {
-            window.agapNotify?.('Head, Secretary, and Member must be assigned to different active Lupon Members.', 'error', 'Check the Lupon team');
-            return;
+        const headVal = document.getElementById('editHeadId')?.value || '';
+        const secVal = document.getElementById('editSecretaryId')?.value || '';
+        const memVal = document.getElementById('editMemberId')?.value || '';
+        if (quorumSize === '2') {
+            if (!headVal || !secVal) {
+                window.agapNotify?.('Select a Head and Secretary for a 2-member quorum.', 'error', 'Check the Lupon team');
+                return;
+            }
+            if (!quorumReason) {
+                window.agapNotify?.('Quorum exception justification is required for a 2-member team.', 'error', 'Quorum justification needed');
+                return;
+            }
+            if (headVal === secVal) {
+                window.agapNotify?.('Head and Secretary must be different active Lupon Members.', 'error', 'Check the Lupon team');
+                return;
+            }
+        } else {
+            const selected = [headVal, secVal, memVal];
+            if (selected.some((value) => !value)) {
+                window.agapNotify?.('Select a Head, Secretary, and Member for Conciliation.', 'error', 'Check the Lupon team');
+                return;
+            }
+            if (new Set(selected).size !== 3) {
+                window.agapNotify?.('Head, Secretary, and Member must be assigned to different active Lupon Members.', 'error', 'Check the Lupon team');
+                return;
+            }
         }
     }
 
@@ -139,41 +166,31 @@ function loadComplaintsForDocketing() {
         });
 }
 
-function loadCaseList(table, page = 1) {
-    fetch('../../../backend/api/cases/list.php?page=' + encodeURIComponent(page))
+function loadCaseList(table) {
+    fetch('../../../backend/api/cases/list.php')
         .then((response) => {
             if (!response.ok) {
                 throw new Error('Unable to load cases.');
             }
-
             return response.json();
         })
         .then((result) => {
-            const rows = Array.isArray(result.cases)
-                ? result.cases
-                : [];
+            allLoadedCases = Array.isArray(result)
+                ? result
+                : (Array.isArray(result.cases) ? result.cases : []);
 
             docketedComplaintIds = new Set(
-                (result.docketed_complaint_ids || []).map(String)
+                allLoadedCases.map((item) => String(item.complaint_id || ''))
             );
             renderComplaintOptions();
-            renderCasePagination(result.pagination, table);
 
-            if (!rows.length) {
-                table.innerHTML = `
-                    <tr>
-                        <td colspan="8" class="empty-state">
-                            No cases have been docketed yet.
-                        </td>
-                    </tr>
-                `;
-
-                return;
+            const urlParams = new URLSearchParams(window.location.search);
+            const initialCaseId = urlParams.get('assign_case_id') || urlParams.get('case_id') || window.activeAssignedCaseId;
+            if (initialCaseId) {
+                activeSelectedCaseId = String(initialCaseId);
             }
 
-            table.innerHTML = rows
-                .map((item) => renderCaseRow(item))
-                .join('');
+            applyCaseFiltersAndRender();
         })
         .catch((error) => {
             table.innerHTML = `
@@ -184,52 +201,234 @@ function loadCaseList(table, page = 1) {
                     </td>
                 </tr>
             `;
-            document.getElementById('casePagination').hidden = true;
+            const summary = document.getElementById('caseResultSummary');
+            if (summary) summary.textContent = 'Error loading cases';
+            const paginationEl = document.getElementById('casePagination');
+            if (paginationEl) paginationEl.hidden = true;
         });
 }
 
-function renderCasePagination(pagination, table) {
+function initCaseSearchToolbar() {
+    const form = document.getElementById('caseRecordsSearchForm');
+    const queryInput = document.getElementById('caseSearchQuery');
+    const clearInputBtn = document.getElementById('clearCaseSearchInput');
+    const typeSelect = document.getElementById('caseSearchType');
+    const statusSelect = document.getElementById('caseSearchStatus');
+    const sortSelect = document.getElementById('caseSearchSort');
+    const clearFiltersBtn = document.getElementById('clearCaseFilters');
+
+    if (!form && !queryInput) return;
+
+    if (queryInput) {
+        const updateClearVisibility = () => {
+            if (clearInputBtn) {
+                clearInputBtn.style.display = queryInput.value.trim() ? 'block' : 'none';
+            }
+        };
+
+        queryInput.addEventListener('input', () => {
+            updateClearVisibility();
+            clearTimeout(caseSearchDebounceTimer);
+            caseSearchDebounceTimer = setTimeout(() => {
+                casesCurrentPage = 1;
+                applyCaseFiltersAndRender();
+            }, 250);
+        });
+
+        if (clearInputBtn) {
+            clearInputBtn.addEventListener('click', () => {
+                queryInput.value = '';
+                updateClearVisibility();
+                casesCurrentPage = 1;
+                applyCaseFiltersAndRender();
+            });
+        }
+    }
+
+    [typeSelect, statusSelect, sortSelect].forEach((sel) => {
+        sel?.addEventListener('change', () => {
+            casesCurrentPage = 1;
+            applyCaseFiltersAndRender();
+        });
+    });
+
+    if (clearFiltersBtn) {
+        clearFiltersBtn.addEventListener('click', () => {
+            if (queryInput) queryInput.value = '';
+            if (clearInputBtn) clearInputBtn.style.display = 'none';
+            if (typeSelect) typeSelect.value = '';
+            if (statusSelect) statusSelect.value = '';
+            if (sortSelect) sortSelect.value = 'case_number_desc';
+            casesCurrentPage = 1;
+            applyCaseFiltersAndRender();
+        });
+    }
+}
+
+function applyCaseFiltersAndRender() {
+    const table = document.getElementById('caseTable');
+    if (!table) return;
+
+    const query = (document.getElementById('caseSearchQuery')?.value || '').trim().toLowerCase();
+    const type = document.getElementById('caseSearchType')?.value || '';
+    const status = document.getElementById('caseSearchStatus')?.value || '';
+    const sortBy = document.getElementById('caseSearchSort')?.value || 'case_number_desc';
+    const clearFiltersBtn = document.getElementById('clearCaseFilters');
+    const clearInputBtn = document.getElementById('clearCaseSearchInput');
+
+    if (clearInputBtn) {
+        clearInputBtn.style.display = query ? 'block' : 'none';
+    }
+
+    const hasActiveFilters = Boolean(query || type || status);
+    if (clearFiltersBtn) {
+        clearFiltersBtn.style.display = hasActiveFilters ? 'inline-block' : 'none';
+    }
+
+    filteredCases = allLoadedCases.filter((item) => {
+        if (type && item.case_type !== type) return false;
+        if (status && item.case_status !== status) return false;
+        if (query) {
+            const haystacks = [
+                item.case_number,
+                item.complaint_number,
+                item.complaint_title,
+                item.complainant_names,
+                item.respondent_names
+            ].map((v) => String(v || '').toLowerCase());
+
+            const matches = haystacks.some((text) => text.includes(query));
+            if (!matches) return false;
+        }
+        return true;
+    });
+
+    filteredCases.sort((a, b) => {
+        if (sortBy === 'case_number_asc') {
+            return String(a.case_number || '').localeCompare(String(b.case_number || ''));
+        }
+        if (sortBy === 'case_number_desc') {
+            return String(b.case_number || '').localeCompare(String(a.case_number || ''));
+        }
+        if (sortBy === 'docket_date_asc') {
+            return new Date(a.docket_date || 0) - new Date(b.docket_date || 0);
+        }
+        if (sortBy === 'docket_date_desc') {
+            return new Date(b.docket_date || 0) - new Date(a.docket_date || 0);
+        }
+        return 0;
+    });
+
+    if (hasActiveFilters && filteredCases.length === 1) {
+        const singleCase = filteredCases[0];
+        activeSelectedCaseId = String(singleCase.case_id);
+        if (typeof window.openCaseAssignments === 'function') {
+            window.openCaseAssignments(singleCase.case_id, false);
+        }
+    }
+
+    renderCurrentCasesPage(table);
+}
+
+function renderCurrentCasesPage(table) {
+    const total = filteredCases.length;
+    const summary = document.getElementById('caseResultSummary');
+    const paginationEl = document.getElementById('casePagination');
+
+    if (!total) {
+        table.innerHTML = `
+            <tr>
+                <td colspan="8" class="empty-state">
+                    No cases found matching your search criteria.
+                </td>
+            </tr>
+        `;
+        if (summary) summary.textContent = 'No matching cases found';
+        if (paginationEl) paginationEl.hidden = true;
+        return;
+    }
+
+    const totalPages = Math.ceil(total / casesPageSize);
+    if (casesCurrentPage > totalPages) casesCurrentPage = totalPages;
+    if (casesCurrentPage < 1) casesCurrentPage = 1;
+
+    const startIdx = (casesCurrentPage - 1) * casesPageSize;
+    const endIdx = Math.min(startIdx + casesPageSize, total);
+    const pageRows = filteredCases.slice(startIdx, endIdx);
+
+    table.innerHTML = pageRows
+        .map((item) => {
+            const isSelected = String(item.case_id) === String(activeSelectedCaseId);
+            return renderCaseRow(item, isSelected);
+        })
+        .join('');
+
+    const query = document.getElementById('caseSearchQuery')?.value.trim();
+    const type = document.getElementById('caseSearchType')?.value;
+    const status = document.getElementById('caseSearchStatus')?.value;
+    const isFiltered = Boolean(query || type || status);
+
+    if (summary) {
+        if (isFiltered) {
+            summary.textContent = `Showing ${total === 1 ? '1 case' : `${startIdx + 1}–${endIdx} of ${total} cases`} (filtered from ${allLoadedCases.length} total cases)`;
+        } else {
+            summary.textContent = `Showing ${startIdx + 1}–${endIdx} of ${total} cases`;
+        }
+    }
+
+    renderClientCasePagination(total, totalPages);
+}
+
+function renderClientCasePagination(totalRecords, totalPages) {
     const container = document.getElementById('casePagination');
     const summary = document.getElementById('casePaginationSummary');
     const controls = document.getElementById('casePaginationControls');
-    if (!container || !summary || !controls || !pagination) return;
+    if (!container || !summary || !controls) return;
 
-    const total = Number(pagination.total_records) || 0;
-    const pageSize = Number(pagination.per_page) || 25;
-    const page = Number(pagination.current_page) || 1;
-    const totalPages = Number(pagination.total_pages) || 0;
-    const first = total ? ((page - 1) * pageSize) + 1 : 0;
-    const last = Math.min(page * pageSize, total);
-
-    summary.textContent = `Showing ${first}–${last} of ${total} cases`;
-    controls.replaceChildren();
-    container.hidden = false;
-
-    if (totalPages <= 1) return;
-
-    const addPageButton = (label, pageNumber, disabled = false, current = false) => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = current ? 'btn-create case-page-current' : 'btn-secondary';
-        button.textContent = label;
-        button.disabled = disabled;
-        if (current) button.setAttribute('aria-current', 'page');
-        button.addEventListener('click', () => loadCaseList(table, pageNumber));
-        controls.appendChild(button);
-    };
-
-    addPageButton('Previous', page - 1, page <= 1);
-
-    const firstVisiblePage = Math.max(1, Math.min(page - 2, totalPages - 4));
-    const lastVisiblePage = Math.min(totalPages, firstVisiblePage + 4);
-    for (let number = firstVisiblePage; number <= lastVisiblePage; number++) {
-        addPageButton(String(number), number, number === page, number === page);
+    if (totalPages <= 1) {
+        container.hidden = true;
+        return;
     }
 
-    addPageButton('Next', page + 1, page >= totalPages);
+    container.hidden = false;
+    summary.textContent = `Page ${casesCurrentPage} of ${totalPages} (${totalRecords} cases)`;
+    controls.replaceChildren();
+
+    const addBtn = (label, pageNum, disabled = false, isCurrent = false) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = isCurrent ? 'btn-create case-page-current' : 'btn-secondary';
+        btn.textContent = label;
+        btn.disabled = disabled;
+        btn.addEventListener('click', () => {
+            casesCurrentPage = pageNum;
+            const table = document.getElementById('caseTable');
+            if (table) renderCurrentCasesPage(table);
+        });
+        controls.appendChild(btn);
+    };
+
+    addBtn('Previous', casesCurrentPage - 1, casesCurrentPage <= 1);
+    const startPage = Math.max(1, Math.min(casesCurrentPage - 2, totalPages - 4));
+    const endPage = Math.min(totalPages, startPage + 4);
+    for (let p = startPage; p <= endPage; p++) {
+        addBtn(String(p), p, p === casesCurrentPage, p === casesCurrentPage);
+    }
+    addBtn('Next', casesCurrentPage + 1, casesCurrentPage >= totalPages);
 }
 
-function renderCaseRow(item) {
+window.highlightActiveCaseRow = (caseId) => {
+    activeSelectedCaseId = String(caseId);
+    document.querySelectorAll('#caseTable tr').forEach((tr) => {
+        if (tr.id === `case-row-${caseId}`) {
+            tr.classList.add('case-table-row-selected');
+        } else {
+            tr.classList.remove('case-table-row-selected');
+        }
+    });
+};
+
+function renderCaseRow(item, isSelected = false) {
     const caseId = Number(item.case_id);
 
     if (!Number.isInteger(caseId) || caseId < 1) {
@@ -242,12 +441,16 @@ function renderCaseRow(item) {
         .toLowerCase()
         .replaceAll(' ', '-');
 
+    const selectedClass = isSelected ? ' case-table-row-selected' : '';
+
     const activeCaseActions = archived
         ? ''
         : `
             <button
                 type="button"
+                class="btn-table-assign"
                 onclick="openCaseAssignments(${caseId})"
+                title="Select case and assign/manage team below"
             >
                 Assign
             </button>
@@ -262,11 +465,13 @@ function renderCaseRow(item) {
         `;
 
     return `
-        <tr>
+        <tr id="case-row-${caseId}" class="${selectedClass}">
             <td>
-                ${escapeHtml(
-                    item.case_number || 'Not assigned'
-                )}
+                <strong>
+                    ${escapeHtml(
+                        item.case_number || 'Not assigned'
+                    )}
+                </strong>
             </td>
 
             <td>

@@ -171,8 +171,92 @@ class HearingController
             return ['success' => true, 'message' => 'Hearing rescheduled successfully.'];
         } catch (Throwable $exception) {
             error_log($exception->getMessage());
-            return ['success' => false, 'message' => 'Unable to update the hearing.'];
+            return ['success' => false, 'message' => 'Unable to update the hearing: ' . $exception->getMessage()];
         }
+    }
+
+    public function officeCancel(array $data, int $userId): array
+    {
+        $hearingId = filter_var($data['hearing_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $reason = trim((string) ($data['cancellation_reason'] ?? ''));
+        $rescheduleDate = !empty($data['reschedule_date']) ? trim($data['reschedule_date']) : null;
+
+        if (!$hearingId) {
+            return ['success' => false, 'message' => 'Invalid hearing ID.'];
+        }
+        if ($reason === '') {
+            return ['success' => false, 'message' => 'An office cancellation reason is required.'];
+        }
+
+        $result = $this->hearing->officeCancel((int) $hearingId, $userId, $reason, $rescheduleDate);
+        if ($result['success']) {
+            $this->audit->log($userId, "Office cancelled hearing #{$hearingId}. Reason: {$reason}", 'Hearings', (int) $hearingId);
+        }
+        return $result;
+    }
+
+    public function assignSubstitute(array $data, int $userId): array
+    {
+        $hearingId = filter_var($data['hearing_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $caseId = filter_var($data['case_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $substituteId = filter_var($data['substitute_presider_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $reason = trim((string) ($data['substitute_reason'] ?? ''));
+        $partiesConsent = !empty($data['parties_consent_to_substitute']);
+
+        if (!$hearingId && $caseId) {
+            $hearingId = $this->hearing->getLatestHearingIdForCase((int) $caseId);
+        }
+
+        if (!$hearingId) {
+            return ['success' => false, 'message' => 'A valid hearing or case is required.'];
+        }
+        if (!$substituteId) {
+            return ['success' => false, 'message' => 'A valid substitute presider is required.'];
+        }
+        if ($reason === '') {
+            return ['success' => false, 'message' => 'A valid reason for substitution is required.'];
+        }
+        if (!$partiesConsent) {
+            return ['success' => false, 'message' => 'Both parties must consent to proceed with a substitute presider.'];
+        }
+
+        $result = $this->hearing->assignSubstitutePresider((int) $hearingId, (int) $substituteId, $reason, $partiesConsent);
+        if ($result['success']) {
+            $this->audit->log($userId, "Designated substitute presider #{$substituteId} for hearing #{$hearingId}", 'Hearings', (int) $hearingId);
+        }
+        return $result;
+    }
+
+    public function failMediation(array $data, int $userId): array
+    {
+        $hearingId = filter_var($data['hearing_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if (!$hearingId) {
+            return ['success' => false, 'message' => 'Invalid hearing ID.'];
+        }
+
+        $pangkatData = [
+            'selection_method' => $data['selection_method'] ?? 'Party Agreement',
+            'selection_notes' => !empty($data['selection_notes']) ? trim($data['selection_notes']) : null,
+            'quorum_size' => !empty($data['quorum_size']) ? (int) $data['quorum_size'] : 3,
+            'chairman_id' => !empty($data['chairman_id']) ? (int) $data['chairman_id'] : null,
+            'secretary_id' => !empty($data['secretary_id']) ? (int) $data['secretary_id'] : null,
+            'member_id' => !empty($data['member_id']) ? (int) $data['member_id'] : null,
+        ];
+
+        $result = $this->hearing->failedMediationToPangkat((int) $hearingId, $userId, $pangkatData);
+        if ($result['success']) {
+            $this->audit->log($userId, "Declared mediation failed for hearing #{$hearingId}; elevated to Pangkat Tagapagkasundo", 'Hearings', (int) $hearingId);
+        }
+        return $result;
+    }
+
+    public function getTransferPackage(int $caseId): array
+    {
+        if ($caseId < 1) {
+            return ['success' => false, 'message' => 'Invalid case ID.'];
+        }
+        $data = $this->hearing->getCaseTransferPackage($caseId);
+        return ['success' => true, 'data' => $data];
     }
 
     private function validate(array $data, bool $allowExistingTypes = false, ?int $excludeHearingId = null): array
@@ -214,8 +298,13 @@ class HearingController
             return ['success' => false, 'message' => 'Hearing date must be in the future.'];
         }
 
-        // Validation: Hearings cannot be booked on Saturday/Sunday and must be between 8:00 AM and 5:00 PM.
-        $hoursValidation = $this->hearing->validateHearingOperatingHours($date->format('Y-m-d H:i:s'));
+        // Validation: Approved hearing blocks, lunch break, Monday 8-9am, legal holidays, duration rules
+        $hoursValidation = $this->hearing->validateHearingOperatingHours(
+            $date->format('Y-m-d H:i:s'),
+            $data['end_time'] ?? ($data['duration_minutes'] ?? null),
+            $type,
+            $data['duration_exceed_reason'] ?? null
+        );
         if (!$hoursValidation['valid']) {
             return [
                 'success' => false,
@@ -228,7 +317,7 @@ class HearingController
             return ['success' => false, 'message' => 'The selected case does not exist or is archived.'];
         }
 
-        // Before booking a Conciliation hearing, a 3-member Lupon team must be chosen; Admin is for Mediation only.
+        // Before booking a Conciliation hearing, a Lupon team must be chosen
         if ($type === 'Conciliation') {
             require_once __DIR__ . '/../models/Assignment.php';
             $assignmentModel = new Assignment();
@@ -241,8 +330,6 @@ class HearingController
             }
         }
 
-        // Validation: If a hearing is already booked for a case, users cannot schedule another hearing
-        // for that case on the same day or on any prior date.
         if (!$allowExistingTypes) {
             $dateProgression = $this->hearing->validateHearingDateProgression((int) $caseId, $date->format('Y-m-d H:i:s'));
             if (!$dateProgression['valid']) {
@@ -252,7 +339,6 @@ class HearingController
                 ];
             }
         } else {
-            // When rescheduling, ensure the hearing does not conflict on the same day as another hearing of this case
             $dateProgression = $this->hearing->validateHearingDateProgression((int) $caseId, $date->format('Y-m-d H:i:s'), $excludeHearingId);
             if (!$dateProgression['valid'] && !empty($dateProgression['same_day'])) {
                 return [
@@ -268,8 +354,16 @@ class HearingController
                 'case_id' => (int) $caseId,
                 'hearing_type' => $type,
                 'hearing_date' => $date->format('Y-m-d H:i:s'),
+                'end_time' => !empty($hoursValidation['end_time']) ? $hoursValidation['end_time'] : (!empty($data['end_time']) ? $data['end_time'] : null),
+                'duration_minutes' => !empty($hoursValidation['duration_minutes']) ? (int) $hoursValidation['duration_minutes'] : (!empty($data['duration_minutes']) ? (int) $data['duration_minutes'] : 45),
+                'duration_exceed_reason' => !empty($data['duration_exceed_reason']) ? trim($data['duration_exceed_reason']) : null,
+                'presiding_officer_id' => !empty($data['presiding_officer_id']) ? (int) $data['presiding_officer_id'] : null,
                 'venue' => $venue,
                 'remarks' => $remarks !== '' ? $remarks : null,
+                'rescheduled_by_party' => !empty($data['rescheduled_by_party']) ? trim($data['rescheduled_by_party']) : null,
+                'reschedule_justification_category' => !empty($data['reschedule_justification_category']) ? trim($data['reschedule_justification_category']) : null,
+                'reschedule_document_path' => !empty($data['reschedule_document_path']) ? trim($data['reschedule_document_path']) : null,
+                'force_reschedule' => !empty($data['force_reschedule']) ? 1 : 0,
             ],
         ];
     }
