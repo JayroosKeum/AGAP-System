@@ -200,6 +200,7 @@ if (!$effDatetime && !empty($complaint['incident_date'])) {
 
 $effNarrative = $old['narrative'] ?? $complaint['narrative'];
 $effDetails = $old['additional_details'] ?? ($complaint['additional_details'] ?? '');
+$effProofOcrNotes = $old['proof_ocr_notes'] ?? ($complaint['proof_ocr_notes'] ?? '');
 $effLocation = $old['incident_location'] ?? ($complaint['incident_location'] ?? '');
 $effCity = $old['incident_city'] ?? ($complaint['incident_city'] ?? 'Marikina City');
 $effBarangay = $old['incident_barangay'] ?? ($complaint['incident_barangay'] ?? 'Tumana');
@@ -646,6 +647,11 @@ include '../../layouts/header.php';
                                                 </div>
                                             </div>
                                             <div class="attachment-detail-actions">
+                                                <?php if ($isImg): ?>
+                                                    <button type="button" class="btn-icon-action btn-ocr-existing" title="Extract text from this image into the narrative" data-att-url="<?php echo htmlspecialchars($downloadUrl); ?>" data-att-name="<?php echo htmlspecialchars($att['file_name']); ?>" onclick="runOcrOnExistingAttachment(this)">
+                                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+                                                    </button>
+                                                <?php endif; ?>
                                                 <a href="<?php echo htmlspecialchars($downloadUrl); ?>" class="btn-icon-action" title="Download file" download>
                                                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                                                 </a>
@@ -687,6 +693,23 @@ include '../../layouts/header.php';
                                     <button type="button" id="clearAllEvidenceBtn" class="btn-clear-evidence">Clear All</button>
                                 </div>
                                 <ul id="evidenceQueueList" class="evidence-queue-list"></ul>
+                            </div>
+
+                            <!-- Proof OCR Notes -->
+                            <div class="form-group" style="margin-top: 18px;">
+                                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
+                                    <label for="proofOcrNotes" style="margin:0;">
+                                        Proof Notes <span class="optional-label">Optional</span>
+                                    </label>
+                                    <div style="display:flex;align-items:center;gap:8px;">
+                                        <button type="button" class="btn-outline-sm" id="btnProofOcr" title="Scan a handwritten or printed image and extract text into Proof Notes">📷 Scan Proof (OCR)</button>
+                                        <input type="file" id="proofOcrFileInput" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none;">
+                                    </div>
+                                </div>
+                                <textarea id="proofOcrNotes" name="proof_ocr_notes" rows="4" maxlength="10000"
+                                    placeholder="Extracted text from scanned proofs will appear here. You may also type or paste additional context about the attached evidence..."
+                                    style="resize:vertical;"><?php echo htmlspecialchars($effProofOcrNotes); ?></textarea>
+                                <small class="field-hint">Use ✨ OCR on any image above, or click “Scan Proof” to pick a file. Extracted text is appended here.</small>
                             </div>
                         </div>
 
@@ -1199,6 +1222,24 @@ document.addEventListener('DOMContentLoaded', () => {
             detailsDiv.appendChild(metaSpan);
             leftDiv.appendChild(detailsDiv);
 
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'evidence-item-actions';
+            actionsDiv.style.cssText = 'display:flex;align-items:center;gap:6px;flex-shrink:0;';
+
+            if (fileInfo.type === 'image') {
+                const ocrBtn = document.createElement('button');
+                ocrBtn.type = 'button';
+                ocrBtn.className = 'btn-outline-sm btn-ocr-queue';
+                ocrBtn.title = 'Extract text from this image and append to narrative';
+                ocrBtn.style.cssText = 'font-size:0.75rem;padding:3px 8px;white-space:nowrap;';
+                ocrBtn.textContent = '✨ OCR';
+                ocrBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    runProofOcrOnQueuedFile(file, ocrBtn);
+                });
+                actionsDiv.appendChild(ocrBtn);
+            }
+
             const removeBtn = document.createElement('button');
             removeBtn.type = 'button';
             removeBtn.className = 'btn-remove-queue-item';
@@ -1207,9 +1248,10 @@ document.addEventListener('DOMContentLoaded', () => {
             removeBtn.addEventListener('click', () => {
                 removeFileFromQueue(index);
             });
+            actionsDiv.appendChild(removeBtn);
 
             li.appendChild(leftDiv);
-            li.appendChild(removeBtn);
+            li.appendChild(actionsDiv);
             queueList.appendChild(li);
         });
     }
@@ -1306,6 +1348,109 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }, false);
     }
+
+    // ── Proof OCR: Card-5 button ─────────────────────────────────────────────
+    (function initProofOcr() {
+        const ocrBtn   = document.getElementById('btnProofOcr');
+        const ocrInput = document.getElementById('proofOcrFileInput');
+        if (!ocrBtn || !ocrInput) return;
+
+        ocrBtn.addEventListener('click', () => ocrInput.click());
+
+        ocrInput.addEventListener('change', () => {
+            const file = ocrInput.files[0];
+            if (!file) return;
+            runProofOcrOnQueuedFile(file, ocrBtn);
+            ocrInput.value = '';
+        });
+    })();
+
+    // Shared OCR helper — appends extracted text to #proofOcrNotes
+    async function runProofOcrOnQueuedFile(file, triggerBtn) {
+        const notesTa = document.getElementById('proofOcrNotes');
+        if (!notesTa) return;
+
+        const originalLabel = triggerBtn.textContent;
+        triggerBtn.disabled = true;
+        triggerBtn.textContent = '⏳ Scanning…';
+
+        try {
+            const formData = new FormData();
+            formData.append('image', file, file.name);
+
+            const resp = await fetch('../../../backend/api/ai/ocr-notes.php', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await resp.json();
+
+            if (data.success && data.text && data.text.trim()) {
+                const label = `[Scanned Proof – ${file.name}]:\n${data.text.trim()}`;
+                const current = notesTa.value.trim();
+                notesTa.value = current ? current + '\n\n' + label : label;
+                notesTa.dispatchEvent(new Event('input'));
+                window.agapNotify?.('Proof text extracted and added to Proof Notes.', 'success', 'Proof OCR');
+            } else {
+                window.agapNotify?.(data.error || 'OCR did not extract any text.', 'error', 'Proof OCR');
+            }
+        } catch (err) {
+            console.error('Proof OCR error:', err);
+            window.agapNotify?.('Failed to connect to the OCR service.', 'error', 'Proof OCR');
+        } finally {
+            triggerBtn.disabled = false;
+            triggerBtn.textContent = originalLabel;
+        }
+    }
+
+    // OCR helper: existing saved attachments (fetches the image URL, converts to blob)
+    window.runOcrOnExistingAttachment = async function(btn) {
+        const narrativeTa = document.getElementById('narrative');
+        if (!narrativeTa) return;
+
+        const url     = btn.dataset.attUrl;
+        const attName = btn.dataset.attName || 'attachment';
+
+        if (!url) return;
+
+        const originalTitle = btn.title;
+        btn.disabled = true;
+        btn.title = 'Scanning…';
+        btn.style.opacity = '0.6';
+
+        try {
+            // Fetch the image as blob so we can POST it
+            const imgResp = await fetch(url);
+            if (!imgResp.ok) throw new Error('Could not fetch image.');
+            const blob = await imgResp.blob();
+            const file = new File([blob], attName, { type: blob.type });
+
+            const formData = new FormData();
+            formData.append('image', file, attName);
+
+            const ocrResp = await fetch('../../../backend/api/ai/ocr-notes.php', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await ocrResp.json();
+
+            if (data.success && data.text && data.text.trim()) {
+                const label = `[Scanned Proof – ${attName}]:\n${data.text.trim()}`;
+                const current = narrativeTa.value.trim();
+                narrativeTa.value = current ? current + '\n\n' + label : label;
+                narrativeTa.dispatchEvent(new Event('input'));
+                window.agapNotify?.('Proof text extracted and appended to the narrative.', 'success', 'Proof OCR');
+            } else {
+                window.agapNotify?.(data.error || 'OCR did not extract any text.', 'error', 'Proof OCR');
+            }
+        } catch (err) {
+            console.error('Existing attachment OCR error:', err);
+            window.agapNotify?.('Failed to scan attachment. Please try again.', 'error', 'Proof OCR');
+        } finally {
+            btn.disabled = false;
+            btn.title = originalTitle;
+            btn.style.opacity = '';
+        }
+    };
 });
 </script>
 

@@ -2463,6 +2463,206 @@ async function handleSaveMinutes(event) {
 }
 window.handleSaveMinutes = handleSaveMinutes;
 
+// ========================================================
+// GEMINI 1.5 FLASH AI: SPEECH-TO-TEXT (STT) & IMAGE OCR
+// ========================================================
+
+let modalMediaRecorder = null;
+let modalAudioChunks = [];
+let isModalVoiceRecording = false;
+let modalRecordingTimerInterval = null;
+let modalRecordingSeconds = 0;
+
+async function toggleModalVoiceRecording() {
+    const btn = document.getElementById('btnModalRecordVoice');
+    const textSpan = document.getElementById('modalRecordVoiceText');
+    const statusBanner = document.getElementById('modalAiStatusBanner');
+
+    if (!isModalVoiceRecording) {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            alert('Microphone recording is not supported in this browser environment.');
+            return;
+        }
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            modalAudioChunks = [];
+            modalRecordingSeconds = 0;
+            modalMediaRecorder = new MediaRecorder(stream);
+
+            modalMediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    modalAudioChunks.push(event.data);
+                }
+            };
+
+            modalMediaRecorder.onstop = async () => {
+                stream.getTracks().forEach(track => track.stop());
+                clearInterval(modalRecordingTimerInterval);
+                const audioBlob = new Blob(modalAudioChunks, { type: 'audio/webm' });
+                await sendModalAudioToGemini(audioBlob);
+            };
+
+            modalMediaRecorder.start();
+            isModalVoiceRecording = true;
+            if (btn) {
+                btn.classList.add('recording');
+                btn.style.background = '#ef4444';
+                btn.style.color = '#ffffff';
+                btn.style.borderColor = '#dc2626';
+            }
+            if (textSpan) textSpan.textContent = 'Stop Recording (00:00)';
+            if (statusBanner) {
+                statusBanner.style.display = 'block';
+                statusBanner.innerHTML = '🔴 <strong>Recording audio from microphone...</strong> Speak clearly. Click "Stop Recording" when finished.';
+            }
+
+            modalRecordingTimerInterval = setInterval(() => {
+                modalRecordingSeconds++;
+                const mins = String(Math.floor(modalRecordingSeconds / 60)).padStart(2, '0');
+                const secs = String(modalRecordingSeconds % 60).padStart(2, '0');
+                if (textSpan) textSpan.textContent = `Stop Recording (${mins}:${secs})`;
+            }, 1000);
+        } catch (err) {
+            console.error('Microphone access denied:', err);
+            alert('Unable to access microphone: ' + err.message);
+        }
+    } else {
+        if (modalMediaRecorder && modalMediaRecorder.state !== 'inactive') {
+            modalMediaRecorder.stop();
+        }
+        isModalVoiceRecording = false;
+        clearInterval(modalRecordingTimerInterval);
+        if (btn) {
+            btn.classList.remove('recording');
+            btn.style.background = '';
+            btn.style.color = '';
+            btn.style.borderColor = '';
+            btn.disabled = true;
+        }
+        if (textSpan) textSpan.textContent = 'Transcribing Voice...';
+        if (statusBanner) {
+            statusBanner.style.display = 'block';
+            statusBanner.innerHTML = '⏳ <strong>Transcribing voice with Gemini 1.5 Flash...</strong> Please wait.';
+        }
+    }
+}
+window.toggleModalVoiceRecording = toggleModalVoiceRecording;
+
+async function sendModalAudioToGemini(audioBlob) {
+    const btn = document.getElementById('btnModalRecordVoice');
+    const textSpan = document.getElementById('modalRecordVoiceText');
+    const statusBanner = document.getElementById('modalAiStatusBanner');
+
+    try {
+        const formData = new FormData();
+        formData.append('audio', audioBlob, 'session_recording.webm');
+
+        const response = await fetch('../../../backend/api/ai/transcribe-audio.php', {
+            method: 'POST',
+            body: formData
+        });
+
+        const result = await response.json();
+        if (result.success && result.text) {
+            appendGeminiTextToMinutes(result.text, '🎙️ Voice Transcription');
+            if (statusBanner) {
+                statusBanner.style.display = 'block';
+                statusBanner.innerHTML = '✅ <strong>Voice transcription appended successfully!</strong>';
+                setTimeout(() => { if (statusBanner) statusBanner.style.display = 'none'; }, 4000);
+            }
+        } else {
+            if (statusBanner) {
+                statusBanner.style.display = 'block';
+                statusBanner.innerHTML = `<span style="color:#b91c1c;">⚠️ Transcription error: ${escapeHtml(result.message || 'Failed to process audio.')}</span>`;
+            }
+        }
+    } catch (error) {
+        console.error('Audio transcription error:', error);
+        if (statusBanner) {
+            statusBanner.style.display = 'block';
+            statusBanner.innerHTML = `<span style="color:#b91c1c;">⚠️ Network error during transcription: ${escapeHtml(error.message)}</span>`;
+        }
+    } finally {
+        if (btn) btn.disabled = false;
+        if (textSpan) textSpan.textContent = 'Record Voice (STT)';
+    }
+}
+
+function triggerModalNotesUpload() {
+    const fileInput = document.getElementById('modalNotesFileInput');
+    if (fileInput) fileInput.click();
+}
+window.triggerModalNotesUpload = triggerModalNotesUpload;
+
+async function handleModalNotesFileSelected(input) {
+    if (!input.files || !input.files[0]) return;
+    const file = input.files[0];
+    const statusBanner = document.getElementById('modalAiStatusBanner');
+    const uploadBtn = document.getElementById('btnModalUploadNotes');
+
+    if (uploadBtn) uploadBtn.disabled = true;
+    if (statusBanner) {
+        statusBanner.style.display = 'block';
+        statusBanner.innerHTML = '⏳ <strong>Extracting handwritten/printed notes with Gemini 1.5 Flash OCR...</strong> Please wait.';
+    }
+
+    try {
+        const formData = new FormData();
+        formData.append('image', file);
+
+        const response = await fetch('../../../backend/api/ai/ocr-notes.php', {
+            method: 'POST',
+            body: formData
+        });
+
+        const result = await response.json();
+        if (result.success && result.text) {
+            appendGeminiTextToMinutes(result.text, '📄 OCR Notes Extract');
+            if (statusBanner) {
+                statusBanner.style.display = 'block';
+                statusBanner.innerHTML = '✅ <strong>Notes extracted and appended successfully!</strong>';
+                setTimeout(() => { if (statusBanner) statusBanner.style.display = 'none'; }, 4000);
+            }
+        } else {
+            if (statusBanner) {
+                statusBanner.style.display = 'block';
+                statusBanner.innerHTML = `<span style="color:#b91c1c;">⚠️ OCR error: ${escapeHtml(result.message || 'Failed to extract text from image.')}</span>`;
+            }
+        }
+    } catch (error) {
+        console.error('OCR error:', error);
+        if (statusBanner) {
+            statusBanner.style.display = 'block';
+            statusBanner.innerHTML = `<span style="color:#b91c1c;">⚠️ Network error during OCR: ${escapeHtml(error.message)}</span>`;
+        }
+    } finally {
+        if (uploadBtn) uploadBtn.disabled = false;
+        input.value = '';
+    }
+}
+window.handleModalNotesFileSelected = handleModalNotesFileSelected;
+
+function appendGeminiTextToMinutes(newText, sourceLabel) {
+    const textarea = document.getElementById('session_minutes') || document.getElementById('minNotes');
+    if (!textarea) return;
+
+    const trimmed = newText.trim();
+    if (!trimmed) return;
+
+    const formattedSnippet = `\n\n[${sourceLabel} - ${new Date().toLocaleTimeString()}]:\n${trimmed}`;
+    if (textarea.value.trim() === '') {
+        textarea.value = trimmed;
+    } else {
+        textarea.value = textarea.value.trim() + formattedSnippet;
+    }
+
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    textarea.dispatchEvent(new Event('change', { bubbles: true }));
+    textarea.scrollTop = textarea.scrollHeight;
+}
+window.appendGeminiTextToMinutes = appendGeminiTextToMinutes;
+
 function openFailMediationModal(hearingId) {
     const input = document.getElementById('failMediationHearingId');
     const alertBox = document.getElementById('failMediationAlert');

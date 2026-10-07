@@ -552,10 +552,26 @@ include '../../layouts/header.php';
                 </div>
             </div>
 
-            <!-- Section 5: Formal Minutes / Notes -->
-            <div class="form-group">
-                <label for="minNotes">Formal Session Minutes / Minutes Record</label>
-                <textarea id="minNotes" name="settlement_discussion_notes" rows="3" maxlength="5000" placeholder="Full recorded proceedings, commitments, or points of agreement..."></textarea>
+            <!-- Section 5: Formal Minutes / Notes with Gemini AI Assistance -->
+            <div class="form-group" style="margin-top: 6px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px;">
+                    <label for="session_minutes" style="font-weight: 700; color: #1e293b; margin-bottom: 0;">
+                        Formal Session Minutes / Minutes Record
+                    </label>
+                    <div style="display: inline-flex; gap: 8px; align-items: center;">
+                        <button type="button" id="btnModalRecordVoice" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;" onclick="toggleModalVoiceRecording()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                            <span id="modalRecordVoiceText">Record Voice (STT)</span>
+                        </button>
+                        <button type="button" id="btnModalUploadNotes" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;" onclick="triggerModalNotesUpload()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                            <span>Upload Notes (OCR)</span>
+                        </button>
+                        <input type="file" id="modalNotesFileInput" accept="image/jpeg,image/png,image/webp,image/jpg" style="display: none;" onchange="handleModalNotesFileSelected(this)">
+                    </div>
+                </div>
+                <div id="modalAiStatusBanner" style="display: none; font-size: 0.8rem; color: #0369a1; background: #e0f2fe; padding: 6px 10px; border-radius: 6px; margin-bottom: 8px;"></div>
+                <textarea id="session_minutes" name="settlement_discussion_notes" rows="4" maxlength="5000" placeholder="Full recorded proceedings, commitments, points of agreement, or AI-transcribed notes..."></textarea>
             </div>
 
             <div class="modal-actions" style="margin-top: 18px;">

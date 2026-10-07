@@ -471,6 +471,23 @@ include '../../layouts/header.php';
                             </div>
                             <ul id="evidenceQueueList" class="evidence-queue-list"></ul>
                         </div>
+
+                        <!-- Proof OCR Notes -->
+                        <div class="form-group" style="margin-top: 18px;">
+                            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
+                                <label for="proofOcrNotes" style="margin:0;">
+                                    Proof Notes <span class="optional-label">Optional</span>
+                                </label>
+                                <div style="display:flex;align-items:center;gap:8px;">
+                                    <button type="button" class="btn-outline-sm" id="btnProofOcr" title="Scan a handwritten or printed image and extract text into Proof Notes">📷 Scan Proof (OCR)</button>
+                                    <input type="file" id="proofOcrFileInput" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none;">
+                                </div>
+                            </div>
+                            <textarea id="proofOcrNotes" name="proof_ocr_notes" rows="4" maxlength="10000"
+                                placeholder="Extracted text from scanned proofs will appear here. You may also type or paste additional context about the attached evidence..."
+                                style="resize:vertical;"></textarea>
+                            <small class="field-hint">Use ✨ OCR on any uploaded image above, or click “Scan Proof” to pick a file directly. Extracted text is appended here.</small>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -825,6 +842,24 @@ document.addEventListener('DOMContentLoaded', () => {
             detailsDiv.appendChild(metaSpan);
             leftDiv.appendChild(detailsDiv);
 
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'evidence-item-actions';
+            actionsDiv.style.cssText = 'display:flex;align-items:center;gap:6px;flex-shrink:0;';
+
+            if (fileInfo.type === 'image') {
+                const ocrBtn = document.createElement('button');
+                ocrBtn.type = 'button';
+                ocrBtn.className = 'btn-outline-sm btn-ocr-queue';
+                ocrBtn.title = 'Extract text from this image and append to narrative';
+                ocrBtn.style.cssText = 'font-size:0.75rem;padding:3px 8px;white-space:nowrap;';
+                ocrBtn.textContent = '✨ OCR';
+                ocrBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    runProofOcrOnQueuedFile(file, ocrBtn);
+                });
+                actionsDiv.appendChild(ocrBtn);
+            }
+
             const removeBtn = document.createElement('button');
             removeBtn.type = 'button';
             removeBtn.className = 'btn-remove-evidence-item';
@@ -834,9 +869,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 e.stopPropagation();
                 removeFileFromQueue(index);
             });
+            actionsDiv.appendChild(removeBtn);
 
             li.appendChild(leftDiv);
-            li.appendChild(removeBtn);
+            li.appendChild(actionsDiv);
             queueList.appendChild(li);
         });
     }
@@ -936,6 +972,59 @@ document.addEventListener('DOMContentLoaded', () => {
                 addFilesToQueue(e.dataTransfer.files);
             }
         });
+    }
+
+    // ── Proof OCR: Card-5 button ─────────────────────────────────────────────
+    (function initProofOcr() {
+        const ocrBtn   = document.getElementById('btnProofOcr');
+        const ocrInput = document.getElementById('proofOcrFileInput');
+        if (!ocrBtn || !ocrInput) return;
+
+        ocrBtn.addEventListener('click', () => ocrInput.click());
+
+        ocrInput.addEventListener('change', () => {
+            const file = ocrInput.files[0];
+            if (!file) return;
+            runProofOcrOnQueuedFile(file, ocrBtn);
+            ocrInput.value = '';
+        });
+    })();
+
+    // Shared OCR helper — appends extracted text to #proofOcrNotes
+    async function runProofOcrOnQueuedFile(file, triggerBtn) {
+        const notesTa = document.getElementById('proofOcrNotes');
+        if (!notesTa) return;
+
+        const originalLabel = triggerBtn.textContent;
+        triggerBtn.disabled = true;
+        triggerBtn.textContent = '⏳ Scanning…';
+
+        try {
+            const formData = new FormData();
+            formData.append('image', file, file.name);
+
+            const resp = await fetch('../../../backend/api/ai/ocr-notes.php', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await resp.json();
+
+            if (data.success && data.text && data.text.trim()) {
+                const label = `[Scanned Proof – ${file.name}]:\n${data.text.trim()}`;
+                const current = notesTa.value.trim();
+                notesTa.value = current ? current + '\n\n' + label : label;
+                notesTa.dispatchEvent(new Event('input'));
+                window.agapNotify?.('Proof text extracted and added to Proof Notes.', 'success', 'Proof OCR');
+            } else {
+                window.agapNotify?.(data.error || 'OCR did not extract any text from the image.', 'error', 'Proof OCR');
+            }
+        } catch (err) {
+            console.error('Proof OCR error:', err);
+            window.agapNotify?.('Failed to connect to the OCR service. Please try again.', 'error', 'Proof OCR');
+        } finally {
+            triggerBtn.disabled = false;
+            triggerBtn.textContent = originalLabel;
+        }
     }
 });
 </script>
