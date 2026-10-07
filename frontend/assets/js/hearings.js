@@ -1884,8 +1884,8 @@ function bindAttendanceForm() {
         clearAttendanceModalAlert();
 
         const hearingId = document.getElementById('attHearingId')?.value;
-        if (!hearingId) {
-            showAttendanceModalAlert('Invalid hearing reference.');
+        if (!hearingId || isNaN(Number(hearingId)) || Number(hearingId) <= 0) {
+            showAttendanceModalAlert('A valid hearing session reference is required.');
             return;
         }
 
@@ -1896,6 +1896,8 @@ function bindAttendanceForm() {
         }
 
         const unselectedParties = [];
+        const invalidExcuseParties = [];
+        const unservedAbsentParties = [];
         const records = [];
 
         cards.forEach((card) => {
@@ -1904,17 +1906,22 @@ function bindAttendanceForm() {
             const partyType = card.dataset.partyType || '';
             const status = card.querySelector('.att-input-status')?.value || '';
             const isJustified = card.querySelector('.att-input-justified')?.value === '1' ? 1 : 0;
-            const reason = card.querySelector(`select[name="records[${residentId}][justification_reason]"]`)?.value || '';
-            const remarks = card.querySelector(`input[name="records[${residentId}][remarks]"]`)?.value || '';
+            const reasonSelect = card.querySelector(`select[name="records[${residentId}][justification_reason]"]`);
+            const reason = reasonSelect?.value?.trim() || '';
+            const remarksInput = card.querySelector(`input[name="records[${residentId}][remarks]"]`);
+            const remarks = remarksInput?.value?.trim() || '';
+
+            card.style.border = '';
+            if (reasonSelect) reasonSelect.classList.remove('is-invalid');
+            if (remarksInput) remarksInput.classList.remove('is-invalid');
 
             if (partyType === 'Witness') {
-                card.style.border = '';
                 records.push({
                     resident_id: Number(residentId),
                     attendance_status: status && status !== 'Pending' ? status : 'Present',
                     is_justified: 0,
                     justification_reason: '',
-                    remarks: remarks.trim()
+                    remarks: remarks.substring(0, 500)
                 });
                 return;
             }
@@ -1923,19 +1930,35 @@ function bindAttendanceForm() {
                 unselectedParties.push(partyName);
                 card.style.border = '2px solid #ef4444';
             } else {
-                card.style.border = '';
+                // If Excused, validate that a justification cause is selected
+                if (isJustified && !reason) {
+                    invalidExcuseParties.push(partyName);
+                    if (reasonSelect) reasonSelect.classList.add('is-invalid');
+                    card.style.border = '2px solid #f59e0b';
+                }
+
+                // Check maximum remarks length
+                if (remarks.length > 500) {
+                    if (remarksInput) remarksInput.classList.add('is-invalid');
+                }
+
                 records.push({
                     resident_id: Number(residentId),
                     attendance_status: status,
                     is_justified: isJustified,
-                    justification_reason: isJustified ? reason : '',
-                    remarks: remarks.trim()
+                    justification_reason: isJustified ? (reason || 'Excused Non-Appearance') : '',
+                    remarks: remarks.substring(0, 500)
                 });
             }
         });
 
         if (unselectedParties.length > 0) {
             showAttendanceModalAlert(`Please select an appearance status (Present, Failure to Appear, Not Served, Excused, or Late) for: ${unselectedParties.join(', ')}.`);
+            return;
+        }
+
+        if (invalidExcuseParties.length > 0) {
+            showAttendanceModalAlert(`Please select a specific Justification Cause for excused party: ${invalidExcuseParties.join(', ')}.`);
             return;
         }
 
@@ -1970,6 +1993,8 @@ function bindAttendanceForm() {
             }
         }
     };
+
+    window.handleSaveAttendance = handleSaveAttendance;
 
     if (form) {
         form.addEventListener('submit', handleSaveAttendance);
@@ -2236,39 +2261,74 @@ async function openSessionMinutesModal(hearingId, caseId) {
     const alertBox = document.getElementById('minutesAlert');
     if (hearingInput) hearingInput.value = hearingId;
     if (caseInput) caseInput.value = caseId || (activeHearingAttendanceData?.case_id || '');
-    if (alertBox) alertBox.style.display = 'none';
+    if (alertBox) {
+        alertBox.style.display = 'none';
+        alertBox.textContent = '';
+        alertBox.className = 'alert';
+    }
 
-    document.getElementById('min_opening').checked = false;
-    document.getElementById('min_id_verified').checked = false;
-    document.getElementById('min_complaint_read').checked = false;
-    document.getElementById('minComplainantStmt').value = '';
-    document.getElementById('minRespondentStmt').value = '';
-    document.getElementById('minDisputeSummary').value = '';
-    document.getElementById('minNewProposal').value = '';
-    document.getElementById('minCounterOffer').value = '';
-    document.getElementById('min_caucus').checked = false;
-    document.getElementById('minOutcome').value = 'Continue Mediation';
-    document.getElementById('minActualEndTime').value = '';
-    document.getElementById('minDurationExceedReason').value = '';
-    document.getElementById('minNotes').value = '';
+    const form = document.getElementById('sessionMinutesForm');
+    if (form) {
+        form.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'));
+    }
+
+    if (document.getElementById('min_opening')) document.getElementById('min_opening').checked = false;
+    if (document.getElementById('min_id_verified')) document.getElementById('min_id_verified').checked = false;
+    if (document.getElementById('min_complaint_read')) document.getElementById('min_complaint_read').checked = false;
+    if (document.getElementById('minComplainantStmt')) document.getElementById('minComplainantStmt').value = '';
+    if (document.getElementById('minRespondentStmt')) document.getElementById('minRespondentStmt').value = '';
+    if (document.getElementById('minDisputeSummary')) document.getElementById('minDisputeSummary').value = '';
+    if (document.getElementById('minNewProposal')) document.getElementById('minNewProposal').value = '';
+    if (document.getElementById('minCounterOffer')) document.getElementById('minCounterOffer').value = '';
+    if (document.getElementById('min_caucus')) document.getElementById('min_caucus').checked = false;
+    if (document.getElementById('minOutcome')) document.getElementById('minOutcome').value = 'Continue Mediation';
+    if (document.getElementById('minActualEndTime')) document.getElementById('minActualEndTime').value = '';
+    if (document.getElementById('minDurationExceedReason')) document.getElementById('minDurationExceedReason').value = '';
+    if (document.getElementById('minNotes')) document.getElementById('minNotes').value = '';
 
     try {
         const res = await api(`../../../backend/api/hearings/minutes.php?hearing_id=${encodeURIComponent(hearingId)}`);
         if (res.data) {
             const m = res.data;
-            if (document.getElementById('min_opening')) document.getElementById('min_opening').checked = Number(m.opening_conducted) === 1;
-            if (document.getElementById('min_id_verified')) document.getElementById('min_id_verified').checked = Number(m.parties_identified) === 1;
-            if (document.getElementById('min_complaint_read')) document.getElementById('min_complaint_read').checked = Number(m.complaint_read_confirmed) === 1;
-            if (document.getElementById('minComplainantStmt')) document.getElementById('minComplainantStmt').value = m.complainant_statement_summary || '';
-            if (document.getElementById('minRespondentStmt')) document.getElementById('minRespondentStmt').value = m.respondent_statement_summary || '';
-            if (document.getElementById('minDisputeSummary')) document.getElementById('minDisputeSummary').value = m.dispute_summary || '';
-            if (document.getElementById('minNewProposal')) document.getElementById('minNewProposal').value = m.new_proposal || '';
-            if (document.getElementById('minCounterOffer')) document.getElementById('minCounterOffer').value = m.counter_offer || '';
-            if (document.getElementById('min_caucus')) document.getElementById('min_caucus').checked = Number(m.caucus_conducted) === 1;
-            if (document.getElementById('minOutcome') && m.session_outcome) document.getElementById('minOutcome').value = m.session_outcome;
-            if (document.getElementById('minActualEndTime') && m.actual_end_time) document.getElementById('minActualEndTime').value = toDateTimeLocal(m.actual_end_time);
-            if (document.getElementById('minDurationExceedReason')) document.getElementById('minDurationExceedReason').value = m.duration_exceed_reason || '';
-            if (document.getElementById('minNotes')) document.getElementById('minNotes').value = m.session_notes || '';
+            if (document.getElementById('min_opening')) {
+                document.getElementById('min_opening').checked = Number(m.opening_conducted) === 1;
+            }
+            if (document.getElementById('min_id_verified')) {
+                document.getElementById('min_id_verified').checked = (Number(m.identity_verified) === 1 || Number(m.parties_identified) === 1);
+            }
+            if (document.getElementById('min_complaint_read')) {
+                document.getElementById('min_complaint_read').checked = (Number(m.complaint_reviewed) === 1 || Number(m.complaint_read_confirmed) === 1);
+            }
+            if (document.getElementById('minComplainantStmt')) {
+                document.getElementById('minComplainantStmt').value = m.complainant_statement || m.complainant_statement_summary || '';
+            }
+            if (document.getElementById('minRespondentStmt')) {
+                document.getElementById('minRespondentStmt').value = m.respondent_statement || m.respondent_statement_summary || '';
+            }
+            if (document.getElementById('minDisputeSummary')) {
+                document.getElementById('minDisputeSummary').value = m.main_dispute_identified || m.dispute_summary || '';
+            }
+            if (document.getElementById('minNewProposal')) {
+                document.getElementById('minNewProposal').value = m.new_proposal || '';
+            }
+            if (document.getElementById('minCounterOffer')) {
+                document.getElementById('minCounterOffer').value = m.counteroffer || m.counter_offer || '';
+            }
+            if (document.getElementById('min_caucus')) {
+                document.getElementById('min_caucus').checked = Number(m.caucus_conducted) === 1;
+            }
+            if (document.getElementById('minOutcome') && m.session_outcome) {
+                document.getElementById('minOutcome').value = m.session_outcome;
+            }
+            if (document.getElementById('minActualEndTime') && m.actual_end_time) {
+                document.getElementById('minActualEndTime').value = toDateTimeLocal(m.actual_end_time);
+            }
+            if (document.getElementById('minDurationExceedReason')) {
+                document.getElementById('minDurationExceedReason').value = m.outcome_remarks || m.duration_exceed_reason || '';
+            }
+            if (document.getElementById('minNotes')) {
+                document.getElementById('minNotes').value = m.settlement_discussion_notes || m.session_notes || '';
+            }
         }
     } catch (e) {
         console.info('No existing minutes or error fetching:', e);
@@ -2278,12 +2338,105 @@ async function openSessionMinutesModal(hearingId, caseId) {
 window.openSessionMinutesModal = openSessionMinutesModal;
 
 async function handleSaveMinutes(event) {
-    if (event) event.preventDefault();
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
     const form = document.getElementById('sessionMinutesForm');
     const alertBox = document.getElementById('minutesAlert');
+    const submitBtn = document.getElementById('btnSaveMinutesSubmit');
     if (!form) return;
 
+    if (alertBox) {
+        alertBox.style.display = 'none';
+        alertBox.textContent = '';
+        alertBox.className = 'alert';
+    }
+
+    form.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'));
+
+    // 1. Client-Side Form Validation
+    const hearingId = Number(document.getElementById('minutesHearingId')?.value);
+    if (!hearingId || isNaN(hearingId) || hearingId <= 0) {
+        if (alertBox) {
+            alertBox.textContent = 'Invalid hearing session ID reference.';
+            alertBox.className = 'alert error';
+            alertBox.style.display = 'block';
+        }
+        return;
+    }
+
+    const outcomeSelect = document.getElementById('minOutcome');
+    const allowedOutcomes = ['Continue Mediation', 'Settled', 'Failed', 'Party Absent', 'Rescheduled', 'Elevate to Pangkat', 'Pending'];
+    if (!outcomeSelect || !outcomeSelect.value || !allowedOutcomes.includes(outcomeSelect.value)) {
+        outcomeSelect?.classList.add('is-invalid');
+        if (alertBox) {
+            alertBox.textContent = 'Please select a valid Session Outcome before saving.';
+            alertBox.className = 'alert error';
+            alertBox.style.display = 'block';
+        }
+        outcomeSelect?.focus();
+        return;
+    }
+
+    const actualEndTimeInput = document.getElementById('minActualEndTime');
+    if (actualEndTimeInput && actualEndTimeInput.value) {
+        const parsedTime = new Date(actualEndTimeInput.value);
+        if (isNaN(parsedTime.getTime())) {
+            actualEndTimeInput.classList.add('is-invalid');
+            if (alertBox) {
+                alertBox.textContent = 'Please enter a valid datetime for Actual Session End Time.';
+                alertBox.className = 'alert error';
+                alertBox.style.display = 'block';
+            }
+            actualEndTimeInput.focus();
+            return;
+        }
+    }
+
+    // Text field bounds checks
+    const compStmt = document.getElementById('minComplainantStmt');
+    if (compStmt && compStmt.value.length > 5000) {
+        compStmt.classList.add('is-invalid');
+        if (alertBox) {
+            alertBox.textContent = 'Complainant statement summary exceeds 5,000 characters limit.';
+            alertBox.className = 'alert error';
+            alertBox.style.display = 'block';
+        }
+        compStmt.focus();
+        return;
+    }
+
+    const respStmt = document.getElementById('minRespondentStmt');
+    if (respStmt && respStmt.value.length > 5000) {
+        respStmt.classList.add('is-invalid');
+        if (alertBox) {
+            alertBox.textContent = 'Respondent statement summary exceeds 5,000 characters limit.';
+            alertBox.className = 'alert error';
+            alertBox.style.display = 'block';
+        }
+        respStmt.focus();
+        return;
+    }
+
+    const disputeInput = document.getElementById('minDisputeSummary');
+    if (disputeInput && disputeInput.value.length > 1000) {
+        disputeInput.classList.add('is-invalid');
+        if (alertBox) {
+            alertBox.textContent = 'Main dispute summary exceeds 1,000 characters limit.';
+            alertBox.className = 'alert error';
+            alertBox.style.display = 'block';
+        }
+        disputeInput.focus();
+        return;
+    }
+
     try {
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Saving Minutes...';
+        }
+
         const formData = new FormData(form);
         const result = await api('../../../backend/api/hearings/minutes.php', {
             method: 'POST',
@@ -2300,6 +2453,11 @@ async function handleSaveMinutes(event) {
             alertBox.textContent = err.message || 'Failed to save session minutes.';
             alertBox.className = 'alert error';
             alertBox.style.display = 'block';
+        }
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Save Hearing Minutes';
         }
     }
 }

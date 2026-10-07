@@ -25,7 +25,22 @@ class HearingMinutes
             WHERE hm.hearing_id = ?
         ");
         $stmt->execute([$hearingId]);
-        return $stmt->fetch(PDO::FETCH_ASSOC);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            return false;
+        }
+
+        // Add dual-compatibility aliases for frontend binding
+        $row['parties_identified'] = (int) ($row['identity_verified'] ?? 0);
+        $row['complaint_read_confirmed'] = (int) ($row['complaint_reviewed'] ?? 0);
+        $row['complainant_statement_summary'] = $row['complainant_statement'] ?? '';
+        $row['respondent_statement_summary'] = $row['respondent_statement'] ?? '';
+        $row['dispute_summary'] = $row['main_dispute_identified'] ?? '';
+        $row['counter_offer'] = $row['counteroffer'] ?? '';
+        $row['session_notes'] = $row['settlement_discussion_notes'] ?? '';
+        $row['duration_exceed_reason'] = $row['outcome_remarks'] ?? '';
+
+        return $row;
     }
 
     public function getByCase(int $caseId): array
@@ -46,9 +61,10 @@ class HearingMinutes
 
     public function save(array $data, int $userId): array
     {
+        // 1. Validate hearing_id
         $hearingId = filter_var($data['hearing_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         if (!$hearingId) {
-            return ['success' => false, 'message' => 'Valid hearing ID is required.'];
+            return ['success' => false, 'message' => 'A valid hearing ID is required.'];
         }
 
         $hStmt = $this->conn->prepare("
@@ -61,34 +77,53 @@ class HearingMinutes
         $hearing = $hStmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$hearing) {
-            return ['success' => false, 'message' => 'Hearing record not found.'];
+            return ['success' => false, 'message' => 'Specified hearing session record was not found.'];
         }
 
         $caseId = (int) $hearing['case_id'];
-        $sessionType = trim((string) ($data['session_type'] ?? $hearing['hearing_type']));
-        $opening = !empty($data['opening_conducted']) ? 1 : 0;
-        $identity = !empty($data['identity_verified']) ? 1 : 0;
-        $reviewed = !empty($data['complaint_reviewed']) ? 1 : 0;
-        $compStmt = trim((string) ($data['complainant_statement'] ?? ''));
-        $respStmt = trim((string) ($data['respondent_statement'] ?? ''));
-        $dispute = trim((string) ($data['main_dispute_identified'] ?? ''));
-        $discussion = trim((string) ($data['settlement_discussion_notes'] ?? ''));
-        $caucus = !empty($data['caucus_conducted']) ? 1 : 0;
-        $caucusNotes = trim((string) ($data['caucus_notes'] ?? ''));
-        $prevProposal = trim((string) ($data['previous_proposal'] ?? ''));
-        $newProposal = trim((string) ($data['new_proposal'] ?? ''));
-        $counteroffer = trim((string) ($data['counteroffer'] ?? ''));
-        $additionalEvidence = trim((string) ($data['additional_evidence_notes'] ?? ''));
-        $outcome = trim((string) ($data['session_outcome'] ?? 'Pending'));
-        $remarks = trim((string) ($data['outcome_remarks'] ?? ''));
-        $actualEndTime = !empty($data['actual_end_time']) ? date('Y-m-d H:i:s', strtotime($data['actual_end_time'])) : null;
 
+        // 2. Normalize and validate session_type
+        $rawSessionType = trim((string) ($data['session_type'] ?? $hearing['hearing_type'] ?? '1st Mediation'));
+        $allowedSessionTypes = ['1st Mediation', '2nd Mediation', '3rd Mediation', 'Conciliation', 'Arbitration', 'Show Cause'];
+        $sessionType = in_array($rawSessionType, $allowedSessionTypes, true) ? $rawSessionType : '1st Mediation';
+
+        // 3. Normalize and validate checkboxes (0 or 1)
+        $opening = !empty($data['opening_conducted']) ? 1 : 0;
+        $identity = (!empty($data['identity_verified']) || !empty($data['parties_identified'])) ? 1 : 0;
+        $reviewed = (!empty($data['complaint_reviewed']) || !empty($data['complaint_read_confirmed'])) ? 1 : 0;
+        $caucus = !empty($data['caucus_conducted']) ? 1 : 0;
+
+        // 4. Normalize and sanitize text statements (with length boundaries)
+        $compStmt = mb_substr(trim(strip_tags((string) ($data['complainant_statement'] ?? $data['complainant_statement_summary'] ?? ''))), 0, 5000);
+        $respStmt = mb_substr(trim(strip_tags((string) ($data['respondent_statement'] ?? $data['respondent_statement_summary'] ?? ''))), 0, 5000);
+        $dispute = mb_substr(trim(strip_tags((string) ($data['main_dispute_identified'] ?? $data['dispute_summary'] ?? ''))), 0, 1000);
+        $discussion = mb_substr(trim(strip_tags((string) ($data['settlement_discussion_notes'] ?? $data['session_notes'] ?? ''))), 0, 5000);
+        $caucusNotes = mb_substr(trim(strip_tags((string) ($data['caucus_notes'] ?? ''))), 0, 3000);
+        $prevProposal = mb_substr(trim(strip_tags((string) ($data['previous_proposal'] ?? ''))), 0, 3000);
+        $newProposal = mb_substr(trim(strip_tags((string) ($data['new_proposal'] ?? ''))), 0, 3000);
+        $counteroffer = mb_substr(trim(strip_tags((string) ($data['counteroffer'] ?? $data['counter_offer'] ?? ''))), 0, 3000);
+        $additionalEvidence = mb_substr(trim(strip_tags((string) ($data['additional_evidence_notes'] ?? ''))), 0, 3000);
+        $remarks = mb_substr(trim(strip_tags((string) ($data['outcome_remarks'] ?? $data['duration_exceed_reason'] ?? ''))), 0, 1000);
+
+        // 5. Validate session outcome enum
+        $rawOutcome = trim((string) ($data['session_outcome'] ?? ''));
         $allowedOutcomes = [
             'Settled', 'Continue Mediation', 'Failed', 'Party Absent',
             'Rescheduled', 'Elevate to Pangkat', 'Pending'
         ];
-        if (!in_array($outcome, $allowedOutcomes, true)) {
-            $outcome = 'Pending';
+        if (!$rawOutcome || !in_array($rawOutcome, $allowedOutcomes, true)) {
+            return ['success' => false, 'message' => 'Please select a valid session outcome (Settled, Continue Mediation, Failed, Party Absent, Rescheduled, or Elevate to Pangkat).'];
+        }
+        $outcome = $rawOutcome;
+
+        // 6. Validate actual_end_time format if provided
+        $actualEndTime = null;
+        if (!empty($data['actual_end_time'])) {
+            $ts = strtotime($data['actual_end_time']);
+            if ($ts === false) {
+                return ['success' => false, 'message' => 'Actual session end time has an invalid datetime format.'];
+            }
+            $actualEndTime = date('Y-m-d H:i:s', $ts);
         }
 
         try {
@@ -151,7 +186,6 @@ class HearingMinutes
                 $histMsg = sprintf('%s session concluded: Mediation failed to reach settlement. Case eligible for Pangkat constitution (KP Form 10).', $sessionType);
                 $this->logCaseHistory($caseId, $hearing['case_status'], $histMsg, $userId);
             } elseif ($outcome === 'Elevate to Pangkat') {
-                // Elevate directly
                 $histMsg = sprintf('%s session concluded: Case elevated to Pangkat Tagapagkasundo (Conciliation).', $sessionType);
                 $this->logCaseHistory($caseId, 'Conciliation', $histMsg, $userId);
             }

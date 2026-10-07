@@ -275,18 +275,18 @@ include '../../layouts/header.php';
 </div>
 <?php endif; ?>
 
-<!-- Comprehensive Hearing Update, Service Verification & Attendance Modal -->
-<div id="editHearingModal" class="modal">
+<!-- Comprehensive Hearing Session, Service Verification & Attendance Modal -->
+<div id="editHearingModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="attModalTitle">
     <div class="modal-content modal-content-lg">
         <div class="modal-header">
             <div>
                 <h2 id="attModalTitle" style="margin-bottom: 2px;">Hearing Session &amp; Service Verification</h2>
-                <p id="attModalSubtitle" style="font-size: 0.84rem; color: #64748b; margin: 0;">Record service attempts, Officer’s Returns, party attendance, and manage statutory case progression.</p>
+                <p id="attModalSubtitle" style="font-size: 0.84rem; color: #64748b; margin: 0;">Review summons service status, record party attendance, and manage session minutes.</p>
             </div>
-            <button type="button" class="close-btn" onclick="closeHearingAttendanceModal()">&times;</button>
+            <button type="button" class="close-btn" onclick="closeHearingAttendanceModal()" aria-label="Close dialog">&times;</button>
         </div>
 
-        <div id="attModalAlert" style="display: none; margin-bottom: 14px;" class="alert"></div>
+        <div id="attModalAlert" style="display: none; margin-bottom: 14px;" class="alert" role="alert"></div>
 
         <div id="attHearingMetaCard" class="att-meta-grid">
             <div class="att-meta-item">
@@ -317,19 +317,27 @@ include '../../layouts/header.php';
 
         <!-- Session & Case Management Action Bar -->
         <div class="hearing-session-actions-bar" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; padding: 10px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
-            <button type="button" class="btn-secondary" style="font-size: 0.82rem; display: inline-flex; align-items: center; gap: 4px;" onclick="openSessionMinutesModalCurrent()">📝 Session Minutes &amp; Intake</button>
-            <button type="button" class="btn-secondary" style="font-size: 0.82rem; display: inline-flex; align-items: center; gap: 4px; color: #b45309;" onclick="openOfficeCancelModalCurrent()">⚠️ Office Cancel (Emergency)</button>
-            <button type="button" class="btn-secondary" id="btnElevateToPangkatQuick" style="font-size: 0.82rem; display: inline-flex; align-items: center; gap: 4px; color: #b91c1c;" onclick="openFailMediationModalCurrent()">⚖️ Elevate to Pangkat (KP 10)</button>
-            <button type="button" class="btn-secondary" style="font-size: 0.82rem; display: inline-flex; align-items: center; gap: 4px; color: #1e40af;" onclick="viewCaseTransferPackageCurrent()">📦 Case Transfer Package</button>
+            <button type="button" class="btn-secondary" style="font-size: 0.82rem; display: inline-flex; align-items: center; gap: 5px;" onclick="openSessionMinutesModalCurrent()">
+                📝 Session Minutes &amp; Intake
+            </button>
+            <button type="button" class="btn-secondary" id="btnElevateToPangkatQuick" style="font-size: 0.82rem; display: inline-flex; align-items: center; gap: 5px; color: #b91c1c;" onclick="openFailMediationModalCurrent()">
+                ⚖️ Elevate to Pangkat (KP 10)
+            </button>
+            <button type="button" class="btn-secondary" style="font-size: 0.82rem; display: inline-flex; align-items: center; gap: 5px; color: #1e40af;" onclick="viewCaseTransferPackageCurrent()">
+                📦 Case Transfer Package
+            </button>
+            <button type="button" class="btn-secondary" style="font-size: 0.82rem; display: inline-flex; align-items: center; gap: 5px; color: #b45309;" onclick="openOfficeCancelModalCurrent()">
+                ⚠️ Cancel Session (Emergency)
+            </button>
         </div>
 
         <!-- Attendance & Service Verification Form -->
-        <form id="hearingAttendanceForm" novalidate>
+        <form id="hearingAttendanceForm" onsubmit="event.preventDefault(); handleSaveAttendance();" novalidate>
             <input type="hidden" id="attHearingId" name="hearing_id">
 
-            <div style="margin-bottom: 8px; display:flex; justify-content:space-between; align-items:center;">
+            <div style="margin-bottom: 10px; display:flex; justify-content:space-between; align-items:center;">
                 <h3 style="font-size: 0.95rem; font-weight: 700; color: #1e293b; margin: 0;">Parties, Service Verification &amp; Attendance Records</h3>
-                <span style="font-size: 0.78rem; color: #64748b;">Record service attempts &amp; appearance status</span>
+                <span style="font-size: 0.78rem; color: #64748b;">Verify service status &amp; mark attendance</span>
             </div>
 
             <div id="attPartiesContainer" class="att-parties-list">
@@ -338,7 +346,7 @@ include '../../layouts/header.php';
             </div>
 
             <!-- Dynamic Live KP Situation Box -->
-            <div id="attSituationCard" class="att-situation-box sit-neutral">
+            <div id="attSituationCard" class="att-situation-box sit-neutral" style="margin-top: 14px;">
                 <div class="att-situation-header">
                     <div class="att-situation-title">
                         <span id="attSituationIcon">⚖️</span>
@@ -359,83 +367,17 @@ include '../../layouts/header.php';
                 </div>
             </div>
 
-            <div id="attModalBottomAlert" style="display: none; margin-top: 14px; margin-bottom: 8px;" class="alert"></div>
+            <div id="attModalBottomAlert" style="display: none; margin-top: 14px; margin-bottom: 8px;" class="alert" role="alert"></div>
 
-            <div class="modal-actions" style="margin-top: 18px; margin-bottom: 18px;">
+            <div class="modal-actions" style="margin-top: 18px; margin-bottom: 6px;">
                 <button type="button" class="btn-secondary" onclick="closeHearingAttendanceModal()">Close</button>
                 <?php if ($canManageHearings): ?>
-                <button type="button" class="btn-create" id="btnSaveAttendance">Save Attendance &amp; Apply Findings</button>
+                <button type="button" class="btn-create" id="btnSaveAttendance" onclick="handleSaveAttendance()">
+                    Save Attendance &amp; Apply Findings
+                </button>
                 <?php endif; ?>
             </div>
         </form>
-
-        <?php if ($canManageHearings): ?>
-        <!-- Reschedule Hearing Section (Creates a new hearing record while preserving original history) -->
-        <details class="reschedule-section-details" style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px 18px; margin-top: 10px;">
-            <summary style="font-weight: 700; color: #1e293b; cursor: pointer; font-size: 0.92rem;">
-                📅 Reschedule This Hearing (Creates New Hearing Event &amp; Preserves Record)
-            </summary>
-            <p style="font-size: 0.8rem; color: #64748b; margin: 8px 0 14px;">
-                Per Katarungang Pambarangay requirements, rescheduling preserves this hearing's attendance and Officer’s Return history, creating a separate new hearing event.
-            </p>
-            <form id="editHearingForm" action="../../../backend/api/hearings/update.php" method="POST" class="hearing-update-fields">
-                <input type="hidden" name="hearing_id" id="editHearingId">
-                <input type="hidden" name="hearing_type" id="editHearingTypeValue">
-                <div class="form-group">
-                    <label for="editHearingType">Hearing Stage</label>
-                    <input type="text" id="editHearingType" readonly>
-                </div>
-                <div class="form-group">
-                    <label for="editHearingDate">New Date &amp; Time <span class="required-mark">*</span></label>
-                    <input type="datetime-local" id="editHearingDate" name="hearing_date" required>
-                    <small id="editHearingDateStaticHint" style="color: #64748b; font-size: 0.8rem; display: block; margin-top: 4px;">Office hours: Monday to Friday, 8:00 AM – 5:00 PM (excluding weekends).</small>
-                    <div class="date-validation-hint" data-for="editHearingDate" role="alert" aria-live="polite">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                        <span class="hint-msg"></span>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label for="editHearingVenue">New Venue <span class="required-mark">*</span></label>
-                    <input type="text" id="editHearingVenue" name="venue" required maxlength="255">
-                </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                    <div class="form-group">
-                        <label for="rescheduledByParty">Rescheduling Requested By <span class="required-mark">*</span></label>
-                        <select id="rescheduledByParty" name="rescheduled_by_party" required>
-                            <option value="Complainant">Complainant</option>
-                            <option value="Respondent">Respondent</option>
-                            <option value="Office">Office / Lupon Secretariat</option>
-                            <option value="Both">Both Parties (Joint Request)</option>
-                        </select>
-                        <small style="color: #64748b; font-size: 0.75rem;">Parties are limited to 1–2 reschedules per case.</small>
-                    </div>
-                    <div class="form-group">
-                        <label for="rescheduleJustificationCategory">Justification Category <span class="required-mark">*</span></label>
-                        <select id="rescheduleJustificationCategory" name="reschedule_justification_category" required>
-                            <option value="Medical Emergency">Medical Emergency</option>
-                            <option value="Force Majeure">Force Majeure / Calamity</option>
-                            <option value="Official Duty">Official Duty / Subpoena</option>
-                            <option value="Bereavement">Bereavement / Family Emergency</option>
-                            <option value="Other">Other Verified Cause</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label for="rescheduleDocumentPath">Supporting Document / Medical Certificate Path</label>
-                    <input type="text" id="rescheduleDocumentPath" name="reschedule_document_path" placeholder="Path to medical certificate, proof of emergency, or sworn excuse letter">
-                </div>
-                <div class="form-group">
-                    <label for="editHearingRemarks">Remarks</label>
-                    <textarea id="editHearingRemarks" name="remarks" rows="2" placeholder="Optional notes or instructions for the new session"></textarea>
-                </div>
-                <div class="form-group">
-                    <label for="rescheduleReason">Rescheduling Reason Details <span class="required-mark">*</span></label>
-                    <textarea id="rescheduleReason" name="reschedule_reason" rows="2" maxlength="2000" placeholder="State detailed reason for rescheduling" required></textarea>
-                </div>
-                <button type="submit" class="btn-create">Review Schedule Reschedule</button>
-            </form>
-        </details>
-        <?php endif; ?>
     </div>
 </div>
 
@@ -511,76 +453,85 @@ include '../../layouts/header.php';
 </div>
 
 <!-- ======================================================== -->
-<!-- MODAL: Mediation Session Minutes & Intake (Section B)    -->
+<!-- MODAL: Mediation / Conciliation Session Minutes          -->
 <!-- ======================================================== -->
-<div id="sessionMinutesModal" class="modal">
+<div id="sessionMinutesModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="sessionMinutesModalTitle">
     <div class="modal-content modal-content-lg">
         <div class="modal-header">
-            <h2 id="sessionMinutesModalTitle">Mediation Session Minutes &amp; Settlement Progress</h2>
-            <button type="button" class="close-btn" onclick="closeModal('sessionMinutesModal')">&times;</button>
+            <div>
+                <h2 id="sessionMinutesModalTitle" style="margin-bottom: 2px;">Hearing Session Minutes &amp; Settlement Progress</h2>
+                <p id="sessionMinutesModalSubtitle" style="font-size: 0.84rem; color: #64748b; margin: 0;">Record formal proceedings, statements, proposals, and session outcome.</p>
+            </div>
+            <button type="button" class="close-btn" onclick="closeModal('sessionMinutesModal')" aria-label="Close dialog">&times;</button>
         </div>
-        <div id="minutesAlert" class="alert" style="display: none; margin-bottom: 12px;"></div>
-        <form id="sessionMinutesForm" onsubmit="handleSaveMinutes(event)">
+
+        <div id="minutesAlert" class="alert" style="display: none; margin-bottom: 14px;" role="alert"></div>
+
+        <form id="sessionMinutesForm" onsubmit="handleSaveMinutes(event)" novalidate>
             <input type="hidden" id="minutesHearingId" name="hearing_id">
             <input type="hidden" id="minutesCaseId" name="case_id">
 
-            <!-- 1st Mediation Checklist -->
-            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 14px;">
-                <h3 style="font-size: 0.88rem; font-weight: 700; color: #1e293b; margin: 0 0 8px;">Session Opening &amp; Identity Verification</h3>
-                <div style="display: flex; gap: 20px; font-size: 0.84rem;">
-                    <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
+            <!-- Section 1: Session Opening & Identity Verification -->
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; margin-bottom: 14px;">
+                <h3 style="font-size: 0.88rem; font-weight: 700; color: #1e293b; margin: 0 0 10px; display: flex; align-items: center; gap: 6px;">
+                    <span>📋</span> Session Opening &amp; Identity Verification
+                </h3>
+                <div style="display: flex; gap: 20px; flex-wrap: wrap; font-size: 0.84rem;">
+                    <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
                         <input type="checkbox" id="min_opening" name="opening_conducted" value="1">
-                        Opening Statement Conducted
+                        <span>Opening Statement Conducted</span>
                     </label>
-                    <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
-                        <input type="checkbox" id="min_id_verified" name="parties_identified" value="1">
-                        Parties Identity Verified
+                    <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
+                        <input type="checkbox" id="min_id_verified" name="identity_verified" value="1">
+                        <span>Parties Identity Verified</span>
                     </label>
-                    <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
-                        <input type="checkbox" id="min_complaint_read" name="complaint_read_confirmed" value="1">
-                        Complaint Reviewed &amp; Read
+                    <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
+                        <input type="checkbox" id="min_complaint_read" name="complaint_reviewed" value="1">
+                        <span>Complaint Reviewed &amp; Read</span>
                     </label>
                 </div>
             </div>
 
-            <!-- Statements & Dispute Summary -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                <div class="form-group">
+            <!-- Section 2: Statements & Core Dispute -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px;">
+                <div class="form-group" style="margin-bottom: 0;">
                     <label for="minComplainantStmt">Complainant Statement Summary</label>
-                    <textarea id="minComplainantStmt" name="complainant_statement_summary" rows="3" placeholder="Summary of complainant's narration of facts"></textarea>
+                    <textarea id="minComplainantStmt" name="complainant_statement" rows="3" maxlength="5000" placeholder="Summary of complainant's narration of facts..."></textarea>
                 </div>
-                <div class="form-group">
+                <div class="form-group" style="margin-bottom: 0;">
                     <label for="minRespondentStmt">Respondent Statement Summary</label>
-                    <textarea id="minRespondentStmt" name="respondent_statement_summary" rows="3" placeholder="Summary of respondent's explanation or counter-statement"></textarea>
+                    <textarea id="minRespondentStmt" name="respondent_statement" rows="3" maxlength="5000" placeholder="Summary of respondent's explanation or counter-statement..."></textarea>
                 </div>
             </div>
 
             <div class="form-group">
                 <label for="minDisputeSummary">Main Dispute Identified</label>
-                <input type="text" id="minDisputeSummary" name="dispute_summary" placeholder="Core issue (e.g. unpaid loan balance of ₱10,000, boundary encroachment, neighborhood noise)">
+                <input type="text" id="minDisputeSummary" name="main_dispute_identified" maxlength="1000" placeholder="Core issue (e.g., boundary encroachment, unpaid loan balance, noise disturbance)">
             </div>
 
-            <!-- 2nd Mediation Negotiation & Caucus Section -->
-            <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px 16px; margin-bottom: 14px;">
-                <h3 style="font-size: 0.88rem; font-weight: 700; color: #1e40af; margin: 0 0 8px;">Negotiation, Proposals &amp; Caucus (2nd Mediation Focus)</h3>
+            <!-- Section 3: Proposals & Caucus -->
+            <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 14px 16px; margin-bottom: 14px;">
+                <h3 style="font-size: 0.88rem; font-weight: 700; color: #0369a1; margin: 0 0 10px; display: flex; align-items: center; gap: 6px;">
+                    <span>🤝</span> Negotiation, Proposals &amp; Caucus
+                </h3>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                    <div class="form-group" style="margin-bottom: 6px;">
-                        <label for="minNewProposal">Settlement Proposal / Offer</label>
-                        <textarea id="minNewProposal" name="new_proposal" rows="2" placeholder="Proposal made by offering party"></textarea>
+                    <div class="form-group" style="margin-bottom: 8px;">
+                        <label for="minNewProposal" style="color: #0c4a6e;">Settlement Proposal / Offer</label>
+                        <textarea id="minNewProposal" name="new_proposal" rows="2" maxlength="3000" placeholder="Terms proposed by offering party..."></textarea>
                     </div>
-                    <div class="form-group" style="margin-bottom: 6px;">
-                        <label for="minCounterOffer">Counteroffer / Response</label>
-                        <textarea id="minCounterOffer" name="counter_offer" rows="2" placeholder="Counteroffer or terms counter-proposed"></textarea>
+                    <div class="form-group" style="margin-bottom: 8px;">
+                        <label for="minCounterOffer" style="color: #0c4a6e;">Counteroffer / Response</label>
+                        <textarea id="minCounterOffer" name="counteroffer" rows="2" maxlength="3000" placeholder="Counter-proposal or adjustments..."></textarea>
                     </div>
                 </div>
-                <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.84rem; margin-top: 6px;">
+                <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.84rem; margin-top: 4px; color: #0369a1; font-weight: 500;">
                     <input type="checkbox" id="min_caucus" name="caucus_conducted" value="1">
-                    Private Caucus Conducted (separate meeting with one party)
+                    <span>Private Caucus Conducted (separate meeting held with one party)</span>
                 </label>
             </div>
 
-            <!-- Session Outcome & Duration -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+            <!-- Section 4: Session Outcome & Duration -->
+            <div style="display: grid; grid-template-columns: 1.2fr 1fr 1.2fr; gap: 12px;">
                 <div class="form-group">
                     <label for="minOutcome">Session Outcome <span class="required-mark">*</span></label>
                     <select id="minOutcome" name="session_outcome" required>
@@ -596,19 +547,20 @@ include '../../layouts/header.php';
                     <input type="datetime-local" id="minActualEndTime" name="actual_end_time">
                 </div>
                 <div class="form-group">
-                    <label for="minDurationExceedReason">Duration Notes / Reason</label>
-                    <input type="text" id="minDurationExceedReason" name="duration_exceed_reason" placeholder="Notes if session ran over expected duration">
+                    <label for="minDurationExceedReason">Duration Notes / Remarks</label>
+                    <input type="text" id="minDurationExceedReason" name="outcome_remarks" maxlength="1000" placeholder="Notes if session ran over standard duration">
                 </div>
             </div>
 
+            <!-- Section 5: Formal Minutes / Notes -->
             <div class="form-group">
                 <label for="minNotes">Formal Session Minutes / Minutes Record</label>
-                <textarea id="minNotes" name="session_notes" rows="3" placeholder="Full recorded proceedings, commitments, or points of agreement"></textarea>
+                <textarea id="minNotes" name="settlement_discussion_notes" rows="3" maxlength="5000" placeholder="Full recorded proceedings, commitments, or points of agreement..."></textarea>
             </div>
 
-            <div class="modal-actions">
+            <div class="modal-actions" style="margin-top: 18px;">
                 <button type="button" class="btn-secondary" onclick="closeModal('sessionMinutesModal')">Cancel</button>
-                <button type="submit" class="btn-create">Save Hearing Minutes</button>
+                <button type="submit" class="btn-create" id="btnSaveMinutesSubmit">Save Hearing Minutes</button>
             </div>
         </form>
     </div>
