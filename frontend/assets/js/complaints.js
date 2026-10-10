@@ -629,7 +629,15 @@ function renderCaseWorkspace(workspace, complaint) {
         }
     }
 
-    // Card 7: Case Documents & KP Forms
+    const stageCaseId = caseData.case_id || complaint.case_id || null;
+
+    // Card 7: Mediation
+    renderMediationCard(workspace.stages, stageCaseId, complaint);
+
+    // Card 8: Pangkat Conciliation
+    renderConciliationCard(workspace.stages, stageCaseId, complaint);
+
+    // Card 9: Case Documents & KP Forms
     const docContainer = document.getElementById('cwDocumentsContainer');
     const docCountBadge = document.getElementById('cwDocCountBadge');
     if (docContainer) {
@@ -747,6 +755,297 @@ function renderCaseWorkspace(workspace, complaint) {
             hearingsContainer.innerHTML = hearingsHtml;
         }
     }
+}
+
+function renderMediationCard(stages, caseId, complaint) {
+    const med = stages?.mediation || {};
+    const badgeEl = document.getElementById('cwMediationStatusBadge');
+    const linkEl = document.getElementById('cwManageMediationLink');
+    const container = document.getElementById('cwMediationContainer');
+
+    const status = med.stage_status || 'Not Started';
+    if (badgeEl) {
+        badgeEl.textContent = status;
+        let bg = '#f1f5f9', color = '#475569';
+        if (status === 'Completed' || status === 'Settled') { bg = '#dcfce7'; color = '#15803d'; }
+        else if (status === 'In Progress') { bg = '#dbeafe'; color = '#1d4ed8'; }
+        else if (status === 'Awaiting Outcome' || status === 'Ready for Referral') { bg = '#fef3c7'; color = '#b45309'; }
+        else if (status === 'Referred to Pangkat') { bg = '#e0f2fe'; color = '#0369a1'; }
+        badgeEl.style.background = bg;
+        badgeEl.style.color = color;
+    }
+
+    if (linkEl && caseId) {
+        linkEl.href = `../cases/mediation-workspace.php?case_id=${encodeURIComponent(caseId)}&complaint_id=${encodeURIComponent(complaint.complaint_id || '')}`;
+    }
+
+    if (!container) return;
+
+    const cAtt = med.attendance_summary?.complainant || { present: 0, absent: 0, excused: 0, pending: 0 };
+    const rAtt = med.attendance_summary?.respondent || { present: 0, absent: 0, excused: 0, pending: 0 };
+    const nextH = med.next_hearing;
+    const actions = med.documents_and_actions || {};
+
+    const renderAction = (label, url, enabled, disabledReason) => {
+        if (enabled) {
+            return `<a href="${url}" class="btn-secondary" style="font-size: 0.74rem; padding: 4px 8px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; border-color: #cbd5e1; background: #fff;">${label} &rarr;</a>`;
+        }
+        return `<span title="${escapeHtml(disabledReason)}" style="font-size: 0.74rem; padding: 4px 8px; border-radius: 4px; background: #f8fafc; color: #94a3b8; border: 1px dashed #e2e8f0; cursor: not-allowed; display: inline-flex; align-items: center; gap: 4px;">${label} 🔒</span>`;
+    };
+
+    container.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+            <!-- Summary 1: Hearings & Attendance -->
+            <div style="padding: 10px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-size: 0.78rem; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.03em;">
+                        📅 Hearings &amp; Attendance
+                    </span>
+                    <a href="../hearings/schedules.php?case_id=${encodeURIComponent(caseId || '')}&type=Mediation" class="btn-secondary" style="font-size: 0.72rem; padding: 2px 7px; text-decoration: none;">
+                        View Hearings &rarr;
+                    </a>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 6px; font-size: 0.78rem;">
+                    <div style="background: #f8fafc; padding: 5px 8px; border-radius: 6px;">
+                        <span style="color: #64748b; font-size: 0.7rem; display: block;">Sessions</span>
+                        <strong style="color: #0f172a; font-size: 0.9rem;">${Number(med.sessions_count || 0)}</strong>
+                    </div>
+                    <div style="background: #f8fafc; padding: 5px 8px; border-radius: 6px;">
+                        <span style="color: #64748b; font-size: 0.7rem; display: block;">Next Session</span>
+                        <strong style="color: #0f172a; font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;" title="${nextH ? escapeHtml(formatDateReadable(nextH.hearing_date)) : 'None'}">${nextH ? escapeHtml(formatDateReadable(nextH.hearing_date)) : 'None'}</strong>
+                    </div>
+                    <div style="background: #f8fafc; padding: 5px 8px; border-radius: 6px;">
+                        <span style="color: #64748b; font-size: 0.7rem; display: block;">Latest Date</span>
+                        <strong style="color: #0f172a; font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${med.latest_hearing_date ? escapeHtml(formatDateReadable(med.latest_hearing_date)) : '—'}</strong>
+                    </div>
+                </div>
+                <div style="font-size: 0.76rem; color: #475569; display: flex; flex-direction: column; gap: 2px;">
+                    <div><strong>Complainant:</strong> Present (${cAtt.present}), Absent (${cAtt.absent}), Excused (${cAtt.excused})</div>
+                    <div><strong>Respondent:</strong> Present (${rAtt.present}), Absent (${rAtt.absent}), Excused (${rAtt.excused})</div>
+                    <div style="margin-top: 4px;">
+                        <span style="font-size: 0.7rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; ${med.attendance_summary?.is_finalized ? 'background: #dcfce7; color: #15803d;' : 'background: #fef3c7; color: #b45309;'}">
+                            ${escapeHtml(med.attendance_summary?.status_label || 'Pending Verification')}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Summary 2: Minutes of the Meeting -->
+            <div style="padding: 10px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-size: 0.78rem; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.03em;">
+                        📝 Session Minutes &amp; Progress
+                    </span>
+                    <a href="../cases/mediation-workspace.php?case_id=${encodeURIComponent(caseId || '')}#minutesSection" class="btn-secondary" style="font-size: 0.72rem; padding: 2px 7px; text-decoration: none;">
+                        View Minutes &rarr;
+                    </a>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem;">
+                    <div>
+                        <span>Saved Minutes: <strong>${Number(med.minutes_summary?.count || 0)}</strong></span>
+                        <span style="margin-left: 6px; font-size: 0.7rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; ${med.minutes_summary?.latest_status === 'Finalized' ? 'background: #dcfce7; color: #15803d;' : (med.minutes_summary?.latest_status === 'Draft' ? 'background: #dbeafe; color: #1e40af;' : 'background: #f1f5f9; color: #64748b;')}">
+                            ${escapeHtml(med.minutes_summary?.latest_status || 'Not Recorded')}
+                        </span>
+                    </div>
+                    <div style="font-size: 0.74rem; color: #64748b;">
+                        ${med.minutes_summary?.latest_session_date ? `Session: ${escapeHtml(formatDateReadable(med.minutes_summary.latest_session_date))}` : 'No minutes recorded'}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Summary 3: Documents & Actions -->
+            <div style="padding: 10px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;">
+                <span style="font-size: 0.78rem; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.03em; display: block; margin-bottom: 6px;">
+                    ⚡ Documents &amp; Actions
+                </span>
+                <div style="display: flex; flex-wrap: wrap; gap: 5px;">
+                    ${renderAction('Record Attendance', `../cases/mediation-workspace.php?case_id=${encodeURIComponent(caseId || '')}&action=attendance`, actions.can_record_attendance, 'Requires scheduled mediation session')}
+                    ${renderAction('Add Minutes', `../cases/mediation-workspace.php?case_id=${encodeURIComponent(caseId || '')}&action=minutes`, actions.can_add_minutes, 'Requires mediation session record')}
+                    ${renderAction('Print Notice', `../hearings/schedules.php?case_id=${encodeURIComponent(caseId || '')}`, actions.can_print_notice, 'Requires mediation notice')}
+                    ${renderAction('Amicable Settlement', `../settlements/settlements.php?case_id=${encodeURIComponent(caseId || '')}&new=1`, actions.can_generate_settlement, 'Requires settlement terms reached')}
+                    ${renderAction('Record Outcome', `../cases/mediation-workspace.php?case_id=${encodeURIComponent(caseId || '')}&action=outcome`, actions.can_record_outcome, 'Available after conducting session')}
+                    ${renderAction('Proceed to Pangkat', `../cases/mediation-workspace.php?case_id=${encodeURIComponent(caseId || '')}&action=referral`, actions.can_proceed_to_pangkat, 'Requires unsuccessful mediation or lapsed statutory period')}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderConciliationCard(stages, caseId, complaint) {
+    const con = stages?.conciliation || {};
+    const badgeEl = document.getElementById('cwConciliationStatusBadge');
+    const linkEl = document.getElementById('cwManageConciliationLink');
+    const container = document.getElementById('cwConciliationContainer');
+
+    const status = con.stage_status || (con.is_locked ? 'Locked' : 'Not Started');
+    const isLocked = Boolean(con.is_locked);
+
+    if (badgeEl) {
+        badgeEl.textContent = status;
+        let bg = '#f1f5f9', color = '#64748b';
+        if (status === 'Completed' || status === 'Settled') { bg = '#dcfce7'; color = '#15803d'; }
+        else if (status === 'In Progress') { bg = '#dbeafe'; color = '#1d4ed8'; }
+        else if (status === 'Awaiting Outcome' || status === 'Ready for Referral') { bg = '#fef3c7'; color = '#b45309'; }
+        else if (status === 'Locked') { bg = '#f1f5f9'; color = '#64748b'; }
+        badgeEl.style.background = bg;
+        badgeEl.style.color = color;
+    }
+
+    if (linkEl) {
+        if (isLocked) {
+            linkEl.href = '#';
+            linkEl.onclick = (e) => {
+                e.preventDefault();
+                alert('Pangkat Conciliation is locked. Complete the mediation stage and record an authorized referral to unlock this workspace.');
+            };
+            linkEl.style.opacity = '0.6';
+            linkEl.style.cursor = 'not-allowed';
+            linkEl.innerHTML = 'Manage Conciliation 🔒';
+        } else {
+            linkEl.href = `../cases/pangkat-workspace.php?case_id=${encodeURIComponent(caseId || '')}&complaint_id=${encodeURIComponent(complaint.complaint_id || '')}`;
+            linkEl.onclick = null;
+            linkEl.style.opacity = '1';
+            linkEl.style.cursor = 'pointer';
+            linkEl.innerHTML = 'Manage Conciliation &rarr;';
+        }
+    }
+
+    if (!container) return;
+
+    if (isLocked) {
+        const canRefer = stages?.mediation?.documents_and_actions?.can_proceed_to_pangkat;
+        container.innerHTML = `
+            <div style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 22px 16px; text-align: center; color: #64748b;">
+                <div style="font-size: 1.8rem; margin-bottom: 6px;">🔒</div>
+                <div style="font-size: 0.88rem; font-weight: 600; color: #334155; margin-bottom: 4px;">
+                    Pangkat Conciliation is locked
+                </div>
+                <p style="margin: 0; font-size: 0.82rem; color: #64748b; line-height: 1.45; max-width: 440px; margin: 0 auto;">
+                    Complete the mediation stage and record an authorized referral to unlock this workspace.
+                </p>
+                ${canRefer ? `
+                    <div style="margin-top: 12px;">
+                        <a href="../cases/mediation-workspace.php?case_id=${encodeURIComponent(caseId || '')}&action=referral" class="btn-create" style="font-size: 0.78rem; padding: 5px 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+                            Proceed with Referral in Mediation &rarr;
+                        </a>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+        return;
+    }
+
+    const cAtt = con.attendance_summary?.complainant || { present: 0, absent: 0, excused: 0, pending: 0 };
+    const rAtt = con.attendance_summary?.respondent || { present: 0, absent: 0, excused: 0, pending: 0 };
+    const pInfo = con.pangkat_assignment || {};
+    const actions = con.documents_and_actions || {};
+    const nextH = con.next_hearing;
+
+    const renderAction = (label, url, enabled, disabledReason) => {
+        if (enabled) {
+            return `<a href="${url}" class="btn-secondary" style="font-size: 0.74rem; padding: 4px 8px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; border-color: #cbd5e1; background: #fff;">${label} &rarr;</a>`;
+        }
+        return `<span title="${escapeHtml(disabledReason)}" style="font-size: 0.74rem; padding: 4px 8px; border-radius: 4px; background: #f8fafc; color: #94a3b8; border: 1px dashed #e2e8f0; cursor: not-allowed; display: inline-flex; align-items: center; gap: 4px;">${label} 🔒</span>`;
+    };
+
+    container.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+            <!-- Summary 1: Pangkat Assignment -->
+            <div style="padding: 10px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-size: 0.78rem; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.03em;">
+                        👥 Pangkat Assignment
+                    </span>
+                    <a href="../cases/case-list.php?assign_case_id=${encodeURIComponent(caseId || '')}#caseAssignments" class="btn-secondary" style="font-size: 0.72rem; padding: 2px 7px; text-decoration: none;">
+                        Manage Team &rarr;
+                    </a>
+                </div>
+                <div style="font-size: 0.78rem; color: #334155; display: flex; flex-direction: column; gap: 3px;">
+                    <div><strong>Chairperson:</strong> ${escapeHtml(pInfo.chairperson?.member_name || 'Not assigned')}</div>
+                    <div><strong>Secretary:</strong> ${escapeHtml(pInfo.secretary?.member_name || 'Not assigned')}</div>
+                    <div><strong>Member:</strong> ${escapeHtml(pInfo.member?.member_name || 'Not assigned')}</div>
+                    <div style="margin-top: 4px; font-size: 0.72rem; color: #64748b; display: flex; gap: 8px; flex-wrap: wrap;">
+                        <span>📅 Constituted: ${pInfo.formation_date ? escapeHtml(formatDateReadable(pInfo.formation_date)) : 'N/A'}</span>
+                        <span>• Status: <strong>${escapeHtml(pInfo.assignment_status || 'Pending')}</strong></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Summary 2: Hearings & Attendance -->
+            <div style="padding: 10px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-size: 0.78rem; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.03em;">
+                        📅 Hearings &amp; Attendance
+                    </span>
+                    <a href="../hearings/schedules.php?case_id=${encodeURIComponent(caseId || '')}&type=Conciliation" class="btn-secondary" style="font-size: 0.72rem; padding: 2px 7px; text-decoration: none;">
+                        View Sessions &rarr;
+                    </a>
+                </div>
+                <div style="grid-template-columns: repeat(3, 1fr); display: grid; gap: 6px; margin-bottom: 6px; font-size: 0.78rem;">
+                    <div style="background: #f8fafc; padding: 5px 8px; border-radius: 6px;">
+                        <span style="color: #64748b; font-size: 0.7rem; display: block;">Sessions</span>
+                        <strong style="color: #0f172a; font-size: 0.9rem;">${Number(con.sessions_count || 0)}</strong>
+                    </div>
+                    <div style="background: #f8fafc; padding: 5px 8px; border-radius: 6px;">
+                        <span style="color: #64748b; font-size: 0.7rem; display: block;">Next Session</span>
+                        <strong style="color: #0f172a; font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${nextH ? escapeHtml(formatDateReadable(nextH.hearing_date)) : 'None'}</strong>
+                    </div>
+                    <div style="background: #f8fafc; padding: 5px 8px; border-radius: 6px;">
+                        <span style="color: #64748b; font-size: 0.7rem; display: block;">Latest Date</span>
+                        <strong style="color: #0f172a; font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${con.latest_hearing_date ? escapeHtml(formatDateReadable(con.latest_hearing_date)) : '—'}</strong>
+                    </div>
+                </div>
+                <div style="font-size: 0.76rem; color: #475569; display: flex; flex-direction: column; gap: 2px;">
+                    <div><strong>Complainant:</strong> Present (${cAtt.present}), Absent (${cAtt.absent}), Excused (${cAtt.excused})</div>
+                    <div><strong>Respondent:</strong> Present (${rAtt.present}), Absent (${rAtt.absent}), Excused (${rAtt.excused})</div>
+                    <div style="margin-top: 4px;">
+                        <span style="font-size: 0.7rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; ${con.attendance_summary?.is_finalized ? 'background: #dcfce7; color: #15803d;' : 'background: #fef3c7; color: #b45309;'}">
+                            ${escapeHtml(con.attendance_summary?.status_label || 'Pending Verification')}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Summary 3: Minutes of the Meeting -->
+            <div style="padding: 10px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-size: 0.78rem; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.03em;">
+                        📝 Session Minutes &amp; Progress
+                    </span>
+                    <a href="../cases/pangkat-workspace.php?case_id=${encodeURIComponent(caseId || '')}#minutesSection" class="btn-secondary" style="font-size: 0.72rem; padding: 2px 7px; text-decoration: none;">
+                        View Minutes &rarr;
+                    </a>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem;">
+                    <div>
+                        <span>Saved Minutes: <strong>${Number(con.minutes_summary?.count || 0)}</strong></span>
+                        <span style="margin-left: 6px; font-size: 0.7rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; ${con.minutes_summary?.latest_status === 'Finalized' ? 'background: #dcfce7; color: #15803d;' : (con.minutes_summary?.latest_status === 'Draft' ? 'background: #dbeafe; color: #1e40af;' : 'background: #f1f5f9; color: #64748b;')}">
+                            ${escapeHtml(con.minutes_summary?.latest_status || 'Not Recorded')}
+                        </span>
+                    </div>
+                    <div style="font-size: 0.74rem; color: #64748b;">
+                        ${con.minutes_summary?.latest_session_date ? `Session: ${escapeHtml(formatDateReadable(con.minutes_summary.latest_session_date))}` : 'No minutes recorded'}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Summary 4: Documents & Actions -->
+            <div style="padding: 10px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;">
+                <span style="font-size: 0.78rem; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.03em; display: block; margin-bottom: 6px;">
+                    ⚡ Documents &amp; Actions
+                </span>
+                <div style="display: flex; flex-wrap: wrap; gap: 5px;">
+                    ${renderAction('Record Attendance', `../cases/pangkat-workspace.php?case_id=${encodeURIComponent(caseId || '')}&action=attendance`, actions.can_record_attendance, 'Requires scheduled conciliation session')}
+                    ${renderAction('Add Minutes', `../cases/pangkat-workspace.php?case_id=${encodeURIComponent(caseId || '')}&action=minutes`, actions.can_add_minutes, 'Requires conciliation session record')}
+                    ${renderAction('Print Notice', `../hearings/schedules.php?case_id=${encodeURIComponent(caseId || '')}`, actions.can_print_notice, 'Requires conciliation notice')}
+                    ${renderAction('Conciliation Docs', `../documents/document-center.php?case_id=${encodeURIComponent(caseId || '')}`, true, '')}
+                    ${renderAction('Record Conciliation Outcome', `../cases/pangkat-workspace.php?case_id=${encodeURIComponent(caseId || '')}&action=outcome`, actions.can_record_outcome, 'Available after conciliation session')}
+                    ${renderAction('Amicable Settlement', `../settlements/settlements.php?case_id=${encodeURIComponent(caseId || '')}&new=1`, actions.can_generate_settlement, 'Requires amicable settlement reached')}
+                    ${renderAction('Initiate CFA Workflow', `../documents/cfa.php?case_id=${encodeURIComponent(caseId || '')}`, actions.can_issue_cfa, 'Requires unsuccessful conciliation or legal basis')}
+                </div>
+            </div>
+        </div>
+    `;
 }
 
 function openAddPartyModal() {

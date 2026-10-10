@@ -281,7 +281,7 @@ include '../../layouts/header.php';
         <div class="modal-header">
             <div>
                 <h2 id="attModalTitle" style="margin-bottom: 2px;">Hearing Session &amp; Service Verification</h2>
-                <p id="attModalSubtitle" style="font-size: 0.84rem; color: #64748b; margin: 0;">Review summons service status, record party attendance, and manage session minutes.</p>
+                <p id="attModalSubtitle" style="font-size: 0.84rem; color: #64748b; margin: 0;">Review summons service status, record party attendance, and verify notice delivery.</p>
             </div>
             <button type="button" class="close-btn" onclick="closeHearingAttendanceModal()" aria-label="Close dialog">&times;</button>
         </div>
@@ -317,8 +317,8 @@ include '../../layouts/header.php';
 
         <!-- Session & Case Management Action Bar -->
         <div class="hearing-session-actions-bar" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; padding: 10px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
-            <button type="button" class="btn-secondary" style="font-size: 0.82rem; display: inline-flex; align-items: center; gap: 5px;" onclick="openSessionMinutesModalCurrent()">
-                📝 Session Minutes &amp; Intake
+            <button type="button" class="btn-secondary" style="font-size: 0.82rem; display: inline-flex; align-items: center; gap: 5px;" onclick="goToStageMinutesCurrent()">
+                📝 Manage Stage Minutes &amp; Settlement &rarr;
             </button>
             <button type="button" class="btn-secondary" id="btnElevateToPangkatQuick" style="font-size: 0.82rem; display: inline-flex; align-items: center; gap: 5px; color: #b91c1c;" onclick="openFailMediationModalCurrent()">
                 ⚖️ Elevate to Pangkat (KP 10)
@@ -452,135 +452,6 @@ include '../../layouts/header.php';
     </div>
 </div>
 
-<!-- ======================================================== -->
-<!-- MODAL: Mediation / Conciliation Session Minutes          -->
-<!-- ======================================================== -->
-<div id="sessionMinutesModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="sessionMinutesModalTitle">
-    <div class="modal-content modal-content-lg">
-        <div class="modal-header">
-            <div>
-                <h2 id="sessionMinutesModalTitle" style="margin-bottom: 2px;">Hearing Session Minutes &amp; Settlement Progress</h2>
-                <p id="sessionMinutesModalSubtitle" style="font-size: 0.84rem; color: #64748b; margin: 0;">Record formal proceedings, statements, proposals, and session outcome.</p>
-            </div>
-            <button type="button" class="close-btn" onclick="closeModal('sessionMinutesModal')" aria-label="Close dialog">&times;</button>
-        </div>
-
-        <div id="minutesAlert" class="alert" style="display: none; margin-bottom: 14px;" role="alert"></div>
-
-        <form id="sessionMinutesForm" onsubmit="handleSaveMinutes(event)" novalidate>
-            <input type="hidden" id="minutesHearingId" name="hearing_id">
-            <input type="hidden" id="minutesCaseId" name="case_id">
-
-            <!-- Section 1: Session Opening & Identity Verification -->
-            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; margin-bottom: 14px;">
-                <h3 style="font-size: 0.88rem; font-weight: 700; color: #1e293b; margin: 0 0 10px; display: flex; align-items: center; gap: 6px;">
-                    <span>📋</span> Session Opening &amp; Identity Verification
-                </h3>
-                <div style="display: flex; gap: 20px; flex-wrap: wrap; font-size: 0.84rem;">
-                    <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
-                        <input type="checkbox" id="min_opening" name="opening_conducted" value="1">
-                        <span>Opening Statement Conducted</span>
-                    </label>
-                    <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
-                        <input type="checkbox" id="min_id_verified" name="identity_verified" value="1">
-                        <span>Parties Identity Verified</span>
-                    </label>
-                    <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
-                        <input type="checkbox" id="min_complaint_read" name="complaint_reviewed" value="1">
-                        <span>Complaint Reviewed &amp; Read</span>
-                    </label>
-                </div>
-            </div>
-
-            <!-- Section 2: Statements & Core Dispute -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px;">
-                <div class="form-group" style="margin-bottom: 0;">
-                    <label for="minComplainantStmt">Complainant Statement Summary</label>
-                    <textarea id="minComplainantStmt" name="complainant_statement" rows="3" maxlength="5000" placeholder="Summary of complainant's narration of facts..."></textarea>
-                </div>
-                <div class="form-group" style="margin-bottom: 0;">
-                    <label for="minRespondentStmt">Respondent Statement Summary</label>
-                    <textarea id="minRespondentStmt" name="respondent_statement" rows="3" maxlength="5000" placeholder="Summary of respondent's explanation or counter-statement..."></textarea>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label for="minDisputeSummary">Main Dispute Identified</label>
-                <input type="text" id="minDisputeSummary" name="main_dispute_identified" maxlength="1000" placeholder="Core issue (e.g., boundary encroachment, unpaid loan balance, noise disturbance)">
-            </div>
-
-            <!-- Section 3: Proposals & Caucus -->
-            <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 14px 16px; margin-bottom: 14px;">
-                <h3 style="font-size: 0.88rem; font-weight: 700; color: #0369a1; margin: 0 0 10px; display: flex; align-items: center; gap: 6px;">
-                    <span>🤝</span> Negotiation, Proposals &amp; Caucus
-                </h3>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                    <div class="form-group" style="margin-bottom: 8px;">
-                        <label for="minNewProposal" style="color: #0c4a6e;">Settlement Proposal / Offer</label>
-                        <textarea id="minNewProposal" name="new_proposal" rows="2" maxlength="3000" placeholder="Terms proposed by offering party..."></textarea>
-                    </div>
-                    <div class="form-group" style="margin-bottom: 8px;">
-                        <label for="minCounterOffer" style="color: #0c4a6e;">Counteroffer / Response</label>
-                        <textarea id="minCounterOffer" name="counteroffer" rows="2" maxlength="3000" placeholder="Counter-proposal or adjustments..."></textarea>
-                    </div>
-                </div>
-                <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.84rem; margin-top: 4px; color: #0369a1; font-weight: 500;">
-                    <input type="checkbox" id="min_caucus" name="caucus_conducted" value="1">
-                    <span>Private Caucus Conducted (separate meeting held with one party)</span>
-                </label>
-            </div>
-
-            <!-- Section 4: Session Outcome & Duration -->
-            <div style="display: grid; grid-template-columns: 1.2fr 1fr 1.2fr; gap: 12px;">
-                <div class="form-group">
-                    <label for="minOutcome">Session Outcome <span class="required-mark">*</span></label>
-                    <select id="minOutcome" name="session_outcome" required>
-                        <option value="Continue Mediation">Continue Mediation (Next Session)</option>
-                        <option value="Settled">Settled (Agreement Reached)</option>
-                        <option value="Failed">Failed (Elevate to Pangkat)</option>
-                        <option value="Party Absent">Party Absent</option>
-                        <option value="Rescheduled">Rescheduled</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="minActualEndTime">Actual Session End Time</label>
-                    <input type="datetime-local" id="minActualEndTime" name="actual_end_time">
-                </div>
-                <div class="form-group">
-                    <label for="minDurationExceedReason">Duration Notes / Remarks</label>
-                    <input type="text" id="minDurationExceedReason" name="outcome_remarks" maxlength="1000" placeholder="Notes if session ran over standard duration">
-                </div>
-            </div>
-
-            <!-- Section 5: Formal Minutes / Notes with Gemini AI Assistance -->
-            <div class="form-group" style="margin-top: 6px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px;">
-                    <label for="session_minutes" style="font-weight: 700; color: #1e293b; margin-bottom: 0;">
-                        Formal Session Minutes / Minutes Record
-                    </label>
-                    <div style="display: inline-flex; gap: 8px; align-items: center;">
-                        <button type="button" id="btnModalRecordVoice" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;" onclick="toggleModalVoiceRecording()">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-                            <span id="modalRecordVoiceText">Record Voice (STT)</span>
-                        </button>
-                        <button type="button" id="btnModalUploadNotes" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;" onclick="triggerModalNotesUpload()">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                            <span>Upload Notes (OCR)</span>
-                        </button>
-                        <input type="file" id="modalNotesFileInput" accept="image/jpeg,image/png,image/webp,image/jpg" style="display: none;" onchange="handleModalNotesFileSelected(this)">
-                    </div>
-                </div>
-                <div id="modalAiStatusBanner" style="display: none; font-size: 0.8rem; color: #0369a1; background: #e0f2fe; padding: 6px 10px; border-radius: 6px; margin-bottom: 8px;"></div>
-                <textarea id="session_minutes" name="settlement_discussion_notes" rows="4" maxlength="5000" placeholder="Full recorded proceedings, commitments, points of agreement, or AI-transcribed notes..."></textarea>
-            </div>
-
-            <div class="modal-actions" style="margin-top: 18px;">
-                <button type="button" class="btn-secondary" onclick="closeModal('sessionMinutesModal')">Cancel</button>
-                <button type="submit" class="btn-create" id="btnSaveMinutesSubmit">Save Hearing Minutes</button>
-            </div>
-        </form>
-    </div>
-</div>
 
 <!-- ======================================================== -->
 <!-- MODAL: Declare Failed Mediation & Elevate to Pangkat     -->

@@ -792,10 +792,14 @@ async function openNonappearanceModal(id) {
     try {
         const item = await getHearing(id);
         const select = document.getElementById('nonappearanceResident');
-        select.replaceChildren(new Option('Select an absent party', ''));
-        (item.parties || []).forEach((party) => select.add(new Option(`${party.party_type}: ${party.resident_name}`, party.resident_id)));
-        document.getElementById('nonappearanceHearingId').value = item.hearing_id;
-        document.getElementById('nonappearanceRemarks').value = '';
+        if (select) {
+            select.replaceChildren(new Option('Select an absent party', ''));
+            (item.parties || []).forEach((party) => select.add(new Option(`${party.party_type}: ${party.resident_name}`, party.resident_id)));
+        }
+        const nonAppHearingId = document.getElementById('nonappearanceHearingId');
+        if (nonAppHearingId) nonAppHearingId.value = item.hearing_id;
+        const nonAppRemarks = document.getElementById('nonappearanceRemarks');
+        if (nonAppRemarks) nonAppRemarks.value = '';
         showModal('nonappearanceModal');
     } catch (error) { setMessage(error.message); }
 }
@@ -812,21 +816,29 @@ async function reissueSummons(id) {
 
 async function editHearing(id) {
     try {
-        const item = await getHearing(id);
-        document.getElementById('editHearingId').value = item.hearing_id;
-        document.getElementById('editHearingType').value = hearingLabel(item);
-        document.getElementById('editHearingTypeValue').value = item.hearing_type;
-        const editDateInput = document.getElementById('editHearingDate');
-        if (editDateInput) {
-            editDateInput.value = toDateTimeLocal(item.hearing_date);
-            const now = new Date();
-            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-            editDateInput.min = now.toISOString().slice(0, 16);
-            validateHearingDateInput(editDateInput);
+        const editHearingId = document.getElementById('editHearingId');
+        if (editHearingId) {
+            const item = await getHearing(id);
+            editHearingId.value = item.hearing_id;
+            const editHearingType = document.getElementById('editHearingType');
+            if (editHearingType) editHearingType.value = hearingLabel(item);
+            const editHearingTypeValue = document.getElementById('editHearingTypeValue');
+            if (editHearingTypeValue) editHearingTypeValue.value = item.hearing_type;
+            const editDateInput = document.getElementById('editHearingDate');
+            if (editDateInput) {
+                editDateInput.value = toDateTimeLocal(item.hearing_date);
+                const now = new Date();
+                now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+                editDateInput.min = now.toISOString().slice(0, 16);
+                validateHearingDateInput(editDateInput);
+            }
+            const editHearingVenue = document.getElementById('editHearingVenue');
+            if (editHearingVenue) editHearingVenue.value = item.venue || '';
+            const editHearingRemarks = document.getElementById('editHearingRemarks');
+            if (editHearingRemarks) editHearingRemarks.value = item.remarks || '';
+            const rescheduleReason = document.getElementById('rescheduleReason');
+            if (rescheduleReason) rescheduleReason.value = '';
         }
-        document.getElementById('editHearingVenue').value = item.venue || '';
-        document.getElementById('editHearingRemarks').value = item.remarks || '';
-        document.getElementById('rescheduleReason').value = '';
         await openHearingAttendanceModal(id);
     } catch (error) {
         setMessage(error.message);
@@ -1130,17 +1142,26 @@ async function openHearingAttendanceModal(hearingId) {
         const data = res.data;
         activeHearingAttendanceData = data;
 
-        document.getElementById('attHearingId').value = data.hearing_id;
-        document.getElementById('attMetaCaseNumber').textContent = data.case_number || '—';
-        document.getElementById('attMetaComplaintTitle').textContent = data.complaint_title || (data.complaint_number ? `Complaint #${data.complaint_number}` : '—');
-        document.getElementById('attMetaHearingType').textContent = data.hearing_type || '—';
-        document.getElementById('attMetaDateTime').textContent = data.hearing_date ? formatDateTime(data.hearing_date) : '—';
-        document.getElementById('attMetaVenue').textContent = data.venue || '—';
+        const attHearingId = document.getElementById('attHearingId');
+        if (attHearingId) attHearingId.value = data.hearing_id;
+        const metaCase = document.getElementById('attMetaCaseNumber');
+        if (metaCase) metaCase.textContent = data.case_number || '—';
+        const metaComplaint = document.getElementById('attMetaComplaintTitle');
+        if (metaComplaint) metaComplaint.textContent = data.complaint_title || (data.complaint_number ? `Complaint #${data.complaint_number}` : '—');
+        const metaType = document.getElementById('attMetaHearingType');
+        if (metaType) metaType.textContent = data.hearing_type || '—';
+        const metaDateTime = document.getElementById('attMetaDateTime');
+        if (metaDateTime) metaDateTime.textContent = data.hearing_date ? formatDateTime(data.hearing_date) : '—';
+        const metaVenue = document.getElementById('attMetaVenue');
+        if (metaVenue) metaVenue.textContent = data.venue || '—';
 
         const summonsCount = Number(data.summons_count) || 0;
-        document.getElementById('attMetaSummons').textContent = summonsCount > 0
-            ? `${summonsCount} Summons${summonsCount > 1 ? 'es' : ''} Issued`
-            : 'Initial Notice';
+        const metaSummons = document.getElementById('attMetaSummons');
+        if (metaSummons) {
+            metaSummons.textContent = summonsCount > 0
+                ? `${summonsCount} Summons${summonsCount > 1 ? 'es' : ''} Issued`
+                : 'Initial Notice';
+        }
 
         const elevateBtn = document.getElementById('btnElevateToPangkatQuick');
         if (elevateBtn) {
@@ -1701,7 +1722,7 @@ function evaluateLiveAttendanceSituation() {
             <li>Summons Server must attempt service again or verify addresses with the Lupong Tagapamayapa.</li>
         `;
         recommendationTextEl.textContent = 'Verify addresses and re-issue notices for a reset appearance date.';
-        shortcutsEl.innerHTML = canManageHearings ? `<button type="button" class="btn-att-action btn-att-action-primary" onclick="closeHearingAttendanceModal(); editHearing(${hearingId});">Reschedule Hearing</button>` : '';
+        shortcutsEl.innerHTML = canManageHearings ? `<button type="button" class="btn-att-action btn-att-action-primary" onclick="closeHearingAttendanceModal(); openOfficeCancelModal(${hearingId});">Reschedule / Reset Hearing</button>` : '';
         return;
     }
 
@@ -1717,7 +1738,7 @@ function evaluateLiveAttendanceSituation() {
             <li>Review the Officer’s Return reasons (e.g. wrong address, not found) and re-dispatch the Summons Server.</li>
         `;
         recommendationTextEl.textContent = 'Re-issue summons with updated address/purok and reschedule appearance date.';
-        shortcutsEl.innerHTML = canManageHearings ? `<button type="button" class="btn-att-action btn-att-action-primary" onclick="closeHearingAttendanceModal(); editHearing(${hearingId});">Reschedule Hearing</button>` : '';
+        shortcutsEl.innerHTML = canManageHearings ? `<button type="button" class="btn-att-action btn-att-action-primary" onclick="closeHearingAttendanceModal(); openOfficeCancelModal(${hearingId});">Reschedule / Reset Hearing</button>` : '';
         return;
     }
 
@@ -1733,7 +1754,7 @@ function evaluateLiveAttendanceSituation() {
             <li>Verify complainant contact details and serve notice for the reset session.</li>
         `;
         recommendationTextEl.textContent = 'Verify complainant contact information and re-issue notice.';
-        shortcutsEl.innerHTML = canManageHearings ? `<button type="button" class="btn-att-action btn-att-action-primary" onclick="closeHearingAttendanceModal(); editHearing(${hearingId});">Reschedule Hearing</button>` : '';
+        shortcutsEl.innerHTML = canManageHearings ? `<button type="button" class="btn-att-action btn-att-action-primary" onclick="closeHearingAttendanceModal(); openOfficeCancelModal(${hearingId});">Reschedule / Reset Hearing</button>` : '';
         return;
     }
 
@@ -1785,7 +1806,7 @@ function evaluateLiveAttendanceSituation() {
             recommendationTextEl.textContent = 'Issue KP Form 19 Notice to Explain, and reset hearing date for 2nd Mediation session.';
             shortcutsEl.innerHTML = `
                 ${caseId ? `<a href="../documents/summons.php?case_id=${encodeURIComponent(caseId)}" class="btn-att-action btn-att-action-primary" target="_blank">Generate 2nd Summons (KP Form 9) &rarr;</a>` : ''}
-                ${canManageHearings ? `<button type="button" class="btn-att-action btn-att-action-secondary" onclick="closeHearingAttendanceModal(); editHearing(${hearingId});">Reschedule Hearing</button>` : ''}
+                ${canManageHearings ? `<button type="button" class="btn-att-action btn-att-action-secondary" onclick="closeHearingAttendanceModal(); openOfficeCancelModal(${hearingId});">Reschedule / Reset Hearing</button>` : ''}
             `;
         } else if (summonsCount === 2) {
             situationBox.classList.add('sit-warning');
@@ -1800,7 +1821,7 @@ function evaluateLiveAttendanceSituation() {
             recommendationTextEl.textContent = 'Reschedule hearing and issue 3rd (final) Summons with stern statutory warning.';
             shortcutsEl.innerHTML = `
                 ${caseId ? `<a href="../documents/summons.php?case_id=${encodeURIComponent(caseId)}" class="btn-att-action btn-att-action-primary" target="_blank">Generate 3rd Summons (KP Form 9) &rarr;</a>` : ''}
-                ${canManageHearings ? `<button type="button" class="btn-att-action btn-att-action-secondary" onclick="closeHearingAttendanceModal(); editHearing(${hearingId});">Reschedule Hearing</button>` : ''}
+                ${canManageHearings ? `<button type="button" class="btn-att-action btn-att-action-secondary" onclick="closeHearingAttendanceModal(); openOfficeCancelModal(${hearingId});">Reschedule / Reset Hearing</button>` : ''}
             `;
         } else {
             situationBox.classList.add('sit-danger');
@@ -1835,7 +1856,7 @@ function evaluateLiveAttendanceSituation() {
         `;
         recommendationTextEl.textContent = 'Reschedule hearing to the next available date. Log justified suspension on mediation clock if needed.';
         shortcutsEl.innerHTML = `
-            ${canManageHearings ? `<button type="button" class="btn-att-action btn-att-action-primary" onclick="closeHearingAttendanceModal(); editHearing(${hearingId});">Reschedule Hearing</button>` : ''}
+            ${canManageHearings ? `<button type="button" class="btn-att-action btn-att-action-primary" onclick="closeHearingAttendanceModal(); openOfficeCancelModal(${hearingId});">Reschedule / Reset Hearing</button>` : ''}
             ${caseId ? `<a href="../cases/case-list.php" class="btn-att-action btn-att-action-secondary" target="_blank">Open Cases &amp; Assignments &rarr;</a>` : ''}
         `;
         return;
@@ -2255,213 +2276,25 @@ async function handleSubstituteSubmit(event) {
 }
 window.handleSubstituteSubmit = handleSubstituteSubmit;
 
-async function openSessionMinutesModal(hearingId, caseId) {
-    const hearingInput = document.getElementById('minutesHearingId');
-    const caseInput = document.getElementById('minutesCaseId');
-    const alertBox = document.getElementById('minutesAlert');
-    if (hearingInput) hearingInput.value = hearingId;
-    if (caseInput) caseInput.value = caseId || (activeHearingAttendanceData?.case_id || '');
-    if (alertBox) {
-        alertBox.style.display = 'none';
-        alertBox.textContent = '';
-        alertBox.className = 'alert';
+function goToStageMinutesCurrent(hearingId, caseId) {
+    const h = activeHearingAttendanceData || {};
+    const hId = hearingId || h.hearing_id;
+    const cId = caseId || h.case_id;
+    if (!hId) return;
+
+    const hType = h.hearing_type || 'Mediation';
+    let targetUrl = `../cases/mediation-workspace.php?case_id=${encodeURIComponent(cId)}&hearing_id=${encodeURIComponent(hId)}#minutesSection`;
+    if (hType === 'Conciliation') {
+        targetUrl = `../cases/pangkat-workspace.php?case_id=${encodeURIComponent(cId)}&hearing_id=${encodeURIComponent(hId)}#minutesSection`;
+    } else if (hType === 'Arbitration') {
+        targetUrl = `../cases/arbitration-workspace.php?case_id=${encodeURIComponent(cId)}&hearing_id=${encodeURIComponent(hId)}#minutesSection`;
     }
 
-    const form = document.getElementById('sessionMinutesForm');
-    if (form) {
-        form.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'));
-    }
-
-    if (document.getElementById('min_opening')) document.getElementById('min_opening').checked = false;
-    if (document.getElementById('min_id_verified')) document.getElementById('min_id_verified').checked = false;
-    if (document.getElementById('min_complaint_read')) document.getElementById('min_complaint_read').checked = false;
-    if (document.getElementById('minComplainantStmt')) document.getElementById('minComplainantStmt').value = '';
-    if (document.getElementById('minRespondentStmt')) document.getElementById('minRespondentStmt').value = '';
-    if (document.getElementById('minDisputeSummary')) document.getElementById('minDisputeSummary').value = '';
-    if (document.getElementById('minNewProposal')) document.getElementById('minNewProposal').value = '';
-    if (document.getElementById('minCounterOffer')) document.getElementById('minCounterOffer').value = '';
-    if (document.getElementById('min_caucus')) document.getElementById('min_caucus').checked = false;
-    if (document.getElementById('minOutcome')) document.getElementById('minOutcome').value = 'Continue Mediation';
-    if (document.getElementById('minActualEndTime')) document.getElementById('minActualEndTime').value = '';
-    if (document.getElementById('minDurationExceedReason')) document.getElementById('minDurationExceedReason').value = '';
-    if (document.getElementById('minNotes')) document.getElementById('minNotes').value = '';
-
-    try {
-        const res = await api(`../../../backend/api/hearings/minutes.php?hearing_id=${encodeURIComponent(hearingId)}`);
-        if (res.data) {
-            const m = res.data;
-            if (document.getElementById('min_opening')) {
-                document.getElementById('min_opening').checked = Number(m.opening_conducted) === 1;
-            }
-            if (document.getElementById('min_id_verified')) {
-                document.getElementById('min_id_verified').checked = (Number(m.identity_verified) === 1 || Number(m.parties_identified) === 1);
-            }
-            if (document.getElementById('min_complaint_read')) {
-                document.getElementById('min_complaint_read').checked = (Number(m.complaint_reviewed) === 1 || Number(m.complaint_read_confirmed) === 1);
-            }
-            if (document.getElementById('minComplainantStmt')) {
-                document.getElementById('minComplainantStmt').value = m.complainant_statement || m.complainant_statement_summary || '';
-            }
-            if (document.getElementById('minRespondentStmt')) {
-                document.getElementById('minRespondentStmt').value = m.respondent_statement || m.respondent_statement_summary || '';
-            }
-            if (document.getElementById('minDisputeSummary')) {
-                document.getElementById('minDisputeSummary').value = m.main_dispute_identified || m.dispute_summary || '';
-            }
-            if (document.getElementById('minNewProposal')) {
-                document.getElementById('minNewProposal').value = m.new_proposal || '';
-            }
-            if (document.getElementById('minCounterOffer')) {
-                document.getElementById('minCounterOffer').value = m.counteroffer || m.counter_offer || '';
-            }
-            if (document.getElementById('min_caucus')) {
-                document.getElementById('min_caucus').checked = Number(m.caucus_conducted) === 1;
-            }
-            if (document.getElementById('minOutcome') && m.session_outcome) {
-                document.getElementById('minOutcome').value = m.session_outcome;
-            }
-            if (document.getElementById('minActualEndTime') && m.actual_end_time) {
-                document.getElementById('minActualEndTime').value = toDateTimeLocal(m.actual_end_time);
-            }
-            if (document.getElementById('minDurationExceedReason')) {
-                document.getElementById('minDurationExceedReason').value = m.outcome_remarks || m.duration_exceed_reason || '';
-            }
-            if (document.getElementById('minNotes')) {
-                document.getElementById('minNotes').value = m.settlement_discussion_notes || m.session_notes || '';
-            }
-        }
-    } catch (e) {
-        console.info('No existing minutes or error fetching:', e);
-    }
-    showModal('sessionMinutesModal');
+    window.location.href = targetUrl;
 }
-window.openSessionMinutesModal = openSessionMinutesModal;
-
-async function handleSaveMinutes(event) {
-    if (event) {
-        event.preventDefault();
-        event.stopPropagation();
-    }
-    const form = document.getElementById('sessionMinutesForm');
-    const alertBox = document.getElementById('minutesAlert');
-    const submitBtn = document.getElementById('btnSaveMinutesSubmit');
-    if (!form) return;
-
-    if (alertBox) {
-        alertBox.style.display = 'none';
-        alertBox.textContent = '';
-        alertBox.className = 'alert';
-    }
-
-    form.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'));
-
-    // 1. Client-Side Form Validation
-    const hearingId = Number(document.getElementById('minutesHearingId')?.value);
-    if (!hearingId || isNaN(hearingId) || hearingId <= 0) {
-        if (alertBox) {
-            alertBox.textContent = 'Invalid hearing session ID reference.';
-            alertBox.className = 'alert error';
-            alertBox.style.display = 'block';
-        }
-        return;
-    }
-
-    const outcomeSelect = document.getElementById('minOutcome');
-    const allowedOutcomes = ['Continue Mediation', 'Settled', 'Failed', 'Party Absent', 'Rescheduled', 'Elevate to Pangkat', 'Pending'];
-    if (!outcomeSelect || !outcomeSelect.value || !allowedOutcomes.includes(outcomeSelect.value)) {
-        outcomeSelect?.classList.add('is-invalid');
-        if (alertBox) {
-            alertBox.textContent = 'Please select a valid Session Outcome before saving.';
-            alertBox.className = 'alert error';
-            alertBox.style.display = 'block';
-        }
-        outcomeSelect?.focus();
-        return;
-    }
-
-    const actualEndTimeInput = document.getElementById('minActualEndTime');
-    if (actualEndTimeInput && actualEndTimeInput.value) {
-        const parsedTime = new Date(actualEndTimeInput.value);
-        if (isNaN(parsedTime.getTime())) {
-            actualEndTimeInput.classList.add('is-invalid');
-            if (alertBox) {
-                alertBox.textContent = 'Please enter a valid datetime for Actual Session End Time.';
-                alertBox.className = 'alert error';
-                alertBox.style.display = 'block';
-            }
-            actualEndTimeInput.focus();
-            return;
-        }
-    }
-
-    // Text field bounds checks
-    const compStmt = document.getElementById('minComplainantStmt');
-    if (compStmt && compStmt.value.length > 5000) {
-        compStmt.classList.add('is-invalid');
-        if (alertBox) {
-            alertBox.textContent = 'Complainant statement summary exceeds 5,000 characters limit.';
-            alertBox.className = 'alert error';
-            alertBox.style.display = 'block';
-        }
-        compStmt.focus();
-        return;
-    }
-
-    const respStmt = document.getElementById('minRespondentStmt');
-    if (respStmt && respStmt.value.length > 5000) {
-        respStmt.classList.add('is-invalid');
-        if (alertBox) {
-            alertBox.textContent = 'Respondent statement summary exceeds 5,000 characters limit.';
-            alertBox.className = 'alert error';
-            alertBox.style.display = 'block';
-        }
-        respStmt.focus();
-        return;
-    }
-
-    const disputeInput = document.getElementById('minDisputeSummary');
-    if (disputeInput && disputeInput.value.length > 1000) {
-        disputeInput.classList.add('is-invalid');
-        if (alertBox) {
-            alertBox.textContent = 'Main dispute summary exceeds 1,000 characters limit.';
-            alertBox.className = 'alert error';
-            alertBox.style.display = 'block';
-        }
-        disputeInput.focus();
-        return;
-    }
-
-    try {
-        if (submitBtn) {
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Saving Minutes...';
-        }
-
-        const formData = new FormData(form);
-        const result = await api('../../../backend/api/hearings/minutes.php', {
-            method: 'POST',
-            body: formData
-        });
-        closeModal('sessionMinutesModal');
-        setMessage(result.message || 'Session minutes saved successfully.', true);
-        await Promise.all([loadHearings(), loadCombinedRecords(currentPage)]);
-        if (activeHearingAttendanceData?.hearing_id) {
-            await openHearingAttendanceModal(activeHearingAttendanceData.hearing_id);
-        }
-    } catch (err) {
-        if (alertBox) {
-            alertBox.textContent = err.message || 'Failed to save session minutes.';
-            alertBox.className = 'alert error';
-            alertBox.style.display = 'block';
-        }
-    } finally {
-        if (submitBtn) {
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Save Hearing Minutes';
-        }
-    }
-}
-window.handleSaveMinutes = handleSaveMinutes;
+window.goToStageMinutesCurrent = goToStageMinutesCurrent;
+window.openSessionMinutesModalCurrent = goToStageMinutesCurrent;
+window.openSessionMinutesModal = goToStageMinutesCurrent;
 
 // ========================================================
 // GEMINI 1.5 FLASH AI: SPEECH-TO-TEXT (STT) & IMAGE OCR

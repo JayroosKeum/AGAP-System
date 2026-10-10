@@ -155,13 +155,15 @@ class HearingAttendance
             $this->conn->beginTransaction();
 
             $upsertAttendance = $this->conn->prepare(
-                "INSERT INTO hearing_attendance (hearing_id, resident_id, attendance_status, is_justified, justification_reason, remarks, recorded_by, recorded_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                "INSERT INTO hearing_attendance (hearing_id, resident_id, attendance_status, is_justified, justification_reason, remarks, verification_status, determination_notes, recorded_by, recorded_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                  ON DUPLICATE KEY UPDATE
                      attendance_status = VALUES(attendance_status),
                      is_justified = VALUES(is_justified),
                      justification_reason = VALUES(justification_reason),
                      remarks = VALUES(remarks),
+                     verification_status = VALUES(verification_status),
+                     determination_notes = VALUES(determination_notes),
                      recorded_by = VALUES(recorded_by),
                      recorded_at = CURRENT_TIMESTAMP"
             );
@@ -195,17 +197,17 @@ class HearingAttendance
 
                 $status = $item['attendance_status'] ?? '';
                 if ($partyType === 'Witness') {
-                    if (!in_array($status, ['Present', 'Absent', 'Late', 'Excused', 'Not Served'], true)) {
+                    if (!in_array($status, ['Present', 'Absent', 'Late', 'Excused', 'Not Served', 'Pending Verification'], true)) {
                         $status = 'Present';
                     }
                 } else {
-                    if (!in_array($status, ['Present', 'Absent', 'Late', 'Excused', 'Not Served'], true)) {
-                        throw new InvalidArgumentException('Choose a valid attendance status (Present, Absent, Late, Excused, or Not Served).');
+                    if (!in_array($status, ['Present', 'Absent', 'Late', 'Excused', 'Not Served', 'Pending Verification'], true)) {
+                        throw new InvalidArgumentException('Choose a valid attendance status (Present, Absent, Late, Excused, Not Served, or Pending Verification).');
                     }
                     if ($status === 'Absent') {
                         $serviceLookup->execute([$hearingId, $residentId, $hearingId, $residentId, $partyType]);
                         if ((int) $serviceLookup->fetchColumn() < 1) {
-                            throw new InvalidArgumentException('Cannot record Failure to Appear because service for this party has not been confirmed. Record Not Served or verify service first.');
+                            throw new InvalidArgumentException('Cannot record Failure to Appear because service for this party has not been confirmed. Record Not Served, Pending Verification, or verify service first.');
                         }
                     }
                 }
@@ -219,6 +221,10 @@ class HearingAttendance
                 }
 
                 $remarks = trim((string) ($item['remarks'] ?? ''));
+                $verificationStatus = in_array($item['verification_status'] ?? '', ['Pending', 'Verified Served', 'Unverified', 'Excused Approved'], true)
+                    ? $item['verification_status']
+                    : ($status === 'Present' ? 'Verified Served' : 'Pending');
+                $determinationNotes = trim((string) ($item['determination_notes'] ?? ''));
 
                 $upsertAttendance->execute([
                     $hearingId,
@@ -227,6 +233,8 @@ class HearingAttendance
                     $isJustified,
                     $justificationReason,
                     $remarks ?: null,
+                    $verificationStatus,
+                    $determinationNotes ?: null,
                     $userId
                 ]);
 

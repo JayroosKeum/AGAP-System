@@ -105,19 +105,22 @@ class PDFService
     public function generateKp10(
         array|int $dataOrCaseId,
         string|int $pathOrUserId = '',
-        array $options = []
+        array $options = [],
+        ?PDO $db = null
     ): mixed {
         if (is_int($dataOrCaseId)) {
-            return $this->generateKp10ForCase($dataOrCaseId, (int) $pathOrUserId, $options);
+            return $this->generateKp10ForCase($dataOrCaseId, (int) $pathOrUserId, $options, $db);
         }
         $this->generateNotice('KP Form 10', $dataOrCaseId, (string) $pathOrUserId);
         return true;
     }
 
-    public function generateKp10ForCase(int $caseId, int $userId, array $options = []): array
+    public function generateKp10ForCase(int $caseId, int $userId, array $options = [], ?PDO $db = null): array
     {
-        require_once __DIR__ . '/../config/database.php';
-        $db = (new Database())->connect();
+        if ($db === null) {
+            require_once __DIR__ . '/../config/database.php';
+            $db = (new Database())->connect();
+        }
 
         $stmt = $db->prepare("
             SELECT c.case_id, c.case_number, co.complaint_id, co.complaint_title

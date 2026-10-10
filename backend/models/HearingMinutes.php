@@ -16,12 +16,14 @@ class HearingMinutes
         $stmt = $this->conn->prepare("
             SELECT hm.*,
                    TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS recorded_by_name,
+                   TRIM(CONCAT_WS(' ', uf.first_name, uf.middle_name, uf.last_name)) AS finalized_by_name,
                    h.hearing_type, h.hearing_date, h.venue, h.status AS hearing_status,
                    c.case_number, c.case_status
             FROM hearing_minutes hm
             INNER JOIN hearings h ON h.hearing_id = hm.hearing_id
             INNER JOIN cases c ON c.case_id = hm.case_id
             LEFT JOIN users u ON u.user_id = hm.recorded_by
+            LEFT JOIN users uf ON uf.user_id = hm.finalized_by
             WHERE hm.hearing_id = ?
         ");
         $stmt->execute([$hearingId]);
@@ -48,10 +50,12 @@ class HearingMinutes
         $stmt = $this->conn->prepare("
             SELECT hm.*,
                    TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS recorded_by_name,
+                   TRIM(CONCAT_WS(' ', uf.first_name, uf.middle_name, uf.last_name)) AS finalized_by_name,
                    h.hearing_type, h.hearing_date, h.venue
             FROM hearing_minutes hm
             INNER JOIN hearings h ON h.hearing_id = hm.hearing_id
             LEFT JOIN users u ON u.user_id = hm.recorded_by
+            LEFT JOIN users uf ON uf.user_id = hm.finalized_by
             WHERE hm.case_id = ?
             ORDER BY h.hearing_date ASC, hm.minute_id ASC
         ");
@@ -108,11 +112,12 @@ class HearingMinutes
         // 5. Validate session outcome enum
         $rawOutcome = trim((string) ($data['session_outcome'] ?? ''));
         $allowedOutcomes = [
-            'Settled', 'Continue Mediation', 'Failed', 'Party Absent',
-            'Rescheduled', 'Elevate to Pangkat', 'Pending'
+            'Settled', 'Continue Mediation', 'Continue Conciliation', 'Continue Arbitration',
+            'Failed', 'Party Absent', 'Rescheduled', 'Elevate to Pangkat',
+            'Pending CFA', 'Arbitration Award', 'Pending'
         ];
         if (!$rawOutcome || !in_array($rawOutcome, $allowedOutcomes, true)) {
-            return ['success' => false, 'message' => 'Please select a valid session outcome (Settled, Continue Mediation, Failed, Party Absent, Rescheduled, or Elevate to Pangkat).'];
+            return ['success' => false, 'message' => 'Please select a valid session outcome (Settled, Continue Mediation, Continue Conciliation, Continue Arbitration, Failed, Party Absent, Rescheduled, Elevate to Pangkat, Pending CFA, or Arbitration Award).'];
         }
         $outcome = $rawOutcome;
 
@@ -126,8 +131,28 @@ class HearingMinutes
             $actualEndTime = date('Y-m-d H:i:s', $ts);
         }
 
+        // Check if existing minutes is finalized
+        $checkExisting = $this->conn->prepare("SELECT status FROM hearing_minutes WHERE hearing_id = ?");
+        $checkExisting->execute([$hearingId]);
+        $existingStatus = $checkExisting->fetchColumn();
+        if ($existingStatus === 'Finalized' && empty($data['force_edit'])) {
+            return ['success' => false, 'message' => 'This session minutes has already been finalized and cannot be overwritten without authorized unlock.'];
+        }
+
+        // Additional fields
+        $agendaTopics = mb_substr(trim(strip_tags((string) ($data['agenda_topics'] ?? ''))), 0, 3000);
+        $actionItems = mb_substr(trim(strip_tags((string) ($data['agreements_action_items'] ?? $data['action_items'] ?? ''))), 0, 3000);
+        $unresolvedIssues = mb_substr(trim(strip_tags((string) ($data['unresolved_issues'] ?? ''))), 0, 3000);
+        $status = (!empty($data['status']) && in_array($data['status'], ['Draft', 'Finalized'], true)) ? $data['status'] : 'Draft';
+        $finalizedBy = ($status === 'Finalized') ? $userId : null;
+        $finalizedAt = ($status === 'Finalized') ? date('Y-m-d H:i:s') : null;
+
+        $manageTx = false;
         try {
-            $this->conn->beginTransaction();
+            if (!$this->conn->inTransaction()) {
+                $this->conn->beginTransaction();
+                $manageTx = true;
+            }
 
             $sql = "
                 INSERT INTO hearing_minutes (
@@ -135,10 +160,11 @@ class HearingMinutes
                     complaint_reviewed, complainant_statement, respondent_statement,
                     main_dispute_identified, settlement_discussion_notes, caucus_conducted,
                     caucus_notes, previous_proposal, new_proposal, counteroffer,
-                    additional_evidence_notes, session_outcome, outcome_remarks,
-                    actual_end_time, recorded_by
+                    additional_evidence_notes, session_outcome, status, agenda_topics,
+                    agreements_action_items, unresolved_issues, finalized_by, finalized_at,
+                    outcome_remarks, actual_end_time, recorded_by
                 ) VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
                 ON DUPLICATE KEY UPDATE
                     session_type = VALUES(session_type),
@@ -156,6 +182,12 @@ class HearingMinutes
                     counteroffer = VALUES(counteroffer),
                     additional_evidence_notes = VALUES(additional_evidence_notes),
                     session_outcome = VALUES(session_outcome),
+                    status = VALUES(status),
+                    agenda_topics = VALUES(agenda_topics),
+                    agreements_action_items = VALUES(agreements_action_items),
+                    unresolved_issues = VALUES(unresolved_issues),
+                    finalized_by = VALUES(finalized_by),
+                    finalized_at = VALUES(finalized_at),
                     outcome_remarks = VALUES(outcome_remarks),
                     actual_end_time = VALUES(actual_end_time),
                     recorded_by = VALUES(recorded_by),
@@ -168,8 +200,9 @@ class HearingMinutes
                 $reviewed, $compStmt ?: null, $respStmt ?: null,
                 $dispute ?: null, $discussion ?: null, $caucus,
                 $caucusNotes ?: null, $prevProposal ?: null, $newProposal ?: null, $counteroffer ?: null,
-                $additionalEvidence ?: null, $outcome, $remarks ?: null,
-                $actualEndTime, $userId
+                $additionalEvidence ?: null, $outcome, $status, $agendaTopics ?: null,
+                $actionItems ?: null, $unresolvedIssues ?: null, $finalizedBy, $finalizedAt,
+                $remarks ?: null, $actualEndTime, $userId
             ]);
 
             // If actual end time was specified, also update hearings table
@@ -188,9 +221,17 @@ class HearingMinutes
             } elseif ($outcome === 'Elevate to Pangkat') {
                 $histMsg = sprintf('%s session concluded: Case elevated to Pangkat Tagapagkasundo (Conciliation).', $sessionType);
                 $this->logCaseHistory($caseId, 'Conciliation', $histMsg, $userId);
+            } elseif ($outcome === 'Pending CFA') {
+                $histMsg = sprintf('%s session concluded: Conciliation unsuccessful. Eligible for Certificate to File Action (KP Form 20).', $sessionType);
+                $this->logCaseHistory($caseId, $hearing['case_status'], $histMsg, $userId);
+            } elseif ($outcome === 'Arbitration Award') {
+                $histMsg = sprintf('%s session concluded: Arbitration proceedings concluded. Ready for Arbitration Award.', $sessionType);
+                $this->logCaseHistory($caseId, 'Arbitration', $histMsg, $userId);
             }
 
-            $this->conn->commit();
+            if ($manageTx && $this->conn->inTransaction()) {
+                $this->conn->commit();
+            }
 
             return [
                 'success' => true,
@@ -200,11 +241,42 @@ class HearingMinutes
                 'case_id' => $caseId
             ];
         } catch (Throwable $e) {
-            if ($this->conn->inTransaction()) {
+            if ($manageTx && $this->conn->inTransaction()) {
                 $this->conn->rollBack();
             }
             error_log('HearingMinutes save error: ' . $e->getMessage());
             return ['success' => false, 'message' => 'Unable to save hearing minutes: ' . $e->getMessage()];
+        }
+    }
+
+    public function finalize(int $hearingId, int $userId): array
+    {
+        $minutes = $this->getByHearing($hearingId);
+        if (!$minutes) {
+            return ['success' => false, 'message' => 'No session minutes found to finalize. Save a draft first.'];
+        }
+
+        try {
+            $stmt = $this->conn->prepare("
+                UPDATE hearing_minutes
+                SET status = 'Finalized',
+                    finalized_by = ?,
+                    finalized_at = NOW(),
+                    updated_at = NOW()
+                WHERE hearing_id = ?
+            ");
+            $stmt->execute([$userId, $hearingId]);
+
+            $this->logCaseHistory((int) $minutes['case_id'], $minutes['case_status'] ?? 'Mediation', "Session minutes for hearing #{$hearingId} ({$minutes['session_type']}) finalized and approved.", $userId);
+
+            return [
+                'success' => true,
+                'message' => 'Session minutes finalized and locked successfully.',
+                'hearing_id' => $hearingId,
+                'status' => 'Finalized'
+            ];
+        } catch (Throwable $e) {
+            return ['success' => false, 'message' => 'Unable to finalize session minutes: ' . $e->getMessage()];
         }
     }
 

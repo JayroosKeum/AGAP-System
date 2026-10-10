@@ -276,7 +276,7 @@ include '../../layouts/header.php';
             </div>
 
             <div class="complaint-intake-grid" style="margin: 0; gap: 24px;">
-                <!-- LEFT COLUMN: Case Team & KP Documents -->
+                <!-- LEFT COLUMN: Case Team, Mediation, Documents -->
                 <div class="intake-col">
                     <!-- CARD 6: Case Team Assignment -->
                     <div class="intake-card">
@@ -294,11 +294,30 @@ include '../../layouts/header.php';
                         </div>
                     </div>
 
-                    <!-- CARD 7: Case Documents & KP Forms -->
+                    <!-- CARD 7: Mediation -->
+                    <div class="intake-card">
+                        <div class="intake-card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                            <div>
+                                <h3>7. Mediation</h3>
+                                <span class="card-subtitle">Punong Barangay · Initial dispute resolution</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span id="cwMediationStatusBadge" style="font-size: 0.76rem; padding: 2px 8px; border-radius: 4px; font-weight: 700; background: #f1f5f9; color: #475569;">Not Started</span>
+                                <a href="#" id="cwManageMediationLink" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+                                    Manage Mediation &rarr;
+                                </a>
+                            </div>
+                        </div>
+                        <div id="cwMediationContainer">
+                            <div class="empty-detail-state">Loading mediation workspace...</div>
+                        </div>
+                    </div>
+
+                    <!-- CARD 9: Case Documents & KP Forms -->
                     <div class="intake-card">
                         <div class="intake-card-header" style="display: flex; justify-content: space-between; align-items: center;">
                             <div>
-                                <h3>7. Case Documents &amp; KP Forms</h3>
+                                <h3>9. Case Documents &amp; KP Forms</h3>
                                 <span class="card-subtitle">Official forms and notices issued for this case</span>
                             </div>
                             <span id="cwDocCountBadge" style="font-size: 0.78rem; background: #e2e8f0; color: #475569; padding: 2px 8px; border-radius: 9999px; font-weight: 600;">0 forms</span>
@@ -309,13 +328,32 @@ include '../../layouts/header.php';
                     </div>
                 </div>
 
-                <!-- RIGHT COLUMN: Hearings & Deadlines Schedule -->
+                <!-- RIGHT COLUMN: Pangkat Conciliation & Hearings Schedule -->
                 <div class="intake-col">
-                    <!-- CARD 8: Hearings & Deadlines Schedule -->
+                    <!-- CARD 8: Pangkat Conciliation -->
+                    <div class="intake-card">
+                        <div class="intake-card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                            <div>
+                                <h3>8. Pangkat Conciliation</h3>
+                                <span class="card-subtitle">Pangkat ng Tagapagkasundo · Formal conciliation</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span id="cwConciliationStatusBadge" style="font-size: 0.76rem; padding: 2px 8px; border-radius: 4px; font-weight: 700; background: #f1f5f9; color: #64748b;">Locked</span>
+                                <a href="#" id="cwManageConciliationLink" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+                                    Manage Conciliation &rarr;
+                                </a>
+                            </div>
+                        </div>
+                        <div id="cwConciliationContainer">
+                            <div class="empty-detail-state">Loading conciliation workspace...</div>
+                        </div>
+                    </div>
+
+                    <!-- CARD 10: Hearings & Deadlines Schedule -->
                     <div class="intake-card">
                         <div class="intake-card-header" style="display: flex; justify-content: space-between; align-items: center;">
                             <div>
-                                <h3>8. Hearings &amp; Deadlines Schedule</h3>
+                                <h3>10. Hearings &amp; Deadlines Schedule</h3>
                                 <span class="card-subtitle">Mediation, conciliation, and session records</span>
                             </div>
                             <a id="cwOpenHearingsLink" href="../hearings/schedules.php" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">

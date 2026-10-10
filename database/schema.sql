@@ -248,6 +248,43 @@ CREATE TABLE case_history (
         FOREIGN KEY (updated_by) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
+CREATE TABLE case_stages (
+    stage_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    case_id INT UNSIGNED NOT NULL,
+    stage_type ENUM('Mediation', 'Conciliation', 'Arbitration') NOT NULL,
+    stage_status ENUM('Locked', 'Ready for Referral', 'Not Started', 'In Progress', 'Awaiting Outcome', 'Completed', 'Referred to Pangkat') NOT NULL DEFAULT 'Not Started',
+    started_at DATETIME NULL,
+    completed_at DATETIME NULL,
+    outcome ENUM('Settled', 'Unsuccessful', 'Repudiated', 'Dismissed', 'Referred to Pangkat', 'Pending') NOT NULL DEFAULT 'Pending',
+    outcome_remarks TEXT NULL,
+    referral_date DATE NULL,
+    referring_officer_id INT UNSIGNED NULL,
+    referral_reason TEXT NULL,
+    records_transmitted TINYINT(1) NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_case_stage (case_id, stage_type),
+    KEY idx_cs_case (case_id),
+    KEY idx_cs_status (stage_status),
+    CONSTRAINT fk_cs_case FOREIGN KEY (case_id) REFERENCES cases (case_id) ON DELETE CASCADE,
+    CONSTRAINT fk_cs_officer FOREIGN KEY (referring_officer_id) REFERENCES users (user_id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE stage_transitions (
+    transition_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    case_id INT UNSIGNED NOT NULL,
+    stage_type ENUM('Mediation', 'Conciliation', 'Arbitration') NOT NULL,
+    from_status VARCHAR(50) NOT NULL,
+    to_status VARCHAR(50) NOT NULL,
+    action_type VARCHAR(100) NOT NULL,
+    performed_by INT UNSIGNED NOT NULL,
+    remarks TEXT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_st_case (case_id),
+    CONSTRAINT fk_st_case FOREIGN KEY (case_id) REFERENCES cases (case_id) ON DELETE CASCADE,
+    CONSTRAINT fk_st_user FOREIGN KEY (performed_by) REFERENCES users (user_id) ON DELETE RESTRICT
+) ENGINE=InnoDB;
+
 CREATE TABLE case_deadlines (
     deadline_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     case_id INT UNSIGNED NOT NULL,
@@ -375,7 +412,13 @@ CREATE TABLE hearing_minutes (
     new_proposal TEXT NULL,
     counteroffer TEXT NULL,
     additional_evidence_notes TEXT NULL,
-    session_outcome ENUM('Settled', 'Continue Mediation', 'Failed', 'Party Absent', 'Rescheduled', 'Elevate to Pangkat', 'Pending') NOT NULL DEFAULT 'Pending',
+    session_outcome ENUM('Settled', 'Continue Mediation', 'Continue Conciliation', 'Continue Arbitration', 'Failed', 'Party Absent', 'Rescheduled', 'Elevate to Pangkat', 'Pending CFA', 'Arbitration Award', 'Pending') NOT NULL DEFAULT 'Pending',
+    status ENUM('Draft', 'Finalized') NOT NULL DEFAULT 'Draft',
+    agenda_topics TEXT NULL,
+    agreements_action_items TEXT NULL,
+    unresolved_issues TEXT NULL,
+    finalized_by INT UNSIGNED NULL,
+    finalized_at DATETIME NULL,
     outcome_remarks TEXT NULL,
     actual_end_time DATETIME NULL,
     recorded_by INT UNSIGNED NOT NULL,
@@ -384,7 +427,8 @@ CREATE TABLE hearing_minutes (
     KEY idx_hm_case (case_id),
     CONSTRAINT fk_hm_hearing FOREIGN KEY (hearing_id) REFERENCES hearings (hearing_id) ON DELETE CASCADE,
     CONSTRAINT fk_hm_case FOREIGN KEY (case_id) REFERENCES cases (case_id) ON DELETE CASCADE,
-    CONSTRAINT fk_hm_recorded_by FOREIGN KEY (recorded_by) REFERENCES users (user_id) ON DELETE RESTRICT
+    CONSTRAINT fk_hm_recorded_by FOREIGN KEY (recorded_by) REFERENCES users (user_id) ON DELETE RESTRICT,
+    CONSTRAINT fk_hm_finalized_by FOREIGN KEY (finalized_by) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE summon_deliveries (
@@ -436,10 +480,13 @@ CREATE TABLE hearing_attendance (
     attendance_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     hearing_id INT UNSIGNED NOT NULL,
     resident_id INT UNSIGNED NOT NULL,
-    attendance_status ENUM('Present', 'Absent', 'Late', 'Excused', 'Not Served') NOT NULL,
+    attendance_status ENUM('Present', 'Absent', 'Late', 'Excused', 'Not Served', 'Pending Verification') NOT NULL DEFAULT 'Pending Verification',
     is_justified TINYINT(1) NOT NULL DEFAULT 0,
     justification_reason VARCHAR(255) NULL,
     remarks TEXT NULL,
+    verification_status ENUM('Pending', 'Verified Served', 'Unverified', 'Excused Approved') NOT NULL DEFAULT 'Pending',
+    determination_notes TEXT NULL,
+    attachment_path VARCHAR(1024) NULL,
     recorded_by INT UNSIGNED NULL,
     recorded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_hearing_attendance_resident (hearing_id, resident_id),

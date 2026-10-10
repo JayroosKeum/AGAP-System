@@ -453,7 +453,22 @@ class CaseModel
         $documents->execute([$id]);
         $proofs = $this->conn->prepare("SELECT ps.proof_id, ps.document_id, ps.served_date, ps.remarks, dt.template_name, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS served_by_name FROM proof_of_service ps LEFT JOIN generated_documents gd ON gd.document_id = ps.document_id LEFT JOIN document_templates dt ON dt.template_id = gd.template_id LEFT JOIN users u ON u.user_id = ps.served_by WHERE ps.case_id = ? ORDER BY ps.served_date DESC");
         $proofs->execute([$id]);
-        return ['case' => $case, 'assignments' => $assignments->fetchAll(PDO::FETCH_ASSOC), 'hearings' => $hearingsList, 'documents' => $documents->fetchAll(PDO::FETCH_ASSOC), 'proofs' => $proofs->fetchAll(PDO::FETCH_ASSOC)];
+
+        require_once __DIR__ . '/CaseStage.php';
+        $stageModel = new CaseStage($this->conn);
+        $stageOverview = $stageModel->getStageOverview($id);
+
+        return [
+            'case' => $case,
+            'assignments' => $assignments->fetchAll(PDO::FETCH_ASSOC),
+            'hearings' => $hearingsList,
+            'documents' => $documents->fetchAll(PDO::FETCH_ASSOC),
+            'proofs' => $proofs->fetchAll(PDO::FETCH_ASSOC),
+            'stages' => $stageOverview ? [
+                'mediation' => $stageOverview['mediation'],
+                'conciliation' => $stageOverview['conciliation']
+            ] : null
+        ];
     }
 
     public function getDocketingError(mixed $complaintId): ?string
