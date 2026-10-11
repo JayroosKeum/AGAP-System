@@ -65,6 +65,13 @@ from `schema.sql`.
 `preflight_integrity.sql` is read-only and identifies the duplicates and
 orphaned rows that must be resolved before that migration.
 
+## Hearing attendance monitoring upgrade
+
+For an existing populated database whose `hearing_attendance` table does not yet
+contain justification tracking and user audit fields, apply
+`database/migrations/20260929_hearing_attendance_monitoring.sql` once. Fresh
+databases receive these fields and constraints directly from `schema.sql`.
+
 ## Relationship rules
 
 - A complaint can be docketed into only one case.
@@ -96,3 +103,7 @@ orphaned rows that must be resolved before that migration.
 The schema keeps historical audit, log, document, and service records when a
 user is removed by setting their actor reference to `NULL`. Core parent
 records that would orphan legal case data are protected from deletion.
+
+## Hearing service and explanation workflow
+
+Fresh databases receive hearing-party service history, explanations, legal-action review, and linked rescheduled hearing events from database/schema.sql. Existing databases must apply database/migrations/20260930_hearing_service_explanation_workflow.sql once after the hearing, generated-document, party, and user tables exist. This migration adds workflow tables and rescheduling linkage; it does not migrate legacy nonappearance decisions into verified-service records.

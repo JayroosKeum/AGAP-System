@@ -5,7 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!form || !results) return;
 
     const complaintView = results.id === 'complaintTable';
-    const columnCount = 7;
+    const columnCount = 5;
 
     const searchInput = document.getElementById('searchQuery');
     const clearInputBtn = document.getElementById('clearSearchInput');
@@ -33,7 +33,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let debounceTimer = null;
     let cachedGlobalCounts = null;
     let loadedRows = [];
-    let activeSortKey = 'date';
+    let activeRecordsRequest = null;
+    let activeSortKey = 'case_no';
     let activeSortDir = 'desc';
 
     // Pagination State (Max 10 per page)
@@ -125,7 +126,7 @@ document.addEventListener('DOMContentLoaded', () => {
             activeSortDir = 'desc';
         } else {
             activeSortKey = mapSortValueToHeaderKey(val);
-            activeSortDir = (activeSortKey === 'date') ? 'desc' : 'asc';
+            activeSortDir = (activeSortKey === 'case_no') ? 'desc' : 'asc';
         }
 
         updateSortHeadersUI();
@@ -144,16 +145,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function mapSortValueToHeaderKey(val) {
         switch (val) {
-            case 'incident_date': return 'date';
-            case 'complaint_number':
-            case 'complaint_title': return 'complaint';
             case 'case_number': return 'case_no';
-            case 'category_name': return 'category';
+            case 'complaint_title':
+            case 'complaint_number': return 'complaint';
             case 'parties': return 'parties';
             case 'intake_status':
             case 'current_stage':
             case 'final_disposition': return 'lifecycle';
-            default: return val || 'date';
+            default: return val || 'case_no';
         }
     }
 
@@ -168,7 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     activeSortDir = (activeSortDir === 'asc') ? 'desc' : 'asc';
                 } else {
                     activeSortKey = sortKey;
-                    activeSortDir = (sortKey === 'date') ? 'desc' : 'asc';
+                    activeSortDir = (sortKey === 'case_no') ? 'desc' : 'asc';
                 }
 
                 updateSortHeadersUI();
@@ -212,15 +211,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function syncSortDropdown() {
         if (!sortSelect) return;
-        const targetVal = (activeSortKey === 'date')
-            ? (activeSortDir === 'asc' ? 'incident_date_asc' : 'incident_date')
+        const targetVal = (activeSortKey === 'case_no')
+            ? (activeSortDir === 'desc' ? 'case_number_desc' : 'case_number')
             : (activeSortKey === 'complaint')
-                ? (activeSortDir === 'desc' ? 'complaint_number_desc' : 'complaint_number')
-                : (activeSortKey === 'case_no')
-                    ? (activeSortDir === 'desc' ? 'case_number_desc' : 'case_number')
-                    : (activeSortKey === 'category')
-                        ? 'category_name'
-                        : '';
+                ? (activeSortDir === 'desc' ? 'complaint_title_desc' : 'complaint_title')
+                : (activeSortKey === 'parties')
+                    ? 'parties'
+                    : '';
 
         if (targetVal) {
             const opt = sortSelect.querySelector(`option[value="${targetVal}"]`);
@@ -233,11 +230,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const mult = (dir === 'asc') ? 1 : -1;
         rows.sort((a, b) => {
             switch (key) {
-                case 'complaint': {
-                    const cA = String(a.complaint_number || a.complaint_title || '').toLowerCase();
-                    const cB = String(b.complaint_number || b.complaint_title || '').toLowerCase();
-                    return cA.localeCompare(cB) * mult;
-                }
                 case 'case_no': {
                     const noA = String(a.case_number || '').toLowerCase();
                     const noB = String(b.case_number || '').toLowerCase();
@@ -245,20 +237,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (noA && !noB) return -1;
                     return noA.localeCompare(noB) * mult;
                 }
-                case 'category': {
-                    const catA = String(a.category_name || '').toLowerCase();
-                    const catB = String(b.category_name || '').toLowerCase();
-                    return catA.localeCompare(catB) * mult;
+                case 'complaint': {
+                    const cA = String(a.complaint_title || a.complaint_number || '').toLowerCase();
+                    const cB = String(b.complaint_title || b.complaint_number || '').toLowerCase();
+                    return cA.localeCompare(cB) * mult;
                 }
                 case 'parties': {
                     const pA = String(a.parties || '').toLowerCase();
                     const pB = String(b.parties || '').toLowerCase();
                     return pA.localeCompare(pB) * mult;
-                }
-                case 'date': {
-                    const dA = a.incident_date || '';
-                    const dB = b.incident_date || '';
-                    return dA.localeCompare(dB) * mult;
                 }
                 case 'lifecycle': {
                     const rank = (r) => {
@@ -271,7 +258,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (st === 'Arbitration') return 6;
                         if (st === 'Conciliation') return 5;
                         if (st === 'Mediation') return 4;
-                        if (r.intake_status === 'Docketed') return 3;
+                        if (r.intake_status === 'Under Review') return 2;
                         return 1;
                     };
                     return (rank(a) - rank(b)) * mult;
@@ -299,29 +286,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (stageSelect) stageSelect.value = '';
             if (dispositionSelect) dispositionSelect.value = '';
 
-            syncKpiCardsWithStatus(targetStatus);
-            form.requestSubmit();
-        });
-    });
-
-    // KPI Cards Clickable Filters
-    const kpiCards = document.querySelectorAll('.complaints-kpi-grid .kpi-card');
-    kpiCards.forEach(card => {
-        card.addEventListener('click', () => {
-            const filterKey = card.dataset.kpiFilter;
-            const targetStatus = (filterKey === 'all') ? '' : filterKey;
-
-            kpiCards.forEach(c => c.classList.remove('active'));
-            card.classList.add('active');
-
-            if (statusSelect) {
-                statusSelect.value = targetStatus;
-            }
-
-            if (intakeSelect) intakeSelect.value = '';
-            if (stageSelect) stageSelect.value = '';
-            if (dispositionSelect) dispositionSelect.value = '';
-
             syncNavTabsWithStatus(targetStatus);
             form.requestSubmit();
         });
@@ -331,17 +295,6 @@ document.addEventListener('DOMContentLoaded', () => {
         navTabs.forEach(tab => {
             const s = tab.dataset.tabStatus ?? '';
             tab.classList.toggle('active', s === statusVal);
-        });
-        syncKpiCardsWithStatus(statusVal);
-    }
-
-    function syncKpiCardsWithStatus(statusVal) {
-        kpiCards.forEach(card => {
-            const f = card.dataset.kpiFilter;
-            if (statusVal === '' && f === 'all') card.classList.add('active');
-            else if (f === statusVal) card.classList.add('active');
-            else if (f === 'in_progress' && ['Mediation', 'Conciliation', 'Arbitration', 'Docketed', 'in_progress'].includes(statusVal)) card.classList.add('active');
-            else card.classList.remove('active');
         });
     }
 
@@ -360,10 +313,26 @@ document.addEventListener('DOMContentLoaded', () => {
             </tr>
         `;
 
-        fetch('../../../backend/api/search/records.php?' + new URLSearchParams(new FormData(form)))
+        if (activeRecordsRequest) activeRecordsRequest.abort();
+        const requestController = new AbortController();
+        activeRecordsRequest = requestController;
+        const recordsTimeout = window.setTimeout(() => requestController.abort(), 15000);
+
+        fetch('../../../backend/api/search/records.php?' + new URLSearchParams(new FormData(form)), {
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { Accept: 'application/json' },
+            signal: requestController.signal
+        })
             .then(async response => {
-                const data = await response.json();
-                if (!response.ok) throw new Error(data.message || 'The records could not be loaded.');
+                const raw = await response.text();
+                let data;
+                try {
+                    data = JSON.parse(raw);
+                } catch (error) {
+                    throw new Error('The records API returned invalid JSON. Check the PHP error log.');
+                }
+                if (!response.ok) throw new Error(data.message || data.error || 'The records could not be loaded.');
                 return data;
             })
             .then(rows => {
@@ -377,7 +346,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     renderRows(loadedRows);
                 }
             })
-            .catch(() => {
+            .catch((error) => {
                 results.innerHTML = `
                     <tr>
                         <td colspan="${columnCount}" class="table-empty-wrap">
@@ -390,6 +359,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
                 if (paginationContainer) paginationContainer.style.display = 'none';
                 if (summary) summary.textContent = '';
+            })
+            .finally(() => {
+                window.clearTimeout(recordsTimeout);
+                if (activeRecordsRequest === requestController) {
+                    activeRecordsRequest = null;
+                }
             });
     });
 
@@ -406,11 +381,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (dispositionSelect) dispositionSelect.value = '';
         if (statusSelect) statusSelect.value = '';
 
-        activeSortKey = 'date';
+        activeSortKey = 'case_no';
         activeSortDir = 'desc';
         updateSortHeadersUI();
         if (sortOrderInput) sortOrderInput.value = 'DESC';
-        if (sortSelect) sortSelect.value = 'incident_date';
+        if (sortSelect) sortSelect.value = 'case_number_desc';
 
         syncNavTabsWithStatus('');
         updateDrawerActiveState();
@@ -551,29 +526,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (isDefaultView || !cachedGlobalCounts) {
             const allCount = rows.length;
-            const reviewCount = rows.filter(r => r.intake_status === 'Under Review').length;
-            const docketedCount = rows.filter(r => r.intake_status === 'Docketed').length;
-            const mediationCount = rows.filter(r => r.current_stage === 'Mediation').length;
-            const conciliationCount = rows.filter(r => r.current_stage === 'Conciliation').length;
-            const arbitrationCount = rows.filter(r => r.current_stage === 'Arbitration').length;
-            const settledCount = rows.filter(r => r.final_disposition === 'Amicable Settlement').length;
-            const dismissedCount = rows.filter(r => r.final_disposition === 'Dismissed / Dropped').length;
-            const cfaCount = rows.filter(r => r.final_disposition === 'Certificate to File Action (CFA)').length;
-            const progressCount = rows.filter(r => {
-                return ['Mediation', 'Conciliation', 'Arbitration'].includes(r.current_stage) || r.intake_status === 'Docketed';
-            }).length;
+            const pendingCount = rows.filter(r => r.lifecycle_status === 'Pending').length;
+            const mediationCount = rows.filter(r => r.lifecycle_status === 'Mediation').length;
+            const conciliationCount = rows.filter(r => r.lifecycle_status === 'Conciliation').length;
+            const cfaCount = rows.filter(r => r.lifecycle_status === 'CFA').length;
+            const closedCount = rows.filter(r => r.lifecycle_status === 'Resolution / Closed').length;
 
             cachedGlobalCounts = {
                 all: allCount,
-                review: reviewCount,
-                docketed: docketedCount,
+                pending: pendingCount,
                 mediation: mediationCount,
                 conciliation: conciliationCount,
-                arbitration: arbitrationCount,
-                settled: settledCount,
-                dismissed: dismissedCount,
                 cfa: cfaCount,
-                progress: progressCount
+                closed: closedCount
             };
         }
 
@@ -583,20 +548,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (el) el.textContent = String(val);
         };
 
-        setEl('kpiCountAll', counts.all);
-        setEl('kpiCountReview', counts.review);
-        setEl('kpiCountProgress', counts.progress);
-        setEl('kpiCountSettled', counts.settled);
-
         setEl('tabCountAll', counts.all);
-        setEl('tabCountReview', counts.review);
-        setEl('tabCountDocketed', counts.docketed);
+        setEl('tabCountPending', counts.pending);
         setEl('tabCountMediation', counts.mediation);
         setEl('tabCountConciliation', counts.conciliation);
-        setEl('tabCountArbitration', counts.arbitration);
-        setEl('tabCountSettled', counts.settled);
-        setEl('tabCountDismissed', counts.dismissed);
         setEl('tabCountCfa', counts.cfa);
+        setEl('tabCountClosed', counts.closed);
     }
 
     function renderPaginatedRows() {
@@ -727,7 +684,27 @@ document.addEventListener('DOMContentLoaded', () => {
         const caseType = String(row.case_type || 'Civil');
         const caseTypeClass = caseType.toLowerCase() === 'criminal' ? 'badge-type-criminal' : 'badge-type-civil';
 
-        // Format Parties
+        // 1. Case No.
+        const caseNumberHtml = row.case_number
+            ? `<span class="badge-case-docket">${escapeHtml(row.case_number)}</span>`
+            : `<span class="badge-case-none">Undocketed</span>`;
+
+        // 2. Complaint (Title of complaint / short description)
+        const complaintTitle = row.complaint_title ? String(row.complaint_title).trim() : '';
+        const complaintNumber = row.complaint_number || `Complaint #${id}`;
+        const complaintHtml = `
+            <div class="cell-complaint-meta">
+                <a href="complaint-details.php?id=${id}" class="complaint-title-link" title="${escapeHtml(complaintTitle || complaintNumber)}">
+                    ${escapeHtml(complaintTitle || 'Untitled Complaint')}
+                </a>
+                <div class="complaint-sub-meta">
+                    <span class="complaint-sub-no">${escapeHtml(complaintNumber)}</span>
+                    <span class="badge-case-type ${caseTypeClass}">${escapeHtml(caseType)}</span>
+                </div>
+            </div>
+        `;
+
+        // 3. Parties
         let partiesHtml = '<span class="badge-case-none">No parties linked</span>';
         if (row.parties) {
             const partyEntries = String(row.parties).split(' | ');
@@ -744,34 +721,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const extraCount = partyEntries.length > 3 ? `<span style="font-size: 0.76rem; color: #64748b;">+${partyEntries.length - 3} more</span>` : '';
             const repeatFlag = Number(row.repeat_party_count || 0) > 1
-                ? `<span class="repeat-alert-badge" title="Resident appeared in multiple cases">Repeat (${Number(row.repeat_party_count)})</span>`
+                ? `<span class="repeat-alert-badge" title="Resident profile appeared in multiple cases">Repeat (${Number(row.repeat_party_count)})</span>`
                 : '';
 
             partiesHtml = `<div class="parties-stack">${renderedParties}${extraCount}${repeatFlag}</div>`;
         }
 
-        // Format Incident Date
-        let formattedDate = '—';
-        if (row.incident_date) {
-            try {
-                const parts = String(row.incident_date).split('-');
-                if (parts.length === 3) {
-                    const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-                    formattedDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                } else {
-                    formattedDate = escapeHtml(row.incident_date);
-                }
-            } catch (e) {
-                formattedDate = escapeHtml(row.incident_date);
-            }
-        }
+        // 4. Standardized lifecycle status: exactly one of five values.
+        const lifecycleStatus = [
+            'Pending',
+            'Mediation',
+            'Conciliation',
+            'CFA',
+            'Resolution / Closed'
+        ].includes(row.lifecycle_status) ? row.lifecycle_status : 'Pending';
+        const lifecycleClass = lifecycleStatus
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-|-$/g, '');
+        const statusHtml = `
+            <div class="lifecycle-group">
+                <span class="lifecycle-badge badge-lifecycle-${lifecycleClass}">
+                    ${escapeHtml(lifecycleStatus)}
+                </span>
+            </div>
+        `;
 
-        // Format Case Number
-        const caseNumberHtml = row.case_number
-            ? `<span class="badge-case-docket">${escapeHtml(row.case_number)}</span>`
-            : `<span class="badge-case-none">Undocketed</span>`;
-
-        // Format Actions
+        // 5. Actions
         const actionsHtml = Number.isInteger(id) && id > 0
             ? `<div class="table-actions-group">
                 <button type="button" class="btn-row-action btn-view-action" onclick="window.location.href='complaint-details.php?id=${id}'" title="View full details">
@@ -782,70 +758,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                     Edit
                 </button>
-                <button type="button" class="btn-row-action btn-delete-action" onclick="deleteComplaint(${id})" title="Delete complaint">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                <button type="button" class="btn-row-action btn-archive-action" onclick="archiveComplaint(${id})" title="Archive complaint">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
                 </button>
                </div>`
             : '';
 
-        // Distinct Lifecycle Representation without label prefixes
-        const intake = row.intake_status || (row.case_id ? 'Docketed' : 'Under Review');
-        const intakeClass = (intake === 'Docketed') ? 'badge-intake-docketed' : 'badge-intake-under-review';
-
-        const medCount = Number(row.mediation_count || 0);
-        const conCount = Number(row.conciliation_count || 0);
-        const isStageExhausted = Boolean(row.is_stage_exhausted) || (conCount >= 3) || (medCount >= 3 && conCount >= 3);
-
-        const stage = isStageExhausted ? 'None' : (row.current_stage || 'None');
-        let stageClass = 'badge-stage-none';
-        if (stage === 'Mediation') stageClass = 'badge-stage-mediation';
-        else if (stage === 'Conciliation') stageClass = 'badge-stage-conciliation';
-        else if (stage === 'Arbitration') stageClass = 'badge-stage-arbitration';
-
-        const disp = row.final_disposition || 'Pending';
-        let dispClass = 'badge-disp-pending';
-        let dispLabel = 'Pending';
-        if (disp === 'Amicable Settlement' || disp === 'Settled') {
-            dispClass = 'badge-disp-settled';
-            dispLabel = 'Amicable Settlement';
-        } else if (disp === 'Arbitration Award') {
-            dispClass = 'badge-disp-arbitration';
-            dispLabel = 'Arbitration Award';
-        } else if (disp.includes('CFA') || disp.includes('Certificate')) {
-            dispClass = 'badge-disp-cfa';
-            dispLabel = 'CFA Issued';
-        } else if (disp.includes('Dismissed') || disp.includes('Dropped')) {
-            dispClass = 'badge-disp-dismissed';
-            dispLabel = 'Dismissed';
-        }
-
-        const statusHtml = `
-            <div class="lifecycle-group">
-                <div class="lifecycle-subrow">
-                    <span class="lifecycle-badge ${intakeClass}">${escapeHtml(intake)}</span>
-                    ${stage !== 'None' ? `<span class="lifecycle-badge ${stageClass}">${escapeHtml(stage)}</span>` : ''}
-                </div>
-                <div class="lifecycle-subrow">
-                    <span class="lifecycle-badge ${dispClass}">${escapeHtml(dispLabel)}</span>
-                </div>
-            </div>
-        `;
-
         return `
             <tr>
-                <td>
-                    <div class="cell-complaint-meta">
-                        <div class="complaint-top-row">
-                            <a href="complaint-details.php?id=${id}" class="complaint-link-no">${escapeHtml(row.complaint_number || `Complaint #${id}`)}</a>
-                            <span class="badge-case-type ${caseTypeClass}">${escapeHtml(caseType)}</span>
-                        </div>
-                        <div class="complaint-title-text" title="${escapeHtml(row.complaint_title)}">${escapeHtml(row.complaint_title)}</div>
-                    </div>
-                </td>
                 <td>${caseNumberHtml}</td>
-                <td><span class="badge-category">${escapeHtml(row.category_name || 'Uncategorized')}</span></td>
+                <td>${complaintHtml}</td>
                 <td>${partiesHtml}</td>
-                <td><span style="color: #475569; font-size: 0.85rem; white-space: nowrap;">${formattedDate}</span></td>
                 <td>${statusHtml}</td>
                 <td style="text-align: right;">${actionsHtml}</td>
             </tr>
@@ -874,4 +797,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Automatically load initial dataset
     if (complaintView) form.requestSubmit();
+});
+
+
+// AGAP_UNIFIED_SYNC_SEARCH
+window.addEventListener('agap:data-changed', (event) => {
+    const changed = event.detail?.modules || [];
+    if (!changed.some((name) => ['complaints', 'cases', 'assignments', 'pangkat', 'hearings', 'deadlines', 'history'].includes(name))) {
+        return;
+    }
+    const form = document.getElementById('recordsSearchForm');
+    if (form && !form.dataset.syncRefreshing) {
+        form.dataset.syncRefreshing = '1';
+        form.requestSubmit();
+        window.setTimeout(() => delete form.dataset.syncRefreshing, 750);
+    }
 });

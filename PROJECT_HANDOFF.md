@@ -99,6 +99,91 @@ write; an edit retains the pin unless it is moved or explicitly cleared.
   repeated Conciliation assignment, Edit updates, role restrictions, and
   status transitions in Laragon without using production data.
 
+### 15-Day Statutory Mediation Deadline (September 2026)
+
+- Implemented Katarungang Pambarangay (RA 7160 Section 410(b)) 15-day statutory mediation deadline logic end-to-end:
+  - **Clock Trigger (Day 0)**: Mediation clock begins on the date of the First Scheduled Mediation Hearing (or summon served date), not raw filing.
+  - **Duration & Calendar Math**: 15 calendar days with automatic weekend (Saturday/Sunday) and Philippine public holiday rollover (e.g. New Year, Labor Day, Independence Day, Christmas, Easter Maundy Thursday/Good Friday, National Heroes Day) extending the deadline to the next working day.
+  - **Clock Pauses / Exceptions**:
+    - *Justified Suspension*: Authorized officers (Admin/Clerk) can log an excused pause with notes (e.g., medical emergency, calamity), freezing the day count. Resuming extends the deadline by the elapsed pause days.
+    - *Summon Unserved*: When proof of service is marked "Service Failed" (unserved), the timer is automatically paused with reason `Summon Unserved` until service is completed as `Served`.
+  - **State & Urgency Badges**:
+    - `Within Period` (> 5 days left): Green badge (`X days remaining`).
+    - `Expiring Soon` (<= 5 days left): Amber badge (`X days remaining - Action Needed`).
+    - `Mediation Lapsed` (0 or negative days left): Red badge (`15-day limit reached` / `Mediation Period Lapsed`).
+    - `Paused`: Blue badge with pause reason and resume capability.
+  - **Safeguards & Legal Expiration Actions**:
+    - Scheduling further Punong Barangay mediation hearings is strictly restricted once lapsed, both on the frontend (`case-workspace.js`, `hearings.js`) and backend (`Hearing::createProgression`).
+    - Prominently presents the two statutory next steps on workspace and hearing schedule:
+      - **Option A**: *Constitute Pangkat Tagapagkasundo* (elevate to 3-member Conciliation panel, granting fresh 15-day conciliation period).
+      - **Option B**: *Issue Certificate to File Action (CFA)* (direct link and full issuance workflow on `documents/cfa.php`).
+    - Automated Audit Log: Writes `"15-day mediation period concluded on [Date]. Awaiting elevation to Pangkat or issuance of CFA."` upon lapse detection.
+  - **Database Migration & Schema**: Added `mediation_start_date`, `mediation_deadline_date`, `is_paused`, `paused_at`, `resumed_at`, `pause_reason`, `pause_notes` to `cases` table in `database/schema.sql` and migration `database/migrations/20260928_mediation_statutory_deadline.sql`.
+  - **Relevant Files**: `backend/services/MediationDeadlineService.php`, `backend/services/DeadlineService.php`, `backend/models/MediationSchedule.php`, `backend/models/Hearing.php`, `backend/models/ProofOfService.php`, `backend/models/CaseModel.php`, `backend/models/CFA.php`, `backend/controllers/CFAController.php`, `backend/api/cases/pause-mediation.php`, `backend/api/cases/resume-mediation.php`, `backend/api/documents/cfa.php`, `frontend/pages/cases/case-details.php`, `frontend/assets/js/case-workspace.js`, `frontend/pages/documents/cfa.php`, `frontend/assets/js/cfa.js`, `frontend/assets/js/hearings.js`, `frontend/assets/js/cases.js`, `frontend/assets/css/cases.css`.
+
+### Proof of Service & Hearing Attendance Modal Updates (October 2026)
+
+- **Proof of Service Page Refinement (`proof-service.php`)**:
+  - Removed the redundant "Issued Documents / Summons Notices" table section (`#summonsNoticesTable`). The page now focuses exclusively on Officer's Return & Hearing Summon Deliveries and Recorded Activity (Service History & Attempts).
+  - Safeguarded `frontend/assets/js/gps.js` with early null checks in `loadSummonsNotices(caseId)` when `#summonsNoticesTable` is absent from the DOM.
+- **Hearing Session & Service Verification Modal (`#editHearingModal`)**:
+  - Replaced the generic "Service Not Confirmed" badge with an explicit **Summon Delivery Status** indicator (`✓ Served — Personal`, `✓ Served — Substituted`, `✓ Refused to Receive`, `✕ Unserved (reason)`, or `⏳ Pending Delivery`).
+  - Integrated `summon_deliveries` into `backend/models/HearingAttendance.php` (`getHearingAttendance` and `recordAttendance`), ensuring service logged via Proof of Service directly confirms hearing service.
+  - Streamlined **Witness** party cards by removing attendance pills (`Present`, `Failure to Appear`, `Not Served`, `Excused`, `Late`) and justification selectors. Witnesses now display their name, role, address, and an optional testimony notes/remarks field.
+  - Handled witness records gracefully during attendance save (`handleSaveAttendance`), defaulting to `Present` without requiring status selection or triggering failure-to-appear validation blocks.
+- **Consolidation of Case Workspace into Complaint Details (`complaint-details.php`)**:
+  - Removed standalone Case Workspace navigation fragments. When a complaint is docketed as a case, all case management features are consolidated directly into `frontend/pages/complaints/complaint-details.php`.
+  - Added **Docketed Case Record & 15-Day Statutory Mediation Clock** section with live countdown badge (`Within Period`, `Expiring Soon`, `Mediation Lapsed`, `Paused`) and deadline dates.
+  - Added **Card 6: Case Team Assignment**: displays the active 3-member Lupon panel (Head, Secretary, Member) with direct link to manage assignments.
+  - Added **Card 7: Case Documents & KP Forms**: lists generated forms and summons notices with direct file view/download links.
+  - Added **Card 8: Hearings & Deadlines Schedule**: displays scheduled hearing sessions with dates, venues, status badges, attendance counts, and direct links into Hearings & Deadlines.
+  - Updated `ComplaintController::show` to automatically embed `case_workspace` data from `CaseModel::getWorkspace` in `backend/api/complaints/view.php`.
+  - Added "View Details" button in `case-list.php` table actions to route directly to `../complaints/complaint-details.php?id=<complaint_id>`, unifying the workflow.
+  - Verified and fixed closing template literal tags in `frontend/assets/js/complaints.js` (`renderAttachments`), resolving browser script parse failures on `complaint-details.php`.
+- **Relevant Files**: `frontend/pages/complaints/complaint-details.php`, `frontend/assets/js/complaints.js`, `backend/controllers/ComplaintController.php`, `backend/models/CaseModel.php`, `backend/api/cases/workspace.php`, `frontend/pages/cases/case-list.php`, `frontend/assets/js/cases.js`, `frontend/pages/gps/proof-service.php`, `frontend/assets/js/gps.js`, `backend/models/HearingAttendance.php`, `frontend/assets/js/hearings.js`, `frontend/assets/css/hearings.css`.
+
+- **Conciliation Hearing Case Team Assignment Validation (October 2026)**:
+  - **Mediation vs Conciliation Roles**: The Administrator account represents the Barangay Captain / Punong Barangay for Mediation ONLY. When a case transitions from Mediation to Conciliation (e.g., following mediation failure, lapse of the 15-day statutory period, or constitution of the Pangkat Tagapagkasundo), staff must assign a dedicated 3-member Lupon panel (Head, Secretary, Member) composed exclusively of active users with the `Lupon Member` role.
+  - **Pre-Booking Enforcement**: Booking a Conciliation hearing is strictly blocked until a valid 3-member Lupon team is assigned.
+    - `backend/models/Assignment.php`: Added `validateConciliationTeam(int $caseId): array` and `validateConciliationTeams(array $caseIds): array`. Verifies that exactly 3 distinct active users with role `Lupon Member` are assigned as Head, Secretary, and Member, and rejects any panel containing an Administrator.
+    - `backend/models/Assignment.php`: Updated `replaceCaseTeam` to support assigning a 3-member Lupon panel for Conciliation, automatically transitioning case and complaint status to `Conciliation`. Fixed existing team check to differentiate between Mediation's single Administrator Head and a full 3-member Conciliation panel.
+    - `backend/controllers/HearingController.php`: Updated `validate()` to block scheduling `Conciliation` hearings when `validateConciliationTeam` returns invalid.
+    - `backend/models/Hearing.php`: Atomic transactional validation in `createProgression()` rejects Conciliation scheduling attempts if the Lupon team has not been constituted.
+    - `backend/models/CaseModel.php`: Enriched case list and pagination outputs with `has_conciliation_team` and `conciliation_team_message`.
+    - `frontend/assets/js/hearings.js`: When a case requires Conciliation and lacks a 3-member Lupon panel, disables the Conciliation hearing type option, disables the submit button, and displays an informative alert with a direct deep-link to Case Team Assignment (`../cases/case-list.php?assign_case_id=<id>#caseAssignments`).
+- **Hearing Date Progression Validation: No Same-Day or Prior-Date Schedules (October 2026)**:
+  - **Rule Definition**: If a hearing is already booked for a case (active or completed), users cannot schedule another hearing for that case on the same day or on any prior date. All subsequent hearing schedules must strictly be set on a future calendar date following the latest booked hearing.
+  - **Model & Database Enforcement (`backend/models/Hearing.php`)**:
+    - Added `getLatestBookedHearing(int $caseId): ?array`: retrieves the latest active or completed booked hearing for a case (excluding cancelled and superseded hearings).
+    - Added `validateHearingDateProgression(int $caseId, string $hearingDate, ?int $excludeHearingId = null): array`: checks both (1) same-day conflicts against any booked hearing, and (2) whether the target date is on or before the latest booked hearing date.
+    - Updated `createProgression`: added atomic transaction-level check with `FOR UPDATE` case locking before `INSERT INTO hearings`, rolling back if same-day or prior date is provided.
+  - **Controller & API Gate (`backend/controllers/HearingController.php`)**:
+    - Updated `validate()`: intercepts hearing schedule creation (`!$allowExistingTypes`) and returns HTTP 422 with a descriptive error message (`A hearing for this case is already booked on [Date]. You cannot schedule another hearing for this case on the same day or on any prior date.`). Also validates rescheduled updates so that they do not conflict on the same day as another hearing of the case.
+    - Added support for `Y-m-d H:i` string format alongside `Y-m-d\TH:i` and `Y-m-d H:i:s`.
+  - **Case Enrichment (`backend/models/CaseModel.php`)**:
+    - Enriched `getAll()` and `getPage()` with `latest_hearing_date`, computed efficiently in bulk via indexed `GROUP BY` and `PDO::FETCH_KEY_PAIR`.
+  - **Frontend UI & Interactive Restrictions (`frontend/assets/js/hearings.js`)**:
+    - Updated `loadCases()`: caches `latest_hearing_date` on case dropdown option dataset.
+    - Added `getCaseLatestHearingDate(caseId)`: retrieves latest hearing from `calendarHearings` or dataset fallback.
+    - Added `updateDateRestrictions()` & `validateHearingDateInput()`: dynamically computes the earliest allowed date (day after the latest booked hearing, 08:00 AM) and sets `hearingDate.min`.
+    - Added real-time client-side validity checks on `input` and `change`, as well as on form submit interceptor in `bindReviewForm`.
+    - Enhanced `updateNextSchedule()` help box: displays an informative blue indicator with the latest booked hearing date and the earliest permitted new hearing date.
+  - **Relevant Files**: `backend/models/Hearing.php`, `backend/controllers/HearingController.php`, `backend/models/CaseModel.php`, `frontend/assets/js/hearings.js`.
+
+- **Hearing Schedule Office Hours & Weekday Validation (October 2026)**:
+  - **Rule Definition**: Hearings cannot be booked on Saturdays or Sundays, and can strictly only be scheduled during office hours from 8:00 AM to 5:00 PM (08:00 to 17:00).
+  - **Model & Database Enforcement (`backend/models/Hearing.php`)**:
+    - Added `validateHearingOperatingHours(string $hearingDate): array`: checks `$dt->format('N')` to reject Saturday (6) and Sunday (7), and checks `$dt->format('H:i')` to enforce `08:00 <= time <= 17:00`.
+    - Integrated into `createProgression()` and `update()` (rescheduling) to prevent weekend and out-of-hours inserts at the model layer.
+  - **Controller & API Gate (`backend/controllers/HearingController.php`)**:
+    - Updated `validate()`: intercepts both new bookings and reschedules, returning HTTP 422 if Saturday/Sunday or outside 8:00 AM – 5:00 PM is submitted.
+  - **Frontend UI & Interactive Restrictions (`frontend/assets/js/hearings.js` & `schedules.php`)**:
+    - Updated `validateHearingDateInput()`: validates input in real-time on `input`, `change`, and modal submit; sets custom validity and reports invalid states.
+    - Updated `updateDateRestrictions()`: skips weekends when computing the minimum next date (advancing Friday to Monday 8:00 AM).
+    - Added office hours helper notes beneath the date inputs in `frontend/pages/hearings/schedules.php`.
+  - **Relevant Files**: `backend/models/Hearing.php`, `backend/controllers/HearingController.php`, `frontend/assets/js/hearings.js`, `frontend/pages/hearings/schedules.php`.
+
+
 ## Other Undocumented Implemented Changes (September 2026)
 
 ### Cases page ordering and pagination
@@ -258,6 +343,60 @@ write; an edit retains the pin unless it is moved or explicitly cleared.
   `ComplaintController.php`, `HearingController.php`, `GPSController.php`,
   `backend/models/User.php`, `backend/models/Complaint.php`, and the associated
   user/resident form JavaScript and API files.
+
+### Resident Profiles Terminology Alignment & Modern UI Redesign (September 2026)
+
+- Clarified module terminology across user-facing views from "Residents" to "Resident Profiles".
+- Rationale & Context: The `residents` table does not represent resident user login accounts. It is strictly a verified registry of identities and addresses (first name, middle name, last name, and address/purok) used during complaint intake and blotter recording to verify involved parties (complainants, respondents, witnesses) and prevent misreporting or issuing summonses to the wrong individual.
+- Navigation & Interface: Sidebar navigation, page titles, tables, forms, modals (Add Resident Profile, View Resident Profile Details, Edit Resident Profile, Delete Resident Profile), and autocomplete datalists now consistently display "Resident Profile(s)".
+- Duplicate Person Prevention (Allow Similar Names, Block Similar Names & Address): Server-side validation (`Resident::findDuplicate()`, `Resident::areNamesSimilar()`, `Resident::areAddressesSimilar()`) strictly enforces that two resident profiles can share similar or identical names provided their residential addresses are different. However, creating or updating a profile with both a similar name AND a similar address is rejected with an explicit notice to prevent duplicate records for the same individual. Family members sharing the same address but with different first names, as well as distinct individuals sharing similar names residing at different locations, are fully permitted.
+- Modernized, Pleasing-to-the-Eyes UI Architecture (`resident-list.php`, `residents.css`, `residents.js`):
+  - **KPI Metrics Summary Cards**: Top metric grid showcasing Total Profiles, Permanent Residents, Tenants, and Active Puroks with custom pastel icon containers, hover lift, and one-click quick filtering of the underlying table.
+  - **Comprehensive Toolbar**: Includes an icon-adorned debounced search input with an instant clear `×` button, dynamic Purok filter dropdown, Residency Type filter dropdown (`Permanent` vs `Tenant`), multi-mode sorting dropdown (Newest First, Oldest First, Name A-Z, Name Z-A, Purok), and a conditional Reset Filters button.
+  - **6-Column Modern Data Table**:
+    1. *Profile ID*: Formatted chip `#RP-XXXX`.
+    2. *Resident Name*: Circular avatar with pastel initials badge, bold full name, and demographics subtext (Gender, Civil Status, and automatically calculated age from birth date).
+    3. *Purok / Address*: Styled Purok pill badge and formatted street address.
+    4. *Contact Details*: Formatted contact number with phone icon and clickable mail address.
+    5. *Residency*: Distinct color-coded pills for Permanent Residents (emerald) vs Tenants (amber).
+    6. *Actions*: Clean button group with View (eye), Edit (pencil), and Delete (trash) actions.
+  - **Strict 25-Item Pagination**: Dedicated pagination component (`#residentPagination`) ensuring only 25 profiles are displayed per page. Features dynamic summary text (`Showing X–Y of Z profiles`), `« First`, `‹ Prev`, smart-windowed numeric page buttons, `Next ›`, `Last »`, smooth scroll-to-table behavior, and automatic page-1 reset upon filtering.
+  - **Polished Accessible Modals**:
+    - *Add/Edit Modals*: Grouped into "Personal Information" and "Residency & Contact Information" with clean 2-column inputs, inline validation hints, duplicate error alerts, and loading buttons.
+    - *View Modal*: Transformed into a clean identity summary card featuring a large avatar circle, badge chips, formatted personal and contact grids, and a direct "Edit This Profile" transition button.
+    - *Delete Modal*: Red caution prompt displaying the target profile's name and ID with explicit deletion guidance.
+  - **Backend Pagination Support**: `Resident::getPage()` and `ResidentController::page()` support pagination requests via `backend/api/residents/list.php?page=X&per_page=25`, while preserving unpaginated array fallback when `page` is omitted for seamless backward compatibility with complaint intake.
+- Search & Placeholders: Complaint search and party input fields provide descriptive guidance ("Search resident profile or type full name...") to assist staff during intake.
+- Schema Stability: Internal database tables (`residents`), foreign key constraints (`complaint_parties.resident_id`), models (`Resident.php`), and API endpoints (`backend/api/residents/*`) remain intact to preserve database integrity and migration compatibility.
+- Relevant files: `frontend/layouts/sidebar.php`, `frontend/pages/residents/resident-list.php`, `frontend/assets/js/residents.js`, `frontend/assets/css/residents.css`, `frontend/pages/complaints/complaint-create.php`, `frontend/pages/complaints/complaint-edit.php`, `frontend/pages/complaints/complaint-list.php`, `frontend/pages/search/records.php`, `frontend/pages/landing/index.php`, `frontend/assets/js/complaints.js`, `frontend/assets/js/search.js`, `backend/models/Resident.php`, `backend/controllers/ResidentController.php`, `backend/api/residents/list.php`, `backend/api/residents/create.php`, `backend/api/residents/update.php`, `backend/api/residents/delete.php`, and `database/schema.sql`.
+
+### Tumana Puroks Dropdown, Required Address Validation & Interactive Leaflet Map Pin (September 2026)
+
+- **Official Tumana Puroks & Compounds Dropdown**:
+  - The freeform `purok` text field in Add and Edit Resident Profile modals was converted into a structured `<select>` dropdown organized into categorized `<optgroup>`s:
+    - *Numbered Puroks*: `Purok 1` through `Purok 8`.
+    - *Recognized Zones & Compounds*: `Doña Petra Compound`, `Bagong Farmers`, `Bukang Liwayway`, `Libis Tumana`, `Sitio Bagong Purok`, `Palay Area`, `Mais Area`, `Singkamas Area`.
+  - The top toolbar Purok filter dropdown (`#filterPurok`) was aligned with the exact same option set.
+  - Client-side normalization (`normalizePurok()`) gracefully maps legacy data formats (e.g., `"1"`, `"purok 1"`, `"Purok 1"`) to the select options without breaking pre-population or filter matches.
+- **Mandatory Complete Street Address**:
+  - Both client-side and server-side validation strictly require a complete street address.
+  - `backend/services/ValidationService.php`: `residentData()` rejects missing or whitespace-only addresses with HTTP 422 (`"Complete street address is required."`).
+  - Add and Edit Resident modals enforce `required` attributes, asterisk indicators (`*`), and HTML5 custom validity checks.
+- **Interactive Leaflet Map Pin with Address Reverse Geocoding**:
+  - Add and Edit modals provide a collapsible "Pin on Map to Obtain Address" section powered by Leaflet 1.9.4 and OpenStreetMap.
+  - **Barangay Tumana Boundary Enforcement**: The map features an official Tumana polygon overlay. Any clicks or pins placed outside the Barangay Tumana boundary are rejected with an explicit warning badge (`"Point is outside Barangay Tumana boundary"`), preventing invalid out-of-jurisdiction addresses.
+  - **Structured Main Address Assembly**: When a user clicks within Barangay Tumana, a draggable marker is placed and OpenStreetMap Nominatim reverse geocoding is invoked to resolve all standard Philippine address components:
+    - *House Number*: Extracted from OpenStreetMap node/building data or preserved from existing user input.
+    - *Street*: Pinned thoroughfare or road name (e.g. `Moscow Street`, `Palay Street`, `Farmers I Street`).
+    - *Subdivision / Purok*: Auto-selected Purok, compound, or subdivision (e.g. `Purok 6`, `Doña Petra Compound`, `Twinville Subdivision`).
+    - *Barangay*: `Barangay Tumana`.
+    - *City*: `Marikina City`.
+    - The components are cleanly assembled into a standard address format: `[House No.] [Street], [Subdivision/Purok], Barangay Tumana, Marikina City` and auto-populated into the mandatory `address` textarea.
+  - **Automatic Purok Detection & Selection**: When pinning on the map, the system automatically detects and selects the corresponding Purok in the dropdown using a two-tier strategy:
+    1. *Geocoded Road & Area Keywords*: Matches known streets, zones, and compounds (e.g. "Moscow" &rarr; `Purok 6`, "Bagong Farmers" &rarr; `Bagong Farmers`, "Sinag" &rarr; `Bukang Liwayway`, "Palay" &rarr; `Palay`, "Mais" &rarr; `Mais`, "Singkamas" &rarr; `Singkamas`, "Angel Santos" &rarr; `Purok 1`, "Doña Petra" / Acropolis &rarr; `Doña Petra`, "Libis" &rarr; `Libis Tumana`, "Banner" &rarr; `Bagong Purok`).
+    2. *Spatial Nearest-Centroid Matching*: Calculates the Euclidean distance from the pinned `[lat, lng]` to high-precision reference points across Barangay Tumana, ensuring 100% of pinned locations inside Tumana automatically populate the Purok dropdown. An animated highlight pulse (`.auto-purok-highlight`) and visual feedback label confirm the auto-selection while still allowing manual user override.
+- Relevant files: `frontend/pages/residents/resident-list.php`, `frontend/assets/js/residents.js`, `frontend/assets/css/residents.css`, and `backend/services/ValidationService.php`.
+
 
 ### Database change
 
@@ -479,10 +618,12 @@ For an existing populated database, duplicate `(case_id, deadline_type)` rows mu
 
 ### Hearing and Deadlines Page Reorganization, Unified Table, Search & Pagination (September 2026)
 
-- **Page Structure Order**: The page (`schedules.php`) is reorganized so the Calendar appears first at the top, followed by a dedicated Search/Filters card, followed by the combined Hearings and Deadlines table, followed by server-side pagination.
+- **Page Structure Order**: The page (`schedules.php`) features a collapsible Search & Filters toolbar, followed directly by the responsive side-by-side main grid containing the interactive Calendar and the Hearings and Deadlines schedule table, followed by server-side pagination.
 - **Top Calendar**: Preserves existing calendar month/date navigation, event clicks, view/edit modal integration, and unpaginated month-wide event display.
-- **Search & Filters Card**: Styled matching the Complaints page toolbar. Includes Keyword (`Case no., complaint no., or venue`), Status (`All statuses`, `Scheduled`, `Pending`, `Completed`, `Overdue`), Hearing Type (`All types`, `Mediation`, `Conciliation`, `Initial Hearing`, `Arbitration`, `Mediation Period`, `Conciliation Period`, `Conciliation Extension`), Date From, Date To, Search button, and Clear button. Clear resets all filters and restores default page 1 results.
-- **Unified Hearings and Deadlines Table**: The separate Hearing Deadlines and Legal Deadlines tables are combined into a single 7-column table: `Case No.`, `Complaint`, `Hearing Type`, `Date and Time`, `Status`, `Venue`, and `Actions`. Existing hearings and legal deadlines are presented together via database UNION query without duplicating records.
+- **Collapsible Search & Filters**: Built with an accessible HTML5 `<details class="hearings-search-card" id="hearingsSearchCard">` and `<summary>` header bar featuring an icon, title, active filter count badge, and a smooth animated toggle chevron. Defaulting to collapsed to prioritize screen space for the calendar and schedule table, it auto-expands when query parameters or active filters are present. Includes Keyword (`Case no., complaint no., or venue`), Status (`All statuses`, `Scheduled`, `Pending`, `Completed`, `Overdue`), Hearing Type (`All types`, `Mediation`, `Conciliation`, `Initial Hearing`, `Arbitration`, `Mediation Period`, `Conciliation Period`, `Conciliation Extension`), Date From, Date To, Search button, and Clear button.
+- **Attendance Monitor Removal**: The standalone `Attendance Monitor (Mediation & Conciliation)` summary KPI cards and filter pill section have been removed from `schedules.php` (and the `loadAttendanceKPIs()` call removed from page load) to eliminate redundant vertical clutter and elevate the Calendar and Hearings schedule table directly below the search toolbar. Individual hearing attendance management remains accessible via the edit/session verification modal.
+- **Minimized Hearings and Deadlines Schedule Table**: Positioned beside the calendar in `.hearings-main-grid`, the schedule table displays 4 columns: `Case No.` (26%), `Hearing Type` (28%), `Time` (22%), and `Actions` (24%). Configured with `min-width: 0 !important; max-width: 100% !important;` (overriding `app.css`'s generic `min-width: 680px`), `table-container` `overflow-x: hidden !important;`, an explicit `<colgroup>`, and compact typography/badges (`.badge-case-docket`, `.hearing-type`, `.action-cell .btn-action-view` formatted as `Update` / `View`). This guarantees that all 4 columns fit cleanly on screen without any horizontal scrollbar or side-to-side scrolling.
+- **Interactive Calendar Date Selection**: Clicking on any date cell in the calendar highlights the day, pre-fills the date for scheduling, updates the section header badge, and dynamically queries the table to show the hearings and deadlines scheduled for that selected date (`?date=YYYY-MM-DD`). Clicking the header badge resets back to the current day.
 - **Server-Side Pagination**: Limited to a maximum of 25 records per page with total count summary and Previous, numeric page, and Next controls. Search submissions reset pagination to page 1.
 - **Relevant Files**: `frontend/pages/hearings/schedules.php`, `frontend/assets/js/hearings.js`, `frontend/assets/css/hearings.css`, `backend/api/hearings/list.php`, `backend/controllers/HearingController.php`, and `backend/models/Hearing.php`.
 
@@ -718,67 +859,169 @@ For a new database, `database/schema.sql` already creates the table.
 
 ---
 
+## Summons Workflow, Status Tracker, 1st Mediation Eligibility, and Proof of Service (September 2026)
+
+The Complaint Details and Proof of Service modules provide an integrated, end-to-end summons and mediation progression:
+
+### 1. Complaint Details Action Toolbar & Case Progress Workflow
+- **Top Actions**: Arranged in standard workflow order:
+  `Issue 1st Summon` | `Schedule 1st Mediation` | `Status` | `Edit`
+- **Dynamic Summons Button**:
+  - `Issue 1st Summon`: Generates the initial summons document (KP Form 9) and redirects to Proof of Service with prefilled case/document IDs.
+  - `Issue 2nd Summon`: Available if the first summons attempt resulted in failure (`Not Served`, `Refused`, `Respondent Not Found`, `Address Problem`).
+  - `Summons Served` / `2nd Summon Issued`: Displayed as a secondary button linking directly to the Proof of Service history once served or once the 2nd attempt is issued.
+- **Visual Status Tracker**:
+  - Collapsible 9-stage stepper track: `Filing & Docketing` (Stage 1), `Summon Issued` (Stage 2), `Summons Service` (Stage 3), `Proof of Service` (Stage 4), `Hearing Scheduled` (Stage 5), `Mediation` (Stage 6), `Conciliation` (Stage 7), `Settlement / Outcome` (Stage 8), and `Final Resolution / CFA` (Stage 9).
+  - Derived dynamically from underlying database records (`complaints`, `cases`, `generated_documents`, `proof_of_service`, `hearings`, `hearing_attendance`, `pangkat_groups`, `amicable_settlements`, `cfa_records`, and `arbitration_records`).
+  - Integrated with an expandable Case Event History drawer rendering full chronological event timelines with author badges and status pills.
+
+### 2. 1st Mediation Eligibility Rules
+- **Prerequisite Enforcement**:
+  - The `Schedule 1st Mediation` button is strictly gated by summons service completion. It becomes enabled if and only if **ANY** valid summon or service record for the underlying case has a successful `Served` result in the database (`proof_of_service.service_result = 'Served'` or `generated_documents.service_status = 'Served'`).
+  - Supports multiple summons attempts: eligible if Attempt #1 is Served, OR if Attempt #1 failed and Attempt #2 is Served.
+  - Queries actual service records linked via `complaints.complaint_id → cases.case_id → proof_of_service.service_result`. Never assumes `complaint_id == case_id`.
+  - When ineligible: button remains visually disabled (`.btn-disabled` with gray background `#94a3b8`, dimmed opacity, and `not-allowed` cursor), mouse hover shows tooltip: *"1st Mediation is unavailable until a summons has been successfully served."*, and clicking opens `summonsRequiredModal` detailing the required sequence (`Complaint → Case/Docket → Issue Summon → Serve Summon → Proof of Service → 1st Mediation`).
+  - When eligible: button restores active black styling (`.btn-create`: `#1e293b`), standard pointer cursor, and click routes directly to the hearing scheduler.
+  - Asynchronous coordination: `loadComplaintDetails()` awaits `loadCaseProgress(complaintId)` before running `configureMediationScheduleButton()`, eliminating race conditions.
+  - Browser Back/Forward navigation (bfcache) triggers re-fetch via `pageshow` listener to guarantee up-to-date eligibility without manual browser refresh.
+
+### 3. Proof of Service Immediate Auto-Refresh & History
+- **Automatic Client-Side Refresh**:
+  - On the Proof of Service page (`frontend/pages/gps/proof-service.php`), saving a service attempt immediately auto-refreshes the "Service History & Attempts" table via client-side fetch without requiring a full browser reload (F5 / Ctrl+R).
+  - Form inputs are reset, the active case is preserved, and latest service documents, history rows, and context summary cards are sequentially refreshed.
+  - Preserves all historical attempts in descending order (`Attempt #4`, `Attempt #3`, `Attempt #2`, `Attempt #1`) with attempt counter, formatted dates, template name, server name, badges, remarks, and thumbnail links.
+  - Does not insert duplicate rows or generate fake/optimistic rows on failure. If save fails, error messages are displayed and user inputs remain untouched for correction.
+- **Cache-Busting Integration**:
+  - `backend/api/gps/proof-service.php`, `backend/api/complaints/progress.php`, and `backend/api/complaints/view.php` send HTTP headers:
+    `Cache-Control: no-store, no-cache, must-revalidate, max-age=0` and `Pragma: no-cache`.
+  - Frontend `gpsApi` includes `cache: 'no-store'` and appends `_t=${Date.now()}` timestamp parameters to GET requests.
+
+### 4. Relevant Files
+- `backend/models/CaseProgress.php`
+- `backend/models/Summons.php`
+- `backend/models/ProofOfService.php`
+- `backend/controllers/GPSController.php`
+- `backend/api/summons/issue.php`
+- `backend/api/complaints/progress.php`
+- `backend/api/complaints/view.php`
+- `backend/api/gps/proof-service.php`
+- `frontend/pages/complaints/complaint-details.php`
+- `frontend/pages/gps/proof-service.php`
+- `frontend/assets/js/complaints.js`
+- `frontend/assets/js/gps.js`
+- `frontend/assets/css/complaints.css`
+- `frontend/assets/css/gps.css`
+
+---
+
+## Recent Increments (September 28 – October 6, 2026)
+
+### 1. Case Number Format Standardization (`MM-SS-YYYY`)
+- **Format Structure**: Conforms to the standard formula: `month(10)-series(01)-year(2026)` (e.g. `10-01-2026`, `10-45-2026`).
+  - **Month (`MM`)**: 2-digit month of docket date.
+  - **Series (`SS`)**: 2-or-more digit sequential case number filed in that calendar year, zero-padded to at least 2 digits (`01` through `45`, `100+`).
+  - **Year (`YYYY`)**: 4-digit calendar year.
+- **Backend Generator Engine**: Implemented `CaseModel::generateCaseNumber(PDO $conn, string $docketDate, int $caseId): string`:
+  - Atomically calculates the next series for the target calendar year (`maxSeries + 1`) using row-level locking (`FOR UPDATE`) inside transactions.
+  - Generates the number during complaint docketing (`CaseModel::docketComplaint`) and first summon issuance (`Summons::issueFirstSummon`).
+- **Database & Storage Migration**:
+  - Migrated existing case numbers in `cases`: `KP-2026-00001` &rarr; `10-01-2026`, `KP-2026-00002` &rarr; `10-02-2026`, `KP-2026-00003` &rarr; `10-03-2026`.
+  - Updated storage folder structures and document paths in `generated_documents` (`storage/generated-documents/2026/10-01-2026/`, etc.).
+  - Migrated historical notifications referencing legacy case numbers.
+  - Updated frontend fallbacks in `complaints.js`, `complaint-edit.php`, and `gps.js` to eliminate legacy `KP-` strings.
+
+### 2. Dual Notice Generation on 1st Summon (KP Form 8 & KP Form 9)
+- **Automatic Form Generation**: Triggering `Issue 1st Summon` automatically generates:
+  1. **KP Form 8 (Notice of Hearing for Complainant)**: Sent to the complainant notifying them of the initial mediation session.
+  2. **KP Form 9 (Summons for Respondent)**: Sent to the respondent commanding their appearance.
+- **Workflow Automation**:
+  - Initializes `summon_deliveries` records for both parties (`Complainant` &rarr; `Notice of Hearing`; `Respondent` &rarr; `Summon`) with status `Pending`.
+  - Automatically schedules the 1st Mediation hearing in the database within the same transaction.
+  - Produces PDF documents saved under `storage/generated-documents/<year>/<case-number>/` and inserts corresponding `generated_documents` records.
+
+### 3. Hearing Attendance, Service Verification & Show-Cause Lifecycle (KP Forms 18, 19, 21)
+- **Independent Party Attendance**:
+  - Attendance is tracked separately for Complainants and Respondents (`Present`, `Failure to Appear`, `Not Served`, `Excused`, `Late`).
+  - Attendance recording requires verified summon delivery status; if a party was not served, the status defaults to `Not Served` and prompts for follow-up service.
+- **Non-Appearance & Show-Cause Hearings**:
+  - When a properly served Complainant fails to appear without prior justification, the system auto-generates **KP Form 18** (Notice of Hearing for Failure to Appear - Complainant) and schedules a Show-Cause explanation hearing.
+  - When a properly served Respondent fails to appear without prior justification, the system auto-generates **KP Form 19** (Notice of Hearing for Failure to Appear - Respondent) and schedules a Show-Cause explanation hearing.
+- **Legal Consequences**:
+  - If Complainant's absence remains unjustified: **KP Form 21 (Certificate to Bar Action)** is generated and case status transitions to `DISMISSED_BARRED`.
+  - If Respondent's absence remains unjustified: The case is flagged for consequence determination/indirect contempt evaluation.
+  - Rescheduling a hearing creates a new hearing record and preserves complete historical service and attendance records.
+
+### 4. Strict Scheduling Validation & Office Logistics
+- **Operating Hours & Days**:
+  - Enforces weekday-only scheduling (Monday to Friday); rejects weekend bookings (Saturday and Sunday).
+  - Enforces official barangay operating hours: 8:00 AM to 5:00 PM.
+- **Strict Chronological Sequence**:
+  - Rejects hearing bookings on the same day as an existing hearing for the case or on any prior date.
+- **Logistics Conflict Detection (`OfficeLogisticsService.php`)**:
+  - Verifies venue availability and flags room collisions.
+  - Validates presider schedule conflicts across concurrent hearings.
+
+### 5. Summons Server Interface Overhaul (`proof-service.php` & `gps.js`)
+- **Instant Search Bar**: Replaced legacy case lookup dropdown with a debounced live search bar filtering by case number, party names, title, and hearing date.
+- **Pending Deliveries Table**:
+  - Dedicated table displaying all cases needing summons service.
+  - Columns: KP/Case No., Complainant, Respondent, Hearing Date, and an inline "Deliver Summon" button.
+- **Simplified Workflow**:
+  - Cleaned summon server interface by removing redundant complaint details and recorded activity tables from their view.
+  - Inline "Deliver Summon" action immediately selects the case and smoothly scrolls to the Officer's Return form.
+  - Fixed Proof of Service registration and attempt counting.
+
+### 6. Case & Team Assignments Redesign (`case-list.php` & `assignments.js`)
+- **Top Search Feature**: Search bar positioned directly above the case team assignment table.
+- **Ongoing Cases Filter**: Table filtered to only display active/ongoing cases (`Docketed`, `Mediation`, `Conciliation`, `Arbitration`); settled, dismissed, and archived cases are excluded.
+- **Streamlined 3-Column Table**:
+  - Columns: Case No., Status, and Action.
+  - Case Number is a clickable link navigating directly to the Complaint Details view.
+  - Removed redundant complaint detail card (e.g. `CMP-2026-00003`), docket date, and edit buttons.
+- **Layout Inversion**: "Team Assignment for Selected Case" is positioned prominently beneath the search bar, with "Case Team Assignment & Details" placed below.
+- **Substitute Presider**: Modal relocated to the Case Team Assignment view with refined UI.
+
+### 7. Complaints Action Toolbar: Archive Action
+- On `frontend/pages/complaints/complaint-list.php`, the Delete button under the Actions column was replaced with the **Archive** button.
+- Retains consistent icon styling, confirmation modal, and triggers the transactional case archive endpoint.
+
+---
+
 ## Present but Incomplete or Requiring Verification
 
 - Project-wide RBAC remains inconsistent, but broad RBAC hardening is not the immediate priority.
-- Complaint party and attachment workflows require full Laragon/MySQL verification.
-- Hearing attendance storage exists, but complete attendance and missed-hearing workflows remain incomplete.
-- GPS/proof workflows need Laragon acceptance testing, including actual image
-  upload and authorized/denied role scenarios.
+- Complaint party and attachment workflows have active browser/MySQL tests; additional stress-testing on edge cases is recommended.
+- GPS mobile field-device capture (camera/geolocation) operates in browser environments; device-level offline caching remains an enhancement.
 - AI calls Gemini, but production-grade monitoring and rate limiting are incomplete.
-- Case history and deadline structures exist, but all automatic status-transition rules are not connected.
-- KP Form 12 is implemented but needs successful PDF generation and visual acceptance testing with complete case data.
+- KP Form 10, 12, 18, 19, and 21 generate successfully; ongoing visual verification with varied text lengths is recommended.
 
 ---
 
 ## Missing Module Development Features
 
-The following are still missing or not complete enough to be considered implemented:
+The following remain missing from the complete Module Development specification:
 
-- Resident self-service complaint filing and status tracking.
-- Complete summons workflow and delivery linkage.
-- Remaining official KP forms and generated-document templates.
-- Complete attendance, missed-hearing, deadline-completion, and case-status workflow.
-- Automated tests, user acceptance testing, deployment, and backup procedures.
+- Resident self-service complaint filing and status tracking portal.
+- Remaining optional KP forms (e.g., KP Forms 13, 14, 15, 16, 17, 20, 22, 23).
+- Automated end-to-end integration test suite, deployment pipelines, and automated database backup routines.
 
 ---
 
 ## Next Development Step
 
-Move temporarily away from adding KP forms and implement another missing Module Development feature.
-
 ### Recommended Next Module: Resident Self-Service Complaint Filing and Status Tracking
 
-Implement a resident-facing complaint filing and status-tracking workflow.
-First confirm the resident account/authentication approach in the Module
-Development requirements and existing schema before adding new tables or roles.
-
-### Scope Control for the Next Increment
-
-Do not perform broad unrelated hardening. Only add security and validation
-directly required by the resident self-service feature.
-
-Do not:
-
-- rewrite the hearing or account-security workflows;
-- add more KP forms;
-- restructure unrelated models;
-- replace the canonical schema;
-- introduce duplicate report or document tables; or
-- overwrite uncommitted changes.
-
-The next missing-feature priority remains resident self-service complaint
-filing and status tracking.
+Implement a resident-facing complaint filing and status-tracking portal.
+Confirm the resident authentication approach (resident portal login vs. complaint tracking code) from the specification before adding new tables or roles.
 
 ---
 
 ## Feature-Focused Development Order
 
 1. Complete resident self-service complaint filing and status tracking.
-2. Complete summons and service/delivery workflow.
-3. Return to remaining official KP forms one form at a time.
-4. Complete attendance, missed-hearing, and advanced status/deadline automation as needed.
-5. Add broader testing, security review, deployment, and backup procedures.
+2. Implement remaining official KP forms (KP Form 13 through 17, 20, 22, 23).
+3. Advanced deadline notifications and automated SMS/email alerts.
+4. Comprehensive automated testing, security audit, deployment scripts, and backup procedures.
 
 This order prioritizes missing Module Development features. It does not mean existing defects should be ignored when a defect blocks the current feature.
 

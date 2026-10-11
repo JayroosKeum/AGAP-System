@@ -25,6 +25,120 @@ class GPSController
     public function locations(): array { return ['success' => true, 'data' => $this->location->getAll()]; }
     public function cases(): array { return ['success' => true, 'data' => $this->proof->getAvailableCases()]; }
     public function documents(int $caseId): array { return ['success' => true, 'data' => $this->document->getGeneratedByCase($caseId)]; }
+    public function caseSummary(int $caseId): array
+    {
+        $summary = $this->proof->getCaseSummary($caseId);
+        if (!$summary) return ['success' => false, 'message' => 'Case not found.'];
+        return ['success' => true, 'data' => $summary];
+    }
+    public function summonsServers(): array { return ['success' => true, 'data' => $this->proof->getSummonsServers()]; }
+    public function defaultLuponClerk(): array
+    {
+        $clerk = $this->proof->getDefaultLuponClerk();
+        return $clerk ? ['success' => true, 'data' => $clerk] : ['success' => false, 'message' => 'No active Lupon Clerk account is available.'];
+    }
+    public function summonsNotices(int $caseId): array { return ['success' => true, 'data' => $this->proof->getSummonsNotices($caseId)]; }
+    public function reopenSummonsNotice(int $caseId, int $documentId, int $userId): array
+    {
+        if (!$caseId || !$documentId) return ['success' => false, 'message' => 'A valid case and summons notice are required.'];
+        if (!$this->document->reopenForService($documentId, $caseId)) return ['success' => false, 'message' => 'Only a failed summons notice may be reopened for service.'];
+        $this->audit->log($userId, 'Reopened failed summons notice for service', 'Summons', $documentId);
+        return ['success' => true, 'message' => 'Summons notice reopened for a new service attempt.'];
+    }
+
+    public function caseDeliveries(int $caseId): array
+    {
+        require_once __DIR__ . '/../services/SummonDeliveryService.php';
+        require_once __DIR__ . '/../config/database.php';
+        $db = (new Database())->connect();
+
+        $stmt = $db->prepare("
+            SELECT hearing_id, hearing_type, hearing_date, venue, status
+            FROM hearings
+            WHERE case_id = ?
+            ORDER BY hearing_date DESC, hearing_id DESC
+        ");
+        $stmt->execute([$caseId]);
+        $hearings = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if (empty($hearings)) {
+            return [
+                'success' => true,
+                'data' => [
+                    'hearings' => [],
+                    'has_hearings' => false,
+                    'message' => 'No hearings scheduled yet for this case. Issue a summons to schedule 1st Mediation.'
+                ]
+            ];
+        }
+
+        $deliveryService = new SummonDeliveryService($db);
+        $hearingsWithDeliveries = [];
+        foreach ($hearings as $h) {
+            $hearingId = (int) $h['hearing_id'];
+            $delivResult = $deliveryService->getHearingDeliveries($hearingId);
+            if ($delivResult['success']) {
+                $hearingsWithDeliveries[] = [
+                    'hearing_id' => $hearingId,
+                    'hearing_type' => $h['hearing_type'],
+                    'hearing_date' => $h['hearing_date'],
+                    'venue' => $h['venue'],
+                    'status' => $h['status'],
+                    'deliveries' => $delivResult['deliveries'],
+                    'attendance_unlocked' => $delivResult['attendance_unlocked'],
+                    'service_notice' => $delivResult['service_notice'],
+                ];
+            }
+        }
+
+        return [
+            'success' => true,
+            'data' => [
+                'hearings' => $hearingsWithDeliveries,
+                'has_hearings' => true
+            ]
+        ];
+    }
+
+    public function recordOfficerReturn(array $input, array $file, int $userId): array
+    {
+        require_once __DIR__ . '/../services/SummonDeliveryService.php';
+        require_once __DIR__ . '/../config/database.php';
+        $db = (new Database())->connect();
+
+        $hearingId = filter_var($input['hearing_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
+        $caseId = filter_var($input['case_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
+
+        if (!$hearingId && $caseId) {
+            $stmt = $db->prepare("SELECT hearing_id FROM hearings WHERE case_id = ? ORDER BY hearing_date DESC, hearing_id DESC LIMIT 1");
+            $stmt->execute([$caseId]);
+            $hearingId = (int) $stmt->fetchColumn() ?: null;
+        }
+
+        if (!$hearingId) {
+            return ['success' => false, 'message' => 'No active hearing found for this case to record summon delivery against.'];
+        }
+
+        // Upload proof image if provided
+        $imagePath = null;
+        if (!empty($file['tmp_name'])) {
+            $upload = $this->storeImage($file);
+            if (!$upload['success']) {
+                return $upload;
+            }
+            $imagePath = $upload['path'];
+        }
+
+        $deliveryService = new SummonDeliveryService($db);
+        $result = $deliveryService->recordDelivery($hearingId, $input, $userId);
+
+        if ($result['success'] && $imagePath && $caseId) {
+            $upd = $db->prepare("UPDATE proof_of_service SET image_path = ? WHERE case_id = ? ORDER BY proof_id DESC LIMIT 1");
+            $upd->execute([$imagePath, $caseId]);
+        }
+
+        return $result;
+    }
 
     public function location(int $complaintId): array
     {
@@ -53,25 +167,52 @@ class GPSController
 
     public function saveProof(array $data, array $file, int $userId): array
     {
+        date_default_timezone_set('Asia/Manila');
         $caseId = filter_var($data['case_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         $documentId = filter_var($data['document_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         $servedDate = trim((string) ($data['served_date'] ?? ''));
         $date = null;
-        if (ValidationService::dateTime($servedDate, 'Y-m-d\\TH:i')) {
-            $date = DateTimeImmutable::createFromFormat('Y-m-d\\TH:i', $servedDate);
-        } elseif (ValidationService::dateTime($servedDate, 'Y-m-d H:i:s')) {
-            $date = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $servedDate);
+        if ($servedDate !== '') {
+            $cleanDate = str_replace('T', ' ', $servedDate);
+            try {
+                $date = new DateTimeImmutable($cleanDate, new DateTimeZone('Asia/Manila'));
+            } catch (Throwable $e) {
+                try {
+                    $date = DateTimeImmutable::createFromFormat('m/d/Y h:i A', $servedDate, new DateTimeZone('Asia/Manila'));
+                } catch (Throwable $e2) {
+                    $ts = strtotime($servedDate);
+                    if ($ts !== false) {
+                        $date = (new DateTimeImmutable('@' . $ts))->setTimezone(new DateTimeZone('Asia/Manila'));
+                    }
+                }
+            }
         }
         $remarks = trim((string) ($data['remarks'] ?? ''));
-        if (!$caseId || !$documentId || !$date || $date > new DateTimeImmutable('+5 minutes')) return ['success' => false, 'message' => 'Select an active case, generated document, and a valid service date that is not in the future.'];
+        $serviceResult = trim((string) ($data['service_result'] ?? 'Served'));
+        $allowedResults = ['Served', 'Not Served', 'Refused', 'Respondent Not Found', 'Address Problem', 'Other'];
+        if (!in_array($serviceResult, $allowedResults, true)) {
+            $serviceResult = 'Served';
+        }
+        $clerk = $this->proof->getDefaultLuponClerk();
+        if (!$clerk) return ['success' => false, 'message' => 'An active Lupon Clerk account is required before recording service.'];
+        $servedBy = (int) $clerk['user_id'];
+
+        // Allow up to 24 hours in the future to account for clock skew, timezones, and planned service entries
+        $maxAllowedDate = (new DateTimeImmutable('now', new DateTimeZone('Asia/Manila')))->modify('+24 hours');
+        if (!$caseId || !$documentId || !$date || $date > $maxAllowedDate) {
+            return ['success' => false, 'message' => 'Select an active case, generated document, and a valid service date that is not in the future.'];
+        }
         if (mb_strlen($remarks) > 2000) return ['success' => false, 'message' => 'Verification details must not exceed 2,000 characters.'];
         $upload = $this->storeImage($file);
         if (!$upload['success']) return $upload;
-        $result = $this->proof->create((int) $caseId, (int) $documentId, $userId, $date->format('Y-m-d H:i:s'), $remarks !== '' ? $remarks : null, $upload['path']);
+        $result = $this->proof->create((int) $caseId, (int) $documentId, (int) $servedBy, $date->format('Y-m-d H:i:s'), $remarks !== '' ? $remarks : null, $upload['path'], $serviceResult);
         if (!$result['success'] && $upload['path']) @unlink(dirname(__DIR__, 2) . '/' . $upload['path']);
-        if ($result['success']) { $this->document->markServed((int) $documentId, (int) $caseId); $this->audit->log($userId, 'Recorded proof of service', 'GPS', (int) $result['proof_id']); }
+        if ($result['success']) {
+            $this->audit->log($userId, 'Recorded proof of service (' . $serviceResult . ')', 'GPS', (int) $result['proof_id']);
+        }
         return $result + ['message' => $result['success'] ? 'Proof of service recorded.' : null];
     }
+
 
     public function proofImage(int $proofId): array|false { return $this->proof->getById($proofId); }
 

@@ -54,54 +54,24 @@ include '../../layouts/header.php';
         </div>
 
         <?php if ($complaintFlash && !empty($complaintFlash['message'])): ?>
-            <div class="complaint-alert-banner alert-banner-<?php echo (($complaintFlash['type'] ?? '') === 'success') ? 'success' : 'error'; ?>" role="alert">
-                <span><?php echo htmlspecialchars($complaintFlash['message']); ?></span>
-                <button type="button" class="alert-close-btn" onclick="this.parentElement.remove()" aria-label="Close alert">&times;</button>
-            </div>
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    window.agapNotify && window.agapNotify(
+                        <?php echo json_encode($complaintFlash['message']); ?>,
+                        <?php echo json_encode((($complaintFlash['type'] ?? '') === 'success') ? 'success' : 'error'); ?>
+                    );
+                });
+            </script>
         <?php endif; ?>
 
-        <!-- KPI Metrics Summary Grid -->
-        <div class="complaints-kpi-grid">
-            <div class="kpi-card active" data-kpi-filter="all" title="Click to show all complaints">
-                <div class="kpi-icon-wrap kpi-icon-all">📋</div>
-                <div class="kpi-content">
-                    <span class="kpi-value" id="kpiCountAll">0</span>
-                    <span class="kpi-label">All Complaints</span>
-                </div>
-            </div>
-            <div class="kpi-card" data-kpi-filter="Under Review" title="Click to show complaints under review">
-                <div class="kpi-icon-wrap kpi-icon-review">⏳</div>
-                <div class="kpi-content">
-                    <span class="kpi-value" id="kpiCountReview">0</span>
-                    <span class="kpi-label">Under Review</span>
-                </div>
-            </div>
-            <div class="kpi-card" data-kpi-filter="in_progress" title="Click to show active mediation / conciliation hearings">
-                <div class="kpi-icon-wrap kpi-icon-progress">⚖️</div>
-                <div class="kpi-content">
-                    <span class="kpi-value" id="kpiCountProgress">0</span>
-                    <span class="kpi-label">In Progress</span>
-                </div>
-            </div>
-            <div class="kpi-card" data-kpi-filter="Settled" title="Click to show settled complaints">
-                <div class="kpi-icon-wrap kpi-icon-settled">✅</div>
-                <div class="kpi-content">
-                    <span class="kpi-value" id="kpiCountSettled">0</span>
-                    <span class="kpi-label">Settled / Closed</span>
-                </div>
-            </div>
-        </div>
 
-        <!-- Quick Status Navigation Tabs -->
-        <div class="complaints-nav-tabs" role="tablist">
+        <!-- Standard Complaint Lifecycle Tabs -->
+        <div class="complaints-nav-tabs" role="tablist" aria-label="Complaint lifecycle status">
             <button type="button" class="nav-tab-btn active" data-tab-status="">
                 All <span class="tab-count-pill" id="tabCountAll">0</span>
             </button>
-            <button type="button" class="nav-tab-btn" data-tab-status="Under Review">
-                Under Review <span class="tab-count-pill" id="tabCountReview">0</span>
-            </button>
-            <button type="button" class="nav-tab-btn" data-tab-status="Docketed">
-                Docketed <span class="tab-count-pill" id="tabCountDocketed">0</span>
+            <button type="button" class="nav-tab-btn" data-tab-status="Pending">
+                Pending <span class="tab-count-pill" id="tabCountPending">0</span>
             </button>
             <button type="button" class="nav-tab-btn" data-tab-status="Mediation">
                 Mediation <span class="tab-count-pill" id="tabCountMediation">0</span>
@@ -109,17 +79,11 @@ include '../../layouts/header.php';
             <button type="button" class="nav-tab-btn" data-tab-status="Conciliation">
                 Conciliation <span class="tab-count-pill" id="tabCountConciliation">0</span>
             </button>
-            <button type="button" class="nav-tab-btn" data-tab-status="Arbitration">
-                Arbitration <span class="tab-count-pill" id="tabCountArbitration">0</span>
-            </button>
-            <button type="button" class="nav-tab-btn" data-tab-status="Settled">
-                Settled <span class="tab-count-pill" id="tabCountSettled">0</span>
-            </button>
-            <button type="button" class="nav-tab-btn" data-tab-status="Dismissed">
-                Dismissed <span class="tab-count-pill" id="tabCountDismissed">0</span>
-            </button>
             <button type="button" class="nav-tab-btn" data-tab-status="CFA">
                 CFA <span class="tab-count-pill" id="tabCountCfa">0</span>
+            </button>
+            <button type="button" class="nav-tab-btn" data-tab-status="Resolution / Closed">
+                Resolution / Closed <span class="tab-count-pill" id="tabCountClosed">0</span>
             </button>
         </div>
 
@@ -129,7 +93,7 @@ include '../../layouts/header.php';
                 <div class="toolbar-main-row">
                     <div class="search-box-wrap">
                         <svg class="search-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                        <input id="searchQuery" name="q" type="search" class="search-input-field" placeholder="Search by complaint no., title, resident name, or case no..." autocomplete="off">
+                        <input id="searchQuery" name="q" type="search" class="search-input-field" placeholder="Search by complaint no., title, resident profile, or case no..." autocomplete="off">
                         <button type="button" id="clearSearchInput" class="search-clear-btn" title="Clear keyword">&times;</button>
                     </div>
 
@@ -149,14 +113,16 @@ include '../../layouts/header.php';
                     </select>
 
                     <select id="searchSort" name="sort_by" class="toolbar-select" title="Order records">
+                        <option value="case_number_desc">Sort: Case No. (Desc)</option>
+                        <option value="case_number">Sort: Case No. (Asc)</option>
+                        <option value="complaint_title">Sort: Complaint Title (A-Z)</option>
+                        <option value="complaint_title_desc">Sort: Complaint Title (Z-A)</option>
+                        <option value="complaint_number_desc">Sort: Complaint No. (Desc)</option>
+                        <option value="complaint_number">Sort: Complaint No. (Asc)</option>
                         <option value="incident_date">Sort: Incident Date (Newest)</option>
                         <option value="incident_date_asc">Sort: Incident Date (Oldest)</option>
-                        <option value="complaint_number">Sort: Complaint No. (Asc)</option>
-                        <option value="complaint_number_desc">Sort: Complaint No. (Desc)</option>
-                        <option value="case_number">Sort: Case No. (Asc)</option>
-                        <option value="case_number_desc">Sort: Case No. (Desc)</option>
                         <option value="category_name">Sort: Category (A-Z)</option>
-                        <option value="intake_status">Sort: Intake (Review → Docketed)</option>
+                        <option value="intake_status">Sort: Intake Status</option>
                         <option value="current_stage">Sort: Stage (Mediation → Conciliation → Arbitration)</option>
                         <option value="final_disposition">Sort: Disposition (Pending → Resolved)</option>
                     </select>
@@ -180,8 +146,7 @@ include '../../layouts/header.php';
                             <label for="searchIntake">1. Intake Status</label>
                             <select id="searchIntake" name="intake_status">
                                 <option value="">All Intake States</option>
-                                <option value="Under Review">Under Review (Screening / Pre-docketing)</option>
-                                <option value="Docketed">Docketed (Case Assigned)</option>
+                                <option value="Under Review">Under Review</option>
                             </select>
                         </div>
                         <div class="drawer-field">
@@ -228,35 +193,29 @@ include '../../layouts/header.php';
             <div id="activeFilterChips" class="active-filters-chips"></div>
         </div>
 
-        <!-- 7-Column Modern Complaints Table with Clickable Sortable Headers -->
+        <!-- 5-Column Modern Complaints Table with Clickable Sortable Headers -->
         <div class="complaints-table-container">
             <table class="modern-complaints-table">
                 <thead>
                     <tr>
-                        <th class="sortable-th" data-sort-key="complaint" style="min-width: 210px;" title="Click to sort by Complaint (A-Z / Z-A)">
+                        <th class="sortable-th sort-active-desc" data-sort-key="case_no" style="min-width: 130px;" title="Click to sort by Case Number">
+                            <span class="th-content">Case No. <span class="sort-indicator" id="sortInd_case_no">▼</span></span>
+                        </th>
+                        <th class="sortable-th" data-sort-key="complaint" style="min-width: 240px;" title="Click to sort by Complaint (A-Z / Z-A)">
                             <span class="th-content">Complaint <span class="sort-indicator" id="sortInd_complaint">⇅</span></span>
                         </th>
-                        <th class="sortable-th" data-sort-key="case_no" style="min-width: 125px;" title="Click to sort by Case Number">
-                            <span class="th-content">Case No. <span class="sort-indicator" id="sortInd_case_no">⇅</span></span>
-                        </th>
-                        <th class="sortable-th" data-sort-key="category" style="min-width: 140px;" title="Click to sort by Category">
-                            <span class="th-content">Category <span class="sort-indicator" id="sortInd_category">⇅</span></span>
-                        </th>
-                        <th class="sortable-th" data-sort-key="parties" style="min-width: 180px;" title="Click to sort by Parties">
+                        <th class="sortable-th" data-sort-key="parties" style="min-width: 200px;" title="Click to sort by Parties">
                             <span class="th-content">Parties <span class="sort-indicator" id="sortInd_parties">⇅</span></span>
                         </th>
-                        <th class="sortable-th sort-active-desc" data-sort-key="date" style="min-width: 115px;" title="Click to sort by Incident Date">
-                            <span class="th-content">Incident Date <span class="sort-indicator" id="sortInd_date">▼</span></span>
-                        </th>
-                        <th class="sortable-th" data-sort-key="lifecycle" style="min-width: 200px;" title="Click to sort by Status">
+                        <th class="sortable-th" data-sort-key="lifecycle" style="min-width: 180px;" title="Click to sort by Status">
                             <span class="th-content">Status <span class="sort-indicator" id="sortInd_lifecycle">⇅</span></span>
                         </th>
-                        <th style="min-width: 150px; text-align: right;">Actions</th>
+                        <th style="min-width: 140px; text-align: right;">Action</th>
                     </tr>
                 </thead>
                 <tbody id="complaintTable">
                     <tr>
-                        <td colspan="7" class="table-empty-wrap">
+                        <td colspan="5" class="table-empty-wrap">
                             <div class="empty-icon-circle">⌛</div>
                             <div class="empty-state-title">Loading complaint records...</div>
                         </td>
@@ -286,25 +245,25 @@ include '../../layouts/header.php';
     </div>
 </div>
 
-<!-- DELETE MODAL -->
-<div id="deleteComplaintModal" class="modal">
+<!-- ARCHIVE COMPLAINT MODAL -->
+<div id="archiveComplaintModal" class="modal">
     <div class="modal-content" style="width: 440px;">
         <div class="modal-header" style="border-bottom: 0; padding-bottom: 0;">
-            <h2 style="color: #b91c1c; display: flex; align-items: center; gap: 8px;">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-                Delete Complaint
+            <h2 style="color: #c2410c; display: flex; align-items: center; gap: 8px;">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
+                Archive Complaint
             </h2>
-            <button class="close-btn" onclick="closeDeleteComplaintModal()">&times;</button>
+            <button class="close-btn" onclick="closeArchiveComplaintModal()">&times;</button>
         </div>
         <div style="padding: 10px 0 20px;">
             <p style="margin: 0; color: #475569; font-size: 0.95rem; line-height: 1.5;">
-                Are you sure you want to delete this complaint record? This action cannot be undone.
+                Archive this complaint record? It will be safely moved to archived records and removed from active processing.
             </p>
-            <input type="hidden" id="deleteComplaintId">
+            <input type="hidden" id="archiveComplaintId">
         </div>
         <div class="modal-actions" style="margin-top: 0; border-top: 1px solid #f1f5f9; padding-top: 16px;">
-            <button type="button" class="btn-secondary" onclick="closeDeleteComplaintModal()">Cancel</button>
-            <button type="button" class="btn-danger" onclick="confirmDeleteComplaint()">Delete Complaint</button>
+            <button type="button" class="btn-secondary" onclick="closeArchiveComplaintModal()">Cancel</button>
+            <button type="button" class="btn-warning" style="background: #ea580c; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer;" onclick="confirmArchiveComplaint()">Archive Complaint</button>
         </div>
     </div>
 </div>

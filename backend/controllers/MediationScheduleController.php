@@ -47,7 +47,6 @@ class MediationScheduleController
         $result = $this->mediation->create((int) $complaintId, $hearingDate->format('Y-m-d H:i:s'), $venue, $remarks !== '' ? $remarks : null);
         if ($result['success']) {
             $this->audit->log($userId, 'Scheduled 1st Mediation', 'Hearings', $result['hearing_id']);
-            $this->audit->log($userId, 'Docketed Case at 1st Mediation', 'Cases', $result['case_id']);
             $this->notifications->notifyCaseMembers(
                 $result['case_id'],
                 '1st Mediation scheduled',

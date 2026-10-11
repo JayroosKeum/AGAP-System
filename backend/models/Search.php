@@ -4,7 +4,7 @@ require_once __DIR__ . '/../config/database.php';
 
 class Search
 {
-    private $conn;
+    private PDO $conn;
 
     public function __construct()
     {
@@ -25,7 +25,18 @@ class Search
         $statuses = ['Filed', 'Under Review', 'Needs Information', 'Accepted', 'Rejected', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Dismissed', 'CFA Issued', 'Archived'];
         $filterStatus = $filters['status'] ?? '';
 
-        if ($filterStatus === 'Under Review') {
+        if ($filterStatus === 'Pending') {
+            $where[] = "(NOT EXISTS (SELECT 1 FROM settlements s_std WHERE s_std.case_id = c.case_id)
+                AND NOT EXISTS (SELECT 1 FROM cfa_records cf_std WHERE cf_std.case_id = c.case_id)
+                AND NOT EXISTS (SELECT 1 FROM arbitration_records ar_std WHERE ar_std.case_id = c.case_id)
+                AND COALESCE(c.case_status, '') NOT IN ('Mediation','Conciliation','CFA Issued','Settled','Dismissed','Archived','Arbitration','DISMISSED_BARRED','RESPONDENT_DEFAULT')
+                AND co.status NOT IN ('Mediation','Conciliation','CFA Issued','Settled','Dismissed','Archived','Arbitration','Rejected','DISMISSED_BARRED','RESPONDENT_DEFAULT'))";
+        } elseif ($filterStatus === 'Resolution / Closed') {
+            $where[] = "(EXISTS (SELECT 1 FROM settlements s_closed WHERE s_closed.case_id = c.case_id)
+                OR EXISTS (SELECT 1 FROM arbitration_records ar_closed WHERE ar_closed.case_id = c.case_id)
+                OR c.case_status IN ('Settled','Dismissed','Archived','Arbitration','DISMISSED_BARRED','RESPONDENT_DEFAULT')
+                OR co.status IN ('Settled','Dismissed','Archived','Arbitration','Rejected','DISMISSED_BARRED','RESPONDENT_DEFAULT'))";
+        } elseif ($filterStatus === 'Under Review') {
             $where[] = "(c.case_id IS NULL AND co.status IN ('Filed', 'Under Review', 'Needs Information', 'Accepted') AND co.status NOT IN ('Dismissed', 'Rejected', 'Settled'))";
         } elseif ($filterStatus === 'Docketed') {
             $where[] = "(c.case_id IS NOT NULL OR c.case_status = 'Docketed' OR co.status = 'Docketed')";
@@ -141,7 +152,7 @@ class Search
 
         // Column aliases mapping
         $aliasMap = [
-            'complaint' => 'complaint_number',
+            'complaint' => 'complaint_title',
             'case_no' => 'case_number',
             'category' => 'category_name',
             'date' => 'incident_date',
@@ -157,7 +168,7 @@ class Search
             'complaint_number' => "co.complaint_number {$sortOrder}",
             'case_number' => "c.case_number {$sortOrder}, co.complaint_id {$sortOrder}",
             'category_name' => "cc.category_name {$sortOrder}",
-            'complaint_title' => "co.complaint_title {$sortOrder}",
+            'complaint_title' => "co.complaint_title {$sortOrder}, co.complaint_id {$sortOrder}",
             'parties' => "parties {$sortOrder}",
             'raw_record_status' => "COALESCE(c.case_status, co.status) {$sortOrder}",
             'intake_status' => "CASE WHEN c.case_id IS NOT NULL OR c.case_status = 'Docketed' THEN 2 ELSE 1 END {$sortOrder}",
@@ -180,6 +191,7 @@ class Search
             $row['is_stage_exhausted'] = $lifecycle['is_stage_exhausted'];
             $row['status_labels'] = $lifecycle['status_labels'];
             $row['record_status'] = implode(', ', $lifecycle['status_labels']);
+            $row['lifecycle_status'] = $this->resolveStandardStatus($row);
         }
         unset($row);
 
@@ -225,8 +237,11 @@ class Search
             $intake = 'Docketed';
         }
 
-        // Aggregate labels for tag/pill rendering
-        $labels = [$intake];
+        // Aggregate labels for tag/pill rendering (Docketed is excluded as complaints are already considered docketed)
+        $labels = [];
+        if ($intake !== 'Docketed') {
+            $labels[] = $intake;
+        }
         if ($stage !== 'None') {
             $labels[] = $stage;
         }
@@ -247,7 +262,32 @@ class Search
         return $this->resolveLifecycle($row)['status_labels'];
     }
 
-    private function isDate($value): bool
+    private function resolveStandardStatus(array $row): string
+    {
+        $caseStatus = (string) ($row['case_status'] ?? '');
+        $complaintStatus = (string) ($row['complaint_status'] ?? '');
+        $closedStatuses = ['Settled', 'Dismissed', 'Archived', 'Rejected', 'Arbitration', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT'];
+
+        if ((int) ($row['settlement_count'] ?? 0) > 0
+            || (int) ($row['arbitration_record_count'] ?? 0) > 0
+            || in_array($caseStatus, $closedStatuses, true)
+            || in_array($complaintStatus, $closedStatuses, true)) {
+            return 'Resolution / Closed';
+        }
+        if ((int) ($row['cfa_count'] ?? 0) > 0 || $caseStatus === 'CFA Issued' || $complaintStatus === 'CFA Issued') {
+            return 'CFA';
+        }
+        if ((int) ($row['conciliation_count'] ?? 0) > 0 || $caseStatus === 'Conciliation' || $complaintStatus === 'Conciliation') {
+            return 'Conciliation';
+        }
+        if ((int) ($row['mediation_count'] ?? 0) > 0 || $caseStatus === 'Mediation' || $complaintStatus === 'Mediation') {
+            return 'Mediation';
+        }
+        return 'Pending';
+    }
+
+
+    private function isDate(mixed $value): bool
     {
         if (!is_string($value) || preg_match('/^\\d{4}-\\d{2}-\\d{2}$/', $value) !== 1) return false;
         $date = DateTimeImmutable::createFromFormat('!Y-m-d', $value);

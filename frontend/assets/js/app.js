@@ -1,4 +1,124 @@
-window.agapNotify = (message, type = 'info', title = 'AGAP') => {
+(() => {
+    const endpoint = '../../../backend/api/sync/state.php';
+    const eventName = 'agap:data-changed';
+    const storageKey = 'agap:data-sync';
+    const pollInterval = 2500;
+    const subscribers = new Set();
+    let currentState = null;
+    let pollTimer = null;
+    let checking = false;
+    let channel = null;
+
+    const changedModules = (previous, next) => {
+        if (!previous?.modules || !next?.modules) return [];
+        return Object.keys(next.modules).filter(
+            (name) => previous.modules[name] !== next.modules[name]
+        );
+    };
+
+    const notify = (payload) => {
+        window.dispatchEvent(new CustomEvent(eventName, { detail: payload }));
+        subscribers.forEach((subscriber) => {
+            try {
+                subscriber(payload);
+            } catch (error) {
+                console.error('AGAP synchronization subscriber failed:', error);
+            }
+        });
+    };
+
+    const broadcast = (payload) => {
+        if (channel) channel.postMessage(payload);
+        try {
+            localStorage.setItem(storageKey, JSON.stringify({
+                ...payload,
+                nonce: `${Date.now()}-${Math.random()}`
+            }));
+        } catch (error) {
+            // Synchronization still works without browser storage.
+        }
+    };
+
+    const checkNow = async (force = false) => {
+        if (checking || (!force && document.hidden)) return;
+        checking = true;
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 8000);
+        try {
+            const response = await window.fetch(`${endpoint}?_t=${Date.now()}`, {
+                method: 'GET',
+                credentials: 'same-origin',
+                cache: 'no-store',
+                headers: { Accept: 'application/json' },
+                signal: controller.signal
+            });
+            const nextState = await response.json().catch(() => null);
+            if (!response.ok || !nextState?.success) return;
+
+            if (currentState && currentState.revision !== nextState.revision) {
+                const payload = {
+                    source: 'server',
+                    revision: nextState.revision,
+                    modules: changedModules(currentState, nextState),
+                    serverTime: nextState.server_time
+                };
+                currentState = nextState;
+                notify(payload);
+                broadcast(payload);
+            } else {
+                currentState = nextState;
+            }
+        } catch (error) {
+            // The next poll retries automatically.
+        } finally {
+            window.clearTimeout(timeout);
+            checking = false;
+        }
+    };
+
+    const acceptRemote = (payload) => {
+        if (!payload || payload.revision === currentState?.revision) return;
+        window.setTimeout(() => checkNow(true), 100);
+    };
+
+    const start = () => {
+        if (pollTimer) return;
+        checkNow(true);
+        pollTimer = window.setInterval(checkNow, pollInterval);
+    };
+
+    window.agapDataSync = {
+        subscribe(callback) {
+            if (typeof callback !== 'function') return () => {};
+            subscribers.add(callback);
+            return () => subscribers.delete(callback);
+        },
+        checkNow: () => checkNow(true),
+        eventName
+    };
+
+    if ('BroadcastChannel' in window) {
+        channel = new BroadcastChannel('agap-data-sync');
+        channel.addEventListener('message', (event) => acceptRemote(event.data));
+    }
+
+    window.addEventListener('storage', (event) => {
+        if (event.key !== storageKey || !event.newValue) return;
+        try {
+            acceptRemote(JSON.parse(event.newValue));
+        } catch (error) {
+            // Ignore malformed synchronization data.
+        }
+    });
+
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) checkNow(true);
+    });
+    window.addEventListener('focus', () => checkNow(true));
+    document.addEventListener('DOMContentLoaded', start);
+})();
+
+window.agapNotify = (message, type = 'info', title = null) => {
     if (!message) return;
     let region = document.getElementById('agapToastRegion');
     if (!region) {
@@ -11,12 +131,30 @@ window.agapNotify = (message, type = 'info', title = 'AGAP') => {
     }
     const toast = document.createElement('article');
     toast.className = `agap-toast ${type}`;
-    const heading = document.createElement('strong'); heading.textContent = title;
-    const text = document.createElement('p'); text.textContent = message;
-    const close = document.createElement('button'); close.type = 'button'; close.className = 'agap-toast-close'; close.setAttribute('aria-label', 'Dismiss notification'); close.textContent = '×';
-    close.addEventListener('click', () => toast.remove());
-    toast.append(heading, text, close); region.appendChild(toast);
-    window.setTimeout(() => toast.remove(), type === 'error' ? 8500 : 5500);
+
+    const defaultTitle = title || (type === 'success' ? 'Success' : (type === 'error' ? 'Notice' : (type === 'warning' ? 'Warning' : 'AGAP')));
+    const heading = document.createElement('strong');
+    heading.textContent = defaultTitle;
+    const text = document.createElement('p');
+    text.textContent = message;
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'agap-toast-close';
+    close.setAttribute('aria-label', 'Dismiss notification');
+    close.textContent = '×';
+
+    const dismissToast = () => {
+        if (toast.classList.contains('is-leaving')) return;
+        toast.classList.add('is-leaving');
+        window.setTimeout(() => toast.remove(), 250);
+    };
+
+    close.addEventListener('click', dismissToast);
+    toast.append(heading, text, close);
+    region.appendChild(toast);
+
+    // Auto-dismiss after 4 seconds (4000ms) with smooth fade-out
+    window.setTimeout(dismissToast, 4000);
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -148,6 +286,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const seen = new Set(JSON.parse(sessionStorage.getItem(seenKey) || '[]'));
     const checkWorkflowNotifications = async () => {
         try {
+            // This endpoint is idempotent: it only creates each due-soon/overdue alert once.
+            await fetch('../../../backend/api/hearings/deadline-alerts.php', { method: 'POST' }).catch(() => null);
             const response = await fetch('../../../backend/api/notifications/list.php');
             const result = await response.json();
             if (!response.ok || result.success === false) return;

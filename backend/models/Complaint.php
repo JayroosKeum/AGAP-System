@@ -2,10 +2,11 @@
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../services/ValidationService.php';
+require_once __DIR__ . '/../services/ComplaintLifecycleService.php';
 
 class Complaint
 {
-    private $conn;
+    private PDO $conn;
 
     public function __construct()
     {
@@ -23,18 +24,27 @@ class Complaint
             $this->conn->prepare("
                 SELECT
                     c.*,
-                    cc.category_name
+                    cc.category_name,
+                    cs.case_id,
+                    cs.case_number,
+                    cs.case_status
                 FROM complaints c
                 LEFT JOIN complaint_categories cc
                     ON c.category_id = cc.category_id
-                ORDER BY created_at DESC
+                LEFT JOIN cases cs
+                    ON cs.complaint_id = c.complaint_id
+                ORDER BY c.created_at DESC
             ");
 
             $stmt->execute();
 
-            return $stmt->fetchAll(
-                PDO::FETCH_ASSOC
-            );
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $lifecycle = new ComplaintLifecycleService($this->conn);
+            foreach ($rows as &$row) {
+                $row['lifecycle_status'] = $lifecycle->forComplaint((int) $row['complaint_id']);
+            }
+            unset($row);
+            return $rows;
 
         }
         catch(Exception $e)
@@ -47,7 +57,7 @@ class Complaint
         }
     }
 
-    public function getById($id)
+    public function getById(int $id): array|false
     {
         try {
 
@@ -62,9 +72,11 @@ class Complaint
 
             $stmt->execute([$id]);
 
-            return $stmt->fetch(
-                PDO::FETCH_ASSOC
-            );
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($row) {
+                $row['lifecycle_status'] = (new ComplaintLifecycleService($this->conn))->forComplaint((int) $row['complaint_id']);
+            }
+            return $row;
 
         }
         catch(Exception $e)
@@ -77,7 +89,7 @@ class Complaint
         }
     }
 
-    public function create($data): array
+    public function create(array $data): array
     {
         try {
             if (!empty($data['incident_datetime'])) {
@@ -100,6 +112,10 @@ class Complaint
             if (!$mapValidation['success']) {
                 return $mapValidation;
             }
+            $partiesValidation = $this->validatePartiesInput($data);
+            if (!$partiesValidation['success']) {
+                return $partiesValidation;
+            }
 
             if(session_status() === PHP_SESSION_NONE)
             {
@@ -121,6 +137,10 @@ class Complaint
                     incident_date,
                     incident_time,
                     incident_location,
+                    incident_city,
+                    incident_barangay,
+                    incident_street,
+                    incident_purok,
                     incident_landmark,
                     narrative,
                     additional_details,
@@ -129,7 +149,7 @@ class Complaint
                 )
                 VALUES
                 (
-                    ?,?,?,?,?,?,?,?,?,?,?
+                    ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
                 )
             ");
 
@@ -139,7 +159,11 @@ class Complaint
                 trim((string) $data['complaint_title']),
                 $data['incident_date'],
                 trim((string) ($data['incident_time'] ?? '')) ?: null,
-                trim((string) ($data['incident_location'] ?? '')) ?: null,
+                $this->buildIncidentAddress($data),
+                (stripos(trim((string)($data['incident_city'] ?? '')), 'Marikina') !== false ? 'Marikina City' : trim((string)($data['incident_city'] ?? 'Marikina City'))),
+                trim((string) ($data['incident_barangay'] ?? 'Tumana')),
+                trim((string) ($data['incident_street'] ?? '')) ?: null,
+                trim((string) ($data['incident_purok'] ?? '')) ?: null,
                 trim((string) ($data['incident_landmark'] ?? '')) ?: null,
                 trim((string) $data['narrative']),
                 trim((string) ($data['additional_details'] ?? '')) ?: null,
@@ -178,7 +202,7 @@ class Complaint
         }
     }
 
-    public function update($id, $data): array
+    public function update(mixed $id, array $data): array
     {
         try {
 
@@ -207,6 +231,10 @@ class Complaint
             if (!$mapValidation['success']) {
                 return $mapValidation;
             }
+            $partiesValidation = $this->validatePartiesInput($data);
+            if (!$partiesValidation['success']) {
+                return $partiesValidation;
+            }
 
             $exists = $this->conn->prepare('SELECT complaint_id FROM complaints WHERE complaint_id = ?');
             $exists->execute([$complaintId]);
@@ -229,6 +257,10 @@ class Complaint
                     incident_date=?,
                     incident_time=?,
                     incident_location=?,
+                    incident_city=?,
+                    incident_barangay=?,
+                    incident_street=?,
+                    incident_purok=?,
                     incident_landmark=?,
                     narrative=?,
                     additional_details=?
@@ -241,7 +273,11 @@ class Complaint
                 trim((string) $data['complaint_title']),
                 $data['incident_date'],
                 trim((string) ($data['incident_time'] ?? '')) ?: null,
-                trim((string) ($data['incident_location'] ?? '')) ?: null,
+                $this->buildIncidentAddress($data),
+                (stripos(trim((string)($data['incident_city'] ?? '')), 'Marikina') !== false ? 'Marikina City' : trim((string)($data['incident_city'] ?? 'Marikina City'))),
+                trim((string) ($data['incident_barangay'] ?? 'Tumana')),
+                trim((string) ($data['incident_street'] ?? '')) ?: null,
+                trim((string) ($data['incident_purok'] ?? '')) ?: null,
                 trim((string) ($data['incident_landmark'] ?? '')) ?: null,
                 trim((string) $data['narrative']),
                 trim((string) ($data['additional_details'] ?? '')) ?: null,
@@ -257,7 +293,7 @@ class Complaint
 
             $this->applyMapLocation($complaintId, $data);
 
-            if (isset($data['complainant_name']) || isset($data['respondent_name'])) {
+            if (isset($data['complainant_resident_id']) || isset($data['respondent_resident_id']) || isset($data['complainant_name']) || isset($data['respondent_name'])) {
                 $delParties = $this->conn->prepare('DELETE FROM complaint_parties WHERE complaint_id = ?');
                 $delParties->execute([$complaintId]);
                 $this->applyParties($complaintId, $data);
@@ -299,7 +335,7 @@ class Complaint
         return ['success' => true, 'message' => 'Complaint review saved.'];
     }
 
-    public function delete($id)
+    public function delete(mixed $id): bool
     {
         try {
 
@@ -320,6 +356,37 @@ class Complaint
                 $e->getMessage()
             );
 
+            return false;
+        }
+    }
+
+    public function archive(mixed $id): bool
+    {
+        try {
+            $stmt = $this->conn->prepare("
+                UPDATE complaints
+                SET status = 'Archived'
+                WHERE complaint_id = ?
+            ");
+            $success = $stmt->execute([$id]);
+
+            // Also synchronize any linked case status to Archived
+            if ($success) {
+                try {
+                    $caseStmt = $this->conn->prepare("
+                        UPDATE cases
+                        SET case_status = 'Archived', archived_date = CURDATE()
+                        WHERE complaint_id = ? AND case_status != 'Archived'
+                    ");
+                    $caseStmt->execute([$id]);
+                } catch (Exception $e) {
+                    error_log('Error syncing case archive: ' . $e->getMessage());
+                }
+            }
+
+            return $success;
+        } catch (Exception $e) {
+            error_log($e->getMessage());
             return false;
         }
     }
@@ -355,13 +422,24 @@ class Complaint
         $parsedDate = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
         if (!$parsedDate || $parsedDate->format('Y-m-d') !== $date) return ['success' => false, 'message' => 'Incident date is invalid.'];
         if ($time !== '' && !preg_match('/^([01]\\d|2[0-3]):[0-5]\\d$/', $time)) return ['success' => false, 'message' => 'Incident time is invalid.'];
-        $location = trim((string) ($data['incident_location'] ?? ''));
-        if ($location === '') return ['success' => false, 'message' => 'Specific incident location is required.'];
-        if (!ValidationService::address($location)) return ['success' => false, 'message' => 'Please remove unsupported control characters from the incident location.'];
+
+        $incidentDt = DateTimeImmutable::createFromFormat('Y-m-d H:i', $time !== '' ? "$date $time" : "$date 00:00")
+            ?: DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $time !== '' ? "$date $time" : "$date 00:00:00");
+        $now = new DateTimeImmutable('now');
+        if ($incidentDt && $incidentDt > $now) {
+            return ['success' => false, 'message' => 'Incident date and time cannot be in the future.'];
+        }
+        $city = trim((string) ($data['incident_city'] ?? ''));
+        $barangay = trim((string) ($data['incident_barangay'] ?? ''));
+        $street = trim((string) ($data['incident_street'] ?? ''));
+        if ($city === '' || stripos($city, 'Marikina') === false) return ['success' => false, 'message' => 'Incident city must be Marikina City.'];
+        if ($barangay === '') return ['success' => false, 'message' => 'Incident barangay is required.'];
+        if ($street === '') return ['success' => false, 'message' => 'Street or specific incident location is required.'];
+        if (!ValidationService::address($street)) return ['success' => false, 'message' => 'Please remove unsupported control characters from the street address.'];
         if ($narrative === '') return ['success' => false, 'message' => 'Incident narrative is required.'];
         if (mb_strlen($narrative) > 15000) return ['success' => false, 'message' => 'Narrative is too long. Use 15,000 characters or fewer.'];
         if (!ValidationService::text($narrative, true)) return ['success' => false, 'message' => 'Please remove unsupported control characters from the incident narrative.'];
-        foreach (['incident_location' => 255, 'incident_landmark' => 255, 'additional_details' => 5000] as $field => $maxLength) {
+        foreach (['incident_city' => 100, 'incident_barangay' => 100, 'incident_street' => 255, 'incident_purok' => 100, 'incident_landmark' => 255, 'additional_details' => 5000] as $field => $maxLength) {
             if (mb_strlen(trim((string) ($data[$field] ?? ''))) > $maxLength) {
                 return ['success' => false, 'message' => ucwords(str_replace('_', ' ', $field)) . " must be {$maxLength} characters or fewer."];
             }
@@ -389,6 +467,9 @@ class Complaint
                 || $latitudeValue < -90 || $latitudeValue > 90 || $longitudeValue < -180 || $longitudeValue > 180) {
                 return ['success' => false, 'message' => 'Select a valid point on the map.'];
             }
+            if ($latitudeValue < 14.610 || $latitudeValue > 14.690 || $longitudeValue < 121.075 || $longitudeValue > 121.155) {
+                return ['success' => false, 'message' => 'Incident location must be within Marikina City.'];
+            }
         } elseif ($state === 'unchanged') {
             if ($latitude !== '' || $longitude !== '') {
                 $latitudeValue = filter_var($latitude, FILTER_VALIDATE_FLOAT);
@@ -409,7 +490,7 @@ class Complaint
     {
         $state = trim((string) ($data['map_location_state'] ?? 'none'));
         if ($state === 'unchanged') {
-            $address = trim((string) $data['incident_location']);
+            $address = $this->buildIncidentAddress($data);
             $updateAddress = $this->conn->prepare('UPDATE incident_locations SET address = ? WHERE complaint_id = ?');
             $updateAddress->execute([$address, $complaintId]);
             return;
@@ -425,12 +506,36 @@ class Complaint
 
         $latitude = (float) $data['location_latitude'];
         $longitude = (float) $data['location_longitude'];
-        $address = trim((string) $data['incident_location']);
+        $address = $this->buildIncidentAddress($data);
         $stmt = $this->conn->prepare(
             'INSERT INTO incident_locations (complaint_id, latitude, longitude, address) VALUES (?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE latitude = VALUES(latitude), longitude = VALUES(longitude), address = VALUES(address)'
         );
         $stmt->execute([$complaintId, $latitude, $longitude, $address]);
+    }
+
+    private function buildIncidentAddress(array $data): string
+    {
+        return implode(', ', array_filter([
+            trim((string) ($data['incident_street'] ?? '')),
+            trim((string) ($data['incident_purok'] ?? '')),
+            trim((string) ($data['incident_barangay'] ?? 'Tumana')),
+            trim((string) ($data['incident_city'] ?? 'Marikina City')),
+        ]));
+    }
+
+    private function isWithinTumana(float $latitude, float $longitude): bool
+    {
+        // Barangay Tumana boundary (OpenStreetMap relation 1225795, retrieved 2026-09-25).
+        $polygon = [[14.6554682,121.0857081],[14.6562612,121.0859908],[14.6557911,121.0865123],[14.6566853,121.0867891],[14.6573361,121.0874608],[14.6566672,121.0882081],[14.6596216,121.0912009],[14.6605249,121.0911456],[14.6609324,121.0914765],[14.6617729,121.0920319],[14.6634173,121.0935248],[14.6639892,121.0936321],[14.6643486,121.0936995],[14.6645004,121.0938826],[14.6646918,121.0941136],[14.6649347,121.0948585],[14.6652335,121.0951488],[14.6652695,121.0952371],[14.6652424,121.0956829],[14.6648805,121.0961861],[14.664908,121.0963356],[14.6648531,121.0964764],[14.6646002,121.096494],[14.6645363,121.0965238],[14.6645002,121.0966408],[14.6642299,121.0967374],[14.6637829,121.0977901],[14.6636408,121.0980795],[14.6629907,121.0988145],[14.6625832,121.0991486],[14.6625837,121.0993232],[14.6625136,121.0996819],[14.6625395,121.100022],[14.6625468,121.1001174],[14.6623861,121.1006225],[14.6621551,121.1005299],[14.6614757,121.1023379],[14.6605674,121.1020241],[14.6602368,121.1019108],[14.6595948,121.1016599],[14.6595375,121.1016838],[14.6593102,121.1017894],[14.6589154,121.1019614],[14.6587675,121.1020312],[14.6585513,121.1021193],[14.6581343,121.1022551],[14.6574788,121.102553],[14.6569962,121.1027094],[14.6566377,121.102703],[14.656158,121.1026733],[14.6559169,121.1026982],[14.6553478,121.1027577],[14.6550262,121.1027938],[14.6548318,121.1027249],[14.6541841,121.1025018],[14.6534713,121.1024013],[14.6532707,121.102373],[14.6510737,121.101336],[14.6508768,121.1007973],[14.6507211,121.0992879],[14.650753,121.0989571],[14.6509538,121.098811],[14.6514718,121.0983827],[14.6521496,121.0978851],[14.6527322,121.0972236],[14.6535364,121.0959443],[14.6539003,121.0955034],[14.654028,121.0953166],[14.6537619,121.0950108],[14.6533329,121.0942299],[14.6530062,121.0934184]];
+        $inside = false;
+        $j = count($polygon) - 1;
+        for ($i = 0; $i < count($polygon); $j = $i++) {
+            [$yi, $xi] = $polygon[$i];
+            [$yj, $xj] = $polygon[$j];
+            if ((($yi > $latitude) !== ($yj > $latitude)) && ($longitude < (($xj - $xi) * ($latitude - $yi) / ($yj - $yi) + $xi))) $inside = !$inside;
+        }
+        return $inside;
     }
 
     private function applyParties(int $complaintId, array $data): void
@@ -441,44 +546,92 @@ class Complaint
         ");
 
         // 1. Complainant
-        $compName = trim((string)($data['complainant_name'] ?? ''));
         $compId = filter_var($data['complainant_resident_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
-        if ($compName !== '' || $compId) {
-            $resId = $this->resolveResidentId($compName, $compId);
-            if ($resId) {
-                $partyStmt->execute([$complaintId, $resId, 'Complainant']);
-            }
+        if ($compId && $compId > 0) {
+            $partyStmt->execute([$complaintId, $compId, 'Complainant']);
         }
 
         // 2. Respondent (Person being complained against)
-        $respName = trim((string)($data['respondent_name'] ?? ''));
         $respId = filter_var($data['respondent_resident_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
-        if ($respName !== '' || $respId) {
-            $resId = $this->resolveResidentId($respName, $respId);
-            if ($resId) {
-                $partyStmt->execute([$complaintId, $resId, 'Respondent']);
-            }
+        if ($respId && $respId > 0) {
+            $partyStmt->execute([$complaintId, $respId, 'Respondent']);
         }
 
         // 3. Additional parties
-        if (!empty($data['party_names']) && is_array($data['party_names'])) {
+        if (!empty($data['party_resident_ids']) && is_array($data['party_resident_ids'])) {
             $types = $data['party_types'] ?? [];
-            $ids = $data['party_resident_ids'] ?? [];
-            foreach ($data['party_names'] as $index => $name) {
-                $pName = trim((string)$name);
+            foreach ($data['party_resident_ids'] as $index => $pIdRaw) {
+                $pId = filter_var($pIdRaw, FILTER_VALIDATE_INT) ?: null;
                 $pType = trim((string)($types[$index] ?? 'Witness'));
                 if (!in_array($pType, ['Complainant', 'Respondent', 'Witness'], true)) {
                     $pType = 'Witness';
                 }
-                $pId = filter_var($ids[$index] ?? null, FILTER_VALIDATE_INT) ?: null;
-                if ($pName !== '' || $pId) {
-                    $resId = $this->resolveResidentId($pName, $pId);
-                    if ($resId) {
-                        $partyStmt->execute([$complaintId, $resId, $pType]);
-                    }
+                if ($pId && $pId > 0) {
+                    $partyStmt->execute([$complaintId, $pId, $pType]);
                 }
             }
         }
+    }
+
+    private function validatePartiesInput(array $data): array
+    {
+        // Complainant validation: MUST be a registered profile (Resident, Tenant, or Non-Resident)
+        $compId = filter_var($data['complainant_resident_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if (!$compId) {
+            return ['success' => false, 'message' => 'Please select a registered profile for the complainant.'];
+        }
+        $checkComp = $this->conn->prepare('SELECT resident_id FROM residents WHERE resident_id = ?');
+        $checkComp->execute([$compId]);
+        if (!$checkComp->fetchColumn()) {
+            return ['success' => false, 'message' => 'The selected complainant profile was not found in the directory.'];
+        }
+
+        // Respondent validation: MUST be a verified resident or tenant living within Barangay Tumana (is_tenant IN (0, 1) and purok != 'Non-Resident')
+        $respId = filter_var($data['respondent_resident_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if (!$respId) {
+            return ['success' => false, 'message' => 'Please select a registered profile for the respondent.'];
+        }
+        $checkResp = $this->conn->prepare('SELECT resident_id, is_tenant, purok FROM residents WHERE resident_id = ?');
+        $checkResp->execute([$respId]);
+        $respRow = $checkResp->fetch(PDO::FETCH_ASSOC);
+        if (!$respRow) {
+            return ['success' => false, 'message' => 'The selected respondent profile was not found in the directory.'];
+        }
+        $isTenant = (int) $respRow['is_tenant'];
+        $purok = trim((string)($respRow['purok'] ?? ''));
+        if ($isTenant === 2 || strcasecmp($purok, 'Non-Resident') === 0 || !in_array($isTenant, [0, 1], true)) {
+            return ['success' => false, 'message' => 'Only residents and tenants living within Barangay Tumana can be named as respondents in this barangay.'];
+        }
+
+        // Distinctness check
+        if ($compId === $respId) {
+            return ['success' => false, 'message' => 'The complainant and respondent cannot be the same profile.'];
+        }
+
+        // Additional parties validation: all additional parties must be registered resident profiles
+        if (!empty($data['party_resident_ids']) && is_array($data['party_resident_ids'])) {
+            $types = $data['party_types'] ?? [];
+            foreach ($data['party_resident_ids'] as $idx => $pIdRaw) {
+                if ($pIdRaw === '' || $pIdRaw === null) {
+                    continue;
+                }
+                $pId = filter_var($pIdRaw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+                if (!$pId) {
+                    return ['success' => false, 'message' => 'Please select a valid resident profile for all additional parties.'];
+                }
+                $checkP = $this->conn->prepare('SELECT resident_id FROM residents WHERE resident_id = ?');
+                $checkP->execute([$pId]);
+                if (!$checkP->fetchColumn()) {
+                    return ['success' => false, 'message' => 'An additional party resident profile was not found in the directory.'];
+                }
+                $pType = trim((string)($types[$idx] ?? 'Witness'));
+                if (!in_array($pType, ['Complainant', 'Respondent', 'Witness'], true)) {
+                    return ['success' => false, 'message' => 'Invalid party type specified for additional party.'];
+                }
+            }
+        }
+
+        return ['success' => true];
     }
 
     private function resolveResidentId(string $name, ?int $residentId = null): ?int

@@ -42,11 +42,25 @@ class ComplaintController
         $complaint['parties'] = $this->complaintParty->getByComplaint($id);
         $complaint['attachments'] = $this->attachment->getByComplaint($id);
         $complaint['location'] = $this->location->getByComplaint($id);
+        if (!empty($complaint['case_id'])) {
+            require_once __DIR__ . '/../models/CaseModel.php';
+            $complaint['case_workspace'] = (new CaseModel())->getWorkspace((int) $complaint['case_id']);
+        } else {
+            $complaint['case_workspace'] = null;
+        }
         return $complaint;
     }
 
     public function store(array $data, array $files = []): array
     {
+        // Lupon Office Hours check: M-F 8:00 AM-5:00 PM (Saturdays permitted for skeletal/tanod desk operations)
+        require_once __DIR__ . '/../services/OfficeLogisticsService.php';
+        $isSkeletal = !empty($data['is_skeletal_desk']) || (!empty($_SESSION['role_name']) && $_SESSION['role_name'] === 'Barangay Tanod');
+        $officeCheck = OfficeLogisticsService::validateOfficeHours(date('Y-m-d H:i:s'), $isSkeletal);
+        if (!$officeCheck['valid'] && empty($data['bypass_office_hours'])) {
+            return ['success' => false, 'message' => $officeCheck['message']];
+        }
+
         $evidenceFiles = [];
         if (!empty($files['evidence'])) {
             $evidenceFiles = $this->normalizeFilesArray($files['evidence']);
@@ -158,8 +172,27 @@ class ComplaintController
 
         if ($result) {
             $this->audit->log(
-                $_SESSION['user_id'],
+                $_SESSION['user_id'] ?? 1,
                 'Deleted Complaint',
+                'Complaints',
+                $id
+            );
+        }
+
+        return (bool) $result;
+    }
+
+    public function archive(int $id): bool
+    {
+        if ($id <= 0) {
+            return false;
+        }
+        $result = $this->complaint->archive($id);
+
+        if ($result) {
+            $this->audit->log(
+                $_SESSION['user_id'] ?? 1,
+                'Archived Complaint',
                 'Complaints',
                 $id
             );

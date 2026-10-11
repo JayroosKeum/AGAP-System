@@ -24,7 +24,7 @@ include '../../layouts/header.php';
             <form id="recordsSearchForm" class="search-form">
                 <div class="search-field wide">
                     <label for="searchQuery">Keyword</label>
-                    <input id="searchQuery" name="q" type="search" placeholder="Case no., complaint no., title, narrative, or resident name">
+                    <input id="searchQuery" name="q" type="search" placeholder="Case no., complaint no., title, narrative, or resident profile">
                 </div>
                 
                 <div class="search-field">
