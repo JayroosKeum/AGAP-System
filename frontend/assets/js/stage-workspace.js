@@ -174,7 +174,7 @@ function checkUrlHashAction() {
 
     setTimeout(() => {
         if (hearingIdParam) {
-            openMinutesModal(Number(hearingIdParam));
+            selectInlineMinutesSession(Number(hearingIdParam));
             return;
         }
 
@@ -186,7 +186,7 @@ function checkUrlHashAction() {
             openReferPangkatModal();
         } else if (action === 'minutes' || action === 'minutesSection') {
             const firstSession = stageWorkspaceState.sessions[0];
-            if (firstSession) openMinutesModal(firstSession.hearing_id);
+            if (firstSession) selectInlineMinutesSession(firstSession.hearing_id);
         } else if (action === 'attendance') {
             const firstSession = stageWorkspaceState.sessions[0];
             if (firstSession) openAttendanceModal(firstSession.hearing_id);
@@ -679,9 +679,14 @@ function renderMinutesSection(data, stage) {
                     <span style="font-size: 0.78rem; padding: 4px 10px; border-radius: 9999px; font-weight: 700; ${isFinalized ? 'background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0;' : 'background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe;'}">
                         ${isFinalized ? '✓ FINALIZED &amp; LOCKED' : '📝 WORKING DRAFT'}
                     </span>
-                    <button type="button" class="btn-secondary" onclick="openMinutesModal(${activeSession.hearing_id})" style="font-size: 0.78rem; padding: 4px 10px;" title="Open in pop-up modal">
-                        ⤢ Fullscreen Modal
+                    <button type="button" class="btn-secondary" onclick="openPreviewMinutesModal(${activeSession.hearing_id})" style="font-size: 0.78rem; padding: 4px 10px;">
+                        🔍 Preview Letterhead
                     </button>
+                    ${(isFinalized || activeSession.minutes_id) ? `
+                        <button type="button" class="btn-secondary" onclick="printHearingMinutes(${activeSession.hearing_id})" style="font-size: 0.78rem; padding: 4px 10px;">
+                            🖨️ Print
+                        </button>
+                    ` : ''}
                 </div>
             </div>
 
@@ -691,117 +696,133 @@ function renderMinutesSection(data, stage) {
                     <div style="color: #166534; font-size: 0.86rem;">
                         <strong>🔒 Official Record Locked:</strong> This session minutes was finalized${activeSession.finalized_at ? ` on ${formatDateTimeReadable(activeSession.finalized_at)}` : ''}${activeSession.finalized_by_name ? ` by ${escapeHtml(activeSession.finalized_by_name)}` : ''}. To preserve legal integrity, finalized minutes cannot be modified.
                     </div>
-                    <div style="display: flex; gap: 6px;">
-                        <button type="button" class="btn-secondary" onclick="openPreviewMinutesModal(${activeSession.hearing_id})" style="font-size: 0.78rem; padding: 4px 10px;">🔍 Preview</button>
-                        <button type="button" class="btn-create" onclick="printHearingMinutes(${activeSession.hearing_id})" style="font-size: 0.78rem; padding: 4px 12px; background: #0369a1;">🖨️ Print Letterhead</button>
-                    </div>
                 </div>
             ` : ''}
 
             <!-- Form -->
             <form id="inlineMinutesForm" onsubmit="event.preventDefault();">
-                <input type="hidden" id="inlineHearingId" value="${activeSession.hearing_id}">
+                <input type="hidden" id="minHearingId" value="${activeSession.hearing_id}">
 
                 <!-- Section 1: Session Opening & Identity Verification -->
                 <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px;">
                     <h4 style="font-size: 0.88rem; font-weight: 700; color: #1e293b; margin: 0 0 10px; display: flex; align-items: center; gap: 6px;">
-                        <span>📝</span> Session Opening &amp; Identity Verification
+                        <span>📝</span> 1. Session Opening &amp; Identity Verification
                     </h4>
                     <div style="display: flex; gap: 24px; flex-wrap: wrap; font-size: 0.85rem; color: #334155;">
                         <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
-                            <input type="checkbox" id="inlineOpening" ${activeSession.opening_conducted ? 'checked' : ''} ${readonlyAttr} style="width: 16px; height: 16px;">
+                            <input type="checkbox" id="minOpening" ${activeSession.opening_conducted ? 'checked' : ''} ${readonlyAttr} style="width: 16px; height: 16px;">
                             <span>Opening Statement Conducted</span>
                         </label>
                         <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
-                            <input type="checkbox" id="inlineIdentity" ${activeSession.identity_verified ? 'checked' : ''} ${readonlyAttr} style="width: 16px; height: 16px;">
+                            <input type="checkbox" id="minIdentity" ${activeSession.identity_verified ? 'checked' : ''} ${readonlyAttr} style="width: 16px; height: 16px;">
                             <span>Parties Identity Verified</span>
                         </label>
                         <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
-                            <input type="checkbox" id="inlineReviewed" ${activeSession.complaint_reviewed ? 'checked' : ''} ${readonlyAttr} style="width: 16px; height: 16px;">
+                            <input type="checkbox" id="minReviewed" ${activeSession.complaint_reviewed ? 'checked' : ''} ${readonlyAttr} style="width: 16px; height: 16px;">
                             <span>Complaint Reviewed &amp; Read</span>
                         </label>
                     </div>
                 </div>
 
                 <!-- Section 2: Statements & Core Dispute -->
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
-                    <div class="form-group" style="margin-bottom: 0;">
-                        <label for="inlineCompStmt" style="font-weight: 600; font-size: 0.84rem; color: #1e293b; margin-bottom: 4px; display: block;">Complainant Statement Summary</label>
-                        <textarea id="inlineCompStmt" rows="3" maxlength="5000" placeholder="Summary of complainant's narration of facts..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 9px; font-size: 0.84rem; font-family: inherit; box-sizing: border-box; line-height: 1.45;" ${readonlyAttr}>${escapeHtml(activeSession.complainant_statement || '')}</textarea>
+                <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px;">
+                    <h4 style="font-size: 0.88rem; font-weight: 700; color: #1e293b; margin: 0 0 10px; display: flex; align-items: center; gap: 6px;">
+                        <span>🗣️</span> 2. Statements, Core Dispute &amp; Agenda Topics
+                    </h4>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="minCompStmt" style="font-weight: 600; font-size: 0.84rem; color: #1e293b; margin-bottom: 4px; display: block;">Complainant Statement Summary</label>
+                            <textarea id="minCompStmt" rows="3" maxlength="5000" placeholder="Summary of complainant's claims, grievances, and narration of facts..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 9px; font-size: 0.84rem; font-family: inherit; box-sizing: border-box; line-height: 1.45;" ${readonlyAttr}>${escapeHtml(activeSession.complainant_statement || '')}</textarea>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="minRespStmt" style="font-weight: 600; font-size: 0.84rem; color: #1e293b; margin-bottom: 4px; display: block;">Respondent Statement Summary</label>
+                            <textarea id="minRespStmt" rows="3" maxlength="5000" placeholder="Summary of respondent's explanation, defenses, and counter-statements..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 9px; font-size: 0.84rem; font-family: inherit; box-sizing: border-box; line-height: 1.45;" ${readonlyAttr}>${escapeHtml(activeSession.respondent_statement || '')}</textarea>
+                        </div>
                     </div>
-                    <div class="form-group" style="margin-bottom: 0;">
-                        <label for="inlineRespStmt" style="font-weight: 600; font-size: 0.84rem; color: #1e293b; margin-bottom: 4px; display: block;">Respondent Statement Summary</label>
-                        <textarea id="inlineRespStmt" rows="3" maxlength="5000" placeholder="Summary of respondent's explanation or counter-statement..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 9px; font-size: 0.84rem; font-family: inherit; box-sizing: border-box; line-height: 1.45;" ${readonlyAttr}>${escapeHtml(activeSession.respondent_statement || '')}</textarea>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="minDisputeSummary" style="font-weight: 600; font-size: 0.84rem; color: #1e293b; margin-bottom: 4px; display: block;">Main Dispute Identified</label>
+                            <input type="text" id="minDisputeSummary" maxlength="1000" placeholder="Core conflict (e.g., boundary encroachment, unpaid debt, noise disturbance)..." value="${escapeHtml(activeSession.main_dispute_identified || '')}" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 9px 12px; font-size: 0.84rem; box-sizing: border-box;" ${readonlyAttr}>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="minAgenda" style="font-weight: 600; font-size: 0.84rem; color: #1e293b; margin-bottom: 4px; display: block;">Agenda Topics / Matters Discussed</label>
+                            <input type="text" id="minAgenda" maxlength="3000" placeholder="Key agenda items, procedural questions, or topics addressed..." value="${escapeHtml(activeSession.agenda_topics || '')}" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 9px 12px; font-size: 0.84rem; box-sizing: border-box;" ${readonlyAttr}>
+                        </div>
                     </div>
                 </div>
 
-                <div class="form-group" style="margin-bottom: 16px;">
-                    <label for="inlineDisputeSummary" style="font-weight: 600; font-size: 0.84rem; color: #1e293b; margin-bottom: 4px; display: block;">Main Dispute Identified</label>
-                    <input type="text" id="inlineDisputeSummary" maxlength="1000" placeholder="Core issue (e.g., boundary encroachment, unpaid loan balance, noise disturbance)" value="${escapeHtml(activeSession.main_dispute_identified || '')}" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 9px 12px; font-size: 0.84rem; box-sizing: border-box;" ${readonlyAttr}>
-                </div>
-
-                <!-- Section 3: Proposals & Caucus (Signature Light Blue Box) -->
+                <!-- Section 3: Proposals, Caucus & Agreements -->
                 <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 16px 18px; margin-bottom: 16px;">
                     <h4 style="font-size: 0.9rem; font-weight: 700; color: #0369a1; margin: 0 0 12px; display: flex; align-items: center; gap: 6px;">
-                        <span>🛡️</span> Negotiation, Proposals &amp; Caucus
+                        <span>🛡️</span> 3. Negotiation, Proposals, Caucus &amp; Agreements
                     </h4>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 10px;">
                         <div class="form-group" style="margin-bottom: 0;">
-                            <label for="inlineNewProposal" style="font-weight: 600; font-size: 0.82rem; color: #0c4a6e; margin-bottom: 4px; display: block;">Settlement Proposal / Offer</label>
-                            <textarea id="inlineNewProposal" rows="2" maxlength="3000" placeholder="Terms proposed by offering party..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.84rem; font-family: inherit; box-sizing: border-box; line-height: 1.4;" ${readonlyAttr}>${escapeHtml(activeSession.new_proposal || '')}</textarea>
+                            <label for="minNewProposal" style="font-weight: 600; font-size: 0.82rem; color: #0c4a6e; margin-bottom: 4px; display: block;">Settlement Proposal / Offer</label>
+                            <textarea id="minNewProposal" rows="2" maxlength="3000" placeholder="Specific terms proposed by offering party (restitution, apology, timeline)..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.84rem; font-family: inherit; box-sizing: border-box; line-height: 1.4;" ${readonlyAttr}>${escapeHtml(activeSession.new_proposal || '')}</textarea>
                         </div>
                         <div class="form-group" style="margin-bottom: 0;">
-                            <label for="inlineCounterOffer" style="font-weight: 600; font-size: 0.82rem; color: #0c4a6e; margin-bottom: 4px; display: block;">Counteroffer / Response</label>
-                            <textarea id="inlineCounterOffer" rows="2" maxlength="3000" placeholder="Counter-proposal or adjustments..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.84rem; font-family: inherit; box-sizing: border-box; line-height: 1.4;" ${readonlyAttr}>${escapeHtml(activeSession.counteroffer || '')}</textarea>
+                            <label for="minCounterOffer" style="font-weight: 600; font-size: 0.82rem; color: #0c4a6e; margin-bottom: 4px; display: block;">Counteroffer / Response</label>
+                            <textarea id="minCounterOffer" rows="2" maxlength="3000" placeholder="Counter-proposal, condition adjustments, or alternative terms offered..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.84rem; font-family: inherit; box-sizing: border-box; line-height: 1.4;" ${readonlyAttr}>${escapeHtml(activeSession.counteroffer || '')}</textarea>
                         </div>
                     </div>
                     <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.85rem; margin-top: 4px; color: #0369a1; font-weight: 500;">
-                        <input type="checkbox" id="inlineCaucus" ${activeSession.caucus_conducted ? 'checked' : ''} ${readonlyAttr} onchange="document.getElementById('inlineCaucusNotesWrap').style.display = this.checked ? 'block' : 'none';" style="width: 16px; height: 16px;">
+                        <input type="checkbox" id="minCaucus" ${activeSession.caucus_conducted ? 'checked' : ''} ${readonlyAttr} onchange="document.getElementById('minCaucusNotesWrap').style.display = this.checked ? 'block' : 'none';" style="width: 16px; height: 16px;">
                         <span>Private Caucus Conducted (separate meeting held with one party)</span>
                     </label>
-                    <div id="inlineCaucusNotesWrap" style="${activeSession.caucus_conducted ? '' : 'display: none;'} margin-top: 10px;">
-                        <label for="inlineCaucusNotes" style="font-size: 0.78rem; font-weight: 600; color: #0369a1; display: block; margin-bottom: 3px;">CONFIDENTIAL CAUCUS NOTES</label>
-                        <textarea id="inlineCaucusNotes" rows="2" placeholder="Confidential mediator insights, party reservations, or caucus concessions..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.84rem; font-family: inherit; box-sizing: border-box;" ${readonlyAttr}>${escapeHtml(activeSession.caucus_notes || '')}</textarea>
+                    <div id="minCaucusNotesWrap" style="${activeSession.caucus_conducted ? '' : 'display: none;'} margin-top: 10px;">
+                        <label for="minCaucusNotes" style="font-size: 0.78rem; font-weight: 600; color: #0369a1; display: block; margin-bottom: 3px;">CONFIDENTIAL CAUCUS NOTES</label>
+                        <textarea id="minCaucusNotes" rows="2" placeholder="Confidential mediator insights, party reservations, or caucus concessions..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.84rem; font-family: inherit; box-sizing: border-box;" ${readonlyAttr}>${escapeHtml(activeSession.caucus_notes || '')}</textarea>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 12px;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="minAgreements" style="font-weight: 600; font-size: 0.82rem; color: #0c4a6e; margin-bottom: 4px; display: block;">Agreements Reached / Action Items</label>
+                            <textarea id="minAgreements" rows="2" maxlength="3000" placeholder="Stipulations agreed upon, payment milestones, or commitments..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.84rem; font-family: inherit; box-sizing: border-box;" ${readonlyAttr}>${escapeHtml(activeSession.agreements_action_items || '')}</textarea>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="minUnresolved" style="font-weight: 600; font-size: 0.82rem; color: #0c4a6e; margin-bottom: 4px; display: block;">Issues Remaining Unresolved</label>
+                            <textarea id="minUnresolved" rows="2" maxlength="3000" placeholder="Unresolved contentious points or items deferred to next hearing..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.84rem; font-family: inherit; box-sizing: border-box;" ${readonlyAttr}>${escapeHtml(activeSession.unresolved_issues || '')}</textarea>
+                        </div>
                     </div>
                 </div>
 
                 <!-- Section 4: Session Outcome and Timing -->
                 <div style="display: grid; grid-template-columns: 1.2fr 1fr 1.2fr; gap: 14px; margin-bottom: 16px;">
                     <div class="form-group" style="margin-bottom: 0;">
-                        <label for="inlineOutcome" style="font-weight: 600; font-size: 0.84rem; color: #1e293b; margin-bottom: 4px; display: block;">Session Outcome <span class="required-mark" style="color: #dc2626;">*</span></label>
-                        <select id="inlineOutcome" ${readonlyAttr} required style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 9px; font-size: 0.84rem; box-sizing: border-box; background: #fff;">
+                        <label for="minOutcome" style="font-weight: 600; font-size: 0.84rem; color: #1e293b; margin-bottom: 4px; display: block;">Session Outcome <span class="required-mark" style="color: #dc2626;">*</span></label>
+                        <select id="minOutcome" ${readonlyAttr} required style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 9px; font-size: 0.84rem; box-sizing: border-box; background: #fff;">
                             ${outcomeOptions}
                         </select>
                     </div>
                     <div class="form-group" style="margin-bottom: 0;">
-                        <label for="inlineActualEndTime" style="font-weight: 600; font-size: 0.84rem; color: #1e293b; margin-bottom: 4px; display: block;">Actual Session End Time</label>
-                        <input type="datetime-local" id="inlineActualEndTime" value="${activeSession.actual_end_time ? activeSession.actual_end_time.replace(' ', 'T').substring(0, 16) : ''}" ${readonlyAttr} style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.84rem; box-sizing: border-box;">
+                        <label for="minActualEndTime" style="font-weight: 600; font-size: 0.84rem; color: #1e293b; margin-bottom: 4px; display: block;">Actual Session End Time</label>
+                        <input type="datetime-local" id="minActualEndTime" value="${activeSession.actual_end_time ? activeSession.actual_end_time.replace(' ', 'T').substring(0, 16) : ''}" ${readonlyAttr} style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.84rem; box-sizing: border-box;">
                     </div>
                     <div class="form-group" style="margin-bottom: 0;">
-                        <label for="inlineDurationNotes" style="font-weight: 600; font-size: 0.84rem; color: #1e293b; margin-bottom: 4px; display: block;">Duration Notes / Remarks</label>
-                        <input type="text" id="inlineDurationNotes" maxlength="1000" placeholder="Notes if session ran over standard duration" value="${escapeHtml(activeSession.outcome_remarks || '')}" ${readonlyAttr} style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 9px 12px; font-size: 0.84rem; box-sizing: border-box;">
+                        <label for="minOutcomeRemarks" style="font-weight: 600; font-size: 0.84rem; color: #1e293b; margin-bottom: 4px; display: block;">Duration Notes / Remarks</label>
+                        <input type="text" id="minOutcomeRemarks" maxlength="1000" placeholder="Notes if session ran over standard duration or next steps..." value="${escapeHtml(activeSession.outcome_remarks || '')}" ${readonlyAttr} style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 9px 12px; font-size: 0.84rem; box-sizing: border-box;">
                     </div>
                 </div>
 
                 <!-- Section 5: Formal Session Minutes / Minutes Record -->
                 <div class="form-group" style="margin-bottom: 18px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 8px;">
-                        <label for="inlineSessionMinutes" style="margin: 0; font-weight: 600; font-size: 0.85rem; color: #1e293b;">Formal Session Minutes / Minutes Record</label>
+                        <label for="session_minutes" style="margin: 0; font-weight: 600; font-size: 0.85rem; color: #1e293b;">5. Formal Session Minutes / Proceedings Record</label>
                         ${!isFinalized ? `
                             <div style="display: flex; gap: 6px;">
-                                <button type="button" class="btn-secondary" id="btnVoiceRecordInline" onclick="toggleStageVoiceRecording('inline')" style="font-size: 0.78rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
-                                    <span id="voiceRecordIconInline">🎙️</span> <span id="voiceRecordLabelInline">Record Voice (STT)</span>
+                                <button type="button" class="btn-secondary" id="btnStageRecordVoice" onclick="toggleStageVoiceRecording()" style="font-size: 0.78rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
+                                    <span id="stageRecordVoiceText">🎙️ Record Voice (STT)</span>
                                 </button>
-                                <button type="button" class="btn-secondary" id="btnUploadNotesInline" onclick="triggerStageNotesUpload('inline')" style="font-size: 0.78rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
-                                    📷 Upload Notes (OCR)
+                                <button type="button" class="btn-secondary" id="btnStageUploadNotes" onclick="triggerStageNotesUpload()" style="font-size: 0.78rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
+                                    📄 Upload Notes (OCR)
                                 </button>
-                                <input type="file" id="inlineNotesFileInput" accept="image/*" style="display: none;" onchange="handleStageNotesFileSelected(this, 'inline')">
+                                <input type="file" id="stageNotesFileInput" accept="image/*" style="display: none;" onchange="handleStageNotesFileSelected(this)">
                             </div>
                         ` : ''}
                     </div>
                     <!-- AI Status Banner -->
-                    <div id="inlineAiStatusBanner" style="display: none; padding: 8px 12px; margin-bottom: 8px; border-radius: 6px; font-size: 0.82rem; background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af;"></div>
-                    <textarea id="inlineSessionMinutes" rows="5" placeholder="Full recorded proceedings, commitments, points of agreement, or AI-transcribed notes..." ${readonlyAttr} style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; font-size: 0.86rem; font-family: inherit; line-height: 1.5; box-sizing: border-box;">${escapeHtml(activeSession.settlement_discussion_notes || '')}</textarea>
+                    <div id="stageAiStatusBanner" style="display: none; padding: 8px 12px; margin-bottom: 8px; border-radius: 6px; font-size: 0.82rem; background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af;"></div>
+                    <textarea id="session_minutes" rows="6" placeholder="Full recorded proceedings, commitments, points of agreement, or AI-transcribed notes..." ${readonlyAttr} style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; font-size: 0.86rem; font-family: inherit; line-height: 1.5; box-sizing: border-box;">${escapeHtml(activeSession.settlement_discussion_notes || '')}</textarea>
                 </div>
 
                 <!-- Actions Footer -->
@@ -819,13 +840,13 @@ function renderMinutesSection(data, stage) {
                     <div style="display: flex; gap: 8px;">
                         ${!isFinalized ? `
                             <button type="button" class="btn-secondary" onclick="selectInlineMinutesSession(${activeSession.hearing_id})" style="font-size: 0.84rem; padding: 7px 14px;">
-                                Cancel / Reset
+                                Reset
                             </button>
-                            <button type="button" class="btn-create" id="btnSaveInlineDraft" onclick="saveInlineMinutes('Draft')" style="font-size: 0.84rem; padding: 7px 18px; background: #0f172a; color: #fff;">
-                                Save Hearing Minutes
+                            <button type="button" class="btn-create" id="btnSaveMinutesDraft" onclick="saveHearingMinutes('Draft')" style="font-size: 0.84rem; padding: 7px 18px; background: #0f172a; color: #fff;">
+                                💾 Save Minutes Draft
                             </button>
-                            <button type="button" class="btn-create" id="btnSaveInlineFinalize" onclick="saveInlineMinutes('Finalized')" style="font-size: 0.84rem; padding: 7px 18px; background: #16a34a; color: #fff;">
-                                ✓ Finalize &amp; Lock
+                            <button type="button" class="btn-create" id="btnSaveMinutesFinalize" onclick="saveHearingMinutes('Finalized')" style="font-size: 0.84rem; padding: 7px 18px; background: #16a34a; color: #fff;">
+                                🔒 Finalize &amp; Lock
                             </button>
                         ` : `
                             <span style="font-size: 0.84rem; color: #15803d; font-weight: 700; display: inline-flex; align-items: center; gap: 5px; padding: 6px 14px; background: #f0fdf4; border-radius: 6px; border: 1px solid #bbf7d0;">
@@ -842,7 +863,7 @@ function renderMinutesSection(data, stage) {
 }
 
 /**
- * Switch Active Inline Minutes Session
+ * Switch Active Minutes Session
  */
 function selectInlineMinutesSession(hearingId) {
     stageWorkspaceState.activeSessionHearingId = Number(hearingId);
@@ -854,12 +875,14 @@ function selectInlineMinutesSession(hearingId) {
     }
 }
 window.selectInlineMinutesSession = selectInlineMinutesSession;
+window.openMinutesModal = selectInlineMinutesSession;
+window.closeMinutesModal = function() {};
 
 /**
- * Save Inline Minutes (Draft or Finalized)
+ * Unified Save Hearing Minutes (Draft or Finalized)
  */
-async function saveInlineMinutes(status = 'Draft') {
-    const hearingId = document.getElementById('inlineHearingId')?.value || stageWorkspaceState.activeSessionHearingId;
+async function saveHearingMinutes(status = 'Draft') {
+    const hearingId = document.getElementById('minHearingId')?.value || stageWorkspaceState.activeSessionHearingId;
     if (!hearingId) {
         alert('No hearing session selected.');
         return;
@@ -871,10 +894,10 @@ async function saveInlineMinutes(status = 'Draft') {
         return;
     }
 
-    const outcomeVal = document.getElementById('inlineOutcome')?.value;
+    const outcomeVal = document.getElementById('minOutcome')?.value;
     if (!outcomeVal) {
         alert('Please select a session outcome.');
-        document.getElementById('inlineOutcome')?.focus();
+        document.getElementById('minOutcome')?.focus();
         return;
     }
 
@@ -886,8 +909,10 @@ async function saveInlineMinutes(status = 'Draft') {
         if (!confirmLock) return;
     }
 
-    const btn = (status === 'Finalized') ? document.getElementById('btnSaveInlineFinalize') : document.getElementById('btnSaveInlineDraft');
-    if (btn) btn.disabled = true;
+    const draftBtn = document.getElementById('btnSaveMinutesDraft');
+    const finalizeBtn = document.getElementById('btnSaveMinutesFinalize');
+    if (draftBtn) draftBtn.disabled = true;
+    if (finalizeBtn) finalizeBtn.disabled = true;
 
     let sessionType = '1st Mediation';
     if (stageWorkspaceState.mode === 'Mediation') {
@@ -901,20 +926,24 @@ async function saveInlineMinutes(status = 'Draft') {
     const payload = {
         hearing_id: Number(hearingId),
         session_type: sessionType,
-        opening_conducted: document.getElementById('inlineOpening')?.checked ? 1 : 0,
-        identity_verified: document.getElementById('inlineIdentity')?.checked ? 1 : 0,
-        complaint_reviewed: document.getElementById('inlineReviewed')?.checked ? 1 : 0,
-        complainant_statement: document.getElementById('inlineCompStmt')?.value || '',
-        respondent_statement: document.getElementById('inlineRespStmt')?.value || '',
-        main_dispute_identified: document.getElementById('inlineDisputeSummary')?.value || '',
-        new_proposal: document.getElementById('inlineNewProposal')?.value || '',
-        counteroffer: document.getElementById('inlineCounterOffer')?.value || '',
-        caucus_conducted: document.getElementById('inlineCaucus')?.checked ? 1 : 0,
-        caucus_notes: document.getElementById('inlineCaucusNotes')?.value || '',
+        opening_conducted: document.getElementById('minOpening')?.checked ? 1 : 0,
+        identity_verified: document.getElementById('minIdentity')?.checked ? 1 : 0,
+        complaint_reviewed: document.getElementById('minReviewed')?.checked ? 1 : 0,
+        complainant_statement: document.getElementById('minCompStmt')?.value || '',
+        respondent_statement: document.getElementById('minRespStmt')?.value || '',
+        main_dispute_identified: document.getElementById('minDisputeSummary')?.value || '',
+        agenda_topics: document.getElementById('minAgenda')?.value || '',
+        new_proposal: document.getElementById('minNewProposal')?.value || '',
+        counteroffer: document.getElementById('minCounterOffer')?.value || '',
+        caucus_conducted: document.getElementById('minCaucus')?.checked ? 1 : 0,
+        caucus_notes: document.getElementById('minCaucusNotes')?.value || '',
+        agreements_action_items: document.getElementById('minAgreements')?.value || '',
+        unresolved_issues: document.getElementById('minUnresolved')?.value || '',
         session_outcome: outcomeVal,
-        actual_end_time: document.getElementById('inlineActualEndTime')?.value || null,
-        outcome_remarks: document.getElementById('inlineDurationNotes')?.value || '',
-        session_minutes: document.getElementById('inlineSessionMinutes')?.value || '',
+        actual_end_time: document.getElementById('minActualEndTime')?.value || null,
+        outcome_remarks: document.getElementById('minOutcomeRemarks')?.value || '',
+        settlement_discussion_notes: document.getElementById('session_minutes')?.value || '',
+        session_minutes: document.getElementById('session_minutes')?.value || '',
         status: status
     };
 
@@ -932,13 +961,16 @@ async function saveInlineMinutes(status = 'Draft') {
             alert(json.message || 'Unable to save session minutes.');
         }
     } catch (err) {
-        console.error('saveInlineMinutes error:', err);
+        console.error('saveHearingMinutes error:', err);
         alert('A network error occurred while saving minutes.');
     } finally {
-        if (btn) btn.disabled = false;
+        if (draftBtn) draftBtn.disabled = false;
+        if (finalizeBtn) finalizeBtn.disabled = false;
     }
 }
-window.saveInlineMinutes = saveInlineMinutes;
+window.saveHearingMinutes = saveHearingMinutes;
+window.saveInlineMinutes = saveHearingMinutes;
+window.saveMinutes = saveHearingMinutes;
 
 /**
  * Render Outcome & Progression Section
@@ -1299,310 +1331,6 @@ async function submitAttendance(e) {
 
 /**
  * -----------------------------------------------------------------------------
- * MODAL: Minutes of the Meeting (Draft / Finalize / Print)
- * -----------------------------------------------------------------------------
- */
-async function openMinutesModal(hearingId) {
-    const modal = document.getElementById('wsMinutesModal');
-    if (!modal) return;
-    stageWorkspaceState.currentHearingId = hearingId;
-
-    const session = stageWorkspaceState.sessions.find(s => Number(s.hearing_id) === Number(hearingId));
-    const titleEl = document.getElementById('wsMinModalTitle');
-    if (titleEl) {
-        titleEl.textContent = `Minutes of Meeting: ${session ? session.session_number : `Hearing #${hearingId}`}`;
-    }
-
-    const formEl = document.getElementById('wsMinutesForm');
-    if (!formEl) return;
-    formEl.innerHTML = '<div style="text-align: center; padding: 20px;">Loading meeting minutes...</div>';
-    modal.style.display = 'flex';
-
-    try {
-        const res = await fetch(getStageApiUrl(`hearings/minutes.php?hearing_id=${encodeURIComponent(hearingId)}`));
-        const json = await res.json();
-        const minData = (json.success && json.data) ? json.data : null;
-        stageWorkspaceState.currentMinutesRecord = minData;
-        renderMinutesModalForm(minData, session);
-    } catch (err) {
-        console.error('openMinutesModal error:', err);
-        formEl.innerHTML = '<div class="alert alert-danger">Error loading session minutes.</div>';
-    }
-}
-
-function closeMinutesModal() {
-    const modal = document.getElementById('wsMinutesModal');
-    if (modal) modal.style.display = 'none';
-}
-
-function renderMinutesModalForm(min, session) {
-    const formEl = document.getElementById('wsMinutesForm');
-    if (!formEl) return;
-
-    const mode = stageWorkspaceState.mode;
-    const isFinalized = min && min.status === 'Finalized';
-    const readonlyAttr = isFinalized ? 'readonly disabled' : '';
-
-    // Stage-adapted outcome options
-    let outcomeOptions = '';
-    const currentOutcome = min?.session_outcome || '';
-
-    if (mode === 'Mediation') {
-        const opts = [
-            { val: 'Continue Mediation', label: 'Continue Mediation / Schedule Next Session' },
-            { val: 'Settled', label: 'Settled — Parties Reached Amicable Settlement' },
-            { val: 'Elevate to Pangkat', label: 'Elevate to Pangkat ng Tagapagkasundo (KP Form 10)' },
-            { val: 'Failed', label: 'Failed — Mediation Unsuccessful / Impasse' },
-            { val: 'Party Absent', label: 'Party Absent / Issue Show Cause Notice' },
-            { val: 'Rescheduled', label: 'Rescheduled — Session Reset Upon Request' }
-        ];
-        outcomeOptions = opts.map(o => `<option value="${o.val}" ${currentOutcome === o.val ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('');
-    } else if (mode === 'Conciliation') {
-        const opts = [
-            { val: 'Continue Conciliation', label: 'Continue Conciliation / Schedule Next Session' },
-            { val: 'Settled', label: 'Settled — Parties Reached Amicable Settlement' },
-            { val: 'Pending CFA', label: 'Conciliation Failed — Ready for CFA (KP Form 20)' },
-            { val: 'Failed', label: 'Failed — Conciliation Unsuccessful / Impasse' },
-            { val: 'Party Absent', label: 'Party Absent / Non-appearance Recorded' },
-            { val: 'Rescheduled', label: 'Rescheduled — Session Reset' }
-        ];
-        outcomeOptions = opts.map(o => `<option value="${o.val}" ${currentOutcome === o.val ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('');
-    } else if (mode === 'Arbitration') {
-        const opts = [
-            { val: 'Continue Arbitration', label: 'Continue Arbitration Hearing' },
-            { val: 'Arbitration Award', label: 'Render Arbitration Award (KP Form 15)' },
-            { val: 'Settled', label: 'Settled — Parties Reached Settlement During Hearing' },
-            { val: 'Failed', label: 'Dismissed / Repudiated Arbitration Agreement' },
-            { val: 'Party Absent', label: 'Party Absent' },
-            { val: 'Rescheduled', label: 'Rescheduled' }
-        ];
-        outcomeOptions = opts.map(o => `<option value="${o.val}" ${currentOutcome === o.val ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('');
-    }
-
-    formEl.innerHTML = `
-        <!-- Lock & Status Banner -->
-        <div style="margin-bottom: 14px; padding: 12px 14px; background: ${isFinalized ? '#f0fdf4' : '#eff6ff'}; border: 1px solid ${isFinalized ? '#bbf7d0' : '#bfdbfe'}; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-            <div>
-                <span style="font-size: 0.76rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: ${isFinalized ? '#15803d' : '#1d4ed8'};">
-                    RECORD STATUS:
-                </span>
-                <strong style="font-size: 0.92rem; color: ${isFinalized ? '#15803d' : '#1d4ed8'}; margin-left: 6px;">
-                    ${isFinalized ? '✓ FINALIZED &amp; LOCKED' : '📝 WORKING DRAFT'}
-                </strong>
-                ${min && min.finalized_at ? `
-                    <span style="font-size: 0.78rem; color: #475569; margin-left: 10px;">
-                        Finalized on ${formatDateTimeReadable(min.finalized_at)} by ${escapeHtml(min.finalized_by_name || 'Admin')}
-                    </span>
-                ` : '<span style="font-size: 0.78rem; color: #64748b; margin-left: 10px;">Editable draft. Lock when verified.</span>'}
-            </div>
-            <div style="display: flex; gap: 6px;">
-                <button type="button" class="btn-secondary" onclick="openPreviewMinutesModal(${stageWorkspaceState.currentHearingId})" style="font-size: 0.78rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
-                    🔍 Preview Minutes
-                </button>
-                ${isFinalized ? `
-                    <button type="button" class="btn-secondary" onclick="printHearingMinutes(${stageWorkspaceState.currentHearingId})" style="font-size: 0.78rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
-                        🖨️ Print Minutes
-                    </button>
-                ` : ''}
-            </div>
-        </div>
-
-        <!-- Session Meta Summary Row -->
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; font-size: 0.82rem;">
-            <div>
-                <span style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase;">PRESIDING OFFICER</span>
-                <div style="color: #0f172a; font-weight: 600; margin-top: 2px;">${escapeHtml(session?.presider_name || 'Punong Barangay')}</div>
-            </div>
-            <div>
-                <span style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase;">SESSION SCHEDULE</span>
-                <div style="color: #0f172a; font-weight: 600; margin-top: 2px;">${formatDateTimeReadable(session?.hearing_date)}</div>
-            </div>
-            <div>
-                <span style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase;">VENUE</span>
-                <div style="color: #0f172a; font-weight: 600; margin-top: 2px;">${escapeHtml(session?.venue || 'Barangay Hall')}</div>
-            </div>
-            <div>
-                <span style="color: #64748b; font-size: 0.72rem; font-weight: 700; text-transform: uppercase;">ATTENDANCE</span>
-                <div style="color: #0f172a; font-weight: 600; margin-top: 2px;">C: ${escapeHtml(session?.complainant_attendance || 'Pending')} · R: ${escapeHtml(session?.respondent_attendance || 'Pending')}</div>
-            </div>
-        </div>
-
-        <!-- ================= PANEL 1: Session Opening & Identity Verification ================= -->
-        <div class="minutes-panel-card" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 14px;">
-            <div style="font-weight: 700; font-size: 0.88rem; color: #0f172a; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-                <span>1.</span> Session Opening &amp; Identity Verification
-            </div>
-            <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.82rem;">
-                <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
-                    <input type="checkbox" id="minOpening" ${min && min.opening_conducted ? 'checked' : ''} ${readonlyAttr}>
-                    <span>Opening Statement Conducted</span>
-                </label>
-                <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
-                    <input type="checkbox" id="minIdentity" ${min && min.identity_verified ? 'checked' : ''} ${readonlyAttr}>
-                    <span>Parties Identity Verified</span>
-                </label>
-                <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
-                    <input type="checkbox" id="minReviewed" ${min && min.complaint_reviewed ? 'checked' : ''} ${readonlyAttr}>
-                    <span>Complaint Reviewed &amp; Read</span>
-                </label>
-            </div>
-        </div>
-
-        <!-- ================= PANEL 2: Statements & Dispute Information ================= -->
-        <div class="minutes-panel-card" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 14px;">
-            <div style="font-weight: 700; font-size: 0.88rem; color: #0f172a; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
-                <span>2.</span> Statements and Dispute Information
-            </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 10px;">
-                <div class="form-group" style="margin: 0;">
-                    <label for="minCompStmt" style="font-size: 0.8rem; font-weight: 600;">Complainant Statement Summary</label>
-                    <textarea id="minCompStmt" rows="3" placeholder="Summary of complainant's claims, grievances, and statements..." ${readonlyAttr}>${escapeHtml(min?.complainant_statement || '')}</textarea>
-                </div>
-                <div class="form-group" style="margin: 0;">
-                    <label for="minRespStmt" style="font-size: 0.8rem; font-weight: 600;">Respondent Statement Summary</label>
-                    <textarea id="minRespStmt" rows="3" placeholder="Summary of respondent's explanation, defenses, and counter-statements..." ${readonlyAttr}>${escapeHtml(min?.respondent_statement || '')}</textarea>
-                </div>
-            </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                <div class="form-group" style="margin: 0;">
-                    <label for="minDisputeSummary" style="font-size: 0.8rem; font-weight: 600;">Main Dispute Identified</label>
-                    <textarea id="minDisputeSummary" rows="2" placeholder="Core conflict, disputed property, boundaries, monetary obligations, or relational issues..." ${readonlyAttr}>${escapeHtml(min?.main_dispute_identified || '')}</textarea>
-                </div>
-                <div class="form-group" style="margin: 0;">
-                    <label for="minAgenda" style="font-size: 0.8rem; font-weight: 600;">Agenda Topics / Matters Discussed</label>
-                    <textarea id="minAgenda" rows="2" placeholder="Key agenda items, questions addressed, or procedural topics..." ${readonlyAttr}>${escapeHtml(min?.agenda_topics || '')}</textarea>
-                </div>
-            </div>
-        </div>
-
-        <!-- ================= PANEL 3: Negotiation, Proposals & Caucus ================= -->
-        <div class="minutes-panel-card" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 14px;">
-            <div style="font-weight: 700; font-size: 0.88rem; color: #0f172a; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
-                <span>3.</span> Negotiation, Proposals &amp; Caucus (Settlement Progress)
-            </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 10px;">
-                <div class="form-group" style="margin: 0;">
-                    <label for="minNewProposal" style="font-size: 0.8rem; font-weight: 600;">Settlement Proposal / Offer</label>
-                    <textarea id="minNewProposal" rows="3" placeholder="Specific proposal, restitution amount, installment plan, apology, or terms offered..." ${readonlyAttr}>${escapeHtml(min?.new_proposal || '')}</textarea>
-                </div>
-                <div class="form-group" style="margin: 0;">
-                    <label for="minCounterOffer" style="font-size: 0.8rem; font-weight: 600;">Counteroffer / Response</label>
-                    <textarea id="minCounterOffer" rows="3" placeholder="Party response, counterproposal, condition adjustments, or alternative terms..." ${readonlyAttr}>${escapeHtml(min?.counteroffer || '')}</textarea>
-                </div>
-            </div>
-
-            <!-- Caucus Checkbox & Notes -->
-            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; margin-bottom: 10px;">
-                <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.82rem; font-weight: 600; color: #334155; margin-bottom: 6px;">
-                    <input type="checkbox" id="minCaucus" ${min && min.caucus_conducted ? 'checked' : ''} ${readonlyAttr} onchange="toggleCaucusNotesVisibility(this)">
-                    <span>Private Caucus Conducted (Separate meeting held with party)</span>
-                </label>
-                <div id="minCaucusNotesWrap" style="${(min && min.caucus_conducted) ? '' : 'display: none;'} margin-top: 6px;">
-                    <label for="minCaucusNotes" style="font-size: 0.76rem; font-weight: 600; color: #64748b; display: block; margin-bottom: 3px;">CAUCUS NOTES &amp; CONFIDENTIAL OBSERVATIONS</label>
-                    <textarea id="minCaucusNotes" rows="2" placeholder="Confidential mediator insights, party reservations, or caucus outcomes..." ${readonlyAttr}>${escapeHtml(min?.caucus_notes || '')}</textarea>
-                </div>
-            </div>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                <div class="form-group" style="margin: 0;">
-                    <label for="minAgreements" style="font-size: 0.8rem; font-weight: 600;">Agreements / Action Items / Settlement Terms</label>
-                    <textarea id="minAgreements" rows="2" placeholder="Agreed stipulations, payment schedule, survey dates, or party obligations..." ${readonlyAttr}>${escapeHtml(min?.agreements_action_items || '')}</textarea>
-                </div>
-                <div class="form-group" style="margin: 0;">
-                    <label for="minUnresolved" style="font-size: 0.8rem; font-weight: 600;">Issues Remaining Unresolved</label>
-                    <textarea id="minUnresolved" rows="2" placeholder="Unresolved contentious points or issues left for subsequent hearing..." ${readonlyAttr}>${escapeHtml(min?.unresolved_issues || '')}</textarea>
-                </div>
-            </div>
-        </div>
-
-        <!-- ================= PANEL 4: Session Outcome and Timing ================= -->
-        <div class="minutes-panel-card" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 14px;">
-            <div style="font-weight: 700; font-size: 0.88rem; color: #0f172a; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
-                <span>4.</span> Session Outcome and Timing
-            </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 10px;">
-                <div class="form-group" style="margin: 0;">
-                    <label for="minOutcome" style="font-size: 0.8rem; font-weight: 600;">Session Outcome <span class="required-mark">*</span></label>
-                    <select id="minOutcome" ${readonlyAttr} required style="padding: 8px; width: 100%;">
-                        ${outcomeOptions}
-                    </select>
-                </div>
-                <div class="form-group" style="margin: 0;">
-                    <label for="minActualEndTime" style="font-size: 0.8rem; font-weight: 600;">Actual Session End Time <span class="optional-label">Optional</span></label>
-                    <input type="datetime-local" id="minActualEndTime" value="${min?.actual_end_time ? min.actual_end_time.replace(' ', 'T').substring(0, 16) : ''}" ${readonlyAttr} style="padding: 8px; width: 100%;">
-                </div>
-            </div>
-            <div class="form-group" style="margin: 0;">
-                <label for="minOutcomeRemarks" style="font-size: 0.8rem; font-weight: 600;">Duration Notes / Remarks / Exceed Reason <span class="optional-label">Optional</span></label>
-                <textarea id="minOutcomeRemarks" rows="2" placeholder="Basis of determination, reason if session exceeded standard duration, or next hearing target..." ${readonlyAttr}>${escapeHtml(min?.outcome_remarks || '')}</textarea>
-            </div>
-        </div>
-
-        <!-- ================= PANEL 5: Formal Session Minutes / Minutes Record ================= -->
-        <div class="minutes-panel-card" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 14px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
-                <div style="font-weight: 700; font-size: 0.88rem; color: #0f172a; display: flex; align-items: center; gap: 6px;">
-                    <span>5.</span> Formal Session Minutes / Proceedings Record
-                </div>
-                ${!isFinalized ? `
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <button type="button" class="btn-secondary" id="btnStageRecordVoice" onclick="toggleStageVoiceRecording()" style="font-size: 0.78rem; padding: 5px 12px; display: inline-flex; align-items: center; gap: 5px;">
-                            <span id="stageRecordVoiceText">🎙️ Record Voice (STT)</span>
-                        </button>
-                        <button type="button" class="btn-secondary" id="btnStageUploadNotes" onclick="triggerStageNotesUpload()" style="font-size: 0.78rem; padding: 5px 12px; display: inline-flex; align-items: center; gap: 5px;">
-                            <span>📄 Upload Notes (OCR)</span>
-                        </button>
-                        <input type="file" id="stageNotesFileInput" accept="image/*" style="display: none;" onchange="handleStageNotesFileSelected(this)">
-                    </div>
-                ` : ''}
-            </div>
-
-            <!-- AI Status Banner -->
-            <div id="stageAiStatusBanner" style="display: none; padding: 8px 12px; margin-bottom: 10px; border-radius: 6px; font-size: 0.82rem; background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af;"></div>
-
-            <div class="form-group" style="margin: 0;">
-                <textarea id="session_minutes" rows="8" placeholder="Detailed chronological transcript or comprehensive minutes of the hearing session..." ${readonlyAttr} style="font-family: inherit; font-size: 0.86rem; line-height: 1.5;">${escapeHtml(min?.settlement_discussion_notes || '')}</textarea>
-                <small style="display: block; margin-top: 4px; color: #64748b;">
-                    Full proceedings record. You can use <strong>Record Voice (STT)</strong> to capture speech or <strong>Upload Notes (OCR)</strong> to convert handwritten notes via Gemini 1.5 Flash.
-                </small>
-            </div>
-        </div>
-
-        <!-- Modal Actions Footer -->
-        <div class="modal-actions" style="margin-top: 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-            <div>
-                <button type="button" class="btn-secondary" onclick="closeMinutesModal()">Close</button>
-                <button type="button" class="btn-secondary" onclick="openPreviewMinutesModal(${stageWorkspaceState.currentHearingId})" style="margin-left: 6px;">
-                    🔍 Preview Minutes
-                </button>
-            </div>
-            <div>
-                ${!isFinalized ? `
-                    <button type="button" class="btn-secondary" onclick="saveMinutes('Draft')" id="btnSaveMinutesDraft" style="margin-right: 6px;">
-                        💾 Save Draft
-                    </button>
-                    <button type="button" class="btn-create" onclick="saveMinutes('Finalized')" id="btnFinalizeMinutes" style="background: #15803d;">
-                        🔒 Finalize &amp; Lock Minutes
-                    </button>
-                ` : `
-                    <button type="button" class="btn-create" onclick="printHearingMinutes(${stageWorkspaceState.currentHearingId})" style="background: #0369a1;">
-                        🖨️ Print Finalized Minutes
-                    </button>
-                `}
-            </div>
-        </div>
-    `;
-}
-
-function toggleCaucusNotesVisibility(checkbox) {
-    const wrap = document.getElementById('minCaucusNotesWrap');
-    if (wrap) {
-        wrap.style.display = checkbox.checked ? 'block' : 'none';
-    }
-}
-
-/**
- * -----------------------------------------------------------------------------
  * GEMINI 1.5 FLASH: SPEECH-TO-TEXT (STT) & IMAGE OCR
  * -----------------------------------------------------------------------------
  */
@@ -1612,14 +1340,17 @@ let isStageVoiceRecording = false;
 let stageRecordingTimerInterval = null;
 let stageRecordingSeconds = 0;
 
-let currentAiTarget = 'inline';
+function toggleCaucusNotesVisibility(checkbox) {
+    const wrap = document.getElementById('minCaucusNotesWrap');
+    if (wrap) {
+        wrap.style.display = checkbox.checked ? 'block' : 'none';
+    }
+}
 
-async function toggleStageVoiceRecording(target = 'inline') {
-    currentAiTarget = target;
-    const isInline = target === 'inline';
-    const btn = isInline ? document.getElementById('btnVoiceRecordInline') : document.getElementById('btnStageRecordVoice');
-    const textSpan = isInline ? document.getElementById('voiceRecordLabelInline') : document.getElementById('stageRecordVoiceText');
-    const statusBanner = isInline ? document.getElementById('inlineAiStatusBanner') : document.getElementById('stageAiStatusBanner');
+async function toggleStageVoiceRecording() {
+    const btn = document.getElementById('btnStageRecordVoice');
+    const textSpan = document.getElementById('stageRecordVoiceText');
+    const statusBanner = document.getElementById('stageAiStatusBanner');
 
     if (!isStageVoiceRecording) {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -1643,7 +1374,7 @@ async function toggleStageVoiceRecording(target = 'inline') {
                 stream.getTracks().forEach(track => track.stop());
                 clearInterval(stageRecordingTimerInterval);
                 const audioBlob = new Blob(stageAudioChunks, { type: 'audio/webm' });
-                await sendStageAudioToGemini(audioBlob, target);
+                await sendStageAudioToGemini(audioBlob);
             };
 
             stageMediaRecorder.start();
@@ -1691,11 +1422,10 @@ async function toggleStageVoiceRecording(target = 'inline') {
     }
 }
 
-async function sendStageAudioToGemini(audioBlob, target = 'inline') {
-    const isInline = target === 'inline';
-    const btn = isInline ? document.getElementById('btnVoiceRecordInline') : document.getElementById('btnStageRecordVoice');
-    const textSpan = isInline ? document.getElementById('voiceRecordLabelInline') : document.getElementById('stageRecordVoiceText');
-    const statusBanner = isInline ? document.getElementById('inlineAiStatusBanner') : document.getElementById('stageAiStatusBanner');
+async function sendStageAudioToGemini(audioBlob) {
+    const btn = document.getElementById('btnStageRecordVoice');
+    const textSpan = document.getElementById('stageRecordVoiceText');
+    const statusBanner = document.getElementById('stageAiStatusBanner');
 
     try {
         const formData = new FormData();
@@ -1708,7 +1438,7 @@ async function sendStageAudioToGemini(audioBlob, target = 'inline') {
 
         const result = await response.json();
         if (result.success && result.text) {
-            appendGeminiTextToMinutes(result.text, '🎙️ Voice Transcription', target);
+            appendGeminiTextToMinutes(result.text, '🎙️ Voice Transcription');
             if (statusBanner) {
                 statusBanner.style.display = 'block';
                 statusBanner.innerHTML = '✅ <strong>Voice transcription appended successfully!</strong>';
@@ -1728,21 +1458,20 @@ async function sendStageAudioToGemini(audioBlob, target = 'inline') {
         }
     } finally {
         if (btn) btn.disabled = false;
-        if (textSpan) textSpan.textContent = isInline ? 'Record Voice (STT)' : '🎙️ Record Voice (STT)';
+        if (textSpan) textSpan.textContent = '🎙️ Record Voice (STT)';
     }
 }
 
-function triggerStageNotesUpload(target = 'inline') {
-    const fileInput = (target === 'inline') ? document.getElementById('inlineNotesFileInput') : document.getElementById('stageNotesFileInput');
+function triggerStageNotesUpload() {
+    const fileInput = document.getElementById('stageNotesFileInput');
     if (fileInput) fileInput.click();
 }
 
-async function handleStageNotesFileSelected(input, target = 'inline') {
+async function handleStageNotesFileSelected(input) {
     if (!input.files || !input.files[0]) return;
     const file = input.files[0];
-    const isInline = target === 'inline';
-    const statusBanner = isInline ? document.getElementById('inlineAiStatusBanner') : document.getElementById('stageAiStatusBanner');
-    const uploadBtn = isInline ? document.getElementById('btnUploadNotesInline') : document.getElementById('btnStageUploadNotes');
+    const statusBanner = document.getElementById('stageAiStatusBanner');
+    const uploadBtn = document.getElementById('btnStageUploadNotes');
 
     if (uploadBtn) uploadBtn.disabled = true;
     if (statusBanner) {
@@ -1761,7 +1490,7 @@ async function handleStageNotesFileSelected(input, target = 'inline') {
 
         const result = await response.json();
         if (result.success && result.text) {
-            appendGeminiTextToMinutes(result.text, '📄 OCR Notes Extract', target);
+            appendGeminiTextToMinutes(result.text, '📄 OCR Notes Extract');
             if (statusBanner) {
                 statusBanner.style.display = 'block';
                 statusBanner.innerHTML = '✅ <strong>Notes extracted and appended successfully!</strong>';
@@ -1785,15 +1514,8 @@ async function handleStageNotesFileSelected(input, target = 'inline') {
     }
 }
 
-function appendGeminiTextToMinutes(newText, sourceLabel, target = null) {
-    let textarea = null;
-    if (target === 'inline') {
-        textarea = document.getElementById('inlineSessionMinutes');
-    } else if (target === 'modal') {
-        textarea = document.getElementById('session_minutes');
-    } else {
-        textarea = document.getElementById('inlineSessionMinutes') || document.getElementById('session_minutes');
-    }
+function appendGeminiTextToMinutes(newText, sourceLabel) {
+    const textarea = document.getElementById('session_minutes');
     if (!textarea) return;
 
     const trimmed = newText.trim();
@@ -1812,70 +1534,35 @@ function appendGeminiTextToMinutes(newText, sourceLabel, target = null) {
 }
 
 /**
- * -----------------------------------------------------------------------------
- * MODAL: Save Session Minutes
- * -----------------------------------------------------------------------------
+ * Retrieves the current minutes data for a hearing (falling back to live form if active)
  */
-async function saveMinutes(status = 'Draft') {
-    const hearingId = stageWorkspaceState.currentHearingId;
-    if (!hearingId) return;
+function getActiveMinutesSnapshot(hearingId) {
+    const session = stageWorkspaceState.sessions.find(s => Number(s.hearing_id) === Number(hearingId)) || {};
+    const isActive = Number(document.getElementById('minHearingId')?.value) === Number(hearingId);
 
-    if (status === 'Finalized') {
-        const conf = confirm('Finalizing minutes will lock this record and prevent silent overwriting. Are you sure you want to finalize and lock the minutes?');
-        if (!conf) return;
+    if (isActive) {
+        return {
+            ...session,
+            opening_conducted: document.getElementById('minOpening')?.checked ? 1 : 0,
+            identity_verified: document.getElementById('minIdentity')?.checked ? 1 : 0,
+            complaint_reviewed: document.getElementById('minReviewed')?.checked ? 1 : 0,
+            complainant_statement: document.getElementById('minCompStmt')?.value || session.complainant_statement || '',
+            respondent_statement: document.getElementById('minRespStmt')?.value || session.respondent_statement || '',
+            main_dispute_identified: document.getElementById('minDisputeSummary')?.value || session.main_dispute_identified || '',
+            agenda_topics: document.getElementById('minAgenda')?.value || session.agenda_topics || '',
+            new_proposal: document.getElementById('minNewProposal')?.value || session.new_proposal || '',
+            counteroffer: document.getElementById('minCounterOffer')?.value || session.counteroffer || '',
+            caucus_conducted: document.getElementById('minCaucus')?.checked ? 1 : 0,
+            caucus_notes: document.getElementById('minCaucusNotes')?.value || session.caucus_notes || '',
+            agreements_action_items: document.getElementById('minAgreements')?.value || session.agreements_action_items || '',
+            unresolved_issues: document.getElementById('minUnresolved')?.value || session.unresolved_issues || '',
+            session_outcome: document.getElementById('minOutcome')?.value || session.session_outcome || 'Pending',
+            actual_end_time: document.getElementById('minActualEndTime')?.value || session.actual_end_time || null,
+            outcome_remarks: document.getElementById('minOutcomeRemarks')?.value || session.outcome_remarks || '',
+            settlement_discussion_notes: document.getElementById('session_minutes')?.value || session.settlement_discussion_notes || ''
+        };
     }
-
-    const session = stageWorkspaceState.sessions.find(s => Number(s.hearing_id) === Number(hearingId));
-    let sessionType = '1st Mediation';
-    if (stageWorkspaceState.mode === 'Mediation') {
-        sessionType = session ? (session.session_index === 1 ? '1st Mediation' : (session.session_index === 2 ? '2nd Mediation' : '3rd Mediation')) : '1st Mediation';
-    } else if (stageWorkspaceState.mode === 'Conciliation') {
-        sessionType = 'Conciliation';
-    } else if (stageWorkspaceState.mode === 'Arbitration') {
-        sessionType = 'Arbitration';
-    }
-
-    const payload = {
-        hearing_id: hearingId,
-        session_type: sessionType,
-        opening_conducted: document.getElementById('minOpening')?.checked ? 1 : 0,
-        identity_verified: document.getElementById('minIdentity')?.checked ? 1 : 0,
-        complaint_reviewed: document.getElementById('minReviewed')?.checked ? 1 : 0,
-        caucus_conducted: document.getElementById('minCaucus')?.checked ? 1 : 0,
-        caucus_notes: document.getElementById('minCaucusNotes')?.value || '',
-        complainant_statement: document.getElementById('minCompStmt')?.value || '',
-        respondent_statement: document.getElementById('minRespStmt')?.value || '',
-        main_dispute_identified: document.getElementById('minDisputeSummary')?.value || '',
-        agenda_topics: document.getElementById('minAgenda')?.value || '',
-        new_proposal: document.getElementById('minNewProposal')?.value || '',
-        counteroffer: document.getElementById('minCounterOffer')?.value || '',
-        settlement_discussion_notes: document.getElementById('session_minutes')?.value || '',
-        agreements_action_items: document.getElementById('minAgreements')?.value || '',
-        unresolved_issues: document.getElementById('minUnresolved')?.value || '',
-        session_outcome: document.getElementById('minOutcome')?.value || 'Pending',
-        actual_end_time: document.getElementById('minActualEndTime')?.value || null,
-        outcome_remarks: document.getElementById('minOutcomeRemarks')?.value || '',
-        status: status
-    };
-
-    try {
-        const res = await fetch(getStageApiUrl('hearings/minutes.php'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-        const json = await res.json();
-        if (json.success) {
-            alert(status === 'Finalized' ? 'Minutes finalized and locked successfully!' : 'Minutes draft saved successfully.');
-            closeMinutesModal();
-            await loadStageData();
-        } else {
-            alert(json.message || 'Unable to save session minutes.');
-        }
-    } catch (err) {
-        console.error('saveMinutes error:', err);
-        alert('Network error saving minutes.');
-    }
+    return session;
 }
 
 /**
@@ -1886,7 +1573,7 @@ async function saveMinutes(status = 'Draft') {
 function openPreviewMinutesModal(hearingId) {
     const session = stageWorkspaceState.sessions.find(s => Number(s.hearing_id) === Number(hearingId));
     const caseData = stageWorkspaceState.stageData?.case || {};
-    const min = stageWorkspaceState.currentMinutesRecord || session || {};
+    const min = getActiveMinutesSnapshot(hearingId);
 
     let previewModal = document.getElementById('wsPreviewMinutesModal');
     if (!previewModal) {
@@ -1978,7 +1665,7 @@ function closePreviewMinutesModal() {
 function printHearingMinutes(hearingId) {
     const session = stageWorkspaceState.sessions.find(s => Number(s.hearing_id) === Number(hearingId));
     const caseData = stageWorkspaceState.stageData?.case || {};
-    const min = stageWorkspaceState.currentMinutesRecord || session || {};
+    const min = getActiveMinutesSnapshot(hearingId);
 
     const printWindow = window.open('', '_blank', 'width=850,height=950');
     printWindow.document.write(`
@@ -2193,6 +1880,7 @@ window.toggleStageVoiceRecording = toggleStageVoiceRecording;
 window.triggerStageNotesUpload = triggerStageNotesUpload;
 window.handleStageNotesFileSelected = handleStageNotesFileSelected;
 window.openPreviewMinutesModal = openPreviewMinutesModal;
+window.closePreviewMinutesModal = closePreviewMinutesModal;
 window.printHearingMinutes = printHearingMinutes;
 window.openScheduleModal = openScheduleModal;
 window.closeScheduleModal = closeScheduleModal;
@@ -2201,6 +1889,8 @@ window.closeAttendanceModal = closeAttendanceModal;
 window.openMinutesModal = openMinutesModal;
 window.closeMinutesModal = closeMinutesModal;
 window.saveMinutes = saveMinutes;
+window.saveHearingMinutes = saveHearingMinutes;
+window.saveInlineMinutes = saveHearingMinutes;
 window.openRecordOutcomeModal = openRecordOutcomeModal;
 window.closeRecordOutcomeModal = closeRecordOutcomeModal;
 window.openReferPangkatModal = openReferPangkatModal;

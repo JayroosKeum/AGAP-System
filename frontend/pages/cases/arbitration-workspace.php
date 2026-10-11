@@ -308,22 +308,7 @@ include '../../layouts/header.php';
 </div>
 
 <!-- ========================================== -->
-<!-- MODAL 3: Hearing Session Minutes & Progress -->
-<!-- ========================================== -->
-<div id="wsMinutesModal" class="modal" style="display: none;">
-    <div class="modal-content" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
-        <div class="modal-header">
-            <h2 id="wsMinModalTitle">Hearing Session Minutes &amp; Settlement Progress</h2>
-            <button type="button" class="close-btn" onclick="closeMinutesModal()">&times;</button>
-        </div>
-        <div id="wsMinutesForm">
-            <div class="empty-detail-state">Loading meeting form...</div>
-        </div>
-    </div>
-</div>
-
-<!-- ========================================== -->
-<!-- MODAL 4: Record Arbitration Outcome       -->
+<!-- MODAL 3: Record Arbitration Outcome       -->
 <!-- ========================================== -->
 <div id="wsRecordOutcomeModal" class="modal" style="display: none;">
     <div class="modal-content" style="max-width: 520px;">

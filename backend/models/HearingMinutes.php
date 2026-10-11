@@ -40,6 +40,7 @@ class HearingMinutes
         $row['dispute_summary'] = $row['main_dispute_identified'] ?? '';
         $row['counter_offer'] = $row['counteroffer'] ?? '';
         $row['session_notes'] = $row['settlement_discussion_notes'] ?? '';
+        $row['session_minutes'] = $row['settlement_discussion_notes'] ?? '';
         $row['duration_exceed_reason'] = $row['outcome_remarks'] ?? '';
 
         return $row;
@@ -101,7 +102,7 @@ class HearingMinutes
         $compStmt = mb_substr(trim(strip_tags((string) ($data['complainant_statement'] ?? $data['complainant_statement_summary'] ?? ''))), 0, 5000);
         $respStmt = mb_substr(trim(strip_tags((string) ($data['respondent_statement'] ?? $data['respondent_statement_summary'] ?? ''))), 0, 5000);
         $dispute = mb_substr(trim(strip_tags((string) ($data['main_dispute_identified'] ?? $data['dispute_summary'] ?? ''))), 0, 1000);
-        $discussion = mb_substr(trim(strip_tags((string) ($data['settlement_discussion_notes'] ?? $data['session_notes'] ?? ''))), 0, 5000);
+        $discussion = mb_substr(trim(strip_tags((string) ($data['settlement_discussion_notes'] ?? $data['session_notes'] ?? $data['session_minutes'] ?? ''))), 0, 5000);
         $caucusNotes = mb_substr(trim(strip_tags((string) ($data['caucus_notes'] ?? ''))), 0, 3000);
         $prevProposal = mb_substr(trim(strip_tags((string) ($data['previous_proposal'] ?? ''))), 0, 3000);
         $newProposal = mb_substr(trim(strip_tags((string) ($data['new_proposal'] ?? ''))), 0, 3000);
@@ -229,15 +230,20 @@ class HearingMinutes
                 $this->logCaseHistory($caseId, 'Arbitration', $histMsg, $userId);
             }
 
+            if ($status === 'Finalized') {
+                $this->logCaseHistory($caseId, $hearing['case_status'] ?? 'Mediation', "Session minutes for hearing #{$hearingId} ({$sessionType}) finalized and locked.", $userId);
+            }
+
             if ($manageTx && $this->conn->inTransaction()) {
                 $this->conn->commit();
             }
 
             return [
                 'success' => true,
-                'message' => 'Hearing session minutes recorded successfully.',
+                'message' => ($status === 'Finalized') ? 'Hearing session minutes finalized and locked successfully.' : 'Hearing session minutes saved successfully.',
                 'hearing_id' => $hearingId,
                 'outcome' => $outcome,
+                'status' => $status,
                 'case_id' => $caseId
             ];
         } catch (Throwable $e) {
