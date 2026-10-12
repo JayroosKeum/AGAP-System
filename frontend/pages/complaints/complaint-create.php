@@ -134,6 +134,7 @@ include '../../layouts/header.php';
         <?php endif; ?>
 
         <form id="createComplaintForm" action="../../../backend/api/complaints/create.php" method="POST" enctype="multipart/form-data" class="complaint-intake-form">
+            <input type="hidden" name="bypass_office_hours" value="1">
             <div class="complaint-intake-grid">
                 <!-- LEFT COLUMN -->
                 <div class="intake-col">

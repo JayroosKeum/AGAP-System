@@ -66,6 +66,25 @@ include '../../layouts/header.php';
             </select>
         </section>
 
+        <!-- Officer's Return & Summon Deliveries Section -->
+        <section id="hearingDeliveriesSection" class="gps-card" hidden aria-labelledby="hearingDeliveriesTitle" style="margin-bottom: 24px;">
+            <div class="section-heading">
+                <div>
+                    <span class="section-kicker">Officer's Return &amp; Hearing Summons</span>
+                    <h2 id="hearingDeliveriesTitle">Hearing Summon Deliveries</h2>
+                    <p>Track independent delivery of summons and notices for Complainant and Respondent.</p>
+                </div>
+            </div>
+
+            <!-- Attendance & Hearing Unlock Status Notice -->
+            <div id="serviceStatusAlert" class="service-status-banner" style="display:none; margin-bottom: 20px;"></div>
+
+            <!-- Delivery Cards Grid -->
+            <div id="hearingDeliveriesContainer" class="hearing-deliveries-grid">
+                <!-- Dynamically populated by gps.js: Complainant card & Respondent card -->
+            </div>
+        </section>
+
         <!-- Cases Needing Summons Delivery Table -->
         <section class="gps-card" id="casesNeedingSummonsSection" style="margin-bottom: 24px;">
             <div class="section-heading" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px;">
@@ -96,25 +115,6 @@ include '../../layouts/header.php';
                         </tr>
                     </tbody>
                 </table>
-            </div>
-        </section>
-
-        <!-- Officer's Return & Summon Deliveries Section -->
-        <section id="hearingDeliveriesSection" class="gps-card" hidden aria-labelledby="hearingDeliveriesTitle">
-            <div class="section-heading">
-                <div>
-                    <span class="section-kicker">Officer's Return &amp; Hearing Summons</span>
-                    <h2 id="hearingDeliveriesTitle">Hearing Summon Deliveries</h2>
-                    <p>Track independent delivery of summons and notices for Complainant and Respondent.</p>
-                </div>
-            </div>
-
-            <!-- Attendance & Hearing Unlock Status Notice -->
-            <div id="serviceStatusAlert" class="service-status-banner" style="display:none; margin-bottom: 20px;"></div>
-
-            <!-- Delivery Cards Grid -->
-            <div id="hearingDeliveriesContainer" class="hearing-deliveries-grid">
-                <!-- Dynamically populated by gps.js: Complainant card & Respondent card -->
             </div>
         </section>
     </div>

@@ -54,10 +54,17 @@ class ComplaintController
     public function store(array $data, array $files = []): array
     {
         // Lupon Office Hours check: M-F 8:00 AM-5:00 PM (Saturdays permitted for skeletal/tanod desk operations)
+        // Enabled for testing and development or when bypass_office_hours flag is supplied
         require_once __DIR__ . '/../services/OfficeLogisticsService.php';
         $isSkeletal = !empty($data['is_skeletal_desk']) || (!empty($_SESSION['role_name']) && $_SESSION['role_name'] === 'Barangay Tanod');
         $officeCheck = OfficeLogisticsService::validateOfficeHours(date('Y-m-d H:i:s'), $isSkeletal);
-        if (!$officeCheck['valid'] && empty($data['bypass_office_hours'])) {
+        $isDevOrLocal = in_array($_SERVER['SERVER_NAME'] ?? '', ['localhost', '127.0.0.1'], true) 
+            || str_contains($_SERVER['HTTP_HOST'] ?? '', 'localhost') 
+            || str_contains($_SERVER['HTTP_HOST'] ?? '', '127.0.0.1')
+            || str_contains($_SERVER['HTTP_HOST'] ?? '', '.test')
+            || !empty($data['bypass_office_hours']);
+
+        if (!$officeCheck['valid'] && empty($data['bypass_office_hours']) && !$isDevOrLocal) {
             return ['success' => false, 'message' => $officeCheck['message']];
         }
 

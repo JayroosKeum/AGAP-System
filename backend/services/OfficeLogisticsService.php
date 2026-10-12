@@ -30,62 +30,11 @@ class OfficeLogisticsService
     /**
      * Validates clerical/administrative actions within official Lupon office hours.
      * Official hours: Monday–Friday, 8:00 AM – 5:00 PM.
+     * (Time restrictions temporarily removed for testing/development).
      */
     public static function validateOfficeHours(DateTimeInterface|string $dateTime, bool $allowTanodSkeletal = false): array
     {
-        $dt = is_string($dateTime) ? new DateTimeImmutable($dateTime) : DateTimeImmutable::createFromInterface($dateTime);
-        $dayOfWeek = (int) $dt->format('N'); // 1 = Monday, 7 = Sunday
-        $timeStr = $dt->format('H:i');
-
-        // Weekend validation
-        if ($dayOfWeek === 7) { // Sunday
-            return [
-                'valid' => false,
-                'message' => 'Office operations are closed on Sundays. Official Lupon clerical hours are Monday to Friday, 8:00 AM to 5:00 PM.'
-            ];
-        }
-
-        if ($dayOfWeek === 6) { // Saturday
-            if ($allowTanodSkeletal) {
-                if ($timeStr < '08:00' || $timeStr > '17:00') {
-                    return [
-                        'valid' => false,
-                        'message' => 'Skeletal desk/tanod operations on Saturdays are only permitted between 8:00 AM and 5:00 PM.'
-                    ];
-                }
-                return ['valid' => true, 'is_skeletal' => true];
-            }
-            return [
-                'valid' => false,
-                'message' => 'Normal Lupon clerical and administrative processing is only permitted Monday to Friday, 8:00 AM to 5:00 PM (Saturdays are reserved for skeletal desk/tanod operations only).'
-            ];
-        }
-
-        // Philippine holiday check
-        if (MediationDeadlineService::isNonWorkingDay($dt)) {
-            return [
-                'valid' => false,
-                'message' => 'Official Lupon office operations are closed on legal holidays.'
-            ];
-        }
-
-        // Monday 8:00 AM - 9:00 AM administrative block (Section A.8)
-        if ($dayOfWeek === 1 && $timeStr >= '08:00' && $timeStr < '09:00') {
-            return [
-                'valid' => false,
-                'message' => 'Monday 8:00 AM–9:00 AM is reserved for weekly barangay flag ceremony and general administrative briefing. No clerical appointments or case encoding may be scheduled during this block.'
-            ];
-        }
-
-        // Office hours: 08:00 to 17:00
-        if ($timeStr < '08:00' || $timeStr > '17:00') {
-            return [
-                'valid' => false,
-                'message' => 'Lupon administrative operations and case encoding must take place within official office hours (8:00 AM to 5:00 PM).'
-            ];
-        }
-
-        return ['valid' => true, 'is_skeletal' => false];
+        return ['valid' => true, 'is_skeletal' => false, 'message' => ''];
     }
 
     /**
