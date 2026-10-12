@@ -206,7 +206,6 @@ include '../../layouts/header.php';
                             </label>
                             <div class="party-search-combobox" data-party-role="complainant">
                                 <div class="party-search-input-wrap">
-                                    <svg class="party-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                                     <input type="text" id="complainantSearchInput" class="party-search-input" placeholder="Type complainant name, purok, or address to search..." autocomplete="off">
                                     <button type="button" class="party-search-clear" title="Clear selection" style="display:none;">&times;</button>
                                 </div>
@@ -226,7 +225,6 @@ include '../../layouts/header.php';
                             </label>
                             <div class="party-search-combobox" data-party-role="respondent">
                                 <div class="party-search-input-wrap">
-                                    <svg class="party-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                                     <input type="text" id="respondentSearchInput" class="party-search-input" placeholder="Type resident name, purok, or address to search..." autocomplete="off">
                                     <button type="button" class="party-search-clear" title="Clear selection" style="display:none;">&times;</button>
                                 </div>
@@ -266,7 +264,6 @@ include '../../layouts/header.php';
                                              <div class="form-group party-name-col">
                                                  <div class="party-search-combobox" data-party-role="additional">
                                                      <div class="party-search-input-wrap">
-                                                         <svg class="party-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                                                          <input type="text" class="party-search-input" placeholder="Type name or address to search..." autocomplete="off">
                                                          <button type="button" class="party-search-clear" title="Clear selection" style="display:none;">&times;</button>
                                                      </div>
@@ -599,7 +596,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="form-group party-name-col">
                         <div class="party-search-combobox" data-party-role="additional">
                             <div class="party-search-input-wrap">
-                                <svg class="party-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                                 <input type="text" class="party-search-input" placeholder="Type resident name or address to search..." autocomplete="off">
                                 <button type="button" class="party-search-clear" title="Clear selection" style="display:none;">&times;</button>
                             </div>
