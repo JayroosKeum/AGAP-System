@@ -619,14 +619,24 @@ class Complaint
                 if (!$pId) {
                     return ['success' => false, 'message' => 'Please select a valid resident profile for all additional parties.'];
                 }
-                $checkP = $this->conn->prepare('SELECT resident_id FROM residents WHERE resident_id = ?');
-                $checkP->execute([$pId]);
-                if (!$checkP->fetchColumn()) {
-                    return ['success' => false, 'message' => 'An additional party resident profile was not found in the directory.'];
-                }
                 $pType = trim((string)($types[$idx] ?? 'Witness'));
                 if (!in_array($pType, ['Complainant', 'Respondent', 'Witness'], true)) {
                     return ['success' => false, 'message' => 'Invalid party type specified for additional party.'];
+                }
+
+                $checkP = $this->conn->prepare('SELECT resident_id, is_tenant, purok FROM residents WHERE resident_id = ?');
+                $checkP->execute([$pId]);
+                $pRow = $checkP->fetch(PDO::FETCH_ASSOC);
+                if (!$pRow) {
+                    return ['success' => false, 'message' => 'An additional party resident profile was not found in the directory.'];
+                }
+
+                if ($pType === 'Respondent') {
+                    $pIsTenant = (int) $pRow['is_tenant'];
+                    $pPurok = trim((string)($pRow['purok'] ?? ''));
+                    if ($pIsTenant === 2 || strcasecmp($pPurok, 'Non-Resident') === 0 || !in_array($pIsTenant, [0, 1], true)) {
+                        return ['success' => false, 'message' => 'Only residents and tenants living within Barangay Tumana can be named as respondents in this barangay.'];
+                    }
                 }
             }
         }

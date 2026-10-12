@@ -83,26 +83,34 @@ class ResidentController
         ];
     }
 
-    public function destroy($id)
-{
-    $result =
-        $this->resident->delete($id);
-
-    if($result)
+    public function destroy($id): array
     {
-        require_once __DIR__ .
-        '/../services/AuditService.php';
+        $residentId = filter_var($id, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if (!$residentId) {
+            return ['success' => false, 'message' => 'Please select a valid resident profile to delete.'];
+        }
 
-        $audit = new AuditService();
-
-        $audit->log(
-            $_SESSION['user_id'],
-            'Deleted Resident Profile',
-            'Residents',
-            $id
-        );
+        try {
+            $deleted = $this->resident->delete((int) $residentId);
+            if ($deleted) {
+                require_once __DIR__ . '/../services/AuditService.php';
+                (new AuditService())->log(
+                    $_SESSION['user_id'] ?? null,
+                    'Deleted Resident Profile',
+                    'Residents',
+                    (int) $residentId
+                );
+                return ['success' => true, 'message' => 'Resident profile deleted successfully.'];
+            }
+            return ['success' => false, 'message' => 'Unable to delete resident profile. Profile may not exist.'];
+        } catch (PDOException $e) {
+            if ($e->getCode() == '23000' || strpos($e->getMessage(), '1451') !== false) {
+                return [
+                    'success' => false,
+                    'message' => 'This profile cannot be deleted because it is linked to existing complaint or dispute records.'
+                ];
+            }
+            return ['success' => false, 'message' => 'Database error while deleting resident profile.'];
+        }
     }
-
-    return $result;
-}
 }

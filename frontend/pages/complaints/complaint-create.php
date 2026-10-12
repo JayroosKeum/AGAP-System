@@ -134,6 +134,7 @@ include '../../layouts/header.php';
         <?php endif; ?>
 
         <form id="createComplaintForm" action="../../../backend/api/complaints/create.php" method="POST" enctype="multipart/form-data" class="complaint-intake-form">
+            <input type="hidden" name="bypass_office_hours" value="1">
             <div class="complaint-intake-grid">
                 <!-- LEFT COLUMN -->
                 <div class="intake-col">
@@ -206,7 +207,6 @@ include '../../layouts/header.php';
                             </label>
                             <div class="party-search-combobox" data-party-role="complainant">
                                 <div class="party-search-input-wrap">
-                                    <svg class="party-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                                     <input type="text" id="complainantSearchInput" class="party-search-input" placeholder="Type complainant name, purok, or address to search..." autocomplete="off">
                                     <button type="button" class="party-search-clear" title="Clear selection" style="display:none;">&times;</button>
                                 </div>
@@ -226,7 +226,6 @@ include '../../layouts/header.php';
                             </label>
                             <div class="party-search-combobox" data-party-role="respondent">
                                 <div class="party-search-input-wrap">
-                                    <svg class="party-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                                     <input type="text" id="respondentSearchInput" class="party-search-input" placeholder="Type resident name, purok, or address to search..." autocomplete="off">
                                     <button type="button" class="party-search-clear" title="Clear selection" style="display:none;">&times;</button>
                                 </div>
@@ -256,29 +255,28 @@ include '../../layouts/header.php';
                                     ?>
                                     <div class="additional-party-row" id="additionalParty_<?php echo $idx; ?>">
                                         <div class="party-row-fields">
-                                            <div class="form-group party-type-col">
-                                                <select name="party_types[]" class="party-type-select">
-                                                    <option value="Witness" <?php echo ($pType === 'Witness') ? 'selected' : ''; ?>>Witness</option>
-                                                    <option value="Complainant" <?php echo ($pType === 'Complainant') ? 'selected' : ''; ?>>Complainant</option>
-                                                    <option value="Respondent" <?php echo ($pType === 'Respondent') ? 'selected' : ''; ?>>Respondent</option>
-                                                </select>
-                                            </div>
-                                            <div class="form-group party-name-col">
-                                                <div class="party-search-combobox" data-party-role="additional">
-                                                    <div class="party-search-input-wrap">
-                                                        <svg class="party-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                                                        <input type="text" class="party-search-input" placeholder="Type name or address to search..." autocomplete="off">
-                                                        <button type="button" class="party-search-clear" title="Clear selection" style="display:none;">&times;</button>
-                                                    </div>
-                                                    <input type="hidden" name="party_resident_ids[]" required value="<?php echo $rIdInt; ?>">
-                                                    <input type="hidden" name="party_names[]" value="<?php echo htmlspecialchars($pName); ?>">
-                                                    <div class="party-search-dropdown" style="display:none;"></div>
-                                                </div>
-                                            </div>
-                                            <button type="button" class="btn-remove-party" title="Remove party" onclick="document.getElementById('additionalParty_<?php echo $idx; ?>').remove()">&times;</button>
-                                        </div>
-                                        <div class="party-selected-preview additional-party-preview" style="display:none;"></div>
-                                    </div>
+                                             <div class="form-group party-type-col">
+                                                 <select name="party_types[]" class="party-type-select">
+                                                     <option value="Witness" <?php echo ($pType === 'Witness') ? 'selected' : ''; ?>>Witness</option>
+                                                     <option value="Complainant" <?php echo ($pType === 'Complainant') ? 'selected' : ''; ?>>Complainant</option>
+                                                     <option value="Respondent" <?php echo ($pType === 'Respondent') ? 'selected' : ''; ?>>Respondent</option>
+                                                 </select>
+                                             </div>
+                                             <div class="form-group party-name-col">
+                                                 <div class="party-search-combobox" data-party-role="additional">
+                                                     <div class="party-search-input-wrap">
+                                                         <input type="text" class="party-search-input" placeholder="Type name or address to search..." autocomplete="off">
+                                                         <button type="button" class="party-search-clear" title="Clear selection" style="display:none;">&times;</button>
+                                                     </div>
+                                                     <input type="hidden" name="party_resident_ids[]" required value="<?php echo $rIdInt; ?>">
+                                                     <input type="hidden" name="party_names[]" value="<?php echo htmlspecialchars($pName); ?>">
+                                                     <div class="party-search-dropdown" style="display:none;"></div>
+                                                 </div>
+                                             </div>
+                                             <button type="button" class="btn-remove-party" title="Remove party" onclick="document.getElementById('additionalParty_<?php echo $idx; ?>').remove()">&times;</button>
+                                         </div>
+                                         <div class="party-selected-preview additional-party-preview" style="display:none;"></div>
+                                     </div>
                                     <?php
                                 }
                             }
@@ -599,7 +597,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="form-group party-name-col">
                         <div class="party-search-combobox" data-party-role="additional">
                             <div class="party-search-input-wrap">
-                                <svg class="party-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                                 <input type="text" class="party-search-input" placeholder="Type resident name or address to search..." autocomplete="off">
                                 <button type="button" class="party-search-clear" title="Clear selection" style="display:none;">&times;</button>
                             </div>
@@ -707,14 +704,35 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             let invalidAdditional = false;
+            let invalidRespondentResidency = false;
             document.querySelectorAll('.additional-party-row').forEach(row => {
                 const hidden = row.querySelector('input[name="party_resident_ids[]"]');
                 const search = row.querySelector('.party-search-input');
-                if (hidden && (!hidden.value || parseInt(hidden.value, 10) <= 0)) {
+                const typeSelect = row.querySelector('select[name="party_types[]"], select[name="party_type[]"]');
+                const pType = typeSelect ? typeSelect.value : 'Witness';
+                const pId = hidden && hidden.value ? parseInt(hidden.value, 10) : 0;
+
+                if (!pId || pId <= 0) {
                     invalidAdditional = true;
                     if (search) search.classList.add('is-invalid-unselected');
+                } else if (pType === 'Respondent' && window.AGAP_RESIDENTS) {
+                    const res = window.AGAP_RESIDENTS.find(r => r.resident_id === pId);
+                    if (res) {
+                        const isTenant = Number(res.is_tenant);
+                        const purok = (res.purok || '').trim().toLowerCase();
+                        if (isTenant === 2 || purok === 'non-resident' || (isTenant !== 0 && isTenant !== 1)) {
+                            invalidRespondentResidency = true;
+                            if (search) search.classList.add('is-invalid-unselected');
+                        }
+                    }
                 }
             });
+
+            if (invalidRespondentResidency) {
+                e.preventDefault();
+                window.agapNotify?.('Only residents and tenants living within Barangay Tumana can be named as respondents.', 'error');
+                return;
+            }
 
             if (invalidAdditional) {
                 e.preventDefault();
