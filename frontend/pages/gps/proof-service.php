@@ -186,6 +186,7 @@ include '../../layouts/header.php';
                         <option value="Moved Out">Moved Out (No longer residing at given address)</option>
                         <option value="Wrong Address">Wrong Address (Address unknown or non-existent)</option>
                         <option value="No One Home">No One Home (Unreachable after multiple attempts)</option>
+                        <option value="Refused">Refused (Party refused to sign or receive)</option>
                         <option value="Other">Other</option>
                     </select>
                 </div>

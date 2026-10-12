@@ -535,22 +535,7 @@ function validateHearingDateInput(dateInput) {
         return markError('Please enter a valid date and time.');
     }
 
-    // 1. Weekend check: Saturday (6) and Sunday (0) are not permitted
-    const dayOfWeek = dateObj.getDay();
-    if (dayOfWeek === 0 || dayOfWeek === 6) {
-        return markError('Hearings cannot be scheduled on weekends (Saturday or Sunday). Please select a weekday (Monday to Friday).');
-    }
-
-    // 2. Office hours check: 8:00 AM to 5:00 PM (08:00 to 17:00)
-    const hours = dateObj.getHours();
-    const minutes = dateObj.getMinutes();
-    const timeMinutes = hours * 60 + minutes;
-    const minMinutes = 8 * 60;   // 08:00 AM
-    const maxMinutes = 17 * 60;  // 05:00 PM
-
-    if (timeMinutes < minMinutes || timeMinutes > maxMinutes) {
-        return markError('Hearings can only be scheduled during office hours (8:00 AM to 5:00 PM).');
-    }
+    // Weekend and office hours restrictions bypassed for testing/development
 
     // 3. Existing hearing date progression check (same day or prior date relative to booked hearings)
     const latestDay = dateInput.dataset.latestHearingDay;
@@ -571,28 +556,14 @@ function updateDateRestrictions() {
     const caseSelect = document.getElementById('hearingCaseId');
     if (!date || !caseSelect) return;
 
-    const now = new Date();
-    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-    const minNowIso = now.toISOString().slice(0, 16);
-
     const caseId = caseSelect.value;
     const latestDateStr = getCaseLatestHearingDate(caseId);
 
     if (caseId && latestDateStr) {
         const latestDay = latestDateStr.slice(0, 10);
-        const nextDay = new Date(latestDay + 'T00:00:00');
-        nextDay.setDate(nextDay.getDate() + 1);
-        // Advance past weekends if nextDay is Saturday or Sunday
-        while (nextDay.getDay() === 0 || nextDay.getDay() === 6) {
-            nextDay.setDate(nextDay.getDate() + 1);
-        }
-        const nextDayStr = `${nextDay.getFullYear()}-${String(nextDay.getMonth() + 1).padStart(2, '0')}-${String(nextDay.getDate()).padStart(2, '0')}`;
-        const minAllowedIso = `${nextDayStr}T08:00`;
-        date.min = minAllowedIso > minNowIso ? minAllowedIso : minNowIso;
         date.dataset.latestHearingDay = latestDay;
         date.dataset.latestHearingFormatted = formatFriendlyDate(latestDay);
     } else {
-        date.min = minNowIso;
         delete date.dataset.latestHearingDay;
         delete date.dataset.latestHearingFormatted;
     }

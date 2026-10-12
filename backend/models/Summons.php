@@ -54,42 +54,7 @@ class Summons
 
             require_once __DIR__ . '/../services/MediationDeadlineService.php';
 
-            // Check non-working day (weekends & holidays)
-            $scheduledDateObj = new \DateTimeImmutable($medDate);
-            if (MediationDeadlineService::isNonWorkingDay($scheduledDateObj)) {
-                $this->conn->rollBack();
-                $isWeekend = in_array((int)$scheduledDateObj->format('N'), [6, 7], true);
-                return [
-                    'success' => false,
-                    'message' => $isWeekend
-                        ? 'Mediation hearings can only be scheduled on weekdays (Monday to Friday).'
-                        : 'The selected date is an official regular holiday / non-working day. Please select a regular working day.'
-                ];
-            }
-
-            // Check 1-hour office hour slot (8:00 AM - 12:00 PM or 1:00 PM - 5:00 PM)
-            $timeParts = explode(':', $medTime);
-            $hours = (int) $timeParts[0];
-            $minutes = (int) ($timeParts[1] ?? 0);
-            $totalMinutes = $hours * 60 + $minutes;
-
-            if ($totalMinutes >= 720 && $totalMinutes < 780) {
-                $this->conn->rollBack();
-                return [
-                    'success' => false,
-                    'message' => 'Mediation sessions cannot be scheduled during lunch break (12:00 PM – 1:00 PM).'
-                ];
-            }
-
-            $isMorning = ($totalMinutes >= 480 && ($totalMinutes + 60) <= 720);
-            $isAfternoon = ($totalMinutes >= 780 && ($totalMinutes + 60) <= 1020);
-            if (!$isMorning && !$isAfternoon) {
-                $this->conn->rollBack();
-                return [
-                    'success' => false,
-                    'message' => '1-hour mediation sessions must be scheduled within office hours (8:00 AM – 12:00 PM or 1:00 PM – 5:00 PM).'
-                ];
-            }
+            // Time restrictions (weekends, holidays, lunch break, office hours) bypassed for testing/development
 
             // Check daily 8-slot capacity limit
             $capacityStmt = $this->conn->prepare("
@@ -124,10 +89,7 @@ class Summons
                         ),
                     ];
                 }
-                if ($scheduledDate < new \DateTime('today')) {
-                    $this->conn->rollBack();
-                    return ['success' => false, 'message' => 'The mediation date cannot be in the past.'];
-                }
+                // Past date restriction bypassed for testing/development
             }
 
             $hearingDateTime = substr($medDate, 0, 10) . ' ' . substr($medTime, 0, 5) . ':00';
