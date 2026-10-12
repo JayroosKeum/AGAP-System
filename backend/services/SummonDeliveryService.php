@@ -247,7 +247,7 @@ class SummonDeliveryService
 
         // Validations per delivery scenario
         if ($deliveryStatus === 'Unserved') {
-            $allowedReasons = ['Moved Out', 'Wrong Address', 'No One Home', 'Other'];
+            $allowedReasons = ['Moved Out', 'Wrong Address', 'No One Home', 'Refused', 'Other'];
             if (!in_array($unservedReason, $allowedReasons, true)) {
                 return ['success' => false, 'message' => 'A valid failure reason (e.g., Moved Out, Wrong Address, No One Home) is required when marking unserved.'];
             }
@@ -262,12 +262,18 @@ class SummonDeliveryService
             if ($relationship === '') {
                 return ['success' => false, 'message' => 'Relationship to recipient is required for substituted service.'];
             }
+            $unservedReason = null;
+            $failureNotes = null;
         } elseif ($deliveryStatus === 'Served Personal') {
             if ($recipientName === '') {
                 return ['success' => false, 'message' => 'Recipient name is required for personal service.'];
             }
+            $unservedReason = null;
+            $failureNotes = null;
         } elseif ($deliveryStatus === 'Served Refused') {
-            // Treated as served under KP rules
+            // Treated as served under KP rules - reason recorded as Refused
+            $unservedReason = 'Refused';
+            $failureNotes = null;
             if ($remarks === '') {
                 $remarks = 'Party refused to sign receipt (treated as valid service under KP rules).';
             }

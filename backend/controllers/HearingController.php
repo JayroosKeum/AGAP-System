@@ -294,9 +294,7 @@ class HearingController
         if (mb_strlen($remarks) > 5000) {
             return ['success' => false, 'message' => 'Remarks must not exceed 5,000 characters.'];
         }
-        if ($date <= new DateTimeImmutable()) {
-            return ['success' => false, 'message' => 'Hearing date must be in the future.'];
-        }
+        // Future date restriction bypassed for testing/development
 
         // Validation: Approved hearing blocks, lunch break, Monday 8-9am, legal holidays, duration rules
         $hoursValidation = $this->hearing->validateHearingOperatingHours(

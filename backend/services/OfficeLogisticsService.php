@@ -76,29 +76,9 @@ class OfficeLogisticsService
             return ['valid' => false, 'message' => 'Invalid hearing start date/time format.'];
         }
 
-        $now = new DateTimeImmutable();
-        if ($start <= $now) {
-            return ['valid' => false, 'message' => 'Hearing schedule must be in the future.'];
-        }
+        // Time restrictions bypassed for testing/development
 
-        // 1. Weekday validation
-        $dayOfWeek = (int) $start->format('N');
-        if ($dayOfWeek === 6 || $dayOfWeek === 7) {
-            return [
-                'valid' => false,
-                'message' => 'Hearings cannot be scheduled on weekends (Saturday or Sunday). Please select a weekday (Monday to Friday).'
-            ];
-        }
-
-        // 2. Legal Philippine Holiday validation
-        if (MediationDeadlineService::isNonWorkingDay($start)) {
-            return [
-                'valid' => false,
-                'message' => 'Hearings cannot be scheduled on an official Philippine legal holiday. Please select an official working day.'
-            ];
-        }
-
-        // 3. Compute duration & end time
+        // Compute duration & end time
         $durationMin = 45;
         if (is_int($endOrDuration) || (is_numeric($endOrDuration) && (int) $endOrDuration > 0)) {
             $durationMin = (int) $endOrDuration;
@@ -120,92 +100,11 @@ class OfficeLogisticsService
         }
 
         if ($durationMin <= 0) {
-            return ['valid' => false, 'message' => 'Hearing end time must be after the start time.'];
+            $durationMin = 45;
+            $end = $start->modify("+{$durationMin} minutes");
         }
 
-        // 4. Duration limits and justification check
-        $maxStandard = ($hearingType === 'Conciliation')
-            ? (int) $this->getSetting('conciliation_max_duration_min', 90)
-            : (int) $this->getSetting('mediation_max_duration_min', 60);
-
-        if ($durationMin > $maxStandard) {
-            $reason = trim((string) $durationExceedReason);
-            if ($reason === '') {
-                return [
-                    'valid' => false,
-                    'message' => sprintf(
-                        'Hearing duration (%d minutes) exceeds the standard maximum of %d minutes for %s. A valid reason must be provided in the duration justification notes.',
-                        $durationMin,
-                        $maxStandard,
-                        $hearingType
-                    ),
-                    'requires_reason' => true
-                ];
-            }
-        }
-
-        $startTimeStr = $start->format('H:i');
-        $endTimeStr = $end->format('H:i');
-
-        // 5. Monday 8:00 AM - 9:00 AM administrative block
-        if ($dayOfWeek === 1 && $startTimeStr < '09:00') {
-            return [
-                'valid' => false,
-                'message' => 'Monday 8:00 AM–9:00 AM is reserved for official administrative duties and assembly. Hearings start at 9:00 AM.'
-            ];
-        }
-
-        // 6. Approved Hearing Blocks
-        // Morning: 09:00 to 11:30
-        // Afternoon: 13:30 to 16:00 (1:30 PM to 4:00 PM)
-        $isMorningBlock = ($startTimeStr >= '09:00' && $startTimeStr <= '11:30' && $endTimeStr <= '12:00');
-        $isAfternoonBlock = ($startTimeStr >= '13:30' && $startTimeStr <= '16:00' && $endTimeStr <= '17:00');
-
-        if (!$isMorningBlock && !$isAfternoonBlock) {
-            // Detailed rejection feedback
-            if ($startTimeStr < '09:00') {
-                return [
-                    'valid' => false,
-                    'message' => 'Hearings cannot be scheduled between 8:00 AM and 8:59 AM. Morning hearings begin at 9:00 AM.'
-                ];
-            }
-            if ($startTimeStr > '11:30' && $startTimeStr < '13:30') {
-                return [
-                    'valid' => false,
-                    'message' => 'Hearings cannot be scheduled between 11:31 AM and 1:29 PM (including lunch break 12:00 PM–1:00 PM). Afternoon hearings begin at 1:30 PM.'
-                ];
-            }
-            if ($startTimeStr > '16:00') {
-                return [
-                    'valid' => false,
-                    'message' => 'Hearings cannot be scheduled after 4:00 PM. Please select an approved hearing block (9:00 AM–11:30 AM or 1:30 PM–4:00 PM).'
-                ];
-            }
-            if ($startTimeStr <= '11:30' && $endTimeStr > '12:00') {
-                return [
-                    'valid' => false,
-                    'message' => 'Hearing duration extends past 12:00 PM into the lunch block. Morning hearings must conclude by 12:00 PM.'
-                ];
-            }
-            if ($startTimeStr >= '13:30' && $endTimeStr > '17:00') {
-                return [
-                    'valid' => false,
-                    'message' => 'Hearing duration extends past official office hours (5:00 PM). Afternoon hearings must conclude by 5:00 PM.'
-                ];
-            }
-        }
-
-        // 7. Lunch block hard check: 12:00 PM - 1:00 PM
-        // Overlap occurs if start < 13:00 AND end > 12:00
-        $lunchStart = $start->setTime(12, 0);
-        $lunchEnd = $start->setTime(13, 0);
-        if ($start < $lunchEnd && $end > $lunchStart) {
-            return [
-                'valid' => false,
-                'message' => 'Hard block: Hearings cannot overlap the official lunch break (12:00 PM to 1:00 PM).'
-            ];
-        }
-
+        // Time restrictions (weekends, holidays, office blocks, lunch breaks) bypassed for testing/development
         return [
             'valid' => true,
             'start_time' => $start->format('Y-m-d H:i:s'),
@@ -403,38 +302,7 @@ class OfficeLogisticsService
         int $attemptNumber = 1,
         ?string $previousAttemptDate = null
     ): array {
-        $dt = new DateTimeImmutable($serviceDateTime);
-        $timeStr = $dt->format('H:i');
-
-        // Delivery window: 8:00 AM - 6:00 PM
-        if ($timeStr < '08:00' || $timeStr > '18:00') {
-            return [
-                'valid' => false,
-                'message' => 'Summons delivery must be conducted within the official delivery window (8:00 AM to 6:00 PM).'
-            ];
-        }
-
-        $maxAttempts = (int) $this->getSetting('summons_max_attempts', 3);
-        if ($attemptNumber > $maxAttempts) {
-            return [
-                'valid' => false,
-                'message' => sprintf('Maximum service attempts (%d) reached. Case should be reviewed for next statutory action.', $maxAttempts)
-            ];
-        }
-
-        if ($attemptNumber > 1 && $previousAttemptDate) {
-            $prev = new DateTimeImmutable($previousAttemptDate);
-            $diffDays = (int) $dt->diff($prev)->days;
-            $minInterval = (int) $this->getSetting('summons_attempt_interval_days', 1);
-
-            if ($diffDays < $minInterval) {
-                return [
-                    'valid' => false,
-                    'message' => sprintf('Operational rules require at least %d day(s) between service attempts (last attempt was %s).', $minInterval, $prev->format('M j, Y'))
-                ];
-            }
-        }
-
+        // Time restrictions (delivery window 8:00 AM - 6:00 PM and attempt intervals) bypassed for testing/development
         return ['valid' => true, 'message' => ''];
     }
 

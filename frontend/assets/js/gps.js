@@ -1141,10 +1141,10 @@ async function loadHearingDeliveries(caseId) {
                                     <span class="delivery-detail-val">${escapeGpsHtml(deliv.served_by_name)}</span>
                                 </li>
                             ` : ''}
-                            ${deliv.unserved_reason ? `
+                            ${(deliv.unserved_reason || status === 'Served Refused') ? `
                                 <li>
                                     <span class="delivery-detail-label" style="color:#b91c1c;">Failure Reason</span>
-                                    <span class="delivery-detail-val" style="color:#b91c1c; font-weight:700;">${escapeGpsHtml(deliv.unserved_reason)}</span>
+                                    <span class="delivery-detail-val" style="color:#b91c1c; font-weight:700;">${escapeGpsHtml(deliv.unserved_reason || 'Refused')}</span>
                                 </li>
                             ` : ''}
                             ${deliv.failure_notes ? `
@@ -1171,7 +1171,8 @@ async function loadHearingDeliveries(caseId) {
                             '${escapeGpsHtml(deliv.delivery_status || 'Served Personal')}',
                             '${escapeGpsHtml(deliv.recipient_name || profile.resident_name || '')}',
                             '${escapeGpsHtml(deliv.relationship || '')}',
-                            '${escapeGpsHtml(deliv.remarks || '')}'
+                            '${escapeGpsHtml(deliv.remarks || '')}',
+                            '${escapeGpsHtml(deliv.unserved_reason || '')}'
                         )">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -1189,7 +1190,7 @@ async function loadHearingDeliveries(caseId) {
     }
 }
 
-function openOfficerReturnModal(partyType, residentId, hearingId, caseId, currentStatus, currentRecipient, currentRelationship, currentNotes) {
+function openOfficerReturnModal(partyType, residentId, hearingId, caseId, currentStatus, currentRecipient, currentRelationship, currentNotes, currentUnservedReason) {
     const modal = document.getElementById('officerReturnModal');
     if (!modal) return;
 
@@ -1230,6 +1231,17 @@ function openOfficerReturnModal(partyType, residentId, hearingId, caseId, curren
         remarksInput.value = currentNotes || '';
     }
 
+    const unservedReasonInput = document.getElementById('returnUnservedReason');
+    if (unservedReasonInput) {
+        if (currentStatus === 'Served Refused') {
+            unservedReasonInput.value = 'Refused';
+        } else if (currentStatus === 'Unserved') {
+            unservedReasonInput.value = currentUnservedReason || 'Moved Out';
+        } else {
+            unservedReasonInput.value = '';
+        }
+    }
+
     const failNotesInput = document.getElementById('returnFailureNotes');
     if (failNotesInput) failNotesInput.value = '';
 
@@ -1253,6 +1265,7 @@ function handleDeliveryStatusChange() {
     const unservedReasonGroup = document.getElementById('unservedReasonGroup');
     const failNotesGroup = document.getElementById('failureNotesGroup');
     const recipientReqStar = document.getElementById('recipientReqStar');
+    const unservedReasonEl = document.getElementById('returnUnservedReason');
 
     if (status === 'Unserved') {
         if (servedAtGroup) servedAtGroup.style.display = 'none';
@@ -1260,6 +1273,9 @@ function handleDeliveryStatusChange() {
         if (relGroup) relGroup.style.display = 'none';
         if (unservedReasonGroup) unservedReasonGroup.style.display = 'block';
         if (failNotesGroup) failNotesGroup.style.display = 'block';
+        if (unservedReasonEl && (!unservedReasonEl.value || unservedReasonEl.value === 'Refused')) {
+            unservedReasonEl.value = 'Moved Out';
+        }
     } else if (status === 'Served Substituted') {
         if (servedAtGroup) servedAtGroup.style.display = 'block';
         if (recipientGroup) recipientGroup.style.display = 'block';
@@ -1267,6 +1283,7 @@ function handleDeliveryStatusChange() {
         if (unservedReasonGroup) unservedReasonGroup.style.display = 'none';
         if (failNotesGroup) failNotesGroup.style.display = 'none';
         if (recipientReqStar) recipientReqStar.style.display = 'inline';
+        if (unservedReasonEl) unservedReasonEl.value = '';
     } else if (status === 'Served Refused') {
         if (servedAtGroup) servedAtGroup.style.display = 'block';
         if (recipientGroup) recipientGroup.style.display = 'block';
@@ -1274,6 +1291,7 @@ function handleDeliveryStatusChange() {
         if (unservedReasonGroup) unservedReasonGroup.style.display = 'none';
         if (failNotesGroup) failNotesGroup.style.display = 'none';
         if (recipientReqStar) recipientReqStar.style.display = 'none';
+        if (unservedReasonEl) unservedReasonEl.value = 'Refused';
     } else {
         // Served Personal
         if (servedAtGroup) servedAtGroup.style.display = 'block';
@@ -1282,6 +1300,7 @@ function handleDeliveryStatusChange() {
         if (unservedReasonGroup) unservedReasonGroup.style.display = 'none';
         if (failNotesGroup) failNotesGroup.style.display = 'none';
         if (recipientReqStar) recipientReqStar.style.display = 'inline';
+        if (unservedReasonEl) unservedReasonEl.value = '';
     }
 }
 
@@ -1330,6 +1349,11 @@ async function submitOfficerReturn(event) {
 
     try {
         const formData = new FormData(form);
+        if (status === 'Served Refused') {
+            formData.set('unserved_reason', 'Refused');
+        } else if (status !== 'Unserved') {
+            formData.set('unserved_reason', '');
+        }
         const response = await fetch(proofApiUrl, {
             method: 'POST',
             body: formData,

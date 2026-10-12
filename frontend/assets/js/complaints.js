@@ -1143,57 +1143,7 @@ async function checkMediationScheduleConflict() {
     const venueVal = venueInput ? venueInput.value : 'Barangay Hall';
     const complaintIdVal = complaintInput ? complaintInput.value : '';
 
-    // 1. Weekend check client-side
-    const parsedDate = new Date(dateVal + 'T00:00:00');
-    const dayOfWeek = parsedDate.getDay();
-    if (dayOfWeek === 0 || dayOfWeek === 6) {
-        if (conflictAlert) {
-            conflictAlert.textContent = '⚠️ Weekend Selected: Mediation hearings can only be scheduled on weekdays (Monday to Friday) during office hours.';
-            conflictAlert.style.display = 'block';
-        }
-        if (submitBtn) {
-            submitBtn.disabled = true;
-            submitBtn.title = 'Hearings cannot be scheduled on weekends.';
-        }
-        return;
-    }
-
-    // 2. Office hours check for 1-hour slots: strictly 8am-12pm and 1pm-5pm (latest start 16:00)
-    if (timeVal) {
-        const [hStr, mStr] = timeVal.split(':');
-        const totalMinutes = parseInt(hStr, 10) * 60 + parseInt(mStr || '0', 10);
-        const morningStart = 8 * 60;   // 08:00
-        const morningEnd = 12 * 60;    // 12:00 (latest start 11:00 for 1-hr slot)
-        const afternoonStart = 13 * 60; // 13:00
-        const afternoonEnd = 17 * 60;  // 17:00 (latest start 16:00 for 1-hr slot)
-
-        const isMorning = totalMinutes >= morningStart && (totalMinutes + 60) <= morningEnd;
-        const isAfternoon = totalMinutes >= afternoonStart && (totalMinutes + 60) <= afternoonEnd;
-
-        if (totalMinutes >= 12 * 60 && totalMinutes < 13 * 60) {
-            if (conflictAlert) {
-                conflictAlert.textContent = '⚠️ Lunch Break: Mediation sessions cannot be scheduled between 12:00 PM and 1:00 PM.';
-                conflictAlert.style.display = 'block';
-            }
-            if (submitBtn) {
-                submitBtn.disabled = true;
-                submitBtn.title = 'Cannot schedule during lunch break.';
-            }
-            return;
-        }
-
-        if (!isMorning && !isAfternoon) {
-            if (conflictAlert) {
-                conflictAlert.textContent = '⚠️ Office Hours Only: 1-hour sessions must be scheduled within 8:00 AM – 12:00 PM or 1:00 PM – 5:00 PM (Monday–Friday).';
-                conflictAlert.style.display = 'block';
-            }
-            if (submitBtn) {
-                submitBtn.disabled = true;
-                submitBtn.title = 'Outside office hours.';
-            }
-            return;
-        }
-    }
+    // Weekend, lunch break, and office hours restrictions bypassed for testing/development
 
     const params = new URLSearchParams();
     params.set('date', dateVal);

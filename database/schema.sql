@@ -442,7 +442,7 @@ CREATE TABLE summon_deliveries (
     served_by INT UNSIGNED NULL,
     recipient_name VARCHAR(150) NULL,
     relationship VARCHAR(100) NULL,
-    unserved_reason ENUM('Moved Out', 'Wrong Address', 'No One Home', 'Other') NULL,
+    unserved_reason ENUM('Moved Out', 'Wrong Address', 'No One Home', 'Refused', 'Other') NULL,
     failure_notes TEXT NULL,
     remarks TEXT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
