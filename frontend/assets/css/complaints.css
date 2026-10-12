@@ -130,6 +130,18 @@ button:disabled, button.is-disabled, button[disabled], .btn-create:disabled, .bt
     font-size: 0.84rem;
     color: #334155;
 }
+.party-residency-warning {
+    margin-top: 8px;
+    padding: 8px 12px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    color: #991b1b;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
 
 /* Searchable Resident Combobox */
 .party-search-combobox {

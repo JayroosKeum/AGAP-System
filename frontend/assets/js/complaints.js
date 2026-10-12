@@ -2111,15 +2111,60 @@ window.initPartySearchCombobox = function(comboboxEl, residentsList) {
 
     if (!searchInput || !hiddenId) return;
 
-    // Find preview element
+    // Find preview element and row
+    const additionalRow = comboboxEl.closest('.additional-party-row');
     let previewEl = null;
     if (partyRole === 'complainant') {
         previewEl = document.getElementById('complainantPreview');
     } else if (partyRole === 'respondent') {
         previewEl = document.getElementById('respondentPreview');
     } else {
-        const row = comboboxEl.closest('.additional-party-row');
-        previewEl = row ? row.querySelector('.additional-party-preview') : null;
+        previewEl = additionalRow ? additionalRow.querySelector('.additional-party-preview') : null;
+    }
+
+    // Inline residency warning element
+    let warningEl = comboboxEl.parentElement ? comboboxEl.parentElement.querySelector('.party-residency-warning') : null;
+    if (!warningEl && (partyRole === 'complainant' || partyRole === 'respondent')) {
+        warningEl = document.createElement('div');
+        warningEl.className = 'party-residency-warning';
+        warningEl.style.display = 'none';
+        comboboxEl.parentElement.insertBefore(warningEl, previewEl || comboboxEl.nextSibling);
+    } else if (!warningEl && additionalRow) {
+        warningEl = document.createElement('div');
+        warningEl.className = 'party-residency-warning';
+        warningEl.style.display = 'none';
+        additionalRow.insertBefore(warningEl, previewEl || comboboxEl.nextSibling);
+    }
+
+    function showInlineWarning(msg) {
+        if (!warningEl) return;
+        warningEl.innerHTML = `<span>⚠️ ${escapeHtml(msg)}</span>`;
+        warningEl.style.display = 'flex';
+    }
+
+    function hideInlineWarning() {
+        if (!warningEl) return;
+        warningEl.style.display = 'none';
+        warningEl.innerHTML = '';
+    }
+
+    function getEffectiveRole() {
+        if (partyRole === 'complainant') return 'complainant';
+        if (partyRole === 'respondent') return 'respondent';
+        if (additionalRow) {
+            const typeSelect = additionalRow.querySelector('select[name="party_types[]"], select[name="party_type[]"]');
+            if (typeSelect) {
+                return (typeSelect.value || '').trim().toLowerCase();
+            }
+        }
+        return (partyRole || '').toLowerCase();
+    }
+
+    function isNonResident(res) {
+        if (!res) return false;
+        const isTenant = Number(res.is_tenant);
+        const purok = (res.purok || '').trim().toLowerCase();
+        return isTenant === 2 || purok === 'non-resident' || (isTenant !== 0 && isTenant !== 1);
     }
 
     let highlightedIndex = -1;
@@ -2172,10 +2217,18 @@ window.initPartySearchCombobox = function(comboboxEl, residentsList) {
     }
 
     function selectResident(res, triggerChange = true) {
+        const effectiveRole = getEffectiveRole();
+        if (effectiveRole === 'respondent' && isNonResident(res)) {
+            showInlineWarning('Under Katarungang Pambarangay rules, only residents and tenants living within Barangay Tumana can be named as respondents.');
+            window.agapNotify?.('Non-residents cannot be named as respondents in Barangay Tumana.', 'error');
+            return;
+        }
+
+        hideInlineWarning();
         hiddenId.value = res.resident_id;
         if (hiddenName) hiddenName.value = res.name;
 
-        const displayLabel = res.display_name + (res.address_text ? ' — ' + res.address_text : '');
+        const displayLabel = res.display_name || res.name;
         searchInput.value = displayLabel;
         searchInput.dataset.selectedId = String(res.resident_id);
         searchInput.dataset.selectedText = displayLabel;
@@ -2195,6 +2248,7 @@ window.initPartySearchCombobox = function(comboboxEl, residentsList) {
     }
 
     function clearSelection(triggerChange = true) {
+        hideInlineWarning();
         hiddenId.value = '';
         if (hiddenName) hiddenName.value = '';
         searchInput.value = '';
@@ -2222,15 +2276,12 @@ window.initPartySearchCombobox = function(comboboxEl, residentsList) {
     function renderList(query = '') {
         if (!dropdown) return;
         const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+        const effectiveRole = getEffectiveRole();
 
         let filtered = residentsList;
-        // Strictly restrict respondent to verified residents and tenants living within Barangay Tumana
-        if (partyRole === 'respondent') {
-            filtered = filtered.filter(res => {
-                const isTenant = Number(res.is_tenant);
-                const purok = (res.purok || '').trim().toLowerCase();
-                return (isTenant === 0 || isTenant === 1) && purok !== 'non-resident';
-            });
+        // Strictly restrict respondent (primary or additional row) to verified residents and tenants living within Barangay Tumana
+        if (effectiveRole === 'respondent') {
+            filtered = filtered.filter(res => !isNonResident(res));
         }
 
         if (tokens.length > 0) {
@@ -2246,7 +2297,7 @@ window.initPartySearchCombobox = function(comboboxEl, residentsList) {
         highlightedIndex = -1;
 
         if (results.length === 0) {
-            const noResMsg = partyRole === 'respondent'
+            const noResMsg = effectiveRole === 'respondent'
                 ? 'Only residents and tenants living within Barangay Tumana can be named as respondents in this barangay.'
                 : 'Only registered profiles can be selected.';
             dropdown.innerHTML = `
@@ -2268,10 +2319,10 @@ window.initPartySearchCombobox = function(comboboxEl, residentsList) {
             let isDisabled = false;
             let disabledReason = '';
 
-            if (partyRole === 'complainant' && respVal && String(res.resident_id) === String(respVal)) {
+            if (effectiveRole === 'complainant' && respVal && String(res.resident_id) === String(respVal)) {
                 isDisabled = true;
                 disabledReason = 'Selected as Respondent';
-            } else if (partyRole === 'respondent' && compVal && String(res.resident_id) === String(compVal)) {
+            } else if (effectiveRole === 'respondent' && compVal && String(res.resident_id) === String(compVal)) {
                 isDisabled = true;
                 disabledReason = 'Selected as Complainant';
             }
@@ -2332,6 +2383,35 @@ window.initPartySearchCombobox = function(comboboxEl, residentsList) {
         }
     }
 
+    // Listen to role changes on additional rows to re-check validity and update dropdown suggestions
+    if (additionalRow) {
+        const typeSelect = additionalRow.querySelector('select[name="party_types[]"], select[name="party_type[]"]');
+        if (typeSelect) {
+            typeSelect.addEventListener('change', () => {
+                const currentRoleId = hiddenId.value ? Number(hiddenId.value) : 0;
+                if (currentRoleId > 0) {
+                    const currentRes = residentsList.find(r => r.resident_id === currentRoleId);
+                    if (currentRes && getEffectiveRole() === 'respondent' && isNonResident(currentRes)) {
+                        showInlineWarning('Selected profile is a non-resident and cannot be a respondent. Please select a resident/tenant or switch role.');
+                        searchInput.classList.remove('is-valid-selected');
+                        searchInput.classList.add('is-invalid-unselected');
+                    } else {
+                        hideInlineWarning();
+                        if (currentRoleId > 0) {
+                            searchInput.classList.remove('is-invalid-unselected');
+                            searchInput.classList.add('is-valid-selected');
+                        }
+                    }
+                } else {
+                    hideInlineWarning();
+                }
+                if (dropdown.style.display === 'block') {
+                    renderList(searchInput.value);
+                }
+            });
+        }
+    }
+
     // Input Events
     searchInput.addEventListener('input', () => {
         if (clearBtn) clearBtn.style.display = searchInput.value ? 'flex' : 'none';
@@ -2343,6 +2423,7 @@ window.initPartySearchCombobox = function(comboboxEl, residentsList) {
             delete searchInput.dataset.selectedId;
             searchInput.classList.remove('is-valid-selected');
             hidePreview();
+            hideInlineWarning();
         }
 
         renderList(searchInput.value);
@@ -2399,6 +2480,7 @@ window.initPartySearchCombobox = function(comboboxEl, residentsList) {
                 delete searchInput.dataset.selectedId;
                 delete searchInput.dataset.selectedText;
                 hidePreview();
+                hideInlineWarning();
             } else if (searchInput.dataset.selectedText) {
                 searchInput.value = searchInput.dataset.selectedText;
                 searchInput.classList.add('is-valid-selected');

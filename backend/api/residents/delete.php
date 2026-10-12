@@ -31,20 +31,23 @@ if (!$id) {
 }
 
 $controller = new ResidentController();
-$deleted = $controller->destroy($id);
+$result = $controller->destroy($id);
+$success = is_array($result) ? ($result['success'] ?? false) : (bool) $result;
+$message = is_array($result) ? ($result['message'] ?? '') : ($success ? 'Resident profile deleted successfully.' : 'Unable to delete resident profile.');
 
 if ($isJson) {
     header('Content-Type: application/json; charset=utf-8');
+    http_response_code($success ? 200 : 422);
     echo json_encode([
-        'success' => (bool) $deleted,
-        'message' => $deleted ? 'Resident profile deleted successfully.' : 'Unable to delete resident profile.'
+        'success' => $success,
+        'message' => $message
     ]);
     exit;
 }
 
 $_SESSION['resident_flash'] = [
-    'type' => $deleted ? 'success' : 'error',
-    'message' => $deleted ? 'Resident profile deleted successfully.' : 'Unable to delete resident profile.',
+    'type' => $success ? 'success' : 'error',
+    'message' => $message,
 ];
 
 header('Location: ../../../frontend/pages/residents/resident-list.php');

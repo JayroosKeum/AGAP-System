@@ -216,14 +216,17 @@ function initResidentsModule() {
     const searchInput = document.getElementById('residentSearchInput');
     const clearSearchBtn = document.getElementById('clearResidentSearch');
     if (searchInput) {
-        searchInput.addEventListener('input', () => {
+        const handleSearchInput = () => {
             currentFilters.search = searchInput.value.trim();
             if (clearSearchBtn) {
                 clearSearchBtn.style.display = currentFilters.search ? 'block' : 'none';
             }
             currentPage = 1;
             applyFiltersAndRender();
-        });
+        };
+
+        searchInput.addEventListener('input', handleSearchInput);
+        searchInput.addEventListener('search', handleSearchInput);
     }
 
     if (clearSearchBtn && searchInput) {
@@ -251,6 +254,15 @@ function initResidentsModule() {
     if (filterTenant) {
         filterTenant.addEventListener('change', () => {
             currentFilters.tenant = filterTenant.value;
+            if (currentFilters.tenant === '') {
+                if (currentFilters.kpi !== 'purok') currentFilters.kpi = 'all';
+            } else if (currentFilters.tenant === '0') {
+                currentFilters.kpi = 'permanent';
+            } else if (currentFilters.tenant === '1') {
+                currentFilters.kpi = 'tenant';
+            } else if (currentFilters.tenant === '2') {
+                currentFilters.kpi = 'non-resident';
+            }
             updateKpiCardActiveState();
             currentPage = 1;
             applyFiltersAndRender();
@@ -339,6 +351,7 @@ function initKpiCardClickEvents() {
     const kpiPerm = document.getElementById('kpiPermCard');
     const kpiTenant = document.getElementById('kpiTenantCard');
     const kpiNonResident = document.getElementById('kpiNonResidentCard');
+    const kpiPurok = document.getElementById('kpiPurokCard');
 
     if (kpiAll) {
         kpiAll.addEventListener('click', () => {
@@ -381,6 +394,22 @@ function initKpiCardClickEvents() {
             applyFiltersAndRender();
         });
     }
+
+    if (kpiPurok) {
+        kpiPurok.addEventListener('click', () => {
+            if (currentFilters.kpi === 'purok') {
+                currentFilters.kpi = 'all';
+            } else {
+                currentFilters.kpi = 'purok';
+                currentFilters.tenant = '';
+                const filterTenant = document.getElementById('filterTenant');
+                if (filterTenant) filterTenant.value = '';
+            }
+            currentPage = 1;
+            updateKpiCardActiveState();
+            applyFiltersAndRender();
+        });
+    }
 }
 
 function updateKpiCardActiveState() {
@@ -388,13 +417,17 @@ function updateKpiCardActiveState() {
     const kpiPerm = document.getElementById('kpiPermCard');
     const kpiTenant = document.getElementById('kpiTenantCard');
     const kpiNonResident = document.getElementById('kpiNonResidentCard');
+    const kpiPurok = document.getElementById('kpiPurokCard');
 
     if (kpiAll) kpiAll.classList.remove('active');
     if (kpiPerm) kpiPerm.classList.remove('active');
     if (kpiTenant) kpiTenant.classList.remove('active');
     if (kpiNonResident) kpiNonResident.classList.remove('active');
+    if (kpiPurok) kpiPurok.classList.remove('active');
 
-    if (currentFilters.tenant === '0') {
+    if (currentFilters.kpi === 'purok') {
+        if (kpiPurok) kpiPurok.classList.add('active');
+    } else if (currentFilters.tenant === '0') {
         if (kpiPerm) kpiPerm.classList.add('active');
     } else if (currentFilters.tenant === '1') {
         if (kpiTenant) kpiTenant.classList.add('active');
@@ -1017,6 +1050,12 @@ function applyFiltersAndRender() {
             if (isTenant !== Number(tenantFilter)) return false;
         }
 
+        // Active Puroks KPI filter
+        if (currentFilters.kpi === 'purok') {
+            const residentPurok = normalizePurok(r.purok);
+            if (!residentPurok || residentPurok === 'non-resident') return false;
+        }
+
         return true;
     });
 
@@ -1115,6 +1154,16 @@ function renderActiveFilterChips() {
         `;
     }
 
+    if (currentFilters.kpi === 'purok') {
+        hasActiveFilter = true;
+        chipsHtml += `
+            <span class="filter-chip">
+                Active Puroks Only
+                <span class="filter-chip-remove" onclick="removeFilter('kpi')">&times;</span>
+            </span>
+        `;
+    }
+
     chipsContainer.innerHTML = chipsHtml;
     if (resetBtn) {
         resetBtn.style.display = hasActiveFilter ? 'inline-block' : 'none';
@@ -1136,6 +1185,9 @@ function removeFilter(type) {
         const select = document.getElementById('filterTenant');
         if (select) select.value = '';
         currentFilters.tenant = '';
+        updateKpiCardActiveState();
+    } else if (type === 'kpi') {
+        currentFilters.kpi = 'all';
         updateKpiCardActiveState();
     }
     currentPage = 1;
@@ -1177,10 +1229,8 @@ function renderResidentTableRows(residents, totalFiltered) {
     }
 
     let rowsHtml = '';
-    residents.forEach((r, idx) => {
+    residents.forEach((r) => {
         const fullName = [r.first_name, r.middle_name, r.last_name].filter(Boolean).join(' ');
-        const initials = getInitials(r.first_name, r.last_name);
-        const tintClass = `avatar-tint-${((Number(r.resident_id) || idx) % 6) + 1}`;
 
         // Demographics subtext
         const demoParts = [];
@@ -1211,7 +1261,6 @@ function renderResidentTableRows(residents, totalFiltered) {
             <tr>
                 <td>
                     <div class="resident-identity-cell">
-                        <div class="resident-avatar ${tintClass}">${initials}</div>
                         <div class="resident-name-meta">
                             <span class="resident-full-name">${escapeResidentHtml(fullName)}</span>
                             <span class="resident-demographics">${demoText}</span>
