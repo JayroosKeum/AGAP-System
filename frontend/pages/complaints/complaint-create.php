@@ -180,10 +180,9 @@ include '../../layouts/header.php';
                                 if (!$defaultDt && !empty($old['incident_date'])) {
                                     $defaultDt = $old['incident_date'] . (!empty($old['incident_time']) ? 'T' . substr($old['incident_time'], 0, 5) : 'T00:00');
                                 }
-                                $maxDt = date('Y-m-d\TH:i');
                                 ?>
-                                <input type="datetime-local" id="incidentDateTime" name="incident_datetime" required max="<?php echo $maxDt; ?>" value="<?php echo htmlspecialchars($defaultDt); ?>">
-                                <small class="field-hint">Merged incident date and time (cannot be in the future).</small>
+                                <input type="datetime-local" id="incidentDateTime" name="incident_datetime" required value="<?php echo htmlspecialchars($defaultDt); ?>">
+                                <small class="field-hint">Incident date and time.</small>
                             </div>
                         </div>
                     </div>
@@ -622,17 +621,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const createForm = document.getElementById('createComplaintForm');
     if (createForm) {
         createForm.addEventListener('submit', (e) => {
-            const incidentDtInput = document.getElementById('incidentDateTime');
-            if (incidentDtInput && incidentDtInput.value) {
-                const selectedDt = new Date(incidentDtInput.value);
-                const now = new Date();
-                if (selectedDt > now) {
-                    e.preventDefault();
-                    incidentDtInput.focus();
-                    window.agapNotify?.('Incident date and time cannot be in the future.', 'error');
-                    return;
-                }
-            }
+
 
             const compId = document.getElementById('complainantResidentId')?.value?.trim();
             const respId = document.getElementById('respondentResidentId')?.value?.trim();

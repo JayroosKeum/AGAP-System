@@ -423,12 +423,8 @@ class Complaint
         if (!$parsedDate || $parsedDate->format('Y-m-d') !== $date) return ['success' => false, 'message' => 'Incident date is invalid.'];
         if ($time !== '' && !preg_match('/^([01]\\d|2[0-3]):[0-5]\\d$/', $time)) return ['success' => false, 'message' => 'Incident time is invalid.'];
 
-        $incidentDt = DateTimeImmutable::createFromFormat('Y-m-d H:i', $time !== '' ? "$date $time" : "$date 00:00")
-            ?: DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $time !== '' ? "$date $time" : "$date 00:00:00");
-        $now = new DateTimeImmutable('now');
-        if ($incidentDt && $incidentDt > $now) {
-            return ['success' => false, 'message' => 'Incident date and time cannot be in the future.'];
-        }
+        // Time restrictions for incident date and time disabled for complaint intake
+        // (Allows intake without strict clock-skew or future time rejections)
         $city = trim((string) ($data['incident_city'] ?? ''));
         $barangay = trim((string) ($data['incident_barangay'] ?? ''));
         $street = trim((string) ($data['incident_street'] ?? ''));

@@ -29,8 +29,7 @@ class OfficeLogisticsService
 
     /**
      * Validates clerical/administrative actions within official Lupon office hours.
-     * Official hours: Monday–Friday, 8:00 AM – 5:00 PM.
-     * (Time restrictions temporarily removed for testing/development).
+     * Time restrictions for complaint intake and clerical recording are permanently disabled (24/7 intake allowed).
      */
     public static function validateOfficeHours(DateTimeInterface|string $dateTime, bool $allowTanodSkeletal = false): array
     {
