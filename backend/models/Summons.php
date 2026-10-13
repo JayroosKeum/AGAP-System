@@ -427,20 +427,40 @@ class Summons
             // Initialize summon_deliveries for both parties for this scheduled hearing
             if ($primaryComplainant) {
                 $compDelivStmt = $this->conn->prepare("
-                    INSERT INTO summon_deliveries (hearing_id, party_type, resident_id, form_type, delivery_status)
-                    VALUES (?, 'Complainant', ?, 'Notice of Hearing', 'Pending')
-                    ON DUPLICATE KEY UPDATE resident_id = COALESCE(VALUES(resident_id), resident_id)
+                    INSERT INTO summon_deliveries (hearing_id, case_id, party_type, resident_id, form_type, delivery_status, document_id, recipient_name)
+                    VALUES (?, ?, 'Complainant', ?, 'Notice of Hearing', 'Pending', ?, ?)
+                    ON DUPLICATE KEY UPDATE
+                        resident_id = COALESCE(VALUES(resident_id), resident_id),
+                        case_id = COALESCE(VALUES(case_id), case_id),
+                        document_id = COALESCE(VALUES(document_id), document_id),
+                        recipient_name = COALESCE(VALUES(recipient_name), recipient_name)
                 ");
-                $compDelivStmt->execute([$hearingId, (int) $primaryComplainant['resident_id']]);
+                $compDelivStmt->execute([
+                    $hearingId,
+                    $caseId,
+                    (int) $primaryComplainant['resident_id'],
+                    $kp8DocumentId,
+                    $primaryComplainant['full_name'] ?? null
+                ]);
             }
 
             if ($primaryRespondent) {
                 $respDelivStmt = $this->conn->prepare("
-                    INSERT INTO summon_deliveries (hearing_id, party_type, resident_id, form_type, delivery_status)
-                    VALUES (?, 'Respondent', ?, 'Summon', 'Pending')
-                    ON DUPLICATE KEY UPDATE resident_id = COALESCE(VALUES(resident_id), resident_id)
+                    INSERT INTO summon_deliveries (hearing_id, case_id, party_type, resident_id, form_type, delivery_status, document_id, recipient_name)
+                    VALUES (?, ?, 'Respondent', ?, 'Summon', 'Pending', ?, ?)
+                    ON DUPLICATE KEY UPDATE
+                        resident_id = COALESCE(VALUES(resident_id), resident_id),
+                        case_id = COALESCE(VALUES(case_id), case_id),
+                        document_id = COALESCE(VALUES(document_id), document_id),
+                        recipient_name = COALESCE(VALUES(recipient_name), recipient_name)
                 ");
-                $respDelivStmt->execute([$hearingId, (int) $primaryRespondent['resident_id']]);
+                $respDelivStmt->execute([
+                    $hearingId,
+                    $caseId,
+                    (int) $primaryRespondent['resident_id'],
+                    $documentId,
+                    $primaryRespondent['full_name'] ?? null
+                ]);
             }
 
             // Record in case history

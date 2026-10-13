@@ -152,7 +152,7 @@ class ShowCauseService
             );
 
             // Create Summon Delivery record for this Show Cause hearing
-            $this->createShowCauseDelivery($scHearingId, 'Complainant', 'KP Form 18', $parties['complainant']['resident_id'] ?? null);
+            $this->createShowCauseDelivery($scHearingId, 'Complainant', 'KP Form 18', $parties['complainant']['resident_id'] ?? null, $caseId);
 
             $histMsg = "Complainant failed to appear at mediation hearing on " . date('M j, Y', strtotime($hearing['hearing_date'])) . ". KP Form 18 generated (Doc #{$doc18['document_id']}). Show-cause hearing scheduled for " . date('M j, Y g:i A', strtotime($showCauseDate)) . ".";
             $this->logCaseHistory($caseId, 'Mediation', $histMsg, $actorUserId);
@@ -197,7 +197,7 @@ class ShowCauseService
             );
 
             // Create Summon Delivery record for this Show Cause hearing
-            $this->createShowCauseDelivery($scHearingId, 'Respondent', 'KP Form 19', $parties['respondent']['resident_id'] ?? null);
+            $this->createShowCauseDelivery($scHearingId, 'Respondent', 'KP Form 19', $parties['respondent']['resident_id'] ?? null, $caseId);
 
             $histMsg = "Respondent failed to appear at mediation hearing on " . date('M j, Y', strtotime($hearing['hearing_date'])) . ". KP Form 19 generated (Doc #{$doc19['document_id']}). Show-cause hearing scheduled for " . date('M j, Y g:i A', strtotime($showCauseDate)) . ".";
             $this->logCaseHistory($caseId, 'Mediation', $histMsg, $actorUserId);
@@ -498,15 +498,16 @@ class ShowCauseService
         return (int) $this->conn->lastInsertId();
     }
 
-    private function createShowCauseDelivery(int $hearingId, string $partyType, string $formType, ?int $residentId): void
+    private function createShowCauseDelivery(int $hearingId, string $partyType, string $formType, ?int $residentId, ?int $caseId = null): void
     {
         $stmt = $this->conn->prepare("
-            INSERT INTO summon_deliveries (hearing_id, party_type, resident_id, form_type, delivery_status)
-            VALUES (?, ?, ?, ?, 'Pending')
-            ON DUPLICATE KEY UPDATE form_type = VALUES(form_type)
+            INSERT INTO summon_deliveries (hearing_id, case_id, party_type, resident_id, form_type, delivery_status)
+            VALUES (?, ?, ?, ?, ?, 'Pending')
+            ON DUPLICATE KEY UPDATE form_type = VALUES(form_type), case_id = COALESCE(summon_deliveries.case_id, VALUES(case_id))
         ");
         $stmt->execute([
             $hearingId,
+            $caseId,
             $partyType,
             $residentId,
             $formType,

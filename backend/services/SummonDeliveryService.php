@@ -86,12 +86,13 @@ class SummonDeliveryService
 
                 $formType = ($pType === 'Complainant') ? $complainantForm : $respondentForm;
                 $ins = $this->conn->prepare("
-                    INSERT INTO summon_deliveries (hearing_id, party_type, resident_id, form_type, delivery_status)
-                    VALUES (?, ?, ?, ?, 'Pending')
-                    ON DUPLICATE KEY UPDATE form_type = VALUES(form_type)
+                    INSERT INTO summon_deliveries (hearing_id, case_id, party_type, resident_id, form_type, delivery_status)
+                    VALUES (?, ?, ?, ?, ?, 'Pending')
+                    ON DUPLICATE KEY UPDATE form_type = VALUES(form_type), case_id = COALESCE(summon_deliveries.case_id, VALUES(case_id))
                 ");
                 $ins->execute([
                     $hearingId,
+                    (int) $hearing['case_id'],
                     $pType,
                     $targetResident ? (int) $targetResident['resident_id'] : null,
                     $formType
@@ -299,10 +300,11 @@ class SummonDeliveryService
         // Upsert summon_deliveries
         $upsert = $this->conn->prepare("
             INSERT INTO summon_deliveries (
-                hearing_id, party_type, resident_id, form_type, delivery_status,
+                hearing_id, case_id, party_type, resident_id, form_type, delivery_status,
                 served_at, served_by, recipient_name, relationship, unserved_reason, failure_notes, remarks
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
+                case_id = COALESCE(summon_deliveries.case_id, VALUES(case_id)),
                 resident_id = VALUES(resident_id),
                 form_type = VALUES(form_type),
                 delivery_status = VALUES(delivery_status),
@@ -318,6 +320,7 @@ class SummonDeliveryService
 
         $upsert->execute([
             $hearingId,
+            (int) $hearing['case_id'],
             $partyType,
             $residentId,
             $formType,
