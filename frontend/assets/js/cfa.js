@@ -78,9 +78,15 @@ async function loadCasePreview(caseId) {
 
     try {
         preview.textContent = 'Loading case details...';
-        const res = await cfaApi(`../../../backend/api/cases/workspace.php?id=${encodeURIComponent(caseId)}`);
+        const [res, cfaStatusRes] = await Promise.all([
+            cfaApi(`../../../backend/api/cases/workspace.php?id=${encodeURIComponent(caseId)}`),
+            cfaApi(`../../../backend/api/documents/cfa.php?case_id=${encodeURIComponent(caseId)}`).catch(() => ({ success: true, cfa_eligibility: null }))
+        ]);
+
         const item = res.data.case;
         const timer = item.mediation_timer || {};
+        const cfaElig = cfaStatusRes.cfa_eligibility || null;
+        window.currentCaseCfaEligibility = cfaElig;
 
         let timerHtml = '';
         if (item.case_status === 'Mediation' && timer.timer_status) {
@@ -97,16 +103,45 @@ async function loadCasePreview(caseId) {
             `;
         }
 
+        let summonsBannerHtml = '';
+        if (cfaElig) {
+            if (cfaElig.eligible) {
+                summonsBannerHtml = `
+                    <div style="margin-top: 0.75rem; padding: 12px 16px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; color: #166534; font-size: 0.88rem; display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 1.1rem;">✅</span>
+                        <div>
+                            <strong>CFA Unlocked (3 Failed Summons Attempts):</strong> ${escapeHtml(cfaElig.reason || 'All three summons delivery attempts have resulted in qualifying delivery failure.')}
+                        </div>
+                    </div>
+                `;
+                // Pre-fill reason with summons failure ground
+                if (presetSelect && reasonText) {
+                    presetSelect.value = 'Respondent summons unserved after three (3) documented delivery attempts (Delivery Failure).';
+                    reasonText.value = presetSelect.value;
+                }
+            } else if (cfaElig.attempts_count > 0) {
+                summonsBannerHtml = `
+                    <div style="margin-top: 0.75rem; padding: 12px 16px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; color: #92400e; font-size: 0.88rem; display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 1.1rem;">🔒</span>
+                        <div>
+                            <strong>Summons Delivery Status:</strong> ${escapeHtml(cfaElig.reason || 'CFA is locked through this path.')}
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
         preview.className = 'document-preview';
         preview.innerHTML = `
             <div><strong>Case:</strong> ${escapeHtml(item.case_number)} — ${escapeHtml(item.complaint_title)}</div>
             <div><strong>Stage / Status:</strong> ${escapeHtml(item.case_status)}</div>
             <div><strong>Docket Date:</strong> ${escapeHtml(item.docket_date)}</div>
             ${timerHtml}
+            ${summonsBannerHtml}
         `;
 
         // If the case mediation has lapsed, prefill the reason automatically!
-        if (timer.is_lapsed && presetSelect && reasonText) {
+        if (timer.is_lapsed && presetSelect && reasonText && (!cfaElig || !cfaElig.eligible)) {
             presetSelect.value = '15-day statutory mediation period has lapsed without settlement or constitution of Pangkat Tagapagkasundo (RA 7160 Sec. 410(b)).';
             reasonText.value = presetSelect.value;
         }
@@ -135,7 +170,20 @@ async function handleCfaSubmit(event) {
         return;
     }
 
-    if (!window.confirm('Are you sure you want to issue a Certificate to File Action (CFA) for this case? This will mark the case as CFA Issued.')) {
+    // Validate three summons failed delivery condition
+    const isSummonsFailureReason = reason.includes('documented delivery attempts')
+        || reason.includes('delivery failure')
+        || reason.includes('summons unserved')
+        || reason.includes('failed to appear after repeated summons');
+
+    const elig = window.currentCaseCfaEligibility;
+    if (isSummonsFailureReason && elig && !elig.eligible) {
+        setMessage(elig.reason || 'CFA Locked — 3 summons delivery attempts must result in qualifying failure before CFA can be issued on this ground.', false);
+        window.agapNotify?.(elig.reason || 'CFA is locked until all 3 summons attempts have failed.', 'warning', 'CFA Locked');
+        return;
+    }
+
+    if (!window.confirm('Are you sure you want to issue a Certificate to File Action (CFA) for this case? This will mark the case as CFA Issued and generate KP Form No. 20.')) {
         return;
     }
 
@@ -149,13 +197,28 @@ async function handleCfaSubmit(event) {
         });
 
         setMessage(res.message || 'CFA issued successfully!', true);
-        window.agapNotify?.(res.message || 'CFA issued successfully.', 'success', 'Certificate to File Action Issued');
+        window.agapNotify?.(res.message || 'CFA issued successfully. KP Form No. 20 generated.', 'success', 'Certificate to File Action Issued');
         form.reset();
         await Promise.all([loadCases(), loadCfaRecords()]);
         const preview = document.getElementById('cfaCasePreview');
         if (preview) {
-            preview.textContent = 'CFA was successfully issued. Select another case to issue another CFA.';
-            preview.className = 'document-preview muted';
+            let printActionHtml = '';
+            if (res.pdf_url) {
+                printActionHtml = `
+                    <div style="margin-top: 10px;">
+                        <a href="${escapeHtml(res.pdf_url)}" target="_blank" class="btn-create" style="display: inline-flex; align-items: center; gap: 6px; text-decoration: none;">
+                            🖨️ Print KP Form 20 (CFA Document)
+                        </a>
+                    </div>
+                `;
+            }
+            preview.innerHTML = `
+                <div style="color: #166534; font-weight: 600;">
+                    ✓ CFA was successfully issued and KP Form No. 20 has been generated.
+                </div>
+                ${printActionHtml}
+            `;
+            preview.className = 'document-preview';
         }
     } catch (err) {
         setMessage(err.message, false);

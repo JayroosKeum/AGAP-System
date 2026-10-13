@@ -1021,8 +1021,17 @@ async function loadHearingDeliveries(caseId) {
 
         const activeHearing = data.hearings[0];
         const deliveries = activeHearing.deliveries || [];
+        const respAttempts = activeHearing.respondent_attempts || [];
+        const cfaElig = data.cfa_eligibility || activeHearing.cfa_eligibility || {
+            eligible: false,
+            failed_count: 0,
+            attempts_count: 0,
+            reason: 'CFA is locked until all 3 summons attempts have failed.'
+        };
+        const failedCount = Number(cfaElig.failed_count || 0);
+        const isCfaEligible = Boolean(cfaElig.eligible);
 
-        // Render alert banner
+        // Render attendance lock / unlock alert banner
         if (alertBanner) {
             const isUnlocked = activeHearing.attendance_unlocked;
             const noticeMsg = activeHearing.service_notice || '';
@@ -1060,137 +1069,406 @@ async function loadHearingDeliveries(caseId) {
             alertBanner.style.display = 'flex';
         }
 
-        // Render delivery cards
-        container.innerHTML = deliveries.map(deliv => {
-            const pType = deliv.party_type;
-            const profile = deliv.party_profile || {};
-            const name = deliv.recipient_name || profile.resident_name || `${pType}`;
-            const formType = deliv.form_type || (pType === 'Complainant' ? 'Notice of Hearing' : 'Summon');
-            const status = deliv.delivery_status || 'Pending';
+        const hearingDateFormatted = activeHearing.hearing_date
+            ? formatDateTime(activeHearing.hearing_date)
+            : 'Mediation Session';
 
-            let badgeHtml = '';
-            if (status.startsWith('Served')) {
-                const sublabel = status === 'Served Personal' ? 'Served - Personal'
-                               : (status === 'Served Substituted' ? 'Served - Substituted'
-                               : (status === 'Served Refused' ? 'Refused to Receive' : 'Served'));
-                badgeHtml = `<span class="service-result-badge badge-served">${escapeGpsHtml(sublabel)}</span>`;
-            } else if (status === 'Unserved') {
-                badgeHtml = `<span class="service-result-badge badge-not-served">Unserved / Failed</span>`;
-            } else {
-                badgeHtml = `<span class="service-result-badge badge-warning">Pending Service</span>`;
-            }
+        // 1. CFA Status Card
+        const att1 = respAttempts.find(a => a.attempt_number === 1) || null;
+        const att2 = respAttempts.find(a => a.attempt_number === 2) || null;
+        const att3 = respAttempts.find(a => a.attempt_number === 3) || null;
 
-            let resBadge = '';
-            if (profile.is_tenant !== undefined) {
-                const isTenant = Number(profile.is_tenant);
-                if (isTenant === 1) resBadge = `<span class="residency-badge badge-tenant"><span class="residency-dot"></span>Tenant</span>`;
-                else if (isTenant === 2) resBadge = `<span class="residency-badge badge-non-resident"><span class="residency-dot"></span>Non-Resident</span>`;
-                else resBadge = `<span class="residency-badge badge-resident"><span class="residency-dot"></span>Resident</span>`;
-            }
-
-            const hearingDateFormatted = activeHearing.hearing_date
-                ? formatDateTime(activeHearing.hearing_date)
-                : 'Mediation Session';
-
-            const residentIdVal = deliv.resident_id || profile.resident_id || 0;
-            const hearingIdVal = activeHearing.hearing_id;
-
-            return `
-                <div class="delivery-card">
-                    <div class="delivery-card-header">
-                        <div>
-                            <span class="delivery-party-role">${escapeGpsHtml(pType)}</span>
-                            <div class="delivery-party-name">
-                                <span>${escapeGpsHtml(name)}</span>
-                                ${resBadge}
+        const renderStepBadge = (att, num) => {
+            const ordinals = ['', '1st', '2nd', '3rd'];
+            const ord = ordinals[num] || num + 'th';
+            if (!att) {
+                return `
+                    <div style="flex: 1; min-width: 150px; padding: 10px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 1.1rem; color: #94a3b8;">⚪</span>
+                            <div>
+                                <strong style="font-size: 0.82rem; color: #64748b; display: block;">${ord} Attempt</strong>
+                                <span style="font-size: 0.72rem; color: #94a3b8;">Not yet issued</span>
                             </div>
-                            <span class="delivery-form-type">${escapeGpsHtml(formType)}</span>
                         </div>
+                    </div>
+                `;
+            }
+            if (att.is_failed) {
+                return `
+                    <div style="flex: 1; min-width: 150px; padding: 10px 14px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 1.1rem; color: #dc2626;">❌</span>
+                            <div>
+                                <strong style="font-size: 0.82rem; color: #991b1b; display: block;">${ord} Attempt (Failed)</strong>
+                                <span style="font-size: 0.72rem; color: #b91c1c; font-weight: 600;">${escapeGpsHtml(att.unserved_reason || 'Unserved')}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            if (att.is_served) {
+                return `
+                    <div style="flex: 1; min-width: 150px; padding: 10px 14px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 1.1rem; color: #16a34a;">✅</span>
+                            <div>
+                                <strong style="font-size: 0.82rem; color: #166534; display: block;">${ord} Attempt (Served)</strong>
+                                <span style="font-size: 0.72rem; color: #15803d;">CFA Ineligible</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            return `
+                <div style="flex: 1; min-width: 150px; padding: 10px 14px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 1.1rem; color: #d97706;">⏳</span>
                         <div>
-                            ${badgeHtml}
+                            <strong style="font-size: 0.82rem; color: #92400e; display: block;">${ord} Attempt (Pending)</strong>
+                            <span style="font-size: 0.72rem; color: #b45309;">Awaiting return</span>
                         </div>
-                    </div>
-
-                    <div class="delivery-card-body">
-                        <div style="font-size: 0.8rem; color: #64748b; margin-bottom: 8px;">
-                            Hearing: <strong>${escapeGpsHtml(activeHearing.hearing_type)}</strong> (${escapeGpsHtml(hearingDateFormatted)})
-                        </div>
-
-                        <ul class="delivery-detail-list">
-                            ${deliv.served_at ? `
-                                <li>
-                                    <span class="delivery-detail-label">Date/Time Served</span>
-                                    <span class="delivery-detail-val">${escapeGpsHtml(formatDateTime(deliv.served_at))}</span>
-                                </li>
-                            ` : ''}
-                            ${deliv.recipient_name ? `
-                                <li>
-                                    <span class="delivery-detail-label">Recipient Name</span>
-                                    <span class="delivery-detail-val">${escapeGpsHtml(deliv.recipient_name)}</span>
-                                </li>
-                            ` : ''}
-                            ${deliv.relationship ? `
-                                <li>
-                                    <span class="delivery-detail-label">Relationship</span>
-                                    <span class="delivery-detail-val">${escapeGpsHtml(deliv.relationship)}</span>
-                                </li>
-                            ` : ''}
-                            ${deliv.served_by_name ? `
-                                <li>
-                                    <span class="delivery-detail-label">Process Server</span>
-                                    <span class="delivery-detail-val">${escapeGpsHtml(deliv.served_by_name)}</span>
-                                </li>
-                            ` : ''}
-                            ${(deliv.unserved_reason || status === 'Served Refused') ? `
-                                <li>
-                                    <span class="delivery-detail-label" style="color:#b91c1c;">Failure Reason</span>
-                                    <span class="delivery-detail-val" style="color:#b91c1c; font-weight:700;">${escapeGpsHtml(deliv.unserved_reason || 'Refused')}</span>
-                                </li>
-                            ` : ''}
-                            ${deliv.failure_notes ? `
-                                <li>
-                                    <span class="delivery-detail-label" style="color:#b91c1c;">Failure Notes</span>
-                                    <span class="delivery-detail-val" style="color:#b91c1c;">${escapeGpsHtml(deliv.failure_notes)}</span>
-                                </li>
-                            ` : ''}
-                            ${deliv.remarks ? `
-                                <li>
-                                    <span class="delivery-detail-label">Remarks</span>
-                                    <span class="delivery-detail-val">${escapeGpsHtml(deliv.remarks)}</span>
-                                </li>
-                            ` : ''}
-                        </ul>
-                    </div>
-
-                    <div class="delivery-card-footer">
-                        <button type="button" class="btn-log-return" onclick="openOfficerReturnModal(
-                            '${escapeGpsHtml(pType)}',
-                            ${residentIdVal},
-                            ${hearingIdVal},
-                            ${caseId},
-                            '${escapeGpsHtml(deliv.delivery_status || 'Served Personal')}',
-                            '${escapeGpsHtml(deliv.recipient_name || profile.resident_name || '')}',
-                            '${escapeGpsHtml(deliv.relationship || '')}',
-                            '${escapeGpsHtml(deliv.remarks || '')}',
-                            '${escapeGpsHtml(deliv.unserved_reason || '')}'
-                        )">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                            </svg>
-                            Log Officer's Return
-                        </button>
                     </div>
                 </div>
             `;
-        }).join('');
+        };
+
+        let cfaActionHtml = '';
+        if (isCfaEligible) {
+            cfaActionHtml = `
+                <a href="../documents/cfa.php?case_id=${encodeURIComponent(caseId)}" class="btn-create" style="display: inline-flex; align-items: center; gap: 6px; background: #16a34a; color: #fff; text-decoration: none; padding: 9px 18px; border-radius: 8px; font-weight: 600; font-size: 0.88rem; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                    Print Certificate to File Action (CFA - KP Form 20) &rarr;
+                </a>
+            `;
+        } else {
+            cfaActionHtml = `
+                <button type="button" class="btn-secondary" disabled title="${escapeGpsHtml(cfaElig.reason || 'CFA is locked until all 3 summons attempts have resulted in failure.')}" style="opacity: 0.6; cursor: not-allowed; display: inline-flex; align-items: center; gap: 6px; padding: 9px 18px; border-radius: 8px; font-size: 0.88rem;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                    Print CFA (Locked — ${failedCount}/3 Failed)
+                </button>
+            `;
+        }
+
+        const cfaCardHtml = `
+            <div class="cfa-status-card" style="grid-column: 1 / -1; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); margin-bottom: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 14px;">
+                    <div>
+                        <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #2563eb;">Statutory Dispute Progression</span>
+                        <h3 style="margin: 2px 0 0; font-size: 1.15rem; font-weight: 700; color: #1e293b;">Certificate to File Action (CFA - KP Form 20)</h3>
+                    </div>
+                    <div>
+                        ${isCfaEligible
+                            ? '<span class="service-result-badge badge-served" style="background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; font-size:0.84rem; padding:5px 12px;">✅ CFA Unlocked</span>'
+                            : '<span class="service-result-badge badge-warning" style="background:#fef3c7; color:#92400e; border:1px solid #fde68a; font-size:0.84rem; padding:5px 12px;">🔒 CFA Locked</span>'
+                        }
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 14px;">
+                    ${renderStepBadge(att1, 1)}
+                    ${renderStepBadge(att2, 2)}
+                    ${renderStepBadge(att3, 3)}
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border-top: 1px solid #f1f5f9; padding-top: 14px;">
+                    <div style="font-size: 0.88rem; color: #475569; display: flex; align-items: center; gap: 8px;">
+                        <strong>Summons Attempts:</strong>
+                        <span style="font-weight: 700; color: ${failedCount >= 3 ? '#16a34a' : (failedCount > 0 ? '#d97706' : '#64748b')};">${failedCount}/3 Failed</span>
+                        <span style="color: #94a3b8;">·</span>
+                        <span>${escapeGpsHtml(cfaElig.reason || '')}</span>
+                    </div>
+                    <div>
+                        ${cfaActionHtml}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // 2. Complainant Notice of Hearing (KP Form 8) Card
+        const compDeliv = deliveries.find(d => d.party_type === 'Complainant') || null;
+        const compProfile = compDeliv?.party_profile || {};
+        const compName = compDeliv?.recipient_name || compProfile.resident_name || 'Complainant';
+        const compStatus = compDeliv?.delivery_status || 'Pending';
+        const compIsServed = compStatus.startsWith('Served');
+        const compIsAutoServed = compIsServed && (compDeliv?.remarks?.includes('print') || compDeliv?.remarks?.includes('First Mediation') || compDeliv?.delivery_status === 'Served');
+
+        let compBadgeHtml = '';
+        if (compIsServed) {
+            compBadgeHtml = `<span class="service-result-badge badge-served">Served ${compIsAutoServed ? '(Print Workflow)' : ''}</span>`;
+        } else if (compStatus === 'Unserved') {
+            compBadgeHtml = `<span class="service-result-badge badge-not-served">Unserved / Failed</span>`;
+        } else {
+            compBadgeHtml = `<span class="service-result-badge badge-warning">Pending Service</span>`;
+        }
+
+        const compResidentId = compDeliv?.resident_id || compProfile.resident_id || 0;
+
+        const compCardHtml = `
+            <div class="delivery-card">
+                <div class="delivery-card-header">
+                    <div>
+                        <span class="delivery-party-role">Complainant</span>
+                        <div class="delivery-party-name">
+                            <span>${escapeGpsHtml(compName)}</span>
+                        </div>
+                        <span class="delivery-form-type">KP Form No. 8 – Notice of Hearing</span>
+                    </div>
+                    <div>
+                        ${compBadgeHtml}
+                    </div>
+                </div>
+
+                <div class="delivery-card-body">
+                    <div style="font-size: 0.8rem; color: #64748b; margin-bottom: 8px;">
+                        Hearing: <strong>${escapeGpsHtml(activeHearing.hearing_type)}</strong> (${escapeGpsHtml(hearingDateFormatted)})
+                    </div>
+
+                    ${compIsAutoServed ? `
+                        <div style="margin-bottom: 10px; padding: 8px 12px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; font-size: 0.8rem; color: #166534;">
+                            💡 <strong>Auto-Served via Print:</strong> Automatically marked as Served upon printing for First Mediation stage.
+                        </div>
+                    ` : ''}
+
+                    <ul class="delivery-detail-list">
+                        ${compDeliv?.served_at ? `
+                            <li>
+                                <span class="delivery-detail-label">Date/Time Served</span>
+                                <span class="delivery-detail-val">${escapeGpsHtml(formatDateTime(compDeliv.served_at))}</span>
+                            </li>
+                        ` : ''}
+                        ${compDeliv?.served_by_name ? `
+                            <li>
+                                <span class="delivery-detail-label">Service Source / Server</span>
+                                <span class="delivery-detail-val">${escapeGpsHtml(compDeliv.served_by_name)}</span>
+                            </li>
+                        ` : ''}
+                        ${compDeliv?.remarks ? `
+                            <li>
+                                <span class="delivery-detail-label">Remarks</span>
+                                <span class="delivery-detail-val">${escapeGpsHtml(compDeliv.remarks)}</span>
+                            </li>
+                        ` : ''}
+                    </ul>
+                </div>
+
+                <div class="delivery-card-footer" style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button type="button" class="btn-secondary" onclick="printKp8Notice(${caseId}, ${activeHearing.hearing_id}, ${compDeliv?.document_id || 'null'})" style="font-size: 0.82rem; padding: 6px 12px; display: inline-flex; align-items: center; gap: 4px;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                        Print KP Form 8
+                    </button>
+                    <button type="button" class="btn-log-return" onclick="openOfficerReturnModal(
+                        'Complainant',
+                        ${compResidentId},
+                        ${activeHearing.hearing_id},
+                        ${caseId},
+                        '${escapeGpsHtml(compDeliv?.delivery_status || 'Served Personal')}',
+                        '${escapeGpsHtml(compDeliv?.recipient_name || compName || '')}',
+                        '${escapeGpsHtml(compDeliv?.relationship || '')}',
+                        '${escapeGpsHtml(compDeliv?.remarks || '')}',
+                        '${escapeGpsHtml(compDeliv?.unserved_reason || '')}',
+                        1,
+                        ${compDeliv?.delivery_id || 'null'}
+                    )">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                        Log Officer's Return
+                    </button>
+                </div>
+            </div>
+        `;
+
+        // 3. Respondent Summons (KP Form 9) Attempts Section
+        const canNext = Boolean(activeHearing.can_initiate_next_attempt);
+        const nextNum = activeHearing.next_attempt_number || (respAttempts.length + 1);
+        const ordinals = ['', '1st', '2nd', '3rd'];
+        const nextOrd = ordinals[nextNum] || nextNum + 'th';
+        const anyRespServed = respAttempts.some(a => a.is_served);
+
+        let respActionBtnHtml = '';
+        if (canNext && nextNum <= 3) {
+            respActionBtnHtml = `
+                <button type="button" class="btn-create" onclick="initiateNextSummonAttempt(${caseId}, ${activeHearing.hearing_id})" style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.84rem; padding: 7px 14px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    Issue Summon ${nextOrd} Attempt
+                </button>
+            `;
+        } else if (anyRespServed) {
+            respActionBtnHtml = `<span style="background: #dcfce7; color: #166534; font-weight: 700; font-size: 0.8rem; padding: 5px 12px; border-radius: 6px; border: 1px solid #bbf7d0;">✓ Summons Successfully Served</span>`;
+        } else if (respAttempts.length >= 3 && failedCount >= 3) {
+            respActionBtnHtml = `<span style="background: #fee2e2; color: #991b1b; font-weight: 700; font-size: 0.8rem; padding: 5px 12px; border-radius: 6px; border: 1px solid #fecaca;">3 Attempts Failed — Max Reached</span>`;
+        } else {
+            const lockReason = respAttempts.length === 0
+                ? 'Issue Summon 1st Attempt'
+                : (respAttempts[respAttempts.length - 1]?.is_pending ? `Record Officer's Return for Attempt #${respAttempts.length} before next attempt` : 'Next attempt unavailable');
+            respActionBtnHtml = `
+                <button type="button" class="btn-secondary" disabled title="${escapeGpsHtml(lockReason)}" style="opacity: 0.6; cursor: not-allowed; display: inline-flex; align-items: center; gap: 6px; font-size: 0.84rem; padding: 7px 14px;">
+                    Issue Summon ${nextOrd} Attempt
+                </button>
+            `;
+        }
+
+        // Build Respondent Attempts Rows
+        let respRowsHtml = '';
+        if (respAttempts.length === 0) {
+            respRowsHtml = `
+                <tr>
+                    <td colspan="6" style="text-align: center; padding: 24px 16px; color: #94a3b8; font-size: 0.88rem;">
+                        No delivery attempts recorded yet. Click <strong>Issue Summon 1st Attempt</strong> above to initiate summons delivery.
+                    </td>
+                </tr>
+            `;
+        } else {
+            respRowsHtml = respAttempts.map(att => {
+                const ord = att.attempt_ordinal || att.attempt_number;
+                let statusBadge = '';
+                if (att.is_served) {
+                    statusBadge = `<span class="service-result-badge badge-served">${escapeGpsHtml(att.delivery_status)}</span>`;
+                } else if (att.is_failed) {
+                    statusBadge = `<span class="service-result-badge badge-not-served">Unserved / Failed</span>`;
+                } else {
+                    statusBadge = `<span class="service-result-badge badge-warning">Pending Service</span>`;
+                }
+
+                let proofLinkHtml = '<span style="color:#94a3b8; font-size:0.8rem;">None</span>';
+                const proofPath = att.proof_file_path || att.attachment_path;
+                if (proofPath) {
+                    proofLinkHtml = `
+                        <a href="../../${escapeGpsHtml(proofPath)}" target="_blank" style="color: #2563eb; font-weight: 600; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 3px;">
+                            📎 View Proof
+                        </a>
+                    `;
+                }
+
+                const respResidentId = att.resident_id || 0;
+
+                return `
+                    <tr style="border-bottom: 1px solid #f1f5f9;">
+                        <td style="padding: 12px 14px; font-weight: 600; color: #1e293b;">
+                            ${escapeGpsHtml(ord)} Attempt
+                        </td>
+                        <td style="padding: 12px 14px; font-size: 0.85rem; color: #475569;">
+                            ${escapeGpsHtml(att.attempted_at ? formatDateTime(att.attempted_at) : 'Pending')}
+                        </td>
+                        <td style="padding: 12px 14px;">
+                            ${statusBadge}
+                        </td>
+                        <td style="padding: 12px 14px; font-size: 0.85rem;">
+                            ${att.is_failed
+                                ? `<strong style="color: #b91c1c;">${escapeGpsHtml(att.unserved_reason || 'Unserved')}</strong>`
+                                : '<span style="color: #94a3b8;">—</span>'
+                            }
+                        </td>
+                        <td style="padding: 12px 14px; font-size: 0.85rem; color: #475569;">
+                            ${escapeGpsHtml(att.served_by_name || 'Unassigned')}
+                        </td>
+                        <td style="padding: 12px 14px;">
+                            ${proofLinkHtml}
+                        </td>
+                        <td style="padding: 12px 14px; text-align: center;">
+                            <button type="button" class="btn-secondary" style="font-size: 0.8rem; padding: 5px 10px;" onclick="openOfficerReturnModal(
+                                'Respondent',
+                                ${respResidentId},
+                                ${activeHearing.hearing_id},
+                                ${caseId},
+                                '${escapeGpsHtml(att.delivery_status || 'Served Personal')}',
+                                '${escapeGpsHtml(att.recipient_name || '')}',
+                                '${escapeGpsHtml(att.relationship || '')}',
+                                '${escapeGpsHtml(att.remarks || '')}',
+                                '${escapeGpsHtml(att.unserved_reason || '')}',
+                                ${att.attempt_number},
+                                ${att.delivery_id || 'null'}
+                            )">
+                                Log Return
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        const respCardHtml = `
+            <div class="delivery-card" style="grid-column: 1 / -1; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px 24px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 14px;">
+                    <div>
+                        <span class="delivery-party-role" style="color: #ea580c; font-weight: 700;">Respondent</span>
+                        <h3 style="margin: 2px 0 0; font-size: 1.15rem; font-weight: 700; color: #1e293b;">KP Form No. 9 – Summons Delivery Tracking</h3>
+                        <p style="margin: 2px 0 0; font-size: 0.84rem; color: #64748b;">A maximum of three (3) documented delivery attempts are tracked before CFA eligibility upon failure.</p>
+                    </div>
+                    <div>
+                        ${respActionBtnHtml}
+                    </div>
+                </div>
+
+                <div class="table-responsive" style="border: 1px solid #e2e8f0; border-radius: 8px; overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                        <thead>
+                            <tr style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; font-size: 0.8rem; color: #475569; text-transform: uppercase;">
+                                <th style="padding: 10px 14px;">Attempt</th>
+                                <th style="padding: 10px 14px;">Date &amp; Time</th>
+                                <th style="padding: 10px 14px;">Status / Result</th>
+                                <th style="padding: 10px 14px;">Failure Reason</th>
+                                <th style="padding: 10px 14px;">Process Server</th>
+                                <th style="padding: 10px 14px;">Proof / Photo</th>
+                                <th style="padding: 10px 14px; text-align: center;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${respRowsHtml}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+
+        container.innerHTML = `
+            ${cfaCardHtml}
+            ${compCardHtml}
+            ${respCardHtml}
+        `;
 
     } catch (err) {
         console.error('Failed to load hearing deliveries:', err);
     }
 }
 
-function openOfficerReturnModal(partyType, residentId, hearingId, caseId, currentStatus, currentRecipient, currentRelationship, currentNotes, currentUnservedReason) {
+async function initiateNextSummonAttempt(caseId, hearingId) {
+    if (!caseId) return;
+    if (!window.confirm('Do you want to initiate the next summons delivery attempt for the respondent?')) {
+        return;
+    }
+
+    try {
+        const formData = new FormData();
+        formData.append('case_id', caseId);
+        if (hearingId) formData.append('hearing_id', hearingId);
+        formData.append('action', 'next_attempt');
+
+        const res = await fetch('../../../backend/api/summons/next-attempt.php', {
+            method: 'POST',
+            body: formData,
+            headers: { 'Accept': 'application/json' }
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            throw new Error(data.message || 'Failed to initiate summons attempt.');
+        }
+
+        window.agapNotify?.(data.message || 'Next summons attempt initiated successfully.', 'success', 'Summons Attempt');
+        await loadHearingDeliveries(caseId);
+    } catch (err) {
+        window.agapNotify?.(err.message, 'error', 'Summons Attempt Failed');
+    }
+}
+
+async function printKp8Notice(caseId, hearingId, documentId) {
+    if (typeof window.openSummonsPreviewModal === 'function') {
+        window.openSummonsPreviewModal(caseId, documentId, hearingId, false);
+        return;
+    }
+    window.location.href = `../complaints/complaint-details.php?id=${encodeURIComponent(caseId)}#print-summons`;
+}
+
+function openOfficerReturnModal(partyType, residentId, hearingId, caseId, currentStatus, currentRecipient, currentRelationship, currentNotes, currentUnservedReason, attemptNumber = 1, deliveryId = null) {
     const modal = document.getElementById('officerReturnModal');
     if (!modal) return;
 
@@ -1199,10 +1477,19 @@ function openOfficerReturnModal(partyType, residentId, hearingId, caseId, curren
     document.getElementById('returnPartyType').value = partyType || 'Respondent';
     document.getElementById('returnResidentId').value = residentId || '';
 
+    const attemptInput = document.getElementById('returnAttemptNumber');
+    if (attemptInput) attemptInput.value = attemptNumber || 1;
+
+    const deliveryIdInput = document.getElementById('returnDeliveryId');
+    if (deliveryIdInput) deliveryIdInput.value = deliveryId || '';
+
     const titleEl = document.getElementById('officerReturnModalTitle');
     const subTitleEl = document.getElementById('officerReturnModalSubtitle');
-    if (titleEl) titleEl.textContent = `Log Officer's Return — ${partyType}`;
-    if (subTitleEl) subTitleEl.textContent = `Record delivery result and proof of service for ${partyType}`;
+    const ordinals = ['', '1st', '2nd', '3rd'];
+    const ord = ordinals[attemptNumber] || attemptNumber + 'th';
+    const displayParty = (partyType === 'Respondent' && attemptNumber) ? `Respondent (${ord} Attempt)` : partyType;
+    if (titleEl) titleEl.textContent = `Log Officer's Return — ${displayParty}`;
+    if (subTitleEl) subTitleEl.textContent = `Record delivery result and proof of service for ${displayParty}`;
 
     const statusSelect = document.getElementById('returnDeliveryStatus');
     if (statusSelect) {
@@ -1391,6 +1678,9 @@ window.openOfficerReturnModal = openOfficerReturnModal;
 window.closeOfficerReturnModal = closeOfficerReturnModal;
 window.handleDeliveryStatusChange = handleDeliveryStatusChange;
 window.submitOfficerReturn = submitOfficerReturn;
+window.initiateNextSummonAttempt = initiateNextSummonAttempt;
+window.printKp8Notice = printKp8Notice;
+window.loadHearingDeliveries = loadHearingDeliveries;
 
 document.addEventListener(
     'DOMContentLoaded',

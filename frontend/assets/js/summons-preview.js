@@ -209,6 +209,48 @@ function retrySummonsPreview() {
 }
 
 /**
+ * Automatically mark KP Form No. 8 as served when printed for First Mediation.
+ */
+async function markKp8AsServedOnPrint() {
+    const state = window.currentSummonsPreview;
+    if (!state || !state.caseId) return;
+    const kp8DocId = state.kp8?.documentId || state.documentId;
+    if (!kp8DocId) return;
+
+    try {
+        const formData = new FormData();
+        formData.append('case_id', state.caseId);
+        formData.append('document_id', kp8DocId);
+        if (state.hearingId) {
+            formData.append('hearing_id', state.hearingId);
+        }
+
+        const res = await fetch('../../../backend/api/summons/mark-served-kp8.php', {
+            method: 'POST',
+            body: formData,
+            headers: { 'Accept': 'application/json' }
+        });
+        const data = await res.json();
+        if (data && data.success) {
+            window.agapNotify?.(
+                data.message || 'KP Form No. 8 (Complainant Notice) marked as Served upon printing.',
+                'success',
+                'Complainant Notice Served'
+            );
+            const kp8Hint = document.getElementById('kp8PartyHint');
+            if (kp8Hint) {
+                kp8Hint.innerHTML = (kp8Hint.innerHTML || '').replace(/Status:[^<]*/, '') + ' · <span style="color:#16a34a; font-weight:700;">Status: Served (Print Workflow)</span>';
+            }
+            if (typeof window.loadHearingDeliveries === 'function') {
+                window.loadHearingDeliveries(state.caseId);
+            }
+        }
+    } catch (err) {
+        console.warn('Failed to auto-mark KP Form 8 as served on print:', err);
+    }
+}
+
+/**
  * Print summons or notice of hearing.
  *
  * @param {'kp8'|'kp9'|'both'} target Which document to print
@@ -235,14 +277,19 @@ function printSummonsPreview(target = 'kp9') {
     };
 
     if (target === 'kp8') {
-        printFrame(frame8, window.currentSummonsPreview?.kp8?.pdfUrl);
+        const printed = printFrame(frame8, window.currentSummonsPreview?.kp8?.pdfUrl);
+        if (printed) {
+            markKp8AsServedOnPrint();
+        }
     } else if (target === 'kp9') {
+        // Do NOT mark KP Form 9 as served merely on print
         printFrame(frame9, window.currentSummonsPreview?.kp9?.pdfUrl);
     } else if (target === 'both') {
         // Print KP Form 8 first, then sequence KP Form 9
         if (frame8?.contentWindow) {
             frame8.contentWindow.focus();
             frame8.contentWindow.print();
+            markKp8AsServedOnPrint();
 
             // After focus returns from KP 8 print dialog, trigger KP 9
             const onAfterPrint = () => {
@@ -256,6 +303,10 @@ function printSummonsPreview(target = 'kp9') {
             };
             window.addEventListener('focus', onAfterPrint, { once: true });
         } else {
+            const printed8 = printFrame(frame8, window.currentSummonsPreview?.kp8?.pdfUrl);
+            if (printed8) {
+                markKp8AsServedOnPrint();
+            }
             printFrame(frame9, window.currentSummonsPreview?.kp9?.pdfUrl);
         }
     }

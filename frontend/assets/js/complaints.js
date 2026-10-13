@@ -710,7 +710,7 @@ function renderCaseWorkspace(workspace, complaint) {
                 <div class="empty-detail-state" style="text-align: center; padding: 24px 16px; color: #64748b;">
                     <p style="margin: 0 0 10px; font-size: 0.88rem;">No hearings have been scheduled for this case yet.</p>
                     <button type="button" class="btn-create" onclick="handleIssueSummonClick()" style="font-size: 0.82rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 5px;">
-                        Issue 1st Summon &amp; Schedule &rarr;
+                        Issue Summon 1st Attempt &amp; Schedule &rarr;
                     </button>
                 </div>
             `;

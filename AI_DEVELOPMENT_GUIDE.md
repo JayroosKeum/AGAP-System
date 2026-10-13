@@ -151,11 +151,26 @@ The Katarungang Pambarangay Law (RA 7160, Local Government Code Sections 399–4
 - **Atomic Creation**: Docketing updates `complaints.status = 'Docketed'` and creates a record in `cases` inside a single transaction.
 
 ### 4.2. Summons Issuance & Service Gate
-- **Dual Form Issuance**: Issuing the 1st Summons (`Summons::issueFirstSummon`) generates **both**:
+- **Dual Form Issuance**: Issuing the 1st Summons (`Issue Summon 1st Attempt`) generates **both**:
   1. **KP Form 8**: Notice of Hearing for the Complainant.
   2. **KP Form 9**: Summons for the Respondent.
-- **Delivery Initialization**: Automatically creates two rows in `summon_deliveries` (`Pending`) and schedules the 1st Mediation hearing.
-- **Summons Cap**: Maximum of **3 summons attempts** allowed per case stage.
+- **Button Renaming & Progression**: Renamed from `Issue 1st Summon` to `Issue Summon 1st Attempt`. Progresses dynamically to `Issue Summon 2nd Attempt` and `Issue Summon 3rd Attempt` as delivery failures are recorded.
+- **KP Form 8 Auto-Served on Print**:
+  - During First Mediation stage, when KP Form 8 is printed, the system automatically marks its service status as `Served` via the print workflow (`SummonDeliveryService::markKp8Printed`).
+  - Distinctly logged in the audit trail without creating false physical delivery receipts.
+  - Strictly isolated: does **not** auto-serve KP Form 9 or alter the respondent's summons status.
+  - Idempotent: repeated print requests do not create duplicate service records.
+- **Three KP Form No. 9 Delivery Attempts Tracking (`SummonDeliveryService`)**:
+  - **Attempt 1**: Initiated upon summons issuance (`Issue Summon 1st Attempt`), creating a delivery record (`Pending`) and generating KP Form 9 PDF.
+  - **Attempt 2**: Enabled only after Attempt 1 is completed and recorded as a qualifying delivery failure (`Unserved`).
+  - **Attempt 3**: Enabled only after both Attempts 1 and 2 are recorded as qualifying delivery failures.
+  - **Attempt 4 Ceiling**: A 4th attempt is strictly blocked per statutory service cycle rules.
+  - **Successful Service**: If any attempt is successfully served (`Served Personal`, `Served Substituted`, `Served Refused`), failed delivery progression stops immediately.
+  - **History Preservation**: Independent records are maintained for each attempt with attempt number, server, timestamp, failure reasons, and photo proof attachments without overwriting previous attempts.
+- **Conditional Certificate to File Action (CFA) Unlocking (`SummonDeliveryService::getCfaEligibility`)**:
+  - For the failed-summons path, the CFA document (KP Form 20) unlocks for printing **only** when all three (3) summons delivery attempts have completed with qualifying delivery failures and no attempt succeeded.
+  - Shows real-time locked states (`CFA Locked — X of 3 summons attempts resulted in delivery failure`).
+  - CFA issuance generates **KP Form 20** PDF via `PDFService::generateKp20()` and transitions case status to `CFA Issued`.
 - **Service Gate (`SummonServiceGate`)**:
   - Mediation attendance **cannot** be recorded until proof of summons service is confirmed in `summon_deliveries`.
   - Successful statuses: `'Served'`, `'Served Personal'`, `'Served Substituted'`.
@@ -217,14 +232,16 @@ To ensure backwards compatibility with existing UI forms and new service archite
 | `form_type` | ENUM | `'Notice of Hearing'`, `'Summon'`, `'KP Form 18'`, `'KP Form 19'` |
 | `recipient_name` | VARCHAR(255) | Full name of receiving party |
 | `delivery_status` | VARCHAR(50) | Default `'Pending'`. Supports `'Served Personal'`, `'Served Substituted'`, `'Served'`, `'Refused'`, `'Unserved'` |
-| `unserved_reason` | ENUM | `'Moved Out'`, `'Wrong Address'`, `'No One Home'`, `'Refused'`, `'Other'` |
+| `unserved_reason` | VARCHAR(50) | NULLable. Supports `'Moved Out'`, `'Wrong Address'`, `'No One Home'`, `'Refused'`, `'Unlocatable'`, `'Other'` |
+| `failure_notes` | TEXT | NULLable. Detailed explanation/neighbor statements for delivery failure |
 | `attempt_count` | INT UNSIGNED | Default 1 |
-| `attempt_number` | TINYINT UNSIGNED | Default 1 |
+| `attempt_number` | TINYINT UNSIGNED | Attempt order: 1, 2, or 3 (Unique index: `uq_hearing_party_form_attempt`) |
 | `service_method` | VARCHAR(50) | e.g. `'Personal'`, `'Substituted'` |
 | `served_by` | INT UNSIGNED | NULLable, user ID of server |
 | `served_by_user_id` | INT | NULLable, user ID of server |
 | `served_at` | DATETIME | Timestamp of actual delivery |
 | `document_id` | INT | FK to `generated_documents` |
+| `attachment_path` | VARCHAR(1024) | NULLable path to photo proof of service image |
 
 ### 5.2. `cases.case_status` and `case_history.status` ENUMs
 All status writes must conform to:

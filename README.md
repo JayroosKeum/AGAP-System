@@ -72,9 +72,12 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
   - **Progression to Conciliation**: Unresolved cases advance to conciliation: 1st Conciliation $\rightarrow$ 2nd Conciliation $\rightarrow$ 3rd Conciliation (up to 3 conciliation sessions conducted by the Pangkat Tagapagkasundo).
   - **Scheduling Ceiling**: Once the 3rd Conciliation hearing is scheduled, the scheduling engine permanently halts further hearing additions, enforcing KP statutory limits.
 - **Dual Notice Auto-Generation & "Print summon" Side-by-Side Review**:
-  - Triggering `Issue 1st Summon` atomically books the 1st Mediation session, updates complaint status, generates both **KP Form 8 (Notice of Hearing for Complainant)** and **KP Form 9 (Summons for Respondent)**, and immediately opens the dedicated **Print summon** preview modal.
+  - Triggering `Issue Summon 1st Attempt` atomically books the 1st Mediation session, updates complaint status, generates both **KP Form 8 (Notice of Hearing for Complainant)** and **KP Form 9 (Summons for Respondent)**, and immediately opens the dedicated **Print summon** preview modal.
   - Displays both official forms side by side in high-fidelity preview matching official Dompdf outputs with clean letterhead, docket number, parties, and Officer's Return block.
   - Provides isolated A4 printing (excluding AGAP sidebar/navbar chrome), standardized PDF downloading (`AGAP_[CASE]_KP-Form-[8/9]_[Notice/Summons].pdf`), and seamless handover to the Officer's Return proof-of-service interface.
+  - **KP Form 8 Auto-Served on Print**: Printing KP Form 8 for the First Mediation stage automatically marks its service status as `Served` via the print workflow, recorded in the audit trail without requiring a manual Officer's Return.
+  - **Strict 3-Attempt Summons Cycle & Progression**: Tracks up to three (3) documented delivery attempts for KP Form 9. Attempt 2 is enabled only after Attempt 1 is recorded as a delivery failure (`Unserved`); Attempt 3 is enabled only after Attempts 1 & 2 fail. Attempt 4 is strictly prevented. Successful service immediately halts failed progression.
+  - **Conditional Certificate to File Action (CFA) Unlocking**: Unlocks **KP Form 20 (CFA)** for printing only when all three (3) summons delivery attempts have resulted in documented delivery failure, keeping CFA locked with real-time feedback (e.g., `CFA Locked — X of 3 summons attempts resulted in delivery failure`).
 - **Attendance & Show-Cause Lifecycle (KP Forms 18, 19, 21)**:
   - Separate Complainant and Respondent attendance tracking (`Present`, `Failure to Appear`, `Not Served`, `Excused`, `Late`).
   - Auto-generation of **KP Form 18** (Notice of Hearing for Failure to Appear - Complainant) and **KP Form 19** (Notice of Hearing for Failure to Appear - Respondent) when a properly served party fails to appear without prior justification.
@@ -106,12 +109,14 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
   - **KP Form 12**: Notice of Hearing (Conciliation Proceedings).
   - **KP Form 18**: Notice of Hearing for Failure to Appear (Complainant).
   - **KP Form 19**: Notice of Hearing for Failure to Appear (Respondent).
+  - **KP Form 20**: Certificate to File Action (CFA - issued upon 3 failed summons delivery attempts or conciliation/mediation failure).
   - **KP Form 21**: Certificate to Bar Action (for Complainant default).
-- **Summons Server Interface (`proof-service.php`)**:
-  - Live search bar filtering pending deliveries.
-  - Dedicated table of cases needing summons service with inline "Deliver Summon" action.
-  - Officer's Return tracking service results (`Served - Personal`, `Served - Substituted`, `Refused to Receive`, `Unserved`) by party and hearing.
-  - Secure photo proof upload (JPG, PNG, WebP up to 5 MB).
+- **Proof of Service Interface (`proof-service.php`)**:
+  - **Case & Hearing Details**: Real-time display of active hearing date, hearing type, venue, and attendance lock state.
+  - **CFA Status & Eligibility Card**: Dynamic banner (`🔒 CFA Locked` vs `✅ CFA Unlocked`) with a 3-step checklist, summary count (`X/3 Failed`), status explanation, and conditional "Print CFA (KP Form 20)" action.
+  - **Complainant Notice Card (KP Form 8)**: Displays service status, timestamp, and a dedicated auto-served badge (`Served (Print Workflow)`).
+  - **Respondent Summons Section (KP Form 9)**: Dedicated `Issue Summon [1st/2nd/3rd] Attempt` button and an attempt history table (Attempt number, date/time, process server, delivery status badge, failure reasons/notes, proof photo link, and inline Officer's Return action).
+  - **Officer's Return Modal**: Captures attempt number, delivery status (`Served Personal`, `Served Substituted`, `Served Refused`, `Unserved`), failure reasons (`Moved Out`, `Wrong Address`, `Refused`, etc.), notes, recipient identity, relationship, and secure photo proof upload (JPG, PNG, WebP up to 5 MB).
 
 ### 5. Security, Audit Trails & Notifications
 

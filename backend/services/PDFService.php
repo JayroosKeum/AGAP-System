@@ -102,6 +102,14 @@ class PDFService
         $this->generateNotice('KP Form 9', $data, $absolutePath);
     }
 
+    public function generateKp20(
+        array $data,
+        string $absolutePath
+    ): void {
+        $this->generateNotice('KP Form 20', $data, $absolutePath);
+    }
+
+
     public function generateKp10(
         array|int $dataOrCaseId,
         string|int $pathOrUserId = '',
@@ -735,6 +743,23 @@ class PDFService
                 <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
                     Dahil dito, alinsunod sa itinatakda ng Seksiyon 415 ng Kodigo ng Pamahalaang Lokal ng 1991 (Batas Republika Blg. 7160),
                     ang ipinagsusumbong ay <strong>HINAHADLANGAN</strong> sa paghahain ng ganting-sakdal (counterclaim) na nagmumula sa nasabing sumbong.
+                </p>
+            ';
+        } elseif ($formCode === 'KP Form 20') {
+            $formTitle = 'Pormularyo ng KP Blg. 20';
+            $subTitle = 'KATIBAYAN UPANG MAKADULOG SA HUKUMAN (Certificate to File Action)';
+            $cfaReason = !empty($data['reason']) ? $this->escape((string) $data['reason']) : 'Tatlong (3) beses na nabigo ang paghahatid ng patawag sa ipinagsusumbong nang walang mapayapang pagkakasundo.';
+            $body = '
+                <p>SA MGA KINAUUKULAN:</p>
+                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
+                    Ito ay nagpapatunay na para sa usaping may kinalaman sa sumbong na may pamagat na <em>"' . $title . '"</em> (Usapin Blg. <strong>' . $caseNumber . '</strong>):
+                </p>
+                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
+                    <strong>Dahilan ng Pagpapalabas ng Katibayan:</strong><br>
+                    ' . nl2br($cfaReason) . '
+                </p>
+                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
+                    Dahil dito, alinsunod sa itinatakda ng Seksiyon 412 ng Batas Republika Blg. 7160 (Katarungang Pambarangay), ang kaukulang reklamo para sa nasabing usapin ay maaari nang <strong>IHAIN SA HUKUMAN O TANGGAPAN NG PAMAHALAAN</strong>.
                 </p>
             ';
         }

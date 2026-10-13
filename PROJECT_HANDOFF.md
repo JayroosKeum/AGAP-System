@@ -1022,6 +1022,47 @@ The Complaint Details and Proof of Service modules provide an integrated, end-to
 - **Database Migrations Applied (October 13, 2026)**:
   - `20261013_001_repair_summon_deliveries.sql`: Added missing columns (`case_id`, `document_id`, `party_id`, `recipient_name`, etc.) to `summon_deliveries`.
   - `20261013_002_mediation_commencement.sql`: Added `first_mediation_commenced_at`, `mediation_commenced_by`, and `mediation_commencement_notes` to `cases`.
+  - `20261013_003_summon_three_attempts.sql`: Replaced unique constraint `uq_hearing_party_form` with `uq_hearing_party_form_attempt (hearing_id, party_type, form_type, attempt_number)` and converted `delivery_status` and `unserved_reason` to `VARCHAR(50)`.
+
+### 9. Proof of Service Validation, First Summons Attempt Tracking, and Conditional CFA Unlocking (October 13, 2026)
+- **Problem Resolved**: Previously, summons service lacked multi-attempt lifecycle tracking for the respondent, KP Form 8 (Complainant's Notice) required manual Officer's Return recording even after being printed, the "Issue 1st Summon" button did not reflect attempt gating, and the Certificate to File Action (CFA) was not conditionally locked to statutory summons failure rules.
+- **Requirement A: KP Form No. 8 Auto-Served on Print (First Mediation)**:
+  - During the First Mediation stage, successfully printing KP Form No. 8 automatically updates its service status in `generated_documents` and `summon_deliveries` to `Served` (`SummonDeliveryService::markKp8Printed`).
+  - Strict server-side validation restricts this automatic behavior exclusively to the complainant's notice in First Mediation.
+  - Distinct audit trail: records that the status was automatically assigned via the print workflow, without creating false physical recipient signatures or handover evidence.
+  - Strictly isolated: does not alter KP Form No. 9 or the respondent's summons status.
+  - Idempotent: repeated print commands do not create duplicate service records or corrupt document history.
+  - Dedicated endpoint: `backend/api/summons/mark-served-kp8.php` integrated with `frontend/assets/js/summons-preview.js` and `frontend/assets/js/gps.js`.
+- **Requirement B: Summons Button Renaming & Dynamic Progression**:
+  - Renamed `Issue 1st Summon` to `Issue Summon 1st Attempt` consistently across `frontend/pages/complaints/complaint-details.php`, `frontend/assets/js/complaints.js`, `frontend/pages/gps/proof-service.php`, `frontend/assets/js/gps.js`, and `backend/models/CaseProgress.php`.
+  - Dynamic button advancement: advances to `Issue Summon 2nd Attempt` and `Issue Summon 3rd Attempt` as delivery failures are recorded.
+- **Requirement C: Three KP Form No. 9 Delivery Attempts Tracking (`SummonDeliveryService`)**:
+  - **Attempt 1**: Initiated upon `Issue Summon 1st Attempt`, generating fresh KP Form 9 PDF and inserting a pending attempt in `summon_deliveries`.
+  - **Attempt 2**: Enabled only after Attempt 1 has completed and is recorded as a qualifying delivery failure (`Unserved`).
+  - **Attempt 3**: Enabled only after both Attempts 1 and 2 are recorded as qualifying delivery failures.
+  - **4th Attempt Ceiling**: Strictly blocked across backend and frontend (maximum of 3 attempts per service cycle).
+  - **Successful Service Gate**: If any attempt is successfully served (`Served Personal`, `Served Substituted`, `Served Refused`), failed delivery progression stops immediately.
+  - **History Preservation**: Maintains independent Officer's Return records, timestamps, failure reasons, notes, servers, and proof image attachments for every attempt without overwriting prior history.
+  - Dedicated endpoint: `backend/api/summons/next-attempt.php` and controller method `GPSController::initiateNextAttempt()`.
+- **Requirement D: Conditional CFA Document Unlocking & KP Form 20 Generation**:
+  - The Certificate to File Action (CFA) document remains strictly locked for printing until all statutory conditions are met:
+    1. Correct case and respondent identified.
+    2. Three distinct KP Form No. 9 delivery attempts recorded.
+    3. Each attempt has a completed outcome.
+    4. All three outcomes are recorded as qualifying delivery failures (`Unserved`).
+    5. No attempt has a successful service result.
+  - Real-time locked state feedback: displays `CFA Locked — X of 3 summons attempts resulted in delivery failure.` or `CFA Locked — An incomplete attempt prevents this three-failure condition from being met. Record delivery result first.`
+  - Gated backend model (`CFA::create`): rejects CFA creation on summons failure grounds if eligibility check fails.
+  - Automated PDF Generation: `PDFService::generateKp20()` produces the official KP Form 20 (Certificate to File Action) PDF document, saves to `storage/generated-documents/YYYY/CASE_NO/`, registers in `generated_documents`, and transitions case status to `CFA Issued`.
+  - CFA UI Gating (`frontend/pages/documents/cfa.php`, `frontend/assets/js/cfa.js`): renders real-time locked/unlocked banner, pre-selects 3-failed summons preset when eligible, and prevents locked submission.
+- **Requirement E: Proof of Service UI Redesign (`proof-service.php` & `gps.js`)**:
+  - Case & Hearing Details summary card.
+  - CFA Status Card: Displays overall lock state (`🔒 CFA Locked` vs `✅ CFA Unlocked`), 3-step checklist, summary count (`X/3 Failed`), status explanation, and conditional "Print CFA (KP Form 20)" action.
+  - Complainant Notice Card (KP Form 8): Displays service status, timestamp, and a dedicated auto-served badge (`Served (Print Workflow)`).
+  - Respondent Summons Section (KP Form 9): Dedicated `Issue Summon [1st/2nd/3rd] Attempt` button and an attempt history table (Attempt number, date/time, process server, delivery status badge, failure reasons/notes, proof photo link, and inline Officer's Return action).
+  - Officer's Return Modal: Captures `attempt_number`, `delivery_id`, delivery status (`Served Personal`, `Served Substituted`, `Served Refused`, `Unserved`), failure reasons (`Moved Out`, `Wrong Address`, `Refused`, etc.), notes, recipient identity, relationship, and secure photo proof upload.
+- **Automated Verification**:
+  - Comprehensive 48-assertion end-to-end verification test suite covering all 5 test scenarios (KP Form 8 auto-serve, button renaming, 3 attempts progression, CFA unlocking & KP Form 20 generation, and successful service stopping progression) passed with 100% success rate.
 
 ---
 
@@ -1031,7 +1072,7 @@ The Complaint Details and Proof of Service modules provide an integrated, end-to
 - Complaint party and attachment workflows have active browser/MySQL tests; additional stress-testing on edge cases is recommended.
 - GPS mobile field-device capture (camera/geolocation) operates in browser environments; device-level offline caching remains an enhancement.
 - AI calls Gemini, but production-grade monitoring and rate limiting are incomplete.
-- KP Form 10, 12, 18, 19, and 21 generate successfully; ongoing visual verification with varied text lengths is recommended.
+- KP Form 10, 12, 18, 19, 20, and 21 generate successfully; ongoing visual verification with varied text lengths is recommended.
 
 ---
 
@@ -1040,7 +1081,7 @@ The Complaint Details and Proof of Service modules provide an integrated, end-to
 The following remain missing from the complete Module Development specification:
 
 - Resident self-service complaint filing and status tracking portal.
-- Remaining optional KP forms (e.g., KP Forms 13, 14, 15, 16, 17, 20, 22, 23).
+- Remaining optional KP forms (e.g., KP Forms 13, 14, 15, 16, 17, 22, 23). *(Note: KP Form 20 CFA is now implemented).*
 - Automated end-to-end integration test suite, deployment pipelines, and automated database backup routines.
 
 ---

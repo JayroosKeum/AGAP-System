@@ -85,17 +85,24 @@ class GPSController
                     'venue' => $h['venue'],
                     'status' => $h['status'],
                     'deliveries' => $delivResult['deliveries'],
+                    'respondent_attempts' => $delivResult['respondent_attempts'] ?? [],
+                    'can_initiate_next_attempt' => $delivResult['can_initiate_next_attempt'] ?? false,
+                    'next_attempt_number' => $delivResult['next_attempt_number'] ?? null,
+                    'cfa_eligibility' => $delivResult['cfa_eligibility'] ?? null,
                     'attendance_unlocked' => $delivResult['attendance_unlocked'],
                     'service_notice' => $delivResult['service_notice'],
                 ];
             }
         }
 
+        $cfaEligibility = $deliveryService->getCfaEligibility($caseId);
+
         return [
             'success' => true,
             'data' => [
                 'hearings' => $hearingsWithDeliveries,
-                'has_hearings' => true
+                'has_hearings' => true,
+                'cfa_eligibility' => $cfaEligibility,
             ]
         ];
     }
@@ -132,12 +139,48 @@ class GPSController
         $deliveryService = new SummonDeliveryService($db);
         $result = $deliveryService->recordDelivery($hearingId, $input, $userId);
 
-        if ($result['success'] && $imagePath && $caseId) {
-            $upd = $db->prepare("UPDATE proof_of_service SET image_path = ? WHERE case_id = ? ORDER BY proof_id DESC LIMIT 1");
-            $upd->execute([$imagePath, $caseId]);
+        if ($result['success'] && $imagePath) {
+            if (!empty($result['delivery_id'])) {
+                $updDeliv = $db->prepare("UPDATE summon_deliveries SET attachment_path = ? WHERE delivery_id = ?");
+                $updDeliv->execute([$imagePath, (int) $result['delivery_id']]);
+            }
+            if ($caseId) {
+                $upd = $db->prepare("UPDATE proof_of_service SET image_path = ? WHERE case_id = ? ORDER BY proof_id DESC LIMIT 1");
+                $upd->execute([$imagePath, $caseId]);
+            }
         }
 
         return $result;
+    }
+
+    public function initiateNextAttempt(int $caseId, int $userId, ?int $hearingId = null): array
+    {
+        require_once __DIR__ . '/../services/SummonDeliveryService.php';
+        require_once __DIR__ . '/../config/database.php';
+        $db = (new Database())->connect();
+        $deliveryService = new SummonDeliveryService($db);
+        return $deliveryService->initiateNextAttempt($caseId, $userId, $hearingId);
+    }
+
+    public function markKp8Served(int $caseId, int $documentId, ?int $hearingId, int $userId): array
+    {
+        require_once __DIR__ . '/../services/SummonDeliveryService.php';
+        require_once __DIR__ . '/../config/database.php';
+        $db = (new Database())->connect();
+        $deliveryService = new SummonDeliveryService($db);
+        return $deliveryService->markKp8Printed($caseId, $documentId, $hearingId, $userId);
+    }
+
+    public function cfaEligibility(int $caseId): array
+    {
+        require_once __DIR__ . '/../services/SummonDeliveryService.php';
+        require_once __DIR__ . '/../config/database.php';
+        $db = (new Database())->connect();
+        $deliveryService = new SummonDeliveryService($db);
+        return [
+            'success' => true,
+            'data' => $deliveryService->getCfaEligibility($caseId)
+        ];
     }
 
     public function location(int $complaintId): array

@@ -136,6 +136,8 @@ include '../../layouts/header.php';
             <input type="hidden" id="returnHearingId" name="hearing_id" value="">
             <input type="hidden" id="returnPartyType" name="party_type" value="">
             <input type="hidden" id="returnResidentId" name="resident_id" value="">
+            <input type="hidden" id="returnAttemptNumber" name="attempt_number" value="1">
+            <input type="hidden" id="returnDeliveryId" name="delivery_id" value="">
             <input type="hidden" name="action" value="officer_return">
 
             <div class="proof-modal-body">

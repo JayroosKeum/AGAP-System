@@ -6,9 +6,9 @@ class CaseProgress
 {
     private PDO $conn;
 
-    public function __construct()
+    public function __construct(?PDO $db = null)
     {
-        $this->conn = (new Database())->connect();
+        $this->conn = $db ?: (new Database())->connect();
     }
 
     public function getCaseProgress(int $complaintId): array|false
@@ -154,6 +154,10 @@ class CaseProgress
         // Determine Prerequisite for 1st Mediation: enabled if ANY valid summon/service record for the case has a successful Served result
         $anyServed = false;
         foreach ($proofs as $p) {
+            $tmpl = $p['template_name'] ?? '';
+            if ($tmpl === 'KP Form 8' || str_contains($tmpl, 'Notice of Hearing')) {
+                continue;
+            }
             if (($p['service_result'] ?? '') === 'Served') {
                 $anyServed = true;
                 break;
@@ -169,7 +173,7 @@ class CaseProgress
         }
         if (!$anyServed) {
             foreach ($deliveries as $d) {
-                if (in_array($d['delivery_status'] ?? '', ['Served Personal', 'Served Substituted', 'Served Refused'], true)) {
+                if (($d['party_type'] ?? '') === 'Respondent' && in_array($d['delivery_status'] ?? '', ['Served Personal', 'Served Substituted', 'Served Refused', 'Served'], true)) {
                     $anyServed = true;
                     break;
                 }
@@ -584,15 +588,19 @@ class CaseProgress
 
         // Summons button state
         $summonButton = [
-            'label' => 'Issue 1st Summon',
+            'label' => 'Issue Summon 1st Attempt',
             'action' => 'issue',
             'disabled' => false,
             'url' => null,
-            'tooltip' => 'Issue the 1st summons and record proof of service.',
+            'tooltip' => 'Issue the 1st summons attempt and record proof of service.',
         ];
 
         $anyServed = false;
         foreach ($proofs as $p) {
+            $tmpl = $p['template_name'] ?? '';
+            if ($tmpl === 'KP Form 8' || str_contains($tmpl, 'Notice of Hearing')) {
+                continue;
+            }
             if (($p['service_result'] ?? '') === 'Served') {
                 $anyServed = true;
                 break;
@@ -600,7 +608,7 @@ class CaseProgress
         }
         if (!$anyServed) {
             foreach ($deliveries as $d) {
-                if (in_array($d['delivery_status'] ?? '', ['Served Personal', 'Served Substituted', 'Served Refused'], true)) {
+                if (($d['party_type'] ?? '') === 'Respondent' && in_array($d['delivery_status'] ?? '', ['Served Personal', 'Served Substituted', 'Served Refused', 'Served'], true)) {
                     $anyServed = true;
                     break;
                 }
@@ -644,31 +652,31 @@ class CaseProgress
             $summonButton['url']     = '../gps/proof-service.php?case_id=' . $caseId;
             $summonButton['tooltip'] = 'Summons successfully served. View proof of service history.';
         } elseif ($summonsCount === 0) {
-            $summonButton['label']   = 'Issue 1st Summon';
+            $summonButton['label']   = 'Issue Summon 1st Attempt';
             $summonButton['action']  = 'issue';
             $summonButton['disabled'] = false;
-            $summonButton['tooltip'] = 'Issue the 1st summons and record proof of service.';
+            $summonButton['tooltip'] = 'Issue the 1st summons attempt and record proof of service.';
         } elseif ($summonsCount >= 3) {
             // All 3 summons have been issued — show view only
-            $summonButton['label']   = '3rd Summon Issued';
+            $summonButton['label']   = '3rd Summon Attempt Issued';
             $summonButton['action']  = 'view_proof';
             $summonButton['disabled'] = false;
             $summonButton['url']     = '../gps/proof-service.php?case_id=' . $caseId . '&document_id=' . $latestDocId;
-            $summonButton['tooltip'] = 'All 3 summons have been issued. Click to view proof of service history.';
+            $summonButton['tooltip'] = 'All 3 summons attempts have been issued. Click to view proof of service history.';
         } elseif (!$latestHasAttempt) {
             // Service attempt not yet recorded for the most recent summons — gate the next summons
             $nextOrdinal = $ordinals[$summonsCount + 1] ?? ($summonsCount + 1) . 'th';
-            $summonButton['label']   = 'Issue ' . $nextOrdinal . ' Summon';
+            $summonButton['label']   = 'Issue Summon ' . $nextOrdinal . ' Attempt';
             $summonButton['action']  = 'view_proof';  // redirect to record proof first
             $summonButton['disabled'] = true;
             $summonButton['url']     = '../gps/proof-service.php?case_id=' . $caseId . '&document_id=' . $latestDocId;
             $summonButton['tooltip'] = 'Record the service attempt for Summons #' . $summonsCount
-                . ' before issuing the next one. Click to go to Proof of Service.';
+                . ' before issuing the next attempt. Click to go to Proof of Service.';
         } else {
             // Latest has an attempt — allow issuing next summons
             $nextNum     = $summonsCount + 1;
             $nextOrdinal = $ordinals[$nextNum] ?? $nextNum . 'th';
-            $summonButton['label']   = 'Issue ' . $nextOrdinal . ' Summon';
+            $summonButton['label']   = 'Issue Summon ' . $nextOrdinal . ' Attempt';
             $summonButton['action']  = 'issue';
             $summonButton['disabled'] = false;
             $summonButton['tooltip'] = 'Issue the ' . $nextOrdinal . ' summons attempt.';

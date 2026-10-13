@@ -59,7 +59,7 @@ include '../../layouts/header.php';
             <div class="complaint-header-actions">
                 <button type="button" class="btn-create" id="issueSummonButton" onclick="handleIssueSummonClick()" style="display: inline-flex; align-items: center; gap: 6px;">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                    <span id="issueSummonButtonText">Issue 1st Summon</span>
+                    <span id="issueSummonButtonText">Issue Summon 1st Attempt</span>
                 </button>
                 <button type="button" class="btn-secondary" id="statusTrackerButton" onclick="toggleStatusTracker()" style="display: inline-flex; align-items: center; gap: 6px;">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
@@ -384,7 +384,7 @@ include '../../layouts/header.php';
 <div id="issueSummonModal" class="modal" style="display: none;">
     <div class="modal-content" style="max-width: 520px; max-height: calc(100vh - 40px); display: flex; flex-direction: column; padding: 0; border-radius: 12px; overflow: hidden;">
         <div class="modal-header" style="padding: 18px 24px 14px; margin-bottom: 0; border-bottom: 1px solid #f1f5f9; flex-shrink: 0;">
-            <h2 id="issueSummonModalTitle" style="font-size: 1.15rem;">Issue 1st Summon &amp; Schedule Mediation</h2>
+            <h2 id="issueSummonModalTitle" style="font-size: 1.15rem;">Issue Summon 1st Attempt &amp; Schedule Mediation</h2>
             <button type="button" class="close-btn" onclick="closeIssueSummonModal()">&times;</button>
         </div>
         <form id="issueSummonForm" onsubmit="submitIssueSummon(event)" style="display: flex; flex-direction: column; overflow: hidden; margin: 0; flex: 1 1 auto;">
