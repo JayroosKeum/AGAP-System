@@ -35,11 +35,11 @@ AGAP/
 |   |   |-- auth/                  # Login, logout, password reset
 |   |   |-- complaints/            # Intake, edit, review, docket
 |   |   |-- cases/                 # Case workspace, assignments, deadlines, archive
-|   |   |-- summons/               # Issue summons, check schedule, service gate, deliveries
+|   |   |-- summons/               # Issue summons, preview (preview.php), service gate, deliveries
 |   |   |-- hearings/              # Schedule, attendance, deliveries, minutes
 |   |   |-- pangkat/               # Constitution, constitution verification, officers
 |   |   |-- settlements/           # KP 16/17, execution, repudiation, installments
-|   |   `-- documents/             # KP Form generation, templates, service tracking
+|   |   `-- documents/             # KP Form generation, templates, service tracking, download.php
 |   |-- config/                    # Database PDO connection (Database.php)
 |   |-- controllers/               # Workflow coordination and audit log triggering
 |   |-- middleware/                # Session and role-based access control
@@ -57,7 +57,7 @@ AGAP/
 |       |-- MediationDeadlineService.php # 15 working-day calculation & legal PH holidays
 |       |-- MediationCommencementService.php # First actual meeting tracking
 |       |-- OfficeLogisticsService.php   # Venue conflicts, capacity, business hours
-|       |-- PDFService.php         # KP Form PDF rendering engine
+|       |-- PDFService.php         # KP Form PDF rendering engine & renderNoticeHtml
 |       |-- ShowCauseService.php   # Non-appearance escalation (KP 18/19/21)
 |       |-- SummonDeliveryService.php # Service matrix, attempt logging
 |       |-- SummonDeliveryStatus.php  # Canonical delivery status enums & predicates
@@ -68,8 +68,8 @@ AGAP/
 |   `-- migrations/                # Additive, idempotent upgrade scripts
 |-- frontend/
 |   |-- assets/css/                # Vanilla CSS design system & tokens
-|   |-- assets/js/                 # Client-side module controllers (Fetch API)
-|   |-- layouts/                   # Shared header, navbar, sidebar, footer
+|   |-- assets/js/                 # Client-side module controllers (complaints.js, summons-preview.js)
+|   |-- layouts/                   # Shared header, navbar, sidebar, footer, summons-preview-modal.php
 |   `-- pages/                     # PHP page views (complaints, cases, hearings, documents)
 |-- storage/
 |   |-- generated-documents/       # Output PDFs organized by year/case

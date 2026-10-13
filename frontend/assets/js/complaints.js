@@ -632,7 +632,7 @@ function renderCaseWorkspace(workspace, complaint) {
     const stageCaseId = caseData.case_id || complaint.case_id || null;
 
     // Card 7: Mediation
-    renderMediationCard(workspace.stages, stageCaseId, complaint);
+    renderMediationCard(workspace.stages, stageCaseId, complaint, workspace);
 
     // Card 8: Pangkat Conciliation
     renderConciliationCard(workspace.stages, stageCaseId, complaint);
@@ -673,10 +673,15 @@ function renderCaseWorkspace(workspace, complaint) {
                                 </div>
                             </div>
                         </div>
-                        <div>
+                        <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                            ${(doc.template_name?.includes('KP Form 9') || doc.template_name?.includes('Summon')) ? `
+                                <button type="button" class="btn-secondary" onclick="openSummonsPreviewModal(${Number(complaint?.case_id || stageCaseId || 0)}, ${Number(doc.document_id)})" style="font-size: 0.78rem; padding: 4px 9px; display: inline-flex; align-items: center; gap: 4px; border-color: #0284c7; color: #0284c7; background: #f0f9ff;">
+                                    🔍 Preview / Print &rarr;
+                                </button>
+                            ` : ''}
                             ${doc.file_path ? `
-                                <a href="../../../${escapeHtml(doc.file_path)}" target="_blank" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 9px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
-                                    Download / View &rarr;
+                                <a href="../../../backend/api/documents/download.php?id=${encodeURIComponent(doc.document_id)}&download=1" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 9px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+                                    Download PDF &darr;
                                 </a>
                             ` : `
                                 <a href="../documents/document-center.php" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 9px; text-decoration: none;">
@@ -757,7 +762,7 @@ function renderCaseWorkspace(workspace, complaint) {
     }
 }
 
-function renderMediationCard(stages, caseId, complaint) {
+function renderMediationCard(stages, caseId, complaint, workspace) {
     const med = stages?.mediation || {};
     const badgeEl = document.getElementById('cwMediationStatusBadge');
     const linkEl = document.getElementById('cwManageMediationLink');
@@ -859,6 +864,13 @@ function renderMediationCard(stages, caseId, complaint) {
                     ⚡ Documents &amp; Actions
                 </span>
                 <div style="display: flex; flex-wrap: wrap; gap: 5px;">
+                    ${(actions.can_print_notice || Number(med.sessions_count || 0) > 0 || (workspace?.documents || []).some(d => d.template_name?.includes('KP Form 9') || d.template_name?.includes('Summon'))) ? `
+                        <button type="button" class="btn-secondary" onclick="openSummonsPreviewModal(${Number(caseId || 0)})" style="font-size: 0.74rem; padding: 4px 8px; border-color: #0284c7; color: #0284c7; background: #f0f9ff; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; border-radius: 4px;" title="Review, print, or download KP Form No. 9">
+                            🔍 Preview KP Form 9 &rarr;
+                        </button>
+                    ` : `
+                        <span title="Requires scheduled mediation session or issued summons" style="font-size: 0.74rem; padding: 4px 8px; border-radius: 4px; background: #f8fafc; color: #94a3b8; border: 1px dashed #e2e8f0; cursor: not-allowed; display: inline-flex; align-items: center; gap: 4px;">Preview KP Form 9 🔒</span>
+                    `}
                     ${renderAction('Record Attendance', `../cases/mediation-workspace.php?case_id=${encodeURIComponent(caseId || '')}&action=attendance`, actions.can_record_attendance, 'Requires scheduled mediation session')}
                     ${renderAction('Add Minutes', `../cases/mediation-workspace.php?case_id=${encodeURIComponent(caseId || '')}&action=minutes`, actions.can_add_minutes, 'Requires mediation session record')}
                     ${renderAction('Print Notice', `../hearings/schedules.php?case_id=${encodeURIComponent(caseId || '')}`, actions.can_print_notice, 'Requires mediation notice')}
@@ -1333,6 +1345,8 @@ function handleIssueSummonClick() {
 
 async function submitIssueSummon(event) {
     if (event) event.preventDefault();
+    if (window.isSubmittingSummon) return;
+
     const form = document.getElementById('issueSummonForm');
     const submitBtn = document.getElementById('submitIssueSummonBtn');
     const msg = document.getElementById('issueSummonMessage');
@@ -1346,7 +1360,11 @@ async function submitIssueSummon(event) {
 
     if (!form || !form.reportValidity()) return;
 
-    if (submitBtn) submitBtn.disabled = true;
+    window.isSubmittingSummon = true;
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Saving Schedule...';
+    }
 
     try {
         const formData = new FormData(form);
@@ -1355,23 +1373,30 @@ async function submitIssueSummon(event) {
             body: formData
         });
 
-        window.agapNotify?.(result.message, 'success');
         closeIssueSummonModal();
+        window.agapNotify?.('First mediation schedule saved successfully. Review the KP Form No. 9 summons before printing or continuing to service.', 'success');
 
-        const caseId = result.case_id;
-        const docId = result.document_id;
-        const redirectUrl = `../gps/proof-service.php?case_id=${encodeURIComponent(caseId)}` + (docId ? `&document_id=${encodeURIComponent(docId)}` : '');
+        // Refresh complaint details in the background so all cards & actions reflect new status
+        loadComplaintDetails().catch(err => console.error('Error reloading complaint details:', err));
 
-        setTimeout(() => {
-            window.location.href = redirectUrl;
-        }, 350);
+        // Immediately open the official KP Form No. 9 Summons Preview
+        if (typeof openSummonsPreviewModal === 'function') {
+            openSummonsPreviewModal(result.case_id, result.document_id, result.hearing_id, true);
+        } else {
+            console.warn('openSummonsPreviewModal is not defined.');
+        }
     } catch (error) {
         if (msg) {
             msg.textContent = error.message;
             msg.style.color = '#dc2626';
         }
         window.agapNotify?.(error.message, 'error');
-        if (submitBtn) submitBtn.disabled = false;
+    } finally {
+        window.isSubmittingSummon = false;
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Issue Summon & Schedule';
+        }
     }
 }
 

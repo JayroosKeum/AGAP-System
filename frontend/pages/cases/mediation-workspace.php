@@ -379,7 +379,9 @@ include '../../layouts/header.php';
         </form>
     </div>
 </div>
+<?php include __DIR__ . '/../../layouts/summons-preview-modal.php'; ?>
 
+<script src="../../assets/js/summons-preview.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/summons-preview.js'); ?>"></script>
 <script src="../../assets/js/stage-workspace.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/stage-workspace.js'); ?>"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function() {

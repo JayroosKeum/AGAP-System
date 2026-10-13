@@ -611,6 +611,11 @@ class PDFService
         return $months[$month] ?? '';
     }
 
+    public function renderNoticeHtml(string $formCode, array $data): string
+    {
+        return $this->noticeHtml($formCode, $data);
+    }
+
     private function noticeHtml(string $formCode, array $data): string
     {
         $complainants = $this->partyLines($data['complainants'] ?? []);

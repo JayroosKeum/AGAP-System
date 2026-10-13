@@ -985,6 +985,44 @@ The Complaint Details and Proof of Service modules provide an integrated, end-to
 - On `frontend/pages/complaints/complaint-list.php`, the Delete button under the Actions column was replaced with the **Archive** button.
 - Retains consistent icon styling, confirmation modal, and triggers the transactional case archive endpoint.
 
+### 8. First Summons & Dual Document (KP Form 8 & 9) Workflow Improvement (October 2026)
+- **Problem Resolved**: Previously, issuing a first summons immediately redirected to `proof-service.php`, preventing the user from reviewing, printing, or downloading the generated official Katarungang Pambarangay forms without manually navigating back.
+- **New Workflow Sequence**:
+  `Issue First Summons ➔ First Mediation Scheduling Modal ➔ Book ➔ Save Hearing & Case ➔ Print summon Modal (KP Form 8 & 9 Side-by-Side) ➔ Print / Download PDF ➔ Continue to Officer's Return`
+- **Dual Document Preview & Print Modal (`frontend/layouts/summons-preview-modal.php`)**:
+  - Reusable partial included in both `frontend/pages/complaints/complaint-details.php` and `frontend/pages/cases/mediation-workspace.php`.
+  - Header displays "Print summon" without redundant badges.
+  - Side-by-side dual-column grid (`1fr 1fr`) displaying:
+    - **Left Column**: KP Form No. 8 (*Patalastas ng Pagdinig*) for the Complainant, with individual Print and PDF download controls.
+    - **Right Column**: KP Form No. 9 (*Patawag*) for the Respondent, with individual Print and PDF download controls.
+  - **Pinned Layout & Viewport Fitting**: Total modal height constrained to `height: calc(100vh - 24px)` with flexbox structure (`flex: 1 1 0; min-height: 0;`), guaranteeing that the header, column toolbars, and action footer remain permanently visible on all display sizes without button clipping.
+  - Responsive fallback (`@media (max-width: 991px)`) stacks columns cleanly for smaller viewports.
+- **Client Controller (`frontend/assets/js/summons-preview.js`)**:
+  - Handles asynchronous preview loading via `openSummonsPreviewModal(caseId, documentId, hearingId, isJustSaved)`.
+  - Clean A4 printing using `iframe.contentWindow.print()`, preventing print contamination from AGAP sidebar, navbar, or modal chrome.
+  - Supports individual form printing (`printSummonsPreview('kp8')`, `printSummonsPreview('kp9')`) and batch sequential printing (`printSummonsPreview('both')`).
+  - Routes directly to `../gps/proof-service.php?case_id=...&document_id=...` via `continueToOfficerReturn()`.
+- **Summons Preview & Stale Regeneration Endpoint (`backend/api/summons/preview.php`)**:
+  - Authenticated JSON endpoint resolving cases by `case_id`, `complaint_id`, or `document_id`.
+  - Fetches case facts, hearing schedule, presiding official, complainants, and respondents.
+  - Automates stale-document detection: checks if `hearing.updated_at > doc.generated_at`; if so, regenerates PDFs for KP Form 8 and KP Form 9, inserts updated records into `generated_documents`, and links `summon_deliveries`.
+  - Returns structured JSON containing both `kp8` and `kp9` metadata, HTML, PDF download URLs, and Officer's Return handover link.
+- **HTML Parity in `PDFService.php` (`backend/services/PDFService.php`)**:
+  - Added public `renderNoticeHtml(string $formCode, array $data): string` delegating to internal `noticeHtml()`, guaranteeing 100% template, style, margin, and typography parity between the in-browser preview and the downloaded Dompdf file.
+- **Standardized Downloads (`backend/api/documents/download.php`)**:
+  - Added support for `?download=1` attachment disposition.
+  - Standardized filename formats: `AGAP_[CASE_NUMBER]_KP-Form-8_Notice.pdf` and `AGAP_[CASE_NUMBER]_KP-Form-9_Summons.pdf`.
+  - Updated access controls to permit role 4 (Summons Server) in addition to Roles 1, 2, and 3.
+- **Duplicate-Submission Safeguards & Re-entry**:
+  - `submitIssueSummon()` in `frontend/assets/js/complaints.js` enforces `window.isSubmittingSummon = true` and updates button text to `"Saving Schedule..."` while awaiting server response.
+  - Re-entry points added to:
+    - Complaint Details Card 7 (Mediation): `🔍 Preview KP Form 9 →` action button.
+    - Complaint Details Card 9 (Case Documents): `🔍 Preview / Print →` button on KP Form 9 document cards.
+    - Mediation Workspace (`stage-workspace.js`): `📄 Preview Summons (KP 9)` button on session cards.
+- **Database Migrations Applied (October 13, 2026)**:
+  - `20261013_001_repair_summon_deliveries.sql`: Added missing columns (`case_id`, `document_id`, `party_id`, `recipient_name`, etc.) to `summon_deliveries`.
+  - `20261013_002_mediation_commencement.sql`: Added `first_mediation_commenced_at`, `mediation_commenced_by`, and `mediation_commencement_notes` to `cases`.
+
 ---
 
 ## Present but Incomplete or Requiring Verification

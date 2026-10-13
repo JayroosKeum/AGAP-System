@@ -107,3 +107,9 @@ records that would orphan legal case data are protected from deletion.
 ## Hearing service and explanation workflow
 
 Fresh databases receive hearing-party service history, explanations, legal-action review, and linked rescheduled hearing events from database/schema.sql. Existing databases must apply database/migrations/20260930_hearing_service_explanation_workflow.sql once after the hearing, generated-document, party, and user tables exist. This migration adds workflow tables and rescheduling linkage; it does not migrate legacy nonappearance decisions into verified-service records.
+
+## Summon deliveries repair and mediation commencement (October 2026)
+
+For existing databases updating to the integrated summons preview and mediation workflow, apply:
+- `database/migrations/20261013_001_repair_summon_deliveries.sql`: Verifies and repairs the `summon_deliveries` table columns (`case_id`, `document_id`, `party_id`, `resident_id`, `party_type`, `recipient_name`, `delivery_status`, `attempt_count`, `service_method`, `served_by_user_id`, `served_at`).
+- `database/migrations/20261013_002_mediation_commencement.sql`: Adds first mediation commencement tracking columns (`first_mediation_commenced_at`, `mediation_commenced_by`, `mediation_commencement_notes`) to the `cases` table.

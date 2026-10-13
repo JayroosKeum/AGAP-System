@@ -427,6 +427,9 @@ function renderSessionsList(data, stage) {
                         </div>
                     </div>
                     <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                        <button type="button" class="btn-secondary" onclick="openSummonsPreviewModal(${Number(stageWorkspaceState.caseId)}, null, ${Number(s.hearing_id)})" style="font-size: 0.78rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 4px; border-color: #0284c7; color: #0284c7; background: #f0f9ff;" title="Preview, print, or download KP Form No. 9 summons for this session">
+                            📄 Preview Summons (KP 9)
+                        </button>
                         <button type="button" class="btn-secondary" onclick="openAttendanceModal(${s.hearing_id})" style="font-size: 0.78rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 4px;">
                             👤 Record Attendance
                         </button>
@@ -1158,9 +1161,13 @@ async function submitSchedule(e) {
         });
         const json = await res.json();
         if (json.success) {
-            alert('Hearing scheduled successfully! KP Form 8 and KP Form 9 generated.');
             closeScheduleModal();
             await loadStageData();
+            if (typeof openSummonsPreviewModal === 'function' && stageWorkspaceState.mode === 'Mediation') {
+                openSummonsPreviewModal(stageWorkspaceState.caseId, null, json.hearing_id, true);
+            } else {
+                alert('Hearing scheduled successfully! KP Form 8 and KP Form 9 generated.');
+            }
         } else {
             alert(json.message || 'Unable to schedule hearing session.');
         }

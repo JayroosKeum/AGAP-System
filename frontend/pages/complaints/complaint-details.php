@@ -382,60 +382,65 @@ include '../../layouts/header.php';
 </div>
 
 <div id="issueSummonModal" class="modal" style="display: none;">
-    <div class="modal-content" style="max-width: 500px;">
-        <div class="modal-header">
-            <h2 id="issueSummonModalTitle">Issue 1st Summon &amp; Schedule Mediation</h2>
+    <div class="modal-content" style="max-width: 520px; max-height: calc(100vh - 40px); display: flex; flex-direction: column; padding: 0; border-radius: 12px; overflow: hidden;">
+        <div class="modal-header" style="padding: 18px 24px 14px; margin-bottom: 0; border-bottom: 1px solid #f1f5f9; flex-shrink: 0;">
+            <h2 id="issueSummonModalTitle" style="font-size: 1.15rem;">Issue 1st Summon &amp; Schedule Mediation</h2>
             <button type="button" class="close-btn" onclick="closeIssueSummonModal()">&times;</button>
         </div>
-        <form id="issueSummonForm" onsubmit="submitIssueSummon(event)">
-            <input type="hidden" id="summonComplaintId" name="complaint_id" value="<?php echo $complaintId; ?>">
-            <p style="margin: 0 0 16px; font-size: 0.88rem; color: #475569; line-height: 1.5;">
-                In accordance with Katarungang Pambarangay rules, issuing a summons sets the 1st Mediation hearing and automatically generates <strong>KP Form 8 (Notice of Hearing for Complainant)</strong> and <strong>KP Form 9 (Summons for Respondent)</strong> for service.
-            </p>
-            <div class="form-group">
-                <label for="summonMediationDate">1st Mediation Date <span class="required-mark" aria-hidden="true">*</span></label>
-                <input type="date" id="summonMediationDate" name="mediation_date" required>
-            </div>
-
-            <!-- Existing Mediations on selected date -->
-            <div id="summonDaySchedulesWrap" style="display: none; margin-bottom: 14px; padding: 10px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.84rem;">
-                <div style="font-weight: 600; color: #334155; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
-                    <span>📅 Scheduled Mediations on this Date:</span>
-                    <span id="summonDaySlotsCount" style="font-size: 0.72rem; background: #e2e8f0; color: #475569; padding: 2px 7px; border-radius: 9999px; font-weight: 600;">0</span>
+        <form id="issueSummonForm" onsubmit="submitIssueSummon(event)" style="display: flex; flex-direction: column; overflow: hidden; margin: 0; flex: 1 1 auto;">
+            <div style="overflow-y: auto; padding: 20px 24px; flex: 1 1 auto; max-height: calc(100vh - 180px);">
+                <input type="hidden" id="summonComplaintId" name="complaint_id" value="<?php echo $complaintId; ?>">
+                <p style="margin: 0 0 16px; font-size: 0.88rem; color: #475569; line-height: 1.5;">
+                    In accordance with Katarungang Pambarangay rules, issuing a summons sets the 1st Mediation hearing and automatically generates <strong>KP Form 8 (Notice of Hearing for Complainant)</strong> and <strong>KP Form 9 (Summons for Respondent)</strong> for service.
+                </p>
+                <div class="form-group">
+                    <label for="summonMediationDate">1st Mediation Date <span class="required-mark" aria-hidden="true">*</span></label>
+                    <input type="date" id="summonMediationDate" name="mediation_date" required>
                 </div>
-                <div id="summonDaySlotsList" style="color: #64748b; font-size: 0.82rem; line-height: 1.5;">
-                    No other mediations scheduled on this day.
+
+                <!-- Existing Mediations on selected date -->
+                <div id="summonDaySchedulesWrap" style="display: none; margin-bottom: 14px; padding: 10px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.84rem;">
+                    <div style="font-weight: 600; color: #334155; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
+                        <span>📅 Scheduled Mediations on this Date:</span>
+                        <span id="summonDaySlotsCount" style="font-size: 0.72rem; background: #e2e8f0; color: #475569; padding: 2px 7px; border-radius: 9999px; font-weight: 600;">0</span>
+                    </div>
+                    <div id="summonDaySlotsList" style="color: #64748b; font-size: 0.82rem; line-height: 1.5;">
+                        No other mediations scheduled on this day.
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="summonMediationTime">1st Mediation Time <span class="required-mark" aria-hidden="true">*</span></label>
+                    <input type="time" id="summonMediationTime" name="mediation_time" value="09:00" required>
+                    <small class="field-hint">Standard mediation session is 1 hour (60 minutes). Scheduled times cannot overlap.</small>
+                </div>
+
+                <!-- Conflict Alert Box -->
+                <div id="summonScheduleConflictAlert" class="alert alert-danger" style="display: none; margin: 0 0 14px; padding: 10px 12px; font-size: 0.84rem; border-radius: 6px; background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; line-height: 1.4;">
+                </div>
+
+                <div class="form-group">
+                    <label for="summonMediationVenue">Venue <span class="required-mark" aria-hidden="true">*</span></label>
+                    <input type="text" id="summonMediationVenue" name="venue" maxlength="255" value="Barangay Hall" required>
+                </div>
+                <div class="form-group" style="margin-bottom: 6px;">
+                    <label for="summonMediationRemarks">Remarks <span class="optional-label">Optional</span></label>
+                    <textarea id="summonMediationRemarks" name="remarks" maxlength="5000" rows="2" placeholder="Optional mediation instructions or notes..."></textarea>
                 </div>
             </div>
-
-            <div class="form-group">
-                <label for="summonMediationTime">1st Mediation Time <span class="required-mark" aria-hidden="true">*</span></label>
-                <input type="time" id="summonMediationTime" name="mediation_time" value="09:00" required>
-                <small class="field-hint">Standard mediation session is 1 hour (60 minutes). Scheduled times cannot overlap.</small>
-            </div>
-
-            <!-- Conflict Alert Box -->
-            <div id="summonScheduleConflictAlert" class="alert alert-danger" style="display: none; margin: 0 0 14px; padding: 10px 12px; font-size: 0.84rem; border-radius: 6px; background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; line-height: 1.4;">
-            </div>
-
-            <div class="form-group">
-                <label for="summonMediationVenue">Venue <span class="required-mark" aria-hidden="true">*</span></label>
-                <input type="text" id="summonMediationVenue" name="venue" maxlength="255" value="Barangay Hall" required>
-            </div>
-            <div class="form-group">
-                <label for="summonMediationRemarks">Remarks <span class="optional-label">Optional</span></label>
-                <textarea id="summonMediationRemarks" name="remarks" maxlength="5000" rows="2" placeholder="Optional mediation instructions or notes..."></textarea>
-            </div>
-            <div class="modal-actions">
+            <div class="modal-actions" style="padding: 12px 24px; border-top: 1px solid #e2e8f0; background: #f8fafc; margin-top: 0; flex-shrink: 0; display: flex; justify-content: flex-end; gap: 10px;">
                 <button type="button" class="btn-secondary" onclick="closeIssueSummonModal()">Cancel</button>
                 <button type="submit" class="btn-create" id="submitIssueSummonBtn">Issue Summon &amp; Schedule</button>
             </div>
-            <p id="issueSummonMessage" role="status" style="margin-top: 10px;"></p>
+            <p id="issueSummonMessage" role="status" style="margin: 0; padding: 0 24px 8px; font-size: 0.84rem;"></p>
         </form>
     </div>
 </div>
 
+<?php include __DIR__ . '/../../layouts/summons-preview-modal.php'; ?>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="../../assets/js/summons-preview.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/summons-preview.js'); ?>"></script>
 <script src="../../assets/js/complaints.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/complaints.js'); ?>"></script>
 
 <?php include '../../layouts/footer.php'; ?>

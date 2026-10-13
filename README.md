@@ -71,8 +71,10 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
   - **Mediation Stage**: 1st Mediation $\rightarrow$ 2nd Mediation $\rightarrow$ 3rd Mediation (up to 3 mediation sessions conducted by the Punong Barangay).
   - **Progression to Conciliation**: Unresolved cases advance to conciliation: 1st Conciliation $\rightarrow$ 2nd Conciliation $\rightarrow$ 3rd Conciliation (up to 3 conciliation sessions conducted by the Pangkat Tagapagkasundo).
   - **Scheduling Ceiling**: Once the 3rd Conciliation hearing is scheduled, the scheduling engine permanently halts further hearing additions, enforcing KP statutory limits.
-- **Dual Notice Auto-Generation on 1st Summon**:
-  - Triggering `Issue 1st Summon` automatically generates both **KP Form 8 (Notice of Hearing for Complainant)** and **KP Form 9 (Summons for Respondent)**, initializes delivery tracking, and schedules the 1st Mediation session.
+- **Dual Notice Auto-Generation & "Print summon" Side-by-Side Review**:
+  - Triggering `Issue 1st Summon` atomically books the 1st Mediation session, updates complaint status, generates both **KP Form 8 (Notice of Hearing for Complainant)** and **KP Form 9 (Summons for Respondent)**, and immediately opens the dedicated **Print summon** preview modal.
+  - Displays both official forms side by side in high-fidelity preview matching official Dompdf outputs with clean letterhead, docket number, parties, and Officer's Return block.
+  - Provides isolated A4 printing (excluding AGAP sidebar/navbar chrome), standardized PDF downloading (`AGAP_[CASE]_KP-Form-[8/9]_[Notice/Summons].pdf`), and seamless handover to the Officer's Return proof-of-service interface.
 - **Attendance & Show-Cause Lifecycle (KP Forms 18, 19, 21)**:
   - Separate Complainant and Respondent attendance tracking (`Present`, `Failure to Appear`, `Not Served`, `Excused`, `Late`).
   - Auto-generation of **KP Form 18** (Notice of Hearing for Failure to Appear - Complainant) and **KP Form 19** (Notice of Hearing for Failure to Appear - Respondent) when a properly served party fails to appear without prior justification.
