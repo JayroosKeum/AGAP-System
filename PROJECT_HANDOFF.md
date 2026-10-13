@@ -1064,6 +1064,44 @@ The Complaint Details and Proof of Service modules provide an integrated, end-to
 - **Automated Verification**:
   - Comprehensive 48-assertion end-to-end verification test suite covering all 5 test scenarios (KP Form 8 auto-serve, button renaming, 3 attempts progression, CFA unlocking & KP Form 20 generation, and successful service stopping progression) passed with 100% success rate.
 
+### 10. Summons Management Workspace Redesign, Layout Consistency, and Automated Complainant Service (October 2026)
+- **Problem Resolved**:
+  - The legacy Proof of Service page required excessive vertical scrolling between standalone case lookup selectors, CFA status cards, stacked complainant and respondent cards, and a disconnected pending field service table.
+  - The Respondent's section used a disparate attempt history table that did not match the Complainant's card layout.
+  - Complainants remained in "Pending Service" after 1st attempt summons issuance from the complaint page instead of being automatically served upon notice issuance.
+  - Redundant "Print KP Form 8" and "Print KP Form 9" buttons cluttered the service cards when printing is already handled by the specialized side-by-side preview modal.
+- **Unified Expandable Case Table & Workspace (`frontend/pages/gps/proof-service.php`, `frontend/assets/js/gps.js`, `frontend/assets/css/gps.css`)**:
+  - **Renamed Page Title**: Updated heading to **Summons** ("Summons Management — Review summons delivery, record Officers' Returns, and monitor service progress.").
+  - **Expandable Table Architecture**: Replaced the separate stacked cards and disconnected tables with an expandable case table. Clicking any case row dynamically expands/collapses inline service details directly beneath that case.
+  - **Removed Redundant Controls**:
+    - Removed top standalone action/filter buttons.
+    - Removed the "CFA Ready" tab (simplified to **All Cases** and **Pending Delivery** tabs with dynamic counts).
+    - Removed the standalone "Action" column in favor of direct row expansion and contextual actions within the expanded view.
+  - **Search & Summary Indicators**: Live client-side search across Case No., Complainant, Respondent, and Title with a clear button. Metric cards summarize Total Cases, Pending Delivery, CFA Eligible, and Served Today.
+- **Complainant & Respondent Visual Layout Consistency**:
+  - Replaced the Respondent attempt history table with a clean vertical detail list (`.delivery-detail-list`) exactly mirroring the Complainant layout:
+    - Date/Time Served
+    - Service Source / Process Server
+    - Service Method
+    - Remarks
+    - Unserved Reason (if failed) & failure notes
+    - Attached photo proof preview link
+  - Retained the horizontal Attempt Stepper (1st Attempt, 2nd Attempt, 3rd Attempt, and CFA status) for clear visual tracking of dispute progression.
+  - Preserved distinct role branding (blue for Complainant, orange for Respondent).
+- **Slide-In Officer's Return Drawer**:
+  - Replaced the standard modal popup with a responsive slide-in off-canvas drawer (`#officerReturnModal`) with background dim overlay (`#officerReturnDrawerOverlay`).
+  - Drawer header displays contextual badges: Case Number badge, Party badge, and KP Document Code badge (`KP Form No. 8 – Notice` vs `KP Form No. 9 – Summons`).
+  - Supports logging service outcome (`Served Personal`, `Served Substituted`, `Served Refused`, `Unserved`), recipient details, relationship, failure reason, notes, and photo proof upload.
+- **Card Footers Cleaned of Duplicate Print Buttons**:
+  - Removed "Print KP Form 8" from the Complainant card.
+  - Removed "Print KP Form 9" from the Respondent card.
+  - Footers now focus cleanly on **Log Officer's Return**, plus contextual stage advancement actions (*Issue Summon 2nd Attempt* or *Proceed to CFA*) when eligible.
+- **Automatic Complainant Notice Service on 1st Attempt Summons Issuance**:
+  - When **Issue Summon 1st Attempt** is executed from the complaint page (`complaint-details.php` via `backend/api/summons/issue.php` and `backend/models/Summons.php`):
+    - `KP Form 8` is recorded in `generated_documents` with `service_status = 'Served'`.
+    - Complainant's delivery record in `summon_deliveries` is automatically created with `delivery_status = 'Served'`, `served_at = NOW()`, `service_method = 'Personal Notice'`, and remarks indicating personal notice served at the Lupon office.
+  - **Retroactive Auto-Healing**: In `SummonDeliveryService::getHearingDeliveries()` and `ProofOfService::getAvailableCases()`, pre-existing mediation cases where the complainant was previously left in `Pending` status (e.g. Case #28) are automatically marked as `Served`, guaranteeing consistency across all system views.
+
 ---
 
 ## Present but Incomplete or Requiring Verification

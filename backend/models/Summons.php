@@ -388,7 +388,7 @@ class Summons
 
             $docKp8Stmt = $this->conn->prepare(
                 "INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status)
-                 VALUES (?, ?, ?, ?, 'For Service')"
+                 VALUES (?, ?, ?, ?, 'Served')"
             );
             $docKp8Stmt->execute([$caseId, $kp8TemplateId, $userId, $kp8FilePath]);
             $kp8DocumentId = (int) $this->conn->lastInsertId();
@@ -424,14 +424,26 @@ class Summons
             $docKp9Stmt->execute([$caseId, $templateId, $userId, $kp9FilePath]);
             $documentId = (int) $this->conn->lastInsertId();
 
-            // Initialize summon_deliveries for both parties for this scheduled hearing
+            // Initialize summon_deliveries: Complainant notice is automatically Served upon issuance of summons
             if ($primaryComplainant) {
                 $compDelivStmt = $this->conn->prepare("
-                    INSERT INTO summon_deliveries (hearing_id, case_id, party_type, resident_id, form_type, delivery_status, document_id, recipient_name)
-                    VALUES (?, ?, 'Complainant', ?, 'Notice of Hearing', 'Pending', ?, ?)
+                    INSERT INTO summon_deliveries (
+                        hearing_id, case_id, party_type, resident_id, form_type, delivery_status,
+                        document_id, recipient_name, served_at, served_by, served_by_user_id,
+                        service_method, remarks
+                    )
+                    VALUES (
+                        ?, ?, 'Complainant', ?, 'Notice of Hearing', 'Served',
+                        ?, ?, NOW(), ?, ?,
+                        'Personal Notice', 'Personal notice served to complainant upon issuance of 1st mediation summons.'
+                    )
                     ON DUPLICATE KEY UPDATE
-                        resident_id = COALESCE(VALUES(resident_id), resident_id),
-                        case_id = COALESCE(VALUES(case_id), case_id),
+                        delivery_status = 'Served',
+                        served_at = COALESCE(served_at, NOW()),
+                        served_by = COALESCE(served_by, VALUES(served_by)),
+                        served_by_user_id = COALESCE(served_by_user_id, VALUES(served_by_user_id)),
+                        service_method = 'Personal Notice',
+                        remarks = 'Personal notice served to complainant upon issuance of 1st mediation summons.',
                         document_id = COALESCE(VALUES(document_id), document_id),
                         recipient_name = COALESCE(VALUES(recipient_name), recipient_name)
                 ");
@@ -440,7 +452,9 @@ class Summons
                     $caseId,
                     (int) $primaryComplainant['resident_id'],
                     $kp8DocumentId,
-                    $primaryComplainant['full_name'] ?? null
+                    $primaryComplainant['full_name'] ?? null,
+                    $userId,
+                    $userId
                 ]);
             }
 

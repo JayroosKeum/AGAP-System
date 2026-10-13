@@ -65,6 +65,18 @@ if ($result['success']) {
         ? sprintf('Re-opened Summons #%d for Case %s', $result['summons_number'] ?? 1, $result['case_number'] ?? '')
         : sprintf('Issued Summons #%d and scheduled 1st Mediation for Case %s', $result['summons_number'] ?? 1, $result['case_number'] ?? '');
     $audit->log((int) $_SESSION['user_id'], $auditAction, 'Summons', $result['document_id'] ?? null);
+
+    if (!empty($result['case_id'])) {
+        try {
+            require_once '../../services/SummonDeliveryService.php';
+            require_once '../../config/database.php';
+            $db = (new Database())->connect();
+            $delivService = new SummonDeliveryService($db);
+            $delivService->markKp8Printed((int) $result['case_id'], null, $result['hearing_id'] ?? null, (int) $_SESSION['user_id']);
+        } catch (Throwable $de) {
+            error_log('Error auto-marking KP Form 8 in issue.php: ' . $de->getMessage());
+        }
+    }
 }
 
 http_response_code($result['success'] ? 200 : 422);

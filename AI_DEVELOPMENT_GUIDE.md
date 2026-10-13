@@ -150,16 +150,17 @@ The Katarungang Pambarangay Law (RA 7160, Local Government Code Sections 399–4
 - **Docketing**: Only `Accepted` complaints can be docketed. Docketing generates an official case number in the strict **`MM-SS-YYYY`** format (e.g., `10-01-2026` for October, 1st case, year 2026) using `CaseModel::generateCaseNumber()`.
 - **Atomic Creation**: Docketing updates `complaints.status = 'Docketed'` and creates a record in `cases` inside a single transaction.
 
-### 4.2. Summons Issuance & Service Gate
+### 4.2. Summons Issuance, Summons Workspace & Service Gate
 - **Dual Form Issuance**: Issuing the 1st Summons (`Issue Summon 1st Attempt`) generates **both**:
   1. **KP Form 8**: Notice of Hearing for the Complainant.
   2. **KP Form 9**: Summons for the Respondent.
 - **Button Renaming & Progression**: Renamed from `Issue 1st Summon` to `Issue Summon 1st Attempt`. Progresses dynamically to `Issue Summon 2nd Attempt` and `Issue Summon 3rd Attempt` as delivery failures are recorded.
-- **KP Form 8 Auto-Served on Print**:
-  - During First Mediation stage, when KP Form 8 is printed, the system automatically marks its service status as `Served` via the print workflow (`SummonDeliveryService::markKp8Printed`).
+- **KP Form 8 Automatic Service on Issuance & Print**:
+  - In the First Mediation stage, issuing the 1st Attempt summons automatically records the Complainant's KP Form 8 notice as `Served` (`service_method = 'Personal Notice'`, served by the Lupon office) in `summon_deliveries` and `generated_documents`.
+  - Printing KP Form 8 also automatically synchronizes its service status as `Served` (`SummonDeliveryService::markKp8Printed`).
   - Distinctly logged in the audit trail without creating false physical delivery receipts.
   - Strictly isolated: does **not** auto-serve KP Form 9 or alter the respondent's summons status.
-  - Idempotent: repeated print requests do not create duplicate service records.
+  - Idempotent: repeated print requests or status checks do not create duplicate service records.
 - **Three KP Form No. 9 Delivery Attempts Tracking (`SummonDeliveryService`)**:
   - **Attempt 1**: Initiated upon summons issuance (`Issue Summon 1st Attempt`), creating a delivery record (`Pending`) and generating KP Form 9 PDF.
   - **Attempt 2**: Enabled only after Attempt 1 is completed and recorded as a qualifying delivery failure (`Unserved`).
@@ -171,6 +172,12 @@ The Katarungang Pambarangay Law (RA 7160, Local Government Code Sections 399–4
   - For the failed-summons path, the CFA document (KP Form 20) unlocks for printing **only** when all three (3) summons delivery attempts have completed with qualifying delivery failures and no attempt succeeded.
   - Shows real-time locked states (`CFA Locked — X of 3 summons attempts resulted in delivery failure`).
   - CFA issuance generates **KP Form 20** PDF via `PDFService::generateKp20()` and transitions case status to `CFA Issued`.
+- **Summons Management Workspace Architecture (`proof-service.php` & `gps.js`)**:
+  - Unified expandable case table replacing separate stacked sections and disconnected pending tables.
+  - Row click expands inline service cards directly below the selected case.
+  - Matching card structure and vertical detail lists for Complainant and Respondent (`Date/Time Served`, `Service Source / Server`, `Service Method`, `Remarks`, `Unserved Reason`, notes, proof attachment).
+  - Off-canvas slide-in Officer's Return drawer with live Case, Party, and KP Document badges.
+  - Cleaned card footers focusing on **Log Officer's Return** and progression actions, with redundant print buttons removed.
 - **Service Gate (`SummonServiceGate`)**:
   - Mediation attendance **cannot** be recorded until proof of summons service is confirmed in `summon_deliveries`.
   - Successful statuses: `'Served'`, `'Served Personal'`, `'Served Substituted'`.

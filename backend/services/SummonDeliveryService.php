@@ -78,18 +78,30 @@ class SummonDeliveryService
         $compStmt->execute([$hearingId]);
         $complainantDeliv = $compStmt->fetch(PDO::FETCH_ASSOC);
 
+        if ($complainantDeliv && ($complainantDeliv['delivery_status'] ?? '') !== 'Served' && strpos($complainantDeliv['delivery_status'] ?? '', 'Served') !== 0 && ($hearing['hearing_type'] ?? '') === 'Mediation') {
+            $this->markKp8Printed($caseId, (int) ($complainantDeliv['document_id'] ?? 0), $hearingId, (int) ($_SESSION['user_id'] ?? 1));
+            $compStmt->execute([$hearingId]);
+            $complainantDeliv = $compStmt->fetch(PDO::FETCH_ASSOC);
+        }
+
         if (!$complainantDeliv) {
+            $initialStatus = (($hearing['hearing_type'] ?? '') === 'Mediation') ? 'Served' : 'Pending';
             $insComp = $this->conn->prepare("
                 INSERT INTO summon_deliveries (
-                    hearing_id, case_id, party_type, resident_id, form_type, attempt_number, delivery_status, recipient_name
-                ) VALUES (?, ?, 'Complainant', ?, ?, 1, 'Pending', ?)
+                    hearing_id, case_id, party_type, resident_id, form_type, attempt_number,
+                    delivery_status, recipient_name, served_at, service_method, remarks
+                ) VALUES (?, ?, 'Complainant', ?, ?, 1, ?, ?, IF(? = 'Served', NOW(), NULL), IF(? = 'Served', 'Personal Notice', NULL), IF(? = 'Served', 'Personal notice served to complainant upon issuance of 1st mediation summons.', NULL))
             ");
             $insComp->execute([
                 $hearingId,
                 $caseId,
                 $complainantParty ? (int) $complainantParty['resident_id'] : null,
                 $complainantForm,
-                $complainantParty['resident_name'] ?? null
+                $initialStatus,
+                $complainantParty['resident_name'] ?? null,
+                $initialStatus,
+                $initialStatus,
+                $initialStatus
             ]);
             $compDelivId = (int) $this->conn->lastInsertId();
             $complainantDeliv = [
@@ -100,15 +112,15 @@ class SummonDeliveryService
                 'resident_id' => $complainantParty ? (int) $complainantParty['resident_id'] : null,
                 'form_type' => $complainantForm,
                 'attempt_number' => 1,
-                'delivery_status' => 'Pending',
-                'served_at' => null,
+                'delivery_status' => $initialStatus,
+                'served_at' => ($initialStatus === 'Served') ? date('Y-m-d H:i:s') : null,
                 'served_by' => null,
-                'served_by_name' => null,
+                'served_by_name' => 'Lupon Office (Personal Notice)',
                 'recipient_name' => $complainantParty['resident_name'] ?? null,
                 'relationship' => null,
                 'unserved_reason' => null,
                 'failure_notes' => null,
-                'remarks' => null,
+                'remarks' => ($initialStatus === 'Served') ? 'Personal notice served to complainant upon issuance of 1st mediation summons.' : null,
             ];
         }
         if ($complainantParty) {
@@ -254,8 +266,9 @@ class SummonDeliveryService
     /**
      * Requirement A: Automatically mark KP Form No. 8 as served when printed for First Mediation.
      */
-    public function markKp8Printed(int $caseId, int $documentId, ?int $hearingId, int $actorUserId): array
+    public function markKp8Printed(int $caseId, ?int $documentId = null, ?int $hearingId = null, ?int $actorUserId = null): array
     {
+        $actorUserId = $actorUserId ?: (int) ($_SESSION['user_id'] ?? 1);
         $startedTrans = false;
         if (!$this->conn->inTransaction()) {
             $this->conn->beginTransaction();
@@ -305,19 +318,38 @@ class SummonDeliveryService
                 return ['success' => false, 'message' => 'KP Form No. 8 automatic service rule only applies to First Mediation hearings.'];
             }
 
-            // 3. Verify document exists and is KP Form 8
-            $docStmt = $this->conn->prepare("
-                SELECT gd.document_id, gd.case_id, gd.service_status, dt.template_name
-                FROM generated_documents gd
-                INNER JOIN document_templates dt ON dt.template_id = gd.template_id
-                WHERE gd.document_id = ? AND gd.case_id = ?
-            ");
-            $docStmt->execute([$documentId, $caseId]);
-            $doc = $docStmt->fetch(PDO::FETCH_ASSOC);
+            // 3. Verify document exists and is KP Form 8, or auto-resolve for this case
+            $doc = null;
+            if ($documentId) {
+                $docStmt = $this->conn->prepare("
+                    SELECT gd.document_id, gd.case_id, gd.service_status, dt.template_name
+                    FROM generated_documents gd
+                    INNER JOIN document_templates dt ON dt.template_id = gd.template_id
+                    WHERE gd.document_id = ? AND gd.case_id = ?
+                ");
+                $docStmt->execute([$documentId, $caseId]);
+                $doc = $docStmt->fetch(PDO::FETCH_ASSOC);
+            }
+
+            if (!$doc || ($doc['template_name'] ?? '') !== 'KP Form 8') {
+                $findKp8 = $this->conn->prepare("
+                    SELECT gd.document_id, gd.case_id, gd.service_status, dt.template_name
+                    FROM generated_documents gd
+                    INNER JOIN document_templates dt ON dt.template_id = gd.template_id
+                    WHERE gd.case_id = ? AND dt.template_name = 'KP Form 8'
+                    ORDER BY gd.document_id DESC
+                    LIMIT 1
+                ");
+                $findKp8->execute([$caseId]);
+                $doc = $findKp8->fetch(PDO::FETCH_ASSOC);
+                if ($doc) {
+                    $documentId = (int) $doc['document_id'];
+                }
+            }
 
             if (!$doc || ($doc['template_name'] ?? '') !== 'KP Form 8') {
                 if ($startedTrans && $this->conn->inTransaction()) $this->conn->rollBack();
-                return ['success' => false, 'message' => 'The selected document is not a valid KP Form No. 8 for this case.'];
+                return ['success' => false, 'message' => 'No valid KP Form No. 8 document found for this case.'];
             }
 
             // 4. Identify complainant resident

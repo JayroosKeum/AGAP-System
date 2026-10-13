@@ -118,7 +118,46 @@ class ProofOfService
                     FROM complaint_parties cp
                     INNER JOIN residents r ON r.resident_id = cp.resident_id
                     WHERE cp.complaint_id = c.complaint_id AND cp.party_type = 'Respondent'
-                ) AS respondent_names
+                ) AS respondent_names,
+                COALESCE(
+                    (
+                        SELECT CASE
+                            WHEN sd.delivery_status IN ('Served', 'Served Personal', 'Served Substituted', 'Served Refused') THEN 'Served'
+                            WHEN (SELECT h_sub.hearing_type FROM hearings h_sub WHERE h_sub.case_id = c.case_id ORDER BY h_sub.hearing_date ASC, h_sub.hearing_id ASC LIMIT 1) = 'Mediation' THEN 'Served'
+                            ELSE sd.delivery_status
+                        END
+                        FROM summon_deliveries sd
+                        WHERE sd.case_id = c.case_id AND sd.party_type = 'Complainant'
+                        ORDER BY sd.delivery_id DESC LIMIT 1
+                    ),
+                    'Served'
+                ) AS complainant_service_status,
+                (
+                    SELECT sd.delivery_status
+                    FROM summon_deliveries sd
+                    WHERE sd.case_id = c.case_id AND sd.party_type = 'Respondent'
+                    ORDER BY sd.attempt_number DESC, sd.delivery_id DESC LIMIT 1
+                ) AS respondent_service_status,
+                (
+                    SELECT COUNT(*)
+                    FROM summon_deliveries sd
+                    WHERE sd.case_id = c.case_id AND sd.party_type = 'Respondent' AND sd.delivery_status = 'Unserved'
+                ) AS respondent_failed_attempts,
+                (
+                    SELECT COUNT(*)
+                    FROM summon_deliveries sd
+                    WHERE sd.case_id = c.case_id AND sd.party_type = 'Respondent' AND sd.delivery_status IN ('Served', 'Served Personal', 'Served Substituted', 'Served Refused')
+                ) AS respondent_served_attempts,
+                (
+                    SELECT COUNT(*)
+                    FROM summon_deliveries sd
+                    WHERE sd.case_id = c.case_id AND sd.party_type = 'Respondent'
+                ) AS respondent_total_attempts,
+                (
+                    SELECT MAX(sd.served_at)
+                    FROM summon_deliveries sd
+                    WHERE sd.case_id = c.case_id AND DATE(sd.served_at) = CURRENT_DATE()
+                ) AS served_today_date
             FROM cases c
             INNER JOIN complaints co ON co.complaint_id = c.complaint_id
             LEFT JOIN (

@@ -112,14 +112,29 @@ async function openSummonsPreviewModal(caseId, documentId = null, hearingId = nu
         window.currentSummonsPreview.officerReturnUrl = data.officer_return_url;
 
         if (data.kp8) {
-            window.currentSummonsPreview.kp8 = data.kp8;
+            window.currentSummonsPreview.kp8 = {
+                ...data.kp8,
+                documentId: data.kp8.document_id || data.kp8.documentId || null,
+                pdfUrl: data.kp8.pdf_url || data.kp8.pdfUrl || null,
+                downloadUrl: data.kp8.download_url || data.kp8.downloadUrl || null,
+                html: data.kp8.html || null
+            };
         }
         if (data.kp9) {
-            window.currentSummonsPreview.kp9 = data.kp9;
+            window.currentSummonsPreview.kp9 = {
+                ...data.kp9,
+                documentId: data.kp9.document_id || data.kp9.documentId || null,
+                pdfUrl: data.kp9.pdf_url || data.kp9.pdfUrl || null,
+                downloadUrl: data.kp9.download_url || data.kp9.downloadUrl || null,
+                html: data.kp9.html || null
+            };
         } else {
             window.currentSummonsPreview.kp9 = {
+                documentId: data.document_id,
                 document_id: data.document_id,
+                pdfUrl: data.pdf_url,
                 pdf_url: data.pdf_url,
+                downloadUrl: data.download_url,
                 download_url: data.download_url,
                 html: data.html
             };
@@ -214,13 +229,14 @@ function retrySummonsPreview() {
 async function markKp8AsServedOnPrint() {
     const state = window.currentSummonsPreview;
     if (!state || !state.caseId) return;
-    const kp8DocId = state.kp8?.documentId || state.documentId;
-    if (!kp8DocId) return;
+    const kp8DocId = state.kp8?.documentId || state.kp8?.document_id || state.documentId || null;
 
     try {
         const formData = new FormData();
         formData.append('case_id', state.caseId);
-        formData.append('document_id', kp8DocId);
+        if (kp8DocId) {
+            formData.append('document_id', kp8DocId);
+        }
         if (state.hearingId) {
             formData.append('hearing_id', state.hearingId);
         }
@@ -243,6 +259,9 @@ async function markKp8AsServedOnPrint() {
             }
             if (typeof window.loadHearingDeliveries === 'function') {
                 window.loadHearingDeliveries(state.caseId);
+            }
+            if (typeof window.loadProofOfServiceCases === 'function') {
+                window.loadProofOfServiceCases();
             }
         }
     } catch (err) {
@@ -276,20 +295,18 @@ function printSummonsPreview(target = 'kp9') {
         return false;
     };
 
+    // When 1st attempt summon is printed from complaint or preview, auto-mark Complainant KP Form 8 as Served
+    markKp8AsServedOnPrint();
+
     if (target === 'kp8') {
-        const printed = printFrame(frame8, window.currentSummonsPreview?.kp8?.pdfUrl);
-        if (printed) {
-            markKp8AsServedOnPrint();
-        }
+        printFrame(frame8, window.currentSummonsPreview?.kp8?.pdfUrl || window.currentSummonsPreview?.kp8?.pdf_url);
     } else if (target === 'kp9') {
-        // Do NOT mark KP Form 9 as served merely on print
-        printFrame(frame9, window.currentSummonsPreview?.kp9?.pdfUrl);
+        printFrame(frame9, window.currentSummonsPreview?.kp9?.pdfUrl || window.currentSummonsPreview?.kp9?.pdf_url);
     } else if (target === 'both') {
         // Print KP Form 8 first, then sequence KP Form 9
         if (frame8?.contentWindow) {
             frame8.contentWindow.focus();
             frame8.contentWindow.print();
-            markKp8AsServedOnPrint();
 
             // After focus returns from KP 8 print dialog, trigger KP 9
             const onAfterPrint = () => {
@@ -303,11 +320,8 @@ function printSummonsPreview(target = 'kp9') {
             };
             window.addEventListener('focus', onAfterPrint, { once: true });
         } else {
-            const printed8 = printFrame(frame8, window.currentSummonsPreview?.kp8?.pdfUrl);
-            if (printed8) {
-                markKp8AsServedOnPrint();
-            }
-            printFrame(frame9, window.currentSummonsPreview?.kp9?.pdfUrl);
+            printFrame(frame8, window.currentSummonsPreview?.kp8?.pdfUrl || window.currentSummonsPreview?.kp8?.pdf_url);
+            printFrame(frame9, window.currentSummonsPreview?.kp9?.pdfUrl || window.currentSummonsPreview?.kp9?.pdf_url);
         }
     }
 }

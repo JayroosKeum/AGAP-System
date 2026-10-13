@@ -28,19 +28,19 @@ if (empty($input)) {
 }
 
 $caseId = filter_var($input['case_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-$documentId = filter_var($input['document_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+$documentId = filter_var($input['document_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
 $hearingId = filter_var($input['hearing_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
 
-if (!$caseId || !$documentId) {
+if (!$caseId) {
     http_response_code(422);
-    echo json_encode(['success' => false, 'message' => 'Valid case ID and document ID are required.']);
+    echo json_encode(['success' => false, 'message' => 'Valid case ID is required.']);
     exit;
 }
 
 try {
     $db = (new Database())->connect();
     $service = new SummonDeliveryService($db);
-    $result = $service->markKp8Printed((int) $caseId, (int) $documentId, $hearingId, (int) $_SESSION['user_id']);
+    $result = $service->markKp8Printed((int) $caseId, $documentId, $hearingId, (int) $_SESSION['user_id']);
 
     http_response_code(!empty($result['success']) ? 200 : 422);
     echo json_encode($result);

@@ -68,10 +68,12 @@ A comprehensive diagnostic audit was executed across all frontend pages, buttons
 * **Progression Ceiling:** Maximum of 3 Mediation sessions and 3 Conciliation sessions; further scheduling halts upon reaching 3rd Conciliation.
 * **Auto-Docketing on 1st Mediation:** Scheduling the 1st Mediation automatically transitions complaint and case status to *Docketed*.
 
-### F. Proof of Service & Field Documentation (`proof-service.php`)
-* **Officer's Return Logging:** Document selection, delivery outcome (*Served Personal*, *Served Substituted*, *Refused*, *Unserved*), date/time, serving officer, recipient relationship, and remarks.
-* **Evidence Photo Upload:** Uploads JPG, PNG, and WebP up to 5 MB into `storage/uploads/proof-of-service/`.
-* **Immediate Client-Side Auto-Refresh:** Form reset and service attempt history auto-refreshed via AJAX without full page reloads.
+### F. Summons Management & Field Documentation (`proof-service.php`)
+* **Unified Expandable Case Table:** Replaced separate stacked cards and disconnected tables with an expandable case table. Clicking a row expands inline service cards directly below the case.
+* **Layout Parity:** Complainant (KP Form 8) and Respondent (KP Form 9) service cards feature identical card structure, typography, and detail lists (`Date/Time Served`, `Service Source / Server`, `Service Method`, `Remarks`, failure reasons, and photo proof link).
+* **Automatic Complainant Service:** Issuing 1st attempt summons automatically marks KP Form 8 as `Served` with personal notice from the Lupon office.
+* **Slide-in Officer's Return Drawer:** Modern off-canvas drawer (`#officerReturnModal`) with live Case Number, Party, and KP Document badges for logging delivery results, recipient, relationship, unserved reasons, notes, and proof image uploads.
+* **Summons Attempt Stepper & CFA Locking:** Real-time 3-attempt progression tracker (1st, 2nd, 3rd Attempt) and conditional CFA unlock indicator.
 * **Mediation Clock Integration:** Marking service as *Unserved* automatically pauses the case mediation clock with reason *Summon Unserved*.
 
 ### G. Document Generation Foundation (`document-center.php`)
@@ -100,16 +102,13 @@ A comprehensive diagnostic audit was executed across all frontend pages, buttons
 * **Root Cause:** `Settlement.php` queries `repudiation_status`, `repudiation_deadline`, and table `settlement_installments`. Neither the expanded columns nor the `settlement_installments` / `settlement_executions` tables exist in `agap_db` because migration `20261006` was not applied.
 * **Error:** `SQLSTATE[42S22]: Column not found: 1054 Unknown column 'repudiation_status' in 'where clause'`
 
-### 🔴 Critical Bug 3: Hearing Attendance Modal Crashes on Load & Save
-* **Symptom:** Clicking "Update" or "View" on any hearing row in `schedules.php` fails to display attendance and service statuses, or throws a database error upon saving attendance.
-* **Root Cause:** Schema mismatch in `summon_deliveries`. Migration `20260930_summon_delivery_attendance_escalation.sql` created columns: `recipient_type`, `recipient_name`, `date_served`, `server_notes`. However, `SummonDeliveryService.php` queries `party_type`, `resident_id`, `form_type`, `served_at`, `unserved_reason`, and `HearingAttendance.php` joins on `sd.resident_id` and `sd.party_type`.
-* **Errors:**
-  * `SQLSTATE[42S22]: Column not found: 1054 Unknown column 'sd.party_type' in 'order clause'`
-  * `SQLSTATE[42S22]: Column not found: 1054 Unknown column 'sd.resident_id' in 'where clause'`
+### 🟢 Resolved: Hearing Attendance & Summon Deliveries Schema Alignment
+* **Status:** Resolved via migrations `20261013_001_repair_summon_deliveries.sql` and `20261013_003_summon_three_attempts.sql`.
+* **Fix:** Standardized `summon_deliveries` columns (`case_id`, `document_id`, `party_id`, `resident_id`, `party_type`, `recipient_name`, `delivery_status`, `attempt_count`, `service_method`, `served_by_user_id`, `served_at`, `unserved_reason`, `failure_notes`, `attachment_path`), resolving crashes during attendance and delivery updates.
 
-### 🔴 Critical Bug 4: Dead Links for 2nd and 3rd Summons (`summons.php`)
-* **Symptom:** Clicking "Generate 2nd Summons (KP Form 9) →" or "Generate 3rd Summons (KP Form 9) →" inside the hearing attendance modal opens a completely blank white screen.
-* **Root Cause:** In `hearings.js`, the buttons link to `../documents/summons.php?case_id=...`. The file `summons.php` is 0 bytes (completely empty). The active summons template is located at `kp-form-9.php`.
+### 🟢 Resolved: Summons Generation & Multi-Attempt Progression
+* **Status:** Resolved via `backend/api/summons/next-attempt.php`, `backend/api/summons/preview.php`, and `summons-preview-modal.php`.
+* **Fix:** Multi-attempt summons issuance (1st, 2nd, and 3rd Attempt) is now fully integrated with dedicated preview modals, PDF generation, and automatic KP Form 8 service.
 
 ### 🟡 Bug 5: `hearings.status` ENUM Value Truncation / Failure
 * **Symptom:** `ShowCauseService.php` sets hearing status to `'Attendance Recorded'` when at least one party is absent.
@@ -134,21 +133,21 @@ The following files exist in the repository but have 0 bytes:
 Under Republic Act 7160 (Katarungang Pambarangay Rules), the barangay must issue standardized KP forms.
 
 * **Implemented:**
-  * KP Form 9 — Summons (HTML/print view in `kp-form-9.php`).
-  * KP Form 12 — Notice of Hearing for Conciliation (PDF in `document-center.php`).
-  * KP Form 18 & 19 — Notice of Hearing for Failure to Appear / Show Cause (data models exist).
+  * KP Form 8 — Notice of Hearing for Complainant (PB Mediation; side-by-side preview and auto-serve).
+  * KP Form 9 — Summons for Respondent (3-attempt tracking, side-by-side preview, Dompdf generation).
+  * KP Form 10 — Notice for Constitution of Pangkat.
+  * KP Form 12 — Notice of Hearing for Conciliation Proceedings (Dompdf generation).
+  * KP Form 18 & 19 — Notice of Hearing for Failure to Appear / Show Cause (data models and escalation).
+  * KP Form 20 — Certification to File Action (CFA; automated PDF generation via `PDFService::generateKp20`).
+  * KP Form 21 — Certification to Bar Action (for Complainant default).
 * **Missing Templates:**
   * KP Form 7 — Formal Written Complaint.
-  * KP Form 8 — Notice of Hearing (Punong Barangay Mediation).
-  * KP Form 10 — Notice to Constitute Pangkat Tagapagkasundo.
   * KP Form 11 — Notice to Chosen Pangkat Members.
   * KP Form 13 — Subpoena (Witness / Evidence Summons).
   * KP Form 14 — Agreement for Arbitration.
   * KP Form 15 — Arbitration Award.
   * KP Form 16 — Amicable Settlement Agreement.
   * KP Form 17 — Repudiation of Settlement.
-  * KP Form 20 — Certification to File Action (CFA after conciliation failure).
-  * KP Form 21 — Certification to Bar Action (due to Complainant non-appearance).
   * KP Form 22 — Certification to Bar Counterclaim (due to Respondent non-appearance).
   * KP Form 23 & 24 — Motion for Execution and Notice of Execution.
 

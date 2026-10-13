@@ -111,12 +111,15 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
   - **KP Form 19**: Notice of Hearing for Failure to Appear (Respondent).
   - **KP Form 20**: Certificate to File Action (CFA - issued upon 3 failed summons delivery attempts or conciliation/mediation failure).
   - **KP Form 21**: Certificate to Bar Action (for Complainant default).
-- **Proof of Service Interface (`proof-service.php`)**:
-  - **Case & Hearing Details**: Real-time display of active hearing date, hearing type, venue, and attendance lock state.
-  - **CFA Status & Eligibility Card**: Dynamic banner (`🔒 CFA Locked` vs `✅ CFA Unlocked`) with a 3-step checklist, summary count (`X/3 Failed`), status explanation, and conditional "Print CFA (KP Form 20)" action.
-  - **Complainant Notice Card (KP Form 8)**: Displays service status, timestamp, and a dedicated auto-served badge (`Served (Print Workflow)`).
-  - **Respondent Summons Section (KP Form 9)**: Dedicated `Issue Summon [1st/2nd/3rd] Attempt` button and an attempt history table (Attempt number, date/time, process server, delivery status badge, failure reasons/notes, proof photo link, and inline Officer's Return action).
-  - **Officer's Return Modal**: Captures attempt number, delivery status (`Served Personal`, `Served Substituted`, `Served Refused`, `Unserved`), failure reasons (`Moved Out`, `Wrong Address`, `Refused`, etc.), notes, recipient identity, relationship, and secure photo proof upload (JPG, PNG, WebP up to 5 MB).
+- **Summons Management & Proof of Service Interface (`proof-service.php`)**:
+  - **Unified Expandable Case Table**: Displays all cases requiring summons tracking. Rows expand/collapse inline to reveal side-by-side service records for Complainant and Respondent.
+  - **Live Filter Tabs & Search**: Instant keyword search across Case No., parties, and titles; filter tabs for **All Cases** and **Pending Delivery** with live counter pills.
+  - **Top KPI Indicators**: Compact summary counters for Total Cases, Pending Delivery, CFA Eligible, and Served Today.
+  - **Complainant & Respondent Visual Parity**: Matching two-column card structure, badges, typography, and detail lists (`Date/Time Served`, `Service Source / Server`, `Service Method`, `Remarks`, failure notes, proof links).
+  - **Horizontal Summons Stepper**: Interactive progression nodes for Attempt 1, Attempt 2, Attempt 3, and CFA status with dynamic state badges (`Served`, `Pending`, `Failed`, `Locked`).
+  - **Auto-Served Complainant Notice**: Automatically sets KP Form 8 to `Served` upon issuance of the 1st Attempt summons from the complaint page.
+  - **Slide-in Officer's Return Drawer**: Modern off-canvas drawer (`#officerReturnModal`) with distinct Case Number, Party, and Document Form badges for recording delivery outcomes, recipient relationship, unserved reasons, notes, and photo proof attachments.
+  - **Clean Action Footers**: Streamlined card footers focused on **Log Officer's Return** alongside next-stage progression buttons (*Issue Summon 2nd Attempt*, *Proceed to CFA*), removing clutter from redundant print buttons.
 
 ### 5. Security, Audit Trails & Notifications
 
