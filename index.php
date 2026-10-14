@@ -16,6 +16,7 @@ $protectedPages = [
     'dashboard',
     'profiles',
     'complaints',
+    'complaints-create',
     'cases',
     'summons',
     'mediation',

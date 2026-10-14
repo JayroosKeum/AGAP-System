@@ -6,4 +6,6 @@
 /storage/generated-reports/*
 /storage/backups/*
 /storage/logs/*
+/storage/cache/*
+AGAP.zip.txt
 !/storage/**/.gitkeep
