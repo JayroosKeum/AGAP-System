@@ -1101,18 +1101,13 @@ class SummonDeliveryService
     /**
      * Evaluates CFA (Certificate to File Action) eligibility per RA 7160 and DILG KP Training Manual.
      *
-     * The three DILG-recognised scenarios that independently unlock a CFA are:
+     * The scenarios that unlock a CFA during the summons and hearing stages are:
      *
      *   SCENARIO 1 — Three failed service attempts:
-     *     All three summons attempts for the respondent resulted in 'Unserved'.
-     *     (Operational policy — useful but not the exclusive statutory test.)
+     *     All three (3) summons attempts for the respondent resulted in 'Unserved'.
+     *     (RA 7160 §410 diligence requirement satisfied; CFA is unlocked.)
      *
-     *   SCENARIO 2 — Respondent unreachable despite diligent efforts:
-     *     At least one attempt is 'Unserved' with reason 'Moved Out' or 'Wrong Address',
-     *     AND the Lupon has certified they cannot locate the respondent.
-     *     This may unlock CFA even with fewer than 3 attempts.
-     *
-     *   SCENARIO 3 — Served but persistently refuses to appear:
+     *   SCENARIO 2 — Served but persistently refuses to appear:
      *     Respondent was validly served ('Served Refused' or 'Served Personal'/'Served Substituted')
      *     but failed to appear at two or more scheduled hearings without justification.
      *     Service has been completed; non-attendance triggers the CFA.
@@ -1153,7 +1148,6 @@ class SummonDeliveryService
         $hasPending    = false;   // at least one attempt not yet resolved
         $failedCount   = 0;       // 'Unserved' outcomes
         $refusedCount  = 0;       // 'Served Refused' outcomes (served but refused to sign)
-        $movedOrWrong  = 0;       // strong unreachability indicators
 
         foreach ($attempts as $att) {
             if ($att['is_served']) {
@@ -1165,10 +1159,6 @@ class SummonDeliveryService
                 $hasPending = true;
             } elseif ($att['is_failed']) {
                 $failedCount++;
-                $reason = strtolower((string) ($att['unserved_reason'] ?? ''));
-                if (in_array($reason, ['moved out', 'wrong address', 'unlocatable'], true)) {
-                    $movedOrWrong++;
-                }
             }
         }
 
@@ -1181,12 +1171,12 @@ class SummonDeliveryService
             );
         }
 
-        // ── SCENARIO 1: Three failed delivery attempts (operational policy) ────────
+        // ── SCENARIO 1: Three failed delivery attempts (statutory diligence & operational policy) ────────
         if ($failedCount >= 3) {
             return [
                 'eligible'       => true,
                 'scenario'       => 'THREE_FAILURES',
-                'reason'         => 'CFA Unlocked (Scenario 1) — All 3 summons delivery attempts failed. RA 7160 §410 diligence requirement satisfied.',
+                'reason'         => 'CFA Unlocked — All 3 summons delivery attempts failed. RA 7160 §410 diligence requirement satisfied.',
                 'code'           => 'THREE_FAILURES_MET',
                 'attempts_count' => $totalAttempts,
                 'failed_count'   => $failedCount,
@@ -1195,25 +1185,7 @@ class SummonDeliveryService
             ];
         }
 
-        // ── SCENARIO 2: Unreachable respondent despite diligent efforts ───────────
-        // At least one attempt with strong address/location failure is sufficient
-        // to request CFA on grounds of unlocatability, per DILG KP Manual p.35.
-        if (!$anyServed && $movedOrWrong >= 1 && $failedCount >= 1) {
-            return [
-                'eligible'       => true,
-                'scenario'       => 'UNREACHABLE',
-                'reason'         => 'CFA Unlocked (Scenario 2) — Respondent is unreachable/unlocatable despite diligent effort ('
-                    . $movedOrWrong . ' address-failure attempt(s)). Lupon certification required before issuance.',
-                'code'           => 'RESPONDENT_UNREACHABLE',
-                'attempts_count' => $totalAttempts,
-                'failed_count'   => $failedCount,
-                'can_issue'      => true,
-                'requires_certification' => true, // PB must certify diligence
-                'attempts'       => $attempts,
-            ];
-        }
-
-        // ── SCENARIO 3: Served but persistently refuses to appear ─────────────────
+        // ── SCENARIO 2: Served but persistently refuses to appear ─────────────────
         // Respondent was legally served but failed to attend; CFA may be issued.
         // Check for 2+ no-show hearings after a confirmed service record.
         if ($anyServed) {
@@ -1222,7 +1194,7 @@ class SummonDeliveryService
                 return [
                     'eligible'       => true,
                     'scenario'       => 'REFUSAL_TO_APPEAR',
-                    'reason'         => "CFA Unlocked (Scenario 3) — Respondent was served but failed to appear at {$noShowCount} hearing(s) without justification.",
+                    'reason'         => "CFA Unlocked — Respondent was served but failed to appear at {$noShowCount} hearing(s) without justification.",
                     'code'           => 'REFUSAL_TO_APPEAR',
                     'attempts_count' => $totalAttempts,
                     'failed_count'   => $failedCount,
@@ -1239,11 +1211,11 @@ class SummonDeliveryService
             );
         }
 
-        // Insufficient failures, not unreachable, not yet served
+        // Insufficient failures, not yet served
         return $this->cfaLocked(
             'INSUFFICIENT_FAILURES',
             sprintf(
-                'CFA Locked — %d of 3 failed delivery attempts recorded. Continue service process or certify unreachability.',
+                'CFA Locked — %d of 3 failed delivery attempts recorded. All 3 summons attempts must fail before CFA can be issued on summons failure grounds.',
                 $failedCount
             ),
             $totalAttempts, $failedCount, $attempts
@@ -1448,6 +1420,21 @@ class SummonDeliveryService
 
         // Locate or update the target attempt row in summon_deliveries
         if ($deliveryId) {
+            $chk = $this->conn->prepare("
+                SELECT delivery_id, attempt_number, party_type, delivery_status
+                FROM summon_deliveries
+                WHERE delivery_id = ?
+            ");
+            $chk->execute([$deliveryId]);
+            $existing = $chk->fetch(PDO::FETCH_ASSOC);
+
+            if ($existing && !empty($existing['delivery_status']) && $existing['delivery_status'] !== 'Pending') {
+                return [
+                    'success' => false,
+                    'message' => "Attempt #{$existing['attempt_number']} for {$existing['party_type']} has already been officially recorded as '{$existing['delivery_status']}' and cannot be modified."
+                ];
+            }
+
             $upd = $this->conn->prepare("
                 UPDATE summon_deliveries
                 SET delivery_status = ?,
@@ -1483,23 +1470,29 @@ class SummonDeliveryService
             // Check if a row with this hearing, party_type, (resident_id if known), attempt_number exists
             if ($residentId) {
                 $find = $this->conn->prepare("
-                    SELECT delivery_id FROM summon_deliveries
+                    SELECT delivery_id, attempt_number, party_type, delivery_status FROM summon_deliveries
                     WHERE hearing_id = ? AND party_type = ? AND resident_id = ? AND attempt_number = ?
                     LIMIT 1
                 ");
                 $find->execute([$hearingId, $partyType, $residentId, $attemptNumber]);
             } else {
                 $find = $this->conn->prepare("
-                    SELECT delivery_id FROM summon_deliveries
+                    SELECT delivery_id, attempt_number, party_type, delivery_status FROM summon_deliveries
                     WHERE hearing_id = ? AND party_type = ? AND attempt_number = ?
                     LIMIT 1
                 ");
                 $find->execute([$hearingId, $partyType, $attemptNumber]);
             }
-            $foundId = (int) $find->fetchColumn() ?: null;
+            $existing = $find->fetch(PDO::FETCH_ASSOC);
 
-            if ($foundId) {
-                $deliveryId = $foundId;
+            if ($existing) {
+                if (!empty($existing['delivery_status']) && $existing['delivery_status'] !== 'Pending') {
+                    return [
+                        'success' => false,
+                        'message' => "Attempt #{$existing['attempt_number']} for {$existing['party_type']} has already been officially recorded as '{$existing['delivery_status']}' and cannot be modified."
+                    ];
+                }
+                $deliveryId = (int) $existing['delivery_id'];
                 $upd = $this->conn->prepare("
                     UPDATE summon_deliveries
                     SET delivery_status = ?,

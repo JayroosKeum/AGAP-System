@@ -218,10 +218,11 @@ class Search
         $conCount = (int)($row['conciliation_count'] ?? 0);
         $arbCount = (int)($row['arbitration_hearing_count'] ?? 0) + (int)($row['arbitration_record_count'] ?? 0);
 
-        // After 3 mediations and 3 conciliations, the dispute stage is completed/exhausted and gone from Status
-        $isStageExhausted = ($conCount >= 3) || ($medCount >= 3 && $conCount >= 3);
+        // Dispute stage is only exhausted if formally disposed (Settled, CFA Issued, Dismissed, Archived)
+        $isDisposed = in_array($row['case_status'] ?? '', ['Settled', 'CFA Issued', 'Dismissed', 'Archived'], true);
+        $isStageExhausted = $isDisposed;
 
-        if (!$isStageExhausted) {
+        if (!$isDisposed) {
             if ($arbCount > 0 || ($row['case_status'] ?? '') === 'Arbitration' || ($row['complaint_status'] ?? '') === 'Arbitration') {
                 $stage = 'Arbitration';
             } elseif ($conCount > 0 || ($row['case_status'] ?? '') === 'Conciliation' || ($row['complaint_status'] ?? '') === 'Conciliation') {

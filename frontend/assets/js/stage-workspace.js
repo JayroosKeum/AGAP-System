@@ -222,6 +222,9 @@ function renderWorkspaceUI() {
 
     renderHeaderAndBreadcrumbs(data, stage);
     renderStageOverview(data, stage);
+    if (mode === 'Conciliation') {
+        renderPangkatPanelSection(data, stage);
+    }
     renderSessionsList(data, stage);
     renderMinutesSection(data, stage);
     renderOutcomeAndReferralSection(data, stage);
@@ -326,13 +329,71 @@ function renderStageOverview(data, stage) {
             </div>
         `;
     } else if (mode === 'Conciliation' && stage.deadline) {
-        deadlineBadgeHtml = `
-            <div class="overview-stat-card">
-                <span class="stat-label">15-Day Conciliation Limit</span>
-                <strong class="stat-value" style="font-size: 0.9rem; color: #1e40af;">Due: ${formatDateReadable(stage.deadline.target_date)}</strong>
-                <span class="stat-sub">15 calendar days from constitution</span>
-            </div>
-        `;
+        const dl = stage.deadline;
+        let conveningHtml = '';
+        if (!dl.is_convened) {
+            const isOverdue = !!dl.convening_overdue;
+            const daysLeft = Number(dl.convening_days_left ?? 0);
+            const badgeBg = isOverdue ? '#fee2e2' : '#fef3c7';
+            const badgeColor = isOverdue ? '#991b1b' : '#92400e';
+            const badgeText = isOverdue ? `⚠️ Convening Overdue (${Math.abs(daysLeft)}d late)` : `⏰ Convene within ${daysLeft} day(s)`;
+            conveningHtml = `
+                <div class="overview-stat-card" style="border-left: 4px solid ${isOverdue ? '#ef4444' : '#f59e0b'};">
+                    <span class="stat-label">3-Day Convening Requirement</span>
+                    <span style="font-size: 0.8rem; padding: 3px 8px; border-radius: 4px; font-weight: 700; background: ${badgeBg}; color: ${badgeColor}; display: inline-flex; width: fit-content; margin: 3px 0;">
+                        ${badgeText}
+                    </span>
+                    <span class="stat-sub">Deadline: ${formatDateReadable(dl.convening_deadline)} (RA 7160 §410c)</span>
+                </div>
+            `;
+        } else {
+            conveningHtml = `
+                <div class="overview-stat-card" style="border-left: 4px solid #10b981;">
+                    <span class="stat-label">Pangkat Convened</span>
+                    <strong class="stat-value" style="font-size: 0.9rem; color: #15803d;">✅ ${formatDateReadable(dl.convened_date)}</strong>
+                    <span class="stat-sub">Constituted: ${formatDateReadable(dl.formation_date)}</span>
+                </div>
+            `;
+        }
+
+        let conciliationClockHtml = '';
+        if (!dl.is_convened) {
+            conciliationClockHtml = `
+                <div class="overview-stat-card">
+                    <span class="stat-label">15-Day Conciliation Limit</span>
+                    <strong class="stat-value" style="font-size: 0.88rem; color: #64748b;">Pending First Convening</strong>
+                    <span class="stat-sub">Clock commences when Pangkat convenes</span>
+                </div>
+            `;
+        } else if (dl.is_lapsed) {
+            conciliationClockHtml = `
+                <div class="overview-stat-card" style="border-left: 4px solid #ef4444;">
+                    <span class="stat-label">15-Day Conciliation Limit</span>
+                    <span style="font-size: 0.8rem; padding: 3px 8px; border-radius: 4px; font-weight: 700; background: #fee2e2; color: #991b1b; display: inline-flex; width: fit-content; margin: 3px 0;">
+                        🚨 Conciliation Lapsed
+                    </span>
+                    <span class="stat-sub">Lapsed on: ${formatDateReadable(dl.target_date)} (Extend or Issue CFA)</span>
+                </div>
+            `;
+        } else if (dl.is_extended) {
+            conciliationClockHtml = `
+                <div class="overview-stat-card" style="border-left: 4px solid #0284c7;">
+                    <span class="stat-label">15-Day Conciliation Limit</span>
+                    <strong class="stat-value" style="font-size: 0.9rem; color: #0369a1;">Due: ${formatDateReadable(dl.target_date)}</strong>
+                    <span class="stat-sub">Extended +${dl.extended_days}d (${escapeHtml(dl.extension_type)}) · ${dl.days_remaining}d left</span>
+                </div>
+            `;
+        } else {
+            conciliationClockHtml = `
+                <div class="overview-stat-card" style="border-left: 4px solid #3b82f6;">
+                    <span class="stat-label">15-Day Conciliation Limit</span>
+                    <strong class="stat-value" style="font-size: 0.9rem; color: #1e40af;">Due: ${formatDateReadable(dl.target_date)}</strong>
+                    <span class="stat-sub">${dl.days_remaining} calendar day(s) remaining</span>
+                </div>
+            `;
+        }
+
+        deadlineBadgeHtml = conveningHtml + conciliationClockHtml;
     } else if (mode === 'Arbitration') {
         const arbRec = stage.arbitration_record || {};
         deadlineBadgeHtml = `
@@ -1166,7 +1227,28 @@ async function submitSchedule(e) {
             if (typeof openSummonsPreviewModal === 'function' && stageWorkspaceState.mode === 'Mediation') {
                 openSummonsPreviewModal(stageWorkspaceState.caseId, null, json.hearing_id, true);
             } else {
-                alert('Hearing scheduled successfully! KP Form 8 and KP Form 9 generated.');
+                alert('Hearing scheduled successfully! Official KP notices generated.');
+            }
+        } else if (json.requires_convening_justification) {
+            const justification = prompt(
+                `${json.message}\n\nPlease enter the administrative justification for scheduling past the statutory 3-day convening deadline (e.g., notice lead time, parties requested schedule, non-working days):`
+            );
+            if (justification && justification.trim()) {
+                payload.append('convening_delay_justification', justification.trim());
+                payload.append('force_schedule', '1');
+                const retryRes = await fetch(getStageApiUrl('hearings/create.php'), {
+                    method: 'POST',
+                    body: payload
+                });
+                const retryJson = await retryRes.json();
+                if (retryJson.success) {
+                    closeScheduleModal();
+                    await loadStageData();
+                    alert('Hearing scheduled successfully with recorded administrative justification.');
+                    return;
+                } else {
+                    alert(retryJson.message || 'Unable to schedule hearing.');
+                }
             }
         } else {
             alert(json.message || 'Unable to schedule hearing session.');
@@ -1882,6 +1964,565 @@ async function submitReferPangkat(e) {
     }
 }
 
+/**
+ * -----------------------------------------------------------------------------
+ * SECTION: Pangkat ng Tagapagkasundo Governance & Statutory Panel
+ * -----------------------------------------------------------------------------
+ */
+function renderPangkatPanelSection(data, stage) {
+    const container = document.getElementById('wsPangkatPanelContainer');
+    if (!container) return;
+
+    const pInfo = stage.pangkat_assignment || {};
+    const members = pInfo.members || [];
+    const challenges = pInfo.challenges || [];
+    const extensions = pInfo.extensions || [];
+    const dl = stage.deadline || {};
+
+    const selectionMethod = pInfo.selection_method || 'Party Agreement';
+    const isAgreementFailed = !!pInfo.party_agreement_failed;
+    const failureReason = pInfo.party_agreement_failure_reason || '';
+
+    // Selection method badge
+    let selectionBadge = `<span style="background: #e0f2fe; color: #0369a1; padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 0.78rem;">🤝 Chosen by Parties</span>`;
+    if (isAgreementFailed || selectionMethod === 'PB Assignment' || selectionMethod === 'Raffle Draw') {
+        const methodLabel = selectionMethod === 'Raffle Draw' ? 'PB Drawing of Lots (Raffle)' : 'Punong Barangay Appointment';
+        selectionBadge = `<span style="background: #fef3c7; color: #92400e; padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 0.78rem;">🎲 ${escapeHtml(methodLabel)}</span>`;
+    }
+
+    // Pending challenges banner
+    const pendingChallenges = challenges.filter(c => c.status === 'Pending');
+    let pendingChalBanner = '';
+    if (pendingChallenges.length > 0) {
+        const pch = pendingChallenges[0];
+        pendingChalBanner = `
+            <div style="background: #fffbeb; border: 1px solid #fde68a; border-left: 5px solid #d97706; border-radius: 8px; padding: 14px 18px; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div>
+                        <strong style="color: #92400e; font-size: 0.92rem; display: flex; align-items: center; gap: 6px;">
+                            ⚠️ Active Challenge Against Pangkat Member Pending
+                        </strong>
+                        <p style="margin: 4px 0 0; font-size: 0.84rem; color: #78350f;">
+                            <strong>${escapeHtml(pch.challenged_name || 'Member')}</strong> was challenged by ${escapeHtml(pch.challenger_party || 'Party')} on grounds of <strong>${escapeHtml(pch.grounds)}</strong>.
+                            Under RA 7160 Sec. 404(d), this challenge must be decided by majority vote of the Pangkat panel.
+                        </p>
+                    </div>
+                    <button type="button" class="btn-create" onclick="openResolveChallengeModal(${Number(pch.challenge_id)})" style="font-size: 0.8rem; padding: 7px 14px; background: #d97706;">
+                        ⚖️ Deliberate &amp; Resolve Challenge &rarr;
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    // Render Members Cards
+    let membersHtml = '';
+    if (members.length) {
+        membersHtml = members.map(m => {
+            const isChallenged = m.status === 'Challenged';
+            const isDisqualified = m.status === 'Disqualified';
+            let statusBadge = `<span style="background: #dcfce7; color: #15803d; padding: 2px 7px; border-radius: 4px; font-size: 0.72rem; font-weight: 700;">Active</span>`;
+            if (isChallenged) {
+                statusBadge = `<span style="background: #fef3c7; color: #b45309; padding: 2px 7px; border-radius: 4px; font-size: 0.72rem; font-weight: 700;">Challenged</span>`;
+            } else if (isDisqualified) {
+                statusBadge = `<span style="background: #fee2e2; color: #991b1b; padding: 2px 7px; border-radius: 4px; font-size: 0.72rem; font-weight: 700;">Disqualified</span>`;
+            }
+
+            return `
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; flex: 1; min-width: 220px; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <span style="font-size: 0.72rem; font-weight: 800; text-transform: uppercase; color: #64748b; letter-spacing: 0.05em;">
+                                ${escapeHtml(m.position)}
+                            </span>
+                            ${statusBadge}
+                        </div>
+                        <strong style="font-size: 0.96rem; color: #0f172a; display: block;">${escapeHtml(m.member_name)}</strong>
+                        <span style="font-size: 0.78rem; color: #64748b;">${escapeHtml(m.contact_number || m.email || 'Lupon Tagapagkasundo')}</span>
+                    </div>
+                    <div style="margin-top: 12px; padding-top: 8px; border-top: 1px dashed #e2e8f0; display: flex; justify-content: flex-end;">
+                        ${!isDisqualified ? `
+                            <button type="button" class="btn-secondary" onclick="openChallengeMemberModal(${Number(m.member_id)}, '${escapeHtml(m.member_name)}')" style="font-size: 0.74rem; padding: 4px 10px; color: #64748b;" title="Challenge this member for bias, interest, or relationship">
+                                ⚖️ Challenge Member
+                            </button>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } else {
+        membersHtml = '<div style="color: #64748b; font-size: 0.86rem; padding: 10px 0;">No panel members assigned yet.</div>';
+    }
+
+    // Render Extensions List (if any)
+    let extensionsHtml = '';
+    if (extensions.length) {
+        extensionsHtml = `
+            <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid #f1f5f9;">
+                <span style="font-size: 0.74rem; font-weight: 800; text-transform: uppercase; color: #64748b; letter-spacing: 0.05em; display: block; margin-bottom: 8px;">
+                    Controlled Extension Records (RA 7160 §410c)
+                </span>
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                    ${extensions.map(e => `
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px; font-size: 0.82rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                            <div>
+                                <span style="font-weight: 700; color: #0369a1;">+${e.days_extended} Days (${escapeHtml(e.extension_type)})</span>
+                                &middot; Extended from <strong>${formatDateReadable(e.previous_deadline)}</strong> to <strong style="color: #0f172a;">${formatDateReadable(e.new_deadline)}</strong>
+                                <div style="margin-top: 3px; color: #475569;">
+                                    <em>Justification:</em> "${escapeHtml(e.justification)}"
+                                    ${e.meritorious_basis ? `<br><em>Statutory Basis:</em> "${escapeHtml(e.meritorious_basis)}"` : ''}
+                                </div>
+                            </div>
+                            <span style="font-size: 0.76rem; color: #64748b;">Approved by ${escapeHtml(e.approver_name || 'Lupon')} on ${formatDateReadable(e.granted_at)}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    container.innerHTML = `
+        <div class="stage-section-header">
+            <div>
+                <h3>Pangkat ng Tagapagkasundo &amp; Panel Governance</h3>
+                <p>3-member panel chosen from the Lupon roster pursuant to RA 7160 Sections 404 &amp; 410</p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                ${selectionBadge}
+                <button type="button" class="btn-secondary" onclick="openPangkatSelectionModal()" style="font-size: 0.78rem; padding: 5px 12px; display: inline-flex; align-items: center; gap: 4px;">
+                    🤝 Selection &amp; Replacement
+                </button>
+                <button type="button" class="btn-create" onclick="openPangkatExtensionModal()" style="font-size: 0.78rem; padding: 5px 12px; background: #0369a1; display: inline-flex; align-items: center; gap: 4px;">
+                    ⏳ Grant Extension
+                </button>
+            </div>
+        </div>
+
+        ${pendingChalBanner}
+
+        ${isAgreementFailed ? `
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #f59e0b; border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.82rem;">
+                <strong style="color: #b45309;">Party Agreement Impasse:</strong> Parties failed to reach agreement on Pangkat membership. The Punong Barangay determined membership via <strong>${escapeHtml(selectionMethod)}</strong> pursuant to RA 7160 Sec. 404(a).
+                ${failureReason ? `<br><span style="color: #64748b;">Record: ${escapeHtml(failureReason)}</span>` : ''}
+            </div>
+        ` : ''}
+
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 4px;">
+            ${membersHtml}
+        </div>
+
+        ${extensionsHtml}
+    `;
+}
+
+/**
+ * -----------------------------------------------------------------------------
+ * MODAL: Pangkat Extension (Discretionary vs Clearly Meritorious)
+ * -----------------------------------------------------------------------------
+ */
+function openPangkatExtensionModal() {
+    const modal = document.getElementById('wsPangkatExtensionModal');
+    if (!modal) return;
+
+    const stage = stageWorkspaceState.stageData?.conciliation || {};
+    const dl = stage.deadline || {};
+    const currDlEl = document.getElementById('extCurrentDeadline');
+    if (currDlEl) {
+        currDlEl.textContent = dl.target_date ? formatDateReadable(dl.target_date) : 'Pending Convening';
+    }
+
+    const daysInput = document.getElementById('extDays');
+    if (daysInput) daysInput.value = '15';
+
+    toggleExtensionType('Discretionary');
+    updateProjectedDeadline();
+    modal.style.display = 'flex';
+}
+
+function closePangkatExtensionModal() {
+    const modal = document.getElementById('wsPangkatExtensionModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function toggleExtensionType(type) {
+    const basisWrap = document.getElementById('extMeritoriousWrap');
+    const noteEl = document.getElementById('extTypeNote');
+    const daysInput = document.getElementById('extDays');
+
+    if (type === 'Clearly Meritorious') {
+        if (basisWrap) basisWrap.style.display = 'block';
+        if (noteEl) noteEl.textContent = 'Under RA 7160 Sec. 410(c), extensions beyond 15 days require explicit clearly meritorious grounds (e.g. active boundary survey, pending court transmittal, extraordinary difficulty).';
+    } else {
+        if (basisWrap) basisWrap.style.display = 'none';
+        if (noteEl) noteEl.textContent = 'Under RA 7160 Sec. 410(c), discretionary extension by the Pangkat cannot exceed fifteen (15) calendar days.';
+        if (daysInput && Number(daysInput.value) > 15) daysInput.value = '15';
+    }
+    updateProjectedDeadline();
+}
+
+function updateProjectedDeadline() {
+    const stage = stageWorkspaceState.stageData?.conciliation || {};
+    const dl = stage.deadline || {};
+    const daysInput = document.getElementById('extDays');
+    const projEl = document.getElementById('extProjectedDeadline');
+    if (!daysInput || !projEl) return;
+
+    const days = parseInt(daysInput.value, 10) || 0;
+    const baseDateStr = dl.target_date || new Date().toISOString().split('T')[0];
+    const baseDate = new Date(baseDateStr);
+    baseDate.setDate(baseDate.getDate() + days);
+    projEl.textContent = baseDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+async function submitPangkatExtension(e) {
+    e.preventDefault();
+    const btn = document.getElementById('submitExtBtn');
+    if (btn) btn.disabled = true;
+
+    const extType = document.querySelector('input[name="ext_type"]:checked')?.value || 'Discretionary';
+    const days = parseInt(document.getElementById('extDays')?.value, 10) || 15;
+    const justification = document.getElementById('extJustification')?.value || '';
+    const meritoriousBasis = document.getElementById('extMeritoriousBasis')?.value || '';
+
+    const payload = {
+        case_id: stageWorkspaceState.caseId,
+        extension_type: extType,
+        days_extended: days,
+        justification: justification,
+        meritorious_basis: meritoriousBasis
+    };
+
+    try {
+        const res = await fetch(getStageApiUrl('pangkat/extend.php'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (json.success) {
+            alert(json.message);
+            closePangkatExtensionModal();
+            await loadStageData();
+        } else {
+            alert(json.message || 'Unable to grant extension.');
+        }
+    } catch (err) {
+        console.error('submitPangkatExtension error:', err);
+        alert('Network error while processing extension.');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+/**
+ * -----------------------------------------------------------------------------
+ * MODAL: File Challenge Against Member (RA 7160 §404d)
+ * -----------------------------------------------------------------------------
+ */
+function openChallengeMemberModal(memberId, memberName) {
+    const modal = document.getElementById('wsChallengeMemberModal');
+    if (!modal) return;
+
+    const select = document.getElementById('chalMemberId');
+    if (select) {
+        const stage = stageWorkspaceState.stageData?.conciliation || {};
+        const members = stage.pangkat_assignment?.members || [];
+        select.innerHTML = members.map(m => `
+            <option value="${Number(m.member_id)}" ${memberId && Number(m.member_id) === Number(memberId) ? 'selected' : ''}>
+                ${escapeHtml(m.member_name)} (${escapeHtml(m.position)})
+            </option>
+        `).join('');
+    }
+
+    const dateInput = document.getElementById('chalDate');
+    if (dateInput && !dateInput.value) {
+        dateInput.value = new Date().toISOString().split('T')[0];
+    }
+
+    modal.style.display = 'flex';
+}
+
+function closeChallengeMemberModal() {
+    const modal = document.getElementById('wsChallengeMemberModal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function submitChallengeMember(e) {
+    e.preventDefault();
+    const btn = document.getElementById('submitChalBtn');
+    if (btn) btn.disabled = true;
+
+    const memberId = document.getElementById('chalMemberId')?.value;
+    const party = document.getElementById('chalParty')?.value || 'Complainant';
+    const name = document.getElementById('chalPartyName')?.value || '';
+    const grounds = document.getElementById('chalGrounds')?.value || 'Bias or Partiality';
+    const details = document.getElementById('chalDetails')?.value || '';
+    const date = document.getElementById('chalDate')?.value || new Date().toISOString().split('T')[0];
+
+    const payload = {
+        case_id: stageWorkspaceState.caseId,
+        challenged_member_id: Number(memberId),
+        challenger_party: party,
+        challenger_name: name,
+        grounds: grounds,
+        ground_details: details,
+        challenge_date: date
+    };
+
+    try {
+        const res = await fetch(getStageApiUrl('pangkat/challenge.php'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (json.success) {
+            alert(json.message);
+            closeChallengeMemberModal();
+            await loadStageData();
+        } else {
+            alert(json.message || 'Unable to record challenge.');
+        }
+    } catch (err) {
+        console.error('submitChallengeMember error:', err);
+        alert('Network error while filing challenge.');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+/**
+ * -----------------------------------------------------------------------------
+ * MODAL: Resolve Member Challenge (Pangkat Majority Vote)
+ * -----------------------------------------------------------------------------
+ */
+function openResolveChallengeModal(challengeId) {
+    const modal = document.getElementById('wsResolveChallengeModal');
+    if (!modal) return;
+
+    const stage = stageWorkspaceState.stageData?.conciliation || {};
+    const challenges = stage.pangkat_assignment?.challenges || [];
+    const chal = challenges.find(c => Number(c.challenge_id) === Number(challengeId));
+
+    if (!chal) {
+        alert('Challenge record not found.');
+        return;
+    }
+
+    document.getElementById('resChallengeId').value = challengeId;
+    const summaryEl = document.getElementById('resChalSummary');
+    if (summaryEl) {
+        summaryEl.innerHTML = `
+            <strong>Challenged Member:</strong> ${escapeHtml(chal.challenged_name)}<br>
+            <strong>Challenger:</strong> ${escapeHtml(chal.challenger_party)} ${chal.challenger_name ? `(${escapeHtml(chal.challenger_name)})` : ''}<br>
+            <strong>Grounds:</strong> ${escapeHtml(chal.grounds)}<br>
+            <strong>Particulars:</strong> ${escapeHtml(chal.ground_details)}
+        `;
+    }
+
+    // Populate replacement dropdown with Lupon Members excluding existing active members
+    const repSelect = document.getElementById('resReplacementId');
+    if (repSelect) {
+        const activeIds = new Set((stage.pangkat_assignment?.members || []).map(m => Number(m.member_id)));
+        const availableLupon = (stageWorkspaceState.luponMembers || []).filter(u => !activeIds.has(Number(u.user_id || u.member_id)));
+        repSelect.innerHTML = '<option value="">-- Choose Replacement Lupon Member --</option>' +
+            availableLupon.map(u => `
+                <option value="${Number(u.user_id || u.member_id)}">
+                    ${escapeHtml(u.last_name || '')}, ${escapeHtml(u.first_name || '')}
+                </option>
+            `).join('');
+    }
+
+    toggleDecisionReplacement('Disqualify and Replace');
+    modal.style.display = 'flex';
+}
+
+function closeResolveChallengeModal() {
+    const modal = document.getElementById('wsResolveChallengeModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function toggleDecisionReplacement(decision) {
+    const wrap = document.getElementById('resReplacementWrap');
+    if (wrap) {
+        wrap.style.display = (decision === 'Disqualify and Replace') ? 'block' : 'none';
+    }
+}
+
+async function submitResolveChallenge(e) {
+    e.preventDefault();
+    const btn = document.getElementById('submitResBtn');
+    if (btn) btn.disabled = true;
+
+    const challengeId = document.getElementById('resChallengeId')?.value;
+    const decision = document.querySelector('input[name="res_decision"]:checked')?.value || 'Disqualify and Replace';
+    const notes = document.getElementById('resNotes')?.value || '';
+    const voting = document.getElementById('resVoting')?.value || 'Panel Majority Decision';
+    const repId = document.getElementById('resReplacementId')?.value;
+    const repMethod = document.getElementById('resRepMethod')?.value || 'Drawing of Lots';
+
+    if (decision === 'Disqualify and Replace' && !repId) {
+        alert('Please designate a replacement Lupon Member when sustaining a disqualification challenge.');
+        if (btn) btn.disabled = false;
+        return;
+    }
+
+    const payload = {
+        challenge_id: Number(challengeId),
+        majority_decision: decision,
+        majority_decision_notes: notes,
+        voting_record: voting,
+        replacement_member_id: repId ? Number(repId) : null,
+        replacement_method: repMethod,
+        resolution_date: new Date().toISOString().split('T')[0]
+    };
+
+    try {
+        const res = await fetch(getStageApiUrl('pangkat/resolve-challenge.php'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (json.success) {
+            alert(json.message);
+            closeResolveChallengeModal();
+            await loadStageData();
+        } else {
+            alert(json.message || 'Unable to resolve challenge.');
+        }
+    } catch (err) {
+        console.error('submitResolveChallenge error:', err);
+        alert('Network error while resolving challenge.');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+/**
+ * -----------------------------------------------------------------------------
+ * MODAL: Pangkat Selection & Impasse Modeling (RA 7160 §404)
+ * -----------------------------------------------------------------------------
+ */
+function openPangkatSelectionModal() {
+    const modal = document.getElementById('wsPangkatSelectionModal');
+    if (!modal) return;
+
+    const stage = stageWorkspaceState.stageData?.conciliation || {};
+    const pInfo = stage.pangkat_assignment || {};
+
+    populateSelectionDropdowns();
+
+    const failedCheck = document.getElementById('selAgreementFailed');
+    if (failedCheck) {
+        failedCheck.checked = !!pInfo.party_agreement_failed;
+        togglePartyAgreementFailed(failedCheck);
+    }
+
+    const reasonEl = document.getElementById('selFailureReason');
+    if (reasonEl) reasonEl.value = pInfo.party_agreement_failure_reason || '';
+
+    const notesEl = document.getElementById('selNotes');
+    if (notesEl) notesEl.value = pInfo.selection_notes || '';
+
+    modal.style.display = 'flex';
+}
+
+function closePangkatSelectionModal() {
+    const modal = document.getElementById('wsPangkatSelectionModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function togglePartyAgreementFailed(checkbox) {
+    const wrap = document.getElementById('selFailureWrap');
+    if (wrap) {
+        wrap.style.display = checkbox.checked ? 'block' : 'none';
+    }
+}
+
+function populateSelectionDropdowns() {
+    const stage = stageWorkspaceState.stageData?.conciliation || {};
+    const pInfo = stage.pangkat_assignment || {};
+    const lupon = stageWorkspaceState.luponMembers || [];
+
+    const selects = [
+        { id: 'selChairmanId', current: pInfo.chairperson?.member_id },
+        { id: 'selSecretaryId', current: pInfo.secretary?.member_id },
+        { id: 'selMemberId', current: pInfo.member?.member_id }
+    ];
+
+    selects.forEach(({ id, current }) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.innerHTML = '<option value="">-- Select Lupon Member --</option>' +
+            lupon.map(m => `
+                <option value="${Number(m.user_id || m.member_id)}" ${current && Number(m.user_id || m.member_id) === Number(current) ? 'selected' : ''}>
+                    ${escapeHtml(m.last_name || '')}, ${escapeHtml(m.first_name || '')}
+                </option>
+            `).join('');
+    });
+}
+
+async function submitPangkatSelection(e) {
+    e.preventDefault();
+    const btn = document.getElementById('submitSelBtn');
+    if (btn) btn.disabled = true;
+
+    const chairmanId = document.getElementById('selChairmanId')?.value;
+    const secretaryId = document.getElementById('selSecretaryId')?.value;
+    const memberId = document.getElementById('selMemberId')?.value;
+
+    if (!chairmanId || !secretaryId || !memberId) {
+        alert('Please select all 3 panel positions (Chairman, Secretary, and Member).');
+        if (btn) btn.disabled = false;
+        return;
+    }
+
+    if (new Set([chairmanId, secretaryId, memberId]).size !== 3) {
+        alert('The 3 panel members must all be distinct Lupon members.');
+        if (btn) btn.disabled = false;
+        return;
+    }
+
+    const failedAgreement = document.getElementById('selAgreementFailed')?.checked ? 1 : 0;
+    const pbMethod = document.getElementById('selPbMethod')?.value || 'Drawing of Lots';
+    const method = failedAgreement ? (pbMethod === 'Drawing of Lots' ? 'Raffle Draw' : 'PB Assignment') : 'Party Agreement';
+
+    const payload = {
+        case_id: stageWorkspaceState.caseId,
+        selection_method: method,
+        selection_stage: failedAgreement ? (pbMethod === 'Drawing of Lots' ? 'Failed Agreement - PB Lots' : 'Failed Agreement - PB Appointment') : 'Party Choice',
+        party_agreement_failed: failedAgreement,
+        party_agreement_failure_reason: document.getElementById('selFailureReason')?.value || '',
+        selection_notes: document.getElementById('selNotes')?.value || '',
+        chairman_id: Number(chairmanId),
+        secretary_id: Number(secretaryId),
+        member_id: Number(memberId),
+        formation_date: new Date().toISOString().split('T')[0]
+    };
+
+    try {
+        const res = await fetch(getStageApiUrl('pangkat/selection.php'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (json.success) {
+            alert(json.message);
+            closePangkatSelectionModal();
+            await loadStageData();
+        } else {
+            alert(json.message || 'Unable to save Pangkat selection.');
+        }
+    } catch (err) {
+        console.error('submitPangkatSelection error:', err);
+        alert('Network error while saving selection.');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
 // Global window exposure for inline and modal DOM events
 window.toggleStageVoiceRecording = toggleStageVoiceRecording;
 window.triggerStageNotesUpload = triggerStageNotesUpload;
@@ -1902,4 +2543,23 @@ window.openRecordOutcomeModal = openRecordOutcomeModal;
 window.closeRecordOutcomeModal = closeRecordOutcomeModal;
 window.openReferPangkatModal = openReferPangkatModal;
 window.closeReferPangkatModal = closeReferPangkatModal;
+
+// Pangkat statutory extensions and challenges exposure
+window.openPangkatExtensionModal = openPangkatExtensionModal;
+window.closePangkatExtensionModal = closePangkatExtensionModal;
+window.toggleExtensionType = toggleExtensionType;
+window.updateProjectedDeadline = updateProjectedDeadline;
+window.submitPangkatExtension = submitPangkatExtension;
+window.openChallengeMemberModal = openChallengeMemberModal;
+window.closeChallengeMemberModal = closeChallengeMemberModal;
+window.submitChallengeMember = submitChallengeMember;
+window.openResolveChallengeModal = openResolveChallengeModal;
+window.closeResolveChallengeModal = closeResolveChallengeModal;
+window.toggleDecisionReplacement = toggleDecisionReplacement;
+window.submitResolveChallenge = submitResolveChallenge;
+window.openPangkatSelectionModal = openPangkatSelectionModal;
+window.closePangkatSelectionModal = closePangkatSelectionModal;
+window.togglePartyAgreementFailed = togglePartyAgreementFailed;
+window.submitPangkatSelection = submitPangkatSelection;
+
 

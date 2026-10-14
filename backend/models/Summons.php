@@ -273,22 +273,32 @@ class Summons
                 $latestDoc = end($existingSummons);
                 $latestDocId = (int) $latestDoc['document_id'];
                 $attemptCheck = $this->conn->prepare("
-                    SELECT 1 FROM proof_of_service WHERE document_id = ?
-                    UNION
-                    SELECT 1 FROM proof_of_service WHERE case_id = ?
+                    SELECT 1 FROM proof_of_service pos
+                    INNER JOIN generated_documents gd ON gd.document_id = pos.document_id
+                    INNER JOIN document_templates dt ON dt.template_id = gd.template_id
+                    WHERE pos.document_id = ? AND (dt.template_name = 'KP Form 9' OR dt.template_name LIKE '%Summon%')
                     UNION
                     SELECT 1 FROM summon_deliveries sd
-                    INNER JOIN hearings h ON h.hearing_id = sd.hearing_id
-                    WHERE h.case_id = ? AND sd.party_type = 'Respondent' AND sd.delivery_status <> 'Pending'
+                    WHERE (sd.case_id = ? OR sd.hearing_id IN (SELECT hearing_id FROM hearings WHERE case_id = ?))
+                      AND sd.party_type = 'Respondent'
+                      AND (sd.document_id = ? OR sd.attempt_number = ?)
+                      AND (
+                          sd.delivery_status NOT IN ('Pending', 'Unissued')
+                          OR sd.attempted_at IS NOT NULL
+                          OR sd.served_at IS NOT NULL
+                          OR (sd.unserved_reason IS NOT NULL AND TRIM(sd.unserved_reason) <> '')
+                      )
                     LIMIT 1
                 ");
-                $attemptCheck->execute([$latestDocId, $caseId, $caseId]);
+                $attemptCheck->execute([$latestDocId, $caseId, $caseId, $latestDocId, $existingCount]);
                 if (!$attemptCheck->fetchColumn()) {
                     $this->conn->commit();
+                    $ordinals = ['', '1st', '2nd', '3rd'];
+                    $currOrd = $ordinals[$existingCount] ?? ($existingCount . 'th');
+                    $nextOrd = $ordinals[$existingCount + 1] ?? (($existingCount + 1) . 'th');
                     return [
                         'success' => false,
-                        'message' => 'A service attempt must be recorded for Summons #' . $existingCount
-                            . ' before a new summons can be issued. Please record the proof of service first.',
+                        'message' => "An attempt to deliver the {$currOrd} summons must first be made and recorded before issuing the {$nextOrd} attempt. Please log the Officer's Return in Proof of Service.",
                     ];
                 }
             }

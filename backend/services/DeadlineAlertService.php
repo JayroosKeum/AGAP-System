@@ -23,8 +23,14 @@ class DeadlineAlertService
             $log->execute([(int) $deadline['deadline_id'], $deadline['alert_type']]);
             if ($log->rowCount() !== 1) continue;
             $caseNumber = $this->notifications->caseNumber((int) $deadline['case_id']);
-            $title = $deadline['alert_type'] === 'Overdue' ? 'Deadline overdue' : 'Deadline due soon';
-            $message = sprintf('%s for %s is %s (%s).', $deadline['deadline_type'], $caseNumber, $deadline['alert_type'] === 'Overdue' ? 'overdue' : 'due within 3 days', date('F j, Y', strtotime($deadline['due_date'])));
+            if ($deadline['deadline_type'] === 'Pangkat Convening') {
+                $title = $deadline['alert_type'] === 'Overdue' ? '⚠️ Pangkat convening overdue' : '⏰ Pangkat convening due soon';
+                $urgency = $deadline['alert_type'] === 'Overdue' ? 'OVERDUE' : 'due within 3 days';
+                $message = sprintf('Case %s: Under RA 7160 Sec. 410(c), Pangkat must convene no later than 3 days from constitution. Convening deadline is %s (%s). Schedule the first conciliation session immediately.', $caseNumber, $urgency, date('F j, Y', strtotime($deadline['due_date'])));
+            } else {
+                $title = $deadline['alert_type'] === 'Overdue' ? 'Deadline overdue' : 'Deadline due soon';
+                $message = sprintf('%s for %s is %s (%s).', $deadline['deadline_type'], $caseNumber, $deadline['alert_type'] === 'Overdue' ? 'overdue' : 'due within 3 days', date('F j, Y', strtotime($deadline['due_date'])));
+            }
             $this->notifications->notifyRoles(['Administrator', 'Lupon Clerk'], $title, $message, $actorUserId);
             $this->notifications->notifyCaseMembers((int) $deadline['case_id'], $title, $message, $actorUserId);
             $sent++;

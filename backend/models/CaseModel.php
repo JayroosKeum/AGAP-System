@@ -105,6 +105,17 @@ class CaseModel
         $latestHearingsStmt->execute();
         $latestHearingMap = $latestHearingsStmt->fetchAll(PDO::FETCH_KEY_PAIR);
 
+        $stagesStmt = $this->conn->prepare("
+            SELECT case_id, stage_type, stage_status, outcome
+            FROM case_stages
+            WHERE stage_type = 'Mediation'
+        ");
+        $stagesStmt->execute();
+        $stagesMap = [];
+        foreach ($stagesStmt->fetchAll(PDO::FETCH_ASSOC) as $st) {
+            $stagesMap[(int) $st['case_id']] = $st;
+        }
+
         foreach ($cases as &$caseItem) {
             $caseItem['mediation_timer'] = $deadlineService->computeStatus($caseItem);
             $cid = (int) $caseItem['case_id'];
@@ -112,6 +123,10 @@ class CaseModel
             $caseItem['has_conciliation_team'] = $val['valid'];
             $caseItem['conciliation_team_message'] = $val['message'];
             $caseItem['latest_hearing_date'] = $latestHearingMap[$cid] ?? null;
+            $st = $stagesMap[$cid] ?? null;
+            $caseItem['stage_outcome'] = $st['outcome'] ?? null;
+            $caseItem['stage_status'] = $st['stage_status'] ?? null;
+            $caseItem['latest_outcome'] = $st['outcome'] ?? null;
         }
         unset($caseItem);
 
@@ -221,6 +236,17 @@ class CaseModel
         $latestHearingsStmt->execute();
         $latestHearingMap = $latestHearingsStmt->fetchAll(PDO::FETCH_KEY_PAIR);
 
+        $stagesStmt = $this->conn->prepare("
+            SELECT case_id, stage_type, stage_status, outcome
+            FROM case_stages
+            WHERE stage_type = 'Mediation'
+        ");
+        $stagesStmt->execute();
+        $stagesMap = [];
+        foreach ($stagesStmt->fetchAll(PDO::FETCH_ASSOC) as $st) {
+            $stagesMap[(int) $st['case_id']] = $st;
+        }
+
         foreach ($cases as &$caseItem) {
             $caseItem['mediation_timer'] = $deadlineService->computeStatus($caseItem);
             $cid = (int) $caseItem['case_id'];
@@ -228,6 +254,10 @@ class CaseModel
             $caseItem['has_conciliation_team'] = $val['valid'];
             $caseItem['conciliation_team_message'] = $val['message'];
             $caseItem['latest_hearing_date'] = $latestHearingMap[$cid] ?? null;
+            $st = $stagesMap[$cid] ?? null;
+            $caseItem['stage_outcome'] = $st['outcome'] ?? null;
+            $caseItem['stage_status'] = $st['stage_status'] ?? null;
+            $caseItem['latest_outcome'] = $st['outcome'] ?? null;
         }
         unset($caseItem);
 

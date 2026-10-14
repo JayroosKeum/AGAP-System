@@ -138,6 +138,129 @@ class MediationDeadlineService
     }
 
     /**
+     * Calculates target date adding days to start date.
+     * Provided for compatibility with callers expecting calculateTargetDate().
+     *
+     * @param string|DateTimeInterface $startDate
+     * @param int $days
+     * @param bool $useBusinessDays
+     * @return string Y-m-d
+     */
+    public static function calculateTargetDate(
+        string|DateTimeInterface $startDate,
+        int $days = 15,
+        bool $useBusinessDays = false
+    ): string {
+        $str = ($startDate instanceof DateTimeInterface)
+            ? $startDate->format('Y-m-d')
+            : substr((string) $startDate, 0, 10);
+        return self::calculateDeadline($str, $days, $useBusinessDays);
+    }
+
+    public static function calculateTargetDateStatic(
+        string|DateTimeInterface $startDate,
+        int $days = 15,
+        bool $useBusinessDays = false
+    ): string {
+        $str = ($startDate instanceof DateTimeInterface)
+            ? $startDate->format('Y-m-d')
+            : substr((string) $startDate, 0, 10);
+        return self::calculateDeadline($str, $days, $useBusinessDays);
+    }
+
+    /**
+     * Computes Pangkat Conciliation status, convening deadline (3 days from constitution),
+     * and statutory 15-day conciliation period (commencing when convened, plus extensions).
+     *
+     * LEGAL BASIS: RA 7160 Section 410(c)
+     */
+    public function computeConciliationStatus(int $caseId): array
+    {
+        $stmt = $this->conn->prepare("
+            SELECT pg.*, c.case_status, c.case_number
+            FROM pangkat_groups pg
+            INNER JOIN cases c ON c.case_id = pg.case_id
+            WHERE pg.case_id = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$caseId]);
+        $group = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$group) {
+            return [
+                'is_constituted' => false,
+                'status' => 'Not Constituted',
+                'message' => 'Pangkat has not been constituted for this case.'
+            ];
+        }
+
+        $formationDate = $group['formation_date'];
+        $conveningDeadline = $group['convening_deadline'] ?: self::calculateDeadline($formationDate, 3);
+        $convenedDate = $group['convened_date'];
+        $isConvened = !empty($convenedDate);
+        $today = date('Y-m-d');
+
+        // Check 3-day convening status
+        $conveningOverdue = false;
+        $conveningDaysLeft = 0;
+        if (!$isConvened) {
+            $dtToday = new DateTimeImmutable($today);
+            $dtDeadline = new DateTimeImmutable($conveningDeadline);
+            $conveningOverdue = ($today > $conveningDeadline);
+            $conveningDaysLeft = (int) $dtToday->diff($dtDeadline)->format('%r%a');
+        }
+
+        // Conciliation 15-day period (commences on convened_date)
+        $conciliationDeadline = $group['conciliation_deadline'];
+        if ($isConvened && empty($conciliationDeadline)) {
+            $totalDays = 15 + (int) ($group['extended_days'] ?? 0);
+            $conciliationDeadline = self::calculateDeadline($convenedDate, $totalDays);
+        }
+
+        $isLapsed = false;
+        $daysLeft = null;
+        if ($isConvened && $conciliationDeadline) {
+            $dtToday = new DateTimeImmutable($today);
+            $dtConDeadline = new DateTimeImmutable($conciliationDeadline);
+            $isLapsed = ($today > $conciliationDeadline);
+            $daysLeft = (int) $dtToday->diff($dtConDeadline)->format('%r%a');
+        }
+
+        // Active challenges
+        $chalStmt = $this->conn->prepare("
+            SELECT COUNT(*) FROM pangkat_challenges 
+            WHERE case_id = ? AND status = 'Pending'
+        ");
+        $chalStmt->execute([$caseId]);
+        $pendingChallengesCount = (int) $chalStmt->fetchColumn();
+
+        return [
+            'is_constituted' => true,
+            'pangkat_id' => (int) $group['pangkat_id'],
+            'case_id' => $caseId,
+            'case_number' => $group['case_number'] ?? null,
+            'case_status' => $group['case_status'] ?? null,
+            'formation_date' => $formationDate,
+            'convening_deadline' => $conveningDeadline,
+            'is_convened' => $isConvened,
+            'convened_date' => $convenedDate,
+            'convening_overdue' => $conveningOverdue,
+            'convening_days_left' => $conveningDaysLeft,
+            'conciliation_deadline' => $conciliationDeadline,
+            'is_lapsed' => $isLapsed,
+            'days_remaining' => $daysLeft,
+            'is_extended' => !empty($group['is_extended']),
+            'extended_days' => (int) ($group['extended_days'] ?? 0),
+            'extension_type' => $group['extension_type'] ?? 'None',
+            'selection_method' => $group['selection_method'],
+            'selection_stage' => $group['selection_stage'] ?? 'Constituted',
+            'party_agreement_failed' => !empty($group['party_agreement_failed']),
+            'party_agreement_failure_reason' => $group['party_agreement_failure_reason'] ?? null,
+            'pending_challenges_count' => $pendingChallengesCount
+        ];
+    }
+
+    /**
      * Computes the 15-day statutory mediation status, days remaining, and urgency badge for a case.
      */
     public function computeStatus(array $case): array

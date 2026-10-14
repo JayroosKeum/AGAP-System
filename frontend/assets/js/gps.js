@@ -646,7 +646,7 @@ async function renderExpandedCaseView(caseId) {
         const anyRespServed = respAttempts.some(a => a.is_served);
         const latestServedResp = respAttempts.find(a => a.is_served) || null;
         const activePendingResp = respAttempts.find(a => a.is_pending) || null;
-        const targetRespAttemptForReturn = activePendingResp || (respAttempts.length > 0 ? respAttempts[respAttempts.length - 1] : null);
+        const targetRespAttemptForReturn = activePendingResp;
 
         let respBadgeHtml = '';
         if (anyRespServed) {
@@ -668,30 +668,34 @@ async function renderExpandedCaseView(caseId) {
             let statusText = 'Not Issued';
             let subText = 'Unissued';
             let clickAttr = '';
+            let stepCursor = 'default';
 
             if (att) {
                 if (att.is_served) {
                     circleClass = 'served';
                     iconText = '✓';
                     statusText = 'Served';
-                    subText = att.attempted_at ? formatDateTime(att.attempted_at) : 'Personal';
+                    subText = att.attempted_at ? formatDateTime(att.attempted_at) : (att.served_at ? formatDateTime(att.served_at) : 'Personal');
+                    clickAttr = `onclick="window.agapNotify ? window.agapNotify('${ord} Attempt has already been successfully served and is locked against changes.', 'info', 'Record Locked') : alert('${ord} Attempt has already been successfully served and is locked.')"`;
                 } else if (att.is_failed) {
                     circleClass = 'failed';
                     iconText = '✕';
                     statusText = 'Failed';
                     subText = att.unserved_reason || 'Unserved';
+                    clickAttr = `onclick="window.agapNotify ? window.agapNotify('${ord} Attempt was logged as unserved (${escapeGpsHtml(subText)}) and cannot be modified.', 'info', 'Record Locked') : alert('${ord} Attempt was logged as unserved and cannot be modified.')"`;
                 } else {
                     circleClass = 'pending';
                     iconText = '⏳';
                     statusText = 'Pending';
                     subText = 'Awaiting Return';
+                    const targetResId = att.resident_id || respResidentId || 0;
+                    clickAttr = `onclick="openOfficerReturnModal('Respondent', ${targetResId}, ${activeHearing.hearing_id}, ${caseId}, '${escapeGpsHtml(att.delivery_status || '')}', '${escapeGpsHtml(att.recipient_name || respName)}', '${escapeGpsHtml(att.relationship || '')}', '${escapeGpsHtml(att.remarks || '')}', '${escapeGpsHtml(att.unserved_reason || '')}', ${num}, ${att.delivery_id || 'null'})"`;
+                    stepCursor = 'pointer';
                 }
-                const targetResId = att.resident_id || respResidentId || 0;
-                clickAttr = `onclick="openOfficerReturnModal('Respondent', ${targetResId}, ${activeHearing.hearing_id}, ${caseId}, '${escapeGpsHtml(att.delivery_status || '')}', '${escapeGpsHtml(att.recipient_name || respName)}', '${escapeGpsHtml(att.relationship || '')}', '${escapeGpsHtml(att.remarks || '')}', '${escapeGpsHtml(att.unserved_reason || '')}', ${num}, ${att.delivery_id || 'null'})"`;
             }
 
             return `
-                <button type="button" class="stepper-step" ${clickAttr} title="${ord} Attempt: ${statusText} (${subText})">
+                <button type="button" class="stepper-step" ${clickAttr} title="${ord} Attempt: ${statusText} (${subText})${att && !att.is_pending ? ' — Submitted & Locked' : ''}" style="cursor: ${stepCursor};">
                     <div class="step-circle ${circleClass}">${iconText}</div>
                     <span class="step-label">${ord} Attempt</span>
                     <span class="step-subtext">${escapeGpsHtml(subText)}</span>
@@ -704,10 +708,12 @@ async function renderExpandedCaseView(caseId) {
             let iconText = isCfaEligible ? '📄' : '🔒';
             let statusText = isCfaEligible ? 'CFA Ready' : 'CFA Locked';
             let subText = isCfaEligible ? 'Eligible' : `${failedCount}/3 Failed`;
-            let clickAction = isCfaEligible ? `onclick="window.location.href='../documents/cfa.php?case_id=${encodeURIComponent(caseId)}'"` : '';
+            let clickAction = isCfaEligible
+                ? `onclick="window.location.href='../documents/cfa.php?case_id=${encodeURIComponent(caseId)}'"`
+                : `onclick="window.agapNotify ? window.agapNotify('${escapeGpsHtml(cfaElig.reason || 'CFA is locked until all 3 summons attempts have failed.')}', 'warning', 'CFA Locked') : alert('${escapeGpsHtml(cfaElig.reason || 'CFA is locked until all 3 summons attempts have failed.')}')"`;
 
             return `
-                <button type="button" class="stepper-step" ${clickAction} title="${statusText} — ${escapeGpsHtml(cfaElig.reason || '')}">
+                <button type="button" class="stepper-step" ${clickAction} title="${statusText} — ${escapeGpsHtml(cfaElig.reason || '')}" style="${!isCfaEligible ? 'cursor: not-allowed;' : ''}">
                     <div class="step-circle ${circleClass}">${iconText}</div>
                     <span class="step-label">${statusText}</span>
                     <span class="step-subtext">${subText}</span>
@@ -887,22 +893,26 @@ async function renderExpandedCaseView(caseId) {
                     </div>
 
                     <div class="delivery-card-footer" style="display: flex; gap: 8px; flex-wrap: wrap;">
-                        <button type="button" class="btn-log-return" onclick="openOfficerReturnModal(
-                            'Complainant',
-                            ${compResidentId},
-                            ${activeHearing.hearing_id},
-                            ${caseId},
-                            '${escapeGpsHtml(compDeliv?.delivery_status || 'Served Personal')}',
-                            '${escapeGpsHtml(compDeliv?.recipient_name || compName || '')}',
-                            '${escapeGpsHtml(compDeliv?.relationship || '')}',
-                            '${escapeGpsHtml(compDeliv?.remarks || '')}',
-                            '${escapeGpsHtml(compDeliv?.unserved_reason || '')}',
-                            1,
-                            ${compDeliv?.delivery_id || 'null'}
-                        )">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                            Log Officer's Return
-                        </button>
+                        ${!compIsServed ? `
+                            <button type="button" class="btn-log-return" onclick="openOfficerReturnModal(
+                                'Complainant',
+                                ${compResidentId},
+                                ${activeHearing.hearing_id},
+                                ${caseId},
+                                '${escapeGpsHtml(compDeliv?.delivery_status || 'Served Personal')}',
+                                '${escapeGpsHtml(compDeliv?.recipient_name || compName || '')}',
+                                '${escapeGpsHtml(compDeliv?.relationship || '')}',
+                                '${escapeGpsHtml(compDeliv?.remarks || '')}',
+                                '${escapeGpsHtml(compDeliv?.unserved_reason || '')}',
+                                1,
+                                ${compDeliv?.delivery_id || 'null'}
+                            )">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                Log Officer's Return
+                            </button>
+                        ` : `
+                            <span style="background: #dcfce7; color: #166534; font-weight: 700; font-size: 0.8rem; padding: 6px 12px; border-radius: 6px; border: 1px solid #bbf7d0; display: inline-flex; align-items: center; gap: 4px;">✓ Notice Served</span>
+                        `}
                     </div>
                 </div>
 
@@ -1106,6 +1116,16 @@ window.printKp8Notice = printKp8Notice;
    ========================================================================== */
 
 function openOfficerReturnModal(partyType, residentId, hearingId, caseId, currentStatus, currentRecipient, currentRelationship, currentNotes, currentUnservedReason, attemptNumber = 1, deliveryId = null) {
+    if (currentStatus && currentStatus !== 'Pending') {
+        const ordinals = ['', '1st', '2nd', '3rd', '4th'];
+        const ord = ordinals[attemptNumber] || attemptNumber + 'th';
+        const msg = partyType === 'Respondent'
+            ? `${ord} Attempt for Respondent has already been recorded (${currentStatus}) and is locked against changes.`
+            : `Notice for Complainant has already been recorded (${currentStatus}) and is locked against changes.`;
+        window.agapNotify ? window.agapNotify(msg, 'info', 'Record Locked') : alert(msg);
+        return;
+    }
+
     const modal = document.getElementById('officerReturnModal');
     const overlay = document.getElementById('officerReturnDrawerOverlay');
     if (!modal) return;

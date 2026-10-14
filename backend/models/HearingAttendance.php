@@ -267,8 +267,42 @@ class HearingAttendance
                 date('M j, Y g:i A', strtotime($hearing['hearing_date'])),
                 $situation['title']
             );
-            $histStmt = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, ?, ?, ?)");
-            $histStmt->execute([$hearing['case_id'], $hearing['case_status'], $histRemarks, $userId]);
+            // If Conciliation hearing, mark Pangkat as Convened and commence 15-day Conciliation Period
+            if ($hearing['hearing_type'] === 'Conciliation') {
+                $pgStmt = $this->conn->prepare("SELECT pangkat_id, convened_date, extended_days FROM pangkat_groups WHERE case_id = ? LIMIT 1");
+                $pgStmt->execute([$hearing['case_id']]);
+                $pg = $pgStmt->fetch(PDO::FETCH_ASSOC);
+                if ($pg && empty($pg['convened_date'])) {
+                    require_once __DIR__ . '/../services/MediationDeadlineService.php';
+                    $convenedDate = substr($hearing['hearing_date'], 0, 10);
+                    $totalDays = 15 + (int) ($pg['extended_days'] ?? 0);
+                    $conDeadline = MediationDeadlineService::calculateDeadline($convenedDate, $totalDays);
+
+                    $this->conn->prepare("
+                        UPDATE pangkat_groups SET
+                            convened_date = ?,
+                            conciliation_deadline = ?,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE pangkat_id = ?
+                    ")->execute([$convenedDate, $conDeadline, (int) $pg['pangkat_id']]);
+
+                    // Upsert Conciliation Period deadline
+                    $this->conn->prepare("
+                        INSERT INTO case_deadlines (case_id, deadline_type, due_date, status)
+                        VALUES (?, 'Conciliation Period', ?, 'Pending')
+                        ON DUPLICATE KEY UPDATE
+                            due_date = VALUES(due_date),
+                            status = IF(status = 'Completed', 'Completed', 'Pending'),
+                            updated_at = CURRENT_TIMESTAMP
+                    ")->execute([$hearing['case_id'], $conDeadline]);
+
+                    // Mark Pangkat Convening deadline completed
+                    $this->conn->prepare("
+                        UPDATE case_deadlines SET status = 'Completed', completed_at = NOW(), updated_at = CURRENT_TIMESTAMP
+                        WHERE case_id = ? AND deadline_type = 'Pangkat Convening'
+                    ")->execute([$hearing['case_id']]);
+                }
+            }
 
             $this->conn->commit();
 

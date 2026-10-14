@@ -449,6 +449,11 @@ function renderCaseRow(item, isSelected = false) {
 
     const selectedClass = isSelected ? ' case-table-row-selected' : '';
 
+    const isMediation = item.case_status === 'Mediation';
+    const isLapsed = Boolean(item.mediation_timer?.is_lapsed || item.mediation_timer?.is_expired);
+    const hasImpasse = ['unsuccessful', 'referred to pangkat', 'impasse'].includes(String(item.stage_outcome || item.latest_outcome || item.outcome || '').toLowerCase());
+    const showElevateBtn = isMediation && (isLapsed || hasImpasse);
+
     const activeCaseActions = archived
         ? ''
         : `
@@ -460,6 +465,17 @@ function renderCaseRow(item, isSelected = false) {
             >
                 Assign
             </button>
+            ${showElevateBtn ? `
+            <button
+                type="button"
+                class="btn-table-assign"
+                onclick="openCaseAssignments(${caseId}, true, true)"
+                title="Elevate case to Conciliation and constitute 3-member Pangkat team"
+                style="background: #0284c7; margin-left: 4px;"
+            >
+                Elevate
+            </button>
+            ` : ''}
         `;
 
     return `
@@ -917,7 +933,7 @@ function archiveCase(id) {
     showModal('archiveCaseModal');
 }
 
-function openCaseAssignments(caseId) {
+function openCaseAssignments(caseId, shouldScroll = true, elevate = false) {
     const id = Number(caseId);
 
     if (!Number.isInteger(id) || id < 1) {
@@ -943,7 +959,7 @@ function openCaseAssignments(caseId) {
         return;
     }
 
-    window.openCaseAssignments(id);
+    window.openCaseAssignments(id, shouldScroll, elevate);
 }
 
 

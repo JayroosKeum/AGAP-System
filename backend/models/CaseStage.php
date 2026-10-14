@@ -374,13 +374,27 @@ class CaseStage
 
         $attendanceFinalized = ($sessionCount > 0 && ($complainantAtt['present'] + $complainantAtt['absent'] + $complainantAtt['excused']) > 0);
 
-        // Conciliation Deadline (15 days from formation_date)
+        // Statutory Conciliation Timing (RA 7160 Sec. 410(c))
+        require_once __DIR__ . '/../services/MediationDeadlineService.php';
+        $deadlineSvc = new MediationDeadlineService($this->conn);
+        $conStatus = $deadlineSvc->computeConciliationStatus($caseId);
+
         $conciliationDeadline = null;
-        if (!empty($pangkatInfo['formation_date'])) {
-            $targetDate = MediationDeadlineService::calculateDeadline($pangkatInfo['formation_date'], 15);
+        if ($conStatus['is_constituted']) {
             $conciliationDeadline = [
-                'target_date' => $targetDate,
-                'formation_date' => $pangkatInfo['formation_date']
+                'is_convened' => $conStatus['is_convened'],
+                'convened_date' => $conStatus['convened_date'],
+                'convening_deadline' => $conStatus['convening_deadline'],
+                'convening_overdue' => $conStatus['convening_overdue'],
+                'convening_days_left' => $conStatus['convening_days_left'],
+                'target_date' => $conStatus['conciliation_deadline'],
+                'formation_date' => $conStatus['formation_date'],
+                'days_remaining' => $conStatus['days_remaining'],
+                'is_lapsed' => $conStatus['is_lapsed'],
+                'is_extended' => $conStatus['is_extended'],
+                'extended_days' => $conStatus['extended_days'],
+                'extension_type' => $conStatus['extension_type'],
+                'pending_challenges_count' => $conStatus['pending_challenges_count']
             ];
         }
 
@@ -585,7 +599,7 @@ class CaseStage
         $members = [];
         if ($group) {
             $memStmt = $this->conn->prepare("
-                SELECT pm.position, pm.member_id,
+                SELECT pm.position, pm.member_id, pm.status, pm.disqualified_at, pm.disqualification_reason,
                        TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS member_name,
                        u.email, u.contact_no AS contact_number
                 FROM pangkat_members pm
@@ -618,33 +632,75 @@ class CaseStage
                     'member_id' => (int) $row['member_id'],
                     'member_name' => $row['member_name'],
                     'email' => $row['email'],
-                    'contact_number' => $row['contact_number']
+                    'contact_number' => $row['contact_number'],
+                    'status' => 'Active'
                 ];
             }
         }
 
-        $isConstituted = (count($members) >= 2);
+        $activeMembers = array_filter($members, fn($m) => ($m['status'] ?? 'Active') === 'Active' || ($m['status'] ?? '') === 'Challenged');
+        $isConstituted = (count($activeMembers) >= 2);
         $chairperson = null;
         $secretary = null;
         $regularMember = null;
 
-        foreach ($members as $m) {
+        foreach ($activeMembers as $m) {
             if ($m['position'] === 'Chairman' && !$chairperson) $chairperson = $m;
             elseif ($m['position'] === 'Secretary' && !$secretary) $secretary = $m;
             elseif (!$regularMember) $regularMember = $m;
         }
 
+        // Challenges & Extensions
+        $challenges = [];
+        $extensions = [];
+        if ($group) {
+            $cStmt = $this->conn->prepare("
+                SELECT pc.*,
+                       TRIM(CONCAT_WS(' ', u_ch.first_name, u_ch.middle_name, u_ch.last_name)) AS challenged_name,
+                       TRIM(CONCAT_WS(' ', u_rep.first_name, u_rep.middle_name, u_rep.last_name)) AS replacement_name
+                FROM pangkat_challenges pc
+                INNER JOIN users u_ch ON u_ch.user_id = pc.challenged_member_id
+                LEFT JOIN users u_rep ON u_rep.user_id = pc.replacement_member_id
+                WHERE pc.case_id = ?
+                ORDER BY pc.challenge_id DESC
+            ");
+            $cStmt->execute([$caseId]);
+            $challenges = $cStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $eStmt = $this->conn->prepare("
+                SELECT pe.*, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS approver_name
+                FROM pangkat_extensions pe
+                INNER JOIN users u ON u.user_id = pe.approved_by
+                WHERE pe.case_id = ?
+                ORDER BY pe.extension_id DESC
+            ");
+            $eStmt->execute([$caseId]);
+            $extensions = $eStmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+
         return [
             'is_constituted' => $isConstituted,
             'formation_date' => $group['formation_date'] ?? null,
+            'convening_deadline' => $group['convening_deadline'] ?? null,
+            'convened_date' => $group['convened_date'] ?? null,
+            'conciliation_deadline' => $group['conciliation_deadline'] ?? null,
+            'is_extended' => !empty($group['is_extended']),
+            'extended_days' => (int) ($group['extended_days'] ?? 0),
+            'extension_type' => $group['extension_type'] ?? 'None',
             'selection_method' => $group['selection_method'] ?? 'Party Agreement',
+            'selection_stage' => $group['selection_stage'] ?? 'Constituted',
+            'party_agreement_failed' => !empty($group['party_agreement_failed']),
+            'party_agreement_failure_reason' => $group['party_agreement_failure_reason'] ?? null,
             'selection_notes' => $group['selection_notes'] ?? null,
             'quorum_size' => (int) ($group['quorum_size'] ?? 3),
-            'members' => $members,
+            'members' => array_values($activeMembers),
+            'all_members' => $members,
             'chairperson' => $chairperson,
             'secretary' => $secretary,
             'member' => $regularMember,
-            'assignment_status' => $isConstituted ? sprintf('Constituted (%d Members)', count($members)) : 'Pending Formation'
+            'challenges' => $challenges,
+            'extensions' => $extensions,
+            'assignment_status' => $isConstituted ? sprintf('Constituted (%d Members)', count($activeMembers)) : 'Pending Formation'
         ];
     }
 
@@ -945,43 +1001,65 @@ class CaseStage
             $updComp = $this->conn->prepare("UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = 'Conciliation', co.updated_at = NOW() WHERE c.case_id = ?");
             $updComp->execute([$caseId]);
 
-            // 4. Upsert 15-day Conciliation deadline
+            // 4. Set 3-Day Statutory Convening Deadline (RA 7160 Sec. 410(c))
             require_once __DIR__ . '/../services/MediationDeadlineService.php';
-            $targetDate = MediationDeadlineService::calculateDeadline($referralDate, 15);
+            $conveningDeadline = MediationDeadlineService::calculateDeadline($referralDate, 3);
 
             $dlStmt = $this->conn->prepare("
                 INSERT INTO case_deadlines (case_id, deadline_type, due_date, status)
-                VALUES (?, 'Conciliation Period', ?, 'Pending')
+                VALUES (?, 'Pangkat Convening', ?, 'Pending')
                 ON DUPLICATE KEY UPDATE
                     due_date = VALUES(due_date),
-                    status = 'Pending',
+                    status = IF(status = 'Completed', 'Completed', 'Pending'),
                     updated_at = CURRENT_TIMESTAMP
             ");
-            $dlStmt->execute([$caseId, $targetDate]);
+            $dlStmt->execute([$caseId, $conveningDeadline]);
 
             // 5. Pangkat Panel Members Assignment (if provided)
             $chairmanId = !empty($data['chairman_id']) ? (int) $data['chairman_id'] : (!empty($data['head_id']) ? (int) $data['head_id'] : null);
             $secretaryId = !empty($data['secretary_id']) ? (int) $data['secretary_id'] : null;
             $memberId = !empty($data['member_id']) ? (int) $data['member_id'] : null;
+            $selectionStage = in_array($data['selection_stage'] ?? '', ['Party Choice', 'Failed Agreement - PB Lots', 'Failed Agreement - PB Appointment', 'Constituted'], true)
+                ? $data['selection_stage']
+                : 'Constituted';
+            $partyAgreementFailed = !empty($data['party_agreement_failed']) ? 1 : 0;
+            $partyAgreementFailureReason = trim((string) ($data['party_agreement_failure_reason'] ?? ''));
 
             if ($chairmanId && $secretaryId) {
                 // Upsert pangkat_groups
                 $insGroup = $this->conn->prepare("
-                    INSERT INTO pangkat_groups (case_id, formation_date, selection_method, selection_notes, quorum_size)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO pangkat_groups (
+                        case_id, formation_date, convening_deadline, selection_method, selection_notes,
+                        selection_stage, party_agreement_failed, party_agreement_failure_reason, quorum_size
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON DUPLICATE KEY UPDATE
                         formation_date = VALUES(formation_date),
+                        convening_deadline = VALUES(convening_deadline),
                         selection_method = VALUES(selection_method),
                         selection_notes = VALUES(selection_notes),
+                        selection_stage = VALUES(selection_stage),
+                        party_agreement_failed = VALUES(party_agreement_failed),
+                        party_agreement_failure_reason = VALUES(party_agreement_failure_reason),
                         quorum_size = VALUES(quorum_size),
                         pangkat_id = LAST_INSERT_ID(pangkat_id)
                 ");
-                $insGroup->execute([$caseId, $referralDate, $selectionMethod, $selectionNotes ?: null, $quorumSize]);
+                $insGroup->execute([
+                    $caseId,
+                    $referralDate,
+                    $conveningDeadline,
+                    $selectionMethod,
+                    $selectionNotes ?: null,
+                    $selectionStage,
+                    $partyAgreementFailed,
+                    $partyAgreementFailureReason ?: null,
+                    $quorumSize
+                ]);
                 $pangkatId = (int) $this->conn->lastInsertId();
 
                 if ($pangkatId > 0) {
                     $this->conn->prepare("DELETE FROM pangkat_members WHERE pangkat_id = ?")->execute([$pangkatId]);
-                    $insMem = $this->conn->prepare("INSERT INTO pangkat_members (pangkat_id, member_id, position) VALUES (?, ?, ?)");
+                    $insMem = $this->conn->prepare("INSERT INTO pangkat_members (pangkat_id, member_id, position, status) VALUES (?, ?, ?, 'Active')");
                     $insMem->execute([$pangkatId, $chairmanId, 'Chairman']);
                     $insMem->execute([$pangkatId, $secretaryId, 'Secretary']);
                     if ($memberId) {

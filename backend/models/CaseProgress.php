@@ -95,11 +95,11 @@ class CaseProgress
             $delivStmt = $this->conn->prepare("
                 SELECT sd.*
                 FROM summon_deliveries sd
-                INNER JOIN hearings h ON h.hearing_id = sd.hearing_id
-                WHERE h.case_id = ?
+                LEFT JOIN hearings h ON h.hearing_id = sd.hearing_id
+                WHERE sd.case_id = ? OR h.case_id = ?
                 ORDER BY sd.delivery_id ASC
             ");
-            $delivStmt->execute([$caseId]);
+            $delivStmt->execute([$caseId, $caseId]);
             $deliveries = $delivStmt->fetchAll(PDO::FETCH_ASSOC);
         }
 
@@ -615,9 +615,13 @@ class CaseProgress
             }
         }
 
-        // Build a set of document_ids that have at least one proof-of-service attempt
+        // Build a set of document_ids that have at least one proof-of-service attempt (excluding Notice of Hearing / KP Form 8)
         $proofedDocIds = [];
         foreach ($proofs as $p) {
+            $tmpl = $p['template_name'] ?? '';
+            if ($tmpl === 'KP Form 8' || str_contains($tmpl, 'Notice of Hearing')) {
+                continue;
+            }
             if (!empty($p['document_id'])) {
                 $proofedDocIds[(int)$p['document_id']] = true;
             }
@@ -628,18 +632,50 @@ class CaseProgress
         $latestDocId  = $latestSummon ? (int)($latestSummon['document_id'] ?? 0) : 0;
         $latestHasAttempt = $latestDocId && isset($proofedDocIds[$latestDocId]);
 
-        // Fallback 1: If proof_of_service records exist for this case without document_id
-        if (!$latestHasAttempt && count($proofs) >= $summonsCount && $summonsCount > 0) {
+        // Fallback 1: If proof_of_service records exist for this case without document_id (excluding notice proofs)
+        $respondentProofs = array_filter($proofs, function ($p) {
+            $tmpl = $p['template_name'] ?? '';
+            return $tmpl !== 'KP Form 8' && !str_contains($tmpl, 'Notice of Hearing');
+        });
+        if (!$latestHasAttempt && count($respondentProofs) >= $summonsCount && $summonsCount > 0) {
             $latestHasAttempt = true;
         }
 
-        // Fallback 2: Check summon_deliveries for recorded attempt (Unserved / Served)
+        // Fallback 2: Check summon_deliveries for recorded delivery attempt on Respondent summons
         if (!$latestHasAttempt && !empty($deliveries)) {
-            $recordedDeliveries = array_filter($deliveries, function ($d) {
-                return ($d['delivery_status'] ?? 'Pending') !== 'Pending';
-            });
-            if (count($recordedDeliveries) > 0) {
-                $latestHasAttempt = true;
+            $latestRespDelivery = null;
+            if ($latestDocId > 0) {
+                foreach ($deliveries as $d) {
+                    if (($d['party_type'] ?? '') === 'Respondent' && (int)($d['document_id'] ?? 0) === $latestDocId) {
+                        $latestRespDelivery = $d;
+                        break;
+                    }
+                }
+            }
+            if (!$latestRespDelivery) {
+                $respDeliveries = array_filter($deliveries, fn($d) => ($d['party_type'] ?? '') === 'Respondent');
+                if (!empty($respDeliveries)) {
+                    foreach ($respDeliveries as $d) {
+                        if ((int)($d['attempt_number'] ?? 0) === $summonsCount) {
+                            $latestRespDelivery = $d;
+                            break;
+                        }
+                    }
+                    if (!$latestRespDelivery) {
+                        $latestRespDelivery = end($respDeliveries);
+                    }
+                }
+            }
+
+            if ($latestRespDelivery) {
+                $status = $latestRespDelivery['delivery_status'] ?? 'Pending';
+                $hasAttemptRecorded = ($status !== 'Pending' && $status !== 'Unissued') 
+                    || !empty($latestRespDelivery['attempted_at']) 
+                    || !empty($latestRespDelivery['served_at']) 
+                    || (!empty($latestRespDelivery['unserved_reason']) && trim($latestRespDelivery['unserved_reason']) !== '');
+                if ($hasAttemptRecorded) {
+                    $latestHasAttempt = true;
+                }
             }
         }
 
@@ -666,12 +702,12 @@ class CaseProgress
         } elseif (!$latestHasAttempt) {
             // Service attempt not yet recorded for the most recent summons — gate the next summons
             $nextOrdinal = $ordinals[$summonsCount + 1] ?? ($summonsCount + 1) . 'th';
+            $currentOrdinal = $ordinals[$summonsCount] ?? ($summonsCount . 'th');
             $summonButton['label']   = 'Issue Summon ' . $nextOrdinal . ' Attempt';
             $summonButton['action']  = 'view_proof';  // redirect to record proof first
             $summonButton['disabled'] = true;
             $summonButton['url']     = '../gps/proof-service.php?case_id=' . $caseId . '&document_id=' . $latestDocId;
-            $summonButton['tooltip'] = 'Record the service attempt for Summons #' . $summonsCount
-                . ' before issuing the next attempt. Click to go to Proof of Service.';
+            $summonButton['tooltip'] = 'An attempt to deliver the ' . $currentOrdinal . ' summons must first be made and recorded before issuing the ' . $nextOrdinal . ' attempt. Please log the Officer\'s Return in Proof of Service.';
         } else {
             // Latest has an attempt — allow issuing next summons
             $nextNum     = $summonsCount + 1;

@@ -5,8 +5,11 @@ use Dompdf\Options;
 
 class PDFService
 {
-    public function __construct()
+    private ?PDO $conn = null;
+
+    public function __construct(?PDO $conn = null)
     {
+        $this->conn = $conn;
         $autoload = __DIR__ . '/../libs/dompdf/autoload.inc.php';
 
         if (!is_file($autoload)) {
@@ -117,7 +120,7 @@ class PDFService
         ?PDO $db = null
     ): mixed {
         if (is_int($dataOrCaseId)) {
-            return $this->generateKp10ForCase($dataOrCaseId, (int) $pathOrUserId, $options, $db);
+            return $this->generateKp10ForCase($dataOrCaseId, (int) $pathOrUserId, $options, $db ?? $this->conn);
         }
         $this->generateNotice('KP Form 10', $dataOrCaseId, (string) $pathOrUserId);
         return true;
@@ -125,6 +128,7 @@ class PDFService
 
     public function generateKp10ForCase(int $caseId, int $userId, array $options = [], ?PDO $db = null): array
     {
+        $db = $db ?? $this->conn;
         if ($db === null) {
             require_once __DIR__ . '/../config/database.php';
             $db = (new Database())->connect();

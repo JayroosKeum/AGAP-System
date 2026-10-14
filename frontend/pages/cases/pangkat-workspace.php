@@ -164,6 +164,12 @@ include '../../layouts/header.php';
                     <button type="button" class="btn-create" onclick="openScheduleModal()" style="font-size: 0.82rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px;">
                         📅 Schedule Conciliation Hearing
                     </button>
+                    <button type="button" class="btn-secondary" onclick="openPangkatSelectionModal()" style="font-size: 0.82rem; padding: 7px 12px; display: inline-flex; align-items: center; gap: 5px;">
+                        🤝 Panel Selection &amp; Impasse
+                    </button>
+                    <button type="button" class="btn-secondary" onclick="openPangkatExtensionModal()" style="font-size: 0.82rem; padding: 7px 12px; display: inline-flex; align-items: center; gap: 5px;">
+                        ⏳ Grant Extension
+                    </button>
                     <button type="button" class="btn-secondary" onclick="openRecordOutcomeModal()" style="font-size: 0.82rem; padding: 7px 12px; display: inline-flex; align-items: center; gap: 5px;">
                         ⚖️ Record Conciliation Outcome
                     </button>
@@ -202,6 +208,13 @@ include '../../layouts/header.php';
                 <!-- Section 1: Stage Overview & Pangkat Assignment -->
                 <div class="overview-grid" id="wsStageOverviewGrid">
                     <div class="overview-stat-card"><span class="stat-label">Loading Overview...</span></div>
+                </div>
+
+                <!-- Section: Pangkat ng Tagapagkasundo Governance & Members -->
+                <div class="stage-section-card" id="pangkatPanelSection">
+                    <div id="wsPangkatPanelContainer">
+                        <div class="empty-detail-state">Loading Pangkat panel governance...</div>
+                    </div>
                 </div>
 
                 <!-- Section 2: Conciliation Sessions List -->
@@ -336,6 +349,236 @@ include '../../layouts/header.php';
             <div class="modal-actions">
                 <button type="button" class="btn-secondary" onclick="closeRecordOutcomeModal()">Cancel</button>
                 <button type="submit" class="btn-create" id="submitOutcomeBtn">Confirm &amp; Record Outcome</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- MODAL 4: Pangkat Extension                -->
+<!-- ========================================== -->
+<div id="wsPangkatExtensionModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 540px;">
+        <div class="modal-header">
+            <h2>Pangkat Conciliation Extension</h2>
+            <button type="button" class="close-btn" onclick="closePangkatExtensionModal()">&times;</button>
+        </div>
+        <form onsubmit="submitPangkatExtension(event)">
+            <p style="margin: 0 0 14px; font-size: 0.86rem; color: #475569; line-height: 1.5;">
+                Pursuant to <strong>RA 7160 Sec. 410(c)</strong>, the Pangkat may extend the 15-day conciliation period for a discretionary period not exceeding 15 days, or for a clearly meritorious exception.
+            </p>
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px;">
+                <div style="font-size: 0.82rem; color: #64748b; margin-bottom: 4px;">CURRENT CONCILIATION DEADLINE</div>
+                <div id="extCurrentDeadline" style="font-size: 1rem; font-weight: 700; color: #0f172a;">Loading...</div>
+            </div>
+            <div class="form-group">
+                <label style="font-weight: 700; display: block; margin-bottom: 8px;">Extension Type <span class="required-mark">*</span></label>
+                <div style="display: flex; gap: 16px;">
+                    <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.88rem;">
+                        <input type="radio" name="ext_type" value="Discretionary" checked onchange="toggleExtensionType(this.value)">
+                        <span>Discretionary (Up to 15 days)</span>
+                    </label>
+                    <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.88rem;">
+                        <input type="radio" name="ext_type" value="Clearly Meritorious" onchange="toggleExtensionType(this.value)">
+                        <span>Clearly Meritorious Exception</span>
+                    </label>
+                </div>
+                <small id="extTypeNote" style="display: block; margin-top: 6px; font-size: 0.78rem; color: #64748b;">
+                    Under RA 7160 Sec. 410(c), discretionary extension by the Pangkat cannot exceed fifteen (15) calendar days.
+                </small>
+            </div>
+            <div class="form-group">
+                <label for="extDays">Days to Extend <span class="required-mark">*</span></label>
+                <input type="number" id="extDays" min="1" max="90" value="15" required oninput="updateProjectedDeadline()">
+                <small style="display: block; margin-top: 4px; font-size: 0.78rem; color: #64748b;">
+                    Projected New Deadline: <strong id="extProjectedDeadline" style="color: #0369a1;">Calculating...</strong>
+                </small>
+            </div>
+            <div class="form-group" id="extMeritoriousWrap" style="display: none;">
+                <label for="extMeritoriousBasis">Clearly Meritorious Basis <span class="required-mark">*</span></label>
+                <textarea id="extMeritoriousBasis" rows="2" placeholder="Specify statutory or procedural basis (e.g. pending land survey, illness of principal, formal request for court transmittal)..."></textarea>
+            </div>
+            <div class="form-group">
+                <label for="extJustification">Extension Justification / Panel Notes <span class="required-mark">*</span></label>
+                <textarea id="extJustification" rows="3" required placeholder="Detailed reason for extending the conciliation period..."></textarea>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" onclick="closePangkatExtensionModal()">Cancel</button>
+                <button type="submit" class="btn-create" id="submitExtBtn">Grant Statutory Extension</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- MODAL 5: Challenge Member                 -->
+<!-- ========================================== -->
+<div id="wsChallengeMemberModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 520px;">
+        <div class="modal-header">
+            <h2>Challenge Pangkat Member</h2>
+            <button type="button" class="close-btn" onclick="closeChallengeMemberModal()">&times;</button>
+        </div>
+        <form onsubmit="submitChallengeMember(event)">
+            <p style="margin: 0 0 14px; font-size: 0.86rem; color: #475569; line-height: 1.5;">
+                Under <strong>RA 7160 Sec. 404(d)</strong>, any party may challenge a Pangkat member on grounds of relationship, bias, interest, or other reasons discovered after constitution.
+            </p>
+            <div class="form-group">
+                <label for="chalMemberId">Pangkat Member to Challenge <span class="required-mark">*</span></label>
+                <select id="chalMemberId" required style="padding: 9px;"></select>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="form-group">
+                    <label for="chalParty">Challenger Party <span class="required-mark">*</span></label>
+                    <select id="chalParty" required style="padding: 9px;">
+                        <option value="Complainant">Complainant</option>
+                        <option value="Respondent">Respondent</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="chalDate">Challenge Date <span class="required-mark">*</span></label>
+                    <input type="date" id="chalDate" required>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="chalPartyName">Challenger Representative / Name <span class="optional-label">Optional</span></label>
+                <input type="text" id="chalPartyName" placeholder="Full name of person raising objection...">
+            </div>
+            <div class="form-group">
+                <label for="chalGrounds">Grounds for Disqualification <span class="required-mark">*</span></label>
+                <select id="chalGrounds" required style="padding: 9px;">
+                    <option value="Bias or Partiality">Bias or Partiality</option>
+                    <option value="Relationship within 4th Degree of Consanguinity or Affinity">Relationship within 4th Degree of Consanguinity or Affinity</option>
+                    <option value="Financial or Material Interest">Financial or Material Interest</option>
+                    <option value="Other Meritorious Grounds">Other Meritorious Grounds</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="chalDetails">Particulars / Factual Basis <span class="required-mark">*</span></label>
+                <textarea id="chalDetails" rows="3" required placeholder="Specify facts, incidents, or relationship details giving rise to the challenge..."></textarea>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" onclick="closeChallengeMemberModal()">Cancel</button>
+                <button type="submit" class="btn-create" id="submitChalBtn" style="background: #dc2626;">File Member Challenge</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- MODAL 6: Resolve Challenge                -->
+<!-- ========================================== -->
+<div id="wsResolveChallengeModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 560px;">
+        <div class="modal-header">
+            <h2>Resolve Pangkat Challenge</h2>
+            <button type="button" class="close-btn" onclick="closeResolveChallengeModal()">&times;</button>
+        </div>
+        <form onsubmit="submitResolveChallenge(event)">
+            <input type="hidden" id="resChallengeId">
+            <p style="margin: 0 0 12px; font-size: 0.86rem; color: #475569; line-height: 1.5;">
+                Under <strong>RA 7160 Sec. 404(d)</strong>, challenges are resolved by <em>majority vote</em> of the Pangkat members. If sustained, the vacancy is filled immediately from the Lupon roster.
+            </p>
+            <div id="resChalSummary" style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; font-size: 0.84rem; color: #991b1b; line-height: 1.5;">
+                Loading challenge details...
+            </div>
+            <div class="form-group">
+                <label style="font-weight: 700; display: block; margin-bottom: 8px;">Pangkat Majority Decision <span class="required-mark">*</span></label>
+                <div style="display: flex; gap: 16px;">
+                    <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.88rem;">
+                        <input type="radio" name="res_decision" value="Disqualify and Replace" checked onchange="toggleDecisionReplacement(this.value)">
+                        <span style="font-weight: 600; color: #dc2626;">Sustain &amp; Disqualify (Replace Member)</span>
+                    </label>
+                    <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.88rem;">
+                        <input type="radio" name="res_decision" value="Dismiss Challenge" onchange="toggleDecisionReplacement(this.value)">
+                        <span style="font-weight: 600; color: #166534;">Dismiss Challenge (Retain Member)</span>
+                    </label>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="resVoting">Panel Voting Record <span class="required-mark">*</span></label>
+                <input type="text" id="resVoting" value="2-0 Majority Vote (Remaining Members Concur)" required>
+            </div>
+            <div class="form-group">
+                <label for="resNotes">Deliberation Findings &amp; Resolution Notes <span class="optional-label">Optional</span></label>
+                <textarea id="resNotes" rows="2" placeholder="Summary of Pangkat deliberations and ruling rationale..."></textarea>
+            </div>
+            <div id="resReplacementWrap" style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px; margin-bottom: 14px;">
+                <h4 style="font-size: 0.86rem; color: #166534; margin: 0 0 10px; font-weight: 700;">
+                    Designate Replacement Member (RA 7160 §404d)
+                </h4>
+                <div class="form-group" style="margin-bottom: 10px;">
+                    <label for="resReplacementId">Replacement Lupon Member <span class="required-mark">*</span></label>
+                    <select id="resReplacementId" style="padding: 9px;"></select>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="resRepMethod">Replacement Method <span class="required-mark">*</span></label>
+                    <select id="resRepMethod" style="padding: 9px;">
+                        <option value="Drawing of Lots">Drawing of Lots (Raffle by Punong Barangay)</option>
+                        <option value="PB Assignment">Punong Barangay Direct Appointment</option>
+                        <option value="Party Agreement">Agreement by the Parties</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" onclick="closeResolveChallengeModal()">Cancel</button>
+                <button type="submit" class="btn-create" id="submitResBtn">Record Majority Resolution</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- MODAL 7: Pangkat Panel Selection & Impasse -->
+<!-- ========================================== -->
+<div id="wsPangkatSelectionModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 580px;">
+        <div class="modal-header">
+            <h2>Pangkat Selection &amp; Constitution</h2>
+            <button type="button" class="close-btn" onclick="closePangkatSelectionModal()">&times;</button>
+        </div>
+        <form onsubmit="submitPangkatSelection(event)">
+            <p style="margin: 0 0 14px; font-size: 0.86rem; color: #475569; line-height: 1.5;">
+                Under <strong>RA 7160 Sec. 404</strong>, parties choose 3 panel members from the Lupon roster. If parties fail to agree, the Punong Barangay fills the panel by drawing of lots or appointment.
+            </p>
+            <div class="form-group">
+                <label for="selChairmanId">Pangkat Chairperson <span class="required-mark">*</span></label>
+                <select id="selChairmanId" required style="padding: 9px;"></select>
+            </div>
+            <div class="form-group">
+                <label for="selSecretaryId">Pangkat Secretary <span class="required-mark">*</span></label>
+                <select id="selSecretaryId" required style="padding: 9px;"></select>
+            </div>
+            <div class="form-group">
+                <label for="selMemberId">Pangkat Member <span class="required-mark">*</span></label>
+                <select id="selMemberId" required style="padding: 9px;"></select>
+            </div>
+            <div style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px;">
+                <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.86rem; font-weight: 700; color: #92400e;">
+                    <input type="checkbox" id="selAgreementFailed" onchange="togglePartyAgreementFailed(this)" style="width: 16px; height: 16px;">
+                    <span>Parties Failed to Reach Agreement on Panel Selection</span>
+                </label>
+                <div id="selFailureWrap" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #fde68a;">
+                    <div class="form-group" style="margin-bottom: 10px;">
+                        <label for="selPbMethod" style="font-size: 0.82rem;">Punong Barangay Selection Method <span class="required-mark">*</span></label>
+                        <select id="selPbMethod" style="padding: 8px;">
+                            <option value="Drawing of Lots">Drawing of Lots (Raffle pursuant to RA 7160 §404b)</option>
+                            <option value="PB Appointment">Direct Appointment by Punong Barangay</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="selFailureReason" style="font-size: 0.82rem;">Impasse / Disagreement Notes</label>
+                        <input type="text" id="selFailureReason" placeholder="e.g. Parties struck out mutually acceptable members; deadlock on 3rd panelist...">
+                    </div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="selNotes">Constitution Notes / Remarks <span class="optional-label">Optional</span></label>
+                <textarea id="selNotes" rows="2" placeholder="Administrative notes regarding panel constitution or party presence..."></textarea>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" onclick="closePangkatSelectionModal()">Cancel</button>
+                <button type="submit" class="btn-create" id="submitSelBtn">Save Panel Constitution</button>
             </div>
         </form>
     </div>

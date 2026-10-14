@@ -29,6 +29,7 @@
     let luponMembers = [];
     let automaticHead = null;
     let currentAssignments = [];
+    let isPangkatElevationMode = false;
 
     const api = (url, options = {}) =>
         fetch(url, options).then(async (response) => {
@@ -81,11 +82,29 @@
         return casesById.get(String(caseSelect.value)) || null;
     }
 
+    function shouldUnlockPangkatForCase(c) {
+        if (!c) return false;
+        if (c.case_status === 'Conciliation') return true;
+        if (c.mediation_timer?.is_lapsed || c.mediation_timer?.is_expired) return true;
+        const outcome = String(c.stage_outcome || c.latest_outcome || c.outcome || '').trim().toLowerCase();
+        if (['unsuccessful', 'referred to pangkat', 'impasse'].includes(outcome)) return true;
+        const stageStatus = String(c.stage_status || '').trim().toLowerCase();
+        if (['ready for referral', 'referred to pangkat'].includes(stageStatus)) return true;
+        return false;
+    }
+
+    function isPangkatModeActive() {
+        const c = selectedCase();
+        if (!c) return false;
+        if (c.case_status === 'Conciliation') return true;
+        if (isPangkatElevationMode) return true;
+        return shouldUnlockPangkatForCase(c);
+    }
+
     function isMediationCase() {
         const currentCase = selectedCase();
         if (!currentCase) return false;
-        if (currentCase.case_status === 'Conciliation') return false;
-        if (currentCase.mediation_timer?.is_lapsed) return false;
+        if (isPangkatModeActive()) return false;
         return currentCase.case_status === 'Mediation' || currentCase.case_status === 'Docketed';
     }
 
@@ -94,8 +113,9 @@
     }
 
     function configureAssignmentMode(rows = currentAssignments) {
-        const status = selectedCase()?.case_status;
         const curCase = selectedCase();
+        const status = curCase?.case_status;
+        const pangkatMode = isPangkatModeActive();
         const mediation = isMediationCase();
 
         // A complete Conciliation Lupon team has 3 distinct members with role_name === 'Lupon Member'
@@ -103,25 +123,49 @@
             (item) => ['Head', 'Secretary', 'Member'].includes(item.assignment_role) &&
                       item.role_name === 'Lupon Member'
         );
-        const hasCompleteConciliationTeam = (status === 'Conciliation' || !mediation) && luponMembersAssigned.length >= 2;
-        const locked = (mediation && !curCase?.mediation_timer?.is_lapsed) || hasCompleteConciliationTeam;
+        const hasCompleteConciliationTeam = (status === 'Conciliation') && luponMembersAssigned.length >= 3;
+        const locked = (mediation && !pangkatMode) || hasCompleteConciliationTeam;
 
         const pangkatSection = document.getElementById('pangkatConfigSection');
         if (pangkatSection) {
-            pangkatSection.style.display = (mediation && !curCase?.mediation_timer?.is_lapsed) ? 'none' : 'block';
+            pangkatSection.style.display = pangkatMode ? 'block' : 'none';
+        }
+
+        const elevationNotice = document.getElementById('pangkatElevationNotice');
+        const elevationReason = document.getElementById('pangkatElevationReason');
+        if (elevationNotice) {
+            if (pangkatMode && status !== 'Conciliation') {
+                elevationNotice.style.display = 'block';
+                if (elevationReason) {
+                    if (curCase?.mediation_timer?.is_lapsed || curCase?.mediation_timer?.is_expired) {
+                        elevationReason.textContent = 'Mediation period has lapsed. Constitute the 3-member Pangkat Tagapagkasundo panel below to elevate to Conciliation.';
+                    } else if (['unsuccessful', 'referred to pangkat', 'impasse'].includes(String(curCase?.stage_outcome || curCase?.latest_outcome || curCase?.outcome || '').toLowerCase())) {
+                        elevationReason.textContent = 'Mediation reached an impasse / unsuccessful outcome. Constitute the 3-member Pangkat panel below to proceed to Conciliation.';
+                    } else {
+                        elevationReason.textContent = 'Pangkat constitution mode active. Assign 3 Lupon members below to elevate this mediation case to Conciliation.';
+                    }
+                }
+            } else {
+                elevationNotice.style.display = 'none';
+            }
         }
 
         headSelect.disabled = locked;
-        headSelect.required = !locked;
+        headSelect.required = !locked && pangkatMode;
         secretarySelect.disabled = locked;
+        secretarySelect.required = !locked && pangkatMode;
         memberSelect.disabled = locked;
+        const quorumSelect = document.getElementById('quorumSize');
+        const quorumSize = quorumSelect ? quorumSelect.value : '3';
+        memberSelect.required = !locked && pangkatMode && quorumSize !== '2';
 
-        if (mediation && !curCase?.mediation_timer?.is_lapsed) {
+        if (mediation && !pangkatMode) {
             secretarySelect.replaceChildren(new Option('Not available during Mediation', ''));
             memberSelect.replaceChildren(new Option('Not available during Mediation', ''));
         } else {
-            populateMemberSelect(secretarySelect, 'Select a Lupon Member');
-            populateMemberSelect(memberSelect, 'Select a Lupon Member');
+            populateMemberSelect(headSelect, 'Select Lupon Chairman / Head');
+            populateMemberSelect(secretarySelect, 'Select Lupon Secretary');
+            populateMemberSelect(memberSelect, 'Select Lupon Member');
             const byRole = Object.fromEntries(rows.filter(item => item.role_name === 'Lupon Member').map((item) => [item.assignment_role, String(item.member_id)]));
             headSelect.value = byRole.Head || '';
             secretarySelect.value = byRole.Secretary || '';
@@ -131,15 +175,17 @@
         const saveButton = form.querySelector('button[type="submit"]');
         if (saveButton) saveButton.disabled = locked;
         if (assignmentHelp) {
-            assignmentHelp.textContent = (mediation && !curCase?.mediation_timer?.is_lapsed)
-                ? 'The Administrator is automatically assigned as Head during Mediation. Secretary and Member are not manually assigned.'
-                : hasCompleteConciliationTeam
-                    ? 'This assigned Conciliation team is read-only here; use Edit to make changes.'
-                    : 'Choose the Lupon team (Head, Secretary, Member) for Conciliation. All members must be active Lupon Members. The Administrator is for Mediation only.';
+            if (mediation && !pangkatMode) {
+                assignmentHelp.textContent = 'The Administrator / Punong Barangay is automatically assigned as Head during Mediation. To elevate this case to Conciliation, click "Elevate to Pangkat".';
+            } else if (hasCompleteConciliationTeam) {
+                assignmentHelp.textContent = 'This assigned Conciliation team is read-only here; use Edit to make changes.';
+            } else {
+                assignmentHelp.textContent = 'Choose the Lupon team (Chairman/Head, Secretary, Member) for Conciliation. All members must be active Lupon Members.';
+            }
         }
         if (assignmentRuleMessage) {
             assignmentRuleMessage.hidden = !locked;
-            assignmentRuleMessage.textContent = (mediation && !curCase?.mediation_timer?.is_lapsed)
+            assignmentRuleMessage.textContent = (mediation && !pangkatMode)
                 ? 'Lupon assignment is automatic for Docketed and Mediation cases. The Barangay Captain is automatically assigned as Head.'
                 : hasCompleteConciliationTeam
                     ? 'This Conciliation case already has an assigned Lupon team. Use Edit to modify the assigned members.'
@@ -166,18 +212,14 @@
     }
 
     function configureHeadField() {
-        if (!isMediationCase()) {
+        if (isPangkatModeActive() || !isMediationCase()) {
             hideAutomaticHead();
             return;
         }
 
         /*
-         * For Mediation, the Head dropdown must never be used.
+         * For Mediation without elevation mode, show automatic head.
          */
-        headSelect.hidden = true;
-        headSelect.disabled = true;
-        headSelect.required = false;
-
         showAutomaticHead();
     }
 
@@ -401,7 +443,7 @@
         }
     }
 
-    window.openCaseAssignments = (caseId, shouldScroll = true) => {
+    window.openCaseAssignments = (caseId, shouldScroll = true, elevate = false) => {
         const id = String(caseId);
         const matchingOption = Array.from(caseSelect.options).find(
             (option) => option.value === id
@@ -410,6 +452,12 @@
         if (!matchingOption) {
             showMessage('The selected case is not available for assignment.');
             return;
+        }
+
+        if (elevate) {
+            isPangkatElevationMode = true;
+        } else {
+            isPangkatElevationMode = false;
         }
 
         caseSelect.value = id;
@@ -443,6 +491,7 @@
     };
 
     caseSelect.addEventListener('change', () => {
+        isPangkatElevationMode = false;
         window.activeAssignedCaseId = caseSelect.value;
         if (typeof window.highlightActiveCaseRow === 'function') {
             window.highlightActiveCaseRow(caseSelect.value);
@@ -450,37 +499,53 @@
         loadAssignments();
     });
 
+    const btnTriggerElevation = document.getElementById('btnTriggerElevation');
+    if (btnTriggerElevation) {
+        btnTriggerElevation.addEventListener('click', () => {
+            if (!caseSelect.value) {
+                showMessage('Select a case first before elevating.');
+                return;
+            }
+            isPangkatElevationMode = true;
+            configureHeadField();
+            configureAssignmentMode(currentAssignments);
+            showMessage('');
+        });
+    }
+
+    const btnCancelElevation = document.getElementById('btnCancelElevation');
+    if (btnCancelElevation) {
+        btnCancelElevation.addEventListener('click', () => {
+            isPangkatElevationMode = false;
+            configureHeadField();
+            configureAssignmentMode(currentAssignments);
+            showMessage('');
+        });
+    }
+
     form.addEventListener('submit', async (event) => {
         event.preventDefault();
         showMessage('');
-
-        if (isCurrentMediationCase()) {
-            showMessage('Lupon assignment is automatic for Docketed and Mediation cases. The Barangay Captain is automatically assigned as Head.');
-            return;
-        }
-
-        if (selectedCase()?.case_status === 'Conciliation' && currentAssignments.some(
-            (item) => ['Head', 'Secretary', 'Member'].includes(item.assignment_role)
-        )) {
-            showMessage('This Conciliation case already has an assigned Lupon team. Use Edit to modify the assigned members.');
-            return;
-        }
 
         if (!caseSelect.value) {
             showMessage('Select a case before saving.');
             return;
         }
 
-        if (isMediationCase() && !automaticHead) {
-            showMessage(
-                'The active Administrator or Barangay Captain Head assignment could not be found.'
-            );
+        if (isCurrentMediationCase() && !isPangkatModeActive()) {
+            showMessage('Lupon assignment is automatic for Docketed and Mediation cases. Click "Elevate to Pangkat" to constitute a 3-member conciliation panel.');
             return;
         }
 
-        const headId = isMediationCase()
-            ? String(automaticHead.member_id)
-            : headSelect.value;
+        const curCase = selectedCase();
+        if (curCase?.case_status === 'Conciliation' && currentAssignments.filter(
+            (item) => ['Head', 'Secretary', 'Member'].includes(item.assignment_role) && item.role_name === 'Lupon Member'
+        ).length >= 3) {
+            showMessage('This Conciliation case already has an assigned Lupon team. Use Edit to modify the assigned members.');
+            return;
+        }
+
+        const headId = headSelect.value;
         const secretaryId = secretarySelect.value;
         const memberId = memberSelect.value;
 
@@ -505,11 +570,7 @@
             }
         } else {
             if (!headId || !secretaryId || !memberId) {
-                showMessage(
-                    isMediationCase()
-                        ? 'Select the Secretary and Member.'
-                        : 'Select the Head, Secretary, and Member.'
-                );
+                showMessage('Select the Head, Secretary, and Member from active Lupon Members.');
                 return;
             }
 
@@ -537,7 +598,12 @@
             });
 
             showMessage(result.message || 'Case team saved successfully.', true);
+            isPangkatElevationMode = false;
+            await loadCases();
             await loadAssignments();
+            window.dispatchEvent(new CustomEvent('agap:data-changed', {
+                detail: { modules: ['cases', 'assignments', 'pangkat', 'complaints'] }
+            }));
         } catch (error) {
             showMessage(error.message);
         }
@@ -549,8 +615,9 @@
             initCaseTeamSearch();
             const urlParams = new URLSearchParams(window.location.search);
             const assignCaseId = urlParams.get('assign_case_id') || urlParams.get('case_id');
+            const shouldElevate = urlParams.get('mode') === 'pangkat' || urlParams.get('elevate') === '1' || urlParams.get('action') === 'pangkat';
             if (assignCaseId && casesById.has(String(assignCaseId))) {
-                window.openCaseAssignments(assignCaseId, false);
+                window.openCaseAssignments(assignCaseId, false, shouldElevate);
             }
         })
         .catch((error) => {

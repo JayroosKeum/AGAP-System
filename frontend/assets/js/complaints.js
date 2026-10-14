@@ -1256,6 +1256,17 @@ function debouncedCheckMediationScheduleConflict() {
 }
 
 function openIssueSummonModal() {
+    const progress = window.caseProgressData;
+    const btnInfo = progress?.actions?.summon_button;
+    if (btnInfo?.disabled) {
+        window.agapNotify?.(
+            btnInfo.tooltip || 'An attempt to deliver the summons must first be made and recorded before issuing the next attempt.',
+            'warning',
+            'Delivery Attempt Required'
+        );
+        return;
+    }
+
     const modal = document.getElementById('issueSummonModal');
     if (!modal) return;
     const msg = document.getElementById('issueSummonMessage');
@@ -1324,13 +1335,19 @@ function handleIssueSummonClick() {
     const progress = window.caseProgressData;
     const btnInfo  = progress?.actions?.summon_button;
 
-    // If gated: service attempt not yet recorded for previous summons — block and notify only
+    // If gated: service attempt not yet recorded for previous summons — block and notify
     const issueBtn = document.getElementById('issueSummonButton');
-    if (issueBtn?.getAttribute('data-summon-gated') === 'true') {
+    if (issueBtn?.getAttribute('data-summon-gated') === 'true' || btnInfo?.disabled) {
         window.agapNotify?.(
-            btnInfo?.tooltip || 'Please record the service attempt for the previous summons before issuing a new one.',
-            'warning'
+            btnInfo?.tooltip || 'An attempt to deliver the summons must first be made and recorded before issuing the next attempt.',
+            'warning',
+            'Delivery Attempt Required'
         );
+        if (btnInfo?.url) {
+            setTimeout(() => {
+                window.location.href = btnInfo.url;
+            }, 1200);
+        }
         return;
     }
 
@@ -1346,6 +1363,17 @@ function handleIssueSummonClick() {
 async function submitIssueSummon(event) {
     if (event) event.preventDefault();
     if (window.isSubmittingSummon) return;
+
+    const progress = window.caseProgressData;
+    const btnInfo = progress?.actions?.summon_button;
+    if (btnInfo?.disabled) {
+        window.agapNotify?.(
+            btnInfo.tooltip || 'An attempt to deliver the summons must first be made and recorded before issuing the next attempt.',
+            'warning',
+            'Delivery Attempt Required'
+        );
+        return;
+    }
 
     const form = document.getElementById('issueSummonForm');
     const submitBtn = document.getElementById('submitIssueSummonBtn');

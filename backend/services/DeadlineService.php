@@ -26,9 +26,27 @@ class DeadlineService
 
     public static function deadlineForHearing(
         string $type,
-        string $hearingDate
+        string $hearingDate,
+        ?PDO $conn = null,
+        ?int $caseId = null
     ): ?array {
         $date = substr($hearingDate, 0, 10);
+
+        if ($type === 'Conciliation') {
+            if ($conn && $caseId) {
+                // If a conciliation deadline is already recorded for this case, do not overwrite it!
+                $check = $conn->prepare("SELECT due_date FROM case_deadlines WHERE case_id = ? AND deadline_type = 'Conciliation Period' LIMIT 1");
+                $check->execute([$caseId]);
+                if ($check->fetchColumn()) {
+                    return null;
+                }
+            }
+
+            return [
+                'deadline_type' => self::CONCILIATION,
+                'due_date' => self::addCalendarDays($date, 15),
+            ];
+        }
 
         return match ($type) {
             'Initial Hearing' => [
@@ -42,11 +60,6 @@ class DeadlineService
                     $date,
                     15
                 ),
-            ],
-
-            'Conciliation' => [
-                'deadline_type' => self::CONCILIATION,
-                'due_date' => self::addCalendarDays($date, 15),
             ],
 
             default => null,

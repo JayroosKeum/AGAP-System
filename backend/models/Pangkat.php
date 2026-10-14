@@ -12,7 +12,7 @@ class Pangkat
         $this->conn = $database->connect();
     }
 
-    public function create($caseId)
+    public function create($caseId, $selectionMethod = 'Party Agreement', $notes = null)
     {
         $existing = $this->conn->prepare('SELECT pangkat_id FROM pangkat_groups WHERE case_id = ?');
         $existing->execute([$caseId]);
@@ -20,21 +20,47 @@ class Pangkat
             return false;
         }
 
+        require_once __DIR__ . '/../services/MediationDeadlineService.php';
+        $conveningDeadline = MediationDeadlineService::calculateDeadline(date('Y-m-d'), 3);
+
         $stmt = $this->conn->prepare("
             INSERT INTO pangkat_groups
             (
                 case_id,
-                formation_date
+                formation_date,
+                convening_deadline,
+                selection_method,
+                selection_notes,
+                quorum_size
             )
             VALUES
             (
-                ?,CURDATE()
+                ?, CURDATE(), ?, ?, ?, 3
             )
         ");
 
-        $stmt->execute([$caseId]);
+        $stmt->execute([$caseId, $conveningDeadline, $selectionMethod, $notes]);
+        $pId = (int) $this->conn->lastInsertId();
 
-        return $this->conn->lastInsertId();
+        if ($pId > 0) {
+            $dlStmt = $this->conn->prepare("
+                INSERT INTO case_deadlines (case_id, deadline_type, due_date, status)
+                VALUES (?, 'Pangkat Convening', ?, 'Pending')
+                ON DUPLICATE KEY UPDATE
+                    due_date = VALUES(due_date),
+                    status = IF(status = 'Completed', 'Completed', 'Pending'),
+                    updated_at = CURRENT_TIMESTAMP
+            ");
+            $dlStmt->execute([$caseId, $conveningDeadline]);
+        }
+
+        return $pId;
+    }
+
+    public function getService(): PangkatService
+    {
+        require_once __DIR__ . '/../services/PangkatService.php';
+        return new PangkatService($this->conn);
     }
 
     public function getAll()

@@ -298,12 +298,13 @@ class Assignment
                 $insert->execute([$caseId, $teamMemberId, $assignmentRole]);
             }
 
-            // Sync Pangkat record with selection method and quorum details
+            // Sync Pangkat record with selection method, convening deadline (3 days), and quorum details
             $group = $this->conn->prepare(
-                'INSERT INTO pangkat_groups (case_id, formation_date, selection_method, selection_notes, quorum_size, quorum_exception_reason) 
-                 VALUES (?, CURDATE(), ?, ?, ?, ?)
+                'INSERT INTO pangkat_groups (case_id, formation_date, convening_deadline, selection_method, selection_notes, quorum_size, quorum_exception_reason) 
+                 VALUES (?, CURDATE(), DATE_ADD(CURDATE(), INTERVAL 3 DAY), ?, ?, ?, ?)
                  ON DUPLICATE KEY UPDATE 
                     formation_date = VALUES(formation_date),
+                    convening_deadline = COALESCE(convening_deadline, VALUES(convening_deadline)),
                     selection_method = VALUES(selection_method),
                     selection_notes = VALUES(selection_notes),
                     quorum_size = VALUES(quorum_size),
@@ -325,12 +326,56 @@ class Assignment
             }
 
             if ($case['case_status'] === 'Mediation') {
-                $statusUpdate = $this->conn->prepare("UPDATE cases SET case_status = 'Conciliation' WHERE case_id = ?");
+                $statusUpdate = $this->conn->prepare("UPDATE cases SET case_status = 'Conciliation', updated_at = NOW() WHERE case_id = ?");
                 $statusUpdate->execute([$caseId]);
-                $complaintStatus = $this->conn->prepare("UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = 'Conciliation' WHERE c.case_id = ?");
+                $complaintStatus = $this->conn->prepare("UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = 'Conciliation', co.updated_at = NOW() WHERE c.case_id = ?");
                 $complaintStatus->execute([$caseId]);
+
+                $userId = $_SESSION['user_id'] ?? null;
                 $history = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, 'Conciliation', ?, ?)");
-                $history->execute([$caseId, "Case moved to conciliation with assigned {$quorumSize}-member Lupon team (Method: {$selectionMethod}).", $_SESSION['user_id'] ?? null]);
+                $history->execute([$caseId, "Case moved to conciliation with assigned {$quorumSize}-member Lupon team (Method: {$selectionMethod}).", $userId]);
+
+                // Sync 3-day statutory Pangkat convening deadline
+                $dlStmt = $this->conn->prepare("
+                    INSERT INTO case_deadlines (case_id, deadline_type, due_date, status)
+                    VALUES (?, 'Pangkat Convening', DATE_ADD(CURDATE(), INTERVAL 3 DAY), 'Pending')
+                    ON DUPLICATE KEY UPDATE
+                        due_date = VALUES(due_date),
+                        status = IF(status = 'Completed', 'Completed', 'Pending'),
+                        updated_at = CURRENT_TIMESTAMP
+                ");
+                $dlStmt->execute([$caseId]);
+
+                // Sync case_stages
+                $medStmt = $this->conn->prepare("
+                    INSERT INTO case_stages (case_id, stage_type, stage_status, outcome, referral_date, referring_officer_id, referral_reason, records_transmitted, completed_at)
+                    VALUES (?, 'Mediation', 'Referred to Pangkat', 'Referred to Pangkat', CURDATE(), ?, 'Pangkat Tagapagkasundo constituted and assigned.', 1, NOW())
+                    ON DUPLICATE KEY UPDATE
+                        stage_status = 'Referred to Pangkat',
+                        outcome = 'Referred to Pangkat',
+                        referral_date = COALESCE(referral_date, VALUES(referral_date)),
+                        referring_officer_id = COALESCE(referring_officer_id, VALUES(referring_officer_id)),
+                        records_transmitted = 1,
+                        completed_at = COALESCE(completed_at, NOW()),
+                        updated_at = CURRENT_TIMESTAMP
+                ");
+                $medStmt->execute([$caseId, $userId]);
+
+                $conStmt = $this->conn->prepare("
+                    INSERT INTO case_stages (case_id, stage_type, stage_status, started_at)
+                    VALUES (?, 'Conciliation', 'In Progress', NOW())
+                    ON DUPLICATE KEY UPDATE
+                        stage_status = 'In Progress',
+                        started_at = COALESCE(started_at, NOW()),
+                        updated_at = CURRENT_TIMESTAMP
+                ");
+                $conStmt->execute([$caseId]);
+
+                $transStmt = $this->conn->prepare("
+                    INSERT INTO stage_transitions (case_id, stage_type, from_status, to_status, action_type, performed_by, remarks)
+                    VALUES (?, 'Mediation', 'Mediation', 'Conciliation', 'Constituted Pangkat Panel', ?, 'Lupon team constituted; case transitioned to Conciliation.')
+                ");
+                $transStmt->execute([$caseId, $userId]);
             }
 
             $this->conn->commit();

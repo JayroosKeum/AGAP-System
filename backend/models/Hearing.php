@@ -270,18 +270,53 @@ class Hearing
             }
 
             if ($caseRecord['case_status'] === 'Conciliation') {
-                $expectedType = $scheduled['Conciliation'] < 3 ? 'Conciliation' : null;
+                $expectedType = 'Conciliation';
             } else {
-                $expectedType = $scheduled['Mediation'] < 3 ? 'Mediation' : ($scheduled['Conciliation'] < 3 ? 'Conciliation' : null);
+                $expectedType = $scheduled['Mediation'] < 3 ? 'Mediation' : 'Conciliation';
             }
 
-            if ($expectedType === null) {
-                $this->conn->rollBack();
-                return ['success' => false, 'message' => 'All three mediation and all three conciliation schedules have already been completed for this case.'];
-            }
             if ($data['hearing_type'] !== $expectedType) {
                 $this->conn->rollBack();
-                return ['success' => false, 'message' => 'The next required schedule is ' . ($scheduled[$expectedType] + 1) . ($scheduled[$expectedType] === 0 ? 'st ' : ($scheduled[$expectedType] === 1 ? 'nd ' : 'rd ')) . $expectedType . '.'];
+                $nextSeq = $scheduled[$expectedType] + 1;
+                $ordinalStr = match ($nextSeq) {
+                    1 => '1st',
+                    2 => '2nd',
+                    3 => '3rd',
+                    default => "{$nextSeq}th",
+                };
+                return ['success' => false, 'message' => "The next required schedule is {$ordinalStr} {$expectedType}."];
+            }
+
+            // Conciliation statutory time-and-outcome test (RA 7160 Sec. 410):
+            if ($expectedType === 'Conciliation') {
+                require_once __DIR__ . '/../services/MediationDeadlineService.php';
+                $conService = new MediationDeadlineService($this->conn);
+                $pangkatStatus = $conService->computeConciliationStatus((int) $data['case_id']);
+
+                if ($pangkatStatus['is_constituted'] && $pangkatStatus['is_lapsed']) {
+                    $this->conn->rollBack();
+                    $dlFormatted = !empty($pangkatStatus['conciliation_deadline']) ? date('F j, Y', strtotime($pangkatStatus['conciliation_deadline'])) : 'the statutory deadline';
+                    return [
+                        'success' => false,
+                        'message' => "The statutory conciliation period has lapsed (deadline was {$dlFormatted}). Under RA 7160 Sec. 410(c), you must record an authorized extension (up to 15 days, or clearly meritorious exception), record an amicable settlement, or issue a Certificate to File Action (CFA - KP Form 20)."
+                    ];
+                }
+
+                // Enforce 3-day convening requirement for the 1st Conciliation session
+                if ($scheduled['Conciliation'] === 0 && $pangkatStatus['is_constituted']) {
+                    $conveningDeadline = $pangkatStatus['convening_deadline'];
+                    $schedDate = substr($data['hearing_date'], 0, 10);
+                    if ($schedDate > $conveningDeadline && empty($data['convening_delay_justification']) && empty($data['force_schedule'])) {
+                        $this->conn->rollBack();
+                        $dlFormatted = date('F j, Y', strtotime($conveningDeadline));
+                        return [
+                            'success' => false,
+                            'requires_convening_justification' => true,
+                            'convening_deadline' => $conveningDeadline,
+                            'message' => "Under RA 7160 Sec. 410(c), the Pangkat must convene no later than 3 days from its constitution (convening deadline was {$dlFormatted}). To proceed, provide a valid administrative justification for scheduling beyond the 3-day convening period."
+                        ];
+                    }
+                }
             }
 
             // Conciliation case team validation: Lupon team must be chosen first; Administrator is for Mediation only.
@@ -381,12 +416,41 @@ class Hearing
             ]);
             $hearingId = (int) $this->conn->lastInsertId();
 
-            if ($deadline !== null) {
-                $this->upsertDeadline(
-                    (int) $data['case_id'],
-                    $deadline['deadline_type'],
-                    $deadline['due_date']
-                );
+            if ($expectedType === 'Conciliation') {
+                // The Pangkat's 15-day period starts when it convenes (1st Conciliation session).
+                // Do NOT overwrite conciliation deadline on subsequent sessions!
+                if ($scheduled['Conciliation'] === 0) {
+                    $convenedDate = substr($data['hearing_date'], 0, 10);
+                    require_once __DIR__ . '/../services/MediationDeadlineService.php';
+                    $conDeadline = MediationDeadlineService::calculateDeadline($convenedDate, 15);
+
+                    // Update pangkat_groups with convened_date and conciliation_deadline
+                    $this->conn->prepare("
+                        UPDATE pangkat_groups SET
+                            convened_date = COALESCE(convened_date, ?),
+                            conciliation_deadline = COALESCE(conciliation_deadline, ?),
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE case_id = ?
+                    ")->execute([$convenedDate, $conDeadline, $data['case_id']]);
+
+                    // Set Conciliation Period deadline
+                    $this->upsertDeadline((int) $data['case_id'], 'Conciliation Period', $conDeadline);
+
+                    // Mark Pangkat Convening deadline as completed
+                    $this->conn->prepare("
+                        UPDATE case_deadlines SET status = 'Completed', completed_at = NOW(), updated_at = CURRENT_TIMESTAMP
+                        WHERE case_id = ? AND deadline_type = 'Pangkat Convening'
+                    ")->execute([$data['case_id']]);
+                }
+                // Subsequent conciliation hearings do NOT overwrite the statutory conciliation deadline.
+            } else {
+                if ($deadline !== null) {
+                    $this->upsertDeadline(
+                        (int) $data['case_id'],
+                        $deadline['deadline_type'],
+                        $deadline['due_date']
+                    );
+                }
             }
 
             if ($expectedType === 'Conciliation' && $scheduled['Conciliation'] === 0) {
@@ -476,7 +540,7 @@ class Hearing
                 $_SESSION['user_id'] ?? null,
             ]);
 
-            if ($deadline !== null) {
+            if ($deadline !== null && ($data['hearing_type'] ?? '') !== 'Conciliation') {
                 $this->upsertDeadline(
                     (int) $data['case_id'],
                     $deadline['deadline_type'],
@@ -958,12 +1022,16 @@ class Hearing
 
             require_once __DIR__ . '/../services/MediationDeadlineService.php';
             $deadlineService = new MediationDeadlineService($this->conn);
-            $pangkatDueDate = $deadlineService->calculateTargetDate(date('Y-m-d'), 15);
-            $this->upsertDeadline($caseId, 'Conciliation Period', $pangkatDueDate);
+            $formationDate = date('Y-m-d');
+            $conveningDeadline = MediationDeadlineService::calculateDeadline($formationDate, 3);
+            $pangkatDueDate = $deadlineService->calculateTargetDate($formationDate, 15);
+            
+            // Set 3-day statutory convening deadline per RA 7160 Sec. 410(c)
+            $this->upsertDeadline($caseId, 'Pangkat Convening', $conveningDeadline);
 
             require_once __DIR__ . '/../services/PDFService.php';
             $pdfService = new PDFService($this->conn);
-            $kp10Result = $pdfService->generateKp10($caseId, $userId);
+            $kp10Result = $pdfService->generateKp10($caseId, $userId, [], $this->conn);
 
             $selectionMethod = $pangkatData['selection_method'] ?? 'Party Agreement';
             $selectionNotes = $pangkatData['selection_notes'] ?? null;
@@ -974,15 +1042,17 @@ class Hearing
 
             if ($chairmanId && $secretaryId) {
                 $insPangkat = $this->conn->prepare(
-                    "INSERT INTO pangkat_groups (case_id, formation_date, selection_method, selection_notes, quorum_size)
-                     VALUES (?, CURDATE(), ?, ?, ?)
+                    "INSERT INTO pangkat_groups (case_id, formation_date, convening_deadline, selection_method, selection_notes, quorum_size)
+                     VALUES (?, CURDATE(), ?, ?, ?, ?)
                      ON DUPLICATE KEY UPDATE 
+                        convening_deadline = VALUES(convening_deadline),
                         selection_method = VALUES(selection_method),
                         selection_notes = VALUES(selection_notes),
                         quorum_size = VALUES(quorum_size)"
                 );
                 $insPangkat->execute([
                     $caseId,
+                    $conveningDeadline,
                     $selectionMethod,
                     $selectionNotes,
                     $quorumSize
@@ -994,11 +1064,20 @@ class Hearing
 
                 if ($pId > 0) {
                     $this->conn->prepare("DELETE FROM pangkat_members WHERE pangkat_id = ?")->execute([$pId]);
-                    $insMem = $this->conn->prepare("INSERT INTO pangkat_members (pangkat_id, member_id, position) VALUES (?, ?, ?)");
+                    $insMem = $this->conn->prepare("INSERT INTO pangkat_members (pangkat_id, member_id, position, status) VALUES (?, ?, ?, 'Active')");
                     $insMem->execute([$pId, $chairmanId, 'Chairman']);
                     $insMem->execute([$pId, $secretaryId, 'Secretary']);
                     if ($memberId) {
                         $insMem->execute([$pId, $memberId, 'Member']);
+                    }
+
+                    // Sync case_assignments
+                    $this->conn->prepare("DELETE FROM case_assignments WHERE case_id = ? AND assignment_role IN ('Head', 'Secretary', 'Member')")->execute([$caseId]);
+                    $insCa = $this->conn->prepare("INSERT INTO case_assignments (case_id, member_id, assignment_role, assigned_date) VALUES (?, ?, ?, CURDATE())");
+                    $insCa->execute([$caseId, $chairmanId, 'Head']);
+                    $insCa->execute([$caseId, $secretaryId, 'Secretary']);
+                    if ($memberId) {
+                        $insCa->execute([$caseId, $memberId, 'Member']);
                     }
                 }
             }
