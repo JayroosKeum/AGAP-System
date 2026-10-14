@@ -1,0 +1,122 @@
+.hover-navigation {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow: visible
+}
+
+.hover-nav-section {
+    position: relative
+}
+
+.hover-nav-trigger {
+    width: 100%;
+    min-height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    color: #8fa0af;
+    font: inherit;
+    font-size: .7rem;
+    font-weight: 800;
+    letter-spacing: .12em;
+    text-align: left;
+    cursor: default
+}
+
+.hover-nav-section:hover>.hover-nav-trigger,
+.hover-nav-section:focus-within>.hover-nav-trigger,
+.hover-nav-section.has-active-page>.hover-nav-trigger {
+    border-color: rgba(255, 255, 255, .14);
+    background: #2a3743;
+    color: #fff
+}
+
+.hover-nav-arrow {
+    font-size: 1rem;
+    line-height: 1;
+    transition: transform 160ms ease
+}
+
+.hover-nav-section:hover>.hover-nav-trigger .hover-nav-arrow,
+.hover-nav-section:focus-within>.hover-nav-trigger .hover-nav-arrow {
+    transform: rotate(180deg)
+}
+
+.hover-nav-menu {
+    display: none;
+    padding: 6px 0 2px
+}
+
+.hover-nav-section:hover>.hover-nav-menu,
+.hover-nav-section:focus-within>.hover-nav-menu {
+    display: block
+}
+
+.hover-nav-menu .sidebar-list {
+    display: grid;
+    gap: 3px
+}
+
+.case-hover-menu {
+    position: relative
+}
+
+.case-hover-trigger {
+    padding-right: 9px
+}
+
+.case-hover-arrow {
+    margin-left: auto;
+    font-size: 1rem;
+    transition: transform 160ms ease
+}
+
+.case-hover-sublist {
+    display: none;
+    margin: 4px 0 4px 39px;
+    padding: 4px 0 4px 13px;
+    border-left: 1px solid rgba(255, 255, 255, .18);
+    list-style: none
+}
+
+.case-hover-menu:hover>.case-hover-sublist,
+.case-hover-menu:focus-within>.case-hover-sublist {
+    display: grid;
+    gap: 2px
+}
+
+.case-hover-menu:hover>.case-hover-trigger .case-hover-arrow,
+.case-hover-menu:focus-within>.case-hover-trigger .case-hover-arrow {
+    transform: rotate(90deg)
+}
+
+.hover-nav-trigger:focus-visible,
+.hover-navigation .sidebar-link:focus-visible,
+.hover-navigation .sidebar-sublink:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px
+}
+
+@media(max-width:780px) {
+    .hover-navigation {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px
+    }
+
+    .hover-nav-section {
+        min-width: 0
+    }
+}
+
+@media(max-width:520px) {
+    .hover-navigation {
+        grid-template-columns: 1fr
+    }
+}

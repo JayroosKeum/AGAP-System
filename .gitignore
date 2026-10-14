@@ -1,0 +1,9 @@
+/.env
+/vendor/
+/node_modules/
+/storage/uploads/*
+/storage/generated-documents/*
+/storage/generated-reports/*
+/storage/backups/*
+/storage/logs/*
+!/storage/**/.gitkeep
