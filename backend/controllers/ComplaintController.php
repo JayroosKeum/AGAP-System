@@ -43,8 +43,21 @@ class ComplaintController
         $complaint['attachments'] = $this->attachment->getByComplaint($id);
         $complaint['location'] = $this->location->getByComplaint($id);
         if (!empty($complaint['case_id'])) {
-            require_once __DIR__ . '/../models/CaseModel.php';
-            $complaint['case_workspace'] = (new CaseModel())->getWorkspace((int) $complaint['case_id']);
+            // The case workspace is supplementary to the complaint record.  A
+            // workspace/schema problem must never prevent the complaint itself,
+            // its parties, or its attachments from being viewed.
+            try {
+                require_once __DIR__ . '/../models/CaseModel.php';
+                $complaint['case_workspace'] = (new CaseModel())->getWorkspace((int) $complaint['case_id']);
+            } catch (Throwable $exception) {
+                error_log(sprintf(
+                    'Unable to load case workspace for complaint %d (case %d): %s',
+                    $id,
+                    (int) $complaint['case_id'],
+                    $exception->getMessage()
+                ));
+                $complaint['case_workspace'] = null;
+            }
         } else {
             $complaint['case_workspace'] = null;
         }

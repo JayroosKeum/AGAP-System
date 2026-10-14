@@ -612,8 +612,9 @@ function updateNextSchedule() {
     const conciliationCount = hearings.filter((item) => item.hearing_type === 'Conciliation').length;
     let typeValue = ''; let label = '';
 
-    // If case is in Conciliation or has completed 3 mediations
-    if (caseStatus === 'Conciliation' || mediationCount >= 3) {
+    // Conciliation is unlocked only by an authorized server-side referral.
+    // Never infer a stage transition from the number of mediation schedules.
+    if (caseStatus === 'Conciliation') {
         if (conciliationCount < 3) {
             typeValue = 'Conciliation';
             label = `${ordinal(conciliationCount + 1)} Conciliation`;
@@ -643,14 +644,23 @@ function updateNextSchedule() {
 
         typeValue = 'Mediation';
         label = `${ordinal(mediationCount + 1)} Mediation`;
-    } else if (conciliationCount < 3) {
-        typeValue = 'Conciliation';
-        label = `${ordinal(conciliationCount + 1)} Conciliation`;
+    } else {
+        type.add(new Option('Mediation outcome required', ''));
+        type.disabled = true;
+        help.innerHTML = `
+            <span style="color: #92400e; font-weight: 600;">Three mediation sessions are on record.</span>
+            Record and approve the mediation outcome before referring the case to Pangkat. Conciliation cannot be scheduled from the session count alone.
+        `;
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.title = 'Record and approve a mediation outcome before referring to Pangkat.';
+        }
+        return;
     }
 
     if (!typeValue) {
         type.add(new Option('No further schedules permitted', '')); type.disabled = true;
-        help.textContent = 'This case already has three mediation and three conciliation schedules.';
+        help.textContent = 'No further Conciliation schedules are permitted for this case.';
         if (submitBtn) { submitBtn.disabled = true; submitBtn.title = 'All schedules completed for this case.'; }
         return;
     }

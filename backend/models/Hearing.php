@@ -269,10 +269,20 @@ class Hearing
                 $scheduled[$row['hearing_type']] = (int) $row['total'];
             }
 
-            if ($caseRecord['case_status'] === 'Conciliation') {
-                $expectedType = 'Conciliation';
-            } else {
-                $expectedType = $scheduled['Mediation'] < 3 ? 'Mediation' : 'Conciliation';
+            // A Conciliation hearing is available only after an authorized
+            // transition has moved the case to Conciliation (for example, an
+            // approved failed-mediation referral or a lapsed-period referral).
+            // The number of mediation schedules must never infer that outcome.
+            $expectedType = $caseRecord['case_status'] === 'Conciliation'
+                ? 'Conciliation'
+                : 'Mediation';
+
+            if ($expectedType === 'Mediation' && $scheduled['Mediation'] >= 3) {
+                $this->conn->rollBack();
+                return [
+                    'success' => false,
+                    'message' => 'Three mediation sessions are already scheduled. Record and approve a mediation outcome before referring this case to Pangkat; Conciliation cannot be scheduled from the session count alone.'
+                ];
             }
 
             if ($data['hearing_type'] !== $expectedType) {
@@ -284,7 +294,10 @@ class Hearing
                     3 => '3rd',
                     default => "{$nextSeq}th",
                 };
-                return ['success' => false, 'message' => "The next required schedule is {$ordinalStr} {$expectedType}."];
+                $message = $expectedType === 'Conciliation'
+                    ? "The next required schedule is {$ordinalStr} Conciliation."
+                    : 'Record and approve a mediation referral before scheduling Conciliation.';
+                return ['success' => false, 'message' => $message];
             }
 
             // Conciliation statutory time-and-outcome test (RA 7160 Sec. 410):
@@ -1005,6 +1018,16 @@ class Hearing
             if (!$hearing) {
                 $this->conn->rollBack();
                 return ['success' => false, 'message' => 'Hearing record not found.'];
+            }
+
+            if ($hearing['hearing_type'] !== 'Mediation') {
+                $this->conn->rollBack();
+                return ['success' => false, 'message' => 'Only a recorded Mediation hearing can be declared failed and referred to Pangkat.'];
+            }
+
+            if ($hearing['case_status'] !== 'Mediation') {
+                $this->conn->rollBack();
+                return ['success' => false, 'message' => 'This case is not in Mediation and cannot be referred to Pangkat from this hearing.'];
             }
 
             $caseId = (int) $hearing['case_id'];

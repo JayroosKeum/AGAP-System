@@ -464,7 +464,7 @@ include '../../layouts/header.php';
         </div>
         <div id="failMediationAlert" class="alert" style="display: none; margin-bottom: 12px;"></div>
         <div style="background: #fef2f2; border: 1px solid #fecaca; padding: 12px 14px; border-radius: 8px; margin-bottom: 14px; font-size: 0.84rem; color: #991b1b;">
-            <strong>Mediation Termination (Section L):</strong> When mediation fails after 3 sessions (or when parties cannot settle before the Punong Barangay), mediation is declared failed. The system will automatically:
+            <strong>Mediation Termination (Section L):</strong> Use this action only after the authorized officer has determined that mediation failed (or another authorized referral ground applies). Three scheduled sessions do not automatically move a case to Conciliation. Once this approved outcome is recorded, the system will:
             <ul style="margin: 6px 0 0 16px; padding: 0;">
                 <li>Transition the case to <strong>Conciliation</strong></li>
                 <li>Generate <strong>KP Form 10</strong> (Notice to Constitute the Pangkat Tagapagkasundo)</li>
