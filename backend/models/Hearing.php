@@ -399,6 +399,15 @@ class Hearing
             }
 
             $this->conn->commit();
+
+            // Automatically initialize hearing deliveries for all parties and witnesses
+            require_once __DIR__ . '/../services/SummonDeliveryService.php';
+            try {
+                (new SummonDeliveryService($this->conn))->initializeHearingDeliveries($hearingId, $userId);
+            } catch (Throwable $delivEx) {
+                error_log("Failed to initialize deliveries for hearing {$hearingId}: " . $delivEx->getMessage());
+            }
+
             return ['success' => true, 'hearing_id' => $hearingId, 'sequence' => $scheduled[$expectedType] + 1, 'hearing_type' => $expectedType];
         } catch (Throwable $exception) {
             if ($this->conn->inTransaction()) {
@@ -479,6 +488,15 @@ class Hearing
             $newId = (int)$this->conn->lastInsertId();
             $history = $this->conn->prepare("INSERT INTO case_history (case_id,status,remarks,updated_by) SELECT case_id,(SELECT case_status FROM cases WHERE case_id=?),?,? FROM hearings WHERE hearing_id=?");
             $history->execute([$data['case_id'], 'Hearing #' . $id . ' rescheduled as hearing #' . $newId . '. Reason: ' . $reason, $_SESSION['user_id'] ?? null, $newId]);
+
+            // Automatically initialize hearing deliveries for all parties and witnesses for rescheduled hearing
+            require_once __DIR__ . '/../services/SummonDeliveryService.php';
+            try {
+                (new SummonDeliveryService($this->conn))->initializeHearingDeliveries($newId, $_SESSION['user_id'] ?? null);
+            } catch (Throwable $delivEx) {
+                error_log("Failed to initialize deliveries for rescheduled hearing {$newId}: " . $delivEx->getMessage());
+            }
+
             return $newId > 0;
         } catch (Throwable $exception) {
             if ($this->conn->inTransaction()) {

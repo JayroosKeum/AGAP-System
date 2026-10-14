@@ -249,13 +249,13 @@ async function markKp8AsServedOnPrint() {
         const data = await res.json();
         if (data && data.success) {
             window.agapNotify?.(
-                data.message || 'KP Form No. 8 (Complainant Notice) marked as Served upon printing.',
-                'success',
-                'Complainant Notice Served'
+                data.message || 'KP Form No. 8 (Complainant Notice) logged as printed. Service remains Pending until Officer\'s Return is recorded.',
+                'info',
+                'Complainant Notice Printed'
             );
             const kp8Hint = document.getElementById('kp8PartyHint');
             if (kp8Hint) {
-                kp8Hint.innerHTML = (kp8Hint.innerHTML || '').replace(/Status:[^<]*/, '') + ' · <span style="color:#16a34a; font-weight:700;">Status: Served (Print Workflow)</span>';
+                kp8Hint.innerHTML = (kp8Hint.innerHTML || '').replace(/Status:[^<]*/, '') + ' · <span style="color:#d97706; font-weight:700;">Status: Printed · Service Pending</span>';
             }
             if (typeof window.loadHearingDeliveries === 'function') {
                 window.loadHearingDeliveries(state.caseId);

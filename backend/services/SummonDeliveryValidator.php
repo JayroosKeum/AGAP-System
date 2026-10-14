@@ -18,6 +18,7 @@ final class SummonDeliveryValidator
         $address = trim((string) ($data['service_address'] ?? ''));
         $remarks = trim((string) ($data['remarks'] ?? ''));
         $recipientName = trim((string) ($data['recipient_name'] ?? ''));
+        $relationship = trim((string) ($data['relationship'] ?? ''));
         $serviceMethod = trim((string) ($data['service_method'] ?? ''));
 
         if (!SummonDeliveryStatus::isValid($status)) {
@@ -34,6 +35,9 @@ final class SummonDeliveryValidator
         }
         if (SummonDeliveryStatus::isSuccessfulService($status) && $recipientName === '') {
             $errors['recipient_name'] = 'The recipient name is required for a successful service record.';
+        }
+        if ($status === SummonDeliveryStatus::SERVED_SUBSTITUTED && $relationship === '') {
+            $errors['relationship'] = 'Relationship to recipient is required for substituted service.';
         }
         if (in_array($status, [
             SummonDeliveryStatus::REFUSED,
@@ -53,6 +57,7 @@ final class SummonDeliveryValidator
                 'service_address' => $address,
                 'remarks' => $remarks,
                 'recipient_name' => $recipientName,
+                'relationship' => $relationship,
                 'service_method' => $serviceMethod,
             ],
         ];

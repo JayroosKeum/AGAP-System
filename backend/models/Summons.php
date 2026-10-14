@@ -490,6 +490,18 @@ class Summons
             );
             $histStmt->execute([$histRemarks, $userId, $caseId]);
 
+            // Mark statutory Next-Working-Day Summons SLA as completed
+            try {
+                $slaCompStmt = $this->conn->prepare("
+                    UPDATE case_deadlines
+                    SET status = 'Completed', updated_at = CURRENT_TIMESTAMP
+                    WHERE case_id = ? AND deadline_type = 'Next-Working-Day Summons SLA'
+                ");
+                $slaCompStmt->execute([$caseId]);
+            } catch (Throwable $sE) {
+                error_log('Failed to complete Next-Working-Day Summons SLA: ' . $sE->getMessage());
+            }
+
             $this->conn->commit();
 
             // Notify Summons Server users

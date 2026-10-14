@@ -11,6 +11,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/AuditService.php';
+require_once __DIR__ . '/MediationDeadlineService.php';
 
 final class MediationCommencementService
 {
@@ -62,9 +63,18 @@ final class MediationCommencementService
         }
 
         $meetingAt = $this->meetingDateTime($hearing);
-        $deadlineAt = (new DateTimeImmutable($meetingAt))
-            ->modify('+15 days')
-            ->format('Y-m-d H:i:s');
+        $meetingDate = substr($meetingAt, 0, 10);
+
+        // Delegate deadline computation to MediationDeadlineService, which enforces
+        // RA 7160 §410: 15 CALENDAR days from the first actual meeting.
+        // The deadline is stored on the cases table and case_deadlines by that service.
+        $deadlineService = new MediationDeadlineService($this->db);
+        $clockResult = $deadlineService->commenceStatutoryClock(
+            (int) $hearing['case_id'],
+            $meetingDate,
+            $actorUserId
+        );
+        $deadlineAt = $clockResult['mediation_deadline_date'] ?? null;
 
         try {
             $stmt = $this->db->prepare(
@@ -84,22 +94,23 @@ final class MediationCommencementService
             $commencementId = (int) $this->db->lastInsertId();
             $this->audit->log(
                 $actorUserId,
-                'Recorded first actual Mediation meeting and opened the 15-day Mediation period',
+                "Recorded first actual Mediation meeting on {$meetingDate}. Statutory 15-calendar-day period opened (RA 7160 §410). Deadline: {$deadlineAt}.",
                 'Hearings',
                 $hearingId
             );
 
             return [
-                'success' => true,
+                'success'  => true,
                 'recorded' => true,
-                'code' => 'MEDIATION_COMMENCED',
-                'message' => 'The first actual Mediation meeting was recorded.',
-                'data' => [
-                    'commencement_id' => $commencementId,
-                    'case_id' => (int) $hearing['case_id'],
-                    'hearing_id' => $hearingId,
+                'code'     => 'MEDIATION_COMMENCED',
+                'message'  => 'The first actual Mediation meeting was recorded and the statutory 15-day period has started.',
+                'data'     => [
+                    'commencement_id'        => $commencementId,
+                    'case_id'                => (int) $hearing['case_id'],
+                    'hearing_id'             => $hearingId,
                     'first_actual_meeting_at' => $meetingAt,
-                    'mediation_deadline_at' => $deadlineAt,
+                    'mediation_deadline_at'  => $deadlineAt,
+                    'counting_mode'          => $clockResult['counting_mode'] ?? 'calendar days (RA 7160 §410 default)',
                 ],
             ];
         } catch (PDOException $e) {

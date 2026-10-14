@@ -308,6 +308,20 @@ class CaseModel
                 throw new RuntimeException('Complaint approval changed before docketing.');
             }
 
+            // Register statutory next-working-day summons SLA (RA 7160 §410)
+            try {
+                require_once __DIR__ . '/../services/SummonDeliveryService.php';
+                $nextWorkingDay = (new SummonDeliveryService($this->conn))->getNextWorkingDay($docketDate);
+                $slaStmt = $this->conn->prepare("
+                    INSERT INTO case_deadlines (case_id, deadline_type, due_date, status)
+                    VALUES (?, 'Next-Working-Day Summons SLA', ?, 'Pending')
+                    ON DUPLICATE KEY UPDATE due_date = VALUES(due_date), status = 'Pending', updated_at = CURRENT_TIMESTAMP
+                ");
+                $slaStmt->execute([$caseId, $nextWorkingDay]);
+            } catch (Throwable $sE) {
+                error_log('Failed to register Next-Working-Day Summons SLA: ' . $sE->getMessage());
+            }
+
             $this->conn->commit();
             return true;
         } catch (Exception $e) {

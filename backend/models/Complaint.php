@@ -116,6 +116,10 @@ class Complaint
             if (!$partiesValidation['success']) {
                 return $partiesValidation;
             }
+            $jurisdictionValidation = $this->validateJurisdictionInput($data);
+            if (!$jurisdictionValidation['success']) {
+                return $jurisdictionValidation;
+            }
 
             if(session_status() === PHP_SESSION_NONE)
             {
@@ -234,6 +238,10 @@ class Complaint
             $partiesValidation = $this->validatePartiesInput($data);
             if (!$partiesValidation['success']) {
                 return $partiesValidation;
+            }
+            $jurisdictionValidation = $this->validateJurisdictionInput($data);
+            if (!$jurisdictionValidation['success']) {
+                return $jurisdictionValidation;
             }
 
             $exists = $this->conn->prepare('SELECT complaint_id FROM complaints WHERE complaint_id = ?');
@@ -638,6 +646,97 @@ class Complaint
         }
 
         return ['success' => true];
+    }
+
+    /**
+     * Evaluates dispute context against Katarungang Pambarangay statutory exclusions
+     * under RA 7160 §§408, 409, 412 and relevant DILG guidelines.
+     */
+    public function validateJurisdictionInput(array $data): array
+    {
+        require_once __DIR__ . '/../services/MediationDeadlineService.php';
+
+        $disputeContext = [];
+
+        // 1. Explicit statutory exclusion flags passed from UI / API
+        $disputeContext['party_is_government']        = !empty($data['party_is_government']);
+        $disputeContext['party_is_public_officer']    = !empty($data['party_is_public_officer']) || !empty($data['involves_public_officer_official_capacity']);
+        $disputeContext['offense_imprisonment_max']   = (float) ($data['offense_imprisonment_max'] ?? 0);
+        $disputeContext['offense_fine_max']           = (float) ($data['offense_fine_max'] ?? 0);
+        if (array_key_exists('has_private_offended_party', $data)) {
+            $disputeContext['has_private_offended_party'] = (bool) $data['has_private_offended_party'];
+        }
+        $disputeContext['property_in_diff_lgu']       = !empty($data['property_in_diff_lgu']);
+        $disputeContext['parties_in_diff_lgu']        = !empty($data['parties_in_diff_lgu']);
+        $disputeContext['parties_same_barangay']      = !empty($data['parties_same_barangay']);
+        $disputeContext['accused_under_detention']    = !empty($data['accused_under_detention']);
+        $disputeContext['habeas_corpus_needed']       = !empty($data['habeas_corpus_needed']);
+        $disputeContext['provisional_remedy_needed']  = !empty($data['provisional_remedy_needed']);
+        $disputeContext['prescription_risk']          = !empty($data['prescription_risk']);
+        $disputeContext['indigenous_community']       = !empty($data['indigenous_community']);
+
+        // 2. Derive context from resident directory records
+        $compId = filter_var($data['complainant_resident_id'] ?? null, FILTER_VALIDATE_INT);
+        $respId = filter_var($data['respondent_resident_id'] ?? null, FILTER_VALIDATE_INT);
+        if ($compId && $respId) {
+            $stmt = $this->conn->prepare('SELECT resident_id, first_name, last_name, address, purok, is_tenant FROM residents WHERE resident_id IN (?, ?)');
+            $stmt->execute([$compId, $respId]);
+            $residents = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $compRes = null;
+            $respRes = null;
+            foreach ($residents as $r) {
+                if ((int)$r['resident_id'] === $compId) $compRes = $r;
+                if ((int)$r['resident_id'] === $respId) $respRes = $r;
+            }
+
+            if ($compRes && $respRes) {
+                $compName = strtolower(trim($compRes['first_name'] . ' ' . $compRes['last_name']));
+                $respName = strtolower(trim($respRes['first_name'] . ' ' . $respRes['last_name']));
+                $govKeywords = ['republic of the philippines', 'department of', 'city of marikina', 'barangay tumana', 'philippine national police', 'pnp', 'afp', 'bureau of'];
+                foreach ($govKeywords as $kw) {
+                    if (str_contains($compName, $kw) || str_contains($respName, $kw)) {
+                        $disputeContext['party_is_government'] = true;
+                        break;
+                    }
+                }
+
+                // If complainant is Non-Resident with address outside Marikina and not in Tumana
+                $compPurok   = trim((string)($compRes['purok'] ?? ''));
+                $compAddress = strtolower(trim((string)($compRes['address'] ?? '')));
+                if (((int)$compRes['is_tenant'] === 2 || strcasecmp($compPurok, 'Non-Resident') === 0)
+                    && $compAddress !== ''
+                    && !str_contains($compAddress, 'marikina')
+                    && !str_contains($compAddress, 'tumana')) {
+                    $disputeContext['parties_in_diff_lgu'] = true;
+                    $disputeContext['parties_same_barangay'] = false;
+                }
+            }
+        }
+
+        // 3. Real property check: category 6 (Property and Rental Disputes)
+        $categoryId = filter_var($data['category_id'] ?? null, FILTER_VALIDATE_INT);
+        if ($categoryId === 6) {
+            $incidentCity = trim((string)($data['incident_city'] ?? ''));
+            if ($incidentCity !== '' && stripos($incidentCity, 'Marikina') === false) {
+                $disputeContext['property_in_diff_lgu'] = true;
+            }
+        }
+
+        $eval = MediationDeadlineService::evaluateKpJurisdiction($disputeContext);
+        if ($eval['excluded']) {
+            return [
+                'success'           => false,
+                'code'              => 'KP_JURISDICTION_EXCLUDED',
+                'message'           => 'This dispute cannot be accepted under Katarungang Pambarangay: ' . implode(' ', $eval['exclusion_grounds']),
+                'exclusion_grounds' => $eval['exclusion_grounds'],
+                'evaluation'        => $eval,
+            ];
+        }
+
+        return [
+            'success'    => true,
+            'evaluation' => $eval,
+        ];
     }
 
     private function resolveResidentId(string $name, ?int $residentId = null): ?int

@@ -473,7 +473,13 @@ class ShowCauseService
             $remarks,
         ]);
 
-        return (int) $this->conn->lastInsertId();
+        $hearingId = (int) $this->conn->lastInsertId();
+        try {
+            $this->deliveryService->initializeHearingDeliveries($hearingId);
+        } catch (Throwable $e) {
+            error_log("Failed to initialize deliveries for show cause hearing {$hearingId}: " . $e->getMessage());
+        }
+        return $hearingId;
     }
 
     private function createRescheduledMediation(
@@ -495,7 +501,13 @@ class ShowCauseService
             $reason,
         ]);
 
-        return (int) $this->conn->lastInsertId();
+        $hearingId = (int) $this->conn->lastInsertId();
+        try {
+            $this->deliveryService->initializeHearingDeliveries($hearingId);
+        } catch (Throwable $e) {
+            error_log("Failed to initialize deliveries for rescheduled mediation hearing {$hearingId}: " . $e->getMessage());
+        }
+        return $hearingId;
     }
 
     private function createShowCauseDelivery(int $hearingId, string $partyType, string $formType, ?int $residentId, ?int $caseId = null): void

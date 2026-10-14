@@ -18,14 +18,151 @@ class SummonDeliveryService
     }
 
     /**
+     * Requirement 4: Strictly links and auto-initializes service delivery records for ANY hearing
+     * (1st Mediation, later Mediation, Pangkat / Conciliation, Arbitration, Show Cause, or Rescheduled).
+     *
+     * Ensures an equally strict issuance and service workflow across all proceedings:
+     * - Complainant receives Notice of Hearing / Notice of Pangkat Hearing / Notice of Rescheduled Hearing
+     * - Respondent receives Summon (KP Form 9) / Notice of Hearing / Notice of Pangkat Hearing / Notice of Rescheduled Hearing
+     * - Witnesses receive Subpoena (KP Form 13)
+     * All start as 'Pending' and must have Officer's Return recorded.
+     */
+    public function initializeHearingDeliveries(int $hearingId, ?int $actorUserId = null): array
+    {
+        $hearingStmt = $this->conn->prepare("
+            SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.venue, h.rescheduled_from_id,
+                   c.complaint_id, c.case_number, c.case_status
+            FROM hearings h
+            INNER JOIN cases c ON c.case_id = h.case_id
+            WHERE h.hearing_id = ?
+        ");
+        $hearingStmt->execute([$hearingId]);
+        $hearing = $hearingStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$hearing) {
+            return ['success' => false, 'message' => 'Hearing not found.'];
+        }
+
+        $caseId = (int) $hearing['case_id'];
+        $complaintId = (int) $hearing['complaint_id'];
+        $isRescheduled = !empty($hearing['rescheduled_from_id']);
+        $hType = $hearing['hearing_type'] ?? 'Mediation';
+
+        // Count sequence for this hearing type
+        $seqStmt = $this->conn->prepare("
+            SELECT COUNT(*) FROM hearings
+            WHERE case_id = ? AND hearing_type = ? AND hearing_id <= ?
+        ");
+        $seqStmt->execute([$caseId, $hType, $hearingId]);
+        $sequence = (int) $seqStmt->fetchColumn();
+
+        // Determine statutory form types
+        if ($isRescheduled) {
+            $complainantForm = 'Notice of Rescheduled Hearing';
+            $respondentForm  = 'Notice of Rescheduled Hearing';
+            $witnessForm     = 'Notice of Rescheduled Hearing';
+        } elseif ($hType === 'Conciliation') {
+            $complainantForm = 'Notice of Pangkat Hearing';
+            $respondentForm  = 'Notice of Pangkat Hearing';
+            $witnessForm     = 'Subpoena';
+        } elseif ($hType === 'Show Cause (Complainant)') {
+            $complainantForm = 'KP Form 18';
+            $respondentForm  = 'Summon';
+            $witnessForm     = 'Subpoena';
+        } elseif ($hType === 'Show Cause (Respondent)') {
+            $complainantForm = 'Notice of Hearing';
+            $respondentForm  = 'KP Form 19';
+            $witnessForm     = 'Subpoena';
+        } else {
+            // Mediation or general
+            $complainantForm = 'Notice of Hearing';
+            $respondentForm  = ($sequence <= 1) ? 'Summon' : 'Notice of Hearing';
+            $witnessForm     = 'Subpoena';
+        }
+
+        // Fetch all registered parties for this complaint
+        $partiesStmt = $this->conn->prepare("
+            SELECT cp.resident_id, cp.party_type,
+                   TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS resident_name,
+                   r.address, r.purok, r.contact_no
+            FROM complaint_parties cp
+            INNER JOIN residents r ON r.resident_id = cp.resident_id
+            WHERE cp.complaint_id = ? AND cp.party_type IN ('Complainant', 'Respondent', 'Witness')
+            ORDER BY FIELD(cp.party_type, 'Complainant', 'Respondent', 'Witness'), r.last_name, r.first_name
+        ");
+        $partiesStmt->execute([$complaintId]);
+        $parties = $partiesStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $initialized = [];
+
+        foreach ($parties as $p) {
+            $pType = $p['party_type'];
+            $resId = (int) $p['resident_id'];
+            $pName = $p['resident_name'] ?? $pType;
+
+            $formType = match ($pType) {
+                'Complainant' => $complainantForm,
+                'Respondent'  => $respondentForm,
+                'Witness'     => $witnessForm,
+                default       => 'Notice of Hearing',
+            };
+
+            $checkExisting = $this->conn->prepare("
+                SELECT delivery_id FROM summon_deliveries
+                WHERE hearing_id = ? AND party_type = ? AND resident_id = ?
+                LIMIT 1
+            ");
+            $checkExisting->execute([$hearingId, $pType, $resId]);
+            $existingId = $checkExisting->fetchColumn();
+
+            if (!$existingId) {
+                $ins = $this->conn->prepare("
+                    INSERT INTO summon_deliveries (
+                        hearing_id, case_id, party_type, resident_id, form_type, attempt_number,
+                        delivery_status, recipient_name, created_by
+                    ) VALUES (?, ?, ?, ?, ?, 1, 'Pending', ?, ?)
+                ");
+                $ins->execute([
+                    $hearingId,
+                    $caseId,
+                    $pType,
+                    $resId,
+                    $formType,
+                    $pName,
+                    $actorUserId
+                ]);
+                $initialized[] = [
+                    'delivery_id' => (int) $this->conn->lastInsertId(),
+                    'party_type'  => $pType,
+                    'resident_id' => $resId,
+                    'form_type'   => $formType,
+                    'status'      => 'Pending',
+                ];
+            }
+        }
+
+        return [
+            'success'        => true,
+            'hearing_id'     => $hearingId,
+            'is_rescheduled' => $isRescheduled,
+            'sequence'       => $sequence,
+            'initialized'    => $initialized,
+        ];
+    }
+
+    /**
      * Retrieves or auto-initializes summon delivery records for a hearing.
-     * Supports multiple attempts for KP Form No. 9 and CFA unlocking evaluation.
+     * Supports multiple attempts for Respondent, linked notices for Complainant,
+     * Subpoenas for Witnesses, and CFA unlocking evaluation.
      */
     public function getHearingDeliveries(int $hearingId): array
     {
+        // First ensure deliveries are initialized for all parties on this hearing
+        $this->initializeHearingDeliveries($hearingId);
+
         $hearingStmt = $this->conn->prepare("
             SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.venue, h.status AS hearing_status,
-                   c.complaint_id, c.case_number, c.case_status, c.is_paused, c.pause_reason
+                   h.rescheduled_from_id, c.complaint_id, c.case_number, c.case_status, c.is_paused, c.pause_reason
             FROM hearings h
             INNER JOIN cases c ON c.case_id = h.case_id
             WHERE h.hearing_id = ?
@@ -39,34 +176,33 @@ class SummonDeliveryService
 
         $caseId = (int) $hearing['case_id'];
 
-        // Get parties for this complaint
+        // Get party profiles
         $partiesStmt = $this->conn->prepare("
             SELECT cp.resident_id, cp.party_type,
                    TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS resident_name,
                    r.address, r.purok, r.contact_no
             FROM complaint_parties cp
             INNER JOIN residents r ON r.resident_id = cp.resident_id
-            WHERE cp.complaint_id = ? AND cp.party_type IN ('Complainant', 'Respondent')
-            ORDER BY FIELD(cp.party_type, 'Complainant', 'Respondent'), r.last_name, r.first_name
+            WHERE cp.complaint_id = ? AND cp.party_type IN ('Complainant', 'Respondent', 'Witness')
+            ORDER BY FIELD(cp.party_type, 'Complainant', 'Respondent', 'Witness'), r.last_name, r.first_name
         ");
         $partiesStmt->execute([$hearing['complaint_id']]);
         $parties = $partiesStmt->fetchAll(PDO::FETCH_ASSOC);
 
         $complainantParty = null;
         $respondentParty = null;
+        $witnessParties = [];
         foreach ($parties as $p) {
             if ($p['party_type'] === 'Complainant' && $complainantParty === null) {
                 $complainantParty = $p;
             } elseif ($p['party_type'] === 'Respondent' && $respondentParty === null) {
                 $respondentParty = $p;
+            } elseif ($p['party_type'] === 'Witness') {
+                $witnessParties[] = $p;
             }
         }
 
-        // Determine default form types
-        $complainantForm = ($hearing['hearing_type'] === 'Show Cause (Complainant)') ? 'KP Form 18' : 'Notice of Hearing';
-        $respondentForm = ($hearing['hearing_type'] === 'Show Cause (Respondent)') ? 'KP Form 19' : 'Summon';
-
-        // 1. Fetch or initialize Complainant delivery
+        // 1. Fetch Complainant delivery
         $compStmt = $this->conn->prepare("
             SELECT sd.*, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS served_by_name
             FROM summon_deliveries sd
@@ -77,60 +213,12 @@ class SummonDeliveryService
         ");
         $compStmt->execute([$hearingId]);
         $complainantDeliv = $compStmt->fetch(PDO::FETCH_ASSOC);
-
-        if ($complainantDeliv && ($complainantDeliv['delivery_status'] ?? '') !== 'Served' && strpos($complainantDeliv['delivery_status'] ?? '', 'Served') !== 0 && ($hearing['hearing_type'] ?? '') === 'Mediation') {
-            $this->markKp8Printed($caseId, (int) ($complainantDeliv['document_id'] ?? 0), $hearingId, (int) ($_SESSION['user_id'] ?? 1));
-            $compStmt->execute([$hearingId]);
-            $complainantDeliv = $compStmt->fetch(PDO::FETCH_ASSOC);
-        }
-
-        if (!$complainantDeliv) {
-            $initialStatus = (($hearing['hearing_type'] ?? '') === 'Mediation') ? 'Served' : 'Pending';
-            $insComp = $this->conn->prepare("
-                INSERT INTO summon_deliveries (
-                    hearing_id, case_id, party_type, resident_id, form_type, attempt_number,
-                    delivery_status, recipient_name, served_at, service_method, remarks
-                ) VALUES (?, ?, 'Complainant', ?, ?, 1, ?, ?, IF(? = 'Served', NOW(), NULL), IF(? = 'Served', 'Personal Notice', NULL), IF(? = 'Served', 'Personal notice served to complainant upon issuance of 1st mediation summons.', NULL))
-            ");
-            $insComp->execute([
-                $hearingId,
-                $caseId,
-                $complainantParty ? (int) $complainantParty['resident_id'] : null,
-                $complainantForm,
-                $initialStatus,
-                $complainantParty['resident_name'] ?? null,
-                $initialStatus,
-                $initialStatus,
-                $initialStatus
-            ]);
-            $compDelivId = (int) $this->conn->lastInsertId();
-            $complainantDeliv = [
-                'delivery_id' => $compDelivId,
-                'hearing_id' => $hearingId,
-                'case_id' => $caseId,
-                'party_type' => 'Complainant',
-                'resident_id' => $complainantParty ? (int) $complainantParty['resident_id'] : null,
-                'form_type' => $complainantForm,
-                'attempt_number' => 1,
-                'delivery_status' => $initialStatus,
-                'served_at' => ($initialStatus === 'Served') ? date('Y-m-d H:i:s') : null,
-                'served_by' => null,
-                'served_by_name' => 'Lupon Office (Personal Notice)',
-                'recipient_name' => $complainantParty['resident_name'] ?? null,
-                'relationship' => null,
-                'unserved_reason' => null,
-                'failure_notes' => null,
-                'remarks' => ($initialStatus === 'Served') ? 'Personal notice served to complainant upon issuance of 1st mediation summons.' : null,
-            ];
-        }
-        if ($complainantParty) {
+        if ($complainantDeliv && $complainantParty) {
             $complainantDeliv['party_profile'] = $complainantParty;
         }
 
         // 2. Fetch all Respondent attempts
         $attempts = $this->getSummonsAttempts($caseId, $hearingId);
-
-        // Attach resident profile to attempts
         foreach ($attempts as &$att) {
             if ($respondentParty) {
                 $att['party_profile'] = $respondentParty;
@@ -138,7 +226,6 @@ class SummonDeliveryService
         }
         unset($att);
 
-        // Latest respondent attempt for legacy card compatibility
         $latestRespAttempt = !empty($attempts) ? end($attempts) : null;
 
         // Calculate next attempt eligibility
@@ -164,22 +251,40 @@ class SummonDeliveryService
             $nextAttemptNumber = $failedCount + 1;
         }
 
-        // 3. CFA Eligibility evaluation
+        // 3. Fetch Witness deliveries
+        $witStmt = $this->conn->prepare("
+            SELECT sd.*, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS served_by_name,
+                   TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS resident_name,
+                   r.address, r.purok, r.contact_no
+            FROM summon_deliveries sd
+            INNER JOIN residents r ON r.resident_id = sd.resident_id
+            LEFT JOIN users u ON u.user_id = COALESCE(sd.served_by_user_id, sd.served_by)
+            WHERE sd.hearing_id = ? AND sd.party_type = 'Witness'
+            ORDER BY sd.delivery_id ASC
+        ");
+        $witStmt->execute([$hearingId]);
+        $witnessDeliveries = $witStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // 4. CFA Eligibility evaluation
         $cfaEligibility = $this->getCfaEligibility($caseId);
 
-        // 4. Overall hearing attendance lock evaluation
+        // 5. Hearing-agnostic attendance lock — applies to ALL hearing types
         $serviceCheck = $this->checkServiceStatus($hearingId);
+
+        // 6. Next-working-day SLA check (RA 7160, Sec. 410)
+        $slaStatus = $this->getServiceSlaStatus($caseId, $hearingId);
 
         return [
             'success' => true,
             'hearing' => $hearing,
             'deliveries' => [
-                $complainantDeliv,
+                $complainantDeliv ?: [],
                 $latestRespAttempt ?: []
             ],
             'complainant_delivery' => $complainantDeliv,
             'respondent_attempts' => $attempts,
             'latest_respondent_attempt' => $latestRespAttempt,
+            'witness_deliveries' => $witnessDeliveries,
             'attempts_count' => $attemptsCount,
             'failed_attempts_count' => $failedCount,
             'can_initiate_next_attempt' => $canInitiateNextAttempt,
@@ -187,84 +292,324 @@ class SummonDeliveryService
             'cfa_eligibility' => $cfaEligibility,
             'attendance_unlocked' => $serviceCheck['allowed'],
             'service_notice' => $serviceCheck['message'],
+            'sla_status' => $slaStatus,
+            'is_rescheduled' => !empty($hearing['rescheduled_from_id']),
+            'hearing_type' => $hearing['hearing_type'],
         ];
     }
 
     /**
-     * Checks if both Complainant and Respondent notices/summons are served.
+     * Checks whether both Complainant and Respondent notices/summons are served for a given hearing.
+     * This check is hearing-type-agnostic: it applies equally to Mediation, Pangkat/Conciliation,
+     * Show Cause, witness notices, rescheduling notices, and substitution summons.
+     * Attendance/default logic MUST NOT be unlocked until this returns allowed=true.
      */
     public function checkServiceStatus(int $hearingId): array
     {
+        // Fetch hearing type so messages can be contextual
+        $htStmt = $this->conn->prepare("SELECT hearing_type FROM hearings WHERE hearing_id = ? LIMIT 1");
+        $htStmt->execute([$hearingId]);
+        $hearingType = (string) ($htStmt->fetchColumn() ?: 'Hearing');
+
         $stmt = $this->conn->prepare("
-            SELECT party_type, delivery_status, unserved_reason, failure_notes, attempt_number
+            SELECT party_type, resident_id, recipient_name, delivery_status, unserved_reason, failure_notes, attempt_number, form_type
             FROM summon_deliveries
-            WHERE hearing_id = ? AND party_type IN ('Complainant', 'Respondent')
+            WHERE hearing_id = ?
             ORDER BY attempt_number DESC, delivery_id DESC
         ");
         $stmt->execute([$hearingId]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+        // A delivery is considered served for attendance purposes under these statuses.
+        // 'Served Refused' is deliberately included: a party who refuses to accept is still
+        // legally deemed served under KP rules (DILG KP Training Manual, p. 34).
+        $servedStatuses = ['Served', 'Served Personal', 'Served Substituted', 'Served Refused'];
+
         $complainantServed = false;
         $respondentServed = false;
-        $unservedParties = [];
-        $pendingParties = [];
+        $unservedParties  = [];
+        $pendingParties   = [];
 
+        // Walk rows highest-attempt-first; first match per (party_type, resident_id) wins
+        $seen = [];
         foreach ($rows as $r) {
+            $key = $r['party_type'] . '_' . ($r['resident_id'] ?? 0);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
             $pType = $r['party_type'];
             $st = $r['delivery_status'];
-            $isServed = in_array($st, ['Served', 'Served Personal', 'Served Substituted', 'Served Refused'], true);
+            $isServed = in_array($st, $servedStatuses, true);
 
             if ($pType === 'Complainant') {
                 if ($isServed) {
                     $complainantServed = true;
                 } elseif ($st === 'Unserved') {
                     $unservedParties[] = "Complainant ({$r['unserved_reason']})";
-                } elseif ($st === 'Pending') {
+                } else {
                     $pendingParties[] = 'Complainant';
                 }
             } elseif ($pType === 'Respondent') {
                 if ($isServed) {
                     $respondentServed = true;
+                } elseif ($st === 'Unserved') {
+                    $unservedParties[] = "Respondent (Attempt #{$r['attempt_number']} — {$r['unserved_reason']})";
+                } else {
+                    $pendingParties[] = "Respondent (Attempt #{$r['attempt_number']})";
+                }
+            } elseif ($pType === 'Witness') {
+                $wName = $r['recipient_name'] ?: 'Witness';
+                if ($st === 'Unserved') {
+                    $unservedParties[] = "Witness {$wName} ({$r['unserved_reason']})";
+                } elseif (!$isServed) {
+                    $pendingParties[] = "Witness {$wName}";
                 }
             }
         }
 
-        // For Respondent, check latest attempt
-        $respRows = array_values(array_filter($rows, fn($r) => $r['party_type'] === 'Respondent'));
-        if (!empty($respRows) && !$respondentServed) {
-            $latestResp = $respRows[0];
-            if ($latestResp['delivery_status'] === 'Unserved') {
-                $unservedParties[] = "Respondent (Attempt #{$latestResp['attempt_number']} - {$latestResp['unserved_reason']})";
-            } elseif ($latestResp['delivery_status'] === 'Pending') {
-                $pendingParties[] = "Respondent (Attempt #{$latestResp['attempt_number']})";
-            }
+        // Must have at least Complainant and Respondent records checked
+        $hasComplainant = false;
+        $hasRespondent = false;
+        foreach (array_keys($seen) as $k) {
+            if (str_starts_with($k, 'Complainant_')) $hasComplainant = true;
+            if (str_starts_with($k, 'Respondent_')) $hasRespondent = true;
         }
 
-        if (count($unservedParties) > 0) {
+        if (!$hasComplainant) {
+            $pendingParties[] = 'Complainant (no service record)';
+        }
+        if (!$hasRespondent) {
+            $pendingParties[] = 'Respondent (no service record)';
+        }
+
+        if (!empty($unservedParties)) {
             return [
-                'allowed' => false,
-                'status' => 'UNSERVED',
-                'message' => 'Summon delivery failed for: ' . implode(', ', $unservedParties) . '. Hearing attendance and unexcused absences are locked until service is confirmed or address is corrected.',
+                'allowed'  => false,
+                'status'   => 'UNSERVED',
+                'message'  => "{$hearingType} attendance locked — delivery failed for: "
+                    . implode(', ', $unservedParties)
+                    . '. Resolve service or obtain a CFA before proceeding.',
             ];
         }
 
-        if (count($pendingParties) > 0 || !$complainantServed || !$respondentServed) {
+        if (!empty($pendingParties) || !$complainantServed || !$respondentServed) {
             return [
-                'allowed' => false,
-                'status' => 'PENDING',
-                'message' => 'Summon/Notice delivery is still pending for: ' . implode(', ', $pendingParties) . '. Please record delivery status before recording hearing attendance.',
+                'allowed'  => false,
+                'status'   => 'PENDING',
+                'message'  => "{$hearingType} attendance locked — service pending for: "
+                    . implode(', ', $pendingParties ?: array_filter(['Complainant' => !$complainantServed ? 'Complainant' : null, 'Respondent' => !$respondentServed ? 'Respondent' : null]))
+                    . '. Record the Officer\'s Return before registering attendance.',
             ];
         }
 
         return [
-            'allowed' => true,
-            'status' => 'SERVED',
-            'message' => 'All summons and notices successfully served. Hearing attendance tracking is unlocked.',
+            'allowed'  => true,
+            'status'   => 'SERVED',
+            'message'  => 'All summons, notices, and subpoenas for this hearing are served. Attendance tracking is unlocked.',
+        ];
+    }
+
+    // -------------------------------------------------------------------------
+    // SLA / Overdue Escalation  (RA 7160, Sec. 410)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Calculates the next Philippine working day after a given date,
+     * skipping Sundays and known public holidays tracked in MediationDeadlineService.
+     */
+    public function getNextWorkingDay(string $fromDate): string
+    {
+        $dt = new DateTimeImmutable($fromDate);
+        do {
+            $dt = $dt->modify('+1 day');
+        } while (
+            (int) $dt->format('w') === 0              // Sunday
+            || MediationDeadlineService::isNonWorkingDay($dt)
+        );
+        return $dt->format('Y-m-d');
+    }
+
+    /**
+     * Returns the SLA status for summons issuance on the first hearing of a case.
+     *
+     * RA 7160, Section 410 requires the Punong Barangay to summon the respondent
+     * (with notice to the complainant) by the NEXT WORKING DAY after receiving
+     * the complaint. This method surfaces whether that deadline was met.
+     *
+     * Returns:
+     *   sla_deadline        – ISO date of the next working day after complaint filing
+     *   sla_met             – bool: was the first summons issued by the deadline?
+     *   sla_overdue         – bool: deadline passed with no summons issued
+     *   days_overdue        – int (0 when not overdue)
+     *   first_issued_at     – ISO datetime of the first summons_deliveries row, or null
+     *   message             – human-readable status string
+     */
+    public function getServiceSlaStatus(int $caseId, ?int $hearingId = null): array
+    {
+        // Fetch complaint filing date for this case
+        $cStmt = $this->conn->prepare("
+            SELECT c.case_id, c.case_number, COALESCE(cm.created_at, c.docket_date, c.created_at) AS filed_at
+            FROM cases c
+            LEFT JOIN complaints cm ON cm.complaint_id = c.complaint_id
+            WHERE c.case_id = ?
+        ");
+        $cStmt->execute([$caseId]);
+        $caseRow = $cStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$caseRow || empty($caseRow['filed_at'])) {
+            return [
+                'sla_deadline'    => null,
+                'sla_met'         => null,
+                'sla_overdue'     => false,
+                'days_overdue'    => 0,
+                'first_issued_at' => null,
+                'message'         => 'Complaint filing date unavailable; SLA cannot be computed.',
+            ];
+        }
+
+        $filedDate   = substr($caseRow['filed_at'], 0, 10);
+        $slaDeadline = $this->getNextWorkingDay($filedDate); // next working day
+
+        // Fetch the earliest summons delivery record for this case
+        $sdSql = "SELECT MIN(created_at) FROM summon_deliveries WHERE case_id = ?";
+        $sdParams = [$caseId];
+        if ($hearingId) {
+            $sdSql    = "SELECT MIN(created_at) FROM summon_deliveries WHERE case_id = ? AND hearing_id = ?";
+            $sdParams = [$caseId, $hearingId];
+        }
+        $sdStmt = $this->conn->prepare($sdSql);
+        $sdStmt->execute($sdParams);
+        $firstIssuedAt = $sdStmt->fetchColumn() ?: null;
+
+        $today = date('Y-m-d');
+
+        if ($firstIssuedAt) {
+            $issuedDate = substr($firstIssuedAt, 0, 10);
+            $slaMet     = ($issuedDate <= $slaDeadline);
+            return [
+                'sla_deadline'    => $slaDeadline,
+                'sla_due_at'      => $slaDeadline,
+                'sla_met'         => $slaMet,
+                'sla_overdue'     => false,
+                'is_overdue'      => false,
+                'days_overdue'    => 0,
+                'first_issued_at' => $firstIssuedAt,
+                'statutory_basis' => 'RA 7160, Section 410',
+                'message'         => $slaMet
+                    ? "Summons issued within the RA 7160 §410 next-working-day deadline ({$slaDeadline})."
+                    : "Summons were issued on {$issuedDate}, after the §410 deadline of {$slaDeadline}. Review is advised.",
+            ];
+        }
+
+        // No summons issued yet
+        $overdue    = ($today > $slaDeadline);
+        $daysOver   = $overdue ? (int) (new DateTimeImmutable($today))->diff(new DateTimeImmutable($slaDeadline))->days : 0;
+        return [
+            'sla_deadline'    => $slaDeadline,
+            'sla_due_at'      => $slaDeadline,
+            'sla_met'         => false,
+            'sla_overdue'     => $overdue,
+            'is_overdue'      => $overdue,
+            'days_overdue'    => $daysOver,
+            'first_issued_at' => null,
+            'statutory_basis' => 'RA 7160, Section 410',
+            'message'         => $overdue
+                ? "OVERDUE: No summons issued yet. The RA 7160 §410 next-working-day deadline ({$slaDeadline}) has passed by {$daysOver} day(s). Immediate action required."
+                : "Summons not yet issued. Deadline is {$slaDeadline} (next working day per RA 7160 §410).",
         ];
     }
 
     /**
-     * Requirement A: Automatically mark KP Form No. 8 as served when printed for First Mediation.
+     * Escalates an overdue next-working-day summons SLA (RA 7160 §410).
+     * If the SLA deadline has lapsed without summons issuance, this logs the escalation
+     * in case_history, updates case_deadlines, and dispatches notifications to Lupon officers.
+     */
+    public function escalateOverdueSla(int $caseId, ?int $actorUserId = null): array
+    {
+        $status = $this->getServiceSlaStatus($caseId);
+        if (!$status['sla_overdue']) {
+            return [
+                'escalated' => false,
+                'message'   => 'SLA is not overdue. No escalation required.',
+                'status'    => $status,
+            ];
+        }
+
+        $actorUserId = $actorUserId ?: (int) ($_SESSION['user_id'] ?? 1);
+        $daysOver = (int) $status['days_overdue'];
+        $deadline = $status['sla_deadline'];
+
+        // 1. Check if already escalated recently
+        $chk = $this->conn->prepare("
+            SELECT 1 FROM case_history
+            WHERE case_id = ? AND remarks LIKE '%Next-working-day summons SLA overdue%'
+            LIMIT 1
+        ");
+        $chk->execute([$caseId]);
+        if ($chk->fetchColumn()) {
+            return [
+                'escalated' => true,
+                'already_escalated' => true,
+                'message'   => "Overdue SLA was already escalated previously ({$daysOver} day(s) overdue).",
+                'status'    => $status,
+            ];
+        }
+
+        // 2. Insert or update case_deadlines
+        $dlStmt = $this->conn->prepare("
+            INSERT INTO case_deadlines (case_id, deadline_type, due_date, status)
+            VALUES (?, 'Next-Working-Day Summons SLA', ?, 'Overdue')
+            ON DUPLICATE KEY UPDATE status = 'Overdue', due_date = VALUES(due_date), updated_at = CURRENT_TIMESTAMP
+        ");
+        $dlStmt->execute([$caseId, $deadline]);
+
+        // 3. Log to case_history
+        $remarks = "ESCALATION: Next-working-day summons SLA overdue by {$daysOver} day(s) (Statutory deadline was {$deadline}, RA 7160 §410). Immediate issuance of summons required.";
+        $histStmt = $this->conn->prepare("
+            INSERT INTO case_history (case_id, status, remarks, updated_by)
+            SELECT case_id, case_status, ?, ? FROM cases WHERE case_id = ?
+        ");
+        $histStmt->execute([$remarks, $actorUserId, $caseId]);
+
+        // 4. Audit trail
+        $this->audit->log(
+            $actorUserId,
+            $remarks,
+            'Summons',
+            $caseId
+        );
+
+        // 5. Notify administrators and clerks
+        try {
+            require_once __DIR__ . '/NotificationService.php';
+            $notif = new NotificationService();
+            $caseNum = $notif->caseNumber($caseId);
+            $notif->notifyRoles(
+                ['Administrator', 'Lupon Clerk'],
+                'Overdue Summons SLA Escalation',
+                "Case {$caseNum}: Summons issuance is {$daysOver} day(s) overdue under RA 7160 §410 (deadline was {$deadline}).",
+                $actorUserId
+            );
+        } catch (Throwable $ne) {
+            error_log('Failed to dispatch SLA escalation notification: ' . $ne->getMessage());
+        }
+
+        return [
+            'escalated'         => true,
+            'already_escalated' => false,
+            'message'           => "SLA overdue escalation recorded. Officers notified ({$daysOver} day(s) overdue).",
+            'status'            => $status,
+        ];
+    }
+
+    // -------------------------------------------------------------------------
+
+    /**
+     * Records that KP Form No. 8 has been printed.
+     * NOTE: Printing alone does NOT constitute service (RA 7160, Sec. 410).
+     * This method only logs the print event; service status remains Pending
+     * until explicitly confirmed via recordDelivery().
      */
     public function markKp8Printed(int $caseId, ?int $documentId = null, ?int $hearingId = null, ?int $actorUserId = null): array
     {
@@ -387,42 +732,40 @@ class SummonDeliveryService
                 ];
             }
 
-            $remarks = 'Automatically marked as Served via KP Form No. 8 print workflow for First Mediation.';
+            // Printing is not proof of service. We only log the print event.
+            // Service status on generated_documents is left unchanged ('For Service' / 'Pending').
+            // The officer must record actual service via recordDelivery() after physical delivery.
+            $remarks = 'KP Form No. 8 printed. Service pending — officer must record actual receipt separately.';
 
-            // 6. Update generated_documents
-            $updDoc = $this->conn->prepare("UPDATE generated_documents SET service_status = 'Served' WHERE document_id = ?");
+            // 6. Mark document as printed (not served)
+            $updDoc = $this->conn->prepare("UPDATE generated_documents SET service_status = 'Printed' WHERE document_id = ? AND service_status NOT IN ('Served','Service Failed')");
             $updDoc->execute([$documentId]);
 
-            // 7. Upsert summon_deliveries for Complainant
+            // 7. Link document_id to any existing Pending delivery row; do NOT flip delivery_status to Served.
+            // Actual service must be confirmed by recording an Officer's Return via recordDelivery().
             if ($existingDeliv) {
                 $updDeliv = $this->conn->prepare("
                     UPDATE summon_deliveries
-                    SET delivery_status = 'Served',
-                        served_at = NOW(),
-                        served_by = ?,
-                        served_by_user_id = ?,
-                        service_method = 'Printed Notice',
-                        document_id = ?,
+                    SET document_id = COALESCE(document_id, ?),
                         remarks = ?,
                         updated_at = CURRENT_TIMESTAMP
-                    WHERE delivery_id = ?
+                    WHERE delivery_id = ? AND delivery_status = 'Pending'
                 ");
-                $updDeliv->execute([$actorUserId, $actorUserId, $documentId, $remarks, $existingDeliv['delivery_id']]);
+                $updDeliv->execute([$documentId, $remarks, $existingDeliv['delivery_id']]);
                 $delivId = (int) $existingDeliv['delivery_id'];
             } else {
+                // Create a Pending delivery row so the officer knows to record actual service
                 $insDeliv = $this->conn->prepare("
                     INSERT INTO summon_deliveries (
                         hearing_id, case_id, party_type, resident_id, form_type, attempt_number,
                         delivery_status, service_method, served_at, served_by, served_by_user_id,
                         recipient_name, remarks, document_id, created_by
-                    ) VALUES (?, ?, 'Complainant', ?, 'Notice of Hearing', 1, 'Served', 'Printed Notice', NOW(), ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, 'Complainant', ?, 'Notice of Hearing', 1, 'Pending', NULL, NULL, NULL, NULL, ?, ?, ?, ?)
                 ");
                 $insDeliv->execute([
                     $hearingId,
                     $caseId,
                     $complainant ? (int) $complainant['resident_id'] : null,
-                    $actorUserId,
-                    $actorUserId,
                     $complainant['resident_name'] ?? 'Complainant',
                     $remarks,
                     $documentId,
@@ -431,25 +774,13 @@ class SummonDeliveryService
                 $delivId = (int) $this->conn->lastInsertId();
             }
 
-            // 8. Record in proof_of_service (idempotent: prevent duplicate records)
-            $checkPos = $this->conn->prepare("
-                SELECT proof_id FROM proof_of_service
-                WHERE case_id = ? AND document_id = ? AND service_result = 'Served'
-                LIMIT 1
-            ");
-            $checkPos->execute([$caseId, $documentId]);
-            if (!$checkPos->fetchColumn()) {
-                $insPos = $this->conn->prepare("
-                    INSERT INTO proof_of_service (case_id, document_id, service_result, served_by, served_date, remarks)
-                    VALUES (?, ?, 'Served', ?, NOW(), ?)
-                ");
-                $insPos->execute([$caseId, $documentId, $actorUserId, $remarks]);
-            }
+            // 8. Note: Proof of Service is NOT created on printing.
+            // Proof of Service is exclusively created when actual receipt is confirmed via recordDelivery().
 
-            // 9. Audit log entry
+            // 9. Audit log — note print only, not service
             $this->audit->log(
                 $actorUserId,
-                "KP Form No. 8 automatically marked Served via print workflow for Case #{$case['case_number']}",
+                "KP Form No. 8 printed for Case #{$case['case_number']} — service status remains Pending until Officer's Return is recorded.",
                 'Summons',
                 $documentId
             );
@@ -459,12 +790,12 @@ class SummonDeliveryService
             }
 
             return [
-                'success' => true,
+                'success'        => true,
                 'already_served' => false,
-                'message' => 'KP Form No. 8 (Complainant\'s Notice) automatically marked as Served upon printing.',
-                'delivery_id' => $delivId,
-                'document_id' => $documentId,
-                'service_status' => 'Served',
+                'message'        => 'KP Form No. 8 printed. Service status is Pending — record the Officer\'s Return after actual delivery to the complainant.',
+                'delivery_id'    => $delivId,
+                'document_id'    => $documentId,
+                'service_status' => 'Pending',
             ];
         } catch (Throwable $e) {
             if ($startedTrans && $this->conn->inTransaction()) {
@@ -768,7 +1099,27 @@ class SummonDeliveryService
     }
 
     /**
-     * Requirement D: Validate conditional CFA unlocking based on the three failed summons attempts rule.
+     * Evaluates CFA (Certificate to File Action) eligibility per RA 7160 and DILG KP Training Manual.
+     *
+     * The three DILG-recognised scenarios that independently unlock a CFA are:
+     *
+     *   SCENARIO 1 — Three failed service attempts:
+     *     All three summons attempts for the respondent resulted in 'Unserved'.
+     *     (Operational policy — useful but not the exclusive statutory test.)
+     *
+     *   SCENARIO 2 — Respondent unreachable despite diligent efforts:
+     *     At least one attempt is 'Unserved' with reason 'Moved Out' or 'Wrong Address',
+     *     AND the Lupon has certified they cannot locate the respondent.
+     *     This may unlock CFA even with fewer than 3 attempts.
+     *
+     *   SCENARIO 3 — Served but persistently refuses to appear:
+     *     Respondent was validly served ('Served Refused' or 'Served Personal'/'Served Substituted')
+     *     but failed to appear at two or more scheduled hearings without justification.
+     *     Service has been completed; non-attendance triggers the CFA.
+     *
+     * References:
+     *   RA 7160, Section 410 — summons duty on PB
+     *   DILG KP Enhanced Training Manual (2024), pp. 33–37
      */
     public function getCfaEligibility(int $caseId): array
     {
@@ -777,113 +1128,179 @@ class SummonDeliveryService
         $case = $cStmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$case) {
-            return [
-                'eligible' => false,
-                'reason' => 'Case not found.',
-                'code' => 'CASE_NOT_FOUND',
-                'attempts_count' => 0,
-                'failed_count' => 0,
-                'can_issue' => false,
-            ];
+            return $this->cfaLocked('CASE_NOT_FOUND', 'Case not found.', 0, 0);
         }
-
         if ($case['case_status'] === 'Archived') {
-            return [
-                'eligible' => false,
-                'reason' => 'Cannot issue CFA for an archived case.',
-                'code' => 'CASE_ARCHIVED',
-                'attempts_count' => 0,
-                'failed_count' => 0,
-                'can_issue' => false,
-            ];
+            return $this->cfaLocked('CASE_ARCHIVED', 'Cannot issue CFA for an archived case.', 0, 0);
         }
-
         if ($case['case_status'] === 'Settled') {
-            return [
-                'eligible' => false,
-                'reason' => 'Case has reached an Amicable Settlement.',
-                'code' => 'CASE_SETTLED',
-                'attempts_count' => 0,
-                'failed_count' => 0,
-                'can_issue' => false,
-            ];
+            return $this->cfaLocked('CASE_SETTLED', 'Case has reached an Amicable Settlement.', 0, 0);
         }
 
-        // Fetch all respondent summon delivery attempts for this case
-        $attempts = $this->getSummonsAttempts($caseId);
+        // Fetch all respondent summons attempts for this case (all hearings)
+        $attempts      = $this->getSummonsAttempts($caseId);
         $totalAttempts = count($attempts);
 
         if ($totalAttempts === 0) {
-            return [
-                'eligible' => false,
-                'reason' => 'CFA Locked — 0 of 3 summons attempts resulted in delivery failure.',
-                'code' => 'NO_ATTEMPTS',
-                'attempts_count' => 0,
-                'failed_count' => 0,
-                'can_issue' => false,
-                'attempts' => $attempts,
-            ];
+            return $this->cfaLocked(
+                'NO_ATTEMPTS',
+                'CFA Locked — No summons delivery attempts recorded for the respondent.',
+                0, 0, $attempts
+            );
         }
 
-        $anyServed = false;
-        $hasPending = false;
-        $failedCount = 0;
+        $anyServed     = false;   // respondent received valid service
+        $hasPending    = false;   // at least one attempt not yet resolved
+        $failedCount   = 0;       // 'Unserved' outcomes
+        $refusedCount  = 0;       // 'Served Refused' outcomes (served but refused to sign)
+        $movedOrWrong  = 0;       // strong unreachability indicators
 
         foreach ($attempts as $att) {
             if ($att['is_served']) {
                 $anyServed = true;
+                if ($att['delivery_status'] === 'Served Refused') {
+                    $refusedCount++;
+                }
             } elseif ($att['is_pending']) {
                 $hasPending = true;
             } elseif ($att['is_failed']) {
                 $failedCount++;
+                $reason = strtolower((string) ($att['unserved_reason'] ?? ''));
+                if (in_array($reason, ['moved out', 'wrong address', 'unlocatable'], true)) {
+                    $movedOrWrong++;
+                }
             }
         }
 
-        if ($anyServed) {
-            return [
-                'eligible' => false,
-                'reason' => 'CFA Locked — A successful service or an incomplete attempt prevents this three-failure condition from being met.',
-                'code' => 'SERVICE_SUCCESSFUL',
-                'attempts_count' => $totalAttempts,
-                'failed_count' => $failedCount,
-                'can_issue' => false,
-                'attempts' => $attempts,
-            ];
-        }
-
+        // Pending attempts must be resolved before any CFA determination
         if ($hasPending) {
+            return $this->cfaLocked(
+                'ATTEMPT_PENDING',
+                'CFA Locked — An unresolved service attempt is still pending. Record the Officer\'s Return before evaluating CFA eligibility.',
+                $totalAttempts, $failedCount, $attempts
+            );
+        }
+
+        // ── SCENARIO 1: Three failed delivery attempts (operational policy) ────────
+        if ($failedCount >= 3) {
             return [
-                'eligible' => false,
-                'reason' => 'CFA Locked — An incomplete attempt prevents this three-failure condition from being met. Record delivery result first.',
-                'code' => 'ATTEMPT_PENDING',
+                'eligible'       => true,
+                'scenario'       => 'THREE_FAILURES',
+                'reason'         => 'CFA Unlocked (Scenario 1) — All 3 summons delivery attempts failed. RA 7160 §410 diligence requirement satisfied.',
+                'code'           => 'THREE_FAILURES_MET',
                 'attempts_count' => $totalAttempts,
-                'failed_count' => $failedCount,
-                'can_issue' => false,
-                'attempts' => $attempts,
+                'failed_count'   => $failedCount,
+                'can_issue'      => true,
+                'attempts'       => $attempts,
             ];
         }
 
-        if ($failedCount < 3) {
+        // ── SCENARIO 2: Unreachable respondent despite diligent efforts ───────────
+        // At least one attempt with strong address/location failure is sufficient
+        // to request CFA on grounds of unlocatability, per DILG KP Manual p.35.
+        if (!$anyServed && $movedOrWrong >= 1 && $failedCount >= 1) {
             return [
-                'eligible' => false,
-                'reason' => sprintf('CFA Locked — %d of 3 summons attempts resulted in delivery failure.', $failedCount),
-                'code' => 'INSUFFICIENT_FAILURES',
+                'eligible'       => true,
+                'scenario'       => 'UNREACHABLE',
+                'reason'         => 'CFA Unlocked (Scenario 2) — Respondent is unreachable/unlocatable despite diligent effort ('
+                    . $movedOrWrong . ' address-failure attempt(s)). Lupon certification required before issuance.',
+                'code'           => 'RESPONDENT_UNREACHABLE',
                 'attempts_count' => $totalAttempts,
-                'failed_count' => $failedCount,
-                'can_issue' => false,
-                'attempts' => $attempts,
+                'failed_count'   => $failedCount,
+                'can_issue'      => true,
+                'requires_certification' => true, // PB must certify diligence
+                'attempts'       => $attempts,
             ];
         }
 
-        // All 3 attempts completed as qualifying delivery failures!
+        // ── SCENARIO 3: Served but persistently refuses to appear ─────────────────
+        // Respondent was legally served but failed to attend; CFA may be issued.
+        // Check for 2+ no-show hearings after a confirmed service record.
+        if ($anyServed) {
+            $noShowCount = $this->countRespondentNoShows($caseId);
+            if ($noShowCount >= 2) {
+                return [
+                    'eligible'       => true,
+                    'scenario'       => 'REFUSAL_TO_APPEAR',
+                    'reason'         => "CFA Unlocked (Scenario 3) — Respondent was served but failed to appear at {$noShowCount} hearing(s) without justification.",
+                    'code'           => 'REFUSAL_TO_APPEAR',
+                    'attempts_count' => $totalAttempts,
+                    'failed_count'   => $failedCount,
+                    'no_show_count'  => $noShowCount,
+                    'can_issue'      => true,
+                    'attempts'       => $attempts,
+                ];
+            }
+            // Served but not yet enough no-shows; attendance tracking must continue
+            return $this->cfaLocked(
+                'SERVICE_SUCCESSFUL_AWAITING_HEARING',
+                "CFA Locked — Respondent was served. {$noShowCount} unexcused absence(s) recorded; 2 required to unlock on refusal-to-appear grounds.",
+                $totalAttempts, $failedCount, $attempts
+            );
+        }
+
+        // Insufficient failures, not unreachable, not yet served
+        return $this->cfaLocked(
+            'INSUFFICIENT_FAILURES',
+            sprintf(
+                'CFA Locked — %d of 3 failed delivery attempts recorded. Continue service process or certify unreachability.',
+                $failedCount
+            ),
+            $totalAttempts, $failedCount, $attempts
+        );
+    }
+
+    /**
+     * Counts the number of unexcused respondent no-shows across all hearings for a case.
+     * Used to evaluate Scenario 3 CFA eligibility.
+     */
+    private function countRespondentNoShows(int $caseId): int
+    {
+        // Check hearings table respondent_attendance
+        $stmt = $this->conn->prepare("
+            SELECT COUNT(*) FROM hearings
+            WHERE case_id = ? AND respondent_attendance = 'Absent'
+        ");
+        $stmt->execute([$caseId]);
+        $count = (int) $stmt->fetchColumn();
+
+        if ($count === 0) {
+            // Check hearing_attendance table joined with complaint_parties & hearings
+            $stmt2 = $this->conn->prepare("
+                SELECT COUNT(*) FROM hearing_attendance ha
+                INNER JOIN hearings h ON h.hearing_id = ha.hearing_id
+                INNER JOIN cases c ON c.case_id = h.case_id
+                INNER JOIN complaint_parties cp ON cp.complaint_id = c.complaint_id AND cp.resident_id = ha.resident_id
+                WHERE h.case_id = ? AND cp.party_type = 'Respondent'
+                  AND ha.attendance_status IN ('Absent', 'No Show', 'Unexcused Absence')
+                  AND (ha.is_justified = 0 OR ha.is_justified IS NULL)
+            ");
+            $stmt2->execute([$caseId]);
+            $count = (int) $stmt2->fetchColumn();
+        }
+
+        return $count;
+    }
+
+    /**
+     * Helper: builds a standard CFA-locked response array.
+     */
+    private function cfaLocked(
+        string $code,
+        string $reason,
+        int $attemptsCount,
+        int $failedCount,
+        array $attempts = []
+    ): array {
         return [
-            'eligible' => true,
-            'reason' => 'CFA Unlocked — 3 of 3 summons delivery attempts resulted in failure.',
-            'code' => 'THREE_FAILURES_MET',
-            'attempts_count' => $totalAttempts,
-            'failed_count' => $failedCount,
-            'can_issue' => true,
-            'attempts' => $attempts,
+            'eligible'       => false,
+            'scenario'       => null,
+            'reason'         => $reason,
+            'code'           => $code,
+            'attempts_count' => $attemptsCount,
+            'failed_count'   => $failedCount,
+            'can_issue'      => false,
+            'attempts'       => $attempts,
         ];
     }
 
@@ -894,8 +1311,8 @@ class SummonDeliveryService
     public function recordDelivery(int $hearingId, array $data, int $actorUserId): array
     {
         $partyType = trim($data['party_type'] ?? '');
-        if (!in_array($partyType, ['Complainant', 'Respondent'], true)) {
-            return ['success' => false, 'message' => 'Invalid party type. Must be Complainant or Respondent.'];
+        if (!in_array($partyType, ['Complainant', 'Respondent', 'Witness'], true)) {
+            return ['success' => false, 'message' => 'Invalid party type. Must be Complainant, Respondent, or Witness.'];
         }
 
         $deliveryStatus = trim($data['delivery_status'] ?? '');
@@ -906,7 +1323,7 @@ class SummonDeliveryService
 
         // Retrieve hearing and case details
         $stmt = $this->conn->prepare("
-            SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date,
+            SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.rescheduled_from_id,
                    c.complaint_id, c.case_number, c.case_status, c.is_paused, c.pause_reason
             FROM hearings h
             INNER JOIN cases c ON c.case_id = h.case_id
@@ -931,7 +1348,7 @@ class SummonDeliveryService
         $deliveryId = !empty($data['delivery_id']) ? (int) $data['delivery_id'] : null;
 
         // Official summons delivery window validation (bypassed if development/testing)
-        if ($deliveryStatus !== 'Unserved' && $servedAt !== null) {
+        if ($deliveryStatus !== 'Unserved' && $servedAt !== null && $partyType === 'Respondent') {
             require_once __DIR__ . '/OfficeLogisticsService.php';
             $logistics = new OfficeLogisticsService($this->conn);
             $prevStmt = $this->conn->prepare("
@@ -965,6 +1382,9 @@ class SummonDeliveryService
             if ($relationship === '') {
                 return ['success' => false, 'message' => 'Relationship to recipient is required for substituted service.'];
             }
+            if ($remarks === '' && $failureNotes === '') {
+                $remarks = 'Substituted service left with person of sufficient age and discretion at residence after diligent attempt.';
+            }
             $unservedReason = null;
             $failureNotes = null;
         } elseif ($deliveryStatus === 'Served Personal') {
@@ -995,9 +1415,36 @@ class SummonDeliveryService
             $residentId = (int) $rStmt->fetchColumn() ?: null;
         }
 
-        $formType = ($partyType === 'Complainant')
-            ? (($hearing['hearing_type'] === 'Show Cause (Complainant)') ? 'KP Form 18' : 'Notice of Hearing')
-            : (($hearing['hearing_type'] === 'Show Cause (Respondent)') ? 'KP Form 19' : 'Summon');
+        // Determine dynamic form type based on party type and hearing stage/sequence
+        if (!empty($data['form_type'])) {
+            $formType = trim($data['form_type']);
+        } elseif ($partyType === 'Witness') {
+            $formType = 'Subpoena';
+        } else {
+            $isRescheduled = !empty($hearing['rescheduled_from_id']);
+            $isPangkat = str_contains($hearing['hearing_type'], 'Pangkat') || str_contains($hearing['hearing_type'], 'Conciliation');
+            if ($partyType === 'Complainant') {
+                if ($hearing['hearing_type'] === 'Show Cause (Complainant)') {
+                    $formType = 'KP Form 18';
+                } elseif ($isRescheduled) {
+                    $formType = 'Notice of Rescheduled Hearing';
+                } elseif ($isPangkat) {
+                    $formType = 'Notice of Pangkat Hearing';
+                } else {
+                    $formType = 'Notice of Hearing';
+                }
+            } else {
+                if ($hearing['hearing_type'] === 'Show Cause (Respondent)') {
+                    $formType = 'KP Form 19';
+                } elseif ($isRescheduled) {
+                    $formType = 'Notice of Rescheduled Hearing';
+                } elseif ($isPangkat) {
+                    $formType = 'Notice of Pangkat Hearing';
+                } else {
+                    $formType = 'Summon';
+                }
+            }
+        }
 
         // Locate or update the target attempt row in summon_deliveries
         if ($deliveryId) {
@@ -1013,6 +1460,8 @@ class SummonDeliveryService
                     unserved_reason = ?,
                     failure_notes = ?,
                     remarks = ?,
+                    form_type = COALESCE(form_type, ?),
+                    resident_id = COALESCE(resident_id, ?),
                     updated_at = CURRENT_TIMESTAMP
                 WHERE delivery_id = ?
             ");
@@ -1026,16 +1475,27 @@ class SummonDeliveryService
                 $unservedReason ?: null,
                 $failureNotes ?: null,
                 $remarks ?: null,
+                $formType,
+                $residentId,
                 $deliveryId
             ]);
         } else {
-            // Check if a row with this hearing, party_type, attempt_number exists
-            $find = $this->conn->prepare("
-                SELECT delivery_id FROM summon_deliveries
-                WHERE hearing_id = ? AND party_type = ? AND attempt_number = ?
-                LIMIT 1
-            ");
-            $find->execute([$hearingId, $partyType, $attemptNumber]);
+            // Check if a row with this hearing, party_type, (resident_id if known), attempt_number exists
+            if ($residentId) {
+                $find = $this->conn->prepare("
+                    SELECT delivery_id FROM summon_deliveries
+                    WHERE hearing_id = ? AND party_type = ? AND resident_id = ? AND attempt_number = ?
+                    LIMIT 1
+                ");
+                $find->execute([$hearingId, $partyType, $residentId, $attemptNumber]);
+            } else {
+                $find = $this->conn->prepare("
+                    SELECT delivery_id FROM summon_deliveries
+                    WHERE hearing_id = ? AND party_type = ? AND attempt_number = ?
+                    LIMIT 1
+                ");
+                $find->execute([$hearingId, $partyType, $attemptNumber]);
+            }
             $foundId = (int) $find->fetchColumn() ?: null;
 
             if ($foundId) {
@@ -1099,8 +1559,12 @@ class SummonDeliveryService
         // Associate with corresponding generated document
         $docId = !empty($data['document_id']) ? (int) $data['document_id'] : null;
         if (!$docId) {
-            $targetTpl = ($partyType === 'Respondent') ? 'KP Form 9' : 'KP Form 8';
-            $likeTpl = ($partyType === 'Respondent') ? '%Summon%' : '%Notice%';
+            $targetTpl = ($partyType === 'Respondent') 
+                ? (($hearing['hearing_type'] === 'Show Cause (Respondent)') ? 'KP Form 19' : 'KP Form 9')
+                : (($partyType === 'Witness') ? 'KP Form 13' : (($hearing['hearing_type'] === 'Show Cause (Complainant)') ? 'KP Form 18' : 'KP Form 8'));
+            $likeTpl = ($partyType === 'Respondent') 
+                ? '%Summon%' 
+                : (($partyType === 'Witness') ? '%Subpoena%' : '%Notice%');
             $docStmt = $this->conn->prepare("
                 SELECT gd.document_id
                 FROM generated_documents gd
