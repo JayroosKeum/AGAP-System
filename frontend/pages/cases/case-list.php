@@ -108,7 +108,7 @@ $docketMessages = [
                         <div id="automaticHeadDisplay" class="automatic-head-display" hidden>
                             <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap;">
                                 <div>
-                                    <strong id="automaticHeadName">Administrator</strong>
+                                    <strong id="automaticHeadName">Barangay Captain</strong>
                                     <small style="display: block; margin-top: 2px;">Barangay Captain and Lupon Head. Automatically assigned at Docketed/Mediation stage.</small>
                                 </div>
                                 <div style="display: flex; gap: 6px; flex-shrink: 0; align-items: center;">

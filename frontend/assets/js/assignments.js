@@ -194,7 +194,10 @@
     }
 
     function showAutomaticHead() {
-        const name = fullName(automaticHead) || 'Administrator';
+        let name = fullName(automaticHead);
+        if (!name || name === 'Administrator' || name === 'Admin User' || name === 'Captain, Barangay' || name === 'Barangay, Captain') {
+            name = 'Barangay Captain';
+        }
         automaticHeadName.textContent = name;
         automaticHeadDisplay.hidden = false;
 
@@ -301,13 +304,17 @@
 
         assignmentTable.innerHTML = rows
             .map((item) => {
-                const name = [
+                let name = [
                     item.last_name,
                     item.first_name,
                     item.middle_name
                 ]
                     .filter(Boolean)
                     .join(', ');
+
+                if (name === 'User, Admin' || name === 'Captain, Barangay' || name === 'Barangay, Captain' || name === 'Admin User') {
+                    name = 'Barangay Captain';
+                }
 
                 const isHead = item.assignment_role === 'Head';
                 const hasSubstitute = isHead && Boolean(item.substitute_presider_id);

@@ -817,7 +817,7 @@ ON DUPLICATE KEY UPDATE role_name = VALUES(role_name);
 -- They use the normal password-hash login flow; this is not a login bypass.
 -- Remove or change these accounts before deploying outside a local/test environment.
 INSERT INTO users (first_name, last_name, username, email, password_hash, role_id, status)
-SELECT 'Admin', 'User', 'admin', 'admin@agap.test', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', role_id, 'Active'
+SELECT 'Barangay', 'Captain', 'admin', 'admin@agap.test', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', role_id, 'Active'
 FROM roles WHERE role_name = 'Administrator'
 AND NOT EXISTS (SELECT 1 FROM users WHERE username = 'admin');
 

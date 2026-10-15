@@ -748,6 +748,9 @@ function formatDateTimeReadable(str) {
 function renderCaseWorkspace(workspace, complaint) {
     if (!complaint) return;
 
+    window.__agapComplaintWorkspace = workspace;
+    window.__agapCurrentComplaint = complaint;
+
     const caseData = workspace?.case || {};
     const caseNum = caseData.case_number || complaint.case_number || (complaint.case_id ? String(complaint.case_id) : 'N/A');
     const stageCaseId = caseData.case_id || complaint.case_id || null;
@@ -890,6 +893,11 @@ function renderCaseWorkspace(workspace, complaint) {
                     roleBg = '#f3e8ff';
                 }
 
+                let displayName = m.member_name || 'Assigned Lupon Member';
+                if (displayName.trim().toLowerCase() === 'admin user' || (role === 'Head' && displayName.trim().toLowerCase() === 'administrator')) {
+                    displayName = 'Barangay Captain';
+                }
+
                 teamHtml += `
                     <div class="party-entry-card" style="margin-bottom: 8px;">
                         <div class="party-entry-top">
@@ -897,7 +905,7 @@ function renderCaseWorkspace(workspace, complaint) {
                                 ${escapeHtml(role.toUpperCase())}
                             </span>
                         </div>
-                        <div class="party-entry-name">${escapeHtml(m.member_name || 'Assigned Lupon Member')}</div>
+                        <div class="party-entry-name">${escapeHtml(displayName)}</div>
                         <div class="party-entry-meta">
                             <span>📅 Assigned: ${m.assigned_date ? escapeHtml(formatDateReadable(m.assigned_date)) : 'N/A'}</span>
                         </div>
@@ -959,9 +967,9 @@ function renderCaseWorkspace(workspace, complaint) {
                                 </div>
                             ` : ''}
                         </div>
-                        <a href="../hearings/schedules.php?case_id=${encodeURIComponent(stageCaseId || '')}&hearing_id=${encodeURIComponent(h.hearing_id)}" class="btn-small-link">
+                        <button type="button" class="btn-small-link" onclick="openHearingSessionDetails(${h.hearing_id})" style="cursor: pointer; background: #f8fafc; border: 1px solid #cbd5e1; font-family: inherit;">
                             View Session &rarr;
-                        </a>
+                        </button>
                     </div>
                 `;
             });
@@ -2760,5 +2768,411 @@ window.addEventListener('agap:data-changed', async (event) => {
         await loadComplaintDetails();
     } finally {
         window.setTimeout(() => delete document.body.dataset.complaintSyncRefreshing, 400);
+    }
+});
+
+// ===================================================================
+// SESSION & PROCESS DETAILS MODAL (Mediation / Conciliation Details)
+// ===================================================================
+async function openHearingSessionDetails(hearingId) {
+    const modal = document.getElementById('sessionProcessDetailsModal');
+    if (!modal) return;
+
+    modal.style.display = 'flex';
+
+    const titleEl = document.getElementById('spModalTitle');
+    const subtitleEl = document.getElementById('spModalSubtitle');
+    const statusBadge = document.getElementById('spModalStatusBadge');
+    const stageBadge = document.getElementById('spModalStageBadge');
+    const bodyEl = document.getElementById('spModalBody');
+    const leftActions = document.getElementById('spModalLeftActions');
+
+    bodyEl.innerHTML = `
+        <div style="text-align: center; padding: 40px 20px; color: #64748b;">
+            <div style="font-size: 1.5rem; margin-bottom: 8px;">⏳</div>
+            <p style="margin: 0; font-weight: 500;">Loading mediation / conciliation session &amp; process details...</p>
+        </div>
+    `;
+
+    const workspace = window.__agapComplaintWorkspace;
+    const complaint = window.__agapCurrentComplaint;
+    const stageCaseId = workspace?.case?.case_id || complaint?.case_id || null;
+    let hearing = (workspace?.hearings || []).find(item => Number(item.hearing_id) === Number(hearingId));
+
+    let attendanceData = null;
+    let minutesData = null;
+
+    try {
+        const [attRes, minRes] = await Promise.allSettled([
+            complaintApi(`../../../backend/api/hearings/attendance.php?hearing_id=${encodeURIComponent(hearingId)}`),
+            complaintApi(`../../../backend/api/hearings/minutes.php?hearing_id=${encodeURIComponent(hearingId)}`)
+        ]);
+
+        if (attRes.status === 'fulfilled' && attRes.value?.success) {
+            attendanceData = attRes.value.data || attRes.value;
+        }
+        if (minRes.status === 'fulfilled' && minRes.value?.success) {
+            minutesData = minRes.value.data;
+        }
+    } catch (e) {
+        console.warn('Could not fetch extra session data:', e);
+    }
+
+    const h = attendanceData?.hearing || attendanceData || hearing || {};
+    const parties = attendanceData?.parties || hearing?.parties || [];
+    const minutes = minutesData || null;
+    const situation = attendanceData?.situation || hearing?.situation || null;
+
+    const rawType = h.hearing_type || hearing?.hearing_type || 'Mediation Session';
+    const status = h.hearing_status || hearing?.hearing_status || 'Scheduled';
+    const dateFormatted = (h.hearing_date || hearing?.hearing_date) ? formatDateTimeReadable(h.hearing_date || hearing?.hearing_date) : 'Pending Schedule';
+    const venue = h.venue || hearing?.venue || 'Barangay Hall';
+    const caseNum = h.case_number || workspace?.case?.case_number || complaint?.case_number || 'N/A';
+    const compTitle = h.complaint_title || complaint?.complaint_title || '';
+
+    // Classification of Stage & Process
+    const typeLower = rawType.toLowerCase();
+    const isConciliation = typeLower.includes('conciliation') || typeLower.includes('pangkat');
+    const isShowCause = typeLower.includes('show cause') || typeLower.includes('cause');
+    const isArbitration = typeLower.includes('arbitration');
+    const isMediation = !isConciliation && !isShowCause && !isArbitration;
+
+    // Badges & Presider
+    let stageTitle = 'Stage 1: Mediation';
+    let stageBg = '#dbeafe';
+    let stageColor = '#1e40af';
+    let processHeading = 'Punong Barangay Mediation';
+    let legalCitation = 'Republic Act No. 7160 (Local Government Code), Sec. 410(b)';
+    let bannerAccent = '#2563eb';
+    let processOverview = '';
+    let processRules = [];
+    let presidingRole = 'Punong Barangay / Lupon Head';
+    let presidingOfficial = h.presiding_officer_name || 'Barangay Captain';
+    if (presidingOfficial.toLowerCase() === 'admin user' || presidingOfficial.toLowerCase() === 'administrator') {
+        presidingOfficial = 'Barangay Captain';
+    }
+    if (h.substitute_presider_name) {
+        presidingOfficial = `${h.substitute_presider_name} (Substitute Presider)`;
+        presidingRole = 'Authorized Substitute Presider (RA 7160 Sec. 411)';
+    }
+
+    if (isConciliation) {
+        stageTitle = 'Stage 2: Conciliation';
+        stageBg = '#f3e8ff';
+        stageColor = '#7e22ce';
+        processHeading = 'Pangkat ng Tagapagkasundo Conciliation';
+        legalCitation = 'Republic Act No. 7160, Sec. 410(c)';
+        bannerAccent = '#7c3aed';
+        presidingRole = '3-Member Lupon Panel (Chairman, Secretary, Member)';
+        presidingOfficial = 'Pangkat ng Tagapagkasundo';
+        processOverview = 'Formal conciliation proceedings conducted by the 3-member Pangkat panel after mediation was not settled. The Pangkat is constituted by agreement of the parties (or drawn lots by the Punong Barangay) to conduct personal conciliation hearings.';
+        processRules = [
+            '<strong>Panel Composition:</strong> 3 members chosen from the Lupon Tagapamayapa roster (Chairman, Secretary, Member).',
+            '<strong>Statutory Window:</strong> The Pangkat convenes within 3 days from constitution and has a statutory 15-day period (extendable by another 15 days for meritorious grounds) to reach an amicable settlement.',
+            '<strong>Settlement Effect:</strong> Amicable Settlement (KP Form 16) or Arbitration Award (KP Form 17) carries the force and effect of a final court judgment after 10 days if not repudiated under oath.',
+            '<strong>Failure to Conciliate:</strong> If no settlement is reached, the Pangkat Secretary attests and Chairman issues KP Form 20 (Certificate to File Action / CFA), endorsed by the Punong Barangay, authorizing the parties to file in court or proper government agency.'
+        ];
+    } else if (isShowCause) {
+        stageTitle = 'Administrative Due Process';
+        stageBg = '#ffedd5';
+        stageColor = '#c2410c';
+        processHeading = 'Administrative Show Cause Proceeding';
+        legalCitation = 'Republic Act No. 7160, Sec. 410(b)/(d) & KP Implementing Rules';
+        bannerAccent = '#ea580c';
+        presidingRole = 'Punong Barangay / Barangay Captain';
+        processOverview = 'A formal hearing scheduled following a party\'s failure to appear for a scheduled mediation or conciliation session despite confirmed service of summons (KP Form 8 / KP Form 9). This proceeding accords due process to verify if valid justifiable cause exists for the absence.';
+        processRules = [
+            '<strong>Justifiable Cause Requirement:</strong> The absent party must establish a meritorious ground (e.g., sudden serious illness, hospitalization, force majeure / natural disaster) that prevented attendance.',
+            '<strong>Sanction for Complainant Absence:</strong> Failure of complainant to appear without justifiable cause results in dismissal of the complaint with prejudice and issuance of KP Form 20-A (Certificate to Bar Action).',
+            '<strong>Sanction for Respondent Absence:</strong> Failure of respondent to appear without justifiable cause results in barring of any counterclaim (KP Form 20-B) and immediate issuance of a Certificate to File Action (KP Form 20) to the complainant.'
+        ];
+    } else if (isArbitration) {
+        stageTitle = 'Stage 3: Arbitration';
+        stageBg = '#fef3c7';
+        stageColor = '#b45309';
+        processHeading = 'Voluntary Arbitration Proceeding';
+        legalCitation = 'Republic Act No. 7160, Sec. 413';
+        bannerAccent = '#d97706';
+        presidingRole = 'Punong Barangay or Pangkat Chairman';
+        processOverview = 'Voluntary arbitration proceedings where both parties executed an Agreement for Arbitration (KP Form 14), agreeing to submit their dispute and be bound by the arbitration award of the Lupon.';
+        processRules = [
+            '<strong>Agreement to Arbitrate:</strong> Irrevocable after 5 days, unless repudiated on grounds of vitiated consent (fraud, violence, intimidation).',
+            '<strong>Arbitration Award:</strong> Rendered after formal hearing within 15 days (KP Form 17), with the force of a final court judgment after 10 days.'
+        ];
+    } else {
+        // Default Mediation
+        processOverview = 'Stage 1 of the Katarungang Pambarangay system. Conducted personally by the Punong Barangay / Barangay Captain (or designated substitute presider) to mediate disputes directly and amicably between neighborhood residents.';
+        processRules = [
+            '<strong>Presiding Official:</strong> Conducted personally by the Punong Barangay / Barangay Captain (or authorized Substitute Presider if the Barangay Captain is disqualified or absent under Sec. 411).',
+            '<strong>Statutory Window:</strong> 15-day statutory conciliation window starting from the first mediation meeting. Up to 3 mediation sessions may be conducted.',
+            '<strong>No Attorneys Allowed:</strong> Parties must appear in person without legal representation or lawyers (Sec. 415).',
+            '<strong>Amicable Settlement:</strong> When settlement is reached, KP Form 16 (Amicable Settlement) is drafted and signed, carrying the force of a final court judgment after 10 days.',
+            '<strong>Referral to Pangkat:</strong> If mediation fails or 15 days expire without settlement, the case must be formally elevated to the 3-member Pangkat ng Tagapagkasundo (Stage 2) via KP Form 10/11.'
+        ];
+    }
+
+    // Set Header
+    titleEl.textContent = rawType;
+    subtitleEl.innerHTML = `Case <strong>${escapeHtml(caseNum)}</strong> ${compTitle ? `&bull; ${escapeHtml(compTitle)}` : ''}`;
+
+    let statusStyle = 'background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe;';
+    if (status === 'Completed') statusStyle = 'background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0;';
+    else if (status === 'Rescheduled') statusStyle = 'background: #f3e8ff; color: #7e22ce; border: 1px solid #e9d5ff;';
+    else if (status === 'Cancelled') statusStyle = 'background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5;';
+
+    statusBadge.textContent = status;
+    statusBadge.style.cssText = statusStyle;
+
+    stageBadge.textContent = stageTitle;
+    stageBadge.style.background = stageBg;
+    stageBadge.style.color = stageColor;
+
+    // Attendance numbers
+    const presentCount = Number(h.present_count || (parties.filter(p => p.attendance_status === 'Present').length));
+    const absentCount = Number(h.unjustified_absent_count || (parties.filter(p => p.attendance_status === 'Absent').length));
+    const excusedCount = Number(h.excused_count || (parties.filter(p => p.attendance_status === 'Excused' || p.is_justified).length));
+
+    // Build Minutes Section
+    let minutesContentHtml = '';
+    if (minutes && (minutes.session_notes || minutes.settlement_discussion_notes || minutes.complainant_statement || minutes.main_dispute_identified || minutes.agreed_terms)) {
+        minutesContentHtml = `
+            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem; color: #334155;">
+                ${minutes.main_dispute_identified ? `
+                    <div style="background: #f8fafc; padding: 10px 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                        <strong style="color: #475569; font-size: 0.75rem; text-transform: uppercase; display: block; margin-bottom: 2px;">Main Dispute Identified:</strong>
+                        <p style="margin: 0; color: #0f172a;">${escapeHtml(minutes.main_dispute_identified)}</p>
+                    </div>
+                ` : ''}
+                ${minutes.complainant_statement ? `
+                    <div style="background: #f8fafc; padding: 10px 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                        <strong style="color: #1e40af; font-size: 0.75rem; text-transform: uppercase; display: block; margin-bottom: 2px;">Complainant Statement:</strong>
+                        <p style="margin: 0; color: #0f172a;">${escapeHtml(minutes.complainant_statement)}</p>
+                    </div>
+                ` : ''}
+                ${minutes.respondent_statement ? `
+                    <div style="background: #f8fafc; padding: 10px 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                        <strong style="color: #9f1239; font-size: 0.75rem; text-transform: uppercase; display: block; margin-bottom: 2px;">Respondent Statement:</strong>
+                        <p style="margin: 0; color: #0f172a;">${escapeHtml(minutes.respondent_statement)}</p>
+                    </div>
+                ` : ''}
+                ${(minutes.settlement_discussion_notes || minutes.session_notes) ? `
+                    <div style="background: #f8fafc; padding: 10px 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                        <strong style="color: #475569; font-size: 0.75rem; text-transform: uppercase; display: block; margin-bottom: 2px;">Discussion &amp; Settlement Notes:</strong>
+                        <p style="margin: 0; color: #0f172a; white-space: pre-wrap;">${escapeHtml(minutes.settlement_discussion_notes || minutes.session_notes)}</p>
+                    </div>
+                ` : ''}
+                ${minutes.agreed_terms ? `
+                    <div style="background: #f0fdf4; padding: 10px 12px; border-radius: 6px; border: 1px solid #bbf7d0;">
+                        <strong style="color: #15803d; font-size: 0.75rem; text-transform: uppercase; display: block; margin-bottom: 2px;">Agreed Terms &amp; Conditions:</strong>
+                        <p style="margin: 0; color: #14532d; font-weight: 500;">${escapeHtml(minutes.agreed_terms)}</p>
+                    </div>
+                ` : ''}
+                <div style="font-size: 0.75rem; color: #64748b; margin-top: 4px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+                    <span>Recorded by: <strong>${escapeHtml(minutes.recorded_by_name || 'Lupon Staff')}</strong></span>
+                    <span>Status: <strong style="color: ${minutes.status === 'Finalized' ? '#15803d' : '#b45309'};">${escapeHtml(minutes.status || 'Draft')}</strong></span>
+                </div>
+            </div>
+        `;
+    } else if (h.attendance_notes) {
+        minutesContentHtml = `
+            <div style="background: #f8fafc; padding: 12px 14px; border-radius: 6px; border: 1px solid #e2e8f0; font-size: 0.85rem; color: #334155;">
+                <strong style="color: #475569; font-size: 0.75rem; text-transform: uppercase; display: block; margin-bottom: 4px;">Session Attendance Remarks:</strong>
+                <p style="margin: 0; color: #0f172a;">${escapeHtml(h.attendance_notes)}</p>
+            </div>
+        `;
+    } else {
+        minutesContentHtml = `
+            <div style="text-align: center; padding: 20px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px; color: #64748b;">
+                <p style="margin: 0 0 4px; font-size: 0.85rem; font-weight: 500;">No formal minutes or proceedings recorded yet for this session.</p>
+                <span style="font-size: 0.78rem; color: #94a3b8;">Minutes can be added from the Mediation / Conciliation workspace.</span>
+            </div>
+        `;
+    }
+
+    // Guidance text
+    let guidanceHtml = '';
+    if (situation && (situation.title || situation.recommendation || situation.description)) {
+        guidanceHtml = `
+            <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-left: 4px solid #3b82f6; border-radius: 8px; padding: 14px 16px;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
+                    <span style="font-size: 1.05rem;">⚖️</span>
+                    <strong style="font-size: 0.88rem; color: #1e3a8a;">Katarungang Pambarangay Procedural Guidance:</strong>
+                    ${situation.title ? `<span style="font-size: 0.76rem; font-weight: 700; background: #dbeafe; color: #1d4ed8; padding: 2px 7px; border-radius: 4px;">${escapeHtml(situation.title)}</span>` : ''}
+                </div>
+                <p style="margin: 0; font-size: 0.84rem; color: #1e40af; line-height: 1.5;">
+                    ${escapeHtml(situation.recommendation || situation.description || '')}
+                </p>
+            </div>
+        `;
+    }
+
+    // Party Attendance Rows
+    let partiesListHtml = '';
+    if (!parties.length) {
+        partiesListHtml = '<p style="margin: 0; color: #64748b; font-size: 0.84rem; text-align: center; padding: 12px;">No parties recorded for this hearing.</p>';
+    } else {
+        partiesListHtml = parties.map(p => {
+            const st = p.attendance_status || 'Pending';
+            let pPillBg = '#f1f5f9', pPillColor = '#475569';
+            if (st === 'Present') { pPillBg = '#dcfce7'; pPillColor = '#15803d'; }
+            else if (st === 'Absent') { pPillBg = '#fee2e2'; pPillColor = '#991b1b'; }
+            else if (st === 'Excused') { pPillBg = '#fef3c7'; pPillColor = '#b45309'; }
+
+            return `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; flex-wrap: wrap; gap: 8px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 0.7rem; font-weight: 800; padding: 3px 8px; border-radius: 4px; text-transform: uppercase; ${p.party_type === 'Complainant' ? 'background: #dbeafe; color: #1e40af;' : 'background: #ffe4e6; color: #be123c;'}">
+                            ${escapeHtml(p.party_type)}
+                        </span>
+                        <div>
+                            <strong style="font-size: 0.88rem; color: #0f172a;">${escapeHtml(p.full_name || 'Party Member')}</strong>
+                            <div style="font-size: 0.74rem; color: #64748b; margin-top: 1px;">
+                                ${p.service_confirmed ? '<span style="color: #15803d; font-weight: 600;">✓ Summons Confirmed Served</span>' : '<span style="color: #64748b;">⏳ Summons Service In Progress</span>'}
+                                ${p.justification_reason ? ` &bull; <em>Excuse: ${escapeHtml(p.justification_reason)}</em>` : ''}
+                                ${p.remarks ? ` &bull; <span>Remarks: ${escapeHtml(p.remarks)}</span>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                    <span style="font-size: 0.76rem; font-weight: 700; padding: 3px 10px; border-radius: 9999px; text-transform: uppercase; background: ${pPillBg}; color: ${pPillColor};">
+                        ${escapeHtml(st)}
+                    </span>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // Assemble Full Modal Body
+    bodyEl.innerHTML = `
+        <!-- Section 1: Process Details & Legal Mandate Banner -->
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-left: 5px solid ${bannerAccent}; border-radius: 8px; padding: 16px 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 8px; flex-wrap: wrap;">
+                <div>
+                    <span style="font-size: 0.72rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; display: block;">
+                        Katarungang Pambarangay Legal Mandate
+                    </span>
+                    <h3 style="margin: 2px 0 0; font-size: 1.05rem; color: #0f172a; font-weight: 800;">
+                        ${escapeHtml(processHeading)}
+                    </h3>
+                </div>
+                <span style="font-size: 0.74rem; font-weight: 700; color: #334155; background: #f1f5f9; padding: 3px 8px; border-radius: 6px;">
+                    ${escapeHtml(legalCitation)}
+                </span>
+            </div>
+            <p style="margin: 0 0 12px; font-size: 0.85rem; color: #334155; line-height: 1.55;">
+                ${escapeHtml(processOverview)}
+            </p>
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 14px;">
+                <span style="font-size: 0.74rem; font-weight: 700; color: #475569; text-transform: uppercase; display: block; margin-bottom: 6px;">
+                    Procedural Rules &amp; Statutory Guidelines:
+                </span>
+                <ul style="margin: 0; padding-left: 18px; font-size: 0.82rem; color: #475569; line-height: 1.55; display: flex; flex-direction: column; gap: 5px;">
+                    ${processRules.map(r => `<li>${r}</li>`).join('')}
+                </ul>
+            </div>
+        </div>
+
+        <!-- Section 2: Session Schedule & Logistics Grid -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px;">
+            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
+                <span style="font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 2px;">📅 Hearing Date &amp; Time</span>
+                <strong style="font-size: 0.92rem; color: #0f172a; display: block;">${escapeHtml(dateFormatted)}</strong>
+            </div>
+            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
+                <span style="font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 2px;">📍 Hearing Venue</span>
+                <strong style="font-size: 0.92rem; color: #0f172a; display: block;">${escapeHtml(venue)}</strong>
+            </div>
+            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
+                <span style="font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 2px;">👤 Presiding Authority</span>
+                <strong style="font-size: 0.92rem; color: #0f172a; display: block;">${escapeHtml(presidingOfficial)}</strong>
+                <span style="font-size: 0.72rem; color: #64748b;">${escapeHtml(presidingRole)}</span>
+            </div>
+            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
+                <span style="font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 2px;">📋 Stage Progression</span>
+                <strong style="font-size: 0.92rem; color: #0f172a; display: block;">${escapeHtml(status)}</strong>
+                <span style="font-size: 0.72rem; color: #64748b;">${h.rescheduled_from_id ? 'Rescheduled hearing' : 'Original schedule'}</span>
+            </div>
+        </div>
+
+        ${guidanceHtml}
+
+        <!-- Section 3: Involved Parties & Attendance Card -->
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 18px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                <div>
+                    <h4 style="margin: 0; font-size: 0.92rem; font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: 0.03em;">
+                        Involved Parties &amp; Attendance
+                    </h4>
+                    <span style="font-size: 0.78rem; color: #64748b;">Attendance, appearance verification, and summons service status</span>
+                </div>
+                <div style="display: flex; gap: 6px; align-items: center;">
+                    <span style="font-size: 0.74rem; font-weight: 700; color: #15803d; background: #dcfce7; padding: 2px 8px; border-radius: 9999px;">✓ ${presentCount} Present</span>
+                    <span style="font-size: 0.74rem; font-weight: 700; color: #b91c1c; background: #fee2e2; padding: 2px 8px; border-radius: 9999px;">✕ ${absentCount} Non-appearance</span>
+                    ${excusedCount > 0 ? `<span style="font-size: 0.74rem; font-weight: 700; color: #b45309; background: #fef3c7; padding: 2px 8px; border-radius: 9999px;">⚠️ ${excusedCount} Excused</span>` : ''}
+                </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                ${partiesListHtml}
+            </div>
+        </div>
+
+        <!-- Section 4: Session Minutes & Discussion Records -->
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 18px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                <div>
+                    <h4 style="margin: 0; font-size: 0.92rem; font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: 0.03em;">
+                        Session Proceedings &amp; Minutes
+                    </h4>
+                    <span style="font-size: 0.78rem; color: #64748b;">Statements, discussion summaries, settlement proposals, and agreed terms</span>
+                </div>
+            </div>
+            ${minutesContentHtml}
+        </div>
+    `;
+
+    // Populate Left Actions
+    let actionButtonsHtml = '';
+    if (isMediation) {
+        actionButtonsHtml += `
+            <button type="button" class="btn-case-primary" onclick="switchCaseTab('tab-mediation'); closeSessionProcessDetailsModal();" style="font-size: 0.82rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 5px;">
+                View Mediation Tab &rarr;
+            </button>
+            <a href="../cases/mediation-workspace.php?case_id=${encodeURIComponent(stageCaseId || '')}&hearing_id=${encodeURIComponent(hearingId)}" class="btn-secondary" style="font-size: 0.82rem; padding: 6px 14px; text-decoration: none;">
+                Open Mediation Workspace &rarr;
+            </a>
+        `;
+    } else if (isConciliation) {
+        actionButtonsHtml += `
+            <button type="button" class="btn-case-primary" onclick="switchCaseTab('tab-conciliation'); closeSessionProcessDetailsModal();" style="font-size: 0.82rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 5px;">
+                View Conciliation Tab &rarr;
+            </button>
+            <a href="../cases/pangkat-workspace.php?case_id=${encodeURIComponent(stageCaseId || '')}&hearing_id=${encodeURIComponent(hearingId)}" class="btn-secondary" style="font-size: 0.82rem; padding: 6px 14px; text-decoration: none;">
+                Open Pangkat Workspace &rarr;
+            </a>
+        `;
+    } else {
+        actionButtonsHtml += `
+            <a href="../hearings/schedules.php?case_id=${encodeURIComponent(stageCaseId || '')}&hearing_id=${encodeURIComponent(hearingId)}" class="btn-secondary" style="font-size: 0.82rem; padding: 6px 14px; text-decoration: none;">
+                Manage in Hearings Schedule &rarr;
+            </a>
+        `;
+    }
+    leftActions.innerHTML = actionButtonsHtml;
+}
+
+function closeSessionProcessDetailsModal() {
+    const modal = document.getElementById('sessionProcessDetailsModal');
+    if (modal) modal.style.display = 'none';
+}
+
+window.openHearingSessionDetails = openHearingSessionDetails;
+window.closeSessionProcessDetailsModal = closeSessionProcessDetailsModal;
+
+// Auto-bind outside clicks for sessionProcessDetailsModal
+document.addEventListener('DOMContentLoaded', () => {
+    const spModal = document.getElementById('sessionProcessDetailsModal');
+    if (spModal) {
+        spModal.addEventListener('click', (e) => {
+            if (e.target === spModal) closeSessionProcessDetailsModal();
+        });
     }
 });

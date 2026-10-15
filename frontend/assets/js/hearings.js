@@ -28,11 +28,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const params = new URLSearchParams(window.location.search);
-    if (params.get('case_id')) {
+    if (params.get('hearing_id')) {
+        if (params.get('open_attendance') && typeof editHearing === 'function') {
+            editHearing(params.get('hearing_id'));
+        } else if (typeof viewHearing === 'function') {
+            viewHearing(params.get('hearing_id'));
+        }
+    } else if (params.get('case_id')) {
         openAddHearingModal();
-    }
-    if (params.get('hearing_id') && params.get('open_attendance')) {
-        editHearing(params.get('hearing_id'));
     }
 
     if (params.get('q') || params.get('status') || params.get('hearing_type') || params.get('date_from') || params.get('date_to')) {
@@ -766,7 +769,14 @@ async function viewHearing(id) {
         const details = document.getElementById('hearingDetails');
         details.replaceChildren();
         const absence = item.nonappearance ? `${item.nonappearance.resident_name} (${item.nonappearance.party_type}) - pending action` : 'None recorded';
-        [['Case', item.case_number], ['Complaint', `${item.complaint_number} - ${item.complaint_title}`], ['Type', hearingLabel(item)], ['Date & Time', formatDateTime(item.hearing_date)], ['Venue', item.venue], ['Remarks', item.remarks || 'None'], ['Unjustified non-appearance', absence]].forEach(([label, value]) => {
+        const typeStr = (hearingLabel(item) || '').toLowerCase();
+        let processContext = 'Stage 1: Punong Barangay Mediation (RA 7160 Sec. 410b) — 15-day statutory conciliation presided by Barangay Captain';
+        if (typeStr.includes('conciliation') || typeStr.includes('pangkat')) {
+            processContext = 'Stage 2: Pangkat Conciliation (RA 7160 Sec. 410c) — 15-day statutory conciliation presided by 3-member Lupon panel';
+        } else if (typeStr.includes('show cause') || typeStr.includes('cause')) {
+            processContext = 'Administrative Show Cause Proceeding (RA 7160 Sec. 410b/d) — Due process hearing on non-appearance';
+        }
+        [['Process & Mandate', processContext], ['Case', item.case_number], ['Complaint', `${item.complaint_number} - ${item.complaint_title}`], ['Type', hearingLabel(item)], ['Date & Time', formatDateTime(item.hearing_date)], ['Venue', item.venue], ['Remarks', item.remarks || 'None'], ['Unjustified non-appearance', absence]].forEach(([label, value]) => {
             const dt = document.createElement('dt'); dt.textContent = label;
             const dd = document.createElement('dd'); dd.textContent = value;
             details.append(dt, dd);

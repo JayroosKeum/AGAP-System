@@ -622,6 +622,35 @@ include '../../layouts/header.php';
     </div>
 </div>
 
+<!-- Session & Process Details Modal (Mediation / Conciliation Details) -->
+<div id="sessionProcessDetailsModal" class="modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="spModalTitle">
+    <div class="modal-content" style="max-width: 840px; max-height: calc(100vh - 40px); display: flex; flex-direction: column; padding: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.04);">
+        <div class="modal-header" style="padding: 18px 24px 14px; margin-bottom: 0; border-bottom: 1px solid #f1f5f9; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; background: #ffffff;">
+            <div>
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <h2 id="spModalTitle" style="font-size: 1.2rem; margin: 0; color: #0f172a; font-weight: 800;">Session Details</h2>
+                    <span id="spModalStatusBadge" style="font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; text-transform: uppercase;"></span>
+                    <span id="spModalStageBadge" style="font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; text-transform: uppercase;"></span>
+                </div>
+                <div id="spModalSubtitle" style="font-size: 0.82rem; color: #64748b; margin-top: 4px;"></div>
+            </div>
+            <button type="button" class="close-btn" onclick="closeSessionProcessDetailsModal()" aria-label="Close modal" style="font-size: 1.5rem; border: none; background: transparent; cursor: pointer; color: #64748b; line-height: 1; padding: 4px 8px; border-radius: 6px;">&times;</button>
+        </div>
+        <div id="spModalBody" style="overflow-y: auto; padding: 20px 24px; flex: 1 1 auto; max-height: calc(100vh - 160px); display: flex; flex-direction: column; gap: 16px; background: #f8fafc;">
+            <div style="text-align: center; padding: 40px 20px; color: #64748b;">
+                <p style="margin: 0;">Loading session and process details...</p>
+            </div>
+        </div>
+        <div class="modal-actions" style="padding: 14px 24px; border-top: 1px solid #e2e8f0; background: #ffffff; margin-top: 0; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div id="spModalLeftActions" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <button type="button" class="btn-secondary" onclick="closeSessionProcessDetailsModal()">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <?php include __DIR__ . '/../../layouts/summons-preview-modal.php'; ?>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
