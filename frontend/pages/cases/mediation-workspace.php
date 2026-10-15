@@ -150,19 +150,12 @@ include '../../layouts/header.php';
                         Case Loading...
                     </p>
                 </div>
-                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <button type="button" class="btn-create" onclick="openScheduleModal()" style="font-size: 0.82rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px;">
-                        📅 Schedule Hearing
-                    </button>
-                    <button type="button" class="btn-secondary" onclick="openRecordOutcomeModal()" style="font-size: 0.82rem; padding: 7px 12px; display: inline-flex; align-items: center; gap: 5px;">
-                        ⚖️ Record Outcome
-                    </button>
-                    <button type="button" class="btn-secondary" id="btnReferPangkatTop" onclick="openReferPangkatModal()" style="font-size: 0.82rem; padding: 7px 12px; display: inline-flex; align-items: center; gap: 5px;">
-                        👥 Refer to Pangkat &rarr;
-                    </button>
-                    <a href="../cases/case-list.php?assign_case_id=<?php echo $caseId; ?>#caseAssignments" class="btn-secondary" style="font-size: 0.82rem; padding: 7px 12px; display: inline-flex; align-items: center; gap: 5px; text-decoration: none;" title="Go to Cases and Team Assignments">
-                        👥 Cases &amp; Assignments &rarr;
-                    </a>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                    <div id="wsPrimaryAction"></div>
+                    <details id="wsMoreActions" style="position: relative;">
+                        <summary class="btn-secondary" style="font-size: 0.82rem; padding: 7px 12px; cursor: pointer; list-style: none;">More actions</summary>
+                        <div id="wsMoreActionsMenu" style="position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; min-width: 220px; padding: 8px; background: #fff; border: 1px solid #cbd5e1; border-radius: 8px; box-shadow: 0 8px 18px rgba(15,23,42,.14);"></div>
+                    </details>
                 </div>
             </div>
 
@@ -312,16 +305,7 @@ include '../../layouts/header.php';
                 In accordance with <strong>RA 7160 Section 410(b)</strong>, when mediation before the Punong Barangay fails or the 15-day limit expires, the case is elevated to formal conciliation by constituting the 3-member <strong>Pangkat ng Tagapagkasundo</strong>. This automatically generates <strong>KP Form 10</strong>.
             </p>
 
-            <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; font-size: 0.84rem; color: #1e40af; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                <div>
-                    <strong>📋 Team Assignment Notice:</strong>
-                    <div>You can nominate the 3 Lupon members below, or assign and manage them directly on the <strong>Cases &amp; Assignments</strong> page.</div>
-                </div>
-                <a href="../cases/case-list.php?assign_case_id=<?php echo $caseId; ?>#caseAssignments" target="_blank" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 10px; background: #fff; color: #1e40af; border-color: #93c5fd; text-decoration: none; font-weight: 600;">
-                    Open Cases &amp; Assignments &rarr;
-                </a>
-            </div>
-
+            <div class="referral-step" data-referral-step="1">
             <div class="form-group">
                 <label for="referDate">Referral / Formation Date <span class="required-mark">*</span></label>
                 <input type="date" id="referDate" required>
@@ -332,6 +316,13 @@ include '../../layouts/header.php';
                 <textarea id="referReason" rows="2" required placeholder="Mediation before the Punong Barangay failed to produce an amicable settlement. Referred for formal conciliation before the Pangkat."></textarea>
             </div>
 
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" onclick="closeReferPangkatModal()">Cancel</button>
+                <button type="button" class="btn-create" onclick="goReferralStep(2)">Continue to panel selection &rarr;</button>
+            </div>
+            </div>
+
+            <div class="referral-step" data-referral-step="2" style="display:none;">
             <div class="form-group">
                 <label for="referSelectionMethod">Pangkat Selection Method</label>
                 <select id="referSelectionMethod" style="padding: 8px;">
@@ -358,10 +349,20 @@ include '../../layouts/header.php';
                     <select id="referMemberId" required style="padding: 7px;"></select>
                 </div>
             </div>
-
             <div class="modal-actions">
+                <button type="button" class="btn-secondary" onclick="goReferralStep(1)">&larr; Back</button>
+                <button type="button" class="btn-create" onclick="goReferralStep(3)">Review referral &rarr;</button>
+            </div>
+            </div>
+
+            <div class="referral-step" data-referral-step="3" style="display:none;">
+                <div id="referReviewSummary" style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:14px; margin-bottom:16px; font-size:.85rem; color:#1e3a8a;"></div>
+                <p style="margin:0 0 16px; font-size:.84rem; color:#475569; line-height:1.5;">Confirming creates the Pangkat panel, records the 3-day convening deadline, and generates KP Form 10. You will then continue directly to the Conciliation workspace to schedule its first hearing.</p>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" onclick="goReferralStep(2)">&larr; Back</button>
                 <button type="button" class="btn-secondary" onclick="closeReferPangkatModal()">Cancel</button>
                 <button type="submit" class="btn-create" id="submitReferBtn" style="background: #0369a1;">Execute Referral &amp; Generate KP Form 10</button>
+            </div>
             </div>
         </form>
     </div>

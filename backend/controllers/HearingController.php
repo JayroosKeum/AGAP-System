@@ -240,16 +240,21 @@ class HearingController
             return ['success' => false, 'message' => 'Invalid hearing ID.'];
         }
 
-        $pangkatData = [
-            'selection_method' => $data['selection_method'] ?? 'Party Agreement',
-            'selection_notes' => !empty($data['selection_notes']) ? trim($data['selection_notes']) : null,
-            'quorum_size' => !empty($data['quorum_size']) ? (int) $data['quorum_size'] : 3,
-            'chairman_id' => !empty($data['chairman_id']) ? (int) $data['chairman_id'] : null,
-            'secretary_id' => !empty($data['secretary_id']) ? (int) $data['secretary_id'] : null,
-            'member_id' => !empty($data['member_id']) ? (int) $data['member_id'] : null,
-        ];
+        $hearing = $this->hearing->getById((int) $hearingId);
+        if (!$hearing || $hearing['hearing_type'] !== 'Mediation') {
+            return ['success' => false, 'message' => 'Only a Mediation hearing can be used to start a Pangkat referral.'];
+        }
 
-        $result = $this->hearing->failedMediationToPangkat((int) $hearingId, $userId, $pangkatData);
+        // There is one authoritative Mediation-to-Conciliation transition.
+        // Do not let the legacy hearings action alter case status independently:
+        // CaseStage enforces the completed/lapsed mediation prerequisite, writes
+        // stage records and audit history, and validates the Pangkat panel.
+        require_once __DIR__ . '/../models/CaseStage.php';
+        $referralData = $data;
+        $referralData['case_id'] = (int) $hearing['case_id'];
+        $referralData['referral_reason'] = trim((string) ($data['referral_reason'] ?? $data['selection_notes'] ?? ''))
+            ?: 'Mediation concluded without an amicable settlement; referred to Pangkat Tagapagkasundo.';
+        $result = (new CaseStage())->referToPangkat((int) $hearing['case_id'], $referralData, $userId);
         if ($result['success']) {
             $this->audit->log($userId, "Declared mediation failed for hearing #{$hearingId}; elevated to Pangkat Tagapagkasundo", 'Hearings', (int) $hearingId);
         }

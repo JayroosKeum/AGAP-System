@@ -121,6 +121,20 @@ write; an edit retains the pin unless it is moved or explicitly cleared.
   - **Database Migration & Schema**: Added `mediation_start_date`, `mediation_deadline_date`, `is_paused`, `paused_at`, `resumed_at`, `pause_reason`, `pause_notes` to `cases` table in `database/schema.sql` and migration `database/migrations/20260928_mediation_statutory_deadline.sql`.
   - **Relevant Files**: `backend/services/MediationDeadlineService.php`, `backend/services/DeadlineService.php`, `backend/models/MediationSchedule.php`, `backend/models/Hearing.php`, `backend/models/ProofOfService.php`, `backend/models/CaseModel.php`, `backend/models/CFA.php`, `backend/controllers/CFAController.php`, `backend/api/cases/pause-mediation.php`, `backend/api/cases/resume-mediation.php`, `backend/api/documents/cfa.php`, `frontend/pages/cases/case-details.php`, `frontend/assets/js/case-workspace.js`, `frontend/pages/documents/cfa.php`, `frontend/assets/js/cfa.js`, `frontend/assets/js/hearings.js`, `frontend/assets/js/cases.js`, `frontend/assets/css/cases.css`.
 
+### Guided Mediation-to-Conciliation Workflow (October 2026)
+
+- **One primary action per workspace:** The Mediation and Pangkat Conciliation workspace headers now show one context-aware **Next required action** button. It selects the legally available next step, such as scheduling a hearing, completing the active session closeout, booking the next Mediation, constituting the Pangkat, scheduling the first Conciliation, or issuing a CFA. Secondary actions are grouped under **More actions**.
+- **Session closeout flow:** Selecting **Complete session closeout** first directs staff to record attendance when it is absent, then to the minutes and outcome record. Once minutes are finalized, the workspace presents the valid follow-up action: book the next Mediation, constitute the Pangkat, or issue a CFA after unsuccessful Conciliation.
+- **Three-step Pangkat referral:** The Mediation workspace keeps referral in one guided modal:
+  1. Confirm the referral date and authorized justification.
+  2. Constitute the panel by selecting distinct Head, Secretary, and Member Lupon users.
+  3. Review the panel, statutory convening-deadline handling, KP Form 10 generation, and the next Conciliation scheduling step before confirmation.
+- **Authoritative transition:** The legacy hearings-screen elevation action now routes into the Mediation workspace instead of changing the case independently. `HearingController::failMediation()` delegates to `CaseStage::referToPangkat()`, which enforces the completed/lapsed Mediation gate and writes the stage, deadline, history, and audit records consistently.
+- **Server-side panel gate:** `CaseStage::referToPangkat()` requires three distinct, active `Lupon Member` accounts before changing the case to `Conciliation`; client-side dropdown checks alone are not trusted. An Administrator cannot be used as a Conciliation panel member.
+- **Direct handoff:** A successful referral now opens `pangkat-workspace.php` directly. Staff no longer need to visit generic Case Assignments to finish the handoff.
+- **Relevant files:** `backend/controllers/HearingController.php`, `backend/models/CaseStage.php`, `frontend/assets/js/hearings.js`, `frontend/assets/js/stage-workspace.js`, `frontend/pages/cases/mediation-workspace.php`, and `frontend/pages/cases/pangkat-workspace.php`.
+- **Verification:** PHP syntax checks for the changed controllers/models/pages, JavaScript syntax checks for the changed workspace scripts, and `git diff --check` passed. Browser workflow testing against representative Mediation, lapsed-Mediation, Conciliation, and CFA cases remains recommended.
+
 ### Proof of Service & Hearing Attendance Modal Updates (October 2026)
 
 - **Proof of Service Page Refinement (`proof-service.php`)**:

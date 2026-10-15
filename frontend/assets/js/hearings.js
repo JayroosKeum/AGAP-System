@@ -2296,11 +2296,16 @@ window.openSessionMinutesModalCurrent = goToStageMinutesCurrent;
 window.openSessionMinutesModal = goToStageMinutesCurrent;
 
 function openFailMediationModal(hearingId) {
-    const input = document.getElementById('failMediationHearingId');
-    const alertBox = document.getElementById('failMediationAlert');
-    if (input) input.value = hearingId;
-    if (alertBox) alertBox.style.display = 'none';
-    showModal('failMediationModal');
+    const hearing = calendarHearings.find((item) => String(item.hearing_id) === String(hearingId)) || activeHearingAttendanceData || {};
+    const caseId = hearing.case_id;
+    if (!caseId) {
+        setMessage('Open a Mediation hearing before referring its case to Pangkat.');
+        return;
+    }
+
+    // The Mediation workspace owns the complete referral workflow, including
+    // the three-member Lupon panel and statutory progression checks.
+    window.location.href = `../cases/mediation-workspace.php?case_id=${encodeURIComponent(caseId)}&open_referral=1`;
 }
 window.openFailMediationModal = openFailMediationModal;
 

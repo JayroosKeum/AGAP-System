@@ -160,25 +160,12 @@ include '../../layouts/header.php';
                         Case Loading...
                     </p>
                 </div>
-                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <button type="button" class="btn-create" onclick="openScheduleModal()" style="font-size: 0.82rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px;">
-                        📅 Schedule Conciliation Hearing
-                    </button>
-                    <button type="button" class="btn-secondary" onclick="openPangkatSelectionModal()" style="font-size: 0.82rem; padding: 7px 12px; display: inline-flex; align-items: center; gap: 5px;">
-                        🤝 Panel Selection &amp; Impasse
-                    </button>
-                    <button type="button" class="btn-secondary" onclick="openPangkatExtensionModal()" style="font-size: 0.82rem; padding: 7px 12px; display: inline-flex; align-items: center; gap: 5px;">
-                        ⏳ Grant Extension
-                    </button>
-                    <button type="button" class="btn-secondary" onclick="openRecordOutcomeModal()" style="font-size: 0.82rem; padding: 7px 12px; display: inline-flex; align-items: center; gap: 5px;">
-                        ⚖️ Record Conciliation Outcome
-                    </button>
-                    <a href="../cases/case-list.php?assign_case_id=<?php echo $caseId; ?>#caseAssignments" class="btn-secondary" style="font-size: 0.82rem; padding: 7px 12px; display: inline-flex; align-items: center; gap: 5px; text-decoration: none;" title="Manage Lupon Team">
-                        👥 Cases &amp; Assignments &rarr;
-                    </a>
-                    <a href="../documents/cfa.php?case_id=<?php echo $caseId; ?>" class="btn-secondary" style="font-size: 0.82rem; padding: 7px 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
-                        📄 CFA Workflow &rarr;
-                    </a>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                    <div id="wsPrimaryAction"></div>
+                    <details id="wsMoreActions" style="position: relative;">
+                        <summary class="btn-secondary" style="font-size: 0.82rem; padding: 7px 12px; cursor: pointer; list-style: none;">More actions</summary>
+                        <div id="wsMoreActionsMenu" style="position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; min-width: 220px; padding: 8px; background: #fff; border: 1px solid #cbd5e1; border-radius: 8px; box-shadow: 0 8px 18px rgba(15,23,42,.14);"></div>
+                    </details>
                 </div>
             </div>
 

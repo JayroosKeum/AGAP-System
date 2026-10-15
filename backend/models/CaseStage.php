@@ -1021,6 +1021,11 @@ class CaseStage
             ];
         }
 
+        $panelValidation = $this->validatePangkatPanel($data);
+        if (!$panelValidation['valid']) {
+            return ['success' => false, 'message' => $panelValidation['message']];
+        }
+
         // Query completed mediation count directly from database
         $completedStmt = $this->conn->prepare("
             SELECT COUNT(*) FROM hearings h
@@ -1113,9 +1118,9 @@ class CaseStage
             $dlStmt->execute([$caseId, $conveningDeadline]);
 
             // 5. Pangkat Panel Members Assignment (if provided)
-            $chairmanId = !empty($data['chairman_id']) ? (int) $data['chairman_id'] : (!empty($data['head_id']) ? (int) $data['head_id'] : null);
-            $secretaryId = !empty($data['secretary_id']) ? (int) $data['secretary_id'] : null;
-            $memberId = !empty($data['member_id']) ? (int) $data['member_id'] : null;
+            $chairmanId = $panelValidation['chairman_id'];
+            $secretaryId = $panelValidation['secretary_id'];
+            $memberId = $panelValidation['member_id'];
             $selectionStage = in_array($data['selection_stage'] ?? '', ['Party Choice', 'Failed Agreement - PB Lots', 'Failed Agreement - PB Appointment', 'Constituted'], true)
                 ? $data['selection_stage']
                 : 'Constituted';
@@ -1220,6 +1225,63 @@ class CaseStage
             }
             return ['success' => false, 'message' => 'Referral to Pangkat failed: ' . $e->getMessage()];
         }
+    }
+
+    /**
+     * A Conciliation referral must constitute a complete, distinct, active
+     * Lupon panel before the case status is changed. Client-side dropdown
+     * checks are helpful, but this guard protects direct API requests too.
+     */
+    private function validatePangkatPanel(array $data): array
+    {
+        $chairmanId = filter_var(
+            $data['chairman_id'] ?? $data['head_id'] ?? null,
+            FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => 1]]
+        );
+        $secretaryId = filter_var(
+            $data['secretary_id'] ?? null,
+            FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => 1]]
+        );
+        $memberId = filter_var(
+            $data['member_id'] ?? null,
+            FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => 1]]
+        );
+
+        if (!$chairmanId || !$secretaryId || !$memberId) {
+            return [
+                'valid' => false,
+                'message' => 'Choose a Head, Secretary, and Member before referring the case to Pangkat.'
+            ];
+        }
+
+        $memberIds = [(int) $chairmanId, (int) $secretaryId, (int) $memberId];
+        if (count(array_unique($memberIds)) !== 3) {
+            return [
+                'valid' => false,
+                'message' => 'The Pangkat Head, Secretary, and Member must be three different active Lupon Members.'
+            ];
+        }
+
+        require_once __DIR__ . '/Assignment.php';
+        $assignment = new Assignment();
+        foreach ($memberIds as $memberId) {
+            if (!$assignment->isEligibleMember($memberId)) {
+                return [
+                    'valid' => false,
+                    'message' => 'Every Pangkat panel member must be an active user with the Lupon Member role. The Administrator cannot serve on a Conciliation panel.'
+                ];
+            }
+        }
+
+        return [
+            'valid' => true,
+            'chairman_id' => (int) $chairmanId,
+            'secretary_id' => (int) $secretaryId,
+            'member_id' => (int) $memberId,
+        ];
     }
 
     /**

@@ -87,6 +87,12 @@ async function initStageWorkspace(options) {
     await loadStageData();
     await loadLuponMembers();
     checkUrlHashAction();
+
+    // Hearings routes an elevation request here so there is only one
+    // Mediation-to-Conciliation workflow and one set of safeguards.
+    if (urlParams.get('open_referral') === '1' && stageWorkspaceState.mode === 'Mediation') {
+        openReferPangkatModal();
+    }
 }
 
 /**
@@ -290,7 +296,63 @@ function renderHeaderAndBreadcrumbs(data, stage) {
     if (backLinkEl && stageWorkspaceState.complaintId) {
         backLinkEl.href = `../complaints/complaint-details.php?id=${encodeURIComponent(stageWorkspaceState.complaintId)}#caseWorkspaceSection`;
     }
+
+    renderWorkspaceActions(stage);
 }
+
+function renderWorkspaceActions(stage) {
+    const primary = document.getElementById('wsPrimaryAction');
+    const more = document.getElementById('wsMoreActionsMenu');
+    if (!primary || !more) return;
+
+    const mode = stageWorkspaceState.mode;
+    const actions = stage.documents_and_actions || {};
+    const sessions = stageWorkspaceState.sessions || [];
+    const unfinished = sessions.find((session) => !['Finalized', 'Completed'].includes(session.minutes_status || ''));
+    let label = 'Schedule hearing';
+    let handler = 'openScheduleModal()';
+
+    if (unfinished) {
+        label = 'Complete session closeout';
+        handler = `openSessionCloseout(${Number(unfinished.hearing_id)})`;
+    } else if (mode === 'Mediation' && actions.can_proceed_to_pangkat) {
+        label = 'Constitute Pangkat';
+        handler = 'openReferPangkatModal()';
+    } else if (mode === 'Mediation' && actions.can_book_next_mediation) {
+        label = `Book ${Number(actions.next_mediation_session_number || 2) === 2 ? '2nd' : '3rd'} Mediation`;
+        handler = 'openScheduleModal()';
+    } else if (mode === 'Conciliation' && actions.can_issue_cfa) {
+        label = 'Issue CFA (KP Form 20)';
+        handler = `window.location.href='../documents/cfa.php?case_id=${encodeURIComponent(stageWorkspaceState.caseId)}'`;
+    } else if (mode === 'Conciliation' && !sessions.length) {
+        label = 'Schedule 1st Conciliation';
+        handler = 'openScheduleModal()';
+    }
+
+    primary.innerHTML = `<button type="button" class="btn-create" onclick="${handler}" style="font-size:.82rem; padding:7px 14px; display:inline-flex; align-items:center; gap:5px;">${escapeHtml(label)} &rarr;</button>`;
+
+    const scheduleLabel = mode === 'Conciliation' ? 'Schedule Conciliation' : 'Schedule Mediation';
+    const panelAction = mode === 'Conciliation'
+        ? `<button type="button" class="btn-secondary" onclick="openPangkatSelectionModal()">Panel selection</button><button type="button" class="btn-secondary" onclick="openPangkatExtensionModal()">Grant extension</button>`
+        : `<button type="button" class="btn-secondary" onclick="openReferPangkatModal()">Refer to Pangkat</button>`;
+    const cfaAction = mode === 'Conciliation' ? `<a class="btn-secondary" href="../documents/cfa.php?case_id=${encodeURIComponent(stageWorkspaceState.caseId)}">CFA workflow</a>` : '';
+    more.innerHTML = `<button type="button" class="btn-secondary" onclick="openScheduleModal()">${scheduleLabel}</button><button type="button" class="btn-secondary" onclick="openRecordOutcomeModal()">Record stage outcome</button>${panelAction}${cfaAction}`;
+    more.querySelectorAll('.btn-secondary').forEach((button) => {
+        button.style.cssText = 'display:block; width:100%; margin:2px 0; text-align:left; border:0; background:transparent; padding:8px 10px; cursor:pointer; text-decoration:none; color:#334155; font-size:.82rem;';
+    });
+}
+
+function openSessionCloseout(hearingId) {
+    selectInlineMinutesSession(hearingId);
+    const session = stageWorkspaceState.sessions.find((item) => Number(item.hearing_id) === Number(hearingId)) || {};
+    const attendanceRecorded = Boolean(session.attendance_recorded_at || session.complainant_attendance || session.respondent_attendance);
+    if (!attendanceRecorded) {
+        openAttendanceModal(hearingId);
+        return;
+    }
+    document.getElementById('minutesSection')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+window.openSessionCloseout = openSessionCloseout;
 
 /**
  * Render Stage Overview Panel
@@ -1169,9 +1231,6 @@ function handleMinutesOutcomeChange(outcomeVal) {
                         <button type="button" class="btn-create" onclick="openReferPangkatModal()" style="font-size: 0.82rem; padding: 7px 16px; background: #0369a1; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
                             Constitute Pangkat (KP Form 10) &rarr;
                         </button>
-                        <a href="../cases/case-list.php?assign_case_id=${encodeURIComponent(caseId)}#caseAssignments" class="btn-secondary" style="font-size: 0.82rem; padding: 7px 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
-                            Cases &amp; Assignments &rarr;
-                        </a>
                     </div>
                 </div>
             `;
@@ -1303,8 +1362,9 @@ async function saveHearingMinutes(status = 'Draft') {
         });
         const json = await res.json();
         if (json.success) {
-            alert(status === 'Finalized' ? 'Session minutes finalized and locked successfully!' : 'Session minutes draft saved successfully.');
             await loadStageData();
+            if (status === 'Finalized') showCloseoutFollowUp();
+            else alert('Session minutes draft saved successfully.');
         } else {
             alert(json.message || 'Unable to save session minutes.');
         }
@@ -1319,6 +1379,30 @@ async function saveHearingMinutes(status = 'Draft') {
 window.saveHearingMinutes = saveHearingMinutes;
 window.saveInlineMinutes = saveHearingMinutes;
 window.saveMinutes = saveHearingMinutes;
+
+function showCloseoutFollowUp() {
+    const data = stageWorkspaceState.stageData || {};
+    const stage = stageWorkspaceState.mode === 'Conciliation' ? data.conciliation : data.mediation;
+    const actions = stage?.documents_and_actions || {};
+    let text = 'Session minutes were finalized. Review the next required action above.';
+    let action = '';
+    if (stageWorkspaceState.mode === 'Mediation' && actions.can_proceed_to_pangkat) {
+        text = 'Session minutes were finalized. The case is ready for an authorized Pangkat referral.';
+        action = '<button type="button" class="btn-create" onclick="openReferPangkatModal()">Constitute Pangkat &rarr;</button>';
+    } else if (stageWorkspaceState.mode === 'Mediation' && actions.can_book_next_mediation) {
+        text = 'Session minutes were finalized. The next required step is to book the next Mediation.';
+        action = '<button type="button" class="btn-create" onclick="openScheduleModal()">Book next Mediation &rarr;</button>';
+    } else if (stageWorkspaceState.mode === 'Conciliation' && actions.can_issue_cfa) {
+        text = 'Session minutes were finalized. Conciliation is eligible for a Certificate to File Action.';
+        action = `<a class="btn-create" href="../documents/cfa.php?case_id=${encodeURIComponent(stageWorkspaceState.caseId)}">Issue CFA &rarr;</a>`;
+    }
+    document.getElementById('wsCloseoutFollowUp')?.remove();
+    const box = document.createElement('div');
+    box.id = 'wsCloseoutFollowUp';
+    box.style.cssText = 'position:fixed; right:24px; bottom:24px; z-index:1000; max-width:380px; padding:16px; background:#fff; border:1px solid #86efac; border-radius:10px; box-shadow:0 12px 30px rgba(15,23,42,.18); color:#14532d;';
+    box.innerHTML = `<strong style="display:block; margin-bottom:6px;">Session closeout complete</strong><span style="display:block; font-size:.86rem; line-height:1.45; margin-bottom:12px;">${escapeHtml(text)}</span><div style="display:flex; gap:8px; align-items:center;">${action}<button type="button" class="btn-secondary" onclick="this.closest('#wsCloseoutFollowUp').remove()">Done</button></div>`;
+    document.body.appendChild(box);
+}
 
 /**
  * Render Outcome & Progression Section
@@ -1368,9 +1452,6 @@ function renderOutcomeAndReferralSection(data, stage) {
                             </p>
                         </div>
                         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                            <a href="../cases/case-list.php?assign_case_id=${encodeURIComponent(stageWorkspaceState.caseId)}#caseAssignments" class="btn-create" style="font-size: 0.82rem; padding: 7px 14px; background: #0369a1; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
-                                👥 Manage Pangkat Team in Cases &amp; Assignments &rarr;
-                            </a>
                             <a href="pangkat-workspace.php?case_id=${encodeURIComponent(stageWorkspaceState.caseId)}" class="btn-secondary" style="font-size: 0.82rem; padding: 7px 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
                                 ⚖️ Open Pangkat Conciliation &rarr;
                             </a>
@@ -2439,6 +2520,7 @@ function openReferPangkatModal() {
         dateInput.value = new Date().toISOString().split('T')[0];
     }
     populateLuponDropdowns();
+    goReferralStep(1);
     modal.style.display = 'flex';
 }
 
@@ -2446,6 +2528,23 @@ function closeReferPangkatModal() {
     const modal = document.getElementById('wsReferPangkatModal');
     if (modal) modal.style.display = 'none';
 }
+
+function goReferralStep(step) {
+    if (step === 2) {
+        const reason = document.getElementById('referReason')?.value.trim();
+        const date = document.getElementById('referDate')?.value;
+        if (!date || !reason) { alert('Enter the referral date and authorized referral justification before continuing.'); return; }
+    }
+    if (step === 3) {
+        const ids = ['referChairmanId', 'referSecretaryId', 'referMemberId'].map((id) => document.getElementById(id)?.value);
+        if (ids.some((id) => !id) || new Set(ids).size !== 3) { alert('Choose three different active Lupon Members before reviewing the referral.'); return; }
+        const nameFor = (id) => document.getElementById(id)?.selectedOptions?.[0]?.textContent || 'Not selected';
+        const summary = document.getElementById('referReviewSummary');
+        if (summary) summary.innerHTML = `<strong>Step 3 of 3: Review and confirm</strong><br><br><strong>Referral date:</strong> ${escapeHtml(document.getElementById('referDate')?.value || '')}<br><strong>Head:</strong> ${escapeHtml(nameFor('referChairmanId'))}<br><strong>Secretary:</strong> ${escapeHtml(nameFor('referSecretaryId'))}<br><strong>Member:</strong> ${escapeHtml(nameFor('referMemberId'))}<br><br>The system will record the statutory Pangkat convening deadline and generate KP Form 10.`;
+    }
+    document.querySelectorAll('.referral-step').forEach((element) => { element.style.display = Number(element.dataset.referralStep) === Number(step) ? 'block' : 'none'; });
+}
+window.goReferralStep = goReferralStep;
 
 async function submitReferPangkat(e) {
     e.preventDefault();
@@ -2490,8 +2589,7 @@ async function submitReferPangkat(e) {
         if (json.success) {
             alert('Case successfully referred to Pangkat ng Tagapagkasundo! KP Form 10 generated.');
             closeReferPangkatModal();
-            // Redirect to Cases and assignments page to manage and finalize the Lupon team
-            window.location.href = `case-list.php?assign_case_id=${encodeURIComponent(stageWorkspaceState.caseId)}#caseAssignments`;
+            window.location.href = `pangkat-workspace.php?case_id=${encodeURIComponent(stageWorkspaceState.caseId)}`;
         } else {
             alert(json.message || 'Unable to refer case to Pangkat.');
         }
