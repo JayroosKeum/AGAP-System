@@ -1,7 +1,7 @@
 -- ============================================================================
 -- AGAP-Remastered Canonical Database Schema
 -- Database: remastered_db
--- Generated: 2026-10-15 02:47:49
+-- Generated: 2026-10-15 05:41:27
 -- ============================================================================
 
 CREATE DATABASE IF NOT EXISTS `remastered_db` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
