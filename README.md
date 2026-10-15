@@ -67,9 +67,11 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
 - **Case Numbering Convention (`MM-SS-YYYY`)**:
   - Format: `month(10)-series(01)-year(2026)` (e.g., `10-01-2026`, `10-45-2026`).
   - Thread-safe atomic generation via `CaseModel::generateCaseNumber()` incrementing sequential cases per calendar year.
-- **Statutory Hearing Progression**:
+- **Statutory Hearing Progression & 2nd Mediation Summons Exemption**:
   - **Mediation Stage**: 1st Mediation $\rightarrow$ 2nd Mediation $\rightarrow$ 3rd Mediation (up to 3 mediation sessions conducted by the Punong Barangay).
-  - **Progression to Conciliation**: Unresolved cases advance to conciliation: 1st Conciliation $\rightarrow$ 2nd Conciliation $\rightarrow$ 3rd Conciliation (up to 3 conciliation sessions conducted by the Pangkat Tagapagkasundo).
+  - **Second Mediation Summons Exemption (RA 7160 Sec. 410)**: After the 1st Mediation, scheduling the 2nd Mediation does not require re-issuance of summonses. Prior notice is recognized, attendance gate is unlocked, and party service badges display `Served (Prior Notice)`.
+  - **Presider Substitution Flow**: When the scheduled Punong Barangay presider is absent, selecting an active Lupon member as substitute presider, specifying the reason, and verifying mutual party consent is mandatory on the server before proceedings can proceed.
+  - **Progression to Conciliation**: Unresolved cases advance to conciliation: 1st Conciliation $\rightarrow$ 2nd Conciliation $\rightarrow$ 3rd Conciliation (up to 3 conciliation sessions conducted by the Pangkat Tagapagkasundo). Progression is locked until the 3rd mediation is completed.
   - **Scheduling Ceiling**: Once the 3rd Conciliation hearing is scheduled, the scheduling engine permanently halts further hearing additions, enforcing KP statutory limits.
 - **Dual Notice Auto-Generation & "Print summon" Side-by-Side Review**:
   - Triggering `Issue Summon 1st Attempt` atomically books the 1st Mediation session, updates complaint status, generates both **KP Form 8 (Notice of Hearing for Complainant)** and **KP Form 9 (Summons for Respondent)**, and immediately opens the dedicated **Print summon** preview modal.
@@ -78,11 +80,16 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
   - **KP Form 8 Auto-Served on Print**: Printing KP Form 8 for the First Mediation stage automatically marks its service status as `Served` via the print workflow, recorded in the audit trail without requiring a manual Officer's Return.
   - **Strict 3-Attempt Summons Cycle & Progression**: Tracks up to three (3) documented delivery attempts for KP Form 9. Attempt 2 is enabled only after Attempt 1 is recorded as a delivery failure (`Unserved`); Attempt 3 is enabled only after Attempts 1 & 2 fail. Attempt 4 is strictly prevented. Successful service immediately halts failed progression.
   - **Conditional Certificate to File Action (CFA) Unlocking**: Unlocks **KP Form 20 (CFA)** for printing only when all three (3) summons delivery attempts have resulted in documented delivery failure, keeping CFA locked with real-time feedback (e.g., `CFA Locked — X of 3 summons attempts resulted in delivery failure`).
-- **Attendance & Show-Cause Lifecycle (KP Forms 18, 19, 21)**:
-  - Separate Complainant and Respondent attendance tracking (`Present`, `Failure to Appear`, `Not Served`, `Excused`, `Late`).
-  - Auto-generation of **KP Form 18** (Notice of Hearing for Failure to Appear - Complainant) and **KP Form 19** (Notice of Hearing for Failure to Appear - Respondent) when a properly served party fails to appear without prior justification.
-  - Automatically schedules Show-Cause explanation hearings.
-  - Unjustified non-appearance consequences: issuance of **KP Form 21 (Certificate to Bar Action)** (`DISMISSED_BARRED`) for complainants, and default consequence determination for respondents.
+- **Attendance & Show-Cause Lifecycle (KP Forms 16, 18, 19, 21, 22)**:
+  - Separate Complainant, Respondent, and Presider attendance tracking (`Present`, `Absent`, `Excused`).
+  - **1st Mediation Absence Rule**: Non-appearance in 1st Mediation leads directly to booking the 2nd Mediation session; penalty notices are blocked with statutory guidance.
+  - **2nd Mediation Absence Escalation**:
+    - Unlocks **KP Form 18** (Notice of Hearing for Failure to Appear - Complainant) when complainant is absent.
+    - Unlocks **KP Form 19** (Notice of Hearing for Failure to Appear - Respondent) when respondent is absent.
+  - **Strict Consequence Gating**:
+    - **KP Form 21 (Certificate to Bar Action)** is strictly locked until a show-cause evaluation ruling complainant non-appearance as unjustified (`is_justified = 0`) is recorded.
+    - **KP Form 22 (Certificate to Bar Counterclaim)** is strictly locked until a show-cause evaluation ruling respondent non-appearance as unjustified (`is_justified = 0`) is recorded.
+  - **KP Form 16 (Amicable Settlement)**: Generates Kasunduang Pag-aayos upon dispute resolution with automatic integration of agreed terms.
 - **Office Logistics & Strict Scheduling Constraints**:
   - Enforces weekday-only scheduling (Monday to Friday, 8:00 AM to 5:00 PM).
   - Rejects hearings scheduled on the same date as an existing hearing for the case or on any prior date.
@@ -90,7 +97,17 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
 
 ### 3. Case Management & Unified Case Teams
 
-- **Case Workspace (`case-details.php`)**: Centralized command center presenting case facts, active case team, hearing schedules, generated KP forms, and proof-of-service records.
+- **Redesigned Case Workspace (`case-details.php`)**:
+  - **Top Hero Section**: Case Number (`Case #MM-SS-YYYY`), Title, status badges (`MEDIATION`, `CONCILIATION`, `ARBITRATION`), Case Type badge (`Civil`/`Criminal`), Category, Date Filed, Incident Date/Time, and live statutory deadline countdown.
+  - **Side-by-Side Context Grid**: Involved Parties Card (Complainant, Respondent) and Incident Location Card with interactive Leaflet map pin.
+  - **Three Functional Tabs**:
+    - **Mediation**: Punong Barangay Mediation hub, Full Narrative & Facts, mediator assignment, session metrics, and schedule.
+    - **Conciliation**: Pangkat Tagapagkasundo conciliation hub, Pangkat constitution state (locked until mediation concludes), and conciliation hearings.
+    - **Arbitration / CFA**: Voluntary binding arbitration proceedings or Court Referral / Certificate to File Action (CFA) issuance.
+  - **Streamlined 3-Stage Minutes Flow**: Consolidated 3-step sequence:
+    1. *Preliminaries* (Quorum, identity verification, presider/substitute confirmation, attendance check).
+    2. *Proceedings & Discussion* (Complainant statement, respondent response, dispute issues, caucuses, proposals).
+    3. *Agreed Terms & Outcome* (Session outcome, agreed settlement terms, and document generation).
 - **Case & Team Assignments (`case-list.php`)**:
   - Live search bar positioned directly above the case team assignment table.
   - Filtered to display ongoing cases only (settled, dismissed, and archived cases are excluded).
@@ -107,10 +124,12 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
   - **KP Form 9**: Summons for Respondent.
   - **KP Form 10**: Notice for Constitution of Pangkat.
   - **KP Form 12**: Notice of Hearing (Conciliation Proceedings).
+  - **KP Form 16**: Kasunduang Pag-aayos (Amicable Settlement Agreement).
   - **KP Form 18**: Notice of Hearing for Failure to Appear (Complainant).
   - **KP Form 19**: Notice of Hearing for Failure to Appear (Respondent).
   - **KP Form 20**: Certificate to File Action (CFA - issued upon 3 failed summons delivery attempts or conciliation/mediation failure).
   - **KP Form 21**: Certificate to Bar Action (for Complainant default).
+  - **KP Form 22**: Certificate to Bar Counterclaim (for Respondent default).
 - **Summons Management & Proof of Service Interface (`proof-service.php`)**:
   - **Unified Expandable Case Table**: Displays all cases requiring summons tracking. Rows expand/collapse inline to reveal side-by-side service records for Complainant and Respondent.
   - **Live Filter Tabs & Search**: Instant keyword search across Case No., parties, and titles; filter tabs for **All Cases** and **Pending Delivery** with live counter pills.

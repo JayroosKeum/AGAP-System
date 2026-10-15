@@ -88,6 +88,22 @@ A comprehensive diagnostic audit was executed across all frontend pages, buttons
 ### I. Notifications & Alerts (`inbox.php`)
 * **Automated Workflow Notifications:** Real-time assignment alerts, hearing notifications, and global toast popups (`agapNotify`) polling every 45 seconds.
 
+### J. Case Management Details Workspace Redesign (`case-details.php`, `stage-workspace.js`)
+* **Top Hero Section & Context Grid:** Top banner displaying Case Number, Title, status badges (`MEDIATION`, `CONCILIATION`, `ARBITRATION`), Case Type badge (`Civil`/`Criminal`), Category, Date Filed, Incident Date/Time, and live countdown badge. Side-by-side context grid with Complainant and Respondent cards on the left, and incident location with Leaflet map on the right.
+* **Three Dedicated Stage Tabs:** Dedicated tabs for **Mediation** (PB sessions, facts), **Conciliation** (Pangkat conciliation, membership status, locked until mediation concludes), and **Arbitration / CFA** (voluntary arbitration or court certification).
+* **Streamlined Minutes of the Meeting:** Consolidated 3-stage flow (Preliminaries $\rightarrow$ Proceedings & Discussion $\rightarrow$ Agreed Terms & Outcome).
+
+### K. First Mediation Presider Substitution & Independent Attendance
+* **Independent Attendance:** Complainant, Respondent, and Presider attendance tracked independently.
+* **Presider Substitution Flow:** Server-enforced designated substitute presider selection, justification reason, and confirmation of mutual party consent before session can proceed. Preserves original scheduled presider in hearing history.
+* **First Mediation Non-Appearance Policy:** Initial non-appearance directs staff to book the 2nd Mediation session; penalty forms (KP 18/19) remain locked.
+
+### L. Second Mediation Summons Exemption & Non-Appearance Escalation
+* **Summons Exemption (RA 7160 Sec. 410):** 2nd and 3rd mediation hearings automatically bypass summons delivery gates (`SummonDeliveryService`, `SummonServiceGate`); attendance is unlocked, party service status displays as `Served (Prior Notice)`, and no dummy pending deliveries are created.
+* **Absence Escalation (KP Form 18 & KP Form 19):** Absent complainant unlocks KP Form 18; absent respondent unlocks KP Form 19. Both forms can be previewed/printed directly with `preview=1`.
+* **Strict Consequence Form Gating:** KP Form 21 (Bar Action) and KP Form 22 (Bar Counterclaim) remain locked until an unjustified non-appearance ruling is recorded in `show_cause_evaluations`.
+* **Canonical Schedule Navigation:** "Book 2nd Mediation Hearing" links directly to `../hearings/schedules.php?case_id=...&hearing_id=...` with modal pre-selection and return link.
+
 ---
 
 ## 2. What is Broken (Bugs, Schema Mismatches & Dead Links)

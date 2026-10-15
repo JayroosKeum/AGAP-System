@@ -4,7 +4,7 @@ session_start();
 
 if (
     !isset($_SESSION['role_id']) ||
-    !in_array($_SESSION['role_id'], [1, 2])
+    !in_array((int)$_SESSION['role_id'], [1, 2, 3, 4], true)
 ) {
     die('Access Denied');
 }
@@ -26,49 +26,42 @@ include '../../layouts/header.php';
 <link rel="stylesheet" href="../../assets/css/dashboard.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/dashboard.css'); ?>">
 <link rel="stylesheet" href="../../assets/css/complaints.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/complaints.css'); ?>">
 <link rel="stylesheet" href="../../assets/css/cases.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/cases.css'); ?>">
+<link rel="stylesheet" href="../../assets/css/case-details-modern.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/case-details-modern.css'); ?>">
 
 <div class="dashboard-layout">
 
     <?php include '../../layouts/sidebar.php'; ?>
 
-    <div class="main-content">
+    <div class="main-content case-details-main">
 
         <?php include '../../layouts/navbar.php'; ?>
 
-        <!-- Modern Page Header with Status & Action Toolbar -->
-        <div class="complaint-details-header">
-            <div class="complaint-details-heading">
+        <!-- Modern Action Bar / Navigation Header (Picture 1) -->
+        <div class="case-details-action-bar">
+            <div class="case-bar-left">
                 <a href="complaint-list.php" class="back-link">
                     <svg class="back-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
                     <span>Back to Complaints</span>
                 </a>
-                <div class="complaint-title-row">
-                    <h1 id="complaintNumber">Complaint #CMP-...</h1>
-                    <span id="complaintStatusBadge" class="status-pill status-filed">Loading...</span>
-                </div>
-                <p id="complaintTitle" class="complaint-details-subheading"></p>
-                <div class="complaint-header-badges">
-                    <span id="complaintCaseTypeBadge" class="meta-pill type-pill">Civil</span>
-                    <span id="complaintCategoryBadge" class="meta-pill category-pill">Category</span>
-                    <a id="complaintCaseLink" href="#caseWorkspaceSection" class="meta-pill case-pill" style="display:none;" title="Jump to Case Details &amp; Lupon Team">
-                        📁 Case #<span id="caseNumberBadgeText"></span> &darr;
-                    </a>
+                <div class="case-title-badge-group">
+                    <h1 id="complaintNumber" class="case-main-heading">Case #—</h1>
+                    <span id="complaintStatusBadge" class="case-stage-pill status-mediation">Loading...</span>
                 </div>
             </div>
 
-            <div class="complaint-header-actions">
-                <button type="button" class="btn-create" id="issueSummonButton" onclick="handleIssueSummonClick()" style="display: inline-flex; align-items: center; gap: 6px;">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+            <div class="case-bar-right">
+                <button type="button" class="btn-case-outline" id="issueSummonButton" onclick="handleIssueSummonClick()">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                     <span id="issueSummonButtonText">Issue Summon 1st Attempt</span>
                 </button>
-                <button type="button" class="btn-secondary" id="statusTrackerButton" onclick="toggleStatusTracker()" style="display: inline-flex; align-items: center; gap: 6px;">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                    <span>Status</span>
-                    <span id="statusToggleArrow" style="font-size: 0.72rem; margin-left: 2px;">▼</span>
+                <button type="button" class="btn-case-status" id="statusTrackerButton" onclick="toggleStatusTracker()" title="Toggle case progression tracking">
+                    <span id="statusDotIndicator" class="status-dot-indicator"></span>
+                    <span id="statusTrackerButtonLabel">Status: In Progress</span>
+                    <span id="statusToggleArrow" class="dropdown-arrow">▼</span>
                 </button>
-                <a id="editComplaintBtn" href="complaint-edit.php?id=<?php echo $complaintId; ?>" class="btn-secondary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+                <a id="editComplaintBtn" href="complaint-edit.php?id=<?php echo $complaintId; ?>" class="btn-case-primary">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                    Edit
+                    <span>Edit Case</span>
                 </a>
             </div>
         </div>
@@ -84,7 +77,27 @@ include '../../layouts/header.php';
             </script>
         <?php endif; ?>
 
-        <!-- Collapsible Case Status / Progress Section -->
+        <!-- Horizontal Tabs Navigation Bar -->
+        <nav class="case-tabs-nav" aria-label="Case Sections">
+            <button type="button" class="case-tab-item active" data-tab="tab-overview" onclick="switchCaseTab('tab-overview')">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
+                <span>Overview &amp; Workflow</span>
+            </button>
+            <button type="button" class="case-tab-item" data-tab="tab-mediation" onclick="switchCaseTab('tab-mediation')">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                <span>Mediation</span>
+            </button>
+            <button type="button" class="case-tab-item" data-tab="tab-conciliation" onclick="switchCaseTab('tab-conciliation')">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v1"></path><path d="M18 8h4a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-4"></path><circle cx="8" cy="12" r="2"></circle><circle cx="18" cy="13" r="1.5"></circle></svg>
+                <span>Conciliation</span>
+            </button>
+            <button type="button" class="case-tab-item" data-tab="tab-arbitration" onclick="switchCaseTab('tab-arbitration')">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                <span>Arbitration / CFA</span>
+            </button>
+        </nav>
+
+        <!-- Collapsible Case Status / Progression Section -->
         <div id="statusTrackerSection" class="status-tracker-section" style="display: none; margin: 0 30px 24px;">
             <div class="status-tracker-card">
                 <div class="status-tracker-card-header">
@@ -93,7 +106,7 @@ include '../../layouts/header.php';
                             <span class="status-tracker-icon">
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
                             </span>
-                            <h2>Complaint Status</h2>
+                            <h2>Complaint Status &amp; Progression</h2>
                         </div>
                         <span id="trackerCurrentStageBadge" class="status-pill status-filed">Loading...</span>
                     </div>
@@ -137,243 +150,414 @@ include '../../layouts/header.php';
             </div>
         </div>
 
-        <!-- Main Workspace Grid -->
-        <div class="complaint-details-workspace">
-            <div class="complaint-intake-grid">
+        <!-- ===================================================================
+             TAB PANE 1: OVERVIEW & WORKFLOW (Default Active Tab)
+             =================================================================== -->
+        <div id="tab-overview" class="case-tab-pane active">
 
-                <!-- LEFT COLUMN -->
-                <div class="intake-col">
-                    <!-- CARD 1: Incident & Classification -->
-                    <div class="intake-card">
-                        <div class="intake-card-header">
-                            <h3>1. Incident &amp; Classification</h3>
-                            <span class="card-subtitle">Category, case type, and timeline details</span>
+            <!-- Top Hero Section: Primary Case Info & Immediate Context -->
+            <div class="case-hero-card">
+                <div class="hero-badges-row">
+                    <span id="heroCaseTypeBadge" class="hero-type-pill">CRIMINAL COMPLAINT</span>
+                    <span id="heroDaysRemainingBadge" class="hero-days-pill">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                        <span id="heroDaysRemainingText">26 days remaining</span>
+                    </span>
+                </div>
+                <h2 id="complaintTitle" class="hero-case-title">Loading case title...</h2>
+                <div class="hero-meta-columns">
+                    <div class="hero-meta-item">
+                        <span class="m-label">Category</span>
+                        <span id="infoCategory" class="m-value">—</span>
+                    </div>
+                    <div class="hero-meta-item">
+                        <span class="m-label">Incident Date</span>
+                        <span id="infoIncidentDate" class="m-value">—</span>
+                    </div>
+                    <div class="hero-meta-item">
+                        <span class="m-label">Date Filed</span>
+                        <span id="infoDateFiled" class="m-value">—</span>
+                    </div>
+                    <div class="hero-meta-item">
+                        <span class="m-label">Administrative Status</span>
+                        <span id="infoStatus" class="m-value status-blue">Mediation Stage</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Side-by-Side Context Grid: Involved Parties & Incident Location -->
+            <div class="case-context-grid">
+                <!-- LEFT COLUMN: Involved Parties Card -->
+                <div class="context-box-card">
+                    <div class="context-box-header">
+                        <h3>INVOLVED PARTIES (<span id="partiesCount">0</span>)</h3>
+                        <span class="context-subtitle">Complainants &amp; Respondents</span>
+                    </div>
+                    <div id="partiesListContainer" class="parties-list-wrap">
+                        <div class="empty-detail-state">Loading parties...</div>
+                    </div>
+                </div>
+
+                <!-- RIGHT COLUMN: Incident Location Card -->
+                <div class="context-box-card">
+                    <div class="context-box-header">
+                        <h3>INCIDENT LOCATION</h3>
+                        <span class="context-subtitle">Pinned GPS</span>
+                    </div>
+                    <div class="location-summary-rows">
+                        <div class="loc-data-row">
+                            <strong>Specific Location:</strong> <span id="locationAddressText">—</span>
                         </div>
-                        <div class="detail-info-grid">
-                            <div class="detail-info-item span-full">
-                                <span class="detail-info-label">Complaint Title</span>
-                                <span id="infoComplaintTitle" class="detail-info-value">—</span>
-                            </div>
-                            <div class="detail-info-item">
-                                <span class="detail-info-label">Category</span>
-                                <span id="infoCategory" class="detail-info-value">—</span>
-                            </div>
-                            <div class="detail-info-item">
-                                <span class="detail-info-label">Case Type</span>
-                                <span id="infoCaseType" class="detail-info-value">—</span>
-                            </div>
-                            <div class="detail-info-item">
-                                <span class="detail-info-label">Incident Date</span>
-                                <span id="infoIncidentDate" class="detail-info-value">—</span>
-                            </div>
-                            <div class="detail-info-item">
-                                <span class="detail-info-label">Incident Time</span>
-                                <span id="infoIncidentTime" class="detail-info-value">—</span>
-                            </div>
-                            <div class="detail-info-item">
-                                <span class="detail-info-label">Date Filed</span>
-                                <span id="infoDateFiled" class="detail-info-value">—</span>
-                            </div>
-                            <div class="detail-info-item">
-                                <span class="detail-info-label">Administrative Status</span>
-                                <span id="infoStatus" class="detail-info-value">—</span>
-                            </div>
-                            <div class="detail-info-item span-full">
-                                <span class="detail-info-label">Docketed Case</span>
-                                <span id="infoDocketCase" class="detail-info-value">—</span>
-                            </div>
+                        <div class="loc-data-row">
+                            <strong>Landmark &amp; Coordinates:</strong> <span id="locationLandmarkText">None</span> | <span id="locationCoordinatesText">—</span>
                         </div>
                     </div>
+                    <div id="complaintDetailMap" class="context-map-frame" aria-label="Incident Location Map"></div>
+                    <div id="emptyMapPlaceholder" class="empty-map-state-frame" style="display:none;">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                        <p style="margin: 6px 0 2px; font-weight: 600; font-size: 0.88rem;">No exact GPS coordinates pinned</p>
+                        <span style="font-size: 0.78rem; color: #94a3b8;">Coordinates can be set anytime via Edit Case</span>
+                    </div>
+                </div>
+            </div>
 
-                    <!-- CARD 2: Involved Parties -->
-                    <div class="intake-card">
-                        <div class="intake-card-header">
-                            <h3>2. Involved Parties (<span id="partiesCount">0</span>)</h3>
-                            <span class="card-subtitle">Complainants, respondents, and witnesses</span>
+            <!-- Full Narrative & Facts Card (Moved from Parties & Narratives) -->
+            <div class="narrative-card-box">
+                <div class="narrative-card-header">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                    <div>
+                        <h3 style="margin: 0;">Full Narrative &amp; Facts</h3>
+                        <span class="card-subtitle" style="font-size: 0.8rem; color: #64748b; font-weight: 500;">Complete statement of complaint, narrative, and relief sought</span>
+                    </div>
+                </div>
+                <div class="narrative-text-container">
+                    <span style="font-size: 0.78rem; font-weight: 700; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 6px;">Statement of Complaint</span>
+                    <div id="complaintNarrative">Loading narrative statement...</div>
+                    <div id="complaintAdditionalDetailsWrap" style="display:none; margin-top: 14px; padding-top: 12px; border-top: 1px dashed #cbd5e1;">
+                        <strong style="font-size: 0.82rem; color: #64748b; text-transform: uppercase;">Additional Facts / Prior Attempts:</strong>
+                        <p id="complaintAdditionalDetails" style="margin: 4px 0 0; font-size: 0.9rem; color: #1e293b;"></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Operational Modules: Case Team & Hearings Schedule Grid -->
+            <div class="operational-two-col">
+                <!-- Card: Case Team Assignment -->
+                <div class="operational-card">
+                    <div class="operational-card-header">
+                        <div>
+                            <h3>Case Team Assignment</h3>
+                            <span class="card-subtitle">Assigned Lupon officers for this case</span>
                         </div>
-                        <div id="partiesListContainer" class="parties-detail-list">
-                            <div class="empty-detail-state">Loading parties...</div>
+                        <a href="../cases/case-list.php#caseAssignments" id="cwManageTeamLink" class="btn-small-link">
+                            Manage Team &rarr;
+                        </a>
+                    </div>
+                    <div id="cwTeamContainer" class="parties-list-wrap">
+                        <div class="empty-detail-state">Loading assigned case team...</div>
+                    </div>
+                </div>
+
+                <!-- Card: Hearings & Deadlines Schedule -->
+                <div class="operational-card">
+                    <div class="operational-card-header">
+                        <div>
+                            <h3>Hearings &amp; Deadlines Schedule</h3>
+                            <span class="card-subtitle">Mediation, conciliation, and session records</span>
+                        </div>
+                        <a id="cwOpenHearingsLink" href="../hearings/schedules.php" class="btn-small-link">
+                            Open Schedule &rarr;
+                        </a>
+                    </div>
+                    <div id="cwHearingsContainer">
+                        <div class="empty-detail-state">Loading scheduled hearings...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- OFFICIAL KP FORMS Card -->
+            <div class="kp-forms-card-box">
+                <div class="kp-forms-header">
+                    <div>
+                        <h3 style="margin: 0;">OFFICIAL KP FORMS</h3>
+                        <span class="card-subtitle" style="font-size: 0.82rem; color: #64748b; margin-top: 2px; display: block;">Issued Katarungang Pambarangay forms and legal notices</span>
+                    </div>
+                    <span id="heroKpDocCountBadge" class="badge-issued-chip">0 Issued</span>
+                </div>
+                <div id="heroKpFormsList" class="kp-forms-list-container">
+                    <div class="empty-detail-state">Loading issued KP forms...</div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ===================================================================
+             TAB PANE 2: MEDIATION
+             =================================================================== -->
+        <div id="tab-mediation" class="case-tab-pane">
+            <!-- Punong Barangay Mediation Stage Card / Banner -->
+            <div style="margin: 0 30px 20px;">
+                <div id="stage1Card" class="stage-card-item active">
+                    <div class="stage-card-top">
+                        <span class="stage-label-num">STAGE 1 &bull; KATARUNGANG PAMBARANGAY</span>
+                        <span id="stage1Icon" style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: rgba(255,255,255,0.25); font-size: 0.75rem;">✓</span>
+                    </div>
+                    <h3 class="stage-card-title" style="font-size: 1.15rem; margin: 4px 0 4px;">Punong Barangay Mediation</h3>
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                        <span id="stage1StatusText" class="stage-sub-status" style="font-weight: 600;">In Progress</span>
+                        <span style="font-size: 0.78rem; opacity: 0.9;">Presiding: Punong Barangay &bull; 15-day statutory conciliation (RA 7160 Sec. 410b)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Session #1 Schedule & Attendance Card -->
+            <div class="session-schedule-box" style="margin: 0 30px 24px;">
+                <div class="session-box-header">
+                    <div>
+                        <h4 id="sessionTitleHeading">Session #1 Schedule &amp; Attendance</h4>
+                        <p id="sessionSubtitleHeading" class="session-lead-text">Next Session: Oct 19, 2026 at 10:00 AM (Barangay Hall)</p>
+                    </div>
+                    <a id="cwManageScheduleLink" href="../hearings/schedules.php" class="btn-manage-sched">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                        <span>Manage Schedule</span>
+                    </a>
+                </div>
+
+                <!-- 3 Metrics KPI Grid -->
+                <div class="session-kpi-grid">
+                    <div class="session-kpi-item">
+                        <span class="kpi-label">Complainant Attendance</span>
+                        <div class="kpi-val-row">
+                            <span class="dot-status-green"></span>
+                            <span id="complainantAttendanceText">Present (0), Absent (0)</span>
                         </div>
                     </div>
-
-                    <!-- CARD 3: Narrative & Facts -->
-                    <div class="intake-card">
-                        <div class="intake-card-header">
-                            <h3>3. Narrative &amp; Facts</h3>
-                            <span class="card-subtitle">Statement of the complaint as filed</span>
+                    <div class="session-kpi-item">
+                        <span class="kpi-label">Respondent Attendance</span>
+                        <div class="kpi-val-row">
+                            <span class="dot-status-green"></span>
+                            <span id="respondentAttendanceText">Present (0), Absent (0)</span>
                         </div>
-                        <div class="detail-sub-section">
-                            <span class="detail-sub-heading">Statement of Complaint / Narrative</span>
-                            <div id="complaintNarrative" class="detail-narrative-box">Loading narrative...</div>
-                        </div>
-
-                        <div id="complaintAdditionalDetailsWrap" class="detail-sub-section" style="display:none; margin-top: 14px;">
-                            <span class="detail-sub-heading">Additional Details / Prior Attempts</span>
-                            <div id="complaintAdditionalDetails" class="detail-narrative-box"></div>
+                    </div>
+                    <div class="session-kpi-item">
+                        <span class="kpi-label">Saved Minutes</span>
+                        <div class="kpi-val-row">
+                            <span id="savedMinutesIcon">⚠️</span>
+                            <span id="savedMinutesText">Not Recorded Yet</span>
                         </div>
                     </div>
                 </div>
 
-                <!-- RIGHT COLUMN -->
-                <div class="intake-col">
-                    <!-- CARD 4: Incident Location & Map Pin -->
-                    <div class="intake-card location-card">
-                        <div class="intake-card-header">
-                            <h3>4. Incident Location</h3>
-                            <span class="card-subtitle">Geographic location and pinned coordinates</span>
-                        </div>
-                        <div class="detail-location-info">
-                            <div class="detail-location-row">
-                                <strong>Specific Location:</strong> <span id="locationAddressText">—</span>
-                            </div>
-                            <div class="detail-location-row">
-                                <strong>Nearby Landmark:</strong> <span id="locationLandmarkText">—</span>
-                            </div>
-                            <div class="detail-location-row">
-                                <strong>GPS Coordinates:</strong> <span id="locationCoordinatesText">—</span>
-                            </div>
-                        </div>
-                        <div id="complaintDetailMap" class="detail-map-container" style="display:none;" aria-label="Incident Location Map"></div>
-                        <div id="emptyMapPlaceholder" class="empty-map-placeholder" style="display:none;">
-                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-                            <p style="margin: 0; font-weight: 500;">No exact map coordinates pinned for this incident.</p>
-                            <span style="font-size: 0.78rem; color: #94a3b8;">A map pin can be added or adjusted anytime via Edit Complaint.</span>
-                        </div>
+                <!-- Bottom Action Buttons Row -->
+                <div class="session-action-bar-row">
+                    <div class="session-btn-group-left">
+                        <button type="button" id="previewKp9Btn" class="btn-sess-indigo" onclick="handlePreviewKp9()">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>
+                            <span>Preview KP Form 9</span>
+                        </button>
+                        <a id="recordAttendanceBtn" href="#" class="btn-sess-white">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><polyline points="17 11 19 13 23 9"></polyline></svg>
+                            <span>Record Attendance</span>
+                        </a>
+                        <a id="addMinutesBtn" href="#" class="btn-sess-white">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                            <span>Add Minutes</span>
+                        </a>
                     </div>
-
-                    <!-- CARD 5: Evidence & Attachments -->
-                    <div class="intake-card evidence-card">
-                        <div class="intake-card-header">
-                            <h3>5. Evidence / Attachments (<span id="attachmentsCount">0</span>)</h3>
-                            <span class="card-subtitle">Supporting documents, pictures, or videos</span>
-                        </div>
-                        <div id="attachmentsListContainer" class="attachments-detail-list">
-                            <div class="empty-detail-state">Loading attachments...</div>
-                        </div>
+                    <div class="session-btn-group-right">
+                        <a id="recordOutcomeBtn" href="#" class="btn-sess-green">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            <span>Record Outcome</span>
+                        </a>
                     </div>
                 </div>
+            </div>
 
+            <!-- Mediation Hearings & Workspace Navigation Card -->
+            <div class="hearings-schedule-card">
+                <div class="operational-card-header">
+                    <div>
+                        <h3 style="font-size: 1rem; font-weight: 800; color: #0f172a; margin: 0;">Mediation Proceedings &amp; Workspace</h3>
+                        <span class="card-subtitle">Detailed session records, show-cause notices, and mediation history</span>
+                    </div>
+                    <span id="cwMediationStatusBadge" class="status-pill status-mediation" style="font-size:0.75rem;">In Progress</span>
+                </div>
+                <div id="cwMediationContainer" style="margin-top: 10px;">
+                    <div class="empty-detail-state">Loading mediation proceedings...</div>
+                </div>
+                <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <span style="font-size: 0.82rem; color: #64748b;">
+                        Under RA 7160 Sec. 410(b), mediation is conducted by the Punong Barangay for up to 3 sessions or 15 days before Pangkat referral.
+                    </span>
+                    <a id="cwManageMediationLink" href="#" class="btn-case-outline" style="font-size: 0.84rem; padding: 6px 14px;">
+                        Open Mediation Workspace &rarr;
+                    </a>
+                </div>
             </div>
         </div>
 
-        <!-- Combined Case Workspace Section (Visible when complaint is docketed as a case) -->
-        <div id="caseWorkspaceSection" class="case-workspace-section" style="display: none; margin: 0 30px 28px;">
-            <div class="case-workspace-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; margin-bottom: 20px; padding: 16px 20px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
-                <div>
-                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
-                        <span style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; background: #dbeafe; color: #1e40af; padding: 3px 8px; border-radius: 4px;">
-                            📁 Docketed Case Workspace
-                        </span>
-                        <h2 id="cwCaseNumberHeading" style="margin: 0; font-size: 1.18rem; color: #0f172a; font-weight: 700;">Case #—</h2>
+        <!-- ===================================================================
+             TAB PANE 3: CONCILIATION
+             =================================================================== -->
+        <div id="tab-conciliation" class="case-tab-pane">
+            <!-- Pangkat Conciliation Stage Card / Banner -->
+            <div style="margin: 0 30px 20px;">
+                <div id="stage2Card" class="stage-card-item locked">
+                    <div class="stage-card-top">
+                        <span class="stage-label-num">STAGE 2 &bull; KATARUNGANG PAMBARANGAY</span>
+                        <span id="stage2Icon" style="display: inline-flex; align-items: center; justify-content: center; font-size: 0.85rem;">🔒</span>
                     </div>
-                    <p id="cwCaseMetaSubtext" style="margin: 0; font-size: 0.84rem; color: #64748b;">
-                        Docket Date: — · Case Type: — · Case Status: —
-                    </p>
-                </div>
-                <div id="cwMediationTimerBadgeWrap" style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
-                    <!-- Live Statutory Mediation Countdown Badge -->
+                    <h3 class="stage-card-title" style="font-size: 1.15rem; margin: 4px 0 4px;">Pangkat Conciliation</h3>
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                        <span id="stage2StatusText" class="stage-sub-status" style="font-weight: 600;">Locked until mediation concludes</span>
+                        <span style="font-size: 0.78rem; opacity: 0.9;">Pangkat ng Tagapagkasundo &bull; 3-member Lupon panel (RA 7160 Sec. 410c)</span>
+                    </div>
                 </div>
             </div>
 
-            <div class="complaint-intake-grid" style="margin: 0; gap: 24px;">
-                <!-- LEFT COLUMN: Case Team, Mediation, Documents -->
-                <div class="intake-col">
-                    <!-- CARD 6: Case Team Assignment -->
-                    <div class="intake-card">
-                        <div class="intake-card-header" style="display: flex; justify-content: space-between; align-items: center;">
-                            <div>
-                                <h3>6. Case Team Assignment</h3>
-                                <span class="card-subtitle">Required 3-member Lupon panel for this case</span>
-                            </div>
-                            <a href="../cases/case-list.php#caseAssignments" id="cwManageTeamLink" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
-                                Manage Team &rarr;
-                            </a>
-                        </div>
-                        <div id="cwTeamContainer" class="parties-detail-list">
-                            <div class="empty-detail-state">Loading assigned team...</div>
-                        </div>
+            <!-- Card: Pangkat Conciliation State -->
+            <div class="hearings-schedule-card">
+                <div class="operational-card-header">
+                    <div>
+                        <h3 style="font-size: 1rem; font-weight: 800; color: #0f172a; margin: 0;">Pangkat Conciliation Workspace &amp; State</h3>
+                        <span class="card-subtitle">Pangkat ng Tagapagkasundo &bull; Formal conciliation proceedings</span>
                     </div>
+                    <span id="cwConciliationStatusBadge" class="status-pill status-locked" style="font-size:0.75rem;">Locked</span>
+                </div>
+                <div id="cwConciliationContainer" style="margin-top: 14px;">
+                    <div class="empty-detail-state">Loading conciliation state...</div>
+                </div>
+                <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <span style="font-size: 0.82rem; color: #64748b;">
+                        Pangkat is constituted from Lupon members chosen by the parties (KP Form 10/11) to conduct formal conciliation within 15 days.
+                    </span>
+                    <a id="cwManageConciliationLink" href="#" class="btn-case-outline" style="font-size: 0.84rem; padding: 6px 14px;">
+                        Manage Conciliation &rarr;
+                    </a>
+                </div>
+            </div>
 
-                    <!-- CARD 7: Mediation -->
-                    <div class="intake-card">
-                        <div class="intake-card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                            <div>
-                                <h3>7. Mediation</h3>
-                                <span class="card-subtitle">Punong Barangay · Initial dispute resolution</span>
-                            </div>
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <span id="cwMediationStatusBadge" style="font-size: 0.76rem; padding: 2px 8px; border-radius: 4px; font-weight: 700; background: #f1f5f9; color: #475569;">Not Started</span>
-                                <a href="#" id="cwManageMediationLink" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
-                                    Manage Mediation &rarr;
-                                </a>
-                            </div>
-                        </div>
-                        <div id="cwMediationContainer">
-                            <div class="empty-detail-state">Loading mediation workspace...</div>
-                        </div>
-                    </div>
-
-                    <!-- CARD 9: Case Documents & KP Forms -->
-                    <div class="intake-card">
-                        <div class="intake-card-header" style="display: flex; justify-content: space-between; align-items: center;">
-                            <div>
-                                <h3>9. Case Documents &amp; KP Forms</h3>
-                                <span class="card-subtitle">Official forms and notices issued for this case</span>
-                            </div>
-                            <span id="cwDocCountBadge" style="font-size: 0.78rem; background: #e2e8f0; color: #475569; padding: 2px 8px; border-radius: 9999px; font-weight: 600;">0 forms</span>
-                        </div>
-                        <div id="cwDocumentsContainer" class="attachments-detail-list">
-                            <div class="empty-detail-state">Loading documents...</div>
-                        </div>
+            <!-- Pangkat Conciliation Guidelines Card -->
+            <div class="operational-card" style="margin: 0 30px 24px;">
+                <div class="operational-card-header">
+                    <div>
+                        <h3 style="font-size: 0.95rem; font-weight: 800; color: #0f172a; margin: 0;">Conciliation Legal Guidelines (RA 7160 Sec. 410)</h3>
+                        <span class="card-subtitle">Procedural gates and requirements for Pangkat conciliation</span>
                     </div>
                 </div>
-
-                <!-- RIGHT COLUMN: Pangkat Conciliation & Hearings Schedule -->
-                <div class="intake-col">
-                    <!-- CARD 8: Pangkat Conciliation -->
-                    <div class="intake-card">
-                        <div class="intake-card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                            <div>
-                                <h3>8. Pangkat Conciliation</h3>
-                                <span class="card-subtitle">Pangkat ng Tagapagkasundo · Formal conciliation</span>
-                            </div>
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <span id="cwConciliationStatusBadge" style="font-size: 0.76rem; padding: 2px 8px; border-radius: 4px; font-weight: 700; background: #f1f5f9; color: #64748b;">Locked</span>
-                                <a href="#" id="cwManageConciliationLink" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
-                                    Manage Conciliation &rarr;
-                                </a>
-                            </div>
-                        </div>
-                        <div id="cwConciliationContainer">
-                            <div class="empty-detail-state">Loading conciliation workspace...</div>
-                        </div>
-                    </div>
-
-                    <!-- CARD 10: Hearings & Deadlines Schedule -->
-                    <div class="intake-card">
-                        <div class="intake-card-header" style="display: flex; justify-content: space-between; align-items: center;">
-                            <div>
-                                <h3>10. Hearings &amp; Deadlines Schedule</h3>
-                                <span class="card-subtitle">Mediation, conciliation, and session records</span>
-                            </div>
-                            <a id="cwOpenHearingsLink" href="../hearings/schedules.php" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
-                                Open Schedule &rarr;
-                            </a>
-                        </div>
-                        <div id="cwHearingsContainer">
-                            <div class="empty-detail-state">Loading scheduled hearings...</div>
-                        </div>
-                    </div>
+                <div style="padding: 16px 20px; font-size: 0.86rem; color: #475569; line-height: 1.6;">
+                    <ul style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px;">
+                        <li><strong>Pangkat Constitution:</strong> The parties choose 3 members from the Lupon. If they fail to agree, the Punong Barangay draws lots.</li>
+                        <li><strong>15-Day Resolution Period:</strong> The Pangkat shall meet within 3 days from constitution and has fifteen (15) days to conciliate the dispute, extendable by another 15 days in clearly meritorious cases.</li>
+                        <li><strong>Outcomes:</strong> A successful session produces an <em>Amicable Settlement</em> (KP Form 16). If conciliation fails, a <em>Certificate to File Action</em> (KP Form 20) is issued.</li>
+                    </ul>
                 </div>
-
             </div>
         </div>
 
-        <!-- Hidden legacy compatibility containers (ensures old callers don't throw) -->
+        <!-- ===================================================================
+             TAB PANE 4: ARBITRATION / CFA
+             =================================================================== -->
+        <div id="tab-arbitration" class="case-tab-pane">
+            <!-- Arbitration / Court Referral Stage Card / Banner -->
+            <div style="margin: 0 30px 20px;">
+                <div id="stage3Card" class="stage-card-item pending">
+                    <div class="stage-card-top">
+                        <span class="stage-label-num">STAGE 3 &bull; KATARUNGANG PAMBARANGAY</span>
+                        <span id="stage3Icon" style="display: inline-flex; align-items: center; justify-content: center; font-size: 0.85rem;">🔒</span>
+                    </div>
+                    <h3 class="stage-card-title" style="font-size: 1.15rem; margin: 4px 0 4px;">Arbitration / Court Referral</h3>
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                        <span id="stage3StatusText" class="stage-sub-status" style="font-weight: 600;">Pending</span>
+                        <span style="font-size: 0.78rem; opacity: 0.9;">Binding Arbitration (RA 7160 Sec. 413) &bull; Certification to File Action (CFA)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card: Arbitration / Court Referral State -->
+            <div class="hearings-schedule-card">
+                <div class="operational-card-header">
+                    <div>
+                        <h3 style="font-size: 1rem; font-weight: 800; color: #0f172a; margin: 0;">Arbitration / Court Referral Workspace</h3>
+                        <span class="card-subtitle">Voluntary binding arbitration proceedings or formal elevation to court</span>
+                    </div>
+                    <span id="cwArbitrationStatusBadge" class="status-pill status-locked" style="font-size:0.75rem;">Pending</span>
+                </div>
+                <div id="cwArbitrationContainer" style="margin-top: 14px;">
+                    <div class="empty-detail-state">Loading arbitration details...</div>
+                </div>
+                <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <span style="font-size: 0.82rem; color: #64748b;">
+                        Under Sec. 413 of RA 7160, parties may agree in writing to submit their dispute to binding arbitration at any stage of the proceedings.
+                    </span>
+                    <a id="cwManageArbitrationLink" href="#" class="btn-case-outline" style="font-size: 0.84rem; padding: 6px 14px;">
+                        Open Arbitration Workspace &rarr;
+                    </a>
+                </div>
+            </div>
+
+            <!-- Statutory Pathways: Arbitration vs Court Referral Card -->
+            <div class="operational-two-col" style="margin: 0 30px 24px;">
+                <div class="operational-card">
+                    <div class="operational-card-header">
+                        <div>
+                            <h3 style="font-size: 0.92rem; font-weight: 800; color: #0f172a; margin: 0;">Binding Arbitration (Sec. 413)</h3>
+                            <span class="card-subtitle">Voluntary submission by written agreement</span>
+                        </div>
+                    </div>
+                    <div style="padding: 16px 20px; font-size: 0.84rem; color: #475569; line-height: 1.55;">
+                        <p style="margin: 0 0 8px;">Parties may at any stage agree in writing (<strong>KP Form 14</strong>) that the Punong Barangay or Pangkat shall arbitrate the dispute.</p>
+                        <p style="margin: 0 0 8px;">An agreement to arbitrate may be repudiated within five (5) days from the date thereof on valid legal grounds.</p>
+                        <p style="margin: 0;">The arbitration award (<strong>KP Form 15</strong>) is binding and has the force and effect of a final judgment of a court after 10 days.</p>
+                    </div>
+                </div>
+
+                <div class="operational-card">
+                    <div class="operational-card-header">
+                        <div>
+                            <h3 style="font-size: 0.92rem; font-weight: 800; color: #0f172a; margin: 0;">Certification to File Action (CFA)</h3>
+                            <span class="card-subtitle">Prerequisite condition for court litigation</span>
+                        </div>
+                    </div>
+                    <div style="padding: 16px 20px; font-size: 0.84rem; color: #475569; line-height: 1.55;">
+                        <p style="margin: 0 0 8px;">No individual may go directly to court without a valid Certificate to File Action issued under Katarungang Pambarangay rules.</p>
+                        <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px;">
+                            <li><strong>KP Form 20:</strong> Issued after confrontation before Punong Barangay and Pangkat fails.</li>
+                            <li><strong>KP Form 21:</strong> Issued if Complainant fails/refuses to appear.</li>
+                            <li><strong>KP Form 22:</strong> Issued if Respondent fails/refuses to appear.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hidden legacy compatibility elements (preserves existing JS selectors) -->
+        <div id="caseWorkspaceSection" style="display:none;"></div>
         <div id="complaintInfo" style="display:none;"></div>
         <div id="complaintReviewNotes" style="display:none;"></div>
         <table style="display:none;"><tbody id="partiesTable"></tbody></table>
         <table style="display:none;"><tbody id="attachmentsTable"></tbody></table>
+        <span id="complaintCaseTypeBadge" style="display:none;">Civil</span>
+        <span id="complaintCategoryBadge" style="display:none;">Category</span>
+        <span id="infoComplaintTitle" style="display:none;">—</span>
+        <span id="infoCaseType" style="display:none;">—</span>
+        <span id="infoIncidentTime" style="display:none;">—</span>
+        <span id="infoDocketCase" style="display:none;">—</span>
+        <span id="progressionActiveStageBadge" style="display:none;">Active Stage</span>
+        <span id="cwDocCountBadge" style="display:none;">0 forms</span>
+        <span id="tabDocsCountBadge" style="display:none;">0</span>
+        <div id="cwDocumentsContainer" style="display:none;"></div>
+        <span id="partiesFullCount" style="display:none;">0</span>
+        <div id="partiesFullContainer" style="display:none;"></div>
+        <span id="tab2LocationAddress" style="display:none;"></span>
+        <span id="tab2LocationLandmark" style="display:none;"></span>
+        <span id="tab2LocationCoords" style="display:none;"></span>
+        <div id="tab2DetailMap" style="display:none;"></div>
+        <div id="tab2ComplaintNarrative" style="display:none;"></div>
+        <div id="tab2AdditionalDetailsWrap" style="display:none;"><div id="tab2AdditionalDetails"></div></div>
+        <span id="attachmentsCount" style="display:none;">0</span>
+        <div id="attachmentsListContainer" style="display:none;"></div>
+        <div id="evidenceDropzone" style="display:none;"><input type="file" id="evidenceFileInput" style="display:none;"><div id="dropzoneUploadProgress" style="display:none;"></div></div>
         <input type="hidden" id="partyComplaintId" value="<?php echo $complaintId; ?>">
         <input type="hidden" id="attachmentComplaintId" value="<?php echo $complaintId; ?>">
 
@@ -381,6 +565,7 @@ include '../../layouts/header.php';
 
 </div>
 
+<!-- Issue Summon Modal -->
 <div id="issueSummonModal" class="modal" style="display: none;">
     <div class="modal-content" style="max-width: 520px; max-height: calc(100vh - 40px); display: flex; flex-direction: column; padding: 0; border-radius: 12px; overflow: hidden;">
         <div class="modal-header" style="padding: 18px 24px 14px; margin-bottom: 0; border-bottom: 1px solid #f1f5f9; flex-shrink: 0;">

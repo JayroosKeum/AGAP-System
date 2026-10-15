@@ -21,11 +21,17 @@ class HearingAttendance
     {
         $stmt = $this->conn->prepare(
             "SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.venue, h.remarks AS hearing_remarks,
+                    h.presiding_officer_id, h.substitute_presider_id, h.substitute_reason, h.parties_consent_to_substitute,
+                    h.complainant_attendance, h.respondent_attendance, h.attendance_recorded_at, h.attendance_notes,
+                    TRIM(CONCAT_WS(' ', po.first_name, po.middle_name, po.last_name)) AS presiding_officer_name,
+                    TRIM(CONCAT_WS(' ', sp.first_name, sp.middle_name, sp.last_name)) AS substitute_presider_name,
                     c.case_number, c.case_status, c.docket_date, c.complaint_id,
                     co.complaint_number, co.complaint_title
              FROM hearings h
              INNER JOIN cases c ON c.case_id = h.case_id
              INNER JOIN complaints co ON co.complaint_id = c.complaint_id
+             LEFT JOIN users po ON po.user_id = h.presiding_officer_id
+             LEFT JOIN users sp ON sp.user_id = h.substitute_presider_id
              WHERE h.hearing_id = ?"
         );
         $stmt->execute([$hearingId]);
@@ -33,6 +39,24 @@ class HearingAttendance
 
         if (!$hearing) {
             return ['success' => false, 'message' => 'Hearing not found.'];
+        }
+
+        if (empty($hearing['presiding_officer_name'])) {
+            $headStmt = $this->conn->prepare("
+                SELECT ca.member_id, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS head_name
+                FROM case_assignments ca
+                INNER JOIN users u ON u.user_id = ca.member_id
+                WHERE ca.case_id = ? AND ca.assignment_role IN ('Head', 'Mediator')
+                ORDER BY ca.assigned_date DESC LIMIT 1
+            ");
+            $headStmt->execute([(int) $hearing['case_id']]);
+            $head = $headStmt->fetch(PDO::FETCH_ASSOC);
+            if ($head) {
+                $hearing['presiding_officer_id'] = (int) $head['member_id'];
+                $hearing['presiding_officer_name'] = $head['head_name'];
+            } else {
+                $hearing['presiding_officer_name'] = 'Punong Barangay / Lupon Chairman';
+            }
         }
 
         // Count summons issued for this case to differentiate 1st vs 2nd summons
@@ -66,11 +90,24 @@ class HearingAttendance
         $partiesStmt->execute([$hearingId, $hearingId, $hearingId, $hearingId, $hearingId, $hearing['complaint_id']]);
         $parties = $partiesStmt->fetchAll(PDO::FETCH_ASSOC);
 
+        // Determine mediation hearing sequence for data validation
+        $seqStmt = $this->conn->prepare("
+            SELECT COUNT(*) FROM hearings 
+            WHERE case_id = ? AND hearing_type IN ('Initial Hearing', 'Mediation') AND hearing_id <= ?
+        ");
+        $seqStmt->execute([(int) $hearing['case_id'], $hearingId]);
+        $hearingSequence = (int) $seqStmt->fetchColumn() ?: 1;
+        $hearing['hearing_sequence'] = $hearingSequence;
+        $isSecondOrLaterMediation = ($hearingSequence >= 2 || !in_array($hearing['hearing_type'] ?? '', ['Initial Hearing', 'Mediation'], true));
+
         // Normalize party attendance info
-        $parties = array_map(function ($p) {
+        $parties = array_map(function ($p) use ($isSecondOrLaterMediation) {
             $summonStatus = $p['summon_delivery_status'] ?? null;
             $summonServed = in_array($summonStatus, ['Served Personal', 'Served Substituted', 'Served Refused'], true);
-            $serviceConfirmed = ((int) ($p['successful_service_count'] ?? 0) > 0) || $summonServed;
+            $serviceConfirmed = $isSecondOrLaterMediation || ((int) ($p['successful_service_count'] ?? 0) > 0) || $summonServed;
+            $displayStatus = $isSecondOrLaterMediation
+                ? ($summonServed ? $summonStatus : 'Served (Prior Notice)')
+                : ($summonStatus ?: 'Pending');
 
             return [
                 'resident_id' => (int) $p['resident_id'],
@@ -83,7 +120,7 @@ class HearingAttendance
                 'address' => $p['address'] ?? '',
                 'attendance_id' => $p['attendance_id'] ? (int) $p['attendance_id'] : null,
                 'service_confirmed' => $serviceConfirmed,
-                'summon_delivery_status' => $summonStatus ?: 'Pending',
+                'summon_delivery_status' => $displayStatus,
                 'summon_unserved_reason' => $p['summon_unserved_reason'] ?? '',
                 'summon_served_at' => $p['summon_served_at'] ?? null,
                 'attendance_status' => $p['attendance_status'] ?: 'Pending',
@@ -120,6 +157,84 @@ class HearingAttendance
         $summonsServers = $serversStmt->fetchAll(PDO::FETCH_ASSOC);
 
         $situation = $this->evaluateSituation($parties, $summonsCount, $hearing['hearing_type'], $hearing['case_status']);
+
+        // Party-specific show-cause and barring form statuses
+        $scStmt = $this->conn->prepare("
+            SELECT party_type, form_type, is_justified, action_taken, justification_notes, created_at AS evaluated_at
+            FROM show_cause_evaluations
+            WHERE case_id = ?
+            ORDER BY created_at DESC
+        ");
+        $scStmt->execute([(int) $hearing['case_id']]);
+        $evalRows = $scStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $compEval = null;
+        $respEval = null;
+        foreach ($evalRows as $ev) {
+            if ($ev['party_type'] === 'Complainant' && !$compEval) {
+                $compEval = $ev;
+            } elseif ($ev['party_type'] === 'Respondent' && !$respEval) {
+                $respEval = $ev;
+            }
+        }
+
+        $doc18Stmt = $this->conn->prepare("
+            SELECT gd.document_id, gd.file_path FROM generated_documents gd
+            INNER JOIN document_templates dt ON dt.template_id = gd.template_id
+            WHERE gd.case_id = ? AND dt.template_name = 'KP Form 18'
+            ORDER BY gd.generated_at DESC LIMIT 1
+        ");
+        $doc18Stmt->execute([(int) $hearing['case_id']]);
+        $doc18 = $doc18Stmt->fetch(PDO::FETCH_ASSOC);
+
+        $doc19Stmt = $this->conn->prepare("
+            SELECT gd.document_id, gd.file_path FROM generated_documents gd
+            INNER JOIN document_templates dt ON dt.template_id = gd.template_id
+            WHERE gd.case_id = ? AND dt.template_name = 'KP Form 19'
+            ORDER BY gd.generated_at DESC LIMIT 1
+        ");
+        $doc19Stmt->execute([(int) $hearing['case_id']]);
+        $doc19 = $doc19Stmt->fetch(PDO::FETCH_ASSOC);
+
+        $compAbsent = false;
+        $respAbsent = false;
+        foreach ($parties as $p) {
+            if ($p['party_type'] === 'Complainant' && ($p['attendance_status'] ?? '') === 'Absent') {
+                $compAbsent = true;
+            } elseif ($p['party_type'] === 'Respondent' && ($p['attendance_status'] ?? '') === 'Absent') {
+                $respAbsent = true;
+            }
+        }
+
+        $partyFormRules = [
+            'hearing_sequence' => $hearingSequence,
+            'is_second_or_later' => $isSecondOrLaterMediation,
+            'complainant' => [
+                'kp18_eligible' => ($isSecondOrLaterMediation && $compAbsent),
+                'kp18_generated' => (bool) $doc18,
+                'kp18_document_id' => $doc18 ? (int) $doc18['document_id'] : null,
+                'kp18_reason' => !$isSecondOrLaterMediation
+                    ? 'KP Form 18 is not applicable for 1st Mediation. Proceed to book the 2nd Mediation session.'
+                    : (!$compAbsent ? 'Complainant was not recorded absent in this 2nd Mediation session.' : 'Eligible for KP Form 18 Notice.'),
+                'kp21_unlocked' => ($compEval && (int) $compEval['is_justified'] === 0),
+                'kp21_reason' => !$compEval 
+                    ? 'KP Form 21 (Bar Action) is locked: Requires a show-cause hearing evaluation ruling non-appearance as unjustified.'
+                    : ((int) $compEval['is_justified'] === 1 ? 'KP Form 21 cannot be issued: Complainant absence was ruled justified.' : 'Eligible for KP Form 21 (Certificate to Bar Action).'),
+            ],
+            'respondent' => [
+                'kp19_eligible' => ($isSecondOrLaterMediation && $respAbsent),
+                'kp19_generated' => (bool) $doc19,
+                'kp19_document_id' => $doc19 ? (int) $doc19['document_id'] : null,
+                'kp19_reason' => !$isSecondOrLaterMediation
+                    ? 'KP Form 19 is not applicable for 1st Mediation. Proceed to book the 2nd Mediation session.'
+                    : (!$respAbsent ? 'Respondent was not recorded absent in this 2nd Mediation session.' : 'Eligible for KP Form 19 Notice.'),
+                'kp22_unlocked' => ($respEval && (int) $respEval['is_justified'] === 0),
+                'kp22_reason' => !$respEval 
+                    ? 'KP Form 22 (Bar Counterclaim) is locked: Requires a show-cause hearing evaluation ruling non-appearance as unjustified.'
+                    : ((int) $respEval['is_justified'] === 1 ? 'KP Form 22 cannot be issued: Respondent absence was ruled justified.' : 'Eligible for KP Form 22 (Certificate to Bar Counterclaim).'),
+            ]
+        ];
+        $hearing['party_form_rules'] = $partyFormRules;
 
         return [
             'success' => true,

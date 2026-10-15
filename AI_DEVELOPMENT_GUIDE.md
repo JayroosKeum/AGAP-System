@@ -23,9 +23,12 @@ If these cannot be named clearly, propose a simplification plan before implement
 | Complaint details and parties | `complaints`, `complaint_parties`, `residents` |
 | Case stage and final disposition | `cases.case_status` |
 | Hearing schedule and completion | `hearings` |
-| Attendance | `hearing_attendance` |
+| Presiding officer and substitution | `hearings.presiding_officer_id`, `hearings.substitute_presider_id`, `hearings.substitute_reason`, `hearings.parties_consent_to_substitute` |
+| Attendance and non-appearance | `hearing_attendance`, `hearings.complainant_attendance`, `hearings.respondent_attendance` |
+| Show-cause justification evaluation | `show_cause_evaluations` |
+| Hearing minutes and settlement notes | `hearing_minutes` |
 | Summons service attempts | `summon_deliveries` |
-| Pangkat membership | `pangkat_groups`, `pangkat_members` |
+| Pangkat membership & challenges | `pangkat_groups`, `pangkat_members`, `pangkat_challenges`, `pangkat_extensions` |
 | History | `case_history` and audit log |
 
 Do not introduce another table that represents the same fact. Dashboards may derive data from these records, but must not become alternate sources of truth.
@@ -35,16 +38,20 @@ Do not introduce another table that represents the same fact. Dashboards may der
 ```text
 Complaint → Reviewed → Docketed
           → Summons issued → Service recorded
-          → Mediation → approved outcome
-              ├─ Settled / dismissed / final outcome
-              └─ Referred to Pangkat → Conciliation → approved outcome
+          → Mediation (1st → 2nd → 3rd) → approved outcome
+              ├─ Settled (KP Form 16) / dismissed / final outcome
+              └─ Referred to Pangkat → Conciliation (1st → 2nd → 3rd) → approved outcome
                                                 ├─ Settled
-                                                └─ CFA review → CFA issued
+                                                └─ CFA review → CFA issued (KP Form 20)
 ```
 
 - Scheduling a hearing is not an outcome.
 - Issuing a document is not proof of service.
+- Initial summons (KP Form 9) serves for the 1st Mediation; 2nd and subsequent mediations do not require summons re-issuance and inherit prior service notice.
+- Non-appearance in 2nd mediation unlocks KP Form 18 (Complainant) and KP Form 19 (Respondent) show-cause hearing notices.
+- Certificate to Bar Action (KP Form 21) or Counterclaim (KP Form 22) requires a recorded show-cause evaluation ruling non-appearance as unjustified.
 - A hearing count never changes a case stage by itself.
+- Elevation to Pangkat Conciliation requires completion of 3 mediation sessions with an unresolved outcome and an explicit authorized action.
 - A stage changes only through an explicit, authorized server-side action.
 - A terminal outcome prevents ordinary scheduling.
 - A legal/KP policy owner approves statutory rules, KP form wording, deadline calculations, and CFA grounds before they are changed.

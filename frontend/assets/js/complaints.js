@@ -91,6 +91,8 @@ window.addEventListener('pageshow', (event) => {
 
     initialiseComplaintMaps();
     initialiseNarrativeEnhancement();
+    initialiseCaseTabs();
+    initialiseDropzone();
 
     const flash = window.agapComplaintFlash;
     if (flash?.message) {
@@ -166,6 +168,160 @@ function initialiseNarrativeEnhancement() {
     });
 }
 
+function initialiseCaseTabs() {
+    document.querySelectorAll('.case-tab-item').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const tabId = btn.getAttribute('data-tab');
+            if (tabId) switchCaseTab(tabId);
+        });
+    });
+}
+
+function switchCaseTab(tabId) {
+    if (tabId === 'tab-parties') tabId = 'tab-mediation';
+    if (tabId === 'tab-documents') tabId = 'tab-conciliation';
+
+    document.querySelectorAll('.case-tab-item').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-tab') === tabId);
+    });
+    document.querySelectorAll('.case-tab-pane').forEach(pane => {
+        pane.classList.toggle('active', pane.id === tabId);
+    });
+
+    // Invalidate map sizes to ensure tiles render properly after tab switch
+    if (tabId === 'tab-overview' && window.complaintDetailMapInstance) {
+        setTimeout(() => window.complaintDetailMapInstance.invalidateSize(), 150);
+    }
+}
+window.switchCaseTab = switchCaseTab;
+
+function initTab2Map(lat, lng, compNum, locAddress) {
+    const mapContainer = document.getElementById('tab2DetailMap');
+    if (!mapContainer || !window.L || isNaN(lat) || isNaN(lng)) return;
+
+    if (window.tab2MapInstance) {
+        window.tab2MapInstance.remove();
+        window.tab2MapInstance = null;
+    }
+
+    try {
+        const map = L.map('tab2DetailMap', { scrollWheelZoom: false }).setView([lat, lng], 16);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+        const marker = L.marker([lat, lng]).addTo(map);
+        marker.bindPopup(`<strong>${escapeHtml(compNum)}</strong><br>${escapeHtml(locAddress)}`).openPopup();
+        window.tab2MapInstance = map;
+        setTimeout(() => map.invalidateSize(), 200);
+    } catch (e) {
+        console.error('Error initializing Tab 2 map:', e);
+    }
+}
+
+function handlePreviewKp9() {
+    const caseId = window.complaintData?.case_id || (new URLSearchParams(window.location.search)).get('case_id');
+    const docs = window.complaintData?.case_workspace?.documents || [];
+    const kp9Doc = docs.find(d => String(d.template_name || '').includes('KP Form 9') || String(d.template_name || '').includes('Summon'));
+    const docId = kp9Doc ? kp9Doc.document_id : null;
+    if (caseId) {
+        if (typeof openSummonsPreviewModal === 'function') {
+            openSummonsPreviewModal(caseId, docId);
+        } else {
+            console.warn('openSummonsPreviewModal is not defined.');
+        }
+    } else {
+        window.agapNotify?.('Case has not been docketed yet or no summons issued.', 'warning');
+    }
+}
+window.handlePreviewKp9 = handlePreviewKp9;
+
+function initialiseDropzone() {
+    const dropzone = document.getElementById('evidenceDropzone');
+    if (!dropzone) return;
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropzone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropzone.classList.add('dragover');
+        }, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropzone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropzone.classList.remove('dragover');
+        }, false);
+    });
+
+    dropzone.addEventListener('drop', (e) => {
+        const dt = e.dataTransfer;
+        const files = dt ? dt.files : null;
+        if (files && files.length > 0) {
+            uploadDroppedFiles(files);
+        }
+    }, false);
+}
+
+window.handleDropzoneFileSelect = function(e) {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+        uploadDroppedFiles(files);
+    }
+};
+
+async function uploadDroppedFiles(files) {
+    const params = new URLSearchParams(window.location.search);
+    const complaintId = params.get('id');
+    if (!complaintId) {
+        window.agapNotify?.('Complaint ID missing.', 'error');
+        return;
+    }
+
+    const progressEl = document.getElementById('dropzoneUploadProgress');
+    if (progressEl) {
+        progressEl.style.display = 'block';
+        progressEl.textContent = `Uploading ${files.length} file(s)…`;
+    }
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const formData = new FormData();
+        formData.append('complaint_id', complaintId);
+        formData.append('attachment', file);
+
+        try {
+            const res = await fetch('../../../backend/api/complaints/attachments.php', {
+                method: 'POST',
+                body: formData
+            });
+            const json = await res.json().catch(() => ({}));
+            if (res.ok && json.success) {
+                successCount++;
+            } else {
+                failCount++;
+            }
+        } catch (err) {
+            failCount++;
+        }
+    }
+
+    if (progressEl) progressEl.style.display = 'none';
+
+    if (successCount > 0) {
+        window.agapNotify?.(`Successfully uploaded ${successCount} attachment(s).`, 'success');
+        await loadComplaintDetails();
+    }
+    if (failCount > 0) {
+        window.agapNotify?.(`Failed to upload ${failCount} attachment(s).`, 'error');
+    }
+}
+
 async function loadComplaintDetails() {
     // Get complaint ID from URL
     const params = new URLSearchParams(window.location.search);
@@ -180,43 +336,75 @@ async function loadComplaintDetails() {
             return;
         }
 
-        // Header Title & Number
+        window.complaintData = data;
+
+        // Keep the complaint reference available for the map popup and internal UI.
         const compNum = data.complaint_number || ('CMP-' + String(data.complaint_id).padStart(5, '0'));
+
+        // Header Case Number
         const compNumEl = document.getElementById('complaintNumber');
-        if (compNumEl) compNumEl.textContent = 'Complaint #' + compNum;
+        if (compNumEl) {
+            compNumEl.textContent = data.case_id && data.case_number
+                ? 'Case #' + data.case_number
+                : 'Case #' + (data.complaint_number || ('CMP-' + String(data.complaint_id).padStart(5, '0')));
+        }
 
         const compTitleEl = document.getElementById('complaintTitle');
         if (compTitleEl) compTitleEl.textContent = data.complaint_title || 'Untitled Complaint';
 
         // Status Badge
         const statusEl = document.getElementById('complaintStatusBadge');
+        const caseStage = data.case_workspace?.case?.case_status;
+        const displayStage = caseStage ? (caseStage + ' Stage') : (data.lifecycle_status || 'Under Review');
         if (statusEl) {
-            const allowedLifecycleStatuses = ['Pending', 'Mediation', 'Conciliation', 'CFA', 'Resolution / Closed'];
-            const st = allowedLifecycleStatuses.includes(data.lifecycle_status)
-                ? data.lifecycle_status
-                : 'Pending';
-            const stSlug = st.toLowerCase().replace(/[^a-z0-9]/g, '-');
-            statusEl.className = 'status-pill status-' + stSlug;
-            statusEl.textContent = st;
+            const stSlug = (caseStage || data.lifecycle_status || 'pending').toLowerCase().replace(/[^a-z0-9]/g, '-');
+            statusEl.className = 'case-stage-pill status-' + stSlug;
+            statusEl.textContent = displayStage;
         }
 
-        // Type & Category Badges
+        // Action Bar Status Tracker Button
+        const statusBtnLabel = document.getElementById('statusTrackerButtonLabel');
+        if (statusBtnLabel) {
+            statusBtnLabel.textContent = 'Status: ' + (caseStage ? 'In Progress' : (data.lifecycle_status || 'In Progress'));
+        }
+        const statusDot = document.getElementById('statusDotIndicator');
+        if (statusDot) {
+            const isClosed = ['Amicable Settlement', 'Arbitration Award', 'Settled', 'Closed'].includes(data.lifecycle_status);
+            statusDot.style.background = isClosed ? '#10b981' : '#f59e0b';
+        }
+
+        // Hero Case Type Badge
+        const heroTypeEl = document.getElementById('heroCaseTypeBadge');
+        if (heroTypeEl) heroTypeEl.textContent = (data.case_type || 'Civil').toUpperCase() + ' COMPLAINT';
+
+        // Hero Days Remaining Counter Badge
+        const daysBadge = document.getElementById('heroDaysRemainingBadge');
+        const daysText = document.getElementById('heroDaysRemainingText');
+        const timer = data.case_workspace?.case?.mediation_timer;
+        if (daysBadge && daysText) {
+            if (timer) {
+                daysBadge.style.display = 'inline-flex';
+                daysBadge.className = 'hero-days-pill ' + (timer.badge_class || 'badge-within-period');
+                daysText.textContent = timer.badge_label || (timer.days_remaining !== undefined ? `${timer.days_remaining} days remaining` : 'Within Period');
+            } else if (data.case_id) {
+                daysBadge.style.display = 'inline-flex';
+                daysBadge.className = 'hero-days-pill badge-within-period';
+                daysText.textContent = 'Active Proceeding';
+            } else {
+                daysBadge.style.display = 'inline-flex';
+                daysBadge.className = 'hero-days-pill badge-within-period';
+                daysText.textContent = 'Pre-docketing';
+            }
+        }
+
+        // Legacy Type & Category Badges
         const typeEl = document.getElementById('complaintCaseTypeBadge');
         if (typeEl) typeEl.textContent = data.case_type || 'Civil';
 
         const catEl = document.getElementById('complaintCategoryBadge');
         if (catEl) catEl.textContent = data.category_name || (data.category_id ? 'Category #' + data.category_id : 'General');
 
-        // Linked case badge only. The Case Workspace page has been removed.
         const caseNumber = data.case_number || (data.case_id ? String(data.case_id) : null);
-        const caseLinkEl = document.getElementById('complaintCaseLink');
-        const caseBadgeText = document.getElementById('caseNumberBadgeText');
-        if (caseLinkEl) {
-            caseLinkEl.style.display = data.case_id ? 'inline-flex' : 'none';
-        }
-        if (caseBadgeText && data.case_id) {
-            caseBadgeText.textContent = caseNumber || data.case_id;
-        }
 
         // Edit link
         const editBtn = document.getElementById('editComplaintBtn');
@@ -225,26 +413,17 @@ async function loadComplaintDetails() {
         // Load Case Status / Progress Tracker & Action Buttons first
         await loadCaseProgress(complaintId);
 
-
-        // Card 1: Incident & Classification Info Grid
+        // Hero Meta Columns
         setText('infoComplaintTitle', data.complaint_title);
-        setText('infoCategory', data.category_name || (data.category_id ? 'Category #' + data.category_id : 'General'));
+        setText('infoCategory', data.category_name || (data.category_id ? 'Category #' + data.category_id : 'Threats'));
         setText('infoCaseType', data.case_type || 'Civil');
-        setText('infoIncidentDate', data.incident_date ? formatDateReadable(data.incident_date) : 'N/A');
-        setText('infoIncidentTime', data.incident_time ? formatTime12(data.incident_time) : 'Not recorded');
+        const incTime = data.incident_time ? formatTime12(data.incident_time) : '';
+        const incDate = data.incident_date ? formatDateReadable(data.incident_date) : 'N/A';
+        setText('infoIncidentDate', (incDate !== 'N/A' && incTime && incTime !== 'Not recorded') ? `${incDate} at ${incTime}` : incDate);
+        setText('infoIncidentTime', incTime || 'Not recorded');
         setText('infoDateFiled', data.created_at ? formatDateReadable(data.created_at) : '—');
-        // Store complaint date for summon modal deadline enforcement (15 days from filing)
+        setText('infoStatus', displayStage);
         window.complaintCreatedAt = data.created_at || null;
-
-        const infoStatusEl = document.getElementById('infoStatus');
-        if (infoStatusEl) {
-            const allowedLifecycleStatuses = ['Pending', 'Mediation', 'Conciliation', 'CFA', 'Resolution / Closed'];
-            const st = allowedLifecycleStatuses.includes(data.lifecycle_status)
-                ? data.lifecycle_status
-                : 'Pending';
-            const stSlug = st.toLowerCase().replace(/[^a-z0-9]/g, '-');
-            infoStatusEl.innerHTML = `<span class="status-pill status-${stSlug}">${escapeHtml(st)}</span>`;
-        }
 
         const infoDocketEl = document.getElementById('infoDocketCase');
         if (infoDocketEl) {
@@ -255,24 +434,36 @@ async function loadComplaintDetails() {
             }
         }
 
-        // Card 3: Narrative & Additional Details
+        // Narrative & Additional Details (Overview & Tab 2)
         const narrEl = document.getElementById('complaintNarrative');
         if (narrEl) narrEl.textContent = data.narrative || 'No statement narrative provided.';
+        setText('tab2ComplaintNarrative', data.narrative || 'No statement narrative provided.');
 
         const addWrap = document.getElementById('complaintAdditionalDetailsWrap');
         const addEl = document.getElementById('complaintAdditionalDetails');
-        if (addWrap && addEl) {
-            if (data.additional_details && data.additional_details.trim()) {
+        const tab2AddWrap = document.getElementById('tab2AdditionalDetailsWrap');
+        const tab2AddEl = document.getElementById('tab2AdditionalDetails');
+        if (data.additional_details && data.additional_details.trim()) {
+            if (addWrap && addEl) {
                 addWrap.style.display = 'block';
                 addEl.textContent = data.additional_details;
-            } else {
-                addWrap.style.display = 'none';
             }
+            if (tab2AddWrap && tab2AddEl) {
+                tab2AddWrap.style.display = 'block';
+                tab2AddEl.textContent = data.additional_details;
+            }
+        } else {
+            if (addWrap) addWrap.style.display = 'none';
+            if (tab2AddWrap) tab2AddWrap.style.display = 'none';
         }
 
-        // Card 4: Incident Location & Leaflet Map
-        setText('locationAddressText', data.incident_location || (data.location && data.location.address) || 'Not specified');
-        setText('locationLandmarkText', data.incident_landmark || 'None');
+        // Incident Location & Leaflet Maps
+        const locAddress = data.incident_location || (data.location && data.location.address) || 'Not specified';
+        const locLandmark = data.incident_landmark || 'None';
+        setText('locationAddressText', locAddress);
+        setText('locationLandmarkText', locLandmark);
+        setText('tab2LocationAddress', locAddress);
+        setText('tab2LocationLandmark', locLandmark);
 
         const mapContainer = document.getElementById('complaintDetailMap');
         const emptyMapPlaceholder = document.getElementById('emptyMapPlaceholder');
@@ -282,7 +473,10 @@ async function loadComplaintDetails() {
         const lng = data.location && data.location.longitude ? parseFloat(data.location.longitude) : null;
 
         if (lat && lng && !isNaN(lat) && !isNaN(lng)) {
-            if (coordText) coordText.textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+            const formattedCoords = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+            if (coordText) coordText.textContent = formattedCoords;
+            setText('tab2LocationCoords', formattedCoords);
+
             if (mapContainer && window.L) {
                 mapContainer.style.display = 'block';
                 if (emptyMapPlaceholder) emptyMapPlaceholder.style.display = 'none';
@@ -294,12 +488,15 @@ async function loadComplaintDetails() {
                     attribution: '&copy; OpenStreetMap contributors'
                 }).addTo(map);
                 const marker = L.marker([lat, lng]).addTo(map);
-                marker.bindPopup(`<strong>${escapeHtml(compNum)}</strong><br>${escapeHtml(data.incident_location || 'Incident Location')}`).openPopup();
+                marker.bindPopup(`<strong>${escapeHtml(compNum)}</strong><br>${escapeHtml(locAddress)}`).openPopup();
                 window.complaintDetailMapInstance = map;
                 setTimeout(() => map.invalidateSize(), 200);
             }
+
+            initTab2Map(lat, lng, compNum, locAddress);
         } else {
-            if (coordText) coordText.textContent = 'No GPS coordinates pinned';
+            if (coordText) coordText.textContent = 'None';
+            setText('tab2LocationCoords', 'None');
             if (mapContainer) mapContainer.style.display = 'none';
             if (emptyMapPlaceholder) emptyMapPlaceholder.style.display = 'flex';
         }
@@ -374,9 +571,13 @@ function loadResidents() {
 
 function renderParties(parties) {
     const container = document.getElementById('partiesListContainer');
+    const fullContainer = document.getElementById('partiesFullContainer');
     const tbody = document.getElementById('partiesTable');
     const countEl = document.getElementById('partiesCount');
+    const fullCountEl = document.getElementById('partiesFullCount');
+
     if (countEl) countEl.textContent = parties.length;
+    if (fullCountEl) fullCountEl.textContent = parties.length;
 
     if (tbody) {
         if (parties.length === 0) {
@@ -396,33 +597,62 @@ function renderParties(parties) {
         }
     }
 
-    if (!container) return;
+    if (!container && !fullContainer) return;
 
     if (parties.length === 0) {
-        container.innerHTML = '<div class="empty-detail-state"><p style="margin:0;">No parties added to this complaint yet.</p></div>';
+        const emptyHtml = '<div class="empty-detail-state"><p style="margin:0;">No parties added to this complaint yet.</p></div>';
+        if (container) container.innerHTML = emptyHtml;
+        if (fullContainer) fullContainer.innerHTML = emptyHtml;
         return;
     }
 
     let cards = '';
+    let firstComplainantSeen = false;
+
     parties.forEach(party => {
-        const typeClass = 'badge-' + escapeHtml(String(party.party_type).toLowerCase());
+        const pType = String(party.party_type || '').trim().toLowerCase();
+        let typeClass = 'complainant';
+        let isPrimary = false;
+
+        if (pType === 'complainant') {
+            typeClass = 'complainant';
+            if (!firstComplainantSeen) {
+                isPrimary = true;
+                firstComplainantSeen = true;
+            }
+        } else if (pType === 'respondent') {
+            typeClass = 'respondent';
+        } else {
+            typeClass = 'witness';
+        }
+
+        const addrParts = [];
+        if (party.purok) {
+            const pLower = String(party.purok).toLowerCase();
+            addrParts.push(pLower.startsWith('purok') ? party.purok : `Purok ${party.purok}`);
+        }
+        if (party.address && (!party.purok || !party.address.toLowerCase().includes(party.purok.toLowerCase()))) {
+            addrParts.push(party.address);
+        } else if (party.address && !addrParts.length) {
+            addrParts.push(party.address);
+        }
+        const fullAddress = addrParts.length > 0 ? addrParts.join(', ') : 'No address on file';
+
         cards += `
-            <div class="party-detail-card">
-                <div class="party-detail-left">
-                    <span class="party-badge ${typeClass}">${escapeHtml(party.party_type)}</span>
-                    <div class="party-detail-info">
-                        <div class="party-detail-name">${escapeHtml(party.resident_name)}</div>
-                        <div class="party-detail-sub">
-                            ${party.contact_no ? `<span>📞 ${escapeHtml(party.contact_no)}</span>` : ''}
-                            ${party.purok ? `<span>📍 Purok ${escapeHtml(party.purok)}</span>` : ''}
-                            ${party.address ? `<span>🏠 ${escapeHtml(party.address)}</span>` : ''}
-                        </div>
-                    </div>
+            <div class="party-entry-card">
+                <div class="party-entry-top">
+                    <span class="party-pill-tag ${typeClass}">${escapeHtml((party.party_type || 'Party').toUpperCase())}</span>
+                    ${isPrimary ? '<span class="party-sub-badge">Primary</span>' : ''}
                 </div>
+                <div class="party-entry-name">${escapeHtml(party.resident_name || 'Unnamed Party')}</div>
+                <div class="party-entry-meta">📞 ${escapeHtml(party.contact_no || 'No contact on file')}</div>
+                <div class="party-entry-meta">📍 ${escapeHtml(fullAddress)}</div>
             </div>
         `;
     });
-    container.innerHTML = cards;
+
+    if (container) container.innerHTML = cards;
+    if (fullContainer) fullContainer.innerHTML = cards;
 }
 
 function renderAttachments(attachments) {
@@ -516,76 +746,129 @@ function formatDateTimeReadable(str) {
 }
 
 function renderCaseWorkspace(workspace, complaint) {
-    const section = document.getElementById('caseWorkspaceSection');
-    if (!section) return;
+    if (!complaint) return;
 
-    if (!complaint || !complaint.case_id || !workspace) {
-        section.style.display = 'none';
-        return;
-    }
-
-    section.style.display = 'block';
-
-    const caseData = workspace.case || {};
+    const caseData = workspace?.case || {};
     const caseNum = caseData.case_number || complaint.case_number || (complaint.case_id ? String(complaint.case_id) : 'N/A');
+    const stageCaseId = caseData.case_id || complaint.case_id || null;
+    const stages = workspace?.stages || {};
+    const med = stages.mediation || {};
+    const con = stages.conciliation || {};
+    const docs = workspace?.documents || [];
+    const hearings = workspace?.hearings || [];
+    const assignments = workspace?.assignments || [];
 
-    // Header
-    const heading = document.getElementById('cwCaseNumberHeading');
-    if (heading) heading.textContent = 'Case #' + caseNum;
+    // 1. Stage Progression Cards (Stage 1, Stage 2, Stage 3)
+    const stage1Card = document.getElementById('stage1Card');
+    const stage1Status = document.getElementById('stage1StatusText');
+    const stage1Icon = document.getElementById('stage1Icon');
+    const stage2Card = document.getElementById('stage2Card');
+    const stage2Icon = document.getElementById('stage2Icon');
+    const stage2Status = document.getElementById('stage2StatusText');
+    const stage3Card = document.getElementById('stage3Card');
+    const stage3Icon = document.getElementById('stage3Icon');
+    const stage3Status = document.getElementById('stage3StatusText');
 
-    const subtext = document.getElementById('cwCaseMetaSubtext');
-    if (subtext) {
-        const docketDate = caseData.docket_date ? formatDateReadable(caseData.docket_date) : (complaint.created_at ? formatDateReadable(complaint.created_at) : 'N/A');
-        const caseType = caseData.case_type || complaint.case_type || 'Civil';
-        const caseStatus = caseData.case_status || complaint.status || 'Docketed';
-        subtext.textContent = `Docket Date: ${docketDate} · Case Type: ${caseType} · Case Status: ${caseStatus}`;
+    if (stageCaseId) {
+        if (stage1Card && stage1Status) {
+            stage1Card.className = 'stage-card-item active';
+            stage1Status.textContent = med.stage_status || 'In Progress';
+            if (stage1Icon) stage1Icon.textContent = '✓';
+        }
+        if (stage2Card && stage2Status && stage2Icon) {
+            if (con.is_locked) {
+                stage2Card.className = 'stage-card-item locked';
+                stage2Icon.textContent = '🔒';
+                stage2Status.textContent = 'Locked until mediation concludes';
+            } else {
+                stage2Card.className = 'stage-card-item active';
+                stage2Icon.textContent = '✓';
+                stage2Status.textContent = con.stage_status || 'In Progress';
+            }
+        }
+        if (stage3Card && stage3Status) {
+            const arb = stages?.arbitration || {};
+            const isArbActive = Boolean(arb.stage_status && arb.stage_status !== 'Locked' && arb.stage_status !== 'Pending');
+            if (isArbActive) {
+                stage3Card.className = 'stage-card-item active';
+                stage3Status.textContent = arb.stage_status || 'In Progress';
+                if (stage3Icon) stage3Icon.textContent = '✓';
+            } else {
+                stage3Card.className = 'stage-card-item pending';
+                stage3Status.textContent = arb.stage_status || 'Pending';
+                if (stage3Icon) stage3Icon.textContent = '🔒';
+            }
+        }
     }
 
-    // Mediation Countdown Timer
-    const timerWrap = document.getElementById('cwMediationTimerBadgeWrap');
-    if (timerWrap) {
-        if (caseData.mediation_timer) {
-            const timer = caseData.mediation_timer;
-            timerWrap.innerHTML = `
-                <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
-                    <span style="font-size: 0.74rem; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.03em;">15-Day Statutory Mediation:</span>
-                    <span class="badge-timer ${escapeHtml(timer.badge_class || '')}" style="font-size: 0.84rem; padding: 4px 10px; font-weight: 700; border-radius: 4px; display: inline-flex; align-items: center; gap: 5px;">
-                        ${escapeHtml(timer.badge_label || '')}
-                    </span>
-                    ${timer.mediation_deadline_date ? `<span style="font-size: 0.75rem; color: #64748b;">Statutory Limit: <strong>${escapeHtml(formatDateReadable(timer.mediation_deadline_date))}</strong></span>` : ''}
-                </div>
-            `;
+    // 2. Session #1 Schedule & Attendance Card
+    const sessHeading = document.getElementById('sessionTitleHeading');
+    const sessSubtitle = document.getElementById('sessionSubtitleHeading');
+    const manageSchedLink = document.getElementById('cwManageScheduleLink');
+    const cAttText = document.getElementById('complainantAttendanceText');
+    const rAttText = document.getElementById('respondentAttendanceText');
+    const savedMinText = document.getElementById('savedMinutesText');
+    const savedMinIcon = document.getElementById('savedMinutesIcon');
+
+    const nextH = med.next_hearing;
+    const cAtt = med.attendance_summary?.complainant || { present: 0, absent: 0 };
+    const rAtt = med.attendance_summary?.respondent || { present: 0, absent: 0 };
+
+    if (sessHeading) {
+        sessHeading.textContent = `Session #${med.sessions_count || 1} Schedule & Attendance`;
+    }
+    if (sessSubtitle) {
+        if (nextH && nextH.hearing_date) {
+            const [datePart, timePart] = nextH.hearing_date.split(' ');
+            const readableDate = formatDateReadable(datePart);
+            const readableTime = timePart ? formatTime12(timePart) : '';
+            sessSubtitle.textContent = `Next Session: ${readableDate}${readableTime ? ' at ' + readableTime : ''} (${nextH.venue || 'Barangay Hall'})`;
         } else {
-            timerWrap.innerHTML = '';
+            sessSubtitle.textContent = 'No upcoming session scheduled';
+        }
+    }
+    if (manageSchedLink) {
+        manageSchedLink.href = stageCaseId
+            ? `../hearings/schedules.php?case_id=${encodeURIComponent(stageCaseId)}`
+            : '../hearings/schedules.php';
+    }
+
+    if (cAttText) cAttText.textContent = `Present (${cAtt.present || 0}), Absent (${cAtt.absent || 0})`;
+    if (rAttText) rAttText.textContent = `Present (${rAtt.present || 0}), Absent (${rAtt.absent || 0})`;
+
+    if (savedMinText) {
+        if (med.minutes_summary?.count > 0) {
+            savedMinText.textContent = med.minutes_summary.latest_status || 'Recorded';
+            if (savedMinIcon) savedMinIcon.textContent = '✓';
+        } else {
+            savedMinText.textContent = 'Not Recorded Yet';
+            if (savedMinIcon) savedMinIcon.textContent = '⚠️';
         }
     }
 
-    // Update Card 1 Docketed Case entry with Mediation Timer as well
-    const infoDocketEl = document.getElementById('infoDocketCase');
-    if (infoDocketEl) {
-        let timerHtml = '';
-        if (caseData.mediation_timer) {
-            timerHtml = ` <span class="badge-timer ${escapeHtml(caseData.mediation_timer.badge_class || '')}" style="font-size: 0.75rem; padding: 2px 7px; margin-left: 6px;">${escapeHtml(caseData.mediation_timer.badge_label || '')}</span>`;
-        }
-        infoDocketEl.innerHTML = `
-            <a href="#caseWorkspaceSection" class="meta-pill case-pill" style="display:inline-flex; text-decoration: none;">${escapeHtml(caseNum)} &darr;</a>
-            ${timerHtml}
-        `;
+    // Session Action Buttons
+    const recAttBtn = document.getElementById('recordAttendanceBtn');
+    const addMinBtn = document.getElementById('addMinutesBtn');
+    const recOutBtn = document.getElementById('recordOutcomeBtn');
+
+    if (stageCaseId) {
+        if (recAttBtn) recAttBtn.href = `../cases/mediation-workspace.php?case_id=${encodeURIComponent(stageCaseId)}&action=attendance`;
+        if (addMinBtn) addMinBtn.href = `../cases/mediation-workspace.php?case_id=${encodeURIComponent(stageCaseId)}&action=minutes`;
+        if (recOutBtn) recOutBtn.href = `../cases/mediation-workspace.php?case_id=${encodeURIComponent(stageCaseId)}&action=outcome`;
     }
 
-    // Card 6: Case Team Assignment
+    // 3. Case Team Assignment
     const teamContainer = document.getElementById('cwTeamContainer');
     const manageTeamLink = document.getElementById('cwManageTeamLink');
-    if (manageTeamLink && complaint.case_id) {
-        manageTeamLink.href = `../cases/case-list.php?assign_case_id=${encodeURIComponent(complaint.case_id)}#caseAssignments`;
+    if (manageTeamLink && stageCaseId) {
+        manageTeamLink.href = `../cases/case-list.php?assign_case_id=${encodeURIComponent(stageCaseId)}#caseAssignments`;
     }
     if (teamContainer) {
-        const assignments = workspace.assignments || [];
         if (!assignments.length) {
             teamContainer.innerHTML = `
                 <div class="empty-detail-state" style="text-align: center; padding: 20px; color: #64748b;">
                     <p style="margin: 0 0 10px; font-size: 0.88rem;">No case team has been assigned yet. 3 active Lupon Members are required.</p>
-                    <a href="../cases/case-list.php?assign_case_id=${encodeURIComponent(complaint.case_id)}#caseAssignments" class="btn-create" style="font-size: 0.82rem; padding: 6px 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
+                    <a href="../cases/case-list.php?assign_case_id=${encodeURIComponent(stageCaseId || '')}#caseAssignments" class="btn-create" style="font-size: 0.82rem; padding: 6px 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
                         Assign 3-Member Team &rarr;
                     </a>
                 </div>
@@ -608,19 +891,15 @@ function renderCaseWorkspace(workspace, complaint) {
                 }
 
                 teamHtml += `
-                    <div class="party-detail-card" style="margin-bottom: 10px;">
-                        <div class="party-detail-left">
-                            <span class="party-badge" style="background: ${roleBg}; color: ${roleColor}; font-weight: 800;">
+                    <div class="party-entry-card" style="margin-bottom: 8px;">
+                        <div class="party-entry-top">
+                            <span class="party-pill-tag" style="background: ${roleBg}; color: ${roleColor}; font-weight: 800;">
                                 ${escapeHtml(role.toUpperCase())}
                             </span>
-                            <div class="party-detail-info">
-                                <div class="party-detail-name" style="font-size: 0.95rem; font-weight: 600;">
-                                    ${escapeHtml(m.member_name || 'Assigned Lupon Member')}
-                                </div>
-                                <div class="party-detail-sub">
-                                    <span>📅 Assigned: ${m.assigned_date ? escapeHtml(formatDateReadable(m.assigned_date)) : 'N/A'}</span>
-                                </div>
-                            </div>
+                        </div>
+                        <div class="party-entry-name">${escapeHtml(m.member_name || 'Assigned Lupon Member')}</div>
+                        <div class="party-entry-meta">
+                            <span>📅 Assigned: ${m.assigned_date ? escapeHtml(formatDateReadable(m.assigned_date)) : 'N/A'}</span>
                         </div>
                     </div>
                 `;
@@ -629,82 +908,16 @@ function renderCaseWorkspace(workspace, complaint) {
         }
     }
 
-    const stageCaseId = caseData.case_id || complaint.case_id || null;
+    // 4. Pangkat Conciliation State
+    renderConciliationCard(stages, stageCaseId, complaint);
 
-    // Card 7: Mediation
-    renderMediationCard(workspace.stages, stageCaseId, complaint, workspace);
-
-    // Card 8: Pangkat Conciliation
-    renderConciliationCard(workspace.stages, stageCaseId, complaint);
-
-    // Card 9: Case Documents & KP Forms
-    const docContainer = document.getElementById('cwDocumentsContainer');
-    const docCountBadge = document.getElementById('cwDocCountBadge');
-    if (docContainer) {
-        const docs = workspace.documents || [];
-        if (docCountBadge) docCountBadge.textContent = `${docs.length} form${docs.length === 1 ? '' : 's'}`;
-
-        if (!docs.length) {
-            docContainer.innerHTML = `
-                <div class="empty-detail-state" style="text-align: center; padding: 20px; color: #64748b;">
-                    <p style="margin: 0; font-size: 0.88rem;">No official KP documents have been generated for this case yet.</p>
-                </div>
-            `;
-        } else {
-            let docCards = '';
-            docs.forEach((doc) => {
-                const docStatus = doc.service_status || 'Issued';
-                const statusColor = docStatus === 'Served' ? '#15803d' : (docStatus === 'Pending' ? '#b45309' : '#475569');
-                const statusBg = docStatus === 'Served' ? '#dcfce7' : (docStatus === 'Pending' ? '#fef3c7' : '#f1f5f9');
-
-                docCards += `
-                    <div class="attachment-detail-card" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 8px;">
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                            <span style="font-size: 1.25rem;">📄</span>
-                            <div>
-                                <div style="font-weight: 600; font-size: 0.9rem; color: #1e293b;">
-                                    ${escapeHtml(doc.template_name || 'KP Form Document')}
-                                </div>
-                                <div style="font-size: 0.78rem; color: #64748b; margin-top: 2px;">
-                                    Generated: ${doc.generated_at ? escapeHtml(formatDateReadable(doc.generated_at)) : 'N/A'}
-                                    <span style="display: inline-block; margin-left: 8px; padding: 1px 6px; border-radius: 4px; font-weight: 700; font-size: 0.72rem; background: ${statusBg}; color: ${statusColor};">
-                                        ${escapeHtml(docStatus)}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                        <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
-                            ${(doc.template_name?.includes('KP Form 9') || doc.template_name?.includes('Summon')) ? `
-                                <button type="button" class="btn-secondary" onclick="openSummonsPreviewModal(${Number(complaint?.case_id || stageCaseId || 0)}, ${Number(doc.document_id)})" style="font-size: 0.78rem; padding: 4px 9px; display: inline-flex; align-items: center; gap: 4px; border-color: #0284c7; color: #0284c7; background: #f0f9ff;">
-                                    🔍 Preview / Print &rarr;
-                                </button>
-                            ` : ''}
-                            ${doc.file_path ? `
-                                <a href="../../../backend/api/documents/download.php?id=${encodeURIComponent(doc.document_id)}&download=1" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 9px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
-                                    Download PDF &darr;
-                                </a>
-                            ` : `
-                                <a href="../documents/document-center.php" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 9px; text-decoration: none;">
-                                    View in Docs &rarr;
-                                </a>
-                            `}
-                        </div>
-                    </div>
-                `;
-            });
-            docContainer.innerHTML = docCards;
-        }
-    }
-
-    // Card 8: Hearings & Deadlines Schedule
+    // 5. Hearings & Deadlines Schedule
     const hearingsContainer = document.getElementById('cwHearingsContainer');
     const openHearingsLink = document.getElementById('cwOpenHearingsLink');
-    if (openHearingsLink && complaint.case_id) {
-        openHearingsLink.href = `../hearings/schedules.php?case_id=${encodeURIComponent(complaint.case_id)}`;
+    if (openHearingsLink && stageCaseId) {
+        openHearingsLink.href = `../hearings/schedules.php?case_id=${encodeURIComponent(stageCaseId)}`;
     }
-
     if (hearingsContainer) {
-        const hearings = workspace.hearings || [];
         if (!hearings.length) {
             hearingsContainer.innerHTML = `
                 <div class="empty-detail-state" style="text-align: center; padding: 24px 16px; color: #64748b;">
@@ -715,7 +928,7 @@ function renderCaseWorkspace(workspace, complaint) {
                 </div>
             `;
         } else {
-            let hearingsHtml = '<div style="display: flex; flex-direction: column; gap: 12px;">';
+            let hearingsHtml = '<div style="display: flex; flex-direction: column; gap: 8px;">';
             hearings.forEach((h) => {
                 const status = h.hearing_status || 'Scheduled';
                 let statusBadgeStyle = 'background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe;';
@@ -728,31 +941,27 @@ function renderCaseWorkspace(workspace, complaint) {
                 const absentCount = Number(h.unjustified_absent_count || h.absent_count || 0);
 
                 hearingsHtml += `
-                    <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 8px;">
-                        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;">
-                            <div>
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <strong style="font-size: 0.95rem; color: #0f172a;">${escapeHtml(h.hearing_type || 'Hearing Session')}</strong>
-                                    <span style="font-size: 0.72rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; ${statusBadgeStyle}">
-                                        ${escapeHtml(status)}
-                                    </span>
-                                </div>
-                                <div style="font-size: 0.82rem; color: #475569; margin-top: 4px;">
-                                    📅 <strong>${escapeHtml(hearingDateFormatted)}</strong> · 📍 ${escapeHtml(h.venue || 'Barangay Hall')}
-                                </div>
+                    <div class="kp-form-item-row" style="margin-bottom: 0;">
+                        <div class="kp-form-info-left">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span class="kp-form-name-text">${escapeHtml(h.hearing_type || 'Mediation Session')}</span>
+                                <span style="font-size: 0.72rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; ${statusBadgeStyle}">
+                                    ${escapeHtml(status)}
+                                </span>
                             </div>
-                            <a href="../hearings/schedules.php?case_id=${encodeURIComponent(complaint.case_id)}&hearing_id=${encodeURIComponent(h.hearing_id)}" class="btn-secondary" style="font-size: 0.76rem; padding: 4px 8px; text-decoration: none; white-space: nowrap;">
-                                View Session &rarr;
-                            </a>
+                            <div class="kp-form-meta-text">
+                                <span>📅 <strong>${escapeHtml(hearingDateFormatted)}</strong></span> &bull; <span>📍 ${escapeHtml(h.venue || 'Barangay Hall')}</span>
+                            </div>
+                            ${(presentCount > 0 || absentCount > 0) ? `
+                                <div style="display: flex; align-items: center; gap: 10px; font-size: 0.75rem; color: #64748b; margin-top: 2px;">
+                                    <span style="color: #15803d; font-weight: 600;">✓ ${presentCount} Present</span>
+                                    ${absentCount > 0 ? `<span style="color: #b91c1c; font-weight: 600;">✕ ${absentCount} Non-appearance</span>` : ''}
+                                </div>
+                            ` : ''}
                         </div>
-
-                        ${(presentCount > 0 || absentCount > 0) ? `
-                            <div style="display: flex; align-items: center; gap: 12px; font-size: 0.78rem; border-top: 1px solid #f1f5f9; padding-top: 6px; color: #64748b;">
-                                <span>Attendance:</span>
-                                <span style="color: #15803d; font-weight: 600;">✓ ${presentCount} Present</span>
-                                ${absentCount > 0 ? `<span style="color: #b91c1c; font-weight: 600;">✕ ${absentCount} Non-appearance</span>` : ''}
-                            </div>
-                        ` : ''}
+                        <a href="../hearings/schedules.php?case_id=${encodeURIComponent(stageCaseId || '')}&hearing_id=${encodeURIComponent(h.hearing_id)}" class="btn-small-link">
+                            View Session &rarr;
+                        </a>
                     </div>
                 `;
             });
@@ -760,6 +969,93 @@ function renderCaseWorkspace(workspace, complaint) {
             hearingsContainer.innerHTML = hearingsHtml;
         }
     }
+
+    // 6. Official KP Forms (both Overview Tab and Documents Tab)
+    renderOfficialKpForms(workspace, complaint);
+
+    // Call mediation and arbitration helpers to keep respective tab containers populated
+    renderMediationCard(stages, stageCaseId, complaint, workspace);
+    renderArbitrationCard(stages, stageCaseId, complaint);
+}
+
+function renderOfficialKpForms(workspace, complaint) {
+    const heroList = document.getElementById('heroKpFormsList');
+    const docContainer = document.getElementById('cwDocumentsContainer');
+    const heroBadge = document.getElementById('heroKpDocCountBadge');
+    const tabDocsBadge = document.getElementById('tabDocsCountBadge');
+    const cwDocCountBadge = document.getElementById('cwDocCountBadge');
+
+    const docs = workspace?.documents || [];
+    const countText = `${docs.length} Issued`;
+    const formsCountText = `${docs.length} form${docs.length === 1 ? '' : 's'}`;
+
+    if (heroBadge) heroBadge.textContent = countText;
+    if (tabDocsBadge) tabDocsBadge.textContent = String(docs.length);
+    if (cwDocCountBadge) cwDocCountBadge.textContent = formsCountText;
+
+    if (!docs.length) {
+        const emptyHtml = `
+            <div class="empty-detail-state" style="text-align: center; padding: 20px; color: #64748b;">
+                <p style="margin: 0; font-size: 0.88rem;">No official KP documents have been generated for this case yet.</p>
+            </div>
+        `;
+        if (heroList) heroList.innerHTML = emptyHtml;
+        if (docContainer) docContainer.innerHTML = emptyHtml;
+        return;
+    }
+
+    let rowsHtml = '';
+    docs.forEach(doc => {
+        const docStatus = doc.service_status || 'Issued';
+        let statusBg = '#f1f5f9', statusColor = '#475569';
+        if (docStatus === 'Served') {
+            statusBg = '#dcfce7'; statusColor = '#15803d';
+        } else if (docStatus === 'For Service' || docStatus === 'Pending') {
+            statusBg = '#fef3c7'; statusColor = '#b45309';
+        }
+
+        const isSummonOrKp9 = doc.template_name?.includes('KP Form 9') || doc.template_name?.includes('Summon');
+        const caseId = complaint?.case_id || workspace?.case?.case_id || 0;
+
+        rowsHtml += `
+            <div class="kp-form-item-row">
+                <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
+                    <span style="font-size: 1.5rem; color: #64748b; line-height: 1;">📄</span>
+                    <div>
+                        <div class="kp-form-name-text">
+                            ${escapeHtml(doc.template_name || 'KP Form Document')}
+                        </div>
+                        <div class="kp-form-meta-text">
+                            <span>Generated: ${doc.generated_at ? escapeHtml(formatDateReadable(doc.generated_at)) : 'N/A'}</span>
+                            <span style="display: inline-block; padding: 1px 7px; border-radius: 4px; font-weight: 700; font-size: 0.72rem; background: ${statusBg}; color: ${statusColor};">
+                                ${escapeHtml(docStatus.toUpperCase())}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    ${isSummonOrKp9 ? `
+                        <button type="button" class="btn-small-link" onclick="openSummonsPreviewModal(${Number(caseId)}, ${Number(doc.document_id)})" style="color: #4f46e5; border-color: #c7d2fe; font-weight: 600;">
+                            Preview / Print
+                        </button>
+                    ` : ''}
+                    ${doc.file_path ? `
+                        <a href="../../../backend/api/documents/download.php?id=${encodeURIComponent(doc.document_id)}&download=1" class="btn-pdf-chip" download title="Download official PDF">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                            <span>PDF</span>
+                        </a>
+                    ` : `
+                        <a href="../documents/document-center.php" class="btn-small-link">
+                            View in Docs &rarr;
+                        </a>
+                    `}
+                </div>
+            </div>
+        `;
+    });
+
+    if (heroList) heroList.innerHTML = rowsHtml;
+    if (docContainer) docContainer.innerHTML = rowsHtml;
 }
 
 function renderMediationCard(stages, caseId, complaint, workspace) {
@@ -800,7 +1096,6 @@ function renderMediationCard(stages, caseId, complaint, workspace) {
 
     container.innerHTML = `
         <div style="display: flex; flex-direction: column; gap: 10px;">
-            <!-- Summary 1: Hearings & Attendance -->
             <div style="padding: 10px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                     <span style="font-size: 0.78rem; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.03em;">
@@ -817,66 +1112,12 @@ function renderMediationCard(stages, caseId, complaint, workspace) {
                     </div>
                     <div style="background: #f8fafc; padding: 5px 8px; border-radius: 6px;">
                         <span style="color: #64748b; font-size: 0.7rem; display: block;">Next Session</span>
-                        <strong style="color: #0f172a; font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;" title="${nextH ? escapeHtml(formatDateReadable(nextH.hearing_date)) : 'None'}">${nextH ? escapeHtml(formatDateReadable(nextH.hearing_date)) : 'None'}</strong>
+                        <strong style="color: #0f172a; font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${nextH ? escapeHtml(formatDateReadable(nextH.hearing_date)) : 'None'}</strong>
                     </div>
                     <div style="background: #f8fafc; padding: 5px 8px; border-radius: 6px;">
                         <span style="color: #64748b; font-size: 0.7rem; display: block;">Latest Date</span>
                         <strong style="color: #0f172a; font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${med.latest_hearing_date ? escapeHtml(formatDateReadable(med.latest_hearing_date)) : '—'}</strong>
                     </div>
-                </div>
-                <div style="font-size: 0.76rem; color: #475569; display: flex; flex-direction: column; gap: 2px;">
-                    <div><strong>Complainant:</strong> Present (${cAtt.present}), Absent (${cAtt.absent}), Excused (${cAtt.excused})</div>
-                    <div><strong>Respondent:</strong> Present (${rAtt.present}), Absent (${rAtt.absent}), Excused (${rAtt.excused})</div>
-                    <div style="margin-top: 4px;">
-                        <span style="font-size: 0.7rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; ${med.attendance_summary?.is_finalized ? 'background: #dcfce7; color: #15803d;' : 'background: #fef3c7; color: #b45309;'}">
-                            ${escapeHtml(med.attendance_summary?.status_label || 'Pending Verification')}
-                        </span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Summary 2: Minutes of the Meeting -->
-            <div style="padding: 10px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                    <span style="font-size: 0.78rem; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.03em;">
-                        📝 Session Minutes &amp; Progress
-                    </span>
-                    <a href="../cases/mediation-workspace.php?case_id=${encodeURIComponent(caseId || '')}#minutesSection" class="btn-secondary" style="font-size: 0.72rem; padding: 2px 7px; text-decoration: none;">
-                        View Minutes &rarr;
-                    </a>
-                </div>
-                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem;">
-                    <div>
-                        <span>Saved Minutes: <strong>${Number(med.minutes_summary?.count || 0)}</strong></span>
-                        <span style="margin-left: 6px; font-size: 0.7rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; ${med.minutes_summary?.latest_status === 'Finalized' ? 'background: #dcfce7; color: #15803d;' : (med.minutes_summary?.latest_status === 'Draft' ? 'background: #dbeafe; color: #1e40af;' : 'background: #f1f5f9; color: #64748b;')}">
-                            ${escapeHtml(med.minutes_summary?.latest_status || 'Not Recorded')}
-                        </span>
-                    </div>
-                    <div style="font-size: 0.74rem; color: #64748b;">
-                        ${med.minutes_summary?.latest_session_date ? `Session: ${escapeHtml(formatDateReadable(med.minutes_summary.latest_session_date))}` : 'No minutes recorded'}
-                    </div>
-                </div>
-            </div>
-
-            <!-- Summary 3: Documents & Actions -->
-            <div style="padding: 10px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;">
-                <span style="font-size: 0.78rem; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.03em; display: block; margin-bottom: 6px;">
-                    ⚡ Documents &amp; Actions
-                </span>
-                <div style="display: flex; flex-wrap: wrap; gap: 5px;">
-                    ${(actions.can_print_notice || Number(med.sessions_count || 0) > 0 || (workspace?.documents || []).some(d => d.template_name?.includes('KP Form 9') || d.template_name?.includes('Summon'))) ? `
-                        <button type="button" class="btn-secondary" onclick="openSummonsPreviewModal(${Number(caseId || 0)})" style="font-size: 0.74rem; padding: 4px 8px; border-color: #0284c7; color: #0284c7; background: #f0f9ff; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; border-radius: 4px;" title="Review, print, or download KP Form No. 9">
-                            🔍 Preview KP Form 9 &rarr;
-                        </button>
-                    ` : `
-                        <span title="Requires scheduled mediation session or issued summons" style="font-size: 0.74rem; padding: 4px 8px; border-radius: 4px; background: #f8fafc; color: #94a3b8; border: 1px dashed #e2e8f0; cursor: not-allowed; display: inline-flex; align-items: center; gap: 4px;">Preview KP Form 9 🔒</span>
-                    `}
-                    ${renderAction('Record Attendance', `../cases/mediation-workspace.php?case_id=${encodeURIComponent(caseId || '')}&action=attendance`, actions.can_record_attendance, 'Requires scheduled mediation session')}
-                    ${renderAction('Add Minutes', `../cases/mediation-workspace.php?case_id=${encodeURIComponent(caseId || '')}&action=minutes`, actions.can_add_minutes, 'Requires mediation session record')}
-                    ${renderAction('Print Notice', `../hearings/schedules.php?case_id=${encodeURIComponent(caseId || '')}`, actions.can_print_notice, 'Requires mediation notice')}
-                    ${renderAction('Amicable Settlement', `../settlements/settlements.php?case_id=${encodeURIComponent(caseId || '')}&new=1`, actions.can_generate_settlement, 'Requires settlement terms reached')}
-                    ${renderAction('Record Outcome', `../cases/mediation-workspace.php?case_id=${encodeURIComponent(caseId || '')}&action=outcome`, actions.can_record_outcome, 'Available after conducting session')}
-                    ${renderAction('Proceed to Pangkat', `../cases/mediation-workspace.php?case_id=${encodeURIComponent(caseId || '')}&action=referral`, actions.can_proceed_to_pangkat, 'Requires unsuccessful mediation or lapsed statutory period')}
                 </div>
             </div>
         </div>
@@ -927,12 +1168,12 @@ function renderConciliationCard(stages, caseId, complaint) {
     if (isLocked) {
         const canRefer = stages?.mediation?.documents_and_actions?.can_proceed_to_pangkat;
         container.innerHTML = `
-            <div style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 22px 16px; text-align: center; color: #64748b;">
+            <div style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 24px 16px; text-align: center; color: #64748b;">
                 <div style="font-size: 1.8rem; margin-bottom: 6px;">🔒</div>
-                <div style="font-size: 0.88rem; font-weight: 600; color: #334155; margin-bottom: 4px;">
+                <div style="font-size: 0.92rem; font-weight: 700; color: #334155; margin-bottom: 4px;">
                     Pangkat Conciliation is locked
                 </div>
-                <p style="margin: 0; font-size: 0.82rem; color: #64748b; line-height: 1.45; max-width: 440px; margin: 0 auto;">
+                <p style="margin: 0; font-size: 0.82rem; color: #64748b; line-height: 1.5; max-width: 440px; margin: 0 auto;">
                     Complete the mediation stage and record an authorized referral to unlock this workspace.
                 </p>
                 ${canRefer ? `
@@ -947,114 +1188,95 @@ function renderConciliationCard(stages, caseId, complaint) {
         return;
     }
 
-    const cAtt = con.attendance_summary?.complainant || { present: 0, absent: 0, excused: 0, pending: 0 };
-    const rAtt = con.attendance_summary?.respondent || { present: 0, absent: 0, excused: 0, pending: 0 };
     const pInfo = con.pangkat_assignment || {};
-    const actions = con.documents_and_actions || {};
-    const nextH = con.next_hearing;
+    container.innerHTML = `
+        <div style="font-size: 0.84rem; color: #334155; display: flex; flex-direction: column; gap: 6px;">
+            <div><strong>Chairperson:</strong> ${escapeHtml(pInfo.chairperson?.member_name || 'Not assigned')}</div>
+            <div><strong>Secretary:</strong> ${escapeHtml(pInfo.secretary?.member_name || 'Not assigned')}</div>
+            <div><strong>Member:</strong> ${escapeHtml(pInfo.member?.member_name || 'Not assigned')}</div>
+            <div style="margin-top: 6px; font-size: 0.78rem; color: #64748b;">
+                <span>📅 Constituted: ${pInfo.formation_date ? escapeHtml(formatDateReadable(pInfo.formation_date)) : 'N/A'}</span>
+                &bull; <span>Status: <strong>${escapeHtml(pInfo.assignment_status || 'Pending')}</strong></span>
+            </div>
+            <div style="margin-top: 10px;">
+                <a href="../cases/pangkat-workspace.php?case_id=${encodeURIComponent(caseId || '')}&complaint_id=${encodeURIComponent(complaint.complaint_id || '')}" class="btn-small-link">
+                    Open Conciliation Workspace &rarr;
+                </a>
+            </div>
+        </div>
+    `;
+}
 
-    const renderAction = (label, url, enabled, disabledReason) => {
-        if (enabled) {
-            return `<a href="${url}" class="btn-secondary" style="font-size: 0.74rem; padding: 4px 8px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; border-color: #cbd5e1; background: #fff;">${label} &rarr;</a>`;
-        }
-        return `<span title="${escapeHtml(disabledReason)}" style="font-size: 0.74rem; padding: 4px 8px; border-radius: 4px; background: #f8fafc; color: #94a3b8; border: 1px dashed #e2e8f0; cursor: not-allowed; display: inline-flex; align-items: center; gap: 4px;">${label} 🔒</span>`;
-    };
+function renderArbitrationCard(stages, caseId, complaint) {
+    const arb = stages?.arbitration || {};
+    const badgeEl = document.getElementById('cwArbitrationStatusBadge');
+    const linkEl = document.getElementById('cwManageArbitrationLink');
+    const container = document.getElementById('cwArbitrationContainer');
+
+    const status = arb.stage_status || (arb.is_locked ? 'Pending' : 'Not Started');
+    const isLocked = Boolean(arb.is_locked !== false && (status === 'Locked' || status === 'Pending'));
+
+    if (badgeEl) {
+        badgeEl.textContent = status;
+        let bg = '#f1f5f9', color = '#64748b';
+        if (status === 'Completed' || status === 'Award Rendered' || status === 'Settled') { bg = '#dcfce7'; color = '#15803d'; }
+        else if (status === 'In Progress') { bg = '#fae8ff'; color = '#86198f'; }
+        else if (status === 'CFA Issued' || status === 'Certified for Court') { bg = '#fee2e2'; color = '#b91c1c'; }
+        else if (status === 'Pending' || status === 'Locked') { bg = '#f8fafc'; color = '#64748b'; }
+        badgeEl.style.background = bg;
+        badgeEl.style.color = color;
+    }
+
+    if (linkEl && caseId) {
+        linkEl.href = `../cases/arbitration-workspace.php?case_id=${encodeURIComponent(caseId)}&complaint_id=${encodeURIComponent(complaint.complaint_id || '')}`;
+    }
+
+    if (!container) return;
+
+    if (isLocked) {
+        container.innerHTML = `
+            <div style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 24px 16px; text-align: center; color: #64748b;">
+                <div style="font-size: 1.8rem; margin-bottom: 6px;">⚖️</div>
+                <div style="font-size: 0.92rem; font-weight: 700; color: #334155; margin-bottom: 4px;">
+                    Arbitration / CFA is not active
+                </div>
+                <p style="margin: 0; font-size: 0.82rem; color: #64748b; line-height: 1.5; max-width: 480px; margin: 0 auto;">
+                    Parties may enter binding arbitration at any stage by executing <strong>KP Form 14 (Agreement for Arbitration)</strong>, or obtain a <strong>Certificate to File Action (KP Form 20/21/22)</strong> upon failure to settle.
+                </p>
+                <div style="margin-top: 12px;">
+                    <a href="../cases/arbitration-workspace.php?case_id=${encodeURIComponent(caseId || '')}&complaint_id=${encodeURIComponent(complaint.complaint_id || '')}" class="btn-create" style="font-size: 0.78rem; padding: 5px 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+                        Open Arbitration / CFA Workspace &rarr;
+                    </a>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    const sessCount = Number(arb.sessions_count || 0);
+    const nextH = arb.next_hearing;
+    const outcome = arb.outcome || 'Pending Determination';
 
     container.innerHTML = `
-        <div style="display: flex; flex-direction: column; gap: 10px;">
-            <!-- Summary 1: Pangkat Assignment -->
-            <div style="padding: 10px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                    <span style="font-size: 0.78rem; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.03em;">
-                        👥 Pangkat Assignment
-                    </span>
-                    <a href="../cases/case-list.php?assign_case_id=${encodeURIComponent(caseId || '')}#caseAssignments" class="btn-secondary" style="font-size: 0.72rem; padding: 2px 7px; text-decoration: none;">
-                        Manage Team &rarr;
-                    </a>
+        <div style="font-size: 0.84rem; color: #334155; display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 6px;">
+                <div style="background: #f8fafc; padding: 8px 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                    <span style="font-size: 0.72rem; color: #64748b; display: block;">Arbitration Sessions</span>
+                    <strong style="font-size: 1rem; color: #0f172a;">${sessCount}</strong>
                 </div>
-                <div style="font-size: 0.78rem; color: #334155; display: flex; flex-direction: column; gap: 3px;">
-                    <div><strong>Chairperson:</strong> ${escapeHtml(pInfo.chairperson?.member_name || 'Not assigned')}</div>
-                    <div><strong>Secretary:</strong> ${escapeHtml(pInfo.secretary?.member_name || 'Not assigned')}</div>
-                    <div><strong>Member:</strong> ${escapeHtml(pInfo.member?.member_name || 'Not assigned')}</div>
-                    <div style="margin-top: 4px; font-size: 0.72rem; color: #64748b; display: flex; gap: 8px; flex-wrap: wrap;">
-                        <span>📅 Constituted: ${pInfo.formation_date ? escapeHtml(formatDateReadable(pInfo.formation_date)) : 'N/A'}</span>
-                        <span>• Status: <strong>${escapeHtml(pInfo.assignment_status || 'Pending')}</strong></span>
-                    </div>
+                <div style="background: #f8fafc; padding: 8px 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                    <span style="font-size: 0.72rem; color: #64748b; display: block;">Next Hearing</span>
+                    <strong style="font-size: 0.84rem; color: #0f172a;">${nextH ? escapeHtml(formatDateReadable(nextH.hearing_date)) : 'None scheduled'}</strong>
+                </div>
+                <div style="background: #f8fafc; padding: 8px 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                    <span style="font-size: 0.72rem; color: #64748b; display: block;">Arbitration Outcome</span>
+                    <strong style="font-size: 0.84rem; color: #0f172a;">${escapeHtml(outcome)}</strong>
                 </div>
             </div>
-
-            <!-- Summary 2: Hearings & Attendance -->
-            <div style="padding: 10px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                    <span style="font-size: 0.78rem; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.03em;">
-                        📅 Hearings &amp; Attendance
-                    </span>
-                    <a href="../hearings/schedules.php?case_id=${encodeURIComponent(caseId || '')}&type=Conciliation" class="btn-secondary" style="font-size: 0.72rem; padding: 2px 7px; text-decoration: none;">
-                        View Sessions &rarr;
-                    </a>
-                </div>
-                <div style="grid-template-columns: repeat(3, 1fr); display: grid; gap: 6px; margin-bottom: 6px; font-size: 0.78rem;">
-                    <div style="background: #f8fafc; padding: 5px 8px; border-radius: 6px;">
-                        <span style="color: #64748b; font-size: 0.7rem; display: block;">Sessions</span>
-                        <strong style="color: #0f172a; font-size: 0.9rem;">${Number(con.sessions_count || 0)}</strong>
-                    </div>
-                    <div style="background: #f8fafc; padding: 5px 8px; border-radius: 6px;">
-                        <span style="color: #64748b; font-size: 0.7rem; display: block;">Next Session</span>
-                        <strong style="color: #0f172a; font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${nextH ? escapeHtml(formatDateReadable(nextH.hearing_date)) : 'None'}</strong>
-                    </div>
-                    <div style="background: #f8fafc; padding: 5px 8px; border-radius: 6px;">
-                        <span style="color: #64748b; font-size: 0.7rem; display: block;">Latest Date</span>
-                        <strong style="color: #0f172a; font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${con.latest_hearing_date ? escapeHtml(formatDateReadable(con.latest_hearing_date)) : '—'}</strong>
-                    </div>
-                </div>
-                <div style="font-size: 0.76rem; color: #475569; display: flex; flex-direction: column; gap: 2px;">
-                    <div><strong>Complainant:</strong> Present (${cAtt.present}), Absent (${cAtt.absent}), Excused (${cAtt.excused})</div>
-                    <div><strong>Respondent:</strong> Present (${rAtt.present}), Absent (${rAtt.absent}), Excused (${rAtt.excused})</div>
-                    <div style="margin-top: 4px;">
-                        <span style="font-size: 0.7rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; ${con.attendance_summary?.is_finalized ? 'background: #dcfce7; color: #15803d;' : 'background: #fef3c7; color: #b45309;'}">
-                            ${escapeHtml(con.attendance_summary?.status_label || 'Pending Verification')}
-                        </span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Summary 3: Minutes of the Meeting -->
-            <div style="padding: 10px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                    <span style="font-size: 0.78rem; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.03em;">
-                        📝 Session Minutes &amp; Progress
-                    </span>
-                    <a href="../cases/pangkat-workspace.php?case_id=${encodeURIComponent(caseId || '')}#minutesSection" class="btn-secondary" style="font-size: 0.72rem; padding: 2px 7px; text-decoration: none;">
-                        View Minutes &rarr;
-                    </a>
-                </div>
-                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem;">
-                    <div>
-                        <span>Saved Minutes: <strong>${Number(con.minutes_summary?.count || 0)}</strong></span>
-                        <span style="margin-left: 6px; font-size: 0.7rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; ${con.minutes_summary?.latest_status === 'Finalized' ? 'background: #dcfce7; color: #15803d;' : (con.minutes_summary?.latest_status === 'Draft' ? 'background: #dbeafe; color: #1e40af;' : 'background: #f1f5f9; color: #64748b;')}">
-                            ${escapeHtml(con.minutes_summary?.latest_status || 'Not Recorded')}
-                        </span>
-                    </div>
-                    <div style="font-size: 0.74rem; color: #64748b;">
-                        ${con.minutes_summary?.latest_session_date ? `Session: ${escapeHtml(formatDateReadable(con.minutes_summary.latest_session_date))}` : 'No minutes recorded'}
-                    </div>
-                </div>
-            </div>
-
-            <!-- Summary 4: Documents & Actions -->
-            <div style="padding: 10px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;">
-                <span style="font-size: 0.78rem; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.03em; display: block; margin-bottom: 6px;">
-                    ⚡ Documents &amp; Actions
-                </span>
-                <div style="display: flex; flex-wrap: wrap; gap: 5px;">
-                    ${renderAction('Record Attendance', `../cases/pangkat-workspace.php?case_id=${encodeURIComponent(caseId || '')}&action=attendance`, actions.can_record_attendance, 'Requires scheduled conciliation session')}
-                    ${renderAction('Add Minutes', `../cases/pangkat-workspace.php?case_id=${encodeURIComponent(caseId || '')}&action=minutes`, actions.can_add_minutes, 'Requires conciliation session record')}
-                    ${renderAction('Print Notice', `../hearings/schedules.php?case_id=${encodeURIComponent(caseId || '')}`, actions.can_print_notice, 'Requires conciliation notice')}
-                    ${renderAction('Conciliation Docs', `../documents/document-center.php?case_id=${encodeURIComponent(caseId || '')}`, true, '')}
-                    ${renderAction('Record Conciliation Outcome', `../cases/pangkat-workspace.php?case_id=${encodeURIComponent(caseId || '')}&action=outcome`, actions.can_record_outcome, 'Available after conciliation session')}
-                    ${renderAction('Amicable Settlement', `../settlements/settlements.php?case_id=${encodeURIComponent(caseId || '')}&new=1`, actions.can_generate_settlement, 'Requires amicable settlement reached')}
-                    ${renderAction('Initiate CFA Workflow', `../documents/cfa.php?case_id=${encodeURIComponent(caseId || '')}`, actions.can_issue_cfa, 'Requires unsuccessful conciliation or legal basis')}
-                </div>
+            <div style="margin-top: 6px;">
+                <a href="../cases/arbitration-workspace.php?case_id=${encodeURIComponent(caseId || '')}&complaint_id=${encodeURIComponent(complaint.complaint_id || '')}" class="btn-small-link">
+                    Open Arbitration Workspace &rarr;
+                </a>
             </div>
         </div>
     `;
@@ -1490,13 +1712,13 @@ async function loadCaseProgress(complaintId) {
             if (btnInfo.disabled) {
                 // Visually disabled — mark as gated so handleIssueSummonClick can redirect to proof page
                 issueBtn.setAttribute('data-summon-gated', 'true');
-                issueBtn.className = 'btn-secondary';
+                issueBtn.className = issueBtn.closest('.case-bar-right') ? 'btn-case-outline disabled' : 'btn-secondary';
                 issueBtn.style.opacity = '0.6';
                 issueBtn.style.cursor = 'not-allowed';
             } else if (btnInfo.action === 'view_proof') {
-                issueBtn.className = 'btn-secondary';
+                issueBtn.className = issueBtn.closest('.case-bar-right') ? 'btn-case-outline' : 'btn-secondary';
             } else {
-                issueBtn.className = 'btn-create';
+                issueBtn.className = issueBtn.closest('.case-bar-right') ? 'btn-case-outline' : 'btn-create';
             }
         }
 

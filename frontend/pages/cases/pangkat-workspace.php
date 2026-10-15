@@ -236,29 +236,16 @@ include '../../layouts/header.php';
                     </div>
                 </div>
 
-                <!-- Section 3: Hearing Session Minutes & Settlement Progress -->
+                <!-- Section 3: Hearing Session Minutes & Proceedings -->
                 <div class="stage-section-card" id="minutesSection">
                     <div class="stage-section-header">
                         <div>
-                            <h3>Hearing Session Minutes &amp; Settlement Progress</h3>
-                            <p>Official records of panel deliberations, dispute details, negotiation proposals, and resolution progress</p>
+                            <h3>Hearing Session Minutes &amp; Proceedings</h3>
+                            <p>Official records of panel deliberations, statements, agreed terms, and procedural outcome</p>
                         </div>
                     </div>
                     <div id="wsMinutesSectionContainer">
-                        <div class="empty-detail-state">Loading conciliation session minutes &amp; settlement progress...</div>
-                    </div>
-                </div>
-
-                <!-- Section 4: Stage Outcome & Case Disposition -->
-                <div class="stage-section-card" id="outcomeSection">
-                    <div class="stage-section-header">
-                        <div>
-                            <h3>Conciliation Outcome &amp; Case Disposition</h3>
-                            <p>Record amicable settlement or initiate Certificate to File Action (CFA - KP Form 20)</p>
-                        </div>
-                    </div>
-                    <div id="wsOutcomeActionBox">
-                        <div class="empty-detail-state">Loading stage disposition...</div>
+                        <div class="empty-detail-state">Loading conciliation session minutes &amp; proceedings...</div>
                     </div>
                 </div>
             </div>

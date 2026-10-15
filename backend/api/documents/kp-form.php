@@ -12,9 +12,9 @@ require_once __DIR__ . '/../../services/PDFService.php';
 require_once __DIR__ . '/../../services/ShowCauseService.php';
 
 $conn = (new Database())->connect();
-$documentId = filter_input(INPUT_GET, 'document_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-$caseId = filter_input(INPUT_GET, 'case_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-$hearingId = filter_input(INPUT_GET, 'hearing_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+$documentId = filter_input(INPUT_GET, 'document_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: (isset($_GET['document_id']) ? (int) $_GET['document_id'] : null);
+$caseId = filter_input(INPUT_GET, 'case_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: (isset($_GET['case_id']) ? (int) $_GET['case_id'] : null);
+$hearingId = filter_input(INPUT_GET, 'hearing_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: (isset($_GET['hearing_id']) ? (int) $_GET['hearing_id'] : null);
 $formCode = trim((string) ($_GET['form_code'] ?? 'KP Form 18'));
 $asPdf = isset($_GET['pdf']) && $_GET['pdf'] == '1';
 
@@ -96,6 +96,125 @@ $chairStmt = $conn->prepare("
 $chairStmt->execute([$caseId]);
 $chairName = $chairStmt->fetchColumn() ?: 'Punong Barangay / Lupon Chairman';
 
+// Determine hearing sequence for mediation
+$hearingSequence = 1;
+if (!empty($hearing['hearing_id'])) {
+    $seqStmt = $conn->prepare("
+        SELECT COUNT(*) FROM hearings 
+        WHERE case_id = ? AND hearing_type IN ('Initial Hearing', 'Mediation') AND hearing_id <= ?
+    ");
+    $seqStmt->execute([$caseId, $hearing['hearing_id']]);
+    $hearingSequence = (int) $seqStmt->fetchColumn() ?: 1;
+}
+
+$isPreview = isset($_GET['preview']) && in_array((string) $_GET['preview'], ['1', 'true'], true);
+
+// Enforce strict party eligibility and locking rules
+if ($formCode === 'KP Form 18') {
+    // KP Form 18 is strictly for Complainant failure to appear in 2nd (or later) mediation session
+    if ($hearingSequence < 2) {
+        http_response_code(422);
+        exit('Data Validation Error: KP Form 18 cannot be generated for the 1st Mediation session. Under Katarungang Pambarangay rules, after the 1st mediation, proceed directly to book the 2nd mediation without sending another summon. KP Form 18 (Notice of Hearing - Complainant Non-appearance) may only be previewed or printed after non-appearance is recorded in the 2nd mediation.');
+    }
+
+    $isCompAbsent = ($hearing && ($hearing['complainant_attendance'] ?? '') === 'Absent');
+    if (!$isCompAbsent && !empty($hearing['hearing_id'])) {
+        $haStmt = $conn->prepare("
+            SELECT COUNT(*) FROM hearing_attendance ha
+            INNER JOIN complaint_parties cp ON cp.resident_id = ha.resident_id AND cp.complaint_id = ?
+            WHERE ha.hearing_id = ? AND cp.party_type = 'Complainant' AND ha.attendance_status = 'Absent'
+        ");
+        $haStmt->execute([(int) $case['complaint_id'], $hearing['hearing_id']]);
+        $isCompAbsent = ((int) $haStmt->fetchColumn() > 0);
+    }
+    if (!$isCompAbsent && !$isPreview) {
+        http_response_code(403);
+        exit('KP Form 18 (Notice of Hearing - Complainant Non-appearance) is locked: The Complainant has not been recorded absent in this 2nd Mediation session.');
+    }
+} elseif ($formCode === 'KP Form 19') {
+    // KP Form 19 is strictly for Respondent failure to appear in 2nd (or later) mediation session
+    if ($hearingSequence < 2) {
+        http_response_code(422);
+        exit('Data Validation Error: KP Form 19 cannot be generated for the 1st Mediation session. Under Katarungang Pambarangay rules, after the 1st mediation, proceed directly to book the 2nd mediation without sending another summon. KP Form 19 (Notice of Hearing - Respondent Non-appearance) may only be previewed or printed after non-appearance is recorded in the 2nd mediation.');
+    }
+
+    $isRespAbsent = ($hearing && ($hearing['respondent_attendance'] ?? '') === 'Absent');
+    if (!$isRespAbsent && !empty($hearing['hearing_id'])) {
+        $haStmt = $conn->prepare("
+            SELECT COUNT(*) FROM hearing_attendance ha
+            INNER JOIN complaint_parties cp ON cp.resident_id = ha.resident_id AND cp.complaint_id = ?
+            WHERE ha.hearing_id = ? AND cp.party_type = 'Respondent' AND ha.attendance_status = 'Absent'
+        ");
+        $haStmt->execute([(int) $case['complaint_id'], $hearing['hearing_id']]);
+        $isRespAbsent = ((int) $haStmt->fetchColumn() > 0);
+    }
+    if (!$isRespAbsent && !$isPreview) {
+        http_response_code(403);
+        exit('KP Form 19 (Notice of Hearing - Respondent Non-appearance) is locked: The Respondent has not been recorded absent in this 2nd Mediation session.');
+    }
+} elseif ($formCode === 'KP Form 21') {
+    // KP Form 21: Certificate to Bar Action (Complainant)
+    // Strictly requires a recorded show-cause evaluation where party_type = 'Complainant' and is_justified = 0
+    $scStmt = $conn->prepare("
+        SELECT evaluation_id, is_justified, action_taken, justification_notes
+        FROM show_cause_evaluations
+        WHERE case_id = ? AND party_type = 'Complainant'
+        ORDER BY created_at DESC LIMIT 1
+    ");
+    $scStmt->execute([$caseId]);
+    $eval = $scStmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$eval) {
+        http_response_code(403);
+        exit('KP Form 21 (Certificate to Bar Action) is locked: The Complainant has not undergone a show-cause hearing evaluation. Required action: Schedule and evaluate the Complainant\'s show-cause hearing before issuing KP Form 21.');
+    }
+    if ((int) $eval['is_justified'] === 1) {
+        http_response_code(403);
+        exit('KP Form 21 cannot be issued: The Complainant\'s absence was ruled justified. The dispute was rescheduled for mediation.');
+    }
+} elseif ($formCode === 'KP Form 22') {
+    // KP Form 22: Certificate to Bar Counterclaim (Respondent)
+    // Strictly requires a recorded show-cause evaluation where party_type = 'Respondent' and is_justified = 0
+    $scStmt = $conn->prepare("
+        SELECT evaluation_id, is_justified, action_taken, justification_notes
+        FROM show_cause_evaluations
+        WHERE case_id = ? AND party_type = 'Respondent'
+        ORDER BY created_at DESC LIMIT 1
+    ");
+    $scStmt->execute([$caseId]);
+    $eval = $scStmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$eval) {
+        http_response_code(403);
+        exit('KP Form 22 (Certificate to Bar Counterclaim) is locked: The Respondent has not undergone a show-cause hearing evaluation. Required action: Schedule and evaluate the Respondent\'s show-cause hearing before issuing KP Form 22.');
+    }
+    if ((int) $eval['is_justified'] === 1) {
+        http_response_code(403);
+        exit('KP Form 22 cannot be issued: The Respondent\'s absence was ruled justified. The dispute was rescheduled for mediation.');
+    }
+} elseif ($formCode === 'KP Form 16') {
+    // Fetch settlement agreement details from settlements or latest hearing minutes
+    $settleStmt = $conn->prepare("SELECT * FROM settlements WHERE case_id = ? LIMIT 1");
+    $settleStmt->execute([$caseId]);
+    $settle = $settleStmt->fetch(PDO::FETCH_ASSOC);
+
+    $agreementText = $settle['agreement_details'] ?? '';
+    if (!$agreementText) {
+        $minStmt = $conn->prepare("
+            SELECT hm.agreements_action_items, hm.settlement_discussion_notes
+            FROM hearing_minutes hm
+            INNER JOIN hearings h ON h.hearing_id = hm.hearing_id
+            WHERE h.case_id = ? AND (hm.session_outcome = 'Settled' OR hm.agreements_action_items != '')
+            ORDER BY hm.updated_at DESC LIMIT 1
+        ");
+        $minStmt->execute([$caseId]);
+        $minRow = $minStmt->fetch(PDO::FETCH_ASSOC);
+        $agreementText = $minRow['agreements_action_items'] ?? $minRow['settlement_discussion_notes'] ?? '';
+    }
+    $pdfData['agreement_details'] = $agreementText;
+    $pdfData['settlement_date'] = $settle['settlement_date'] ?? date('Y-m-d');
+}
+
 $pdfData = [
     'case_number' => $case['case_number'],
     'complaint_title' => $case['complaint_title'],
@@ -107,6 +226,7 @@ $pdfData = [
     'explanation_date' => date('Y-m-d 09:00:00', strtotime('+3 days')),
     'notice_date' => date('Y-m-d'),
     'official_name' => $chairName,
+    'agreement_details' => $pdfData['agreement_details'] ?? '',
 ];
 
 try {
@@ -198,6 +318,8 @@ try {
             <div style="font-weight: bold; margin-top: 4px;">KATIBAYAN UPANG HADLANGAN ANG PAGHAHAIN NG AKSYON</div>
         <?php elseif ($formCode === 'KP Form 22'): ?>
             <div style="font-weight: bold; margin-top: 4px;">KATIBAYAN UPANG HADLANGAN ANG GANTING-SAKDAL</div>
+        <?php elseif ($formCode === 'KP Form 16'): ?>
+            <div style="font-weight: bold; margin-top: 4px;">KASUNDUANG PAG-AAYOS (Amicable Settlement)</div>
         <?php endif; ?>
     </div>
 
@@ -224,6 +346,32 @@ try {
         </p>
         <p class="content">
             Dahil dito, alinsunod sa itinatakda ng Seksiyon 415 ng Kodigo ng Pamahalaang Lokal ng 1991 (Batas Republika Blg. 7160), ang ipinagsusumbong ay <strong>HINAHADLANGAN</strong> sa paghahain ng ganting-sakdal (counterclaim) na nagmumula sa nasabing sumbong.
+        </p>
+    <?php elseif ($formCode === 'KP Form 16'): ?>
+        <p class="content">
+            Kami, ang (mga) may-sumbong at (mga) ipinagsusumbong sa usaping ito, ay nagkasundo nang buong laya at kusang-loob na ayusin ang aming alitan sa ilalim ng mga sumusunod na kasunduan:
+        </p>
+        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 14px 18px; margin: 15px 0; font-family: inherit; font-size: 10.5pt; line-height: 1.7; white-space: pre-wrap;">
+            <?= htmlspecialchars(!empty($pdfData['agreement_details']) ? $pdfData['agreement_details'] : 'Ang mga panig ay nagkasundo na tapusin at ayusin ang lahat ng usapin at alitan kaugnay ng sumbong na ito sa mapayapang paraan.') ?>
+        </div>
+        <p class="content">
+            Kami ay nangangako na tutupad nang buong katapatan sa mga nakasaad sa kasunduang ito. Aming nauunawaan na ang kasunduang ito, matapos ang sampung (10) araw mula sa araw ng paglagda, ay magkakaroon ng bisa at lakas ng isang pinal na hatol ng hukuman alinsunod sa Seksiyon 416 at 417 ng Batas Republika Blg. 7160.
+        </p>
+        <table style="width: 100%; margin-top: 35px; border-collapse: collapse;">
+            <tr>
+                <td style="width: 48%; text-align: center; vertical-align: top;">
+                    <div style="border-top: 1px solid #111; margin-top: 35px; padding-top: 4px; font-weight: bold;"><?= htmlspecialchars($parties['complainant']['full_name'] ?? 'May-sumbong') ?></div>
+                    <div style="font-size: 9.5pt; color: #555;">May-sumbong</div>
+                </td>
+                <td style="width: 4%;"></td>
+                <td style="width: 48%; text-align: center; vertical-align: top;">
+                    <div style="border-top: 1px solid #111; margin-top: 35px; padding-top: 4px; font-weight: bold;"><?= htmlspecialchars($parties['respondent']['full_name'] ?? 'Ipinagsusumbong') ?></div>
+                    <div style="font-size: 9.5pt; color: #555;">Ipinagsusumbong</div>
+                </td>
+            </tr>
+        </table>
+        <p style="margin-top: 35px; font-style: italic; font-size: 10pt;">
+            PINATUTUNAYAN KO na ang kasunduang ito ay pinagtibay sa aking harapan nang malaya at kusang-loob ng mga panig matapos kong maipaliwanag sa kanila ang mga kahihinatnan nito.
         </p>
     <?php endif; ?>
 

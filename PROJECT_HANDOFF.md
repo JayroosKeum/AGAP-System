@@ -1102,6 +1102,73 @@ The Complaint Details and Proof of Service modules provide an integrated, end-to
     - Complainant's delivery record in `summon_deliveries` is automatically created with `delivery_status = 'Served'`, `served_at = NOW()`, `service_method = 'Personal Notice'`, and remarks indicating personal notice served at the Lupon office.
   - **Retroactive Auto-Healing**: In `SummonDeliveryService::getHearingDeliveries()` and `ProofOfService::getAvailableCases()`, pre-existing mediation cases where the complainant was previously left in `Pending` status (e.g. Case #28) are automatically marked as `Served`, guaranteeing consistency across all system views.
 
+### 11. Barangay Case Management Details Page UI Redesign (`frontend/pages/cases/case-details.php`, `frontend/assets/js/stage-workspace.js`, `frontend/assets/css/case-details-modern.css`) (October 2026)
+- **Problem Resolved**: The previous case workspace presented an endless single-column card stack that caused cognitive overload and required excessive vertical scrolling to locate core case context and involved parties.
+- **Top Hero Section: Primary Case Info & Immediate Context**:
+  - **Header Block**: Case Number (`Case #MM-SS-YYYY`), Title, dynamic status badge (`MEDIATION`, `CONCILIATION`, `ARBITRATION`), Case Type badge (`Civil` / `Criminal`), Category badge (`Threats`, `Property Dispute`, etc.), and key metadata (Date Filed, Incident Date/Time, Docketed Case Status with live days-remaining counter badge).
+  - **Side-by-Side Context Grid**:
+    - **Involved Parties Card (Left Column)**: Complainant (Name, Contact No., Address) and Respondent (Name, Contact No., Address) with distinct role tags.
+    - **Incident Location Card (Right Column)**: Specific incident address, landmark, GPS coordinates (`lat, lng`), and embedded interactive Leaflet/OpenStreetMap map view pinned to the incident location.
+- **Three Dedicated Functional Tabs**:
+  - **1. Mediation Tab**: Punong Barangay Mediation hub, Full Narrative & Facts, active Punong Barangay Presider details, mediation session metrics, and session schedules.
+  - **2. Conciliation Tab**: Pangkat Tagapagkasundo conciliation hub, Pangkat constitution/membership state, prerequisite gating (locked until 3 mediation sessions completed without settlement), and conciliation hearings.
+  - **3. Arbitration / CFA Tab**: Dedicated workspace for voluntary binding arbitration proceedings or Court Referral / Certificate to File Action (CFA) issuance.
+- **Streamlined 3-Stage Minutes of the Meeting Flow (Option 2)**:
+  - Consolidated 9 fragmented boxes into 3 chronological, non-redundant sections:
+    1. **Preliminaries**: Quorum, identity verification, verified presider/substitute, party appearance statuses, and opening remarks check.
+    2. **Proceedings & Discussion**: Complainant statement, respondent response, main dispute identified, private caucuses conducted, proposals, and counteroffers.
+    3. **Agreed Terms & Outcome**: Session outcome recording, settlement terms, next steps, and official document generation actions.
+
+### 12. First Mediation Process & Presider Substitution Workflow (October 2026)
+- **Independent Party Attendance Validation**:
+  - Independent recording of attendance for Complainant, Respondent, and Presider (`presiding_officer_id`).
+  - Attendance is saved transactionally against `hearings` and `hearing_attendance`.
+- **Presider Absence & Designated Substitute Presider**:
+  - Under Katarungang Pambarangay rules (RA 7160 Sec. 410), when the scheduled Presider (Punong Barangay) is marked absent/unavailable:
+    - Staff must select an active Lupon member as the designated Substitute Presider (`substitute_presider_id`).
+    - Staff must record a valid reason for substitution (`substitute_reason`).
+    - Staff must confirm that parties have been informed and mutually consent to the substitution (`parties_consent_to_substitute = 1`).
+  - Validation is enforced strictly on the server (`backend/api/hearings/attendance.php` and `ShowCauseService::recordAttendance`); direct API bypass returns HTTP 422.
+  - Preserves original scheduled presider in hearing history while recording the acting substitute.
+- **First Mediation Absence Rules**:
+  - Initial non-appearance in the 1st Mediation does NOT immediately issue penalty forms (KP 18/19/21/22).
+  - Staff are guided directly to book the 2nd Mediation session; KP Form 18 and KP Form 19 generation is blocked with informative legal guidance.
+
+### 13. Second Mediation Summons Exemption & Attendance Lock Removal (October 2026)
+- **Statutory Katarungang Pambarangay Rule (RA 7160 Sec. 410)**:
+  - Initial summons (KP Form 9) serves to bring the dispute before the Lupon for the 1st Mediation. Subsequent mediation hearings (2nd and 3rd) are continuations or reset dates; they do NOT require re-issuance of summonses or officer returns.
+- **Server Gate Bypass (`SummonDeliveryService.php` & `SummonServiceGate.php`)**:
+  - Updated `SummonDeliveryService::checkServiceStatus()`: If `hearing_type === 'Mediation'` and `hearing_sequence >= 2`, immediately returns `['allowed' => true, 'status' => 'SERVED']`.
+  - Updated `SummonServiceGate::forHearing()`: Returns `['allowed' => true, 'code' => 'SUBSEQUENT_MEDIATION']` for 2nd+ mediation hearings.
+  - Eliminates HTTP 409 conflict (`Mediation attendance locked — service pending for: Respondent (Attempt #1), Complainant`).
+- **Party Badges & Proof-of-Service Recognition**:
+  - `HearingAttendance::getHearingAttendance()` calculates sequence before normalizing parties; for sequence >= 2, sets `service_confirmed = true` and `summon_delivery_status = 'Served (Prior Notice)'`.
+  - `CaseStage.php` sets `proof_of_service_status` to `'Served'` for 2nd+ mediation sessions in the sessions list.
+  - `Hearing::createProgression()` bypasses `initializeHearingDeliveries()` when booking 2nd/3rd mediation sessions, preventing creation of dummy pending deliveries.
+
+### 14. Second Mediation Non-Appearance Escalation: KP Form 18, KP Form 19, and Consequence Gating (October 2026)
+- **KP Form 18 (Complainant Non-Appearance Notice)**:
+  - Unlocked for preview and printing in the 2nd Mediation session when the Complainant is marked absent.
+  - Generates official Notice of Hearing requiring complainant to appear and explain non-appearance within 3 days.
+- **KP Form 19 (Respondent Non-Appearance Notice)**:
+  - Unlocked for preview and printing in the 2nd Mediation session when the Respondent is marked absent.
+  - Generates official Notice of Hearing requiring respondent to appear and explain non-appearance within 3 days.
+- **First Mediation Lock Protection**:
+  - Attempting to generate KP Form 18 or 19 for 1st Mediation is blocked by `backend/api/documents/kp-form.php` (HTTP 422) with statutory guidance to book the 2nd mediation without a new summon.
+- **Consequence Form Gating (KP Form 21 & KP Form 22)**:
+  - **KP Form 21 (Certificate to Bar Action)** for absent complainant remains strictly locked until a show-cause hearing evaluation (`show_cause_evaluations`) is recorded ruling the absence as unjustified (`is_justified = 0`).
+  - **KP Form 22 (Certificate to Bar Counterclaim)** for absent respondent remains strictly locked until an unjustified show-cause evaluation is recorded.
+  - If absence is ruled justified (`is_justified = 1`), issuance is barred and the dispute is rescheduled.
+
+### 15. Canonical Hearing Booking Navigation & Conciliation Elevation Gating (October 2026)
+- **Canonical Booking Flow**:
+  - Cleaned up outcome card in Mediation Workspace to display the dedicated action `📅 Book 2nd Mediation Hearing →`.
+  - Clicking routes directly to `../hearings/schedules.php?case_id=${caseId}&hearing_id=${hId}`, opening the full legal scheduling modal with preselected case and `schedule_reviewed = '1'`.
+  - Appended return navigation `← Return to Mediation Workspace` upon successful schedule completion.
+- **Conciliation Progression Gating**:
+  - Case progression engine enforces RA 7160 Sec. 410(b): elevating a case to Pangkat Conciliation is prohibited after the 1st or 2nd mediation session.
+  - Elevation is unlocked only after the 3rd mediation session has concluded without settlement, requiring an explicit authorized action and recording in audit history.
+
 ---
 
 ## Present but Incomplete or Requiring Verification
@@ -1110,7 +1177,7 @@ The Complaint Details and Proof of Service modules provide an integrated, end-to
 - Complaint party and attachment workflows have active browser/MySQL tests; additional stress-testing on edge cases is recommended.
 - GPS mobile field-device capture (camera/geolocation) operates in browser environments; device-level offline caching remains an enhancement.
 - AI calls Gemini, but production-grade monitoring and rate limiting are incomplete.
-- KP Form 10, 12, 18, 19, 20, and 21 generate successfully; ongoing visual verification with varied text lengths is recommended.
+- KP Form 10, 12, 16, 18, 19, 20, 21, and 22 generate successfully; ongoing visual verification with varied text lengths is recommended.
 
 ---
 
@@ -1119,7 +1186,7 @@ The Complaint Details and Proof of Service modules provide an integrated, end-to
 The following remain missing from the complete Module Development specification:
 
 - Resident self-service complaint filing and status tracking portal.
-- Remaining optional KP forms (e.g., KP Forms 13, 14, 15, 16, 17, 22, 23). *(Note: KP Form 20 CFA is now implemented).*
+- Remaining optional KP forms (e.g., KP Forms 13, 14, 15, 17, 23). *(Note: KP Forms 16, 18, 19, 20 CFA, 21, and 22 are now implemented).*
 - Automated end-to-end integration test suite, deployment pipelines, and automated database backup routines.
 
 ---

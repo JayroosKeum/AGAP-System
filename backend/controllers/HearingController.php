@@ -118,7 +118,13 @@ class HearingController
             $label = $this->ordinal($result['sequence']) . ' ' . $result['hearing_type'];
             $this->audit->log($userId, 'Scheduled ' . $label, 'Hearings', $result['hearing_id']);
             $this->notifyHearingMembers($values, $label . ' scheduled', $userId, $label);
-            return ['success' => true, 'message' => $label . ' scheduled successfully.', 'hearing_id' => $result['hearing_id']];
+            return [
+                'success' => true,
+                'message' => $label . ' scheduled successfully.',
+                'hearing_id' => $result['hearing_id'],
+                'sequence' => (int) ($result['sequence'] ?? 1),
+                'hearing_type' => $result['hearing_type'] ?? $values['hearing_type']
+            ];
         } catch (Throwable $exception) {
             error_log($exception->getMessage());
             return ['success' => false, 'message' => 'Unable to schedule the hearing.'];

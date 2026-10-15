@@ -192,29 +192,16 @@ include '../../layouts/header.php';
                     </div>
                 </div>
 
-                <!-- Section 3: Hearing Session Minutes & Settlement Progress -->
+                <!-- Section 3: Hearing Session Minutes & Proceedings -->
                 <div class="stage-section-card" id="minutesSection">
                     <div class="stage-section-header">
                         <div>
-                            <h3>Hearing Session Minutes &amp; Settlement Progress</h3>
-                            <p>Official records of statements, dispute details, negotiation proposals, caucus, and resolution progress</p>
+                            <h3>Hearing Session Minutes &amp; Proceedings</h3>
+                            <p>Official records of preliminaries, discussion &amp; statements, agreed terms, and procedural outcome</p>
                         </div>
                     </div>
                     <div id="wsMinutesSectionContainer">
-                        <div class="empty-detail-state">Loading session minutes &amp; settlement progress...</div>
-                    </div>
-                </div>
-
-                <!-- Section 4: Stage Outcome & Pangkat Progression -->
-                <div class="stage-section-card" id="outcomeSection">
-                    <div class="stage-section-header">
-                        <div>
-                            <h3>Mediation Outcome &amp; Progression</h3>
-                            <p>Finalize amicable settlement or establish authorized referral to Pangkat ng Tagapagkasundo</p>
-                        </div>
-                    </div>
-                    <div id="wsOutcomeActionBox">
-                        <div class="empty-detail-state">Loading stage disposition...</div>
+                        <div class="empty-detail-state">Loading session minutes &amp; proceedings...</div>
                     </div>
                 </div>
             </div>

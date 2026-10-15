@@ -691,14 +691,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 2. Complaint (Title of complaint / short description)
         const complaintTitle = row.complaint_title ? String(row.complaint_title).trim() : '';
-        const complaintNumber = row.complaint_number || `Complaint #${id}`;
         const complaintHtml = `
             <div class="cell-complaint-meta">
-                <a href="complaint-details.php?id=${id}" class="complaint-title-link" title="${escapeHtml(complaintTitle || complaintNumber)}">
+                <a href="complaint-details.php?id=${id}" class="complaint-title-link" title="${escapeHtml(complaintTitle || 'Untitled Complaint')}">
                     ${escapeHtml(complaintTitle || 'Untitled Complaint')}
                 </a>
                 <div class="complaint-sub-meta">
-                    <span class="complaint-sub-no">${escapeHtml(complaintNumber)}</span>
                     <span class="badge-case-type ${caseTypeClass}">${escapeHtml(caseType)}</span>
                 </div>
             </div>

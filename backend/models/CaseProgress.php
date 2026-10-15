@@ -681,7 +681,20 @@ class CaseProgress
 
         $ordinals = ['', '1st', '2nd', '3rd'];
 
-        if ($anyServed) {
+        // Check if mediation has already commenced or been scheduled
+        $mediationHearings = array_filter($hearings, fn($h) => in_array($h['hearing_type'] ?? '', ['Initial Hearing', 'Mediation'], true));
+        $hasMediationScheduled = !empty($mediationHearings);
+
+        if ($hasMediationScheduled && $summonsCount >= 1) {
+            // Initial summons was already issued for the 1st Mediation.
+            // Under Katarungang Pambarangay rules, after 1st mediation and booking of 2nd mediation,
+            // it does not need to send another summon.
+            $summonButton['label']   = $anyServed ? 'Summons Served' : 'Initial Summons Issued';
+            $summonButton['action']  = 'view_proof';
+            $summonButton['disabled'] = false;
+            $summonButton['url']     = '../gps/proof-service.php?case_id=' . $caseId;
+            $summonButton['tooltip'] = 'Initial summons was already issued for 1st Mediation. Subsequent mediation sessions do not require another summons.';
+        } elseif ($anyServed) {
             $summonButton['label']   = 'Summons Served';
             $summonButton['action']  = 'view_proof';
             $summonButton['disabled'] = false;

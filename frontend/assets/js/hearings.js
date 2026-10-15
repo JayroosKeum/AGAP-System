@@ -744,6 +744,14 @@ async function confirmHearingSchedule() {
         onSuccess();
         form.reset();
         await Promise.all([loadHearings(), loadCombinedRecords(currentPage)]);
+        const params = new URLSearchParams(window.location.search);
+        const cId = params.get('case_id') || data.get('case_id');
+        if (cId) {
+            const box = document.getElementById('hearingMessage');
+            if (box) {
+                box.innerHTML = `${escapeHtml(result.message || 'Hearing scheduled successfully.')} <a href="../cases/mediation-workspace.php?case_id=${encodeURIComponent(cId)}" style="margin-left: 12px; font-weight: 700; color: #15803d; text-decoration: underline;">&larr; Return to Mediation Workspace</a>`;
+            }
+        }
     } catch (error) {
         setMessage(error.message);
     } finally {

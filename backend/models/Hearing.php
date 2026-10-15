@@ -478,11 +478,15 @@ class Hearing
             $this->conn->commit();
 
             // Automatically initialize hearing deliveries for all parties and witnesses
-            require_once __DIR__ . '/../services/SummonDeliveryService.php';
-            try {
-                (new SummonDeliveryService($this->conn))->initializeHearingDeliveries($hearingId, $userId);
-            } catch (Throwable $delivEx) {
-                error_log("Failed to initialize deliveries for hearing {$hearingId}: " . $delivEx->getMessage());
+            // 2nd and subsequent mediation sessions do not require re-issuance of summons
+            $isSubsequentMediation = ($expectedType === 'Mediation' && ($scheduled['Mediation'] ?? 0) >= 1);
+            if (!$isSubsequentMediation) {
+                require_once __DIR__ . '/../services/SummonDeliveryService.php';
+                try {
+                    (new SummonDeliveryService($this->conn))->initializeHearingDeliveries($hearingId, $userId);
+                } catch (Throwable $delivEx) {
+                    error_log("Failed to initialize deliveries for hearing {$hearingId}: " . $delivEx->getMessage());
+                }
             }
 
             return ['success' => true, 'hearing_id' => $hearingId, 'sequence' => $scheduled[$expectedType] + 1, 'hearing_type' => $expectedType];

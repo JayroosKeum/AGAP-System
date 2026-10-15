@@ -57,6 +57,19 @@ function formatDateTimeReadable(str) {
     }
 }
 
+function openKPFormPreview(caseId, formCode, hearingId = null) {
+    if (!caseId) {
+        alert('Case ID is required to preview document.');
+        return;
+    }
+    let url = getStageApiUrl(`documents/kp-form.php?case_id=${encodeURIComponent(caseId)}&form_code=${encodeURIComponent(formCode)}&preview=1`);
+    if (hearingId) {
+        url += `&hearing_id=${encodeURIComponent(hearingId)}`;
+    }
+    window.open(url, '_blank');
+}
+window.openKPFormPreview = openKPFormPreview;
+
 /**
  * Initialize Stage Workspace
  */
@@ -488,9 +501,11 @@ function renderSessionsList(data, stage) {
                         </div>
                     </div>
                     <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-                        <button type="button" class="btn-secondary" onclick="openSummonsPreviewModal(${Number(stageWorkspaceState.caseId)}, null, ${Number(s.hearing_id)})" style="font-size: 0.78rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 4px; border-color: #0284c7; color: #0284c7; background: #f0f9ff;" title="Preview, print, or download KP Form No. 9 summons for this session">
-                            📄 Preview Summons (KP 9)
-                        </button>
+                        ${Number(s.session_index || 1) === 1 ? `
+                            <button type="button" class="btn-secondary" onclick="openSummonsPreviewModal(${Number(stageWorkspaceState.caseId)}, null, ${Number(s.hearing_id)})" style="font-size: 0.78rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 4px; border-color: #0284c7; color: #0284c7; background: #f0f9ff;" title="Preview, print, or download KP Form No. 9 summons for 1st Mediation">
+                                📄 Preview Summons (KP 9)
+                            </button>
+                        ` : ''}
                         <button type="button" class="btn-secondary" onclick="openAttendanceModal(${s.hearing_id})" style="font-size: 0.78rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 4px;">
                             👤 Record Attendance
                         </button>
@@ -535,6 +550,8 @@ function renderSessionsList(data, stage) {
 
 /**
  * Render Hearing Session Minutes & Settlement Progress Section
+ * Streamlined Option 2: 3 Chronological Sections
+ * (Preliminaries -> Proceedings & Discussion -> Agreed Terms & Outcome)
  */
 function renderMinutesSection(data, stage) {
     const minContainer = document.getElementById('wsMinutesSectionContainer');
@@ -543,7 +560,7 @@ function renderMinutesSection(data, stage) {
     const sessions = stageWorkspaceState.sessions || [];
     const mode = stageWorkspaceState.mode;
 
-    // 1. Calculate Overall Settlement & Negotiation Trajectory
+    // 1. Calculate Overall Settlement & Negotiation Trajectory (Compact Badge)
     let trajectoryStatus = 'Exploring Dispute Resolution';
     let trajectoryBadgeStyle = 'background: #fef3c7; color: #b45309; border: 1px solid #fde68a;';
 
@@ -552,7 +569,6 @@ function renderMinutesSection(data, stage) {
     const hasFailed = sessions.some(s => ['Failed', 'Elevate to Pangkat', 'Pending CFA', 'Unsuccessful'].includes(s.session_outcome));
     const latestProposal = [...sessions].reverse().find(s => s.new_proposal?.trim())?.new_proposal;
     const latestCounteroffer = [...sessions].reverse().find(s => s.counteroffer?.trim())?.counteroffer;
-    const latestDispute = [...sessions].reverse().find(s => s.main_dispute_identified?.trim())?.main_dispute_identified;
     const anyCaucus = sessions.some(s => Boolean(s.caucus_conducted));
 
     if (hasSettled || stage.outcome === 'Settled') {
@@ -575,57 +591,9 @@ function renderMinutesSection(data, stage) {
         trajectoryBadgeStyle = 'background: #f3e8ff; color: #7e22ce; border: 1px solid #e9d5ff;';
     }
 
-    // 2. Settlement Progress & Negotiations Tracker Panel
-    let trackerHtml = `
-        <div class="settlement-tracker-panel" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin-bottom: 20px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid #e2e8f0;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="font-size: 1.15rem;">📊</span>
-                    <div>
-                        <strong style="font-size: 0.95rem; color: #0f172a;">Settlement Progress &amp; Negotiations Tracker</strong>
-                        <span style="display: block; font-size: 0.78rem; color: #64748b;">Stage-specific trajectory of proposals, counteroffers, caucus, and resolution</span>
-                    </div>
-                </div>
-                <div>
-                    <span style="font-size: 0.82rem; font-weight: 700; padding: 4px 10px; border-radius: 9999px; ${trajectoryBadgeStyle}">
-                        ${escapeHtml(trajectoryStatus)}
-                    </span>
-                </div>
-            </div>
-
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px;">
-                <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px;">
-                    <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: #64748b; display: block; margin-bottom: 4px;">MAIN DISPUTE FOCUS</span>
-                    <p style="margin: 0; font-size: 0.84rem; color: #1e293b; line-height: 1.4;">
-                        ${latestDispute ? escapeHtml(latestDispute) : '<em style="color: #94a3b8;">No core dispute summary documented yet.</em>'}
-                    </p>
-                </div>
-                <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px;">
-                    <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: #64748b; display: block; margin-bottom: 4px;">LATEST SETTLEMENT PROPOSAL / OFFER</span>
-                    <p style="margin: 0; font-size: 0.84rem; color: #1e293b; line-height: 1.4;">
-                        ${latestProposal ? escapeHtml(latestProposal) : '<em style="color: #94a3b8;">No proposal submitted yet.</em>'}
-                    </p>
-                </div>
-                <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px;">
-                    <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: #64748b; display: block; margin-bottom: 4px;">COUNTEROFFER / RESPONSE</span>
-                    <p style="margin: 0; font-size: 0.84rem; color: #1e293b; line-height: 1.4;">
-                        ${latestCounteroffer ? escapeHtml(latestCounteroffer) : '<em style="color: #94a3b8;">No counteroffer recorded yet.</em>'}
-                    </p>
-                </div>
-                <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px;">
-                    <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: #64748b; display: block; margin-bottom: 4px;">CAUCUS &amp; PROTOCOL STATUS</span>
-                    <div style="font-size: 0.82rem; color: #334155; line-height: 1.4;">
-                        <div>Private Caucus: <strong>${anyCaucus ? '✓ Conducted' : 'None Recorded'}</strong></div>
-                        <div style="margin-top: 3px;">Sessions in Stage: <strong>${sessions.length}</strong> · Minutes Logged: <strong>${sessions.filter(s => s.minutes_id).length}</strong></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-
-    // 3. If no sessions scheduled yet, show empty state
+    // 2. Empty state if no sessions scheduled yet
     if (!sessions.length) {
-        minContainer.innerHTML = trackerHtml + `
+        minContainer.innerHTML = `
             <div style="text-align: center; padding: 36px 20px; color: #64748b; background: #fff; border: 1px dashed #cbd5e1; border-radius: 10px;">
                 <p style="margin: 0 0 10px; font-size: 0.95rem; color: #475569;">No ${escapeHtml(mode.toLowerCase())} sessions scheduled yet.</p>
                 <small style="display: block; margin-bottom: 14px; color: #94a3b8;">Schedule a session first to record hearing minutes, statements, and settlement progress.</small>
@@ -653,10 +621,10 @@ function renderMinutesSection(data, stage) {
     const curOutcome = activeSession.session_outcome || 'Pending';
     if (mode === 'Mediation') {
         const opts = [
-            { val: 'Continue Mediation', label: 'Continue Mediation (Next Session)' },
-            { val: 'Settled', label: 'Settled (Amicable Settlement Reached)' },
+            { val: 'Continue Mediation', label: 'Continue Mediation (Next Session Required)' },
+            { val: 'Settled', label: 'Settled (Amicable Settlement Reached — KP Form 16)' },
             { val: 'Elevate to Pangkat', label: 'Elevate to Pangkat ng Tagapagkasundo (KP Form 10)' },
-            { val: 'Party Absent', label: 'Party Absent / Issue Show Cause Notice' },
+            { val: 'Party Absent', label: 'Party Absent / Non-appearance Recorded' },
             { val: 'Rescheduled', label: 'Rescheduled — Session Reset Upon Request' },
             { val: 'Failed', label: 'Failed — Mediation Unsuccessful / Impasse' },
             { val: 'Pending', label: 'Pending Evaluation' }
@@ -664,8 +632,8 @@ function renderMinutesSection(data, stage) {
         outcomeOptions = opts.map(o => `<option value="${o.val}" ${curOutcome === o.val ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('');
     } else if (mode === 'Conciliation') {
         const opts = [
-            { val: 'Continue Conciliation', label: 'Continue Conciliation (Next Session)' },
-            { val: 'Settled', label: 'Settled (Amicable Settlement Reached)' },
+            { val: 'Continue Conciliation', label: 'Continue Conciliation (Next Session Required)' },
+            { val: 'Settled', label: 'Settled (Amicable Settlement Reached — KP Form 16)' },
             { val: 'Pending CFA', label: 'Conciliation Failed — Ready for CFA (KP Form 20)' },
             { val: 'Party Absent', label: 'Party Absent / Non-appearance Recorded' },
             { val: 'Rescheduled', label: 'Rescheduled — Session Reset' },
@@ -697,46 +665,139 @@ function renderMinutesSection(data, stage) {
         else if (hasMin) { badgeBg = '#dbeafe'; badgeColor = '#1e40af'; }
 
         sessionTabsHtml += `
-            <button type="button" onclick="selectInlineMinutesSession(${s.hearing_id})" style="border: 2px solid ${isSelected ? '#2563eb' : '#e2e8f0'}; background: ${isSelected ? '#eff6ff' : '#fff'}; border-radius: 8px; padding: 8px 14px; cursor: pointer; text-align: left; display: inline-flex; align-items: center; gap: 8px; font-family: inherit; transition: all 0.15s ease;">
+            <button type="button" onclick="selectInlineMinutesSession(${s.hearing_id})" style="border: 2px solid ${isSelected ? '#2563eb' : '#e2e8f0'}; background: ${isSelected ? '#eff6ff' : '#fff'}; border-radius: 8px; padding: 7px 13px; cursor: pointer; text-align: left; display: inline-flex; align-items: center; gap: 8px; font-family: inherit; transition: all 0.15s ease;">
                 <div>
-                    <strong style="display: block; font-size: 0.84rem; color: ${isSelected ? '#1e40af' : '#0f172a'};">#${s.session_index} ${escapeHtml(s.session_number)}</strong>
-                    <small style="color: #64748b; font-size: 0.74rem;">${formatDateReadable(s.hearing_date)}</small>
+                    <strong style="display: block; font-size: 0.83rem; color: ${isSelected ? '#1e40af' : '#0f172a'};">#${s.session_index} ${escapeHtml(s.session_number)}</strong>
+                    <small style="color: #64748b; font-size: 0.73rem;">${formatDateReadable(s.hearing_date)}</small>
                 </div>
-                <span style="font-size: 0.72rem; padding: 2px 7px; border-radius: 4px; font-weight: 700; background: ${badgeBg}; color: ${badgeColor};">
+                <span style="font-size: 0.70rem; padding: 2px 6px; border-radius: 4px; font-weight: 700; background: ${badgeBg}; color: ${badgeColor};">
                     ${escapeHtml(s.minutes_status)}
                 </span>
             </button>
         `;
     });
 
-    // 4. Build Form exactly matching Images 2 & 3
-    let formHtml = `
-        <!-- Session Selector Tabs Card -->
-        <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; margin-bottom: 16px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #f1f5f9;">
-                <div>
-                    <strong style="font-size: 0.92rem; color: #0f172a;">Select Hearing Session:</strong>
-                    <span style="font-size: 0.78rem; color: #64748b; margin-left: 6px;">Manage minutes, statements, and proposals for the selected session</span>
+    // Party appearance tags
+    const compAtt = activeSession.complainant_attendance || 'Pending';
+    const respAtt = activeSession.respondent_attendance || 'Pending';
+    const compAttBadge = compAtt === 'Present' ? 'background: #dcfce7; color: #15803d;' : (compAtt === 'Absent' ? 'background: #fee2e2; color: #991b1b;' : 'background: #f1f5f9; color: #64748b;');
+    const respAttBadge = respAtt === 'Present' ? 'background: #dcfce7; color: #15803d;' : (respAtt === 'Absent' ? 'background: #fee2e2; color: #991b1b;' : 'background: #f1f5f9; color: #64748b;');
+
+    // Presider attendance snippet
+    let presiderDisplayHtml = '';
+    if (activeSession.substitute_presider_name) {
+        presiderDisplayHtml = `
+            <div style="font-size: 0.78rem; margin-bottom: 7px; padding: 5px 9px; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: #475569; font-weight: 600;">Presider:</span>
+                    <span style="font-size: 0.7rem; font-weight: 700; padding: 1px 5px; border-radius: 4px; background: #fee2e2; color: #991b1b;">Absent</span>
                 </div>
-                <div style="display: flex; gap: 6px; align-items: center;">
-                    <button type="button" class="btn-secondary" onclick="openScheduleModal()" style="font-size: 0.76rem; padding: 3px 8px;">+ New Session</button>
+                <div style="color: #0f172a; font-weight: 600; font-size: 0.8rem;">
+                    ${escapeHtml(activeSession.presiding_officer_name || 'Punong Barangay')}
+                </div>
+                <div style="margin-top: 3px; font-size: 0.75rem; color: #2563eb; font-weight: 600;">
+                    ↳ Substitute: ${escapeHtml(activeSession.substitute_presider_name)} (Consent: Verified)
+                </div>
+                ${activeSession.substitute_reason ? `<div style="font-size: 0.71rem; color: #64748b; margin-top: 2px;">Reason: ${escapeHtml(activeSession.substitute_reason)}</div>` : ''}
+            </div>
+        `;
+    } else {
+        presiderDisplayHtml = `
+            <div style="font-size: 0.78rem; margin-bottom: 7px; padding: 5px 9px; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <span style="color: #475569; font-weight: 600;">Presider:</span>
+                    <span style="color: #0f172a; font-weight: 600; margin-left: 4px;">${escapeHtml(activeSession.presiding_officer_name || 'Punong Barangay / Lupon Chairman')}</span>
+                </div>
+                <span style="font-size: 0.7rem; font-weight: 700; padding: 1px 5px; border-radius: 4px; background: #dcfce7; color: #15803d;">Present</span>
+            </div>
+        `;
+    }
+
+    const isSecondOrLaterSession = (Number(activeSession.session_index || 1) >= 2 || !['Initial Hearing', 'Mediation'].includes(activeSession.hearing_type));
+
+    let compConsequenceHtml = '';
+    if (compAtt === 'Absent') {
+        if (isSecondOrLaterSession) {
+            compConsequenceHtml = `
+                <div style="margin-top: 5px; font-size: 0.74rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; padding: 5px 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap;">
+                        <span style="color: #991b1b; font-weight: 700;">Complainant Non-appearance</span>
+                        <button type="button" class="btn-secondary" onclick="openKPFormPreview(${stageWorkspaceState.caseId}, 'KP Form 18', ${activeSession.hearing_id})" style="font-size: 0.7rem; padding: 2px 7px; background: #fff; border-color: #fca5a5; color: #991b1b; cursor: pointer;">
+                            📄 Preview KP Form 18
+                        </button>
+                    </div>
+                    <div style="color: #64748b; font-size: 0.71rem; margin-top: 3px;">
+                        🔒 KP Form 21 (Bar Action) locked pending show-cause evaluation.
+                    </div>
+                </div>
+            `;
+        } else {
+            compConsequenceHtml = `
+                <div style="margin-top: 5px; font-size: 0.74rem; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 4px; padding: 5px 8px;">
+                    <span style="color: #475569; font-weight: 600;">Complainant Non-appearance (1st Mediation):</span>
+                    <span style="color: #64748b; margin-left: 4px;">Proceed to book 2nd Mediation (no new summon needed). KP Form 18 notice unlocks upon non-appearance in 2nd Mediation.</span>
+                </div>
+            `;
+        }
+    }
+
+    let respConsequenceHtml = '';
+    if (respAtt === 'Absent') {
+        if (isSecondOrLaterSession) {
+            respConsequenceHtml = `
+                <div style="margin-top: 5px; font-size: 0.74rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; padding: 5px 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap;">
+                        <span style="color: #991b1b; font-weight: 700;">Respondent Non-appearance</span>
+                        <button type="button" class="btn-secondary" onclick="openKPFormPreview(${stageWorkspaceState.caseId}, 'KP Form 19', ${activeSession.hearing_id})" style="font-size: 0.7rem; padding: 2px 7px; background: #fff; border-color: #fca5a5; color: #991b1b; cursor: pointer;">
+                            📄 Preview KP Form 19
+                        </button>
+                    </div>
+                    <div style="color: #64748b; font-size: 0.71rem; margin-top: 3px;">
+                        🔒 KP Form 22 (Bar Counterclaim) locked pending show-cause evaluation.
+                    </div>
+                </div>
+            `;
+        } else {
+            respConsequenceHtml = `
+                <div style="margin-top: 5px; font-size: 0.74rem; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 4px; padding: 5px 8px;">
+                    <span style="color: #475569; font-weight: 600;">Respondent Non-appearance (1st Mediation):</span>
+                    <span style="color: #64748b; margin-left: 4px;">Proceed to book 2nd Mediation (no new summon needed). KP Form 19 notice unlocks upon non-appearance in 2nd Mediation.</span>
+                </div>
+            `;
+        }
+    }
+
+    // Check if proposals or caucus have content
+    const hasProposalsOrCaucus = Boolean(activeSession.new_proposal?.trim() || activeSession.counteroffer?.trim() || activeSession.caucus_conducted || activeSession.caucus_notes?.trim());
+
+    // 3. Build Form with 3 Streamlined Sections
+    let formHtml = `
+        <!-- Compact Session Selector & Trajectory Bar (Replaces bulky 4-box tracker) -->
+        <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <span style="font-size: 0.84rem; font-weight: 700; color: #0f172a;">Select Session:</span>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    ${sessionTabsHtml}
                 </div>
             </div>
-            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                ${sessionTabsHtml}
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: #64748b;">Trajectory:</span>
+                <span style="font-size: 0.78rem; font-weight: 700; padding: 3px 10px; border-radius: 9999px; ${trajectoryBadgeStyle}">
+                    ${escapeHtml(trajectoryStatus)}
+                </span>
             </div>
         </div>
 
-        <!-- The Hearing Session Minutes & Settlement Progress Form Card -->
-        <div class="inline-minutes-card" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.03);">
+        <!-- The 3-Section Streamlined Minutes Workspace Card -->
+        <div class="inline-minutes-card" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 22px 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.03);">
             <!-- Card Header -->
             <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid #e2e8f0;">
                 <div>
                     <h3 style="margin: 0; font-size: 1.15rem; font-weight: 800; color: #0f172a;">
-                        Hearing Session Minutes &amp; Settlement Progress
+                        Minutes of the Meeting &amp; Hearing Workspace
                     </h3>
-                    <p style="margin: 3px 0 0; font-size: 0.84rem; color: #64748b;">
-                        Record formal proceedings, statements, proposals, and session outcome for <strong>${escapeHtml(activeSession.session_number)}</strong> (${formatDateTimeReadable(activeSession.hearing_date)}).
+                    <p style="margin: 3px 0 0; font-size: 0.83rem; color: #64748b;">
+                        Record formal proceedings, statements, agreed terms, and disposition for <strong>${escapeHtml(activeSession.session_number)}</strong> (${formatDateTimeReadable(activeSession.hearing_date)}).
                     </p>
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
@@ -748,7 +809,7 @@ function renderMinutesSection(data, stage) {
                     </button>
                     ${(isFinalized || activeSession.minutes_id) ? `
                         <button type="button" class="btn-secondary" onclick="printHearingMinutes(${activeSession.hearing_id})" style="font-size: 0.78rem; padding: 4px 10px;">
-                            🖨️ Print
+                            🖨️ Print Minutes
                         </button>
                     ` : ''}
                 </div>
@@ -756,8 +817,8 @@ function renderMinutesSection(data, stage) {
 
             <!-- Lock Notice if Finalized -->
             ${isFinalized ? `
-                <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                    <div style="color: #166534; font-size: 0.86rem;">
+                <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 12px 16px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div style="color: #166534; font-size: 0.85rem;">
                         <strong>🔒 Official Record Locked:</strong> This session minutes was finalized${activeSession.finalized_at ? ` on ${formatDateTimeReadable(activeSession.finalized_at)}` : ''}${activeSession.finalized_by_name ? ` by ${escapeHtml(activeSession.finalized_by_name)}` : ''}. To preserve legal integrity, finalized minutes cannot be modified.
                     </div>
                 </div>
@@ -767,126 +828,226 @@ function renderMinutesSection(data, stage) {
             <form id="inlineMinutesForm" onsubmit="event.preventDefault();">
                 <input type="hidden" id="minHearingId" value="${activeSession.hearing_id}">
 
-                <!-- Section 1: Session Opening & Identity Verification -->
-                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px;">
-                    <h4 style="font-size: 0.88rem; font-weight: 700; color: #1e293b; margin: 0 0 10px; display: flex; align-items: center; gap: 6px;">
-                        <span>📝</span> 1. Session Opening &amp; Identity Verification
-                    </h4>
-                    <div style="display: flex; gap: 24px; flex-wrap: wrap; font-size: 0.85rem; color: #334155;">
-                        <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
-                            <input type="checkbox" id="minOpening" ${activeSession.opening_conducted ? 'checked' : ''} ${readonlyAttr} style="width: 16px; height: 16px;">
-                            <span>Opening Statement Conducted</span>
-                        </label>
-                        <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
-                            <input type="checkbox" id="minIdentity" ${activeSession.identity_verified ? 'checked' : ''} ${readonlyAttr} style="width: 16px; height: 16px;">
-                            <span>Parties Identity Verified</span>
-                        </label>
-                        <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
-                            <input type="checkbox" id="minReviewed" ${activeSession.complaint_reviewed ? 'checked' : ''} ${readonlyAttr} style="width: 16px; height: 16px;">
-                            <span>Complaint Reviewed &amp; Read</span>
-                        </label>
+                <!-- ============================================================== -->
+                <!-- SECTION 1: PRELIMINARIES (Quorum, Attendance & Opening Checks)  -->
+                <!-- ============================================================== -->
+                <div class="minutes-flow-step" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 18px; margin-bottom: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid #f1f5f9;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="background: #2563eb; color: #fff; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.78rem;">1</span>
+                            <h4 style="margin: 0; font-size: 0.96rem; font-weight: 700; color: #0f172a;">Preliminaries &amp; Procedural Opening</h4>
+                        </div>
+                        <button type="button" class="btn-secondary" onclick="openAttendanceModal(${activeSession.hearing_id})" style="font-size: 0.76rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
+                            👤 Verify / Edit Attendance
+                        </button>
                     </div>
-                </div>
 
-                <!-- Section 2: Statements & Core Dispute -->
-                <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px;">
-                    <h4 style="font-size: 0.88rem; font-weight: 700; color: #1e293b; margin: 0 0 10px; display: flex; align-items: center; gap: 6px;">
-                        <span>🗣️</span> 2. Statements, Core Dispute &amp; Agenda Topics
-                    </h4>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="minCompStmt" style="font-weight: 600; font-size: 0.84rem; color: #1e293b; margin-bottom: 4px; display: block;">Complainant Statement Summary</label>
-                            <textarea id="minCompStmt" rows="3" maxlength="5000" placeholder="Summary of complainant's claims, grievances, and narration of facts..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 9px; font-size: 0.84rem; font-family: inherit; box-sizing: border-box; line-height: 1.45;" ${readonlyAttr}>${escapeHtml(activeSession.complainant_statement || '')}</textarea>
+                    <div style="display: grid; grid-template-columns: 1.15fr 1.2fr; gap: 16px; align-items: flex-start; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px;">
+                        <!-- Left: Presider & Party Appearance Status -->
+                        <div>
+                            <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.04em; display: block; margin-bottom: 6px;">Presider &amp; Party Appearance</span>
+                            ${presiderDisplayHtml}
+                            <div style="display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.83rem; margin-bottom: 4px;">
+                                <div style="display: inline-flex; align-items: center; gap: 6px;">
+                                    <span style="color: #475569; font-weight: 600;">Complainant:</span>
+                                    <span style="font-size: 0.74rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; ${compAttBadge}">
+                                        ${escapeHtml(compAtt)}
+                                    </span>
+                                </div>
+                                <div style="display: inline-flex; align-items: center; gap: 6px;">
+                                    <span style="color: #475569; font-weight: 600;">Respondent:</span>
+                                    <span style="font-size: 0.74rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; ${respAttBadge}">
+                                        ${escapeHtml(respAtt)}
+                                    </span>
+                                </div>
+                            </div>
+                            ${compConsequenceHtml}
+                            ${respConsequenceHtml}
                         </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="minRespStmt" style="font-weight: 600; font-size: 0.84rem; color: #1e293b; margin-bottom: 4px; display: block;">Respondent Statement Summary</label>
-                            <textarea id="minRespStmt" rows="3" maxlength="5000" placeholder="Summary of respondent's explanation, defenses, and counter-statements..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 9px; font-size: 0.84rem; font-family: inherit; box-sizing: border-box; line-height: 1.45;" ${readonlyAttr}>${escapeHtml(activeSession.respondent_statement || '')}</textarea>
-                        </div>
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="minDisputeSummary" style="font-weight: 600; font-size: 0.84rem; color: #1e293b; margin-bottom: 4px; display: block;">Main Dispute Identified</label>
-                            <input type="text" id="minDisputeSummary" maxlength="1000" placeholder="Core conflict (e.g., boundary encroachment, unpaid debt, noise disturbance)..." value="${escapeHtml(activeSession.main_dispute_identified || '')}" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 9px 12px; font-size: 0.84rem; box-sizing: border-box;" ${readonlyAttr}>
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="minAgenda" style="font-weight: 600; font-size: 0.84rem; color: #1e293b; margin-bottom: 4px; display: block;">Agenda Topics / Matters Discussed</label>
-                            <input type="text" id="minAgenda" maxlength="3000" placeholder="Key agenda items, procedural questions, or topics addressed..." value="${escapeHtml(activeSession.agenda_topics || '')}" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 9px 12px; font-size: 0.84rem; box-sizing: border-box;" ${readonlyAttr}>
-                        </div>
-                    </div>
-                </div>
 
-                <!-- Section 3: Proposals, Caucus & Agreements -->
-                <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 16px 18px; margin-bottom: 16px;">
-                    <h4 style="font-size: 0.9rem; font-weight: 700; color: #0369a1; margin: 0 0 12px; display: flex; align-items: center; gap: 6px;">
-                        <span>🛡️</span> 3. Negotiation, Proposals, Caucus &amp; Agreements
-                    </h4>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 10px;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="minNewProposal" style="font-weight: 600; font-size: 0.82rem; color: #0c4a6e; margin-bottom: 4px; display: block;">Settlement Proposal / Offer</label>
-                            <textarea id="minNewProposal" rows="2" maxlength="3000" placeholder="Specific terms proposed by offering party (restitution, apology, timeline)..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.84rem; font-family: inherit; box-sizing: border-box; line-height: 1.4;" ${readonlyAttr}>${escapeHtml(activeSession.new_proposal || '')}</textarea>
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="minCounterOffer" style="font-weight: 600; font-size: 0.82rem; color: #0c4a6e; margin-bottom: 4px; display: block;">Counteroffer / Response</label>
-                            <textarea id="minCounterOffer" rows="2" maxlength="3000" placeholder="Counter-proposal, condition adjustments, or alternative terms offered..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.84rem; font-family: inherit; box-sizing: border-box; line-height: 1.4;" ${readonlyAttr}>${escapeHtml(activeSession.counteroffer || '')}</textarea>
-                        </div>
-                    </div>
-                    <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.85rem; margin-top: 4px; color: #0369a1; font-weight: 500;">
-                        <input type="checkbox" id="minCaucus" ${activeSession.caucus_conducted ? 'checked' : ''} ${readonlyAttr} onchange="document.getElementById('minCaucusNotesWrap').style.display = this.checked ? 'block' : 'none';" style="width: 16px; height: 16px;">
-                        <span>Private Caucus Conducted (separate meeting held with one party)</span>
-                    </label>
-                    <div id="minCaucusNotesWrap" style="${activeSession.caucus_conducted ? '' : 'display: none;'} margin-top: 10px;">
-                        <label for="minCaucusNotes" style="font-size: 0.78rem; font-weight: 600; color: #0369a1; display: block; margin-bottom: 3px;">CONFIDENTIAL CAUCUS NOTES</label>
-                        <textarea id="minCaucusNotes" rows="2" placeholder="Confidential mediator insights, party reservations, or caucus concessions..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.84rem; font-family: inherit; box-sizing: border-box;" ${readonlyAttr}>${escapeHtml(activeSession.caucus_notes || '')}</textarea>
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 12px;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="minAgreements" style="font-weight: 600; font-size: 0.82rem; color: #0c4a6e; margin-bottom: 4px; display: block;">Agreements Reached / Action Items</label>
-                            <textarea id="minAgreements" rows="2" maxlength="3000" placeholder="Stipulations agreed upon, payment milestones, or commitments..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.84rem; font-family: inherit; box-sizing: border-box;" ${readonlyAttr}>${escapeHtml(activeSession.agreements_action_items || '')}</textarea>
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="minUnresolved" style="font-weight: 600; font-size: 0.82rem; color: #0c4a6e; margin-bottom: 4px; display: block;">Issues Remaining Unresolved</label>
-                            <textarea id="minUnresolved" rows="2" maxlength="3000" placeholder="Unresolved contentious points or items deferred to next hearing..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.84rem; font-family: inherit; box-sizing: border-box;" ${readonlyAttr}>${escapeHtml(activeSession.unresolved_issues || '')}</textarea>
+                        <!-- Right: Procedural Checkboxes -->
+                        <div>
+                            <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.04em; display: block; margin-bottom: 6px;">Procedural Verification</span>
+                            <div style="display: flex; gap: 18px; flex-wrap: wrap; font-size: 0.83rem;">
+                                <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                                    <input type="checkbox" id="minOpening" ${activeSession.opening_conducted ? 'checked' : ''} ${readonlyAttr} style="width: 15px; height: 15px; accent-color: #2563eb;">
+                                    <span style="color: #334155; font-weight: 500;">Opening Conducted</span>
+                                </label>
+                                <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                                    <input type="checkbox" id="minIdentity" ${activeSession.identity_verified ? 'checked' : ''} ${readonlyAttr} style="width: 15px; height: 15px; accent-color: #2563eb;">
+                                    <span style="color: #334155; font-weight: 500;">Identities Verified</span>
+                                </label>
+                                <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                                    <input type="checkbox" id="minReviewed" ${activeSession.complaint_reviewed ? 'checked' : ''} ${readonlyAttr} style="width: 15px; height: 15px; accent-color: #2563eb;">
+                                    <span style="color: #334155; font-weight: 500;">Complaint Read</span>
+                                </label>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Section 4: Session Outcome and Timing -->
-                <div style="display: grid; grid-template-columns: 1.2fr 1fr 1.2fr; gap: 14px; margin-bottom: 16px;">
-                    <div class="form-group" style="margin-bottom: 0;">
-                        <label for="minOutcome" style="font-weight: 600; font-size: 0.84rem; color: #1e293b; margin-bottom: 4px; display: block;">Session Outcome <span class="required-mark" style="color: #dc2626;">*</span></label>
-                        <select id="minOutcome" ${readonlyAttr} required style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 9px; font-size: 0.84rem; box-sizing: border-box; background: #fff;">
-                            ${outcomeOptions}
-                        </select>
-                    </div>
-                    <div class="form-group" style="margin-bottom: 0;">
-                        <label for="minActualEndTime" style="font-weight: 600; font-size: 0.84rem; color: #1e293b; margin-bottom: 4px; display: block;">Actual Session End Time</label>
-                        <input type="datetime-local" id="minActualEndTime" value="${activeSession.actual_end_time ? activeSession.actual_end_time.replace(' ', 'T').substring(0, 16) : ''}" ${readonlyAttr} style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.84rem; box-sizing: border-box;">
-                    </div>
-                    <div class="form-group" style="margin-bottom: 0;">
-                        <label for="minOutcomeRemarks" style="font-weight: 600; font-size: 0.84rem; color: #1e293b; margin-bottom: 4px; display: block;">Duration Notes / Remarks</label>
-                        <input type="text" id="minOutcomeRemarks" maxlength="1000" placeholder="Notes if session ran over standard duration or next steps..." value="${escapeHtml(activeSession.outcome_remarks || '')}" ${readonlyAttr} style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 9px 12px; font-size: 0.84rem; box-sizing: border-box;">
-                    </div>
-                </div>
-
-                <!-- Section 5: Formal Session Minutes / Minutes Record -->
-                <div class="form-group" style="margin-bottom: 18px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 8px;">
-                        <label for="session_minutes" style="margin: 0; font-weight: 600; font-size: 0.85rem; color: #1e293b;">5. Formal Session Minutes / Proceedings Record</label>
+                <!-- ============================================================== -->
+                <!-- SECTION 2: PROCEEDINGS & DISCUSSION (Dispute, Statements, STT) -->
+                <!-- ============================================================== -->
+                <div class="minutes-flow-step" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 18px; margin-bottom: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid #f1f5f9; flex-wrap: wrap; gap: 8px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="background: #2563eb; color: #fff; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.78rem;">2</span>
+                            <div>
+                                <h4 style="margin: 0; font-size: 0.96rem; font-weight: 700; color: #0f172a;">Proceedings &amp; Discussion</h4>
+                                <span style="font-size: 0.76rem; color: #64748b;">Dispute focus, party statements, negotiations, and live transcript</span>
+                            </div>
+                        </div>
                         ${!isFinalized ? `
-                            <div style="display: flex; gap: 6px;">
-                                <button type="button" class="btn-secondary" id="btnStageRecordVoice" onclick="toggleStageVoiceRecording()" style="font-size: 0.78rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
+                            <div style="display: flex; gap: 6px; align-items: center;">
+                                <button type="button" class="btn-secondary" id="btnStageRecordVoice" onclick="toggleStageVoiceRecording()" style="font-size: 0.76rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
                                     <span id="stageRecordVoiceText">🎙️ Record Voice (STT)</span>
                                 </button>
-                                <button type="button" class="btn-secondary" id="btnStageUploadNotes" onclick="triggerStageNotesUpload()" style="font-size: 0.78rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
+                                <button type="button" class="btn-secondary" id="btnStageUploadNotes" onclick="triggerStageNotesUpload()" style="font-size: 0.76rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
                                     📄 Upload Notes (OCR)
                                 </button>
                                 <input type="file" id="stageNotesFileInput" accept="image/*" style="display: none;" onchange="handleStageNotesFileSelected(this)">
                             </div>
                         ` : ''}
                     </div>
+
                     <!-- AI Status Banner -->
-                    <div id="stageAiStatusBanner" style="display: none; padding: 8px 12px; margin-bottom: 8px; border-radius: 6px; font-size: 0.82rem; background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af;"></div>
-                    <textarea id="session_minutes" rows="6" placeholder="Full recorded proceedings, commitments, points of agreement, or AI-transcribed notes..." ${readonlyAttr} style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; font-size: 0.86rem; font-family: inherit; line-height: 1.5; box-sizing: border-box;">${escapeHtml(activeSession.settlement_discussion_notes || '')}</textarea>
+                    <div id="stageAiStatusBanner" style="display: none; padding: 8px 12px; margin-bottom: 12px; border-radius: 6px; font-size: 0.82rem; background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af;"></div>
+
+                    <!-- Row 1: Dispute Focus & Agenda Topics -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="minDisputeSummary" style="font-weight: 600; font-size: 0.82rem; color: #1e293b; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
+                                <span>Main Dispute Identified</span>
+                                <span style="font-size: 0.72rem; color: #64748b; font-weight: normal;">Core conflict summary</span>
+                            </label>
+                            <input type="text" id="minDisputeSummary" maxlength="1000" placeholder="e.g. Boundary encroachment, unpaid debt, disturbance during rest hours..." value="${escapeHtml(activeSession.main_dispute_identified || '')}" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; font-size: 0.84rem; box-sizing: border-box;" ${readonlyAttr}>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="minAgenda" style="font-weight: 600; font-size: 0.82rem; color: #1e293b; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
+                                <span>Agenda / Key Discussion Topics</span>
+                                <span style="font-size: 0.72rem; color: #64748b; font-weight: normal;">Matters addressed</span>
+                            </label>
+                            <input type="text" id="minAgenda" maxlength="3000" placeholder="e.g. Survey verification, payment schedule terms, apology condition..." value="${escapeHtml(activeSession.agenda_topics || '')}" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; font-size: 0.84rem; box-sizing: border-box;" ${readonlyAttr}>
+                        </div>
+                    </div>
+
+                    <!-- Row 2: Complainant vs Respondent Statements -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="minCompStmt" style="font-weight: 600; font-size: 0.82rem; color: #1e293b; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
+                                <span>Complainant Statement &amp; Claims</span>
+                                <span style="font-size: 0.72rem; color: #64748b; font-weight: normal;">Grievances &amp; demands</span>
+                            </label>
+                            <textarea id="minCompStmt" rows="3" maxlength="5000" placeholder="Summary of complainant's claims, grievances, and narration of facts..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.84rem; font-family: inherit; line-height: 1.4; box-sizing: border-box;" ${readonlyAttr}>${escapeHtml(activeSession.complainant_statement || '')}</textarea>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="minRespStmt" style="font-weight: 600; font-size: 0.82rem; color: #1e293b; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
+                                <span>Respondent Statement &amp; Defenses</span>
+                                <span style="font-size: 0.72rem; color: #64748b; font-weight: normal;">Explanation &amp; defenses</span>
+                            </label>
+                            <textarea id="minRespStmt" rows="3" maxlength="5000" placeholder="Summary of respondent's explanation, defenses, and counter-statements..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.84rem; font-family: inherit; line-height: 1.4; box-sizing: border-box;" ${readonlyAttr}>${escapeHtml(activeSession.respondent_statement || '')}</textarea>
+                        </div>
+                    </div>
+
+                    <!-- Row 3: Central Discussion & Proceedings Transcript -->
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label for="session_minutes" style="font-weight: 600; font-size: 0.82rem; color: #1e293b; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
+                            <span>Hearing Proceedings &amp; Discussion Transcript</span>
+                            <span style="font-size: 0.72rem; color: #64748b; font-weight: normal;">Full recorded dialogue or audio transcription</span>
+                        </label>
+                        <textarea id="session_minutes" rows="4" placeholder="Detailed notes of proceedings, mediator interventions, exchanges between parties, commitments made..." ${readonlyAttr} style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 9px; font-size: 0.84rem; font-family: inherit; line-height: 1.45; box-sizing: border-box;">${escapeHtml(activeSession.settlement_discussion_notes || '')}</textarea>
+                    </div>
+
+                    <!-- Row 4: Settlement Proposals, Counteroffers & Caucus (Integrated Sub-Panel) -->
+                    <details class="proposals-caucus-details" ${hasProposalsOrCaucus ? 'open' : ''} style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px;">
+                        <summary style="cursor: pointer; font-size: 0.82rem; font-weight: 700; color: #334155; user-select: none; display: flex; align-items: center; justify-content: space-between;">
+                            <span>🤝 Settlement Proposals, Counteroffers &amp; Private Caucus (Optional)</span>
+                            <span style="font-size: 0.74rem; font-weight: normal; color: #64748b;">${hasProposalsOrCaucus ? 'Details recorded' : 'Click to expand if applicable'}</span>
+                        </summary>
+                        <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #e2e8f0;">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 10px;">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="minNewProposal" style="font-weight: 600; font-size: 0.8rem; color: #334155; margin-bottom: 3px; display: block;">Settlement Proposal / Offer</label>
+                                    <textarea id="minNewProposal" rows="2" maxlength="3000" placeholder="Specific terms proposed by offering party (restitution, apology, timeline)..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 7px; font-size: 0.82rem; font-family: inherit; box-sizing: border-box;" ${readonlyAttr}>${escapeHtml(activeSession.new_proposal || '')}</textarea>
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="minCounterOffer" style="font-weight: 600; font-size: 0.8rem; color: #334155; margin-bottom: 3px; display: block;">Counteroffer / Response</label>
+                                    <textarea id="minCounterOffer" rows="2" maxlength="3000" placeholder="Counter-proposal, condition adjustments, or alternative terms offered..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 7px; font-size: 0.82rem; font-family: inherit; box-sizing: border-box;" ${readonlyAttr}>${escapeHtml(activeSession.counteroffer || '')}</textarea>
+                                </div>
+                            </div>
+                            <div style="margin-top: 6px;">
+                                <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.82rem; color: #334155; font-weight: 600;">
+                                    <input type="checkbox" id="minCaucus" ${activeSession.caucus_conducted ? 'checked' : ''} ${readonlyAttr} onchange="document.getElementById('minCaucusNotesWrap').style.display = this.checked ? 'block' : 'none';" style="width: 15px; height: 15px; accent-color: #2563eb;">
+                                    <span>Private Caucus Conducted (Separate meeting held with one party)</span>
+                                </label>
+                                <div id="minCaucusNotesWrap" style="${activeSession.caucus_conducted ? '' : 'display: none;'} margin-top: 8px;">
+                                    <label for="minCaucusNotes" style="font-size: 0.76rem; font-weight: 700; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 3px;">Confidential Caucus Notes</label>
+                                    <textarea id="minCaucusNotes" rows="2" placeholder="Confidential mediator insights, party reservations, concessions..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 7px; font-size: 0.82rem; font-family: inherit; box-sizing: border-box;" ${readonlyAttr}>${escapeHtml(activeSession.caucus_notes || '')}</textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </details>
+                </div>
+
+                <!-- ============================================================== -->
+                <!-- SECTION 3: AGREED TERMS & OUTCOME (Terms, Outcome & Action)   -->
+                <!-- ============================================================== -->
+                <div class="minutes-flow-step" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 18px; margin-bottom: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid #f1f5f9;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="background: #2563eb; color: #fff; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.78rem;">3</span>
+                            <div>
+                                <h4 style="margin: 0; font-size: 0.96rem; font-weight: 700; color: #0f172a;">Agreed Terms &amp; Outcome Determination</h4>
+                                <span style="font-size: 0.76rem; color: #64748b;">Record agreed stipulations, session determination, and direct stage progression</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Row 1: Agreed Terms vs Unresolved Issues -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="minAgreements" style="font-weight: 600; font-size: 0.82rem; color: #166534; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
+                                <span>✓ Agreed Terms / Action Items</span>
+                                <span style="font-size: 0.72rem; color: #64748b; font-weight: normal;">Mutual stipulations &amp; payment milestones</span>
+                            </label>
+                            <textarea id="minAgreements" rows="3" maxlength="3000" placeholder="Stipulations mutually agreed upon, payment milestones, restitution schedule, or behavioral commitments..." style="width: 100%; border: 1px solid #bbf7d0; background: #f0fdf4; border-radius: 6px; padding: 8px; font-size: 0.84rem; font-family: inherit; line-height: 1.4; box-sizing: border-box;" ${readonlyAttr}>${escapeHtml(activeSession.agreements_action_items || '')}</textarea>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="minUnresolved" style="font-weight: 600; font-size: 0.82rem; color: #991b1b; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
+                                <span>⚠️ Issues Remaining Unresolved</span>
+                                <span style="font-size: 0.72rem; color: #64748b; font-weight: normal;">Points of contention or deferred items</span>
+                            </label>
+                            <textarea id="minUnresolved" rows="3" maxlength="3000" placeholder="Unresolved contentious points or items deferred to subsequent hearing or conciliation..." style="width: 100%; border: 1px solid #fecaca; background: #fff5f5; border-radius: 6px; padding: 8px; font-size: 0.84rem; font-family: inherit; line-height: 1.4; box-sizing: border-box;" ${readonlyAttr}>${escapeHtml(activeSession.unresolved_issues || '')}</textarea>
+                        </div>
+                    </div>
+
+                    <!-- Row 2: Outcome Determination, End Time & Remarks -->
+                    <div style="display: grid; grid-template-columns: 1.2fr 1fr 1.2fr; gap: 14px; margin-bottom: 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="minOutcome" style="font-weight: 700; font-size: 0.82rem; color: #0f172a; margin-bottom: 4px; display: block;">
+                                Session Outcome Determination <span style="color: #dc2626;">*</span>
+                            </label>
+                            <select id="minOutcome" onchange="handleMinutesOutcomeChange(this.value)" ${readonlyAttr} required style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.84rem; box-sizing: border-box; background: #fff; font-weight: 600; color: #1e293b;">
+                                ${outcomeOptions}
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="minActualEndTime" style="font-weight: 600; font-size: 0.82rem; color: #1e293b; margin-bottom: 4px; display: block;">
+                                Actual Session End Time
+                            </label>
+                            <input type="datetime-local" id="minActualEndTime" value="${activeSession.actual_end_time ? activeSession.actual_end_time.replace(' ', 'T').substring(0, 16) : ''}" ${readonlyAttr} style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.84rem; box-sizing: border-box; background: #fff;">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="minOutcomeRemarks" style="font-weight: 600; font-size: 0.82rem; color: #1e293b; margin-bottom: 4px; display: block;">
+                                Determination Notes / Remarks
+                            </label>
+                            <input type="text" id="minOutcomeRemarks" maxlength="1000" placeholder="Notes on determination, duration or next hearing basis..." value="${escapeHtml(activeSession.outcome_remarks || '')}" ${readonlyAttr} style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; font-size: 0.84rem; box-sizing: border-box; background: #fff;">
+                        </div>
+                    </div>
+
+                    <!-- Row 3: Dynamic Next-Step Action Banner -->
+                    <div id="minStageActionBanner" style="margin-bottom: 12px;"></div>
                 </div>
 
                 <!-- Actions Footer -->
@@ -923,8 +1084,131 @@ function renderMinutesSection(data, stage) {
         </div>
     `;
 
-    minContainer.innerHTML = trackerHtml + formHtml;
+    minContainer.innerHTML = formHtml;
+
+    // Trigger dynamic next-step action banner for active session's outcome
+    handleMinutesOutcomeChange(curOutcome);
 }
+
+/**
+ * Dynamic Next-Step Action Banner based on Session Outcome Determination
+ */
+function handleMinutesOutcomeChange(outcomeVal) {
+    const bannerEl = document.getElementById('minStageActionBanner');
+    if (!bannerEl) return;
+    const mode = stageWorkspaceState.mode;
+    const caseId = stageWorkspaceState.caseId;
+    const activeHearingId = stageWorkspaceState.activeSessionHearingId;
+    const activeSession = stageWorkspaceState.sessions.find(s => Number(s.hearing_id) === Number(activeHearingId)) || {};
+    const sessionIndex = Number(activeSession.session_index || 1);
+
+    if (outcomeVal === 'Settled') {
+        bannerEl.innerHTML = `
+            <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div style="color: #166534; font-size: 0.85rem;">
+                    <strong style="font-size: 0.92rem; display: block; color: #14532d;">✓ Amicable Settlement Reached (Kasunduan)</strong>
+                    Parties have agreed on settlement terms. Finalize the minutes, then preview or print the formal Amicable Settlement (KP Form 16).
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button type="button" class="btn-secondary" onclick="openKPFormPreview(${Number(caseId)}, 'KP Form 16', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #86efac; color: #166534; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+                        🔍 Preview / Print KP Form 16
+                    </button>
+                    <a href="../settlements/settlements.php?case_id=${encodeURIComponent(caseId)}" class="btn-create" style="font-size: 0.82rem; padding: 7px 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
+                        📝 Open Amicable Settlement &rarr;
+                    </a>
+                </div>
+            </div>
+        `;
+    } else if (mode === 'Mediation') {
+        if (outcomeVal === 'Party Absent') {
+            const isSecondOrLater = Number(sessionIndex || 1) >= 2;
+            bannerEl.innerHTML = `
+                <div style="background: #fef2f2; border: 1px solid #fca5a5; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div style="color: #991b1b; font-size: 0.85rem;">
+                        <strong style="font-size: 0.92rem; display: block; color: #7f1d1d;">⚠️ Party Non-Appearance Recorded (${sessionIndex === 1 ? '1st Mediation' : '2nd Mediation'})</strong>
+                        ${isSecondOrLater 
+                            ? 'A required party was absent in the 2nd Mediation session. Preview Notice of Hearing for failure to appear (KP Form 18 for Complainant / KP Form 19 for Respondent). Barring actions (KP Form 21 / 22) remain locked pending show-cause evaluation.'
+                            : 'A required party was absent in the 1st Mediation. Under KP rules, proceed directly to book the 2nd Mediation session without sending another summon. KP Form 18/19 notices unlock upon non-appearance in the 2nd Mediation session.'
+                        }
+                    </div>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button type="button" class="btn-secondary" onclick="openAttendanceModal(${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 12px; color: #991b1b; border-color: #fca5a5; background: #fff; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
+                            👤 Verify Attendance &amp; Notices
+                        </button>
+                        <button type="button" class="btn-secondary" onclick="openScheduleModal()" style="font-size: 0.82rem; padding: 7px 12px; cursor: pointer;">
+                            📅 ${sessionIndex === 1 ? 'Book 2nd Mediation &rarr;' : 'Re-schedule Session &rarr;'}
+                        </button>
+                    </div>
+                </div>
+            `;
+        } else if (sessionIndex === 1) {
+            bannerEl.innerHTML = `
+                <div style="margin: 8px 0 12px; display: flex; align-items: center;">
+                    <button type="button" class="btn-create" onclick="openScheduleModal()" style="font-size: 0.84rem; padding: 8px 18px; background: #2563eb !important; color: #ffffff !important; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; border: none; font-weight: 600; box-shadow: 0 1px 3px rgba(37,99,235,0.2);">
+                        📅 Book 2nd Mediation Hearing &rarr;
+                    </button>
+                </div>
+            `;
+        } else if (sessionIndex === 2) {
+            bannerEl.innerHTML = `
+                <div style="margin: 8px 0 12px; display: flex; align-items: center;">
+                    <button type="button" class="btn-create" onclick="openScheduleModal()" style="font-size: 0.84rem; padding: 8px 18px; background: #2563eb !important; color: #ffffff !important; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; border: none; font-weight: 600; box-shadow: 0 1px 3px rgba(37,99,235,0.2);">
+                        📅 Book 3rd Mediation Hearing &rarr;
+                    </button>
+                </div>
+            `;
+        } else {
+            // Session 3 or higher
+            bannerEl.innerHTML = `
+                <div style="background: #f0f9ff; border: 1px solid #7dd3fc; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div style="color: #0369a1; font-size: 0.85rem;">
+                        <strong style="font-size: 0.92rem; display: block; color: #0c4a6e;">👥 Mediation Concluded Unresolved (3 of 3 Sessions Completed)</strong>
+                        All 3 mediation sessions before the Punong Barangay have concluded without agreement. The case is now eligible to elevate to Pangkat Conciliation (KP Form 10) by explicit authorized action.
+                    </div>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button type="button" class="btn-create" onclick="openReferPangkatModal()" style="font-size: 0.82rem; padding: 7px 16px; background: #0369a1; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
+                            Constitute Pangkat (KP Form 10) &rarr;
+                        </button>
+                        <a href="../cases/case-list.php?assign_case_id=${encodeURIComponent(caseId)}#caseAssignments" class="btn-secondary" style="font-size: 0.82rem; padding: 7px 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+                            Cases &amp; Assignments &rarr;
+                        </a>
+                    </div>
+                </div>
+            `;
+        }
+    } else if (outcomeVal === 'Pending CFA' || (mode === 'Conciliation' && outcomeVal === 'Failed')) {
+        bannerEl.innerHTML = `
+            <div style="background: #fff7ed; border: 1px solid #fdba74; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div style="color: #9a3412; font-size: 0.85rem;">
+                    <strong style="font-size: 0.92rem; display: block; color: #7c2d12;">📄 Eligible for Certificate to File Action (CFA)</strong>
+                    Conciliation proceedings before the Pangkat concluded without settlement. The case may now proceed for court endorsement (KP Form 20).
+                </div>
+                <div>
+                    <a href="../documents/cfa.php?case_id=${encodeURIComponent(caseId)}" class="btn-create" style="font-size: 0.82rem; padding: 7px 14px; background: #c2410c; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+                        Issue CFA (KP Form 20) &rarr;
+                    </a>
+                </div>
+            </div>
+        `;
+    } else if (outcomeVal === 'Continue Conciliation' || outcomeVal === 'Continue Arbitration' || outcomeVal === 'Rescheduled') {
+        bannerEl.innerHTML = `
+            <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div style="color: #334155; font-size: 0.85rem;">
+                    <strong style="font-size: 0.92rem; display: block; color: #0f172a;">📅 Proceedings Ongoing — Next Session Required</strong>
+                    Parties require additional discussions to resolve issues. Schedule the subsequent hearing session within the statutory period.
+                </div>
+                <div>
+                    <button type="button" class="btn-create" onclick="openScheduleModal()" style="font-size: 0.82rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 4px;">
+                        📅 Schedule Next Session &rarr;
+                    </button>
+                </div>
+            </div>
+        `;
+    } else {
+        bannerEl.innerHTML = '';
+    }
+}
+window.handleMinutesOutcomeChange = handleMinutesOutcomeChange;
 
 /**
  * Switch Active Minutes Session
@@ -1053,15 +1337,20 @@ function renderOutcomeAndReferralSection(data, stage) {
                 <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                     <div>
                         <h4 style="margin: 0 0 4px; font-size: 1rem; color: #14532d; font-weight: 700;">
-                            ✓ Amicable Settlement Reached
+                            ✓ Amicable Settlement Reached (Kasunduan)
                         </h4>
                         <p style="margin: 0; font-size: 0.85rem; color: #166534;">
                             The parties reached an amicable settlement. Formal settlement terms are active and enforceable.
                         </p>
                     </div>
-                    <a href="../settlements/settlements.php?case_id=${encodeURIComponent(stageWorkspaceState.caseId)}" class="btn-create" style="font-size: 0.82rem; padding: 6px 14px; text-decoration: none;">
-                        View Amicable Settlement &rarr;
-                    </a>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button type="button" class="btn-secondary" onclick="openKPFormPreview(${Number(stageWorkspaceState.caseId)}, 'KP Form 16')" style="font-size: 0.82rem; padding: 6px 14px; background: #fff; border-color: #86efac; color: #166534; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
+                            🔍 Preview / Print KP Form 16
+                        </button>
+                        <a href="../settlements/settlements.php?case_id=${encodeURIComponent(stageWorkspaceState.caseId)}" class="btn-create" style="font-size: 0.82rem; padding: 6px 14px; text-decoration: none;">
+                            View Amicable Settlement &rarr;
+                        </a>
+                    </div>
                 </div>
             </div>
         `;
@@ -1090,6 +1379,11 @@ function renderOutcomeAndReferralSection(data, stage) {
                 </div>
             `;
         } else {
+            const completedCount = Number(stage.completed_mediation_count || 0);
+            const canBookNext = Boolean(stage.documents_and_actions?.can_book_next_mediation);
+            const nextSessionIndex = Math.min(3, completedCount + 1);
+            const pangkatLockReason = stage.documents_and_actions?.pangkat_lock_reason || 'Katarungang Pambarangay requires 3 mediation sessions before elevation.';
+
             outcomeBox.innerHTML = `
                 <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
@@ -1098,19 +1392,24 @@ function renderOutcomeAndReferralSection(data, stage) {
                                 Mediation Stage Actions &amp; Progression
                             </h4>
                             <p style="margin: 0; font-size: 0.82rem; color: #64748b;">
-                                Current Outcome: <strong>${escapeHtml(outcome)}</strong>. Record official mediation resolution or escalate to Pangkat when ready.
+                                Progress: <strong>${escapeHtml(completedCount)} of 3 Mediation Sessions Completed</strong> · Current Outcome: <strong>${escapeHtml(outcome)}</strong>
                             </p>
                         </div>
-                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                            <button type="button" class="btn-secondary" onclick="openRecordOutcomeModal()" style="font-size: 0.82rem; padding: 6px 12px;">
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                            ${canBookNext ? `
+                                <button type="button" class="btn-create" onclick="openScheduleModal()" style="font-size: 0.82rem; padding: 6px 14px; background: #2563eb; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
+                                    📅 Book ${nextSessionIndex === 2 ? '2nd' : '3rd'} Mediation Hearing &rarr;
+                                </button>
+                            ` : ''}
+                            <button type="button" class="btn-secondary" onclick="openRecordOutcomeModal()" style="font-size: 0.82rem; padding: 6px 12px; cursor: pointer;">
                                 Record Mediation Outcome &rarr;
                             </button>
                             ${canRefer ? `
-                                <button type="button" class="btn-create" onclick="openReferPangkatModal()" style="font-size: 0.82rem; padding: 6px 14px; background: #0369a1;">
+                                <button type="button" class="btn-create" onclick="openReferPangkatModal()" style="font-size: 0.82rem; padding: 6px 14px; background: #0369a1; cursor: pointer;">
                                     Refer to Pangkat (KP Form 10) &rarr;
                                 </button>
                             ` : `
-                                <button type="button" class="btn-secondary" disabled title="Complete sessions or record unsuccessful mediation to refer" style="font-size: 0.82rem; padding: 6px 12px; opacity: 0.5; cursor: not-allowed;">
+                                <button type="button" class="btn-secondary" disabled title="${escapeHtml(pangkatLockReason)}" style="font-size: 0.82rem; padding: 6px 12px; opacity: 0.55; cursor: not-allowed;">
                                     Refer to Pangkat 🔒
                                 </button>
                             `}
@@ -1119,6 +1418,11 @@ function renderOutcomeAndReferralSection(data, stage) {
                             </a>
                         </div>
                     </div>
+                    ${!canRefer && pangkatLockReason ? `
+                        <div style="font-size: 0.77rem; color: #64748b; margin-top: 10px; border-top: 1px dashed #e2e8f0; padding-top: 8px;">
+                            🔒 <strong>Why Pangkat referral is locked:</strong> ${escapeHtml(pangkatLockReason)}
+                        </div>
+                    ` : ''}
                 </div>
             `;
         }
@@ -1174,16 +1478,16 @@ function renderOutcomeAndReferralSection(data, stage) {
  * MODAL: Schedule Session Modal
  * -----------------------------------------------------------------------------
  */
-function openScheduleModal() {
-    const modal = document.getElementById('wsScheduleModal');
-    if (!modal) return;
-    const typeInput = document.getElementById('schedHearingType');
-    if (typeInput) {
-        typeInput.value = (stageWorkspaceState.mode === 'Mediation') ? 'Mediation' : 'Conciliation';
+function openScheduleModal(hearingId = null) {
+    const urlParams = new URLSearchParams(window.location.search);
+    const caseId = stageWorkspaceState.caseId || urlParams.get('case_id');
+    const hId = hearingId || stageWorkspaceState.activeSessionHearingId || urlParams.get('hearing_id');
+
+    let url = `../hearings/schedules.php?case_id=${encodeURIComponent(caseId || '')}`;
+    if (hId) {
+        url += `&hearing_id=${encodeURIComponent(hId)}`;
     }
-    const venueInput = document.getElementById('schedVenue');
-    if (venueInput && !venueInput.value) venueInput.value = 'Barangay Hall';
-    modal.style.display = 'flex';
+    window.location.href = url;
 }
 
 function closeScheduleModal() {
@@ -1214,6 +1518,7 @@ async function submitSchedule(e) {
     payload.append('hearing_date', `${dateVal} ${timeVal}:00`);
     payload.append('venue', venueVal || 'Barangay Hall');
     payload.append('remarks', remarksVal);
+    payload.append('schedule_reviewed', '1');
 
     try {
         const res = await fetch(getStageApiUrl('hearings/create.php'), {
@@ -1224,10 +1529,11 @@ async function submitSchedule(e) {
         if (json.success) {
             closeScheduleModal();
             await loadStageData();
-            if (typeof openSummonsPreviewModal === 'function' && stageWorkspaceState.mode === 'Mediation') {
+            const schedSeq = Number(json.sequence || 0);
+            if (typeof openSummonsPreviewModal === 'function' && stageWorkspaceState.mode === 'Mediation' && schedSeq <= 1) {
                 openSummonsPreviewModal(stageWorkspaceState.caseId, null, json.hearing_id, true);
             } else {
-                alert('Hearing scheduled successfully! Official KP notices generated.');
+                alert(json.message || 'Hearing scheduled successfully! Subsequent mediation booked without re-issuing summons.');
             }
         } else if (json.requires_convening_justification) {
             const justification = prompt(
@@ -1244,7 +1550,12 @@ async function submitSchedule(e) {
                 if (retryJson.success) {
                     closeScheduleModal();
                     await loadStageData();
-                    alert('Hearing scheduled successfully with recorded administrative justification.');
+                    const retrySeq = Number(retryJson.sequence || 0);
+                    if (typeof openSummonsPreviewModal === 'function' && stageWorkspaceState.mode === 'Mediation' && retrySeq <= 1) {
+                        openSummonsPreviewModal(stageWorkspaceState.caseId, null, retryJson.hearing_id, true);
+                    } else {
+                        alert(retryJson.message || 'Hearing scheduled successfully with recorded administrative justification.');
+                    }
                     return;
                 } else {
                     alert(retryJson.message || 'Unable to schedule hearing.');
@@ -1306,25 +1617,167 @@ function renderAttendanceModalForm(data) {
     const bodyEl = document.getElementById('wsAttModalBody');
     if (!bodyEl) return;
 
+    const hearing = data.hearing || data;
     const parties = data.parties || [];
+    const luponMembers = data.lupon_members || stageWorkspaceState.luponMembers || [];
+    const partyFormRules = hearing.party_form_rules || data.party_form_rules || { complainant: {}, respondent: {} };
+    const caseId = Number(stageWorkspaceState.caseId);
+    const hearingId = Number(hearing.hearing_id || stageWorkspaceState.currentHearingId);
+
     if (!parties.length) {
         bodyEl.innerHTML = '<div class="empty-detail-state">No parties registered for this case.</div>';
         return;
     }
 
+    // 1. Presider Attendance & Verification Box
+    const presiderName = hearing.presiding_officer_name || 'Punong Barangay / Lupon Chairman';
+    const presiderRole = hearing.presiding_officer_role || 'Punong Barangay';
+    const substituteId = hearing.substitute_presider_id;
+    const substituteReason = hearing.substitute_reason || '';
+    const hasConsent = Boolean(hearing.parties_consent_to_substitute);
+    const presiderStatus = (substituteId || hearing.presider_attendance_status === 'Absent') ? 'Absent' : 'Present';
+
+    let luponOpts = luponMembers.map(m => {
+        const mId = Number(m.user_id || m.member_id);
+        const mName = m.full_name || `${m.last_name || ''}, ${m.first_name || ''} ${m.middle_name || ''}`.trim();
+        const isSelected = substituteId && Number(substituteId) === mId;
+        return `<option value="${mId}" ${isSelected ? 'selected' : ''}>${escapeHtml(mName)} (${escapeHtml(m.role_name || 'Lupon Member')})</option>`;
+    }).join('');
+
+    const presiderHtml = `
+        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+                <div>
+                    <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: #475569; letter-spacing: 0.04em; display: block;">Presiding Officer (Hearing Presider)</span>
+                    <strong style="font-size: 0.95rem; color: #0f172a;">${escapeHtml(presiderName)}</strong>
+                    <span style="font-size: 0.74rem; color: #64748b; margin-left: 6px;">(${escapeHtml(presiderRole)})</span>
+                </div>
+                <div>
+                    <select id="wsPresiderStatus" onchange="togglePresiderSubstituteSection(this.value)" style="padding: 6px 10px; font-size: 0.84rem; font-weight: 600; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff;">
+                        <option value="Present" ${presiderStatus !== 'Absent' ? 'selected' : ''}>Present</option>
+                        <option value="Absent" ${presiderStatus === 'Absent' ? 'selected' : ''}>Absent / Unavailable</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Substitute Presider Section (Required when Presider is Absent) -->
+            <div id="wsSubstitutePresiderWrap" style="${presiderStatus === 'Absent' ? '' : 'display: none;'} background: #fff; border: 1px solid #fecaca; border-left: 4px solid #ef4444; border-radius: 6px; padding: 12px; margin-top: 10px;">
+                <div style="font-size: 0.82rem; color: #991b1b; font-weight: 700; margin-bottom: 4px;">
+                    ⚠️ Presider Absence: Designated Substitute Presider Required
+                </div>
+                <p style="font-size: 0.78rem; color: #64748b; margin: 0 0 10px; line-height: 1.4;">
+                    Under Katarungang Pambarangay rules, if the scheduled Presider is absent, select an active Lupon member as Substitute Presider. Record the substitution reason and confirm mutual party consent before the session can proceed.
+                </p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                    <div>
+                        <label style="font-size: 0.74rem; font-weight: 600; color: #334155; display: block; margin-bottom: 4px;">
+                            SELECT SUBSTITUTE PRESIDER <span style="color: #dc2626;">*</span>
+                        </label>
+                        <select id="wsSubstitutePresiderId" style="width: 100%; padding: 6px; font-size: 0.82rem; border: 1px solid #cbd5e1; border-radius: 4px;">
+                            <option value="">-- Choose Active Lupon Member --</option>
+                            ${luponOpts}
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size: 0.74rem; font-weight: 600; color: #334155; display: block; margin-bottom: 4px;">
+                            REASON FOR SUBSTITUTION <span style="color: #dc2626;">*</span>
+                        </label>
+                        <input type="text" id="wsSubstituteReason" value="${escapeHtml(substituteReason)}" placeholder="e.g. Official business, emergency leave..." style="width: 100%; padding: 6px; font-size: 0.82rem; border: 1px solid #cbd5e1; border-radius: 4px;">
+                    </div>
+                </div>
+                <div>
+                    <label style="display: inline-flex; align-items: center; gap: 7px; font-size: 0.8rem; color: #1e293b; font-weight: 600; cursor: pointer;">
+                        <input type="checkbox" id="wsPartiesConsentCheck" ${hasConsent ? 'checked' : ''} style="width: 15px; height: 15px; accent-color: #2563eb;">
+                        <span>Parties have been informed and mutually consent to the designated substitute presider</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // 2. Party Appearance Rows
     let rowsHtml = '';
     parties.forEach(p => {
         const isWitness = p.party_type === 'Witness';
+        const isComplainant = p.party_type === 'Complainant';
+        const isRespondent = p.party_type === 'Respondent';
         const serviceStatus = p.summon_delivery_status || (p.successful_service_count > 0 ? 'Served' : 'Pending');
         const isServiceConfirmed = (serviceStatus && serviceStatus.toLowerCase().includes('served'));
+        const isAbsent = (p.attendance_status === 'Absent');
+        const isAbsentOrExcused = (p.attendance_status === 'Absent' || p.attendance_status === 'Excused');
+
+        let formRulesHtml = '';
+        const isSecondOrLater = Boolean(partyFormRules.is_second_or_later);
+        if (isComplainant) {
+            const kp21Unlocked = partyFormRules.complainant?.kp21_unlocked;
+            const kp21Reason = partyFormRules.complainant?.kp21_reason || 'Requires show-cause hearing evaluation ruling non-appearance as unjustified.';
+            formRulesHtml = `
+                <div class="att-legal-notices-wrap" style="${isAbsent ? '' : 'display: none;'} margin-top: 10px; padding: 10px 12px; background: #fff5f5; border: 1px solid #fecaca; border-radius: 6px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px;">
+                        <span style="font-size: 0.78rem; font-weight: 700; color: #991b1b;">📄 Notice of Hearing (Complainant Non-appearance):</span>
+                        ${isSecondOrLater ? `
+                            <button type="button" class="btn-secondary" onclick="openKPFormPreview(${caseId}, 'KP Form 18', ${hearingId})" style="font-size: 0.76rem; padding: 4px 10px; background: #fff; border-color: #fca5a5; color: #991b1b; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
+                                🔍 Preview / Print KP Form 18 Notice
+                            </button>
+                        ` : `
+                            <span style="font-size: 0.74rem; color: #64748b; font-style: italic; background: #fff; border: 1px solid #cbd5e1; padding: 3px 8px; border-radius: 4px;">
+                                ℹ️ 1st Mediation: Proceed to book 2nd Mediation (no new summon needed). KP Form 18 unlocks if absent in 2nd Mediation.
+                            </span>
+                        `}
+                    </div>
+                    ${isSecondOrLater ? `
+                        <div style="font-size: 0.76rem; border-top: 1px dashed #fca5a5; padding-top: 6px; margin-top: 4px;">
+                            ${kp21Unlocked ? `
+                                <span style="color: #15803d; font-weight: 700;">✓ KP Form 21 (Certificate to Bar Action) Eligible:</span> Non-appearance was ruled unjustified.
+                                <button type="button" class="btn-secondary" onclick="openKPFormPreview(${caseId}, 'KP Form 21', ${hearingId})" style="font-size: 0.72rem; padding: 2px 8px; margin-left: 6px;">Preview KP Form 21</button>
+                            ` : `
+                                <span style="color: #991b1b; font-weight: 700;">🔒 KP Form 21 (Certificate to Bar Action) Locked:</span>
+                                <span style="color: #475569;">${escapeHtml(kp21Reason)}</span>
+                            `}
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        } else if (isRespondent) {
+            const kp22Unlocked = partyFormRules.respondent?.kp22_unlocked;
+            const kp22Reason = partyFormRules.respondent?.kp22_reason || 'Requires show-cause hearing evaluation ruling non-appearance as unjustified.';
+            formRulesHtml = `
+                <div class="att-legal-notices-wrap" style="${isAbsent ? '' : 'display: none;'} margin-top: 10px; padding: 10px 12px; background: #fff5f5; border: 1px solid #fecaca; border-radius: 6px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px;">
+                        <span style="font-size: 0.78rem; font-weight: 700; color: #991b1b;">📄 Notice of Hearing (Respondent Non-appearance):</span>
+                        ${isSecondOrLater ? `
+                            <button type="button" class="btn-secondary" onclick="openKPFormPreview(${caseId}, 'KP Form 19', ${hearingId})" style="font-size: 0.76rem; padding: 4px 10px; background: #fff; border-color: #fca5a5; color: #991b1b; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
+                                🔍 Preview / Print KP Form 19 Notice
+                            </button>
+                        ` : `
+                            <span style="font-size: 0.74rem; color: #64748b; font-style: italic; background: #fff; border: 1px solid #cbd5e1; padding: 3px 8px; border-radius: 4px;">
+                                ℹ️ 1st Mediation: Proceed to book 2nd Mediation (no new summon needed). KP Form 19 unlocks if absent in 2nd Mediation.
+                            </span>
+                        `}
+                    </div>
+                    ${isSecondOrLater ? `
+                        <div style="font-size: 0.76rem; border-top: 1px dashed #fca5a5; padding-top: 6px; margin-top: 4px;">
+                            ${kp22Unlocked ? `
+                                <span style="color: #15803d; font-weight: 700;">✓ KP Form 22 (Certificate to Bar Counterclaim) Eligible:</span> Non-appearance was ruled unjustified.
+                                <button type="button" class="btn-secondary" onclick="openKPFormPreview(${caseId}, 'KP Form 22', ${hearingId})" style="font-size: 0.72rem; padding: 2px 8px; margin-left: 6px;">Preview KP Form 22</button>
+                            ` : `
+                                <span style="color: #991b1b; font-weight: 700;">🔒 KP Form 22 (Certificate to Bar Counterclaim) Locked:</span>
+                                <span style="color: #475569;">${escapeHtml(kp22Reason)}</span>
+                            `}
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
 
         rowsHtml += `
-            <div class="att-party-row" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 10px;">
+            <div class="att-party-row" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
                 <input type="hidden" name="resident_id[]" value="${p.resident_id}">
+                <input type="hidden" name="party_type[]" value="${escapeHtml(p.party_type)}">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                     <div>
-                        <strong style="font-size: 0.92rem; color: #0f172a;">${escapeHtml(p.resident_name)}</strong>
-                        <span style="font-size: 0.72rem; padding: 2px 6px; border-radius: 4px; font-weight: 700; margin-left: 6px; ${p.party_type === 'Complainant' ? 'background: #dbeafe; color: #1e40af;' : 'background: #fef3c7; color: #b45309;'}">
+                        <strong style="font-size: 0.92rem; color: #0f172a;">${escapeHtml(p.resident_name || p.full_name)}</strong>
+                        <span style="font-size: 0.72rem; padding: 2px 6px; border-radius: 4px; font-weight: 700; margin-left: 6px; ${isComplainant ? 'background: #dbeafe; color: #1e40af;' : (isRespondent ? 'background: #fef3c7; color: #b45309;' : 'background: #f1f5f9; color: #475569;')}">
                             ${escapeHtml(p.party_type)}
                         </span>
                     </div>
@@ -1346,61 +1799,147 @@ function renderAttendanceModalForm(data) {
                             <option value="Not Served" ${p.attendance_status === 'Not Served' ? 'selected' : ''}>Not Served</option>
                         </select>
                     </div>
-                    <div class="att-justification-wrap" style="${p.attendance_status === 'Absent' || p.attendance_status === 'Excused' ? '' : 'display: none;'}">
-                        <label style="font-size: 0.74rem; font-weight: 600; color: #475569; display: block; margin-bottom: 4px;">ABSENCE EXPLANATION / JUSTIFICATION</label>
-                        <input type="text" name="justification_reason[]" value="${escapeHtml(p.justification_reason || '')}" placeholder="Reason for non-appearance..." style="width: 100%; padding: 6px; font-size: 0.84rem; border: 1px solid #cbd5e1; border-radius: 4px;">
+                    <div class="att-justification-wrap" style="${isAbsentOrExcused ? '' : 'display: none;'}">
+                        <label style="font-size: 0.74rem; font-weight: 600; color: #475569; display: block; margin-bottom: 4px;">
+                            ABSENCE EXPLANATION / JUSTIFICATION ${isAbsent ? '<span style="color: #dc2626;">*</span>' : ''}
+                        </label>
+                        <input type="text" name="justification_reason[]" value="${escapeHtml(p.justification_reason || '')}" placeholder="Enter party's reason for non-appearance..." style="width: 100%; padding: 6px; font-size: 0.84rem; border: 1px solid #cbd5e1; border-radius: 4px;">
                     </div>
                 </div>
+                ${formRulesHtml}
             </div>
         `;
     });
 
     bodyEl.innerHTML = `
         <form id="wsAttendanceForm" onsubmit="submitAttendance(event)">
+            ${presiderHtml}
+            <div style="font-size: 0.76rem; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.04em; margin-bottom: 8px;">
+                Party Appearance &amp; Summons Verification
+            </div>
             ${rowsHtml}
-            <div class="modal-actions" style="margin-top: 14px;">
+            <div class="modal-actions" style="margin-top: 16px; border-top: 1px solid #e2e8f0; padding-top: 14px; display: flex; justify-content: flex-end; gap: 8px;">
                 <button type="button" class="btn-secondary" onclick="closeAttendanceModal()">Cancel</button>
-                <button type="submit" class="btn-create" id="submitAttBtn">Save Attendance Record</button>
+                <button type="submit" class="btn-create" id="submitAttBtn" style="padding: 7px 18px;">Save Attendance Record</button>
             </div>
         </form>
     `;
 }
 
+function togglePresiderSubstituteSection(val) {
+    const wrap = document.getElementById('wsSubstitutePresiderWrap');
+    if (wrap) {
+        wrap.style.display = (val === 'Absent') ? 'block' : 'none';
+    }
+}
+window.togglePresiderSubstituteSection = togglePresiderSubstituteSection;
+
 function toggleAttJustification(selectEl) {
     const row = selectEl.closest('.att-party-row');
     if (!row) return;
+    const isAbsentOrExcused = (selectEl.value === 'Absent' || selectEl.value === 'Excused');
     const justWrap = row.querySelector('.att-justification-wrap');
     if (justWrap) {
-        justWrap.style.display = (selectEl.value === 'Absent' || selectEl.value === 'Excused') ? 'block' : 'none';
+        justWrap.style.display = isAbsentOrExcused ? 'block' : 'none';
+    }
+    const legalNoticeWrap = row.querySelector('.att-legal-notices-wrap');
+    if (legalNoticeWrap) {
+        legalNoticeWrap.style.display = (selectEl.value === 'Absent') ? 'block' : 'none';
     }
 }
+window.toggleAttJustification = toggleAttJustification;
 
 async function submitAttendance(e) {
     e.preventDefault();
     const btn = document.getElementById('submitAttBtn');
     if (btn) btn.disabled = true;
 
+    const presiderStatus = document.getElementById('wsPresiderStatus')?.value || 'Present';
+    let substituteId = null;
+    let substituteReason = '';
+    let consentVal = 0;
+
+    if (presiderStatus === 'Absent') {
+        const subSelect = document.getElementById('wsSubstitutePresiderId');
+        const reasonInput = document.getElementById('wsSubstituteReason');
+        const consentCheck = document.getElementById('wsPartiesConsentCheck');
+
+        substituteId = subSelect ? subSelect.value : '';
+        substituteReason = reasonInput ? reasonInput.value.trim() : '';
+        consentVal = consentCheck && consentCheck.checked ? 1 : 0;
+
+        if (!substituteId) {
+            alert('Presider Attendance Validation: When the presiding officer is absent, selecting a designated substitute presider from the Lupong Tagapamayapa is required before this session can proceed.');
+            if (btn) btn.disabled = false;
+            subSelect?.focus();
+            return;
+        }
+        if (!substituteReason) {
+            alert('Presider Attendance Validation: Please enter the official reason for the presider absence and substitution.');
+            if (btn) btn.disabled = false;
+            reasonInput?.focus();
+            return;
+        }
+        if (!consentVal) {
+            alert('Presider Attendance Validation: Mutual consent of both parties to the substitute presider must be confirmed before proceeding.');
+            if (btn) btn.disabled = false;
+            consentCheck?.focus();
+            return;
+        }
+    }
+
     const form = document.getElementById('wsAttendanceForm');
     const residentIds = Array.from(form.querySelectorAll('input[name="resident_id[]"]')).map(el => Number(el.value));
+    const partyTypes = Array.from(form.querySelectorAll('input[name="party_type[]"]')).map(el => el.value);
     const statuses = Array.from(form.querySelectorAll('select[name="attendance_status[]"]')).map(el => el.value);
-    const justifications = Array.from(form.querySelectorAll('input[name="justification_reason[]"]')).map(el => el.value);
+    const justifications = Array.from(form.querySelectorAll('input[name="justification_reason[]"]')).map(el => el.value.trim());
 
-    const records = residentIds.map((rid, idx) => ({
-        resident_id: rid,
-        attendance_status: statuses[idx],
-        is_justified: (statuses[idx] === 'Excused' || justifications[idx] !== '') ? 1 : 0,
-        justification_reason: justifications[idx] || null,
-        verification_status: statuses[idx] === 'Present' ? 'Verified Served' : 'Pending'
-    }));
+    let compAtt = 'Present';
+    let respAtt = 'Present';
+    let compReason = '';
+    let respReason = '';
+
+    const records = residentIds.map((rid, idx) => {
+        const pType = partyTypes[idx];
+        const st = statuses[idx];
+        const jReason = justifications[idx] || '';
+
+        if (pType === 'Complainant') {
+            compAtt = (st === 'Absent' || st === 'Excused') ? 'Absent' : 'Present';
+            compReason = jReason;
+        } else if (pType === 'Respondent') {
+            respAtt = (st === 'Absent' || st === 'Excused') ? 'Absent' : 'Present';
+            respReason = jReason;
+        }
+
+        return {
+            resident_id: rid,
+            party_type: pType,
+            attendance_status: st,
+            is_justified: (st === 'Excused' || jReason !== '') ? 1 : 0,
+            justification_reason: jReason || null,
+            verification_status: st === 'Present' ? 'Verified Served' : 'Pending'
+        };
+    });
+
+    const payload = {
+        hearing_id: stageWorkspaceState.currentHearingId,
+        presider_attendance: presiderStatus,
+        substitute_presider_id: presiderStatus === 'Absent' ? Number(substituteId) : null,
+        substitute_reason: presiderStatus === 'Absent' ? substituteReason : null,
+        parties_consent_to_substitute: presiderStatus === 'Absent' && consentVal ? 1 : 0,
+        complainant_attendance: compAtt,
+        complainant_explanation: compReason,
+        respondent_attendance: respAtt,
+        respondent_explanation: respReason,
+        parties: records
+    };
 
     try {
         const res = await fetch(getStageApiUrl('hearings/attendance.php'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                hearing_id: stageWorkspaceState.currentHearingId,
-                attendance: records
-            })
+            body: JSON.stringify(payload)
         });
         const json = await res.json();
         if (json.success) {
@@ -2561,5 +3100,11 @@ window.openPangkatSelectionModal = openPangkatSelectionModal;
 window.closePangkatSelectionModal = closePangkatSelectionModal;
 window.togglePartyAgreementFailed = togglePartyAgreementFailed;
 window.submitPangkatSelection = submitPangkatSelection;
+
+// Attendance & Form preview exposure
+window.openKPFormPreview = openKPFormPreview;
+window.togglePresiderSubstituteSection = togglePresiderSubstituteSection;
+window.toggleAttJustification = toggleAttJustification;
+window.submitAttendance = submitAttendance;
 
 

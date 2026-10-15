@@ -114,3 +114,20 @@ For existing databases updating to the integrated summons preview and mediation 
 - `database/migrations/20261013_001_repair_summon_deliveries.sql`: Verifies and repairs the `summon_deliveries` table columns (`case_id`, `document_id`, `party_id`, `resident_id`, `party_type`, `recipient_name`, `delivery_status`, `attempt_count`, `service_method`, `served_by_user_id`, `served_at`).
 - `database/migrations/20261013_002_mediation_commencement.sql`: Adds first mediation commencement tracking columns (`first_mediation_commenced_at`, `mediation_commenced_by`, `mediation_commencement_notes`) to the `cases` table.
 - `database/migrations/20261013_003_summon_three_attempts.sql`: Upgrades `summon_deliveries` to support the multi-attempt summons lifecycle (up to 3 documented delivery attempts per party/hearing). Replaces the legacy unique index `uq_hearing_party_form` with `uq_hearing_party_form_attempt (hearing_id, party_type, form_type, attempt_number)` and converts `delivery_status` and `unserved_reason` to `VARCHAR(50)`.
+
+## Pangkat conciliation and hearing workspace compatibility (October 2026)
+
+For existing databases updating to the modernized hearing workspace, apply:
+- `database/migrations/20261014_001_pangkat_stage_enhancements.sql`: Adds Pangkat constitution tracking, officer role selection (`pangkat_officers`), challenge resolution records (`pangkat_challenges`), and statutory 15-day extension requests (`pangkat_extensions`).
+- `database/migrations/20261014_002_hearing_workspace_compatibility.sql`: Adds hearing workspace compatibility fields to the `hearings` table:
+  - `substitute_presider_id`: Foreign key referencing `users.user_id` when the Punong Barangay is unavailable.
+  - `substitute_reason`: Free-text justification for presiding officer substitution.
+  - `parties_consent_to_substitute`: Boolean indicator confirming mutual party consent.
+  - `complainant_attendance`, `respondent_attendance`: Independent hearing-level appearance states (`Present`, `Absent`, `Excused`).
+  - `attendance_recorded_at`, `attendance_notes`: Timestamp and audit summary of the hearing's recorded preliminaries.
+
+## Second Mediation Summons Delivery Rules
+
+- Under Katarungang Pambarangay rules (RA 7160 Sec. 410), summons issuance applies to the initial mediation hearing.
+- Subsequent mediation hearings (`2nd Mediation`, `3rd Mediation`) do not insert new pending records into `summon_deliveries` and do not require re-issuance of summonses. Prior notice is recognized, and attendance tracking is unlocked.
+- If a party is recorded absent in the 2nd Mediation, the non-appearance escalation path issues KP Form 18 (for absent complainant) or KP Form 19 (for absent respondent).

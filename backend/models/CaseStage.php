@@ -184,7 +184,18 @@ class CaseStage
         $docStmt->execute([$caseId]);
         $noticeCount = (int) $docStmt->fetchColumn();
 
-        // Determine Mediation Status
+        // Count completed mediation sessions
+        $completedMediationCount = 0;
+        foreach ($hearings as $h) {
+            if ($h['status'] === 'Completed' || !empty($h['minute_id']) || !empty($h['complainant_attendance']) || !empty($h['attendance_recorded_at'])) {
+                $completedMediationCount++;
+            }
+        }
+
+        $isLapsed = !empty($case['mediation_timer']['is_expired']);
+        $pangkatLockReason = null;
+
+        // Determine Mediation Status & Outcome
         $stageStatus = 'Not Started';
         $outcome = $stageRecord['outcome'] ?? 'Pending';
         $outcomeRemarks = $stageRecord['outcome_remarks'] ?? null;
@@ -198,9 +209,14 @@ class CaseStage
             } elseif ($case['case_status'] === 'Conciliation' || in_array($case['case_status'], ['CFA Issued', 'Dismissed'], true)) {
                 $stageStatus = 'Referred to Pangkat';
                 $outcome = 'Referred to Pangkat';
-            } elseif ($hasFailedSession) {
-                $stageStatus = 'Ready for Referral';
-                $outcome = 'Unsuccessful';
+            } elseif ($completedMediationCount >= 3 || $isLapsed) {
+                // Only ready for referral after 3 mediation sessions or statutory period expired
+                if ($hasFailedSession || in_array($outcome, ['Unsuccessful', 'Failed'], true)) {
+                    $stageStatus = 'Ready for Referral';
+                    $outcome = 'Unsuccessful';
+                } else {
+                    $stageStatus = 'Awaiting Outcome';
+                }
             } elseif ($sessionCount > 0) {
                 $hasPendingOrFuture = false;
                 foreach ($hearings as $h) {
@@ -209,16 +225,42 @@ class CaseStage
                         break;
                     }
                 }
-                $stageStatus = $hasPendingOrFuture ? 'In Progress' : 'Awaiting Outcome';
+                $stageStatus = 'In Progress';
+                if ($completedMediationCount === 1) {
+                    $outcome = '1st Mediation Unresolved';
+                } elseif ($completedMediationCount === 2) {
+                    $outcome = '2nd Mediation Unresolved';
+                }
             }
         }
 
         // Attendance Finalized status
         $attendanceFinalized = ($sessionCount > 0 && ($complainantAtt['present'] + $complainantAtt['absent'] + $complainantAtt['excused']) > 0);
 
-        // Actions prerequisites
-        $isLapsed = !empty($case['mediation_timer']['is_expired']);
-        $canProceedToPangkat = ($stageStatus === 'Ready for Referral' || $outcome === 'Unsuccessful' || $hasFailedSession || $isLapsed || $case['case_status'] === 'Conciliation');
+        // Actions prerequisites:
+        // Do NOT pass case to Conciliation after 1st or 2nd Mediation!
+        // Permit progression to Conciliation ONLY after 3rd Mediation has completed and issue remains unresolved.
+        if ($case['case_status'] === 'Settled' || $outcome === 'Settled' || $hasSettledSession) {
+            $canProceedToPangkat = false;
+            $pangkatLockReason = 'An amicable settlement was reached for this case.';
+        } elseif ($case['case_status'] === 'Conciliation' || $stageStatus === 'Referred to Pangkat') {
+            $canProceedToPangkat = false;
+            $pangkatLockReason = 'Case has already been referred to Pangkat Conciliation.';
+        } elseif ($completedMediationCount < 3 && !$isLapsed) {
+            $canProceedToPangkat = false;
+            $pangkatLockReason = sprintf(
+                'Progression to Conciliation is locked: Completed %d of 3 required mediation sessions. Katarungang Pambarangay (RA 7160) requires 3 mediation sessions before elevating to Pangkat Conciliation.',
+                $completedMediationCount
+            );
+        } else {
+            // Unlocked only when 3 sessions completed (or statutory 15 days lapsed) and dispute is unresolved
+            $canProceedToPangkat = ($stageStatus === 'Ready for Referral' || $outcome === 'Unsuccessful' || $hasFailedSession || $isLapsed);
+            if (!$canProceedToPangkat) {
+                $pangkatLockReason = 'Complete 3rd mediation minutes and record unsuccessful outcome to elevate.';
+            }
+        }
+
+        $canBookNextMediation = ($completedMediationCount >= 1 && $completedMediationCount < 3 && $outcome !== 'Settled' && $case['case_status'] !== 'Settled');
 
         return [
             'stage_type' => 'Mediation',
@@ -228,6 +270,8 @@ class CaseStage
             'stage_badge_class' => self::getBadgeClass($stageStatus),
             'presiding_officer' => $pbName,
             'sessions_count' => $sessionCount,
+            'completed_mediation_count' => $completedMediationCount,
+            'current_mediation_session' => min(3, max(1, $completedMediationCount + 1)),
             'next_hearing' => $nextHearing,
             'latest_hearing_date' => $latestHearingDate,
             'attendance_summary' => [
@@ -247,7 +291,11 @@ class CaseStage
                 'can_print_notice' => ($noticeCount > 0 || $sessionCount > 0),
                 'can_generate_settlement' => ($hasSettledSession || $outcome === 'Settled' || $case['case_status'] === 'Settled'),
                 'can_record_outcome' => ($sessionCount > 0),
-                'can_proceed_to_pangkat' => $canProceedToPangkat
+                'can_proceed_to_pangkat' => $canProceedToPangkat,
+                'pangkat_lock_reason' => $pangkatLockReason,
+                'can_book_next_mediation' => $canBookNextMediation,
+                'next_mediation_session_number' => min(3, $completedMediationCount + 1),
+                'completed_mediation_count' => $completedMediationCount,
             ],
             'outcome' => $outcome,
             'outcome_remarks' => $outcomeRemarks,
@@ -599,7 +647,7 @@ class CaseStage
         $members = [];
         if ($group) {
             $memStmt = $this->conn->prepare("
-                SELECT pm.position, pm.member_id, pm.status, pm.disqualified_at, pm.disqualification_reason,
+                SELECT pm.position, pm.member_id, u.status,
                        TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS member_name,
                        u.email, u.contact_no AS contact_number
                 FROM pangkat_members pm
@@ -650,32 +698,40 @@ class CaseStage
             elseif (!$regularMember) $regularMember = $m;
         }
 
-        // Challenges & Extensions
+        // Challenges & Extensions (Gracefully handled if optional tables not yet created)
         $challenges = [];
         $extensions = [];
         if ($group) {
-            $cStmt = $this->conn->prepare("
-                SELECT pc.*,
-                       TRIM(CONCAT_WS(' ', u_ch.first_name, u_ch.middle_name, u_ch.last_name)) AS challenged_name,
-                       TRIM(CONCAT_WS(' ', u_rep.first_name, u_rep.middle_name, u_rep.last_name)) AS replacement_name
-                FROM pangkat_challenges pc
-                INNER JOIN users u_ch ON u_ch.user_id = pc.challenged_member_id
-                LEFT JOIN users u_rep ON u_rep.user_id = pc.replacement_member_id
-                WHERE pc.case_id = ?
-                ORDER BY pc.challenge_id DESC
-            ");
-            $cStmt->execute([$caseId]);
-            $challenges = $cStmt->fetchAll(PDO::FETCH_ASSOC);
+            try {
+                $cStmt = $this->conn->prepare("
+                    SELECT pc.*,
+                           TRIM(CONCAT_WS(' ', u_ch.first_name, u_ch.middle_name, u_ch.last_name)) AS challenged_name,
+                           TRIM(CONCAT_WS(' ', u_rep.first_name, u_rep.middle_name, u_rep.last_name)) AS replacement_name
+                    FROM pangkat_challenges pc
+                    INNER JOIN users u_ch ON u_ch.user_id = pc.challenged_member_id
+                    LEFT JOIN users u_rep ON u_rep.user_id = pc.replacement_member_id
+                    WHERE pc.case_id = ?
+                    ORDER BY pc.challenge_id DESC
+                ");
+                $cStmt->execute([$caseId]);
+                $challenges = $cStmt->fetchAll(PDO::FETCH_ASSOC);
+            } catch (Throwable $e) {
+                $challenges = [];
+            }
 
-            $eStmt = $this->conn->prepare("
-                SELECT pe.*, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS approver_name
-                FROM pangkat_extensions pe
-                INNER JOIN users u ON u.user_id = pe.approved_by
-                WHERE pe.case_id = ?
-                ORDER BY pe.extension_id DESC
-            ");
-            $eStmt->execute([$caseId]);
-            $extensions = $eStmt->fetchAll(PDO::FETCH_ASSOC);
+            try {
+                $eStmt = $this->conn->prepare("
+                    SELECT pe.*, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS approver_name
+                    FROM pangkat_extensions pe
+                    INNER JOIN users u ON u.user_id = pe.approved_by
+                    WHERE pe.case_id = ?
+                    ORDER BY pe.extension_id DESC
+                ");
+                $eStmt->execute([$caseId]);
+                $extensions = $eStmt->fetchAll(PDO::FETCH_ASSOC);
+            } catch (Throwable $e) {
+                $extensions = [];
+            }
         }
 
         return [
@@ -721,6 +777,10 @@ class CaseStage
         $stmt = $this->conn->prepare("
             SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.venue, h.status,
                    h.complainant_attendance, h.respondent_attendance, h.remarks,
+                   h.presiding_officer_id, h.substitute_presider_id, h.substitute_reason, h.parties_consent_to_substitute,
+                   h.attendance_recorded_at, h.attendance_notes,
+                   TRIM(CONCAT_WS(' ', po.first_name, po.middle_name, po.last_name)) AS presiding_officer_name,
+                   TRIM(CONCAT_WS(' ', sp.first_name, sp.middle_name, sp.last_name)) AS substitute_presider_name,
                    hm.minute_id, hm.status AS minutes_status, hm.session_outcome, hm.outcome_remarks,
                    hm.opening_conducted, hm.identity_verified, hm.complaint_reviewed,
                    hm.complainant_statement, hm.respondent_statement, hm.main_dispute_identified,
@@ -731,6 +791,8 @@ class CaseStage
                    TRIM(CONCAT_WS(' ', fin_u.first_name, fin_u.middle_name, fin_u.last_name)) AS finalized_by_name,
                    hm.finalized_at
             FROM hearings h
+            LEFT JOIN users po ON po.user_id = h.presiding_officer_id
+            LEFT JOIN users sp ON sp.user_id = h.substitute_presider_id
             LEFT JOIN hearing_minutes hm ON hm.hearing_id = h.hearing_id
             LEFT JOIN users rec_u ON rec_u.user_id = hm.recorded_by
             LEFT JOIN users fin_u ON fin_u.user_id = hm.finalized_by
@@ -775,7 +837,7 @@ class CaseStage
                     break;
                 }
             }
-            if ($servedAny) {
+            if ($servedAny || ($stageType === 'Mediation' && $index >= 2)) {
                 $proofStatus = 'Served';
             }
 
@@ -789,6 +851,13 @@ class CaseStage
                 'status' => $h['status'],
                 'complainant_attendance' => $h['complainant_attendance'] ?: 'Pending',
                 'respondent_attendance' => $h['respondent_attendance'] ?: 'Pending',
+                'presiding_officer_id' => $h['presiding_officer_id'] ? (int) $h['presiding_officer_id'] : null,
+                'presiding_officer_name' => $h['presiding_officer_name'] ?: 'Punong Barangay / Lupon Chairman',
+                'substitute_presider_id' => $h['substitute_presider_id'] ? (int) $h['substitute_presider_id'] : null,
+                'substitute_presider_name' => $h['substitute_presider_name'],
+                'substitute_reason' => $h['substitute_reason'],
+                'parties_consent_to_substitute' => (int) ($h['parties_consent_to_substitute'] ?? 0),
+                'attendance_notes' => $h['attendance_notes'],
                 'remarks' => $h['remarks'],
                 'proof_of_service_status' => $proofStatus,
                 'minutes_id' => $h['minute_id'] ? (int) $h['minute_id'] : null,
@@ -943,14 +1012,42 @@ class CaseStage
         }
 
         $med = $overview['mediation'];
-        $canRefer = $med['documents_and_actions']['can_proceed_to_pangkat']
-            || in_array($med['stage_status'], ['Ready for Referral', 'Awaiting Outcome', 'Completed'], true)
-            || in_array($med['outcome'], ['Unsuccessful', 'Failed', 'Pending'], true);
 
+        // Enforce progression rules server-side
+        if ($overview['case']['case_status'] === 'Settled' || $med['outcome'] === 'Settled') {
+            return [
+                'success' => false,
+                'message' => 'Cannot elevate to Pangkat Conciliation: An amicable settlement was already reached for this case.'
+            ];
+        }
+
+        // Query completed mediation count directly from database
+        $completedStmt = $this->conn->prepare("
+            SELECT COUNT(*) FROM hearings h
+            LEFT JOIN hearing_minutes hm ON hm.hearing_id = h.hearing_id
+            WHERE h.case_id = ? 
+              AND h.hearing_type IN ('Initial Hearing', 'Mediation')
+              AND h.status != 'Cancelled'
+              AND (h.status = 'Completed' OR hm.minute_id IS NOT NULL OR h.complainant_attendance IS NOT NULL OR h.attendance_recorded_at IS NOT NULL)
+        ");
+        $completedStmt->execute([$caseId]);
+        $completedMediationCount = (int) $completedStmt->fetchColumn();
+
+        $isLapsed = !empty($overview['case']['mediation_timer']['is_expired']);
+
+        // Strictly enforce 3 mediation sessions completed before elevation to Pangkat
+        if ($completedMediationCount < 3 && !$isLapsed) {
+            return [
+                'success' => false,
+                'message' => "Progression to Conciliation is locked: Completed {$completedMediationCount} of 3 required mediation sessions. Elevation to Pangkat ng Tagapagkasundo is only permitted after 3 mediation sessions have been completed and the dispute remains unresolved."
+            ];
+        }
+
+        $canRefer = $med['documents_and_actions']['can_proceed_to_pangkat'] || $completedMediationCount >= 3 || $isLapsed;
         if (!$canRefer) {
             return [
                 'success' => false,
-                'message' => 'Mediation requirements not satisfied. Complete mediation sessions or record an unsuccessful mediation outcome before referring to Pangkat.'
+                'message' => 'Mediation requirements not satisfied. Complete 3 mediation sessions or record an unsuccessful mediation outcome before referring to Pangkat.'
             ];
         }
 

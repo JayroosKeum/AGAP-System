@@ -71,6 +71,10 @@ $progress['lifecycle_description'] =
 $progress['lifecycle_statuses'] =
     ComplaintLifecycleService::allowedStatuses();
 
+$hasMediationAndSummons = !empty($progress['hearings']) &&
+    count(array_filter($progress['hearings'], fn($h) => in_array($h['hearing_type'] ?? '', ['Initial Hearing', 'Mediation'], true))) >= 1 &&
+    !empty($progress['summons']);
+
 $progress['hide_issue_summon'] =
     in_array(
         $progress['lifecycle_status'],
@@ -80,7 +84,7 @@ $progress['hide_issue_summon'] =
             ComplaintLifecycleService::CLOSED
         ],
         true
-    );
+    ) || $hasMediationAndSummons;
 
 echo json_encode([
     'success' => true,

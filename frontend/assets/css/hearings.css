@@ -1262,3 +1262,30 @@ textarea.is-invalid {
     box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12) !important;
 }
 
+/* ==========================================================================
+   Minutes of the Meeting & Hearing Workspace (Option 2: 3-Section Flow)
+   ========================================================================== */
+.minutes-flow-step {
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.minutes-flow-step:focus-within {
+    border-color: #cbd5e1;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+.proposals-caucus-details summary {
+    transition: color 0.15s ease;
+}
+.proposals-caucus-details summary:hover {
+    color: #1e293b;
+}
+.proposals-caucus-details[open] summary {
+    color: #0369a1;
+}
+.inline-minutes-card input:focus,
+.inline-minutes-card select:focus,
+.inline-minutes-card textarea:focus {
+    outline: none;
+    border-color: #2563eb !important;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12) !important;
+}
+

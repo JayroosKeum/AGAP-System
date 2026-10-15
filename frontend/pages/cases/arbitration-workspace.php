@@ -223,29 +223,16 @@ include '../../layouts/header.php';
                     </div>
                 </div>
 
-                <!-- Section 3: Hearing Session Minutes & Settlement Progress -->
+                <!-- Section 3: Hearing Session Minutes & Proceedings -->
                 <div class="stage-section-card" id="minutesSection">
                     <div class="stage-section-header">
                         <div>
-                            <h3>Hearing Session Minutes &amp; Settlement Progress</h3>
-                            <p>Official records of arbitration hearings, evidence submissions, party claims, and award progress</p>
+                            <h3>Hearing Session Minutes &amp; Proceedings</h3>
+                            <p>Official records of arbitration hearings, evidence submissions, party claims, and binding outcome</p>
                         </div>
                     </div>
                     <div id="wsMinutesSectionContainer">
-                        <div class="empty-detail-state">Loading arbitration session minutes &amp; progress...</div>
-                    </div>
-                </div>
-
-                <!-- Section 4: Stage Outcome & Case Disposition -->
-                <div class="stage-section-card" id="outcomeSection">
-                    <div class="stage-section-header">
-                        <div>
-                            <h3>Arbitration Outcome &amp; Binding Award</h3>
-                            <p>Record arbitration determination or render binding Arbitration Award (KP Form 15)</p>
-                        </div>
-                    </div>
-                    <div id="wsOutcomeActionBox">
-                        <div class="empty-detail-state">Loading stage disposition...</div>
+                        <div class="empty-detail-state">Loading arbitration session minutes &amp; proceedings...</div>
                     </div>
                 </div>
             </div>

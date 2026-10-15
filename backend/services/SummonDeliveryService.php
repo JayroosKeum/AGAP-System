@@ -306,10 +306,29 @@ class SummonDeliveryService
      */
     public function checkServiceStatus(int $hearingId): array
     {
-        // Fetch hearing type so messages can be contextual
-        $htStmt = $this->conn->prepare("SELECT hearing_type FROM hearings WHERE hearing_id = ? LIMIT 1");
+        // Fetch hearing type and case_id so messages and sequence can be contextual
+        $htStmt = $this->conn->prepare("SELECT case_id, hearing_type FROM hearings WHERE hearing_id = ? LIMIT 1");
         $htStmt->execute([$hearingId]);
-        $hearingType = (string) ($htStmt->fetchColumn() ?: 'Hearing');
+        $hRow = $htStmt->fetch(PDO::FETCH_ASSOC);
+        $hearingType = (string) ($hRow['hearing_type'] ?? 'Hearing');
+        $caseId = (int) ($hRow['case_id'] ?? 0);
+
+        if (strcasecmp($hearingType, 'Mediation') === 0 && $caseId > 0) {
+            $seqStmt = $this->conn->prepare("
+                SELECT COUNT(*) FROM hearings
+                WHERE case_id = ? AND hearing_type IN ('Initial Hearing', 'Mediation') AND hearing_id <= ?
+            ");
+            $seqStmt->execute([$caseId, $hearingId]);
+            $hearingSequence = (int) $seqStmt->fetchColumn() ?: 1;
+
+            if ($hearingSequence >= 2) {
+                return [
+                    'allowed'  => true,
+                    'status'   => 'SERVED',
+                    'message'  => 'Second or subsequent mediation session does not require re-issuance of summons. Attendance tracking is unlocked.',
+                ];
+            }
+        }
 
         $stmt = $this->conn->prepare("
             SELECT party_type, resident_id, recipient_name, delivery_status, unserved_reason, failure_notes, attempt_number, form_type

@@ -113,6 +113,27 @@ final class SummonServiceGate
             );
         }
 
+        $caseId = (int) ($hearing['case_id'] ?? 0);
+        if ($caseId > 0) {
+            $seqStmt = $this->db->prepare("
+                SELECT COUNT(*) FROM hearings
+                WHERE case_id = ? AND hearing_type IN ('Initial Hearing', 'Mediation') AND hearing_id <= ?
+            ");
+            $seqStmt->execute([$caseId, $hearingId]);
+            $hearingSequence = (int) $seqStmt->fetchColumn() ?: 1;
+
+            if ($hearingSequence >= 2) {
+                return $this->result(
+                    true,
+                    'SUBSEQUENT_MEDIATION',
+                    'Second or subsequent mediation session does not require re-issuance of summons. Attendance tracking is unlocked.',
+                    $hearing,
+                    [],
+                    false
+                );
+            }
+        }
+
         $attempts = $this->deliveryAttempts((int) $hearing['case_id'], $hearingId);
         if ($attempts === []) {
             return $this->result(

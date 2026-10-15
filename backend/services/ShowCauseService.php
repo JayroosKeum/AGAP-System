@@ -76,27 +76,93 @@ class ShowCauseService
             ? 'Completed'
             : 'Attendance Recorded';
 
-        // Update hearings record
-        $updateHearing = $this->conn->prepare("
-            UPDATE hearings
-            SET complainant_attendance = ?,
-                respondent_attendance = ?,
-                attendance_recorded_at = ?,
-                attendance_notes = ?,
-                status = ?
-            WHERE hearing_id = ?
-        ");
-        $updateHearing->execute([
-            $complainantAtt,
-            $respondentAtt,
-            $now,
-            $attendanceNotes ?: null,
-            $hearingStatus,
-            $hearingId,
-        ]);
+        // Extract explanations
+        $compExplanation = trim((string) ($data['complainant_explanation'] ?? $data['complainant_reason'] ?? ''));
+        $respExplanation = trim((string) ($data['respondent_explanation'] ?? $data['respondent_reason'] ?? ''));
+
+        $notesParts = [];
+        if ($attendanceNotes !== '') {
+            $notesParts[] = $attendanceNotes;
+        }
+        if ($complainantAtt === 'Absent') {
+            $notesParts[] = 'Complainant absent: ' . ($compExplanation !== '' ? $compExplanation : 'No explanation provided');
+        }
+        if ($respondentAtt === 'Absent') {
+            $notesParts[] = 'Respondent absent: ' . ($respExplanation !== '' ? $respExplanation : 'No explanation provided');
+        }
+
+        // Handle presider absence & substitution if provided
+        $presiderAtt = trim((string) ($data['presider_attendance'] ?? 'Present'));
+        $substituteId = filter_var($data['substitute_presider_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $substituteReason = trim((string) ($data['substitute_reason'] ?? ''));
+        $partiesConsent = !empty($data['parties_consent_to_substitute']);
+
+        if ($presiderAtt === 'Absent') {
+            if (!$substituteId || $substituteReason === '' || !$partiesConsent) {
+                return [
+                    'success' => false,
+                    'message' => 'Presider is marked absent. A designated substitute presider, valid substitution reason, and confirmation of mutual party consent are required before proceeding.'
+                ];
+            }
+            $notesParts[] = "Presider absent. Substitute #{$substituteId} designated (Reason: {$substituteReason}). Parties consented.";
+        }
+
+        $combinedNotes = implode(' | ', $notesParts);
+
+        // Update hearings record - preserving presiding_officer_id!
+        if ($presiderAtt === 'Absent' && $substituteId) {
+            $updateHearing = $this->conn->prepare("
+                UPDATE hearings
+                SET complainant_attendance = ?,
+                    respondent_attendance = ?,
+                    substitute_presider_id = ?,
+                    substitute_reason = ?,
+                    parties_consent_to_substitute = 1,
+                    attendance_recorded_at = ?,
+                    attendance_notes = ?,
+                    status = ?
+                WHERE hearing_id = ?
+            ");
+            $updateHearing->execute([
+                $complainantAtt,
+                $respondentAtt,
+                $substituteId,
+                $substituteReason,
+                $now,
+                $combinedNotes ?: null,
+                $hearingStatus,
+                $hearingId,
+            ]);
+        } else {
+            $updateHearing = $this->conn->prepare("
+                UPDATE hearings
+                SET complainant_attendance = ?,
+                    respondent_attendance = ?,
+                    attendance_recorded_at = ?,
+                    attendance_notes = ?,
+                    status = ?
+                WHERE hearing_id = ?
+            ");
+            $updateHearing->execute([
+                $complainantAtt,
+                $respondentAtt,
+                $now,
+                $combinedNotes ?: null,
+                $hearingStatus,
+                $hearingId,
+            ]);
+        }
 
         // Sync with hearing_attendance table for party rows
-        $this->syncHearingAttendanceTable($hearingId, (int) $hearing['complaint_id'], $complainantAtt, $respondentAtt, $actorUserId);
+        $this->syncHearingAttendanceTable(
+            $hearingId,
+            (int) $hearing['complaint_id'],
+            $complainantAtt,
+            $respondentAtt,
+            $actorUserId,
+            $compExplanation ?: null,
+            $respExplanation ?: null
+        );
 
         // Fetch parties for document and hearing generation
         $parties = $this->getCaseParties((int) $hearing['complaint_id']);
@@ -526,30 +592,47 @@ class ShowCauseService
         ]);
     }
 
-    private function syncHearingAttendanceTable(int $hearingId, int $complaintId, string $complainantAtt, string $respondentAtt, int $actorUserId): void
-    {
+    private function syncHearingAttendanceTable(
+        int $hearingId,
+        int $complaintId,
+        string $complainantAtt,
+        string $respondentAtt,
+        int $actorUserId,
+        ?string $compReason = null,
+        ?string $respReason = null
+    ): void {
         $parties = $this->getCaseParties($complaintId);
 
         $upsertAtt = $this->conn->prepare("
-            INSERT INTO hearing_attendance (hearing_id, resident_id, attendance_status, recorded_by)
-            VALUES (?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE attendance_status = VALUES(attendance_status), recorded_by = VALUES(recorded_by)
+            INSERT INTO hearing_attendance (hearing_id, resident_id, attendance_status, is_justified, justification_reason, recorded_by)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE 
+                attendance_status = VALUES(attendance_status),
+                is_justified = VALUES(is_justified),
+                justification_reason = VALUES(justification_reason),
+                recorded_by = VALUES(recorded_by)
         ");
 
         if (isset($parties['complainant']['resident_id'])) {
+            $isJust = ($compReason !== null && $compReason !== '') ? 1 : 0;
             $upsertAtt->execute([
                 $hearingId,
                 $parties['complainant']['resident_id'],
                 $complainantAtt,
+                $isJust,
+                $compReason ?: null,
                 $actorUserId,
             ]);
         }
 
         if (isset($parties['respondent']['resident_id'])) {
+            $isJust = ($respReason !== null && $respReason !== '') ? 1 : 0;
             $upsertAtt->execute([
                 $hearingId,
                 $parties['respondent']['resident_id'],
                 $respondentAtt,
+                $isJust,
+                $respReason ?: null,
                 $actorUserId,
             ]);
         }

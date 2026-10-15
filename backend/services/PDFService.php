@@ -766,6 +766,24 @@ class PDFService
                     Dahil dito, alinsunod sa itinatakda ng Seksiyon 412 ng Batas Republika Blg. 7160 (Katarungang Pambarangay), ang kaukulang reklamo para sa nasabing usapin ay maaari nang <strong>IHAIN SA HUKUMAN O TANGGAPAN NG PAMAHALAAN</strong>.
                 </p>
             ';
+        } elseif ($formCode === 'KP Form 16') {
+            $formTitle = 'Pormularyo ng KP Blg. 16';
+            $subTitle = 'KASUNDUANG PAG-AAYOS (Amicable Settlement)';
+            $agreements = !empty($data['agreement_details']) ? $this->escape((string) $data['agreement_details']) : 'Ang mga panig ay nagkasundo na tapusin at ayusin ang lahat ng usapin at alitan kaugnay ng sumbong na ito sa mapayapang paraan.';
+            $body = '
+                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
+                    Kami, ang (mga) may-sumbong at (mga) ipinagsusumbong sa usaping ito, ay nagkasundo nang buong laya at kusang-loob na ayusin ang aming alitan sa ilalim ng mga sumusunod na kasunduan:
+                </p>
+                <div style="margin: 10px 0; padding: 10px 14px; border: 1px solid #999; background: #fafafa; font-size: 10pt; line-height: 1.6;">
+                    ' . nl2br($agreements) . '
+                </div>
+                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
+                    Kami ay nangangako na tutupad nang buong katapatan sa mga nakasaad sa kasunduang ito alinsunod sa Seksiyon 416 at 417 ng Batas Republika Blg. 7160.
+                </p>
+                <p style="margin-top: 15mm; font-size: 9.5pt; font-style: italic;">
+                    Pinatutunayan ko na ang kasunduang pag-aayos na ito ay pinagtibay sa aking harapan nang malaya at kusang-loob ng mga panig matapos maipaliwanag ang mga nilalaman nito.
+                </p>
+            ';
         }
 
         return '<!DOCTYPE html>
