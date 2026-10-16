@@ -1447,6 +1447,113 @@ window.calculateBusinessDays = calculateBusinessDays;
 
 let conflictCheckDebounceTimer = null;
 
+function renderSummonVisualDatePicker(windowMeta, selectedDate) {
+    const gridEl = document.getElementById('summonVisualDayGrid');
+    const noticeEl = document.getElementById('summonVisualDateStatusNotice');
+    const badgeEl = document.getElementById('summonWindowStatutoryBadge');
+    if (!gridEl || !windowMeta || !windowMeta.daily_slots) return;
+
+    if (badgeEl && windowMeta.deadline_date) {
+        const dObj = new Date(windowMeta.deadline_date + 'T00:00:00');
+        const formatted = dObj.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+        badgeEl.textContent = `15-Working-Day Window (Deadline: ${formatted})`;
+    }
+
+    const days = Object.values(windowMeta.daily_slots);
+    if (!days.length) {
+        gridEl.innerHTML = '<div style="color: #64748b; font-size: 0.78rem; grid-column: 1 / -1; text-align: center;">No date slots available in window.</div>';
+        return;
+    }
+
+    gridEl.innerHTML = days.map(d => {
+        const isSelected = (d.date === selectedDate);
+        let badgeText = `${d.available} open`;
+        let badgeBg = '#dcfce7';
+        let badgeColor = '#15803d';
+        let cardStyle = 'border: 1px solid #cbd5e1; background: #ffffff; color: #1e293b; cursor: pointer;';
+        let disabledAttr = '';
+        let tooltip = `${d.date}: ${d.available} of ${d.max} slots available.`;
+
+        if (d.is_past) {
+            badgeText = 'Past';
+            badgeBg = '#f1f5f9';
+            badgeColor = '#94a3b8';
+            cardStyle = 'border: 1px solid #e2e8f0; background: #f8fafc; color: #94a3b8; cursor: not-allowed; opacity: 0.5;';
+            disabledAttr = 'disabled';
+            tooltip = `${d.date}: Past date cannot be scheduled.`;
+        } else if (d.is_outside_window) {
+            badgeText = '>15 Days';
+            badgeBg = '#fee2e2';
+            badgeColor = '#991b1b';
+            cardStyle = 'border: 1px dashed #fca5a5; background: #fff5f5; color: #991b1b; cursor: not-allowed; opacity: 0.55;';
+            disabledAttr = 'disabled';
+            tooltip = `${d.date}: Exceeds 15-working-day statutory window under RA 7160 Sec. 410.`;
+        } else if (d.is_fully_booked) {
+            badgeText = '8/8 FULL';
+            badgeBg = '#fee2e2';
+            badgeColor = '#b91c1c';
+            cardStyle = 'border: 1px solid #fecaca; background: #fff1f2; color: #881337; cursor: not-allowed; opacity: 0.65;';
+            disabledAttr = 'disabled';
+            tooltip = `${d.date}: Fully booked! Maximum 8 mediation sessions reached for this date.`;
+        } else if (d.is_weekend || d.is_non_working_day) {
+            badgeText = d.is_non_working_day ? 'Holiday' : 'Weekend';
+            badgeBg = '#f1f5f9';
+            badgeColor = '#64748b';
+            cardStyle = 'border: 1px dashed #cbd5e1; background: #f8fafc; color: #64748b; cursor: pointer;';
+            tooltip = `${d.date}: ${d.is_non_working_day ? 'Official holiday' : 'Weekend'}. Allowed for emergency scheduling, but standard working days preferred.`;
+        }
+
+        if (isSelected) {
+            cardStyle = 'border: 2px solid #2563eb; background: #eff6ff; color: #1e3a8a; box-shadow: 0 0 0 2px rgba(37,99,235,0.25); font-weight: 700; cursor: pointer;';
+            badgeBg = '#2563eb';
+            badgeColor = '#ffffff';
+        }
+
+        return `
+            <div class="summon-day-card ${isSelected ? 'active' : ''}" 
+                 onclick="${disabledAttr ? '' : `selectSummonVisualDate('${d.date}')`}"
+                 title="${escapeHtml(tooltip)}"
+                 style="border-radius: 6px; padding: 6px 4px; text-align: center; transition: all 0.15s; user-select: none; ${cardStyle}">
+                <div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em;">
+                    ${escapeHtml(d.day_name)}
+                </div>
+                <div style="font-size: 0.85rem; font-weight: 800; margin: 2px 0;">
+                    ${d.day_num} ${escapeHtml(d.month_name)}
+                </div>
+                <div style="font-size: 0.65rem; font-weight: 700; padding: 1px 4px; border-radius: 4px; background: ${badgeBg}; color: ${badgeColor}; display: inline-block;">
+                    ${badgeText}
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    if (noticeEl) {
+        if (selectedDate) {
+            const selectedDayData = windowMeta.daily_slots[selectedDate];
+            if (selectedDayData) {
+                if (selectedDayData.is_outside_window) {
+                    noticeEl.innerHTML = `<span style="color: #dc2626; font-weight: 600;">⚠️ Selected date exceeds the 15-working-day statutory limit (Deadline: ${windowMeta.deadline_date}).</span>`;
+                } else if (selectedDayData.is_fully_booked) {
+                    noticeEl.innerHTML = `<span style="color: #dc2626; font-weight: 600;">⚠️ Selected date is fully booked (8 of 8 daily mediation sessions).</span>`;
+                } else {
+                    noticeEl.innerHTML = `<span style="color: #15803d; font-weight: 600;">✓ Valid statutory mediation date selected: ${selectedDayData.available} slots remaining.</span>`;
+                }
+            }
+        } else {
+            noticeEl.textContent = `Click any available day above to select. Days exceeding 8 hearings or past 15 working days are grayed out.`;
+        }
+    }
+}
+window.renderSummonVisualDatePicker = renderSummonVisualDatePicker;
+
+function selectSummonVisualDate(dateStr) {
+    const dateInput = document.getElementById('summonMediationDate');
+    if (!dateInput) return;
+    dateInput.value = dateStr;
+    checkMediationScheduleConflict();
+}
+window.selectSummonVisualDate = selectSummonVisualDate;
+
 async function checkMediationScheduleConflict() {
     const dateInput = document.getElementById('summonMediationDate');
     const timeInput = document.getElementById('summonMediationTime');
@@ -1458,24 +1565,28 @@ async function checkMediationScheduleConflict() {
     const slotsCount = document.getElementById('summonDaySlotsCount');
     const slotsList = document.getElementById('summonDaySlotsList');
 
-    if (!dateInput || !dateInput.value) return;
+    if (!dateInput) return;
 
     const dateVal = dateInput.value;
     const timeVal = timeInput ? timeInput.value : '';
     const venueVal = venueInput ? venueInput.value : 'Barangay Hall';
     const complaintIdVal = complaintInput ? complaintInput.value : '';
 
-    // Weekend, lunch break, and office hours restrictions bypassed for testing/development
-
     const params = new URLSearchParams();
-    params.set('date', dateVal);
+    if (dateVal) params.set('date', dateVal);
     if (timeVal) params.set('time', timeVal);
     if (venueVal) params.set('venue', venueVal);
     if (complaintIdVal) params.set('complaint_id', complaintIdVal);
+    params.set('get_window', '1');
 
     try {
         const response = await fetch(`../../../backend/api/summons/check-schedule.php?${params.toString()}`);
         const result = await response.json();
+
+        if (result.window) {
+            window.currentSummonWindowMeta = result.window;
+            renderSummonVisualDatePicker(result.window, dateVal);
+        }
 
         if (!response.ok || !result.success) {
             if (conflictAlert && result.message) {
@@ -1486,11 +1597,37 @@ async function checkMediationScheduleConflict() {
             return;
         }
 
-        // 3. Render day's capacity & scheduled mediations
+        // 1. Statutory 15-working-day window validation check
+        if (result.is_outside_window) {
+            if (conflictAlert) {
+                conflictAlert.textContent = `⚠️ Statutory Limit Exceeded: ${result.deadline_message || 'The selected date exceeds the 15-working-day mediation statutory limit.'}`;
+                conflictAlert.style.display = 'block';
+            }
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.title = 'Cannot submit: Selected mediation date falls outside the 15-working-day statutory window.';
+            }
+            return;
+        }
+
+        // 2. Capacity limit check: Max 8 sessions per day
         const bookedCount = result.total_booked ?? (result.scheduled_mediations ? result.scheduled_mediations.length : 0);
         const maxSlots = result.max_slots || 8;
         const availSlots = result.available_slots ?? Math.max(0, maxSlots - bookedCount);
 
+        if (result.is_fully_booked || bookedCount >= maxSlots) {
+            if (conflictAlert) {
+                conflictAlert.textContent = `⚠️ Date Fully Booked: All ${maxSlots} daily mediation slots on this date are occupied. Please select another date.`;
+                conflictAlert.style.display = 'block';
+            }
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.title = 'Cannot submit: Maximum daily capacity of 8 mediation sessions reached for this date.';
+            }
+            return;
+        }
+
+        // 3. Render day's capacity & scheduled mediations breakdown
         if (schedulesWrap && slotsList && slotsCount) {
             schedulesWrap.style.display = 'block';
             slotsCount.textContent = `${availSlots} of ${maxSlots} slots available`;
@@ -1515,20 +1652,7 @@ async function checkMediationScheduleConflict() {
             }
         }
 
-        // 4. Capacity limit check: Max 8 sessions per day
-        if (result.is_fully_booked || bookedCount >= maxSlots) {
-            if (conflictAlert) {
-                conflictAlert.textContent = `⚠️ Date Fully Booked: All ${maxSlots} daily mediation slots on this date are occupied. Please select another working date.`;
-                conflictAlert.style.display = 'block';
-            }
-            if (submitBtn) {
-                submitBtn.disabled = true;
-                submitBtn.title = 'Cannot submit: Maximum daily capacity of 8 mediation sessions reached for this date.';
-            }
-            return;
-        }
-
-        // 5. Conflict check
+        // 4. Time conflict check
         if (result.has_conflict && result.conflict) {
             const conflictMsg = result.conflict.message || 'The selected time overlaps with an existing scheduled mediation.';
             if (conflictAlert) {
@@ -1593,7 +1717,7 @@ function openIssueSummonModal() {
         today.setHours(0, 0, 0, 0);
         const todayStr = today.toISOString().slice(0, 10);
 
-        // Compute deadline: strictly 15 business days (skipping weekends & holidays)
+        // Compute deadline: strictly 15 business/working days (skipping weekends & holidays)
         let deadlineStr = null;
         let deadlineLabel = '';
         const baseDate = window.complaintCreatedAt ? new Date(window.complaintCreatedAt) : today;
@@ -1618,7 +1742,7 @@ function openIssueSummonModal() {
         if (!hintEl) {
             hintEl = document.createElement('small');
             hintEl.id = hintId;
-            hintEl.style.cssText = 'display:block; margin-top:4px; color:#b45309; font-size:0.82rem;';
+            hintEl.style.cssText = 'display:block; margin-top:4px; color:#b45309; font-size:0.82rem; font-weight:600;';
             dateInput.parentNode.appendChild(hintEl);
         }
         if (deadlineLabel) {
@@ -1694,6 +1818,21 @@ async function submitIssueSummon(event) {
     if (conflictAlert && conflictAlert.style.display !== 'none') {
         window.agapNotify?.('Please resolve the mediation schedule conflict before proceeding.', 'error');
         return;
+    }
+
+    const dateVal = document.getElementById('summonMediationDate')?.value;
+    if (dateVal && window.currentSummonWindowMeta) {
+        const meta = window.currentSummonWindowMeta;
+        if (meta.deadline_date && dateVal > meta.deadline_date) {
+            const formatted = new Date(meta.deadline_date + 'T00:00:00').toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' });
+            window.agapNotify?.(`Cannot issue summon: 1st Mediation date must fall within 15 working days of complaint filing (Statutory deadline: ${formatted}).`, 'error');
+            return;
+        }
+        const daySlot = meta.daily_slots?.[dateVal];
+        if (daySlot && daySlot.is_fully_booked) {
+            window.agapNotify?.(`Cannot issue summon: The selected date (${dateVal}) has reached the maximum capacity of 8 mediation hearings per day.`, 'error');
+            return;
+        }
     }
 
     if (!form || !form.reportValidity()) return;

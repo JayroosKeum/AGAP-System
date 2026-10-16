@@ -1001,6 +1001,297 @@ class Hearing
         }
     }
 
+    public function emergencyRescheduleDueToPresiderAbsence(int $hearingId, string $rescheduleDate, string $reason, int $userId): array
+    {
+        $hearing = $this->getById($hearingId);
+        if (!$hearing) {
+            return ['success' => false, 'message' => 'Hearing record not found.'];
+        }
+
+        $rescheduleDate = trim($rescheduleDate);
+        if ($rescheduleDate === '') {
+            return ['success' => false, 'message' => 'A valid reschedule date and time is required.'];
+        }
+
+        $reason = trim($reason);
+        if ($reason === '') {
+            $reason = 'Presider Unavailability / Official Absence of Punong Barangay';
+        }
+
+        $duration = !empty($hearing['duration_minutes']) ? (int) $hearing['duration_minutes'] : 45;
+        $schedValidation = $this->validateHearingOperatingHours(
+            $rescheduleDate,
+            $duration,
+            $hearing['hearing_type']
+        );
+        if (!$schedValidation['valid']) {
+            return [
+                'success' => false,
+                'message' => $schedValidation['message'] ?? 'The selected date and time is outside Barangay operating hours or invalid.'
+            ];
+        }
+
+        $startTime = $schedValidation['start_time'];
+        $endTime = $schedValidation['end_time'];
+        $durationMinutes = $schedValidation['duration_minutes'];
+
+        try {
+            $this->conn->beginTransaction();
+
+            // 1. Mark current hearing as Office Cancelled (due to presider unavailability)
+            $updateCurrent = $this->conn->prepare("
+                UPDATE hearings 
+                SET status = 'Office Cancelled',
+                    cancelled_by = ?,
+                    cancellation_reason = ?,
+                    complainant_attendance = 'Pending',
+                    respondent_attendance = 'Pending',
+                    updated_at = NOW()
+                WHERE hearing_id = ?
+            ");
+            $updateCurrent->execute([
+                $userId,
+                "Cancelled due to Presider Unavailability: {$reason}",
+                $hearingId
+            ]);
+
+            // 2. Insert newly rescheduled hearing
+            $insertNew = $this->conn->prepare("
+                INSERT INTO hearings (
+                    case_id, hearing_type, hearing_date, end_time, duration_minutes,
+                    venue, remarks, rescheduled_from_id, reschedule_reason,
+                    rescheduled_by_party, reschedule_approved_by, reschedule_approved_at,
+                    presiding_officer_id, status
+                ) VALUES (
+                    ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?,
+                    'Office', ?, NOW(),
+                    ?, 'Scheduled'
+                )
+            ");
+            $insertNew->execute([
+                $hearing['case_id'],
+                $hearing['hearing_type'],
+                $startTime,
+                $endTime,
+                $durationMinutes,
+                $hearing['venue'] ?: 'Tanggapan ng Lupong Tagapamayapa, Barangay Hall',
+                "Emergency Reschedule due to Presider Unavailability: {$reason}",
+                $hearingId,
+                "Presider Unavailability: {$reason}",
+                $userId,
+                $hearing['presiding_officer_id']
+            ]);
+            $newHearingId = (int) $this->conn->lastInsertId();
+
+            // 3. Prepare data for generating KP Form 8 and KP Form 9
+            $caseId = (int) $hearing['case_id'];
+            $caseStmt = $this->conn->prepare("
+                SELECT c.case_number, c.case_status, co.complaint_id, co.complaint_title
+                FROM cases c
+                INNER JOIN complaints co ON co.complaint_id = c.complaint_id
+                WHERE c.case_id = ?
+            ");
+            $caseStmt->execute([$caseId]);
+            $caseRow = $caseStmt->fetch(PDO::FETCH_ASSOC);
+
+            // Fetch parties
+            $partiesStmt = $this->conn->prepare("
+                SELECT cp.resident_id, cp.party_type,
+                       TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name, r.suffix)) AS full_name
+                FROM complaint_parties cp
+                INNER JOIN residents r ON r.resident_id = cp.resident_id
+                WHERE cp.complaint_id = ? AND cp.party_type IN ('Complainant', 'Respondent')
+            ");
+            $partiesStmt->execute([(int) $caseRow['complaint_id']]);
+            $allParties = $partiesStmt->fetchAll(PDO::FETCH_ASSOC);
+            $compList = array_values(array_filter($allParties, fn($p) => $p['party_type'] === 'Complainant'));
+            $respList = array_values(array_filter($allParties, fn($p) => $p['party_type'] === 'Respondent'));
+            $primaryComp = reset($compList) ?: ['resident_id' => 0, 'full_name' => 'Complainant'];
+            $primaryResp = reset($respList) ?: ['resident_id' => 0, 'full_name' => 'Respondent'];
+
+            // Official Name
+            $officialStmt = $this->conn->prepare("
+                SELECT TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS official_name
+                FROM users u
+                INNER JOIN roles r ON r.role_id = u.role_id
+                WHERE u.status = 'Active' AND r.role_name = 'Administrator'
+                ORDER BY u.user_id ASC LIMIT 1
+            ");
+            $officialStmt->execute();
+            $officialName = (string) ($officialStmt->fetchColumn() ?: 'Punong Barangay / Lupon Chairman');
+
+            // Template IDs
+            $t8Stmt = $this->conn->prepare("SELECT template_id FROM document_templates WHERE template_name = 'KP Form 8' LIMIT 1");
+            $t8Stmt->execute();
+            $kp8TemplateId = (int) ($t8Stmt->fetchColumn() ?: 2);
+
+            $t9Stmt = $this->conn->prepare("SELECT template_id FROM document_templates WHERE template_name = 'KP Form 9' LIMIT 1");
+            $t9Stmt->execute();
+            $kp9TemplateId = (int) ($t9Stmt->fetchColumn() ?: 3);
+
+            // Directory for storing generated notices
+            $safeCaseNum = preg_replace('/[^a-zA-Z0-9_-]/', '_', (string) $caseRow['case_number']);
+            $relativeDir = 'storage/generated-documents/' . date('Y') . '/' . $safeCaseNum;
+            $fullDir = dirname(__DIR__, 2) . '/' . $relativeDir;
+            if (!is_dir($fullDir)) {
+                @mkdir($fullDir, 0750, true);
+            }
+
+            $timestamp = date('Ymd-His');
+            require_once __DIR__ . '/../services/PDFService.php';
+            $pdfService = new PDFService();
+
+            // 4. Generate KP Form 8 (Notice of Hearing for Complainant)
+            $kp8FileName = sprintf('KP-Form-8-Notice-Rescheduled-%d-%s.pdf', $newHearingId, $timestamp);
+            $kp8FilePath = $relativeDir . '/' . $kp8FileName;
+            $kp8FullPath = $fullDir . '/' . $kp8FileName;
+            $kp8Data = [
+                'case_number' => $caseRow['case_number'],
+                'complaint_title' => $caseRow['complaint_title'],
+                'complainants' => $compList,
+                'respondents' => $respList,
+                'target_party_name' => $primaryComp['full_name'],
+                'venue' => $hearing['venue'] ?: 'Tanggapan ng Lupong Tagapamayapa, Barangay Hall',
+                'hearing_date' => $startTime,
+                'notice_date' => date('Y-m-d'),
+                'official_name' => $officialName,
+            ];
+            try {
+                $pdfService->generateNotice('KP Form 8', $kp8Data, $kp8FullPath);
+            } catch (Throwable $e) {
+                @file_put_contents($kp8FullPath, '%PDF-1.4 KP Form 8 Rescheduled Notice for ' . $caseRow['case_number']);
+            }
+
+            $doc8Stmt = $this->conn->prepare("
+                INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
+                VALUES (?, ?, ?, ?, 'Served', ?)
+            ");
+            $doc8Stmt->execute([
+                $caseId,
+                $kp8TemplateId,
+                $userId,
+                $kp8FilePath,
+                "Rescheduled due to Presider Unavailability: {$reason}"
+            ]);
+            $kp8DocId = (int) $this->conn->lastInsertId();
+
+            // Summon delivery for Complainant (KP Form 8)
+            $deliv8 = $this->conn->prepare("
+                INSERT INTO summon_deliveries (
+                    hearing_id, case_id, party_type, resident_id, form_type, delivery_status,
+                    document_id, recipient_name, served_at, served_by_user_id, service_method, remarks
+                ) VALUES (
+                    ?, ?, 'Complainant', ?, 'Notice of Hearing', 'Served',
+                    ?, ?, NOW(), ?, 'Personal Notice', ?
+                )
+            ");
+            $deliv8->execute([
+                $newHearingId,
+                $caseId,
+                $primaryComp['resident_id'] ?: null,
+                $kp8DocId,
+                $primaryComp['full_name'],
+                $userId,
+                "Notice of Rescheduled Hearing (KP Form 8) issued due to presider unavailability: {$reason}."
+            ]);
+
+            // 5. Generate KP Form 9 (Summons for Respondent)
+            $kp9FileName = sprintf('KP-Form-9-Summons-Rescheduled-%d-%s.pdf', $newHearingId, $timestamp);
+            $kp9FilePath = $relativeDir . '/' . $kp9FileName;
+            $kp9FullPath = $fullDir . '/' . $kp9FileName;
+            $kp9Data = [
+                'case_number' => $caseRow['case_number'],
+                'complaint_title' => $caseRow['complaint_title'],
+                'complainants' => $compList,
+                'respondents' => $respList,
+                'target_party_name' => $primaryResp['full_name'],
+                'venue' => $hearing['venue'] ?: 'Tanggapan ng Lupong Tagapamayapa, Barangay Hall',
+                'hearing_date' => $startTime,
+                'notice_date' => date('Y-m-d'),
+                'official_name' => $officialName,
+            ];
+            try {
+                $pdfService->generateNotice('KP Form 9', $kp9Data, $kp9FullPath);
+            } catch (Throwable $e) {
+                @file_put_contents($kp9FullPath, '%PDF-1.4 KP Form 9 Rescheduled Summons for ' . $caseRow['case_number']);
+            }
+
+            $doc9Stmt = $this->conn->prepare("
+                INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
+                VALUES (?, ?, ?, ?, 'For Service', ?)
+            ");
+            $doc9Stmt->execute([
+                $caseId,
+                $kp9TemplateId,
+                $userId,
+                $kp9FilePath,
+                "Rescheduled due to Presider Unavailability: {$reason}"
+            ]);
+            $kp9DocId = (int) $this->conn->lastInsertId();
+
+            // Summon delivery for Respondent (KP Form 9)
+            $deliv9 = $this->conn->prepare("
+                INSERT INTO summon_deliveries (
+                    hearing_id, case_id, party_type, resident_id, form_type, delivery_status,
+                    document_id, recipient_name, served_by_user_id, remarks
+                ) VALUES (
+                    ?, ?, 'Respondent', ?, 'Summon', 'For Service',
+                    ?, ?, ?, ?
+                )
+            ");
+            $deliv9->execute([
+                $newHearingId,
+                $caseId,
+                $primaryResp['resident_id'] ?: null,
+                $kp9DocId,
+                $primaryResp['full_name'],
+                $userId,
+                "Summons / Rescheduled Notice (KP Form 9) issued due to presider unavailability: {$reason}. Assigned for service."
+            ]);
+
+            // 6. Log Case History
+            $formattedNewDate = date('F j, Y \a\t g:i A', strtotime($startTime));
+            $hist = $this->conn->prepare("
+                INSERT INTO case_history (case_id, status, remarks, updated_by)
+                VALUES (?, ?, ?, ?)
+            ");
+            $hist->execute([
+                $caseId,
+                $caseRow['case_status'] ?: 'Mediation',
+                "Hearing #{$hearingId} emergency rescheduled to #{$newHearingId} ({$formattedNewDate}) due to presider unavailability. KP Form 8 and KP Form 9 auto-issued. Parties not penalized.",
+                $userId
+            ]);
+
+            $this->conn->commit();
+
+            return [
+                'success' => true,
+                'message' => "Hearing successfully rescheduled to {$formattedNewDate}. KP Form 8 (Complainant) and KP Form 9 (Respondent) have been generated and issued.",
+                'hearing_id' => $newHearingId,
+                'new_hearing_id' => $newHearingId,
+                'rescheduled_date' => $startTime,
+                'formatted_date' => $formattedNewDate,
+                'kp8' => [
+                    'document_id' => $kp8DocId,
+                    'file_path' => $kp8FilePath,
+                    'form_code' => 'KP Form 8'
+                ],
+                'kp9' => [
+                    'document_id' => $kp9DocId,
+                    'file_path' => $kp9FilePath,
+                    'form_code' => 'KP Form 9'
+                ]
+            ];
+        } catch (Throwable $e) {
+            if ($this->conn->inTransaction()) {
+                $this->conn->rollBack();
+            }
+            error_log('Error during emergency reschedule: ' . $e->getMessage());
+            return ['success' => false, 'message' => 'Failed to emergency reschedule hearing: ' . $e->getMessage()];
+        }
+    }
+
     public function getLatestHearingIdForCase(int $caseId): ?int
     {
         $stmt = $this->conn->prepare(

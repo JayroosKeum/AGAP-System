@@ -233,6 +233,43 @@ class HearingController
         return $result;
     }
 
+    public function emergencyRescheduleDueToPresiderAbsence(array $data, int $userId): array
+    {
+        $hearingId = filter_var($data['hearing_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $caseId = filter_var($data['case_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $rescheduleDate = trim((string) ($data['reschedule_date'] ?? ''));
+        $reason = trim((string) ($data['reason'] ?? $data['reschedule_reason'] ?? ''));
+
+        if (!$hearingId && $caseId) {
+            $hearingId = $this->hearing->getLatestHearingIdForCase((int) $caseId);
+        }
+
+        if (!$hearingId) {
+            return ['success' => false, 'message' => 'A valid hearing ID is required.'];
+        }
+        if ($rescheduleDate === '') {
+            return ['success' => false, 'message' => 'A valid new hearing date and time is required for emergency rescheduling.'];
+        }
+
+        $result = $this->hearing->emergencyRescheduleDueToPresiderAbsence(
+            (int) $hearingId,
+            $rescheduleDate,
+            $reason,
+            $userId
+        );
+
+        if ($result['success']) {
+            $this->audit->log(
+                $userId,
+                "Emergency rescheduled hearing #{$hearingId} to {$rescheduleDate} due to presider absence. KP Form 8 and KP Form 9 issued.",
+                'Hearings',
+                (int) ($result['new_hearing_id'] ?? $hearingId)
+            );
+        }
+
+        return $result;
+    }
+
     public function failMediation(array $data, int $userId): array
     {
         $hearingId = filter_var($data['hearing_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);

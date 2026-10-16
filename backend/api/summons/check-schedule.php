@@ -25,6 +25,10 @@ $time = trim((string) ($input['time'] ?? ''));
 $venue = trim((string) ($input['venue'] ?? 'Barangay Hall'));
 $complaintId = filter_var($input['complaint_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
 $caseId = filter_var($input['case_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
+$getWindow = !empty($input['get_window']) || !empty($input['window']);
+
+$summons = new Summons();
+$db = null;
 
 if (!$caseId && $complaintId) {
     require_once '../../config/database.php';
@@ -32,6 +36,85 @@ if (!$caseId && $complaintId) {
     $stmt = $db->prepare('SELECT case_id FROM cases WHERE complaint_id = ?');
     $stmt->execute([$complaintId]);
     $caseId = (int) $stmt->fetchColumn() ?: null;
+}
+
+// 1. Build 15-working-day statutory window metadata if complaint_id or get_window is present
+$windowMeta = null;
+if ($complaintId || $getWindow) {
+    if (!$db) {
+        require_once '../../config/database.php';
+        $db = (new Database())->connect();
+    }
+    $compCreatedAt = null;
+    if ($complaintId) {
+        $stmtComp = $db->prepare('SELECT created_at FROM complaints WHERE complaint_id = ?');
+        $stmtComp->execute([$complaintId]);
+        $compCreatedAt = $stmtComp->fetchColumn();
+    }
+
+    $filingDateStr = $compCreatedAt ? substr($compCreatedAt, 0, 10) : date('Y-m-d');
+    $deadlineDateStr = MediationDeadlineService::calculateBusinessDays($filingDateStr, 15);
+    $todayStr = date('Y-m-d');
+
+    // Range to inspect: today (or filing date) up to 7 calendar days after statutory deadline
+    $rangeStart = min($todayStr, $filingDateStr);
+    $rangeEnd = date('Y-m-d', strtotime($deadlineDateStr . ' +7 days'));
+
+    $dailyCounts = $summons->getDailyMediationCountsInRange($rangeStart, $rangeEnd, $caseId);
+
+    $days = [];
+    $cur = new DateTimeImmutable($rangeStart);
+    $endDt = new DateTimeImmutable($rangeEnd);
+
+    while ($cur <= $endDt) {
+        $dStr = $cur->format('Y-m-d');
+        $dayOfWeek = (int) $cur->format('N');
+        $isWeekend = ($dayOfWeek === 6 || $dayOfWeek === 7);
+        $isHoliday = MediationDeadlineService::isNonWorkingDay($cur);
+        $booked = $dailyCounts[$dStr] ?? 0;
+        $maxSlots = 8;
+        $avail = max(0, $maxSlots - $booked);
+        $isFull = ($booked >= $maxSlots);
+        $isPast = ($dStr < $todayStr);
+        $isOutsideWindow = ($dStr > $deadlineDateStr);
+
+        $days[$dStr] = [
+            'date' => $dStr,
+            'day_name' => $cur->format('D'),
+            'day_num' => (int) $cur->format('j'),
+            'month_name' => $cur->format('M'),
+            'year' => (int) $cur->format('Y'),
+            'booked' => $booked,
+            'max' => $maxSlots,
+            'available' => $avail,
+            'is_fully_booked' => $isFull,
+            'is_weekend' => $isWeekend,
+            'is_non_working_day' => $isHoliday,
+            'is_past' => $isPast,
+            'is_outside_window' => $isOutsideWindow,
+            'can_schedule' => (!$isPast && !$isOutsideWindow && !$isFull)
+        ];
+
+        $cur = $cur->modify('+1 day');
+    }
+
+    $windowMeta = [
+        'filing_date' => $filingDateStr,
+        'deadline_date' => $deadlineDateStr,
+        'today' => $todayStr,
+        'max_slots_per_day' => 8,
+        'statutory_working_days' => 15,
+        'daily_slots' => $days
+    ];
+}
+
+// If no date was supplied but window was requested, return window immediately
+if ($date === '' && $windowMeta !== null) {
+    echo json_encode([
+        'success' => true,
+        'window' => $windowMeta
+    ]);
+    exit;
 }
 
 if ($date === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
@@ -45,20 +128,26 @@ $dayOfWeek = (int) $dateObj->format('N');
 $isWeekend = ($dayOfWeek === 6 || $dayOfWeek === 7);
 $isNonWorkingDay = MediationDeadlineService::isNonWorkingDay($dateObj);
 
-$summons = new Summons();
 $scheduledMediations = $summons->getScheduledMediationsForDate($date, $caseId);
 $totalBooked = count($scheduledMediations);
 $maxSlots = 8;
 $availableSlots = max(0, $maxSlots - $totalBooked);
 $isFullyBooked = ($totalBooked >= $maxSlots);
 
+$isOutside15DayWindow = false;
+$deadlineMessage = null;
+if ($windowMeta) {
+    if ($date > $windowMeta['deadline_date']) {
+        $isOutside15DayWindow = true;
+        $deadlineFormatted = date('F j, Y', strtotime($windowMeta['deadline_date']));
+        $deadlineMessage = "The selected date exceeds the 15-working-day statutory mediation deadline ({$deadlineFormatted}).";
+    }
+}
+
 $hasConflict = false;
 $conflictData = null;
 
-// Weekend and non-working day restrictions bypassed for testing/development
-
 if ($time !== '' && preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', $time)) {
-    // Lunch break and office hours slot restrictions bypassed for testing/development
     $hearingDateTime = substr($date, 0, 10) . ' ' . substr($time, 0, 5) . ':00';
     $conflict = $summons->findMediationConflict($hearingDateTime, $venue, $caseId);
     if ($conflict) {
@@ -96,8 +185,11 @@ echo json_encode([
     'is_fully_booked' => $isFullyBooked,
     'is_weekend' => $isWeekend,
     'is_non_working_day' => $isNonWorkingDay,
+    'is_outside_window' => $isOutside15DayWindow,
+    'deadline_message' => $deadlineMessage,
     'capacity_feedback' => sprintf('%d of %d slots available for this date', $availableSlots, $maxSlots),
     'scheduled_mediations' => $scheduledMediations,
     'has_conflict' => $hasConflict,
-    'conflict' => $conflictData
+    'conflict' => $conflictData,
+    'window' => $windowMeta
 ]);

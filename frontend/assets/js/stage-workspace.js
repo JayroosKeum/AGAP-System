@@ -1893,36 +1893,114 @@ function renderAttendanceModalForm(data) {
                 </div>
             </div>
 
-            <!-- Substitute Presider Section (Required when Presider is Absent) -->
-            <div id="wsSubstitutePresiderWrap" style="${presiderStatus === 'Absent' ? '' : 'display: none;'} background: #fff; border: 1px solid #fecaca; border-left: 4px solid #ef4444; border-radius: 6px; padding: 12px; margin-top: 10px;">
-                <div style="font-size: 0.82rem; color: #991b1b; font-weight: 700; margin-bottom: 4px;">
-                    ⚠️ Presider Absence: Designated Substitute Presider Required
+            <!-- Upfront 2-Choice Decision Section (Required when Presider is Absent) -->
+            <div id="wsPresiderAbsenceDecisionBox" style="${presiderStatus === 'Absent' ? '' : 'display: none;'} margin-top: 12px; background: #fff; border: 1px solid #fed7aa; border-left: 4px solid #f97316; border-radius: 8px; padding: 14px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                    <span style="font-size: 0.85rem; font-weight: 700; color: #9a3412; display: inline-flex; align-items: center; gap: 6px;">
+                        ⚠️ Presider Absence Workflow (RA 7160 Sec. 410)
+                    </span>
+                    <span style="font-size: 0.72rem; background: #ffedd5; color: #9a3412; font-weight: 600; padding: 2px 8px; border-radius: 4px;">
+                        2 Available Remedies
+                    </span>
                 </div>
-                <p style="font-size: 0.78rem; color: #64748b; margin: 0 0 10px; line-height: 1.4;">
-                    Under Katarungang Pambarangay rules, if the scheduled Presider is absent, select an active Lupon member as Substitute Presider. Record the substitution reason and confirm mutual party consent before the session can proceed.
+                <p style="font-size: 0.78rem; color: #475569; margin: 0 0 12px; line-height: 1.45;">
+                    The scheduled Presiding Officer is absent or unavailable. Under Katarungang Pambarangay rules, select either <strong>Option A (Designate Substitute Presider)</strong> with mutual party consent to proceed today, or <strong>Option B (Emergency Reschedule)</strong> to set a new hearing date and auto-issue KP Forms 8 &amp; 9.
                 </p>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
-                    <div>
-                        <label style="font-size: 0.74rem; font-weight: 600; color: #334155; display: block; margin-bottom: 4px;">
-                            SELECT SUBSTITUTE PRESIDER <span style="color: #dc2626;">*</span>
-                        </label>
-                        <select id="wsSubstitutePresiderId" style="width: 100%; padding: 6px; font-size: 0.82rem; border: 1px solid #cbd5e1; border-radius: 4px;">
-                            <option value="">-- Choose Active Lupon Member --</option>
-                            ${luponOpts}
-                        </select>
+
+                <!-- 2-Choice Card Selectors -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                    <label id="wsChoiceCardSubstitute" style="display: block; border: 2px solid #2563eb; background: #eff6ff; border-radius: 6px; padding: 10px; cursor: pointer; transition: all 0.2s;">
+                        <div style="display: flex; align-items: flex-start; gap: 8px;">
+                            <input type="radio" name="presider_absence_choice" id="wsAbsenceChoiceSubstitute" value="substitute" checked onchange="handlePresiderAbsenceChoiceChange('substitute')" style="margin-top: 2px; accent-color: #2563eb;">
+                            <div>
+                                <strong style="display: block; font-size: 0.82rem; color: #1e3a8a;">Option A: Substitute Presider</strong>
+                                <span style="font-size: 0.72rem; color: #64748b; display: block; margin-top: 2px;">Both parties agree to proceed today under an authorized Lupon substitute.</span>
+                            </div>
+                        </div>
+                    </label>
+                    <label id="wsChoiceCardReschedule" style="display: block; border: 1px solid #cbd5e1; background: #fff; border-radius: 6px; padding: 10px; cursor: pointer; transition: all 0.2s;">
+                        <div style="display: flex; align-items: flex-start; gap: 8px;">
+                            <input type="radio" name="presider_absence_choice" id="wsAbsenceChoiceReschedule" value="reschedule" onchange="handlePresiderAbsenceChoiceChange('reschedule')" style="margin-top: 2px; accent-color: #dc2626;">
+                            <div>
+                                <strong style="display: block; font-size: 0.82rem; color: #0f172a;">Option B: Emergency Reschedule</strong>
+                                <span style="font-size: 0.72rem; color: #64748b; display: block; margin-top: 2px;">Reschedule hearing &amp; auto-issue KP Form 8 (Complainant) and KP Form 9 (Respondent).</span>
+                            </div>
+                        </div>
+                    </label>
+                </div>
+
+                <!-- Option A Sub-panel: Designated Substitute Presider -->
+                <div id="wsSubstitutePresiderWrap" style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 12px; margin-bottom: 6px;">
+                    <div style="font-size: 0.78rem; font-weight: 700; color: #1e293b; margin-bottom: 8px;">
+                        👥 Designate Authorized Substitute Presider (Proceed Today)
                     </div>
-                    <div>
-                        <label style="font-size: 0.74rem; font-weight: 600; color: #334155; display: block; margin-bottom: 4px;">
-                            REASON FOR SUBSTITUTION <span style="color: #dc2626;">*</span>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                        <div>
+                            <label style="font-size: 0.74rem; font-weight: 600; color: #334155; display: block; margin-bottom: 4px;">
+                                SELECT SUBSTITUTE PRESIDER <span style="color: #dc2626;">*</span>
+                            </label>
+                            <select id="wsSubstitutePresiderId" style="width: 100%; padding: 6px; font-size: 0.82rem; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff;">
+                                <option value="">-- Choose Active Lupon Member --</option>
+                                ${luponOpts}
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size: 0.74rem; font-weight: 600; color: #334155; display: block; margin-bottom: 4px;">
+                                REASON FOR SUBSTITUTION <span style="color: #dc2626;">*</span>
+                            </label>
+                            <input type="text" id="wsSubstituteReason" value="${escapeHtml(substituteReason)}" placeholder="e.g. Official business, emergency leave..." style="width: 100%; padding: 6px; font-size: 0.82rem; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff;">
+                        </div>
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                        <label style="display: inline-flex; align-items: center; gap: 7px; font-size: 0.8rem; color: #1e293b; font-weight: 600; cursor: pointer;">
+                            <input type="checkbox" id="wsPartiesConsentCheck" ${hasConsent ? 'checked' : ''} style="width: 15px; height: 15px; accent-color: #2563eb;">
+                            <span>Both parties have been informed and mutually consent to the designated substitute presider</span>
                         </label>
-                        <input type="text" id="wsSubstituteReason" value="${escapeHtml(substituteReason)}" placeholder="e.g. Official business, emergency leave..." style="width: 100%; padding: 6px; font-size: 0.82rem; border: 1px solid #cbd5e1; border-radius: 4px;">
+                    </div>
+                    <div style="font-size: 0.74rem; color: #15803d; background: #f0fdf4; border: 1px solid #bbf7d0; padding: 6px 10px; border-radius: 4px;">
+                        ✓ Proceed below to verify party appearances and record minutes for today's session under this designated officer.
                     </div>
                 </div>
-                <div>
-                    <label style="display: inline-flex; align-items: center; gap: 7px; font-size: 0.8rem; color: #1e293b; font-weight: 600; cursor: pointer;">
-                        <input type="checkbox" id="wsPartiesConsentCheck" ${hasConsent ? 'checked' : ''} style="width: 15px; height: 15px; accent-color: #2563eb;">
-                        <span>Parties have been informed and mutually consent to the designated substitute presider</span>
-                    </label>
+
+                <!-- Option B Sub-panel: Emergency Reschedule -->
+                <div id="wsEmergencyRescheduleWrap" style="display: none; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 12px; margin-bottom: 6px;">
+                    <div style="font-size: 0.78rem; font-weight: 700; color: #991b1b; margin-bottom: 6px;">
+                        📅 Emergency Reschedule Hearing (Presider Unavailability)
+                    </div>
+                    <p style="font-size: 0.76rem; color: #7f1d1d; margin: 0 0 10px; line-height: 1.4;">
+                        Under KP rules (RA 7160), neither party is penalized. Today's hearing will be marked <strong>Office Cancelled</strong>, a new hearing will be scheduled, and legal notices will be auto-generated.
+                    </p>
+
+                    <div style="background: #fff; border: 1px solid #fca5a5; border-radius: 6px; padding: 10px; margin-bottom: 10px;">
+                        <div style="font-size: 0.74rem; font-weight: 700; color: #991b1b; text-transform: uppercase; margin-bottom: 4px;">
+                            📄 Automatic Document Issuance:
+                        </div>
+                        <ul style="margin: 0; padding-left: 18px; font-size: 0.76rem; color: #334155; line-height: 1.5;">
+                            <li><strong>KP Form 8 (Notice of Hearing)</strong>: Issued to the <strong>Complainant</strong> with the new hearing date and reason.</li>
+                            <li><strong>KP Form 9 (Summons for Rescheduled Hearing)</strong>: Issued to the <strong>Respondent</strong> for service.</li>
+                        </ul>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                        <div>
+                            <label style="font-size: 0.74rem; font-weight: 600; color: #334155; display: block; margin-bottom: 4px;">
+                                NEW RESCHEDULED HEARING DATE &amp; TIME <span style="color: #dc2626;">*</span>
+                            </label>
+                            <input type="datetime-local" id="wsEmergencyRescheduleDate" value="${getSuggestedRescheduleDateTime(hearing.hearing_date)}" style="width: 100%; padding: 6px; font-size: 0.82rem; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff;">
+                        </div>
+                        <div>
+                            <label style="font-size: 0.74rem; font-weight: 600; color: #334155; display: block; margin-bottom: 4px;">
+                                OFFICIAL REASON / JUSTIFICATION <span style="color: #dc2626;">*</span>
+                            </label>
+                            <input type="text" id="wsEmergencyRescheduleReason" value="Presider Unavailability / Official Absence" placeholder="Enter reason..." style="width: 100%; padding: 6px; font-size: 0.82rem; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff;">
+                        </div>
+                    </div>
+
+                    <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                        <button type="button" class="btn-primary" id="btnExecuteReschedule" onclick="executeEmergencyReschedule(${hearingId}, ${caseId})" style="background: #dc2626; border-color: #dc2626; color: #fff; font-size: 0.82rem; padding: 7px 14px; border-radius: 6px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                            📅 Confirm Emergency Reschedule &amp; Issue KP Forms 8 &amp; 9
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -2047,25 +2125,206 @@ function renderAttendanceModalForm(data) {
     bodyEl.innerHTML = `
         <form id="wsAttendanceForm" onsubmit="submitAttendance(event)">
             ${presiderHtml}
-            <div style="font-size: 0.76rem; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.04em; margin-bottom: 8px;">
-                Party Appearance &amp; Summons Verification
-            </div>
-            ${rowsHtml}
-            <div class="modal-actions" style="margin-top: 16px; border-top: 1px solid #e2e8f0; padding-top: 14px; display: flex; justify-content: flex-end; gap: 8px;">
-                <button type="button" class="btn-secondary" onclick="closeAttendanceModal()">Cancel</button>
-                <button type="submit" class="btn-create" id="submitAttBtn" style="padding: 7px 18px;">Save Attendance Record</button>
+            <div id="wsPartyAppearanceWrap">
+                <div style="font-size: 0.76rem; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.04em; margin-bottom: 8px;">
+                    Party Appearance &amp; Summons Verification
+                </div>
+                ${rowsHtml}
+                <div class="modal-actions" style="margin-top: 16px; border-top: 1px solid #e2e8f0; padding-top: 14px; display: flex; justify-content: flex-end; gap: 8px;">
+                    <button type="button" class="btn-secondary" onclick="closeAttendanceModal()">Cancel</button>
+                    <button type="submit" class="btn-create" id="submitAttBtn" style="padding: 7px 18px;">Save Attendance Record</button>
+                </div>
             </div>
         </form>
     `;
 }
 
+function getSuggestedRescheduleDateTime(baseDateStr) {
+    let d = baseDateStr ? new Date(baseDateStr.replace(' ', 'T')) : new Date();
+    if (isNaN(d.getTime())) d = new Date();
+    // Advance by 3 days
+    d.setDate(d.getDate() + 3);
+    // Skip weekends: if Sunday (0) add 1 day to Monday; if Saturday (6) add 2 days to Monday
+    if (d.getDay() === 0) d.setDate(d.getDate() + 1);
+    else if (d.getDay() === 6) d.setDate(d.getDate() + 2);
+    // Default working hour: 09:00 AM
+    d.setHours(9, 0, 0, 0);
+
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+window.getSuggestedRescheduleDateTime = getSuggestedRescheduleDateTime;
+
 function togglePresiderSubstituteSection(val) {
-    const wrap = document.getElementById('wsSubstitutePresiderWrap');
-    if (wrap) {
-        wrap.style.display = (val === 'Absent') ? 'block' : 'none';
+    const decisionBox = document.getElementById('wsPresiderAbsenceDecisionBox');
+    if (decisionBox) {
+        decisionBox.style.display = (val === 'Absent') ? 'block' : 'none';
+    }
+    if (val === 'Absent') {
+        const currentChoice = document.querySelector('input[name="presider_absence_choice"]:checked')?.value || 'substitute';
+        handlePresiderAbsenceChoiceChange(currentChoice);
+    } else {
+        const partyWrap = document.getElementById('wsPartyAppearanceWrap');
+        if (partyWrap) partyWrap.style.display = 'block';
+        const submitBtn = document.getElementById('submitAttBtn');
+        if (submitBtn) {
+            submitBtn.style.display = 'inline-block';
+            submitBtn.disabled = false;
+        }
     }
 }
 window.togglePresiderSubstituteSection = togglePresiderSubstituteSection;
+
+function handlePresiderAbsenceChoiceChange(choice) {
+    const wrapSub = document.getElementById('wsSubstitutePresiderWrap');
+    const wrapResched = document.getElementById('wsEmergencyRescheduleWrap');
+    const cardSub = document.getElementById('wsChoiceCardSubstitute');
+    const cardResched = document.getElementById('wsChoiceCardReschedule');
+    const partyWrap = document.getElementById('wsPartyAppearanceWrap');
+    const submitBtn = document.getElementById('submitAttBtn');
+
+    if (choice === 'reschedule') {
+        if (wrapSub) wrapSub.style.display = 'none';
+        if (wrapResched) wrapResched.style.display = 'block';
+        if (cardResched) {
+            cardResched.style.border = '2px solid #dc2626';
+            cardResched.style.background = '#fef2f2';
+        }
+        if (cardSub) {
+            cardSub.style.border = '1px solid #cbd5e1';
+            cardSub.style.background = '#fff';
+        }
+        if (partyWrap) {
+            partyWrap.style.display = 'none';
+        }
+        if (submitBtn) {
+            submitBtn.style.display = 'none';
+        }
+    } else {
+        // Option A: Substitute
+        if (wrapSub) wrapSub.style.display = 'block';
+        if (wrapResched) wrapResched.style.display = 'none';
+        if (cardSub) {
+            cardSub.style.border = '2px solid #2563eb';
+            cardSub.style.background = '#eff6ff';
+        }
+        if (cardResched) {
+            cardResched.style.border = '1px solid #cbd5e1';
+            cardResched.style.background = '#fff';
+        }
+        if (partyWrap) {
+            partyWrap.style.display = 'block';
+        }
+        if (submitBtn) {
+            submitBtn.style.display = 'inline-block';
+            submitBtn.disabled = false;
+        }
+    }
+}
+window.handlePresiderAbsenceChoiceChange = handlePresiderAbsenceChoiceChange;
+
+async function executeEmergencyReschedule(hearingId, caseId) {
+    const dateInput = document.getElementById('wsEmergencyRescheduleDate');
+    const reasonInput = document.getElementById('wsEmergencyRescheduleReason');
+    const btn = document.getElementById('btnExecuteReschedule');
+
+    const rescheduleDate = dateInput ? dateInput.value : '';
+    const reason = reasonInput ? reasonInput.value.trim() : '';
+
+    if (!rescheduleDate) {
+        alert('Please select a valid new hearing date and time for the rescheduled hearing.');
+        dateInput?.focus();
+        return;
+    }
+
+    const readableDate = formatDateTimeReadable(rescheduleDate);
+    const confirmMsg = `Confirm Emergency Hearing Reschedule?\n\n` +
+        `• New Hearing Date: ${readableDate}\n` +
+        `• Reason: ${reason || 'Presider Unavailability / Official Absence'}\n` +
+        `• Legal Remedy: Neither party is penalized with an unexcused absence.\n` +
+        `• Documents: KP Form 8 (Complainant) and KP Form 9 (Respondent) will be automatically generated.\n\n` +
+        `Do you want to proceed?`;
+
+    if (!confirm(confirmMsg)) {
+        return;
+    }
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '⏳ Rescheduling &amp; Generating Forms...';
+    }
+
+    try {
+        const payload = {
+            action: 'reschedule',
+            hearing_id: Number(hearingId || stageWorkspaceState.currentHearingId),
+            case_id: Number(caseId || stageWorkspaceState.caseId),
+            reschedule_date: rescheduleDate.replace('T', ' '),
+            reason: reason || 'Presider Unavailability / Official Absence'
+        };
+
+        const res = await fetch(getStageApiUrl('hearings/presider-absence.php'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const json = await res.json();
+        if (json.success) {
+            const bodyEl = document.getElementById('wsAttModalBody');
+            const newHearingId = json.new_hearing_id || hearingId;
+
+            if (bodyEl) {
+                bodyEl.innerHTML = `
+                    <div style="text-align: center; padding: 24px 16px;">
+                        <div style="font-size: 2.4rem; color: #16a34a; margin-bottom: 8px;">✓</div>
+                        <h3 style="margin: 0 0 8px; color: #0f172a; font-size: 1.15rem; font-weight: 700;">Hearing Rescheduled Successfully</h3>
+                        <p style="color: #475569; font-size: 0.85rem; max-width: 520px; margin: 0 auto 16px; line-height: 1.5;">
+                            The hearing has been officially cancelled due to presider unavailability and rescheduled to:
+                            <br><strong style="color: #0f172a; font-size: 0.95rem;">${escapeHtml(json.formatted_date || readableDate)}</strong>
+                        </p>
+                        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 12px; max-width: 520px; margin: 0 auto 18px; text-align: left;">
+                            <div style="font-size: 0.78rem; font-weight: 700; color: #166534; margin-bottom: 6px;">
+                                📄 Auto-Generated Legal Documents (Ready for Service):
+                            </div>
+                            <ul style="margin: 0; padding-left: 18px; font-size: 0.76rem; color: #14532d; line-height: 1.5;">
+                                <li><strong>KP Form 8 (Notice of Hearing)</strong>: Issued to Complainant with new hearing date and reason.</li>
+                                <li><strong>KP Form 9 (Summons for Rescheduled Hearing)</strong>: Issued to Respondent with new hearing date and reason.</li>
+                            </ul>
+                        </div>
+                        <div style="display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+                            <button type="button" class="btn-secondary" onclick="openKPFormPreview(${Number(caseId)}, 'KP Form 8', ${newHearingId})" style="padding: 7px 14px; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+                                📄 Preview KP Form 8 (Complainant)
+                            </button>
+                            <button type="button" class="btn-secondary" onclick="openKPFormPreview(${Number(caseId)}, 'KP Form 9', ${newHearingId})" style="padding: 7px 14px; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+                                📄 Preview KP Form 9 (Respondent)
+                            </button>
+                        </div>
+                        <div>
+                            <button type="button" class="btn-create" onclick="closeAttendanceModal(); loadStageData();" style="padding: 8px 22px; font-size: 0.85rem; font-weight: 700; cursor: pointer;">
+                                Return to Workspace &rarr;
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+        } else {
+            alert(json.message || 'Unable to reschedule hearing.');
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '📅 Confirm Emergency Reschedule &amp; Issue KP Forms 8 &amp; 9';
+            }
+        }
+    } catch (err) {
+        console.error('executeEmergencyReschedule error:', err);
+        alert('Network error while executing emergency reschedule.');
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '📅 Confirm Emergency Reschedule &amp; Issue KP Forms 8 &amp; 9';
+        }
+    }
+}
+window.executeEmergencyReschedule = executeEmergencyReschedule;
 
 function toggleAttJustification(selectEl) {
     const row = selectEl.closest('.att-party-row');
@@ -2093,6 +2352,13 @@ async function submitAttendance(e) {
     let consentVal = 0;
 
     if (presiderStatus === 'Absent') {
+        const absenceChoice = document.querySelector('input[name="presider_absence_choice"]:checked')?.value || 'substitute';
+        if (absenceChoice === 'reschedule') {
+            alert('Emergency Reschedule is selected. Please click "Confirm Emergency Reschedule & Issue KP Forms 8 & 9" in the Presider Absence section to finalize.');
+            if (btn) btn.disabled = false;
+            return;
+        }
+
         const subSelect = document.getElementById('wsSubstitutePresiderId');
         const reasonInput = document.getElementById('wsSubstituteReason');
         const consentCheck = document.getElementById('wsPartiesConsentCheck');
@@ -3354,6 +3620,9 @@ window.submitPangkatSelection = submitPangkatSelection;
 // Attendance & Form preview exposure
 window.openKPFormPreview = openKPFormPreview;
 window.togglePresiderSubstituteSection = togglePresiderSubstituteSection;
+window.handlePresiderAbsenceChoiceChange = handlePresiderAbsenceChoiceChange;
+window.executeEmergencyReschedule = executeEmergencyReschedule;
+window.getSuggestedRescheduleDateTime = getSuggestedRescheduleDateTime;
 window.toggleAttJustification = toggleAttJustification;
 window.submitAttendance = submitAttendance;
 

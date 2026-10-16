@@ -585,9 +585,39 @@ include '../../layouts/header.php';
                 <p style="margin: 0 0 16px; font-size: 0.88rem; color: #475569; line-height: 1.5;">
                     In accordance with Katarungang Pambarangay rules, issuing a summons sets the 1st Mediation hearing and automatically generates <strong>KP Form 8 (Notice of Hearing for Complainant)</strong> and <strong>KP Form 9 (Summons for Respondent)</strong> for service.
                 </p>
-                <div class="form-group">
-                    <label for="summonMediationDate">1st Mediation Date <span class="required-mark" aria-hidden="true">*</span></label>
-                    <input type="date" id="summonMediationDate" name="mediation_date" required>
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                        <label for="summonMediationDate" style="margin-bottom: 0; font-weight: 700; color: #1e293b;">
+                            1st Mediation Date <span class="required-mark" aria-hidden="true">*</span>
+                        </label>
+                        <span id="summonWindowStatutoryBadge" style="font-size: 0.72rem; background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; padding: 2px 8px; border-radius: 9999px; font-weight: 600;">
+                            15-Working-Day Window (RA 7160 Sec. 410)
+                        </span>
+                    </div>
+
+                    <input type="date" id="summonMediationDate" name="mediation_date" required style="margin-bottom: 8px;">
+
+                    <!-- Visual 15-Working-Day Calendar & Capacity Strip -->
+                    <div id="summonVisualDatePickerContainer" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-top: 6px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.78rem; flex-wrap: wrap; gap: 6px;">
+                            <span style="font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.03em; font-size: 0.74rem;">
+                                📅 Available Mediation Days (Max 8 Hearings/Day):
+                            </span>
+                            <div style="display: flex; gap: 10px; font-size: 0.72rem; flex-wrap: wrap;">
+                                <span style="display: inline-flex; align-items: center; gap: 4px; color: #166534;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e;"></span> Available</span>
+                                <span style="display: inline-flex; align-items: center; gap: 4px; color: #991b1b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #ef4444;"></span> 8/8 Full</span>
+                                <span style="display: inline-flex; align-items: center; gap: 4px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #94a3b8;"></span> Outside 15d</span>
+                            </div>
+                        </div>
+
+                        <!-- Scrollable Day Cards Grid -->
+                        <div id="summonVisualDayGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; max-height: 155px; overflow-y: auto; padding: 4px 2px;">
+                            <div style="text-align: center; color: #64748b; font-size: 0.78rem; padding: 12px; grid-column: 1 / -1;">
+                                Loading statutory 15-working-day availability &amp; capacity...
+                            </div>
+                        </div>
+                        <div id="summonVisualDateStatusNotice" style="margin-top: 6px; font-size: 0.75rem; color: #64748b; line-height: 1.4;"></div>
+                    </div>
                 </div>
 
                 <!-- Existing Mediations on selected date -->

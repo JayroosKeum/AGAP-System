@@ -76,7 +76,7 @@ class Summons
             // Enforce: mediation must be scheduled within 15 working days of complaint filing date
             if (!empty($complaint['created_at'])) {
                 $filingDateStr = substr($complaint['created_at'], 0, 10);
-                $filingDeadline = MediationDeadlineService::calculateDeadline($filingDateStr, 15);
+                $filingDeadline = MediationDeadlineService::calculateBusinessDays($filingDateStr, 15);
                 $scheduledDate = new \DateTime($medDate);
                 $deadlineDate = new \DateTime($filingDeadline);
                 if ($scheduledDate > $deadlineDate) {
@@ -729,6 +729,39 @@ class Summons
                 'venue' => $row['venue']
             ];
         }, $rows);
+    }
+
+    /**
+     * Retrieves daily counts of scheduled mediation hearings within a date range.
+     * Returns an associative array: ['YYYY-MM-DD' => count, ...]
+     */
+    public function getDailyMediationCountsInRange(string $startDate, string $endDate, ?int $excludeCaseId = null): array
+    {
+        $sql = "
+            SELECT DATE(h.hearing_date) AS h_date, COUNT(*) AS booked_count
+            FROM hearings h
+            INNER JOIN cases c ON c.case_id = h.case_id
+            WHERE DATE(h.hearing_date) BETWEEN ? AND ?
+              AND h.hearing_type = 'Mediation'
+              AND h.status NOT IN ('Cancelled', 'Office Cancelled')
+              AND c.case_status NOT IN ('Dismissed', 'Settled')
+        ";
+        $params = [substr($startDate, 0, 10), substr($endDate, 0, 10)];
+
+        if ($excludeCaseId !== null && $excludeCaseId > 0) {
+            $sql .= " AND h.case_id <> ?";
+            $params[] = $excludeCaseId;
+        }
+
+        $sql .= " GROUP BY DATE(h.hearing_date)";
+
+        $stmt = $this->conn->prepare($sql);
+        $stmt->execute($params);
+        $results = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $results[$row['h_date']] = (int) $row['booked_count'];
+        }
+        return $results;
     }
 
     private function notifySummonsServers(string $caseNumber, int $summonsNum, int $actorUserId): void

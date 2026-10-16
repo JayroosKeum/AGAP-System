@@ -320,6 +320,10 @@ try {
             <div style="font-weight: bold; margin-top: 4px;">KATIBAYAN UPANG HADLANGAN ANG GANTING-SAKDAL</div>
         <?php elseif ($formCode === 'KP Form 16'): ?>
             <div style="font-weight: bold; margin-top: 4px;">KASUNDUANG PAG-AAYOS (Amicable Settlement)</div>
+        <?php elseif ($formCode === 'KP Form 8'): ?>
+            <div style="font-weight: bold; margin-top: 4px;">PAUNAWA SA PAGDINIG (Notice of Hearing - May-sumbong)</div>
+        <?php elseif ($formCode === 'KP Form 9'): ?>
+            <div style="font-weight: bold; margin-top: 4px;">PATAWAG (Summons - Ipinagsusumbong)</div>
         <?php endif; ?>
     </div>
 
@@ -372,6 +376,22 @@ try {
         </table>
         <p style="margin-top: 35px; font-style: italic; font-size: 10pt;">
             PINATUTUNAYAN KO na ang kasunduang ito ay pinagtibay sa aking harapan nang malaya at kusang-loob ng mga panig matapos kong maipaliwanag sa kanila ang mga kahihinatnan nito.
+        </p>
+    <?php elseif ($formCode === 'KP Form 8'): ?>
+        <p>KAY: <strong><?= htmlspecialchars($parties['complainant']['full_name'] ?? $targetPartyName) ?></strong> (May-sumbong)</p>
+        <p class="content">
+            Kayo ay tinatawagan at inaatasan na humarap sa akin sa <?= htmlspecialchars($hearing['venue'] ?? 'Tanggapan ng Lupong Tagapamayapa, Barangay Hall') ?> sa darating na <strong><?= !empty($hearing['hearing_date']) ? date('F j, Y \s\a \g\a\n\a\p \n\g g:i A', strtotime($hearing['hearing_date'])) : 'itinakdang araw' ?></strong>, para sa pagdinig ng inyong sumbong kaugnay ng usaping ito.
+        </p>
+        <p class="content" style="font-size: 10pt; color: #444; font-style: italic;">
+            PAUNAWA: Ang pagdinig na ito ay itinakda/muling itinakda (rescheduled) alinsunod sa mga alituntunin ng Katarungang Pambarangay (Batas Republika Blg. 7160).
+        </p>
+    <?php elseif ($formCode === 'KP Form 9'): ?>
+        <p>KAY: <strong><?= htmlspecialchars($parties['respondent']['full_name'] ?? $targetPartyName) ?></strong> (Ipinagsusumbong)</p>
+        <p class="content">
+            Kayo ay tinatawagan at inaatasan na humarap sa akin sa <?= htmlspecialchars($hearing['venue'] ?? 'Tanggapan ng Lupong Tagapamayapa, Barangay Hall') ?> sa darating na <strong><?= !empty($hearing['hearing_date']) ? date('F j, Y \s\a \g\a\n\a\p \n\g g:i A', strtotime($hearing['hearing_date'])) : 'itinakdang araw' ?></strong>, upang sagutin ang sumbong na inihain laban sa inyo kaugnay ng usaping ito. Kayo ay binabalaan na ang inyong pagtanggi o kabiguang humarap ay magkakaroon ng karampatang pananagutan alinsunod sa batas.
+        </p>
+        <p class="content" style="font-size: 10pt; color: #444; font-style: italic;">
+            PAUNAWA: Ang patawag na ito ay inilabas kaugnay ng itinakda/muling itinakdang pagdinig alinsunod sa mga alituntunin ng Katarungang Pambarangay (Batas Republika Blg. 7160).
         </p>
     <?php endif; ?>
 
