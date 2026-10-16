@@ -20,7 +20,7 @@ If these cannot be named clearly, propose a simplification plan before implement
 
 | Concern | Source of truth |
 | --- | --- |
-| Complaint details and parties | `complaints`, `complaint_parties`, `residents` |
+| Complaint details, parties, and scanned documents | `complaints`, `complaint_parties`, `residents`, `complaint_scanned_documents` |
 | Case stage and final disposition | `cases.case_status` |
 | Hearing schedule and completion | `hearings` |
 | Presiding officer and substitution | `hearings.presiding_officer_id`, `hearings.substitute_presider_id`, `hearings.substitute_reason`, `hearings.parties_consent_to_substitute` |
@@ -29,6 +29,7 @@ If these cannot be named clearly, propose a simplification plan before implement
 | Hearing minutes and settlement notes | `hearing_minutes` |
 | Summons service attempts | `summon_deliveries` |
 | Pangkat membership & challenges | `pangkat_groups`, `pangkat_members`, `pangkat_challenges`, `pangkat_extensions` |
+| Generated KP forms & templates | `document_templates`, `generated_documents` |
 | History | `case_history` and audit log |
 
 Do not introduce another table that represents the same fact. Dashboards may derive data from these records, but must not become alternate sources of truth.

@@ -1179,9 +1179,76 @@ The Complaint Details and Proof of Service modules provide an integrated, end-to
   - Cleaned up outcome card in Mediation Workspace to display the dedicated action `📅 Book 2nd Mediation Hearing →`.
   - Clicking routes directly to `../hearings/schedules.php?case_id=${caseId}&hearing_id=${hId}`, opening the full legal scheduling modal with preselected case and `schedule_reviewed = '1'`.
   - Appended return navigation `← Return to Mediation Workspace` upon successful schedule completion.
-- **Conciliation Progression Gating**:
-  - Case progression engine enforces RA 7160 Sec. 410(b): elevating a case to Pangkat Conciliation is prohibited after the 1st or 2nd mediation session.
-  - Elevation is unlocked only after the 3rd mediation session has concluded without settlement, requiring an explicit authorized action and recording in audit history.
+### 16. File Complaint Modernization, Fast Paper Intake & Legal-Size KP Form 7 Integration (October 2026)
+
+- **Terminology Alignment & Navigation**:
+  - Renamed the intake flow across the interface from "New File Intake" / "Katarungang Pambarangay Complaint Intake" to **File Complaint**.
+  - Renamed filing method options from "Digital / Walk-in Filing" to **Digital Filing** and **Pre-Signed Paper Form**.
+  - Standardized cancellation controls: simplified button labels to **Cancel** and streamlined action bars.
+
+- **Dual-Mode Complaint Intake (`frontend/pages/complaints/complaint-create.php`)**:
+  - **1. Digital Filing Mode**:
+    - **Multiple Parties Support**: Added checkboxes (`has_multiple_complainants`, `has_multiple_respondents`) allowing staff to specify single or multiple complainants/respondents cleanly.
+    - **Party Details Demographic Modal (`#partyDetailsModal`)**: Complete modal dialog for capturing individual complainant/respondent demographic and legal details without cluttering the main intake form:
+      - Minor complainant/respondent indicator (`is_minor`) with mandatory Legal Guardian details (`guardian_name`, `guardian_relationship`, `guardian_contact`, `guardian_address`).
+      - Detailed demographics: birthdate, auto-calculated age, gender, civil status, occupation, and suffix.
+      - Preferred contact channel (`SMS`, `Call`, `Email`, `In-Person`).
+      - Unknown information checkboxes: `contact_unknown`, `middle_name_unknown`, `birthdate_unknown` allowing submission even when certain respondent information is initially unavailable.
+    - **Streamlined Complaint Narrative**:
+      - Renamed field to **Complaint Narrative** (removed "Statement of Facts" and removed redundant "Additional Details (Optional)" and "Nearby Landmark (Optional)").
+      - Removed prescriptive explanatory text ("Prayer for relief: what settlement, restitution, or agreement the complainant asks the Lupon to assist in obtaining").
+    - **Flexible Incident Date & Time**:
+      - Added "Exact Time Unknown" (`is_time_unknown`) and "Approximate Time" (`is_time_approximate`) checkboxes.
+      - Dynamically switches the input element between `date` and `datetime-local` while automatically defaulting approximate midday timestamps when exact time is unknown.
+    - **Relocated Primary Action Button**:
+      - Moved the primary **Submit Complaint** button directly underneath **Section 5: Evidence & Attachments**.
+      - Simplified the top header action group to a single **Cancel** button, ensuring the clerk reviews all sections before submitting.
+    - **Interactive Submission Preview Modal (`#kp7DigitalPreviewModal`)**:
+      - Submitting via Digital Filing immediately triggers a high-fidelity modal preview of **Pormularyo ng KP Blg. 7 (Reklamo / Formal Complaint)**.
+      - Allows the clerk to review and print the official complaint form on Legal paper before final submission into the database.
+
+  - **2. Pre-Signed Paper Form (Fast Intake Mode)**:
+    - Designed for disputes where parties arrive with a pre-signed or handwritten physical KP Form 7.
+    - **Side-by-Side 2-Panel Split Layout**:
+      - **Left Panel (50%–60% Width) - Document Viewer**: In-browser document viewer for scanned PDF or image (`.pdf`, `.jpg`, `.jpeg`, `.png`) with zoom controls (Zoom In, Zoom Out, Reset), 90-degree image rotation, and fullscreen toggling.
+      - **Right Panel - Fast Indexing Form**: High-density indexing form capturing only essential fields: Filing Method, Uploaded File Selector, Complaint Category, Case Type (`Civil`/`Criminal`), Incident Date & Time, and Auto-filled Narrative ("See attached scanned KP Form 7").
+      - Balanced, uncrowded layout with clean spacing and subtle borders.
+    - **Versioned Document Storage**:
+      - Uploaded scans are stored securely in `storage/uploads/complaint-scans/` and cataloged in the new `complaint_scanned_documents` table with version incrementing (`version_number`), active state flag (`is_current`), upload timestamps, and replacement reasons.
+
+- **Edit Complaint Layout Parity (`frontend/pages/complaints/complaint-edit.php`)**:
+  - Aligned the edit screen layout to match `complaint-create.php`:
+    - Removed bottom-left Cancel button.
+    - Repositioned the **Save Changes** button to the top header toolbar directly beside the **Cancel** button.
+    - Integrated the same streamlined party details modal, multiple parties checkboxes, and narrative labels.
+
+- **Official KP Form 7 Legal Size Bondpaper Specification (`PDFService.php`)**:
+  - **Paper Sizing**: Formatted strictly to standard **Legal Size Bondpaper** (`8.5in x 14in` / `215.9mm x 355.6mm`).
+  - **Official Header & Seals**:
+    - Aligned with the official Barangay Tumana Word template: **Barangay Tumana Round Seal on the Left** and **City of Marikina Official Seal on the Right**.
+    - Sized both logos to `88px x 88px` (height-matched to the 6-line header block).
+  - **Physical Signature Spacing**:
+    - Added generous physical signature gaps (`.sig-space { height: 48px; }`) above the printed names/lines for both the Complainant and the Punong Barangay / Lupon Chairman.
+  - **Zero-Watermark Printing**:
+    - Configured `@page { size: 8.5in 14in; margin: 0; }` combined with internal `.page-sheet { padding: 16mm 20mm 20mm 20mm; }`.
+    - Completely eliminates browser-injected print header and footer watermarks (such as URLs, timestamps, page titles, and page numbers).
+  - **Modal Screen Preview**:
+    - Rendered on a dark slate canvas (`#334155` / `#475569`) displaying a centered Legal page sheet with drop shadow (`box-shadow: 0 14px 40px rgba(0,0,0,0.45)`), preventing horizontal stretching or distortion across wide monitors.
+
+- **Standardized Case Docketing Number Format**:
+  - Standardized docketing number format across all cases and complaints to `MM-DD-YYYY` (e.g., `10-17-2026`), removing legacy prefixes such as `CMP-2026-00050`.
+
+- **Complaint Details Official KP Forms Integration (`frontend/pages/complaints/complaint-details.php`)**:
+  - Moved **KP Form 7 (Reklamo)** into the unified **OFFICIAL KP FORMS** card table, establishing visual and functional consistency with all other KP forms.
+  - Sized the modal preview to `96vw` / `1350px` max-width on a dark canvas.
+  - Streamlined row actions: replaced separate PDF chip and "Replace Scan" buttons with unified preview and scan management triggers.
+
+- **Database Migration (`database/migrations/20261016_001_enhance_file_complaint_kp7.sql`)**:
+  - `complaints`: added `status` ('Draft'), `document_status`, `requested_resolution`, `is_time_approximate`, `is_time_unknown`, `incident_location_details`, `is_draft`.
+  - `complaint_parties`: added `is_minor`, `guardian_name`, `guardian_relationship`, `guardian_contact`, `guardian_address`, `preferred_contact`, `suffix`, `occupation`, `age`, `birth_date`, `gender`, `civil_status`, `contact_unknown`, `middle_name_unknown`, `birthdate_unknown`, `address_requires_verification`, `residency_verified`.
+  - `residents`: added `suffix`, `occupation`, `preferred_contact`, `residency_verified`.
+  - Created `complaint_scanned_documents` table.
+  - Seeded `KP Form 7` in `document_templates`.
 
 ---
 
@@ -1191,7 +1258,7 @@ The Complaint Details and Proof of Service modules provide an integrated, end-to
 - Complaint party and attachment workflows have active browser/MySQL tests; additional stress-testing on edge cases is recommended.
 - GPS mobile field-device capture (camera/geolocation) operates in browser environments; device-level offline caching remains an enhancement.
 - AI calls Gemini, but production-grade monitoring and rate limiting are incomplete.
-- KP Form 10, 12, 16, 18, 19, 20, 21, and 22 generate successfully; ongoing visual verification with varied text lengths is recommended.
+- KP Form 7, 10, 12, 16, 18, 19, 20, 21, and 22 generate successfully; ongoing visual verification with varied text lengths is recommended.
 
 ---
 
@@ -1200,7 +1267,7 @@ The Complaint Details and Proof of Service modules provide an integrated, end-to
 The following remain missing from the complete Module Development specification:
 
 - Resident self-service complaint filing and status tracking portal.
-- Remaining optional KP forms (e.g., KP Forms 13, 14, 15, 17, 23). *(Note: KP Forms 16, 18, 19, 20 CFA, 21, and 22 are now implemented).*
+- Remaining optional KP forms (e.g., KP Forms 13, 14, 15, 17, 23). *(Note: KP Forms 7, 16, 18, 19, 20 CFA, 21, and 22 are now implemented).*
 - Automated end-to-end integration test suite, deployment pipelines, and automated database backup routines.
 
 ---

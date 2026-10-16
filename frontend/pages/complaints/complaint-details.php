@@ -211,6 +211,9 @@ include '../../layouts/header.php';
                         <div class="loc-data-row">
                             <strong>Landmark &amp; Coordinates:</strong> <span id="locationLandmarkText">None</span> | <span id="locationCoordinatesText">—</span>
                         </div>
+                        <div class="loc-data-row" id="locationDetailsRow" style="display:none;">
+                            <strong>Location Details:</strong> <span id="locationDetailsText">—</span>
+                        </div>
                     </div>
                     <div id="complaintDetailMap" class="context-map-frame" aria-label="Incident Location Map"></div>
                     <div id="emptyMapPlaceholder" class="empty-map-state-frame" style="display:none;">
@@ -236,6 +239,10 @@ include '../../layouts/header.php';
                     <div id="complaintAdditionalDetailsWrap" style="display:none; margin-top: 14px; padding-top: 12px; border-top: 1px dashed #cbd5e1;">
                         <strong style="font-size: 0.82rem; color: #64748b; text-transform: uppercase;">Additional Facts / Prior Attempts:</strong>
                         <p id="complaintAdditionalDetails" style="margin: 4px 0 0; font-size: 0.9rem; color: #1e293b;"></p>
+                    </div>
+                    <div id="complaintRequestedResolutionWrap" style="display:none; margin-top: 14px; padding-top: 12px; border-top: 1px dashed #cbd5e1;">
+                        <strong style="font-size: 0.82rem; color: #64748b; text-transform: uppercase;">Requested Resolution / Relief:</strong>
+                        <p id="complaintRequestedResolution" style="margin: 4px 0 0; font-size: 0.9rem; color: #1e293b;"></p>
                     </div>
                 </div>
             </div>
@@ -647,6 +654,88 @@ include '../../layouts/header.php';
             <div style="display: flex; gap: 8px; align-items: center;">
                 <button type="button" class="btn-secondary" onclick="closeSessionProcessDetailsModal()">Close</button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Digital KP Form 7 Preview & Print -->
+<div id="kp7DigitalPreviewModal" class="modal" style="display:none; padding: 12px; box-sizing: border-box; align-items: center; justify-content: center; z-index: 9999;" role="dialog" aria-modal="true" aria-labelledby="kp7ModalHeading">
+    <div class="modal-content" style="max-width: 1350px; width: 96vw; height: calc(100vh - 24px); max-height: calc(100vh - 24px); display: flex; flex-direction: column; padding: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 25px 35px -5px rgba(0, 0, 0, 0.35); background: #ffffff;">
+        <div class="modal-header" style="padding: 14px 24px; margin-bottom: 0; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #ffffff; flex-shrink: 0;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 1.3rem;">⚖️</span>
+                <div>
+                    <h2 id="kp7ModalHeading" style="font-size: 1.15rem; margin: 0; color: #0f172a; font-weight: 700;">Pormularyo ng KP Blg. 7: Reklamo (Formal Complaint)</h2>
+                    <p style="margin: 2px 0 0; font-size: 0.78rem; color: #64748b;">Barangay Tumana Lupong Tagapamayapa Official Katarungang Pambarangay Form</p>
+                </div>
+            </div>
+            <button type="button" class="close-btn" onclick="closeKp7DigitalPreviewModal()" aria-label="Close modal">&times;</button>
+        </div>
+        <div style="flex: 1 1 auto; overflow: hidden; background: #334155; min-height: 0; height: 100%; display: flex;">
+            <iframe id="kp7PreviewIframe" src="" style="width: 100%; height: 100%; border: none; background: #334155;"></iframe>
+        </div>
+        <div class="modal-actions" style="padding: 12px 24px; border-top: 1px solid #e2e8f0; background: #f8fafc; margin-top: 0; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-shrink: 0;">
+            <div style="font-size: 0.82rem; color: #64748b;">
+                Official Katarungang Pambarangay Complaint Document
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <button type="button" class="btn-create" onclick="printKp7Iframe()" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; font-weight: 600;">
+                    🖨️ Print Form
+                </button>
+                <button type="button" class="btn-secondary" onclick="closeKp7DigitalPreviewModal()">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Upload / Replace Handwritten KP Form 7 Scan -->
+<div id="kp7UploadScanModal" class="modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="uploadScanModalTitle">
+    <div class="modal-content" style="max-width: 520px; padding: 24px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);">
+        <div class="modal-header" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 0;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 1.3rem;">📤</span>
+                <h2 id="uploadScanModalTitle" style="font-size: 1.15rem; font-weight: 700; color: #0f172a; margin: 0;">Upload Handwritten KP Form 7</h2>
+            </div>
+            <button type="button" class="close-btn" onclick="closeUploadScanModal()">&times;</button>
+        </div>
+        <form id="uploadScanForm" onsubmit="submitScanUpload(event)">
+            <input type="hidden" name="complaint_id" value="<?php echo $complaintId; ?>">
+            <p style="font-size: 0.88rem; color: #475569; margin: 0 0 16px; line-height: 1.5;">
+                Upload a scanned copy or clear photo of the physical handwritten KP Form 7. Accepted file formats: <strong>PDF, JPG, JPEG, PNG</strong> (max 25 MB).
+            </p>
+            <div class="form-group" style="margin-bottom: 14px;">
+                <label for="scanFileInput" style="font-weight: 600; font-size: 0.88rem;">Select Document File <span class="required-mark">*</span></label>
+                <input type="file" id="scanFileInput" name="scan_file" accept=".pdf,image/jpeg,image/png" required style="padding: 8px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                <div id="scanFileDetails" style="display:none; font-size: 0.8rem; color: #059669; margin-top: 6px; font-weight: 600;"></div>
+            </div>
+            <div class="form-group" style="margin-bottom: 18px;">
+                <label for="scanReplacementReason" style="font-weight: 600; font-size: 0.88rem;">Reason for Upload / Replacement <span class="optional-label">Optional</span></label>
+                <input type="text" id="scanReplacementReason" name="replacement_reason" placeholder="e.g. Initial intake scan, corrected copy, signed document" style="padding: 8px 12px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+            </div>
+            <div id="scanUploadError" class="alert alert-danger" style="display:none; margin-bottom: 14px; font-size: 0.84rem; padding: 8px 12px;"></div>
+            <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 0;">
+                <button type="button" class="btn-secondary" onclick="closeUploadScanModal()">Cancel</button>
+                <button type="submit" class="btn-create" id="btnSubmitScanUpload">Upload Document</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: KP Form 7 Scan Version History -->
+<div id="kp7ScanHistoryModal" class="modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="historyModalTitle">
+    <div class="modal-content" style="max-width: 680px; max-height: calc(100vh - 60px); display: flex; flex-direction: column; padding: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);">
+        <div class="modal-header" style="padding: 16px 24px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #ffffff;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 1.3rem;">📜</span>
+                <h2 id="historyModalTitle" style="font-size: 1.15rem; font-weight: 700; color: #0f172a; margin: 0;">KP Form 7 Scan Version History</h2>
+            </div>
+            <button type="button" class="close-btn" onclick="closeScanHistoryModal()">&times;</button>
+        </div>
+        <div id="scanHistoryBody" style="overflow-y: auto; padding: 20px 24px; flex: 1 1 auto; max-height: 60vh;">
+            <div style="text-align: center; color: #64748b; padding: 20px;">Loading version history...</div>
+        </div>
+        <div class="modal-actions" style="padding: 12px 24px; border-top: 1px solid #e2e8f0; background: #f8fafc; margin-top: 0; display: flex; justify-content: flex-end;">
+            <button type="button" class="btn-secondary" onclick="closeScanHistoryModal()">Close</button>
         </div>
     </div>
 </div>

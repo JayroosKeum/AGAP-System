@@ -4,6 +4,7 @@ require_once __DIR__ . '/../models/Complaint.php';
 require_once __DIR__ . '/../models/ComplaintParty.php';
 require_once __DIR__ . '/../models/Attachment.php';
 require_once __DIR__ . '/../models/Location.php';
+require_once __DIR__ . '/../models/ComplaintScannedDocument.php';
 require_once __DIR__ . '/../services/AuditService.php';
 
 if (session_status() === PHP_SESSION_NONE) {
@@ -16,6 +17,7 @@ class ComplaintController
     private ComplaintParty $complaintParty;
     private Attachment $attachment;
     private Location $location;
+    private ComplaintScannedDocument $scannedDoc;
     private AuditService $audit;
 
     public function __construct()
@@ -24,6 +26,7 @@ class ComplaintController
         $this->complaintParty = new ComplaintParty();
         $this->attachment = new Attachment();
         $this->location = new Location();
+        $this->scannedDoc = new ComplaintScannedDocument();
         $this->audit = new AuditService();
     }
 
@@ -42,6 +45,8 @@ class ComplaintController
         $complaint['parties'] = $this->complaintParty->getByComplaint($id);
         $complaint['attachments'] = $this->attachment->getByComplaint($id);
         $complaint['location'] = $this->location->getByComplaint($id);
+        $complaint['current_scan'] = $this->scannedDoc->getCurrentByComplaint($id);
+        $complaint['scan_history'] = $this->scannedDoc->getHistoryByComplaint($id);
         if (!empty($complaint['case_id'])) {
             // The case workspace is supplementary to the complaint record.  A
             // workspace/schema problem must never prevent the complaint itself,
@@ -83,18 +88,41 @@ class ComplaintController
             }
         }
 
+        // Check for scanned handwritten KP Form 7 upload
+        $scannedDocFile = null;
+        foreach (['scanned_kp7', 'scan_file', 'scanned_document'] as $scanKey) {
+            if (!empty($files[$scanKey]) && !empty($files[$scanKey]['tmp_name']) && ($files[$scanKey]['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+                $scannedDocFile = $files[$scanKey];
+                break;
+            }
+            if (!empty($_FILES[$scanKey]) && !empty($_FILES[$scanKey]['tmp_name']) && ($_FILES[$scanKey]['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+                $scannedDocFile = $_FILES[$scanKey];
+                break;
+            }
+        }
+
+        if ($scannedDocFile !== null) {
+            $scanError = $this->scannedDoc->validateScanFile($scannedDocFile);
+            if ($scanError !== null) {
+                return ['success' => false, 'message' => $scanError];
+            }
+        }
+
         $result = $this->complaint->create($data);
 
         if ($result['success']) {
+            $isDraft = !empty($data['is_draft']) || (($data['submit_action'] ?? '') === 'draft');
+            $complaintId = (int) ($result['complaint_id'] ?? 0);
+
             $this->audit->log(
-                $_SESSION['user_id'],
-                'Created Complaint',
+                $_SESSION['user_id'] ?? 1,
+                $isDraft ? 'Saved Complaint Draft' : 'Created Complaint',
                 'Complaints',
-                $result['complaint_id'] ?? null
+                $complaintId ?: null
             );
 
-            if (!empty($evidenceFiles) && !empty($result['complaint_id'])) {
-                $complaintId = (int) $result['complaint_id'];
+            // Handle evidence attachments
+            if (!empty($evidenceFiles) && $complaintId > 0) {
                 $uploadedCount = 0;
                 foreach ($evidenceFiles as $file) {
                     $attachResult = $this->addAttachment($complaintId, $file);
@@ -105,6 +133,25 @@ class ComplaintController
                 if ($uploadedCount > 0) {
                     $result['message'] .= " ($uploadedCount attachment(s) uploaded.)";
                 }
+            }
+
+            // Handle scanned KP Form 7 upload
+            if ($scannedDocFile !== null && $complaintId > 0) {
+                $scanUpload = $this->scannedDoc->upload(
+                    $complaintId,
+                    $scannedDocFile,
+                    (int) ($_SESSION['user_id'] ?? 1),
+                    'Uploaded during complaint intake'
+                );
+                if ($scanUpload['success']) {
+                    $result['message'] .= ' (Handwritten KP Form 7 scan uploaded.)';
+                } else {
+                    $result['message'] .= ' (Warning: Scanned document could not be saved: ' . ($scanUpload['message'] ?? 'Upload error') . ')';
+                }
+            }
+
+            if ($isDraft) {
+                $result['message'] = 'Complaint draft saved successfully. You can complete and submit it whenever ready.';
             }
         }
 
@@ -129,10 +176,32 @@ class ComplaintController
             }
         }
 
+        // Check for scanned handwritten KP Form 7 upload
+        $scannedDocFile = null;
+        foreach (['scanned_kp7', 'scan_file', 'scanned_document'] as $scanKey) {
+            if (!empty($files[$scanKey]) && !empty($files[$scanKey]['tmp_name']) && ($files[$scanKey]['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+                $scannedDocFile = $files[$scanKey];
+                break;
+            }
+            if (!empty($_FILES[$scanKey]) && !empty($_FILES[$scanKey]['tmp_name']) && ($_FILES[$scanKey]['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+                $scannedDocFile = $_FILES[$scanKey];
+                break;
+            }
+        }
+
+        if ($scannedDocFile !== null) {
+            $scanError = $this->scannedDoc->validateScanFile($scannedDocFile);
+            if ($scanError !== null) {
+                return ['success' => false, 'message' => $scanError];
+            }
+        }
+
         $result = $this->complaint->update($id, $data);
 
         if ($result['success']) {
             $complaintId = (int) $id;
+            $isDraft = !empty($data['is_draft']) || (($data['submit_action'] ?? '') === 'draft');
+
             if (!empty($evidenceFiles) && $complaintId > 0) {
                 $uploadedCount = 0;
                 foreach ($evidenceFiles as $file) {
@@ -146,9 +215,29 @@ class ComplaintController
                 }
             }
 
+            // Handle scanned KP Form 7 upload
+            if ($scannedDocFile !== null && $complaintId > 0) {
+                $reason = trim((string) ($data['replacement_reason'] ?? 'Updated scanned KP Form 7 document'));
+                $scanUpload = $this->scannedDoc->upload(
+                    $complaintId,
+                    $scannedDocFile,
+                    (int) ($_SESSION['user_id'] ?? 1),
+                    $reason
+                );
+                if ($scanUpload['success']) {
+                    $result['message'] .= ' (Handwritten KP Form 7 scan uploaded.)';
+                } else {
+                    $result['message'] .= ' (Warning: Scanned document could not be saved: ' . ($scanUpload['message'] ?? 'Upload error') . ')';
+                }
+            }
+
+            if ($isDraft) {
+                $result['message'] = 'Complaint draft updated successfully.';
+            }
+
             $this->audit->log(
-                $_SESSION['user_id'],
-                'Updated Complaint',
+                $_SESSION['user_id'] ?? 1,
+                $isDraft ? 'Updated Complaint Draft' : 'Updated Complaint',
                 'Complaints',
                 $id
             );

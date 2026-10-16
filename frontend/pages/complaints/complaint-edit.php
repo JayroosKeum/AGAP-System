@@ -34,9 +34,9 @@ if (!$complaint) {
 $categoriesStmt = $db->query('SELECT category_id, category_name FROM complaint_categories ORDER BY category_id ASC');
 $categories = $categoriesStmt ? $categoriesStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
-// Fetch residents for selection
+// Fetch residents for selection / directory quickfill
 $residentsStmt = $db->query("
-    SELECT resident_id, first_name, middle_name, last_name, contact_no, purok, address, is_tenant
+    SELECT resident_id, first_name, middle_name, last_name, suffix, birth_date, gender, civil_status, occupation, contact_no, email, preferred_contact, purok, address, is_tenant, residency_verified
     FROM residents 
     ORDER BY last_name ASC, first_name ASC
 ");
@@ -66,12 +66,23 @@ foreach ($residents as $res) {
         'resident_id' => (int) $res['resident_id'],
         'name' => $fullName,
         'display_name' => $displayName,
+        'first_name' => $res['first_name'] ?? '',
+        'middle_name' => $res['middle_name'] ?? '',
+        'last_name' => $res['last_name'] ?? '',
+        'suffix' => $res['suffix'] ?? '',
+        'birth_date' => $res['birth_date'] ?? '',
+        'gender' => $res['gender'] ?? '',
+        'civil_status' => $res['civil_status'] ?? '',
+        'occupation' => $res['occupation'] ?? '',
+        'preferred_contact' => $res['preferred_contact'] ?? 'SMS',
         'purok' => $res['purok'] ?? '',
         'address' => $res['address'] ?? '',
         'address_text' => $addressText,
         'contact_no' => $res['contact_no'] ?? '',
+        'email' => $res['email'] ?? '',
         'is_tenant' => $isTenantInt,
         'residency_label' => $resLabel,
+        'residency_verified' => (int)($res['residency_verified'] ?? 1),
         'search_text' => $searchText,
     ];
 }
@@ -122,9 +133,13 @@ $locStmt = $db->prepare('SELECT latitude, longitude, address FROM incident_locat
 $locStmt->execute([$complaintId]);
 $location = $locStmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
-// Fetch parties
+// Fetch parties with full demographic and guardian columns
 $partyStmt = $db->prepare("
-    SELECT cp.party_id, cp.party_type, cp.resident_id, r.first_name, r.middle_name, r.last_name, r.contact_no, r.purok, r.address, r.is_tenant
+    SELECT cp.party_id, cp.party_type, cp.resident_id,
+           cp.is_minor, cp.guardian_name, cp.guardian_relationship, cp.guardian_contact, cp.guardian_address,
+           cp.preferred_contact, cp.suffix, cp.occupation, cp.age, cp.birth_date, cp.gender, cp.civil_status,
+           cp.contact_unknown, cp.middle_name_unknown, cp.birthdate_unknown, cp.address_requires_verification, cp.residency_verified,
+           r.first_name, r.middle_name, r.last_name, r.contact_no, r.email, r.purok, r.address, r.is_tenant
     FROM complaint_parties cp
     LEFT JOIN residents r ON r.resident_id = cp.resident_id
     WHERE cp.complaint_id = ?
@@ -133,59 +148,75 @@ $partyStmt = $db->prepare("
 $partyStmt->execute([$complaintId]);
 $parties = $partyStmt->fetchAll(PDO::FETCH_ASSOC);
 
-$primaryComplainant = null;
-$primaryRespondent = null;
-$additionalParties = [];
+$initialComplainants = [];
+$initialRespondents = [];
+$initialWitnesses = [];
 
 foreach ($parties as $p) {
-    $resName = trim(implode(' ', array_filter([$p['first_name'], $p['middle_name'] ?? '', $p['last_name']])));
+    $fullName = trim(implode(' ', array_filter([$p['first_name'], $p['middle_name'] ?? '', $p['last_name'], $p['suffix'] ?? ''])));
     $entry = [
-        'party_id' => (int) $p['party_id'],
-        'party_type' => $p['party_type'],
-        'resident_id' => (int) $p['resident_id'],
-        'name' => $resName,
+        'resident_id' => !empty($p['resident_id']) ? (string)$p['resident_id'] : '',
+        'first_name' => $p['first_name'] ?? '',
+        'middle_name' => $p['middle_name'] ?? '',
+        'last_name' => $p['last_name'] ?? '',
+        'suffix' => $p['suffix'] ?? '',
+        'birthdate' => $p['birth_date'] ?? '',
+        'age' => ($p['age'] !== null && $p['age'] !== '') ? (string)$p['age'] : '',
+        'gender' => $p['gender'] ?? '',
+        'civil_status' => $p['civil_status'] ?? '',
+        'occupation' => $p['occupation'] ?? '',
         'contact_no' => $p['contact_no'] ?? '',
+        'email' => $p['email'] ?? '',
+        'preferred_contact' => $p['preferred_contact'] ?? 'SMS',
         'purok' => $p['purok'] ?? '',
-        'address' => $p['address'] ?? ''
+        'is_tenant' => (string)($p['is_tenant'] ?? '0'),
+        'address' => $p['address'] ?? '',
+        'is_minor' => !empty($p['is_minor']),
+        'guardian_name' => $p['guardian_name'] ?? '',
+        'guardian_relationship' => $p['guardian_relationship'] ?? '',
+        'guardian_contact' => $p['guardian_contact'] ?? '',
+        'guardian_address' => $p['guardian_address'] ?? '',
+        'contact_unknown' => !empty($p['contact_unknown']),
+        'middle_unknown' => !empty($p['middle_name_unknown']),
+        'birth_unknown' => !empty($p['birthdate_unknown']),
     ];
-    if ($p['party_type'] === 'Complainant' && $primaryComplainant === null) {
-        $primaryComplainant = $entry;
-    } elseif ($p['party_type'] === 'Respondent' && $primaryRespondent === null) {
-        $primaryRespondent = $entry;
+
+    if ($p['party_type'] === 'Complainant') {
+        $initialComplainants[] = $entry;
+    } elseif ($p['party_type'] === 'Respondent') {
+        $initialRespondents[] = $entry;
     } else {
-        $additionalParties[] = $entry;
+        $entry['party_type'] = $p['party_type'];
+        $entry['name'] = $fullName;
+        $initialWitnesses[] = $entry;
     }
 }
 
 // Fetch existing attachments
-$attStmt = $db->prepare('SELECT attachment_id, file_name, file_type, uploaded_at FROM complaint_attachments WHERE complaint_id = ? ORDER BY uploaded_at DESC');
+$attStmt = $db->prepare('SELECT attachment_id, file_name, file_type, file_path, uploaded_at FROM complaint_attachments WHERE complaint_id = ? ORDER BY uploaded_at DESC');
 $attStmt->execute([$complaintId]);
 $attachments = $attStmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Fetch current scanned KP Form 7 document
+$scanStmt = $db->prepare('SELECT * FROM complaint_scanned_documents WHERE complaint_id = ? AND is_current = 1 LIMIT 1');
+$scanStmt->execute([$complaintId]);
+$currentScan = $scanStmt->fetch(PDO::FETCH_ASSOC) ?: null;
 
 // Fetch linked case if any
 $caseStmt = $db->prepare('SELECT case_id, case_number, case_status FROM cases WHERE complaint_id = ? LIMIT 1');
 $caseStmt->execute([$complaintId]);
 $linkedCase = $caseStmt->fetch(PDO::FETCH_ASSOC) ?: null;
 
+// Standardize Docket Number (never use CMP-2026-00050)
+$docketNumber = !empty($linkedCase['case_number']) ? $linkedCase['case_number'] : ($complaint['complaint_number'] ?? '');
+if (empty($docketNumber) || str_starts_with($docketNumber, 'CMP-')) {
+    $docketNumber = date('m') . '-' . str_pad($complaintId, 2, '0', STR_PAD_LEFT) . '-' . date('Y');
+}
+
 // Flash message and old input override if validation failed
 $complaintFlash = $_SESSION['complaint_flash'] ?? null;
 $old = $complaintFlash['old'] ?? [];
 unset($_SESSION['complaint_flash']);
-
-if (!empty($old['party_resident_ids']) && is_array($old['party_resident_ids'])) {
-    $additionalParties = [];
-    foreach ($old['party_resident_ids'] as $idx => $rId) {
-        $rIdInt = (int) $rId;
-        if ($rIdInt > 0) {
-            $additionalParties[] = [
-                'party_id' => 0,
-                'party_type' => $old['party_types'][$idx] ?? 'Witness',
-                'resident_id' => $rIdInt,
-                'name' => $old['party_names'][$idx] ?? ''
-            ];
-        }
-    }
-}
 
 // Determine effective values (Old input > Database record)
 $effCategoryId = $old['category_id'] ?? $complaint['category_id'];
@@ -198,8 +229,13 @@ if (!$effDatetime && !empty($complaint['incident_date'])) {
     $effDatetime = $complaint['incident_date'] . (!empty($complaint['incident_time']) ? 'T' . substr($complaint['incident_time'], 0, 5) : 'T00:00');
 }
 
+$effIsTimeApprox = isset($old['is_time_approximate']) ? !empty($old['is_time_approximate']) : !empty($complaint['is_time_approximate']);
+$effIsTimeUnknown = isset($old['is_time_unknown']) ? !empty($old['is_time_unknown']) : !empty($complaint['is_time_unknown']);
+
 $effNarrative = $old['narrative'] ?? $complaint['narrative'];
 $effDetails = $old['additional_details'] ?? ($complaint['additional_details'] ?? '');
+$effRequestedResolution = $old['requested_resolution'] ?? ($complaint['requested_resolution'] ?? '');
+$effLocationDetails = $old['incident_location_details'] ?? ($complaint['incident_location_details'] ?? '');
 $effProofOcrNotes = $old['proof_ocr_notes'] ?? ($complaint['proof_ocr_notes'] ?? '');
 $effLocation = $old['incident_location'] ?? ($complaint['incident_location'] ?? '');
 $effCity = $old['incident_city'] ?? ($complaint['incident_city'] ?? 'Marikina City');
@@ -208,14 +244,9 @@ $effStreet = $old['incident_street'] ?? ($complaint['incident_street'] ?? $effLo
 $effPurok = $old['incident_purok'] ?? ($complaint['incident_purok'] ?? '');
 $effLandmark = $old['incident_landmark'] ?? ($complaint['incident_landmark'] ?? '');
 
-$effCompName = $old['complainant_name'] ?? ($primaryComplainant['name'] ?? '');
-$effCompId = $old['complainant_resident_id'] ?? ($primaryComplainant['resident_id'] ?? '');
-
-$effRespName = $old['respondent_name'] ?? ($primaryRespondent['name'] ?? '');
-$effRespId = $old['respondent_resident_id'] ?? ($primaryRespondent['resident_id'] ?? '');
-
 $savedLat = $location['latitude'] ?? '';
 $savedLng = $location['longitude'] ?? '';
+$savedState = ($savedLat !== '' && $savedLng !== '') ? 'unchanged' : 'none';
 
 $currentCategoryName = 'General';
 foreach ($categories as $cat) {
@@ -227,94 +258,248 @@ foreach ($categories as $cat) {
 
 $statusSlug = strtolower(preg_replace('/[^a-z0-9]/', '-', $complaint['status'] ?: 'filed'));
 
-include '../../layouts/header.php';
+include __DIR__ . '/../../layouts/header.php';
 ?>
 
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="../../assets/css/dashboard.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/dashboard.css'); ?>">
 <link rel="stylesheet" href="../../assets/css/complaints.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/complaints.css'); ?>">
+<link rel="stylesheet" href="../../assets/css/residents.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/residents.css'); ?>">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 
 <div class="dashboard-layout">
-    <?php include '../../layouts/sidebar.php'; ?>
+    <?php include __DIR__ . '/../../layouts/sidebar.php'; ?>
 
     <div class="main-content">
-        <?php include '../../layouts/navbar.php'; ?>
+        <?php include __DIR__ . '/../../layouts/navbar.php'; ?>
 
-        <!-- Modern Page Header with Status & Action Toolbar (copied layout from complaint-details.php) -->
-        <div class="complaint-details-header">
-            <div class="complaint-details-heading">
-                <a href="complaint-details.php?id=<?php echo $complaintId; ?>" class="back-link" onclick="handleBackLink(event)">
-                    <svg class="back-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
-                    <span>Back to Complaint Details</span>
-                </a>
-                <div class="complaint-title-row">
-                    <h1 id="editComplaintHeading">Edit Complaint — <?php echo htmlspecialchars($complaint['complaint_number'] ?: ('CMP-' . str_pad($complaintId, 5, '0', STR_PAD_LEFT))); ?></h1>
-                    <span id="complaintStatusBadge" class="status-pill status-<?php echo $statusSlug; ?>"><?php echo htmlspecialchars($complaint['status'] ?: 'Filed'); ?></span>
+        <div class="intake-main-wrapper">
+            <!-- Header Bar -->
+            <div class="intake-header-bar">
+                <div>
+                    <div class="intake-breadcrumb">
+                        <a href="complaint-list.php">
+                            <svg class="back-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                            <span>Complaints Blotter</span>
+                        </a>
+                        <span class="breadcrumb-sep">/</span>
+                        <a href="complaint-details.php?id=<?php echo $complaintId; ?>">Case #<?php echo htmlspecialchars($docketNumber); ?></a>
+                        <span class="breadcrumb-sep">/</span>
+                        <span class="breadcrumb-curr">Edit Complaint</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 4px;">
+                        <h1 class="intake-title" style="margin: 0;">Edit Complaint — Case #<?php echo htmlspecialchars($docketNumber); ?></h1>
+                        <span class="status-pill status-<?php echo $statusSlug; ?>"><?php echo htmlspecialchars($complaint['status'] ?: 'Filed'); ?></span>
+                        <span class="meta-pill type-pill"><?php echo htmlspecialchars($effCaseType); ?></span>
+                        <span class="meta-pill category-pill"><?php echo htmlspecialchars($currentCategoryName); ?></span>
+                    </div>
                 </div>
-                <p id="editComplaintSubheading" class="complaint-details-subheading"><?php echo htmlspecialchars($effTitle ?: 'Untitled Complaint'); ?></p>
-                <div class="complaint-header-badges">
-                    <span id="headerCaseTypeBadge" class="meta-pill type-pill"><?php echo htmlspecialchars($effCaseType); ?></span>
-                    <span id="headerCategoryBadge" class="meta-pill category-pill"><?php echo htmlspecialchars($currentCategoryName); ?></span>
-                    <?php if (!empty($linkedCase)): ?>
-                        <span id="complaintCaseLink" class="meta-pill case-pill">
-                            📁 Case #<?php echo htmlspecialchars($linkedCase['case_number'] ?: ('Case #' . $linkedCase['case_id'])); ?> &rarr;
-                        </span>
-                    <?php endif; ?>
+                <div class="intake-header-actions">
+                    <a href="complaint-details.php?id=<?php echo $complaintId; ?>" class="btn-secondary" style="text-decoration:none; display:inline-flex; align-items:center;">Cancel</a>
+                    <button type="submit" form="editComplaintForm" class="btn-create" id="btnSubmitComplaint" style="display:inline-flex; align-items:center; gap:6px;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                        <?php echo (($complaint['status'] ?? '') === 'Draft') ? 'Submit &amp; File Officially' : 'Save Changes'; ?>
+                    </button>
                 </div>
             </div>
 
-            <div class="complaint-header-actions">
-                <button type="button" class="btn-secondary" onclick="openDiscardModal()" style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
-                    Cancel
-                </button>
-                <button type="button" class="btn-create" onclick="openSaveModal()" style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-                    Save Changes
-                </button>
-            </div>
-        </div>
-
-        <?php if ($complaintFlash && !empty($complaintFlash['message'])): ?>
-            <script>
+            <?php if ($complaintFlash && !empty($complaintFlash['message'])): ?>
+                <script>
                 document.addEventListener('DOMContentLoaded', function() {
-                    window.agapNotify && window.agapNotify(
-                        <?php echo json_encode($complaintFlash['message']); ?>,
-                        <?php echo json_encode(($complaintFlash['type'] ?? '') === 'success' ? 'success' : 'error') ?>
-                    );
+                    window.agapNotify?.(<?php echo json_encode($complaintFlash['message']); ?>, <?php echo json_encode($complaintFlash['type'] ?? 'error'); ?>, 'Complaint Edit');
                 });
-            </script>
-        <?php endif; ?>
+                </script>
+            <?php endif; ?>
 
-        <form id="editComplaintForm" action="../../../backend/api/complaints/update.php" method="POST" enctype="multipart/form-data" class="complaint-intake-form">
-            <input type="hidden" name="complaint_id" value="<?php echo $complaintId; ?>">
+            <form id="editComplaintForm" action="../../../backend/api/complaints/update.php" method="POST" enctype="multipart/form-data" class="complaint-intake-form">
+                <input type="hidden" name="complaint_id" value="<?php echo $complaintId; ?>">
+                <input type="hidden" name="bypass_office_hours" value="1">
+                <input type="hidden" name="is_draft" id="isDraftInput" value="<?php echo !empty($complaint['is_draft']) ? '1' : '0'; ?>">
 
-            <!-- Main Workspace Grid (copied layout from complaint-details.php) -->
-            <div class="complaint-details-workspace">
-                <div class="complaint-intake-grid">
+                <div class="intake-layout-container">
 
-                    <!-- LEFT COLUMN -->
-                    <div class="intake-col">
+                    <!-- STICKY QUICK-NAV SIDEBAR -->
+                    <nav class="intake-quicknav-sidebar" id="intakeQuickNav" aria-label="Form Quick Navigation">
+                        <div class="quicknav-title">Form Quick-Nav</div>
+                        
+                        <a href="#section-ingestion" id="nav-sec-ingestion" class="quicknav-link is-active">
+                            <span class="quicknav-badge">1</span> 1. Filing &amp; Classification
+                        </a>
+                        
+                        <a href="#section-parties" id="nav-sec-parties" class="quicknav-link">
+                            <span class="quicknav-badge">2</span> 2. Involved Parties
+                        </a>
 
-                        <!-- CARD 1: Incident & Classification -->
-                        <div class="intake-card">
-                            <div class="intake-card-header">
-                                <h3>1. Incident &amp; Classification</h3>
-                                <span class="card-subtitle">Category, case type, and timeline details</span>
+                        <a href="#section-narrative" id="nav-sec-narrative" class="quicknav-link">
+                            <span class="quicknav-badge">3</span> 3. Narrative &amp; Relief
+                        </a>
+                        
+                        <a href="#section-location" id="nav-sec-location" class="quicknav-link">
+                            <span class="quicknav-badge">4</span> 4. Incident Location
+                        </a>
+
+                        <a href="#section-evidence" id="nav-sec-evidence" class="quicknav-link">
+                            <span class="quicknav-badge">5</span> 5. Evidence &amp; Attachments
+                        </a>
+
+                        <div class="quicknav-footer">
+                            Review and save changes for official Katarungang Pambarangay records.
+                        </div>
+                    </nav>
+
+                    <!-- LONG-FORM SECTIONS STACK -->
+                    <div class="intake-sections-container">
+
+                        <!-- SECTION 1: FILING METHOD & CASE CLASSIFICATION -->
+                        <section id="section-ingestion" class="intake-section-card">
+                            <div class="intake-section-header">
+                                <div class="section-header-left">
+                                    <span class="section-badge-num">1</span>
+                                    <div class="section-title-wrap">
+                                        <h3>Filing Method &amp; Case Classification</h3>
+                                        <p>Intake channel, hardcopy scan records, and dispute categorization</p>
+                                    </div>
+                                </div>
+                                <span class="section-step-indicator">Section 1 of 5</span>
                             </div>
 
-                            <div class="form-group">
-                                <label for="complaintTitle">Complaint Title <span class="required-mark">*</span></label>
-                                <input type="text" id="complaintTitle" name="complaint_title" maxlength="255" required placeholder="e.g. Boundary dispute, Trespassing" value="<?php echo htmlspecialchars($effTitle); ?>">
+                            <!-- Filing Method Dynamic Selector -->
+                            <div style="margin-bottom: 20px;">
+                                <label style="display:block; font-size:0.75rem; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:10px;">
+                                    Intake Record Method
+                                </label>
+                                <div class="filing-method-grid">
+                                    <label id="labelMethodDigital" class="filing-method-card <?php echo !$currentScan ? 'is-selected' : ''; ?>">
+                                        <input type="radio" name="filing_method" value="digital" <?php echo !$currentScan ? 'checked' : ''; ?>>
+                                        <div>
+                                            <span class="filing-method-title">Digital Filing</span>
+                                            <span class="filing-method-desc">Complaint narrative and dispute details encoded into the digital system.</span>
+                                        </div>
+                                    </label>
+
+                                    <label id="labelMethodPaper" class="filing-method-card <?php echo $currentScan ? 'is-selected' : ''; ?>">
+                                        <input type="radio" name="filing_method" value="paper" <?php echo $currentScan ? 'checked' : ''; ?>>
+                                        <div>
+                                            <span class="filing-method-title">Pre-Signed Paper Form (KP Form 7)</span>
+                                            <span class="filing-method-desc">Scanned handwritten KP Form No. 7 signed directly by the complainant.</span>
+                                        </div>
+                                    </label>
+                                </div>
+
+                                <!-- Hardcopy KP Form 7 Upload Section -->
+                                <div id="paperUploadBox" style="<?php echo $currentScan ? 'display: block;' : 'display: none;'; ?> margin-top: 14px;">
+                                    <div class="intake-card kp7-upload-card" id="kp7UploadSection" style="margin: 0; background: #f8fafc;">
+                                        <div class="intake-card-header">
+                                            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; flex-wrap: wrap; gap: 8px;">
+                                                <div>
+                                                    <h3 style="margin: 0; display: flex; align-items: center; gap: 8px; font-size: 0.98rem;">
+                                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #0284c7;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                                                        Formal Complaint Document (KP Form 7)
+                                                    </h3>
+                                                    <span class="card-subtitle">Scanned PDF or high-resolution document</span>
+                                                </div>
+                                                <div>
+                                                    <?php
+                                                    $docStatus = $complaint['document_status'] ?? ($currentScan ? 'Scan Uploaded' : 'No Scan Uploaded');
+                                                    $badgeCls = ($docStatus === 'Updated Scan Uploaded') ? 'badge-doc-updated' : (($docStatus === 'Scan Uploaded' || $currentScan) ? 'badge-doc-uploaded' : 'badge-doc-no-scan');
+                                                    ?>
+                                                    <span class="badge-doc-status <?php echo $badgeCls; ?>" id="kp7DocStatusBadge"><?php echo htmlspecialchars($currentScan ? 'Scan Uploaded' : $docStatus); ?></span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <?php if ($currentScan): ?>
+                                            <!-- Existing Scanned Document Info Card -->
+                                            <div class="kp7-selected-preview" id="existingKp7Card" style="display: flex; margin-bottom: 12px;">
+                                                <div class="kp7-preview-left">
+                                                    <?php if (str_starts_with($currentScan['file_type'] ?? '', 'image/')): ?>
+                                                        <img src="../../../backend/api/complaints/scanned-document.php?id=<?php echo $complaintId; ?>" class="kp7-preview-thumb" alt="Scan Preview">
+                                                    <?php else: ?>
+                                                        <div class="kp7-preview-icon">PDF</div>
+                                                    <?php endif; ?>
+                                                    <div>
+                                                        <div class="kp7-preview-name"><?php echo htmlspecialchars($currentScan['file_name']); ?></div>
+                                                        <div class="kp7-preview-meta">
+                                                            <span class="badge-pill">Version <?php echo (int) $currentScan['version_number']; ?></span>
+                                                            <span><?php echo number_format(($currentScan['file_size'] ?? 0) / 1024, 1); ?> KB</span>
+                                                            <span>Uploaded <?php echo date('M d, Y h:i A', strtotime($currentScan['uploaded_at'])); ?></span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+                                                    <a href="../../../backend/api/complaints/scanned-document.php?id=<?php echo $complaintId; ?>" target="_blank" class="btn-outline-sm" title="Open scan in new tab">👁️ View Scan</a>
+                                                    <a href="../../../backend/api/complaints/scanned-document.php?id=<?php echo $complaintId; ?>&download=1" class="btn-outline-sm" title="Download scan">📥 Download</a>
+                                                    <button type="button" class="btn-outline-sm" id="btnToggleReplaceScan">Upload Replacement</button>
+                                                </div>
+                                            </div>
+
+                                            <!-- Replacement upload dropzone (hidden until toggled) -->
+                                            <div id="replacementDropzoneWrap" style="display: none; border-top: 1px dashed #cbd5e1; padding-top: 14px; margin-top: 10px;">
+                                                <div class="form-group" style="margin-bottom: 10px;">
+                                                    <label for="replacementReason" style="font-size: 0.82rem; font-weight: 600;">Reason for Replacement Scan <span class="optional-label">Optional</span></label>
+                                                    <input type="text" id="replacementReason" name="replacement_reason" placeholder="e.g. Clearer scan, certified copy, corrected handwritten document..." style="font-size: 0.85rem; padding: 6px 10px;">
+                                                </div>
+                                                <div class="kp7-upload-dropzone" id="kp7DropZone">
+                                                    <input type="file" id="scannedKp7Input" name="scanned_kp7" accept=".pdf,image/jpeg,image/png" style="display: none;">
+                                                    <div class="kp7-dropzone-icon">
+                                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                                    </div>
+                                                    <div class="kp7-dropzone-title">Select Replacement KP Form 7 Scan</div>
+                                                    <div class="kp7-dropzone-hint">Drag &amp; drop new scan here, or browse from computer</div>
+                                                    <button type="button" class="btn-outline-sm" id="btnBrowseKp7">Browse Replacement</button>
+                                                </div>
+                                            </div>
+                                        <?php else: ?>
+                                            <!-- No Scan Uploaded Dropzone -->
+                                            <div class="kp7-upload-dropzone" id="kp7DropZone">
+                                                <input type="file" id="scannedKp7Input" name="scanned_kp7" accept=".pdf,image/jpeg,image/png" style="display: none;">
+                                                <div class="kp7-dropzone-icon">
+                                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                                        <polyline points="17 8 12 3 7 8"/>
+                                                        <line x1="12" y1="3" x2="12" y2="15"/>
+                                                    </svg>
+                                                </div>
+                                                <div class="kp7-dropzone-title">Upload Handwritten KP Form 7</div>
+                                                <div class="kp7-dropzone-hint">Drag &amp; drop your scanned document or photo here, or browse from computer</div>
+                                                <button type="button" class="btn-outline-sm" id="btnBrowseKp7">Browse Document</button>
+                                                <div style="font-size: 0.74rem; color: #64748b; margin-top: 8px;">Accepted formats: PDF, JPG, JPEG, PNG (up to 25 MB)</div>
+                                            </div>
+                                        <?php endif; ?>
+
+                                        <!-- Selected File Preview Container (hidden by default) -->
+                                        <div id="kp7SelectedPreview" class="kp7-selected-preview" style="display: none;">
+                                            <div class="kp7-preview-left">
+                                                <div id="kp7ThumbWrap"></div>
+                                                <div>
+                                                    <div class="kp7-preview-name" id="kp7FileName">filename.pdf</div>
+                                                    <div class="kp7-preview-meta">
+                                                        <span class="badge-pill" id="kp7FileTypeBadge">PDF</span>
+                                                        <span id="kp7FileSize">0 MB</span>
+                                                        <span style="color: #16a34a; font-weight: 600;">✓ Ready to save</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+                                                <button type="button" class="btn-outline-sm" id="btnPreviewKp7Modal" title="Preview document before saving">👁️ Preview</button>
+                                                <button type="button" class="btn-outline-sm" id="btnReplaceKp7" title="Select a different file">Change</button>
+                                                <button type="button" class="btn-outline-sm" id="btnRemoveKp7" style="color: #dc2626; border-color: #fca5a5;" title="Remove this file">&times; Remove</button>
+                                            </div>
+                                        </div>
+
+                                        <div id="kp7UploadAlert" class="alert alert-danger" style="display: none; margin-top: 10px; font-size: 0.85rem; padding: 8px 12px;"></div>
+                                    </div>
+                                </div>
                             </div>
 
-                            <div class="form-row-2">
+                            <!-- Dispute Classification Grid -->
+                            <div class="form-row-2" style="margin-top: 10px;">
                                 <div class="form-group">
-                                    <label for="categoryId">Category <span class="required-mark">*</span></label>
+                                    <label for="categoryId">Complaint Category <span class="required-mark">*</span></label>
                                     <select id="categoryId" name="category_id" required>
                                         <option value="">Select Category</option>
                                         <?php foreach ($categories as $cat): ?>
                                             <option value="<?php echo (int)$cat['category_id']; ?>" <?php echo ((string)$effCategoryId === (string)$cat['category_id']) ? 'selected' : ''; ?>>
-                                                <?php echo htmlspecialchars($cat['category_name']); ?>
+                                                 <?php echo htmlspecialchars($cat['category_name']); ?>
                                             </option>
                                         <?php endforeach; ?>
                                     </select>
@@ -329,140 +514,192 @@ include '../../layouts/header.php';
                                 </div>
                             </div>
 
-                            <div class="form-group">
-                                <label for="incidentDateTime">Incident Date &amp; Time <span class="required-mark">*</span></label>
-                                <input type="datetime-local" id="incidentDateTime" name="incident_datetime" required value="<?php echo htmlspecialchars($effDatetime); ?>">
-                                <small class="field-hint">Merged incident date and time of occurrence.</small>
+                            <div class="form-row-2">
+                                <div class="form-group">
+                                    <label for="complaintTitle">Complaint Title / Specific Nature <span class="required-mark">*</span></label>
+                                    <input type="text" id="complaintTitle" name="complaint_title" maxlength="255" required placeholder="e.g. Boundary dispute, Unpaid debt, Slander" value="<?php echo htmlspecialchars($effTitle); ?>">
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="incidentDateTime" id="lblIncidentDateTime">
+                                        <?php echo !empty($effIsTimeUnknown) ? 'Incident Date (Exact Time Unknown)' : 'Incident Date &amp; Time'; ?> <span class="required-mark">*</span>
+                                    </label>
+                                    <input type="<?php echo !empty($effIsTimeUnknown) ? 'date' : 'datetime-local'; ?>" id="incidentDateTime" name="incident_datetime" required value="<?php echo htmlspecialchars($effDatetime); ?>">
+                                    <div class="time-options-row">
+                                        <label class="time-option-label">
+                                            <input type="checkbox" name="is_time_approximate" value="1" id="isTimeApproximate" <?php echo !empty($effIsTimeApprox) ? 'checked' : ''; ?> <?php echo !empty($effIsTimeUnknown) ? 'disabled' : ''; ?>>
+                                            <span>Approximate time</span>
+                                        </label>
+                                        <label class="time-option-label">
+                                            <input type="checkbox" name="is_time_unknown" value="1" id="isTimeUnknown" <?php echo !empty($effIsTimeUnknown) ? 'checked' : ''; ?>>
+                                            <span>Exact time unknown</span>
+                                        </label>
+                                    </div>
+                                    <span id="futureDateNotice" class="future-date-hint" style="display:none;">⚠️ Notice: Selected incident date is in the future. Please verify before saving.</span>
+                                </div>
                             </div>
 
-                            <div class="detail-info-grid" style="margin-top: 14px; padding-top: 14px; border-top: 1px dashed #e2e8f0;">
-                                <div class="detail-info-item">
-                                    <span class="detail-info-label">Date Filed</span>
-                                    <span class="detail-info-value"><?php echo !empty($complaint['created_at']) ? date('M d, Y', strtotime($complaint['created_at'])) : '—'; ?></span>
-                                </div>
-                                <div class="detail-info-item">
-                                    <span class="detail-info-label">Administrative Status</span>
-                                    <span class="detail-info-value">
-                                        <span class="status-pill status-<?php echo $statusSlug; ?>"><?php echo htmlspecialchars($complaint['status'] ?: 'Filed'); ?></span>
-                                    </span>
-                                </div>
-                                <div class="detail-info-item span-full">
-                                    <span class="detail-info-label">Docketed Case</span>
-                                    <span class="detail-info-value">
-                                        <?php if (!empty($linkedCase)): ?>
-                                            <span class="meta-pill case-pill" style="display:inline-flex;">
-                                                📁 <?php echo htmlspecialchars($linkedCase['case_number'] ?: ('Case #' . $linkedCase['case_id'])); ?> &rarr;
-                                            </span>
-                                        <?php else: ?>
-                                            Not yet docketed
-                                        <?php endif; ?>
-                                    </span>
-                                </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="blotterRefNo">Barangay Blotter Ref No. <span class="optional-label">Optional</span></label>
+                                <input type="text" id="blotterRefNo" name="blotter_ref_no" placeholder="e.g. BLOTTER-2026-1089" value="<?php echo htmlspecialchars($complaint['blotter_ref_no'] ?? ''); ?>">
+                                <small class="field-hint">Record internal or physical blotter reference number if applicable.</small>
                             </div>
-                        </div>
+                        </section>
 
-                        <!-- CARD 2: Involved Parties -->
-                        <div class="intake-card">
-                            <div class="intake-card-header">
-                                <h3>2. Involved Parties (<span id="partiesCount"><?php echo count($parties); ?></span>)</h3>
-                                <span class="card-subtitle">Choose from registered resident profiles to avoid misreporting</span>
+                        <!-- SECTION 2: INVOLVED PARTIES (MODAL-DRIVEN WITH MULTIPLE TOGGLES) -->
+                        <section id="section-parties" class="intake-section-card">
+                            <div class="intake-section-header">
+                                <div class="section-header-left">
+                                    <span class="section-badge-num">2</span>
+                                    <div class="section-title-wrap">
+                                        <h3>Involved Parties</h3>
+                                        <p>Manage dispute participants cleanly without cluttering the screen.</p>
+                                    </div>
+                                </div>
+                                <span class="section-step-indicator">Section 2 of 5</span>
+                            </div>
+
+                            <!-- Real-time Duplicate Warning Banner -->
+                            <div id="duplicateComplaintBanner" class="duplicate-warning-banner" style="display:none;">
+                                <div class="duplicate-warning-header">
+                                    <span>⚠️ Potential Duplicate Complaint Detected</span>
+                                    <button type="button" class="btn-clear-evidence" id="dismissDuplicateBanner" style="background:none;border:none;cursor:pointer;font-size:1.1rem;color:#9a3412;">&times;</button>
+                                </div>
+                                <p style="margin:0;font-size:0.83rem;">The system found active complaint record(s) involving the same complainant and respondent:</p>
+                                <ul class="duplicate-warning-list" id="duplicateComplaintList"></ul>
+                                <p style="margin:6px 0 0;font-size:0.78rem;color:#7c2d12;">Please verify if this complaint is a duplicate before proceeding.</p>
                             </div>
 
                             <div id="partyDistinctError" class="alert alert-danger" style="display:none; margin: 0 0 16px; padding: 10px 14px; font-size: 0.88rem; border-radius: 6px; background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5;">
-                                ⚠️ The complainant and respondent cannot be the same resident profile. Please select different individuals.
+                                ⚠️ The complainant and respondent cannot be the same profile. Please select or enter different individuals.
                             </div>
 
-                            <!-- Primary Complainant Selection -->
-                            <div class="form-group party-intake-group" id="complainantGroup">
-                                <label for="complainantSearchInput">
-                                    <span class="party-badge badge-complainant">Complainant</span>
-                                    Resident Profile <span class="required-mark">*</span>
+                            <!-- Checkbox options if there are multiple complainants or respondents -->
+                            <div class="party-multiple-toggles">
+                                <label class="time-option-label" style="font-weight:600; font-size:0.85rem; color:#1e293b; display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
+                                    <input type="checkbox" id="chkMultipleComplainants" name="has_multiple_complainants" value="1" <?php echo count($initialComplainants) > 1 ? 'checked' : ''; ?>>
+                                    <span>Multiple Complainants (Maraming Nagrereklamo)</span>
                                 </label>
-                                <div class="party-search-combobox" data-party-role="complainant">
-                                    <div class="party-search-input-wrap">
-                                        <svg class="party-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                                        <input type="text" id="complainantSearchInput" class="party-search-input" placeholder="Type resident name, purok, or address to search..." autocomplete="off">
-                                        <button type="button" class="party-search-clear" title="Clear selection" style="display:none;">&times;</button>
-                                    </div>
-                                    <input type="hidden" id="complainantResidentId" name="complainant_resident_id" required value="<?php echo htmlspecialchars((string)$effCompId); ?>">
-                                    <input type="hidden" id="complainantName" name="complainant_name" value="<?php echo htmlspecialchars($effCompName); ?>">
-                                    <div class="party-search-dropdown" style="display:none;"></div>
-                                </div>
-                                <div id="complainantPreview" class="party-selected-preview" style="display:none;"></div>
-                                <small class="field-hint">Person filing the complaint (type to search; only registered resident profiles can be selected).</small>
-                            </div>
-
-                            <!-- Primary Respondent Selection -->
-                            <div class="form-group party-intake-group" id="respondentGroup">
-                                <label for="respondentSearchInput">
-                                    <span class="party-badge badge-respondent">Respondent</span>
-                                    Person Being Complained Against <span class="required-mark">*</span>
+                                <label class="time-option-label" style="font-weight:600; font-size:0.85rem; color:#1e293b; display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
+                                    <input type="checkbox" id="chkMultipleRespondents" name="has_multiple_respondents" value="1" <?php echo count($initialRespondents) > 1 ? 'checked' : ''; ?>>
+                                    <span>Multiple Respondents (Maraming Ipinagrereklamo)</span>
                                 </label>
-                                <div class="party-search-combobox" data-party-role="respondent">
-                                    <div class="party-search-input-wrap">
-                                        <svg class="party-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                                        <input type="text" id="respondentSearchInput" class="party-search-input" placeholder="Type resident name, purok, or address to search..." autocomplete="off">
-                                        <button type="button" class="party-search-clear" title="Clear selection" style="display:none;">&times;</button>
+                            </div>
+
+                            <!-- COMPLAINANTS SUB-SECTION -->
+                            <div class="party-group-section" id="complainantsGroupSection">
+                                <div class="party-group-header">
+                                    <div class="party-group-title-wrap">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                                        <h4 class="party-group-title">Complainants (Nagrereklamo) <span class="required-mark">*</span></h4>
                                     </div>
-                                    <input type="hidden" id="respondentResidentId" name="respondent_resident_id" required value="<?php echo htmlspecialchars((string)$effRespId); ?>">
-                                    <input type="hidden" id="respondentName" name="respondent_name" value="<?php echo htmlspecialchars($effRespName); ?>">
-                                    <div class="party-search-dropdown" style="display:none;"></div>
+                                    <button type="button" class="btn-create btn-sm" id="btnAddComplainantModal" style="display:inline-flex; align-items:center; gap:6px; font-size:0.8rem; padding:6px 14px;">
+                                        + Add Complainant
+                                    </button>
                                 </div>
-                                <div id="respondentPreview" class="party-selected-preview" style="display:none;"></div>
-                                <small class="field-hint">Person or entity against whom the complaint is filed (type to search; only registered resident profiles can be selected).</small>
+                                <div id="complainantsSummaryList" class="party-summary-list"></div>
                             </div>
 
-                            <!-- Dynamic Additional Parties -->
-                            <div id="additionalPartiesContainer" class="additional-parties-container">
-                                <?php foreach ($additionalParties as $idx => $ap): ?>
-                                    <div class="additional-party-row" id="partyRow_<?php echo $idx; ?>">
-                                        <div class="party-row-fields">
-                                            <div class="form-group party-type-col">
-                                                <select name="party_types[]">
-                                                    <option value="Witness" <?php echo ($ap['party_type'] === 'Witness') ? 'selected' : ''; ?>>Witness</option>
-                                                    <option value="Complainant" <?php echo ($ap['party_type'] === 'Complainant') ? 'selected' : ''; ?>>Complainant</option>
-                                                    <option value="Respondent" <?php echo ($ap['party_type'] === 'Respondent') ? 'selected' : ''; ?>>Respondent</option>
-                                                </select>
-                                            </div>
-                                            <div class="form-group party-name-col">
-                                                <div class="party-search-combobox" data-party-role="additional">
-                                                    <div class="party-search-input-wrap">
-                                                        <svg class="party-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                                                        <input type="text" class="party-search-input" placeholder="Type resident name or address to search..." autocomplete="off">
-                                                        <button type="button" class="party-search-clear" title="Clear selection" style="display:none;">&times;</button>
-                                                    </div>
-                                                    <input type="hidden" name="party_resident_ids[]" required value="<?php echo !empty($ap['resident_id']) ? (int)$ap['resident_id'] : ''; ?>">
-                                                    <input type="hidden" name="party_names[]" value="<?php echo htmlspecialchars($ap['name']); ?>">
-                                                    <div class="party-search-dropdown" style="display:none;"></div>
-                                                </div>
-                                            </div>
-                                            <button type="button" class="btn-remove-party" title="Remove party" onclick="removePartyRow('partyRow_<?php echo $idx; ?>')">&times;</button>
-                                        </div>
-                                        <div class="party-selected-preview additional-party-preview" style="display:none;"></div>
+                            <!-- RESPONDENTS SUB-SECTION -->
+                            <div class="party-group-section" id="respondentsGroupSection" style="padding-top:16px; border-top:1px solid #e2e8f0;">
+                                <div class="party-group-header">
+                                    <div class="party-group-title-wrap">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e11d48" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="8" x2="23" y2="14"/><line x1="23" y1="8" x2="17" y2="14"/></svg>
+                                        <h4 class="party-group-title">Respondents (Ipinagrereklamo) <span class="required-mark">*</span></h4>
                                     </div>
-                                <?php endforeach; ?>
+                                    <button type="button" class="btn-secondary btn-sm" id="btnAddRespondentModal" style="display:inline-flex; align-items:center; gap:6px; font-size:0.8rem; padding:6px 14px; border-color:#fca5a5; color:#be123c; background:#fff1f2;">
+                                        + Add Respondent
+                                    </button>
+                                </div>
+                                <div id="respondentsSummaryList" class="party-summary-list"></div>
                             </div>
 
-                            <div class="add-party-action-row">
-                                <button type="button" id="addPartyBtn" class="btn-outline-sm">
-                                    + Add Another Party (Witness / Extra Party)
-                                </button>
+                            <!-- WITNESSES SUB-SECTION -->
+                            <div class="party-group-section" id="witnessesGroupSection" style="padding-top:16px; border-top:1px solid #e2e8f0; margin-bottom:0;">
+                                <div class="party-group-header">
+                                    <div class="party-group-title-wrap">
+                                        <span class="party-badge" style="background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; font-size:0.75rem;">Witness(es) &amp; Additional Parties (Optional)</span>
+                                    </div>
+                                    <button type="button" id="addPartyBtn" class="btn-outline-sm" style="font-size:0.78rem;">
+                                        + Add Witness
+                                    </button>
+                                </div>
+                                <div id="additionalPartiesContainer" class="additional-parties-container"></div>
                             </div>
-                        </div>
 
-                        <!-- CARD 3: Narrative & Facts -->
-                        <div class="intake-card">
-                            <div class="intake-card-header">
-                                <h3>3. Narrative &amp; Facts</h3>
-                                <span class="card-subtitle">Statement and description of the complaint</span>
+                            <!-- Hidden Inputs for Primary Complainant -->
+                            <input type="hidden" id="complainantResidentId" name="complainant_resident_id" value="">
+                            <input type="hidden" id="complainantName" name="complainant_name" value="">
+                            <input type="hidden" id="complainantFirstName" name="complainant_first_name" value="">
+                            <input type="hidden" id="complainantMiddleName" name="complainant_middle_name" value="">
+                            <input type="hidden" id="complainantLastName" name="complainant_last_name" value="">
+                            <input type="hidden" id="complainantSuffix" name="complainant_suffix" value="">
+                            <input type="hidden" id="complainantBirthdate" name="complainant_birthdate" value="">
+                            <input type="hidden" id="complainantAge" name="complainant_age" value="">
+                            <input type="hidden" id="complainantGender" name="complainant_gender" value="">
+                            <input type="hidden" id="complainantCivilStatus" name="complainant_civil_status" value="">
+                            <input type="hidden" id="complainantOccupation" name="complainant_occupation" value="">
+                            <input type="hidden" id="complainantContactNo" name="complainant_contact_no" value="">
+                            <input type="hidden" id="complainantEmail" name="complainant_email" value="">
+                            <input type="hidden" id="complainantPreferredContact" name="complainant_preferred_contact" value="SMS">
+                            <input type="hidden" id="complainantPurok" name="complainant_purok" value="">
+                            <input type="hidden" id="complainantIsTenant" name="complainant_is_tenant" value="0">
+                            <input type="hidden" id="complainantAddress" name="complainant_address" value="">
+                            <input type="hidden" id="complainantIsMinor" name="complainant_is_minor" value="0">
+                            <input type="hidden" id="complainantGuardianName" name="complainant_guardian_name" value="">
+                            <input type="hidden" id="complainantGuardianRelationship" name="complainant_guardian_relationship" value="">
+                            <input type="hidden" id="complainantGuardianContact" name="complainant_guardian_contact" value="">
+                            <input type="hidden" id="complainantGuardianAddress" name="complainant_guardian_address" value="">
+
+                            <!-- Hidden Inputs for Primary Respondent -->
+                            <input type="hidden" id="respondentResidentId" name="respondent_resident_id" value="">
+                            <input type="hidden" id="respondentName" name="respondent_name" value="">
+                            <input type="hidden" id="respondentFirstName" name="respondent_first_name" value="">
+                            <input type="hidden" id="respondentMiddleName" name="respondent_middle_name" value="">
+                            <input type="hidden" id="respondentLastName" name="respondent_last_name" value="">
+                            <input type="hidden" id="respondentSuffix" name="respondent_suffix" value="">
+                            <input type="hidden" id="respondentBirthdate" name="respondent_birthdate" value="">
+                            <input type="hidden" id="respondentAge" name="respondent_age" value="">
+                            <input type="hidden" id="respondentGender" name="respondent_gender" value="">
+                            <input type="hidden" id="respondentCivilStatus" name="respondent_civil_status" value="">
+                            <input type="hidden" id="respondentOccupation" name="respondent_occupation" value="">
+                            <input type="hidden" id="respondentContactNo" name="respondent_contact_no" value="">
+                            <input type="hidden" id="respondentEmail" name="respondent_email" value="">
+                            <input type="hidden" id="respondentPurok" name="respondent_purok" value="">
+                            <input type="hidden" id="respondentIsTenant" name="respondent_is_tenant" value="0">
+                            <input type="hidden" id="respondentAddress" name="respondent_address" value="">
+                            <input type="hidden" id="respondentIsMinor" name="respondent_is_minor" value="0">
+                            <input type="hidden" id="respondentGuardianName" name="respondent_guardian_name" value="">
+                            <input type="hidden" id="respondentGuardianRelationship" name="respondent_guardian_relationship" value="">
+                            <input type="hidden" id="respondentGuardianContact" name="respondent_guardian_contact" value="">
+                            <input type="hidden" id="respondentGuardianAddress" name="respondent_guardian_address" value="">
+                            <input type="hidden" id="respContactUnknown" name="respondent_contact_unknown" value="0">
+                            <input type="hidden" id="respMiddleUnknown" name="respondent_middle_name_unknown" value="0">
+                            <input type="hidden" id="respBirthUnknown" name="respondent_birthdate_unknown" value="0">
+
+                            <!-- Container for dynamic additional parties hidden inputs -->
+                            <div id="additionalPartiesHiddenContainer"></div>
+                        </section>
+
+                        <!-- SECTION 3: STATEMENT OF FACTS & RELIEF SOUGHT -->
+                        <section id="section-narrative" class="intake-section-card">
+                            <div class="intake-section-header">
+                                <div class="section-header-left">
+                                    <span class="section-badge-num">3</span>
+                                    <div class="section-title-wrap">
+                                        <h3>Statement of Facts &amp; Relief Sought</h3>
+                                        <p>Provide narrative according to Katarungang Pambarangay guidelines.</p>
+                                    </div>
+                                </div>
+                                <span class="section-step-indicator">Section 3 of 5</span>
                             </div>
 
                             <div class="form-group">
-                                <label for="narrative">Statement of Complaint / Narrative <span class="required-mark">*</span></label>
+                                <label for="narrative">Complaint Narrative <span class="required-mark" id="narrativeRequiredStar">*</span></label>
                                 <textarea id="narrative" name="narrative" rows="5" maxlength="15000" required placeholder="Describe in detail what occurred, when, and the circumstances surrounding the incident..."><?php echo htmlspecialchars($effNarrative); ?></textarea>
                                 <div class="ai-narrative-actions">
                                     <button type="button" class="btn-outline-sm" data-enhance-narrative>✨ Enhance with AI</button>
-                                    <small class="field-hint">Improves wording only. Review the suggestion before applying it.</small>
+                                    <small class="field-hint">Keep statements chronological, clear, and focused on key incident details.</small>
                                 </div>
                                 <div class="ai-narrative-preview" data-narrative-preview hidden>
                                     <strong>AI suggestion</strong>
@@ -472,212 +709,181 @@ include '../../layouts/header.php';
                                         <button type="button" class="btn-secondary btn-sm" data-discard-narrative>Keep my original</button>
                                     </div>
                                 </div>
-                                <small class="field-hint">Required; up to 15,000 characters.</small>
                             </div>
 
-                            <div class="form-group">
-                                <label for="additionalDetails">Additional Details / Prior Attempts <span class="optional-label">Optional</span></label>
-                                <textarea id="additionalDetails" name="additional_details" rows="3" maxlength="5000" placeholder="Prior reconciliation attempts, witnesses present, injuries/damages, or other relevant facts..."><?php echo htmlspecialchars($effDetails); ?></textarea>
-                                <small class="field-hint">Optional; up to 5,000 characters.</small>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label for="requestedResolution">Relief / Settlement Desired by Complainant <span class="optional-label">Optional</span></label>
+                                <textarea id="requestedResolution" name="requested_resolution" rows="3" maxlength="5000" placeholder="Specify desired resolution (e.g., payment of debt, boundary wall restoration, public apology, cessation of nuisance)..."><?php echo htmlspecialchars($effRequestedResolution); ?></textarea>
                             </div>
-                        </div>
+                        </section>
 
-                    </div>
-
-                    <!-- RIGHT COLUMN -->
-                    <div class="intake-col">
-
-                        <!-- CARD 4: Incident Location -->
-                        <div class="intake-card location-card">
-                            <div class="intake-card-header">
-                                <h3>4. Incident Location</h3>
-                                <span class="card-subtitle">Geographic location and pinned coordinates</span>
-                            </div>
-
-                            <div class="detail-info-grid">
-                                <div class="form-group">
-                                    <label for="incidentCity">City <span class="required-mark">*</span></label>
-                                    <input type="text" id="incidentCity" name="incident_city" maxlength="100" required readonly value="<?php echo htmlspecialchars($effCity); ?>">
-                                </div>
-                                <div class="form-group">
-                                    <label for="incidentBarangay">Barangay <span class="required-mark">*</span></label>
-                                    <?php
-                                    $marikinaBarangays = [
-                                        'Tumana',
-                                        'Barangka',
-                                        'Calumpang',
-                                        'Concepcion Uno',
-                                        'Concepcion Dos',
-                                        'Fortune',
-                                        'Industrial Valley Complex',
-                                        'Jesus Dela Peña',
-                                        'Malanday',
-                                        'Marikina Heights',
-                                        'Nangka',
-                                        'Parang',
-                                        'San Roque',
-                                        'Santa Elena',
-                                        'Santo Niño',
-                                        'Tañong'
-                                    ];
-                                    $currBgy = $effBarangay ?: 'Tumana';
-                                    ?>
-                                    <select id="incidentBarangay" name="incident_barangay" required>
-                                        <?php foreach ($marikinaBarangays as $bgy): ?>
-                                            <option value="<?php echo htmlspecialchars($bgy); ?>" <?php echo ($currBgy === $bgy) ? 'selected' : ''; ?>><?php echo htmlspecialchars($bgy); ?></option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label for="incidentStreet">Street / Specific Location <span class="required-mark">*</span></label>
-                                <input type="text" id="incidentStreet" name="incident_street" maxlength="255" required placeholder="Street, building, or nearby place" value="<?php echo htmlspecialchars($effStreet); ?>">
-                            </div>
-                            <div class="form-group">
-                                <label for="incidentPurok">Purok / Zone (Tumana) <span class="optional-label">Optional</span></label>
-                                <?php
-                                $currPurok = $effPurok;
-                                $knownPuroks = [
-                                    'Outside Tumana',
-                                    'Non-Resident',
-                                    'Purok 1', 'Purok 2', 'Purok 3', 'Purok 4', 'Purok 5', 'Purok 6', 'Purok 7', 'Purok 8',
-                                    'Doña Petra', 'Bagong Farmers', 'Bukang Liwayway', 'Libis Tumana', 'Bagong Purok', 'Palay', 'Mais', 'Singkamas'
-                                ];
-                                $isCustomPurok = !empty($currPurok) && !in_array($currPurok, $knownPuroks, true);
-                                ?>
-                                <select name="incident_purok" id="incidentPurok">
-                                    <option value="">Select Purok / Area</option>
-                                    <option value="Outside Tumana" id="purokOutsideTumanaOption" <?php echo ($currPurok === 'Outside Tumana' || $currPurok === 'Non-Resident') ? 'selected' : ''; ?>>Outside Tumana</option>
-                                    <optgroup label="Numbered Puroks">
-                                        <option value="Purok 1" <?php echo ($currPurok === 'Purok 1') ? 'selected' : ''; ?>>Purok 1</option>
-                                        <option value="Purok 2" <?php echo ($currPurok === 'Purok 2') ? 'selected' : ''; ?>>Purok 2</option>
-                                        <option value="Purok 3" <?php echo ($currPurok === 'Purok 3') ? 'selected' : ''; ?>>Purok 3</option>
-                                        <option value="Purok 4" <?php echo ($currPurok === 'Purok 4') ? 'selected' : ''; ?>>Purok 4</option>
-                                        <option value="Purok 5" <?php echo ($currPurok === 'Purok 5') ? 'selected' : ''; ?>>Purok 5</option>
-                                        <option value="Purok 6" <?php echo ($currPurok === 'Purok 6') ? 'selected' : ''; ?>>Purok 6</option>
-                                        <option value="Purok 7" <?php echo ($currPurok === 'Purok 7') ? 'selected' : ''; ?>>Purok 7</option>
-                                        <option value="Purok 8" <?php echo ($currPurok === 'Purok 8') ? 'selected' : ''; ?>>Purok 8</option>
-                                    </optgroup>
-                                    <optgroup label="Zones & Compounds">
-                                        <option value="Doña Petra" <?php echo ($currPurok === 'Doña Petra') ? 'selected' : ''; ?>>Doña Petra Compound</option>
-                                        <option value="Bagong Farmers" <?php echo ($currPurok === 'Bagong Farmers') ? 'selected' : ''; ?>>Bagong Farmers</option>
-                                        <option value="Bukang Liwayway" <?php echo ($currPurok === 'Bukang Liwayway') ? 'selected' : ''; ?>>Bukang Liwayway</option>
-                                        <option value="Libis Tumana" <?php echo ($currPurok === 'Libis Tumana') ? 'selected' : ''; ?>>Libis Tumana</option>
-                                        <option value="Bagong Purok" <?php echo ($currPurok === 'Bagong Purok') ? 'selected' : ''; ?>>Sitio Bagong Purok</option>
-                                        <option value="Palay" <?php echo ($currPurok === 'Palay') ? 'selected' : ''; ?>>Palay Area</option>
-                                        <option value="Mais" <?php echo ($currPurok === 'Mais') ? 'selected' : ''; ?>>Mais Area</option>
-                                        <option value="Singkamas" <?php echo ($currPurok === 'Singkamas') ? 'selected' : ''; ?>>Singkamas Area</option>
-                                    </optgroup>
-                                    <?php if ($isCustomPurok): ?>
-                                        <option value="<?php echo htmlspecialchars($currPurok); ?>" selected><?php echo htmlspecialchars($currPurok); ?> (Existing)</option>
-                                    <?php endif; ?>
-                                </select>
-                            </div>
-
-                            <div class="form-group">
-                                <label for="incidentLandmark">Nearby Landmark <span class="optional-label">Optional</span></label>
-                                <input type="text" id="incidentLandmark" name="incident_landmark" maxlength="255" placeholder="e.g. Near Barangay Hall, Beside Elementary School" value="<?php echo htmlspecialchars($effLandmark); ?>">
-                            </div>
-
-                            <!-- Map Group -->
-                            <div class="form-group complaint-map-group">
-                                <label>Exact Map Location <span class="optional-label">Optional</span></label>
-                                <input type="hidden" name="map_location_state" id="mapLocationState" value="<?php echo ($savedLat && $savedLng) ? 'unchanged' : 'none'; ?>" data-map-state>
-                                <input type="hidden" name="location_latitude" id="locationLatitude" value="<?php echo htmlspecialchars($savedLat); ?>" data-map-latitude>
-                                <input type="hidden" name="location_longitude" id="locationLongitude" value="<?php echo htmlspecialchars($savedLng); ?>" data-map-longitude>
-
-                                <p class="map-help">Click on the map or drag the pin to set the exact coordinates in Marikina City, or type the address above.</p>
-
-                                <div id="editComplaintMap" class="complaint-location-map compact-map" aria-label="Map for selecting the exact incident location"></div>
-
-                                <div class="map-selection-row">
-                                    <span class="map-selection-status" data-map-status>
-                                        <?php echo ($savedLat && $savedLng) ? "Saved map point: " . number_format((float)$savedLat, 6) . ", " . number_format((float)$savedLng, 6) : "No map point selected."; ?>
-                                    </span>
-                                    <button type="button" class="btn-secondary btn-sm" data-clear-map>Clear pin</button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- CARD 5: Evidence & Attachments -->
-                        <div class="intake-card evidence-card">
-                            <div class="intake-card-header">
-                                <h3>5. Evidence / Attachments (<span id="attachmentsCount"><?php echo count($attachments); ?></span>)</h3>
-                                <span class="card-subtitle">Supporting documents, pictures, or videos</span>
-                            </div>
-
-                            <!-- Existing Attachments List -->
-                            <div id="existingAttachmentsList" class="attachments-detail-list" style="margin-bottom: 16px;">
-                                <?php if (empty($attachments)): ?>
-                                    <div class="empty-detail-state" id="existingEmptyState" style="padding: 12px; margin-bottom: 8px;">
-                                        <p style="margin:0;">No evidence or attachments uploaded yet.</p>
+                        <!-- SECTION 4: INCIDENT LOCATION & INTEGRATED MAP -->
+                        <section id="section-location" class="intake-section-card">
+                            <div class="intake-section-header">
+                                <div class="section-header-left">
+                                    <span class="section-badge-num">4</span>
+                                    <div class="section-title-wrap">
+                                        <h3>Incident Location &amp; Map Pin</h3>
+                                        <p>Specify incident address and set precise geographic location coordinates.</p>
                                     </div>
-                                <?php else: ?>
-                                    <?php foreach ($attachments as $att): ?>
-                                        <?php
-                                        $attId = (int)$att['attachment_id'];
-                                        $downloadUrl = "../../../backend/api/complaints/download-attachment.php?id={$attId}";
-                                        $ext = strtolower(pathinfo($att['file_name'], PATHINFO_EXTENSION));
-                                        $isImg = in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'], true) || str_starts_with((string)$att['file_type'], 'image/');
-                                        $isVid = in_array($ext, ['mp4', 'webm'], true) || str_starts_with((string)$att['file_type'], 'video/');
-                                        $isPdf = $ext === 'pdf' || $att['file_type'] === 'application/pdf';
-                                        $isDoc = in_array($ext, ['doc', 'docx'], true) || str_contains((string)$att['file_type'], 'word');
+                                </div>
+                                <span class="section-step-indicator">Section 4 of 5</span>
+                            </div>
 
-                                        $iconClass = 'icon-file';
-                                        $iconText = 'FILE';
-                                        if ($isVid) { $iconClass = 'icon-video'; $iconText = 'VID'; }
-                                        elseif ($isPdf) { $iconClass = 'icon-pdf'; $iconText = 'PDF'; }
-                                        elseif ($isDoc) { $iconClass = 'icon-doc'; $iconText = 'DOC'; }
-                                        ?>
-                                        <div class="attachment-detail-card" id="attCard_<?php echo $attId; ?>">
-                                            <div class="attachment-detail-left">
-                                                <?php if ($isImg): ?>
-                                                    <img src="<?php echo htmlspecialchars($downloadUrl); ?>" class="attachment-thumb-img" alt="<?php echo htmlspecialchars($att['file_name']); ?>">
-                                                <?php else: ?>
-                                                    <div class="attachment-type-icon <?php echo $iconClass; ?>"><?php echo $iconText; ?></div>
+                            <div class="location-split-layout">
+                                <!-- Left Column: Address Fields -->
+                                <div>
+                                    <div class="form-group">
+                                        <label for="incidentStreet">Street Address / Alley / Landmark <span class="required-mark">*</span></label>
+                                        <input type="text" id="incidentStreet" name="incident_street" maxlength="255" required placeholder="House #, Street, building, or nearby place" value="<?php echo htmlspecialchars($effStreet); ?>">
+                                    </div>
+
+                                    <div class="detail-info-grid">
+                                        <div class="form-group">
+                                            <label for="incidentPurok">Sitio / Zone / Purok (Tumana)</label>
+                                            <?php
+                                            $currPurok = $effPurok;
+                                            $knownPuroks = [
+                                                'Outside Tumana',
+                                                'Non-Resident',
+                                                'Purok 1', 'Purok 2', 'Purok 3', 'Purok 4', 'Purok 5', 'Purok 6', 'Purok 7', 'Purok 8',
+                                                'Doña Petra', 'Bagong Farmers', 'Bukang Liwayway', 'Libis Tumana', 'Bagong Purok', 'Palay', 'Mais', 'Singkamas'
+                                            ];
+                                            $isCustomPurok = !empty($currPurok) && !in_array($currPurok, $knownPuroks, true);
+                                            ?>
+                                            <select name="incident_purok" id="incidentPurok">
+                                                <option value="">Select Purok / Area</option>
+                                                <option value="Outside Tumana" id="purokOutsideTumanaOption" <?php echo ($currPurok === 'Outside Tumana' || $currPurok === 'Non-Resident') ? 'selected' : ''; ?>>Outside Tumana</option>
+                                                <optgroup label="Numbered Puroks">
+                                                    <option value="Purok 1" <?php echo ($currPurok === 'Purok 1') ? 'selected' : ''; ?>>Purok 1</option>
+                                                    <option value="Purok 2" <?php echo ($currPurok === 'Purok 2') ? 'selected' : ''; ?>>Purok 2</option>
+                                                    <option value="Purok 3" <?php echo ($currPurok === 'Purok 3') ? 'selected' : ''; ?>>Purok 3</option>
+                                                    <option value="Purok 4" <?php echo ($currPurok === 'Purok 4') ? 'selected' : ''; ?>>Purok 4</option>
+                                                    <option value="Purok 5" <?php echo ($currPurok === 'Purok 5') ? 'selected' : ''; ?>>Purok 5</option>
+                                                    <option value="Purok 6" <?php echo ($currPurok === 'Purok 6') ? 'selected' : ''; ?>>Purok 6</option>
+                                                    <option value="Purok 7" <?php echo ($currPurok === 'Purok 7') ? 'selected' : ''; ?>>Purok 7</option>
+                                                    <option value="Purok 8" <?php echo ($currPurok === 'Purok 8') ? 'selected' : ''; ?>>Purok 8</option>
+                                                </optgroup>
+                                                <optgroup label="Zones & Compounds">
+                                                    <option value="Doña Petra" <?php echo ($currPurok === 'Doña Petra') ? 'selected' : ''; ?>>Doña Petra Compound</option>
+                                                    <option value="Bagong Farmers" <?php echo ($currPurok === 'Bagong Farmers') ? 'selected' : ''; ?>>Bagong Farmers</option>
+                                                    <option value="Bukang Liwayway" <?php echo ($currPurok === 'Bukang Liwayway') ? 'selected' : ''; ?>>Bukang Liwayway</option>
+                                                    <option value="Libis Tumana" <?php echo ($currPurok === 'Libis Tumana') ? 'selected' : ''; ?>>Libis Tumana</option>
+                                                    <option value="Bagong Purok" <?php echo ($currPurok === 'Bagong Purok') ? 'selected' : ''; ?>>Sitio Bagong Purok</option>
+                                                    <option value="Palay" <?php echo ($currPurok === 'Palay') ? 'selected' : ''; ?>>Palay Area</option>
+                                                    <option value="Mais" <?php echo ($currPurok === 'Mais') ? 'selected' : ''; ?>>Mais Area</option>
+                                                    <option value="Singkamas" <?php echo ($currPurok === 'Singkamas') ? 'selected' : ''; ?>>Singkamas Area</option>
+                                                </optgroup>
+                                                <?php if ($isCustomPurok): ?>
+                                                    <option value="<?php echo htmlspecialchars($currPurok); ?>" selected><?php echo htmlspecialchars($currPurok); ?> (Existing)</option>
                                                 <?php endif; ?>
-                                                <div style="min-width: 0; flex: 1;">
-                                                    <a href="<?php echo htmlspecialchars($downloadUrl); ?>" class="attachment-detail-name" title="Download <?php echo htmlspecialchars($att['file_name']); ?>">
-                                                        <?php echo htmlspecialchars($att['file_name']); ?>
-                                                    </a>
-                                                    <div class="attachment-detail-meta">
-                                                        <span><?php echo htmlspecialchars($att['file_type'] ?: strtoupper($ext)); ?></span> &bull;
-                                                        <span><?php echo !empty($att['uploaded_at']) ? date('M d, Y h:i A', strtotime($att['uploaded_at'])) : ''; ?></span>
+                                            </select>
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="incidentBarangay">Barangay</label>
+                                            <input type="text" id="incidentBarangay" name="incident_barangay" value="Tumana" readonly style="background:#f1f5f9; color:#475569; cursor:not-allowed;">
+                                        </div>
+                                    </div>
+
+                                    <div class="detail-info-grid">
+                                        <div class="form-group">
+                                            <label for="incidentCity">City / Municipality</label>
+                                            <input type="text" id="incidentCity" name="incident_city" value="Marikina City" readonly style="background:#f1f5f9; color:#475569; cursor:not-allowed;">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="incidentProvince">Province / Region</label>
+                                            <input type="text" id="incidentProvince" value="Metro Manila" readonly style="background:#f1f5f9; color:#475569; cursor:not-allowed;">
+                                        </div>
+                                    </div>
+
+
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label for="incidentLocationDetails">Specific Location / Landmark Details <span class="optional-label">Optional</span></label>
+                                        <textarea id="incidentLocationDetails" name="incident_location_details" rows="2" maxlength="1000" placeholder="Floor, unit number, corner, access directions, or additional boundary notes..."><?php echo htmlspecialchars($effLocationDetails); ?></textarea>
+                                    </div>
+                                </div>
+
+                                <!-- Right Column: Map Pinpoint Box -->
+                                <div class="location-map-pinbox">
+                                    <div class="map-pinbox-topbar">
+                                        <span><i class="map-icon" style="color:#e11d48;">📍</i> Location Coordinates: <strong id="mapCoordsDisplay"><?php echo ($savedLat && $savedLng) ? number_format((float)$savedLat, 4) . '° N, ' . number_format((float)$savedLng, 4) . '° E' : '14.6521° N, 121.0854° E'; ?></strong></span>
+                                        <button type="button" class="btn-recenter-map" id="btnRecenterMap" title="Center map on Barangay Tumana">Recenter</button>
+                                    </div>
+
+                                    <input type="hidden" name="map_location_state" value="<?php echo htmlspecialchars($savedState); ?>" data-map-state>
+                                    <input type="hidden" name="location_latitude" value="<?php echo htmlspecialchars((string)$savedLat); ?>" data-map-latitude>
+                                    <input type="hidden" name="location_longitude" value="<?php echo htmlspecialchars((string)$savedLng); ?>" data-map-longitude>
+
+                                    <div id="editComplaintMap" class="complaint-location-map" style="height: 320px; border: none; border-radius: 0;" aria-label="Map for selecting the exact incident location"></div>
+
+                                    <div style="padding: 10px 14px; background: #ffffff; border-top: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                                        <span class="map-selection-status" data-map-status style="font-size:0.8rem; color:#64748b;">
+                                            <?php echo ($savedLat && $savedLng) ? 'Saved map point loaded.' : 'No map point selected.'; ?>
+                                        </span>
+                                        <button type="button" class="btn-secondary btn-sm" data-clear-map style="padding: 4px 10px; font-size: 0.76rem;">Clear pin</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <!-- SECTION 5: EVIDENCE & ATTACHMENTS -->
+                        <section id="section-evidence" class="intake-section-card">
+                            <div class="intake-section-header">
+                                <div class="section-header-left">
+                                    <span class="section-badge-num">5</span>
+                                    <div class="section-title-wrap">
+                                        <h3>Evidence &amp; Attachments</h3>
+                                        <p>Review existing documents and upload additional blotter copies or photo evidence.</p>
+                                    </div>
+                                </div>
+                                <span class="section-step-indicator">Section 5 of 5</span>
+                            </div>
+
+                            <!-- Existing Attachments Display (if any) -->
+                            <?php if (!empty($attachments)): ?>
+                                <div style="margin-bottom: 20px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px;">
+                                    <div style="font-size: 0.82rem; font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px;">
+                                        Existing Complaint Attachments (<?php echo count($attachments); ?>)
+                                    </div>
+                                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                                        <?php foreach ($attachments as $att): ?>
+                                            <div style="display: flex; align-items: center; justify-content: space-between; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px; gap: 8px;">
+                                                <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+                                                    <span style="font-size: 1.1rem;">📎</span>
+                                                    <div style="min-width: 0;">
+                                                        <div style="font-weight: 600; font-size: 0.88rem; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                                            <?php echo htmlspecialchars($att['file_name']); ?>
+                                                        </div>
+                                                        <div style="font-size: 0.75rem; color: #64748b;">
+                                                            Uploaded <?php echo date('M d, Y h:i A', strtotime($att['uploaded_at'])); ?> &bull; <?php echo htmlspecialchars($att['file_type']); ?>
+                                                        </div>
                                                     </div>
                                                 </div>
+                                                <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+                                                    <a href="../../../backend/api/complaints/download-attachment.php?id=<?php echo (int)$att['attachment_id']; ?>" class="btn-outline-sm" style="font-size: 0.75rem; padding: 4px 10px;" target="_blank">
+                                                        📥 Download
+                                                    </a>
+                                                </div>
                                             </div>
-                                            <div class="attachment-detail-actions">
-                                                <?php if ($isImg): ?>
-                                                    <button type="button" class="btn-icon-action btn-ocr-existing" title="Extract text from this image into the narrative" data-att-url="<?php echo htmlspecialchars($downloadUrl); ?>" data-att-name="<?php echo htmlspecialchars($att['file_name']); ?>" onclick="runOcrOnExistingAttachment(this)">
-                                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-                                                    </button>
-                                                <?php endif; ?>
-                                                <a href="<?php echo htmlspecialchars($downloadUrl); ?>" class="btn-icon-action" title="Download file" download>
-                                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                                                </a>
-                                                <button type="button" class="btn-icon-action delete" title="Delete attachment" onclick="deleteExistingAttachment(<?php echo $attId; ?>, this)">
-                                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    <?php endforeach; ?>
-                                <?php endif; ?>
-                            </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                            <?php endif; ?>
 
-                            <!-- Upload New Evidence Zone -->
-                            <label style="font-weight: 600; font-size: 0.88rem; color: #334155; margin-bottom: 6px; display: block;">Upload Additional Evidence <span class="optional-label">Optional</span></label>
+                            <!-- Dropzone for New Files -->
                             <div class="evidence-upload-zone" id="evidenceDropZone">
                                 <input type="file" id="evidenceFiles" name="evidence[]" multiple accept="image/*,video/*,.pdf,.doc,.docx" class="evidence-file-input">
                                 <div class="upload-zone-body">
                                     <div class="upload-zone-icon">
-                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                                             <polyline points="17 8 12 3 7 8"/>
                                             <line x1="12" y1="3" x2="12" y2="15"/>
                                         </svg>
                                     </div>
                                     <div class="upload-zone-text">
-                                        <p class="upload-primary-text"><strong>Choose files</strong> or drag &amp; drop here</p>
+                                        <p class="upload-primary-text"><strong>Upload new files</strong> or drag &amp; drop here</p>
                                         <p class="upload-secondary-text">Images, videos, PDF, and Word documents up to 25 MB each</p>
                                     </div>
                                     <button type="button" class="btn-browse-files" id="btnBrowseEvidence">Browse Files</button>
@@ -686,17 +892,17 @@ include '../../layouts/header.php';
 
                             <div id="evidenceValidationAlert" class="evidence-alert-inline" style="display: none;"></div>
 
-                            <!-- Selected files queue preview -->
-                            <div id="evidenceQueueContainer" class="evidence-queue-container" style="display: none;">
+                            <!-- Selected files queue preview with Tag Selection -->
+                            <div id="evidenceQueueContainer" class="evidence-queue-container" style="display: none; margin-top: 14px;">
                                 <div class="evidence-queue-header">
-                                    <span class="evidence-queue-title">New Files to Upload (<span id="evidenceCount">0</span>)</span>
+                                    <span class="evidence-queue-title">New Files to Attach (<span id="evidenceCount">0</span>)</span>
                                     <button type="button" id="clearAllEvidenceBtn" class="btn-clear-evidence">Clear All</button>
                                 </div>
                                 <ul id="evidenceQueueList" class="evidence-queue-list"></ul>
                             </div>
 
                             <!-- Proof OCR Notes -->
-                            <div class="form-group" style="margin-top: 18px;">
+                            <div class="form-group" style="margin-top: 18px; margin-bottom: 0;">
                                 <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
                                     <label for="proofOcrNotes" style="margin:0;">
                                         Proof Notes <span class="optional-label">Optional</span>
@@ -709,417 +915,1670 @@ include '../../layouts/header.php';
                                 <textarea id="proofOcrNotes" name="proof_ocr_notes" rows="4" maxlength="10000"
                                     placeholder="Extracted text from scanned proofs will appear here. You may also type or paste additional context about the attached evidence..."
                                     style="resize:vertical;"><?php echo htmlspecialchars($effProofOcrNotes); ?></textarea>
-                                <small class="field-hint">Use ✨ OCR on any image above, or click “Scan Proof” to pick a file. Extracted text is appended here.</small>
+                                <small class="field-hint">Use ✨ OCR on any uploaded image above, or click “Scan Proof” to pick a file directly. Extracted text is appended here.</small>
                             </div>
-                        </div>
+                        </section>
 
                     </div>
+                </div>
 
+
+            </form>
+        </div>
+
+        <!-- Modal for KP Form 7 document preview -->
+        <div id="kp7DocPreviewModal" class="modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.7); z-index:9999; align-items:center; justify-content:center; padding:20px;">
+            <div class="modal-card" style="background:#fff; border-radius:12px; max-width:850px; width:100%; max-height:90vh; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 20px 25px -5px rgba(0,0,0,0.3);">
+                <div style="padding:14px 20px; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
+                    <strong style="font-size:1rem; color:#0f172a;">KP Form 7 Document Preview</strong>
+                    <button type="button" id="btnCloseKp7PreviewModal" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:#64748b;">&times;</button>
+                </div>
+                <div id="kp7ModalBody" style="padding:20px; overflow-y:auto; flex:1; text-align:center; min-height:300px; display:flex; align-items:center; justify-content:center;">
+                </div>
+                <div style="padding:12px 20px; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end;">
+                    <button type="button" class="btn-secondary btn-sm" id="btnCloseKp7PreviewModalBtn">Close</button>
                 </div>
             </div>
+        </div>
 
-            <!-- Hidden element for backward compatibility with scripts querying review notes -->
-            <div id="complaintReviewNotes" style="display:none;"></div>
-        </form>
+        <!-- ADD / EDIT PERSON MODAL -->
+        <div id="partyDetailsModal" class="party-modal-overlay" style="display:none;">
+            <div class="party-modal-card">
+                <!-- Modal Header -->
+                <div class="party-modal-header">
+                    <div class="party-modal-header-left">
+                        <h3 id="partyModalTitle">Add Person Details</h3>
+                        <p id="partyModalSubtitle">Fill in personal and residence information</p>
+                    </div>
+                    <button type="button" class="party-modal-close" id="btnClosePartyModal" title="Close modal">&times;</button>
+                </div>
 
-        <!-- Template for dynamic additional party resident options -->
+                <!-- Modal Body -->
+                <div class="party-modal-body">
+                    <!-- Quick-Fill from Directory Combobox -->
+                    <div class="party-quickfill-bar" style="margin-bottom: 16px;">
+                        <div class="quickfill-header">
+                            <span class="quickfill-title">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                                Quick-Fill from Registered Directory <span class="optional-pill">Optional</span>
+                            </span>
+                            <button type="button" class="btn-clear-quickfill" id="modalClearQuickFill" style="display:none;">Clear Selection</button>
+                        </div>
+                        <div class="party-search-combobox" id="modalPartySearchCombobox">
+                            <div class="party-search-input-wrap">
+                                <input type="text" id="modalPartySearchInput" class="party-search-input" placeholder="Type resident name or address to auto-populate fields..." autocomplete="off">
+                                <button type="button" class="party-search-clear" id="modalPartySearchClear" title="Clear selection" style="display:none;">&times;</button>
+                            </div>
+                            <input type="hidden" id="modalResidentId" value="">
+                            <div class="party-search-dropdown" id="modalPartySearchDropdown" style="display:none;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Personal Information Grid -->
+                    <div class="party-section-heading">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                        Personal Information
+                    </div>
+                    <div class="party-fields-grid-4">
+                        <div class="party-field-col">
+                            <label for="modalFirstName">First Name <span class="required-mark">*</span></label>
+                            <input type="text" id="modalFirstName" placeholder="e.g. Juan" maxlength="100">
+                        </div>
+                        <div class="party-field-col">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <label for="modalMiddleName">Middle Name</label>
+                                <label class="unknown-check-inline" id="modalWrapMiddleUnknown" style="display:none; font-size:0.75rem; color:#64748b; cursor:pointer;">
+                                    <input type="checkbox" id="modalMiddleUnknown"> Unknown
+                                </label>
+                            </div>
+                            <input type="text" id="modalMiddleName" placeholder="e.g. Santos (Optional)" maxlength="100">
+                        </div>
+                        <div class="party-field-col">
+                            <label for="modalLastName">Last Name <span class="required-mark">*</span></label>
+                            <input type="text" id="modalLastName" placeholder="e.g. Dela Cruz" maxlength="100">
+                        </div>
+                        <div class="party-field-col">
+                            <label for="modalSuffix">Suffix</label>
+                            <input type="text" id="modalSuffix" placeholder="e.g. Jr., III" maxlength="20">
+                        </div>
+                    </div>
+
+                    <!-- Demographics & Contact -->
+                    <div class="party-fields-grid-4" style="margin-top: 10px;">
+                        <div class="party-field-col">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <label for="modalBirthdate">Birthdate</label>
+                                <label class="unknown-check-inline" id="modalWrapBirthUnknown" style="display:none; font-size:0.75rem; color:#64748b; cursor:pointer;">
+                                    <input type="checkbox" id="modalBirthUnknown"> Unknown
+                                </label>
+                            </div>
+                            <input type="date" id="modalBirthdate" max="<?php echo date('Y-m-d'); ?>">
+                        </div>
+                        <div class="party-field-col">
+                            <label for="modalAge">Age</label>
+                            <input type="number" id="modalAge" min="0" max="130" placeholder="e.g. 35">
+                        </div>
+                        <div class="party-field-col">
+                            <label for="modalGender">Gender</label>
+                            <select id="modalGender">
+                                <option value="">Select...</option>
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        <div class="party-field-col">
+                            <label for="modalCivilStatus">Civil Status</label>
+                            <select id="modalCivilStatus">
+                                <option value="">Select...</option>
+                                <option value="Single">Single</option>
+                                <option value="Married">Married</option>
+                                <option value="Widowed">Widowed</option>
+                                <option value="Separated">Separated</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="party-fields-grid-3" style="margin-top: 10px;">
+                        <div class="party-field-col">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <label for="modalContactNo">Contact Number</label>
+                                <label class="unknown-check-inline" id="modalWrapContactUnknown" style="display:none; font-size:0.75rem; color:#64748b; cursor:pointer;">
+                                    <input type="checkbox" id="modalContactUnknown"> Unknown
+                                </label>
+                            </div>
+                            <input type="text" id="modalContactNo" placeholder="e.g. 0917 123 4567" maxlength="50">
+                        </div>
+                        <div class="party-field-col">
+                            <label for="modalEmail">Email Address</label>
+                            <input type="email" id="modalEmail" placeholder="e.g. name@example.com" maxlength="150">
+                        </div>
+                        <div class="party-field-col">
+                            <label for="modalPreferredContact">Preferred Contact</label>
+                            <select id="modalPreferredContact">
+                                <option value="SMS">SMS</option>
+                                <option value="Call">Call</option>
+                                <option value="Email">Email</option>
+                                <option value="In-Person">In-Person</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Residence & Address -->
+                    <div class="party-section-heading" style="margin-top: 16px;">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                        Residence Details
+                    </div>
+                    <div class="party-fields-grid-2">
+                        <div class="party-field-col">
+                            <label for="modalPurok">Purok / Area (Barangay Tumana)</label>
+                            <select id="modalPurok">
+                                <option value="">Select Purok...</option>
+                                <optgroup label="Tumana Puroks / Compounds">
+                                    <option value="Doña Petra">Doña Petra Compound</option>
+                                    <option value="Bagong Farmers">Bagong Farmers</option>
+                                    <option value="Bukang Liwayway">Bukang Liwayway</option>
+                                    <option value="Libis Tumana">Libis Tumana</option>
+                                    <option value="Bagong Purok">Sitio Bagong Purok</option>
+                                    <option value="Palay">Palay Area</option>
+                                    <option value="Mais">Mais Area</option>
+                                    <option value="Singkamas">Singkamas Area</option>
+                                </optgroup>
+                                <option value="Non-Resident">Non-Resident / Outside Tumana</option>
+                            </select>
+                        </div>
+                        <div class="party-field-col">
+                            <label for="modalIsTenant">Residency Status</label>
+                            <select id="modalIsTenant">
+                                <option value="0">Permanent Resident</option>
+                                <option value="1">Tenant / Renter</option>
+                                <option value="2">Non-Resident</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="party-field-col" style="margin-top: 10px;">
+                        <label for="modalAddress">Complete Street Address</label>
+                        <input type="text" id="modalAddress" placeholder="House #, Street name, Purok/Compound, Barangay Tumana">
+                    </div>
+
+                    <!-- Minor & Legal Guardian Section -->
+                    <div style="margin-top:16px; padding-top:12px; border-top:1px solid #f1f5f9;">
+                        <label class="unknown-checkbox-label" style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
+                            <input type="checkbox" id="modalIsMinor" value="1">
+                            <strong style="font-size:0.86rem; color:#1e293b;">Person is a Minor (&lt; 18 years old)</strong>
+                        </label>
+
+                        <div id="modalGuardianSection" class="conditional-party-details guardian-box" style="display:none; margin-top:10px;">
+                            <div class="guardian-box-title" style="font-size:0.82rem; font-weight:700; color:#0369a1; margin-bottom:8px;">
+                                🛡️ Legal Guardian / Representative Details
+                            </div>
+                            <div class="party-fields-grid-2">
+                                <div class="party-field-col">
+                                    <label for="modalGuardianName">Guardian Full Name <span class="required-mark" id="modalGuardianReqName">*</span></label>
+                                    <input type="text" id="modalGuardianName" placeholder="Full name of parent or legal guardian">
+                                </div>
+                                <div class="party-field-col">
+                                    <label for="modalGuardianRelationship">Relationship to Minor <span class="required-mark" id="modalGuardianReqRel">*</span></label>
+                                    <input type="text" id="modalGuardianRelationship" placeholder="e.g. Mother, Father, Legal Guardian">
+                                </div>
+                            </div>
+                            <div class="party-fields-grid-2" style="margin-top:8px;">
+                                <div class="party-field-col">
+                                    <label for="modalGuardianContact">Guardian Contact Number</label>
+                                    <input type="text" id="modalGuardianContact" placeholder="e.g. 0917 123 4567">
+                                </div>
+                                <div class="party-field-col">
+                                    <label for="modalGuardianAddress">Guardian Address</label>
+                                    <input type="text" id="modalGuardianAddress" placeholder="Address if different from person">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal Footer -->
+                <div class="party-modal-footer">
+                    <button type="button" class="btn-secondary" id="btnCancelPartyModal">Cancel</button>
+                    <button type="button" class="btn-create" id="btnSavePartyModal">Save &amp; Apply Details</button>
+                </div>
+            </div>
+        </div>
+
         <template id="residentOptionsTemplate">
             <?php echo $renderResidentOptions(null); ?>
         </template>
     </div>
 </div>
 
-<!-- Modal: Discard Changes Confirmation -->
-<div id="discardChangesModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="discardModalTitle" style="display: none;">
-    <div class="modal-content" style="width: 440px; max-width: calc(100% - 32px); padding: 24px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.05);">
-        <div class="modal-header" style="margin-bottom: 14px; align-items: center; border-bottom: none; padding-bottom: 0;">
-            <div style="display: flex; align-items: center; gap: 12px;">
-                <div style="width: 40px; height: 40px; border-radius: 50%; background: #fee2e2; display: flex; align-items: center; justify-content: center; color: #dc2626; flex-shrink: 0;">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                </div>
-                <h2 id="discardModalTitle" style="font-size: 1.15rem; font-weight: 600; color: #1e293b; margin: 0;">Discard Changes?</h2>
-            </div>
-            <button type="button" class="close-btn" onclick="closeDiscardModal()" aria-label="Close modal">&times;</button>
-        </div>
-        <p style="color: #475569; font-size: 0.95rem; line-height: 1.5; margin: 0 0 22px 0;">
-            Are you sure you want to discard the changes?
-        </p>
-        <div class="modal-actions" style="margin-top: 0; display: flex; justify-content: flex-end; gap: 10px;">
-            <button type="button" class="btn-secondary" onclick="closeDiscardModal()">No, Keep Editing</button>
-            <a href="complaint-details.php?id=<?php echo $complaintId; ?>" class="btn-danger" style="text-decoration: none; padding: 9px 18px; border-radius: 6px; font-weight: 500; font-size: 0.9rem; background: #dc2626; color: #ffffff; display: inline-flex; align-items: center;">Yes, Discard</a>
-        </div>
-    </div>
-</div>
-
-<!-- Modal: Save Changes Confirmation -->
-<div id="saveChangesModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="saveModalTitle" style="display: none;">
-    <div class="modal-content" style="width: 440px; max-width: calc(100% - 32px); padding: 24px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.05);">
-        <div class="modal-header" style="margin-bottom: 14px; align-items: center; border-bottom: none; padding-bottom: 0;">
-            <div style="display: flex; align-items: center; gap: 12px;">
-                <div style="width: 40px; height: 40px; border-radius: 50%; background: #ecfdf5; display: flex; align-items: center; justify-content: center; color: #059669; flex-shrink: 0;">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-                </div>
-                <h2 id="saveModalTitle" style="font-size: 1.15rem; font-weight: 600; color: #1e293b; margin: 0;">Save Changes?</h2>
-            </div>
-            <button type="button" class="close-btn" onclick="closeSaveModal()" aria-label="Close modal">&times;</button>
-        </div>
-        <p style="color: #475569; font-size: 0.95rem; line-height: 1.5; margin: 0 0 22px 0;">
-            Do you want to save the changes made to this complaint?
-        </p>
-        <div class="modal-actions" style="margin-top: 0; display: flex; justify-content: flex-end; gap: 10px;">
-            <button type="button" class="btn-secondary" onclick="closeSaveModal()">No, Keep Editing</button>
-            <button type="button" class="btn-create" id="btnConfirmSave" onclick="confirmAndSubmitForm()">Yes, Save Changes</button>
-        </div>
-    </div>
-</div>
-
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="../../assets/js/complaints.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/complaints.js'); ?>"></script>
 <script>
-let isConfirmedSubmit = false;
-
-function openDiscardModal() {
-    const m = document.getElementById('discardChangesModal');
-    if (m) m.style.display = 'flex';
-}
-
-function closeDiscardModal() {
-    const m = document.getElementById('discardChangesModal');
-    if (m) m.style.display = 'none';
-}
-
-function handleBackLink(e) {
-    e.preventDefault();
-    openDiscardModal();
-}
-
-function openSaveModal() {
-    const form = document.getElementById('editComplaintForm');
-    if (!form) return;
-
-    const compId = document.getElementById('complainantResidentId')?.value?.trim();
-    const respId = document.getElementById('respondentResidentId')?.value?.trim();
-    const compSearch = document.getElementById('complainantSearchInput');
-    const respSearch = document.getElementById('respondentSearchInput');
-
-    if (!compId) {
-        if (compSearch) {
-            compSearch.classList.add('is-invalid-unselected');
-            compSearch.focus();
-        }
-        window.agapNotify?.('Please select a registered resident profile for the Complainant.', 'error');
-        return;
-    }
-
-    if (!respId) {
-        if (respSearch) {
-            respSearch.classList.add('is-invalid-unselected');
-            respSearch.focus();
-        }
-        window.agapNotify?.('Please select a registered profile for the Respondent.', 'error');
-        return;
-    }
-
-    // Check that respondent is strictly a resident or tenant living within Barangay Tumana
-    const selectedResp = window.AGAP_RESIDENTS?.find(r => String(r.resident_id) === String(respId));
-    if (selectedResp) {
-        const isTenant = Number(selectedResp.is_tenant);
-        const purok = (selectedResp.purok || '').trim().toLowerCase();
-        if (isTenant === 2 || purok === 'non-resident' || (isTenant !== 0 && isTenant !== 1)) {
-            if (respSearch) {
-                respSearch.classList.add('is-invalid-unselected');
-                respSearch.focus();
-            }
-            window.agapNotify?.('Only residents and tenants living within Barangay Tumana can be named as respondents in this barangay.', 'error');
-            return;
-        }
-    }
-
-    const cityInput = document.getElementById('incidentCity');
-    if (cityInput && (!cityInput.value || !cityInput.value.toLowerCase().includes('marikina'))) {
-        window.agapNotify?.('Incident location must be within Marikina City.', 'error');
-        return;
-    }
-
-    const mapStateInput = document.querySelector('[data-map-state]');
-    const mapLatInput = document.querySelector('[data-map-latitude]');
-    const mapLngInput = document.querySelector('[data-map-longitude]');
-    if (mapStateInput && mapStateInput.value === 'selected' && mapLatInput && mapLngInput) {
-        const latVal = parseFloat(mapLatInput.value);
-        const lngVal = parseFloat(mapLngInput.value);
-        if (isNaN(latVal) || isNaN(lngVal) || latVal < 14.610 || latVal > 14.690 || lngVal < 121.075 || lngVal > 121.155) {
-            window.agapNotify?.('Incident location must be within Marikina City.', 'error');
-            return;
-        }
-    }
-
-    if (!validateDistinctParties()) {
-        window.agapNotify?.('The complainant and respondent cannot be the same resident profile.', 'error');
-        if (respSearch) respSearch.focus();
-        return;
-    }
-
-    let invalidAdditional = false;
-    document.querySelectorAll('.additional-party-row').forEach(row => {
-        const hidden = row.querySelector('input[name="party_resident_ids[]"]');
-        const search = row.querySelector('.party-search-input');
-        if (hidden && (!hidden.value || parseInt(hidden.value, 10) <= 0)) {
-            invalidAdditional = true;
-            if (search) search.classList.add('is-invalid-unselected');
-        }
-    });
-
-    if (invalidAdditional) {
-        window.agapNotify?.('Please select a registered resident for all added additional parties, or remove empty party rows.', 'error');
-        return;
-    }
-
-    if (!form.checkValidity()) {
-        form.reportValidity();
-        return;
-    }
-
-    const m = document.getElementById('saveChangesModal');
-    if (m) m.style.display = 'flex';
-}
-
-function closeSaveModal() {
-    const m = document.getElementById('saveChangesModal');
-    if (m) m.style.display = 'none';
-}
-
-function confirmAndSubmitForm() {
-    const form = document.getElementById('editComplaintForm');
-    const btn = document.getElementById('btnConfirmSave');
-    if (!validateDistinctParties()) {
-        closeSaveModal();
-        return;
-    }
-    if (btn) {
-        btn.disabled = true;
-        btn.textContent = 'Saving...';
-    }
-    isConfirmedSubmit = true;
-    if (form) {
-        HTMLFormElement.prototype.submit.call(form);
-    }
-}
-
-function removePartyRow(rowId) {
-    const el = document.getElementById(rowId);
-    if (el) {
-        el.remove();
-        updatePartiesCount();
-    }
-}
-
-function updatePartiesCount() {
-    const countEl = document.getElementById('partiesCount');
-    if (!countEl) return;
-    const baseParties = 2; // Primary Complainant & Primary Respondent
-    const additionalRows = document.querySelectorAll('.additional-party-row').length;
-    countEl.textContent = baseParties + additionalRows;
-}
-
-function validateDistinctParties() {
-    const compInput = document.getElementById('complainantResidentId');
-    const respInput = document.getElementById('respondentResidentId');
-    const respSearch = document.getElementById('respondentSearchInput');
-    const errorBox   = document.getElementById('partyDistinctError');
-    const compGroup  = document.getElementById('complainantGroup');
-    const respGroup  = document.getElementById('respondentGroup');
-    if (!compInput || !respInput) return true;
-
-    const compVal = compInput.value.trim();
-    const respVal = respInput.value.trim();
-
-    if (compVal && respVal && compVal === respVal) {
-        if (respSearch) respSearch.classList.add('is-invalid-unselected');
-        if (errorBox) {
-            errorBox.innerHTML = '<strong>⚠️ Same person selected!</strong> The complainant and respondent cannot be the same resident profile. Please select different individuals.';
-            errorBox.style.display = 'block';
-        }
-        // Add red border to both party combobox groups
-        [compGroup, respGroup].forEach(g => {
-            if (!g) return;
-            g.style.outline = '2px solid #dc2626';
-            g.style.outlineOffset = '2px';
-            g.style.borderRadius = '6px';
-            const inp = g.querySelector('.party-search-input');
-            if (inp) inp.style.borderColor = '#dc2626';
-        });
-        return false;
-    }
-
-    if (respSearch) respSearch.classList.remove('is-invalid-unselected');
-    if (errorBox) {
-        errorBox.style.display = 'none';
-    }
-    // Remove red border
-    [compGroup, respGroup].forEach(g => {
-        if (!g) return;
-        g.style.outline = '';
-        g.style.outlineOffset = '';
-        const inp = g.querySelector('.party-search-input');
-        if (inp) inp.style.borderColor = '';
-    });
-    return true;
-}
-
-window.validateDistinctParties = validateDistinctParties;
-window.syncDistinctPartyOptions = function() {
-    validateDistinctParties();
-};
-
-async function deleteExistingAttachment(attachmentId, btn) {
-    if (!confirm('Are you sure you want to delete this attachment?')) return;
-    try {
-        const response = await fetch('../../../backend/api/complaints/attachments.php', {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: 'attachment_id=' + encodeURIComponent(attachmentId)
-        });
-        const result = await response.json();
-        if (!response.ok || !result.success) throw new Error(result.message || 'Failed to delete attachment.');
-
-        const card = btn.closest('.attachment-detail-card');
-        if (card) {
-            card.remove();
-            const list = document.getElementById('existingAttachmentsList');
-            const countBadge = document.getElementById('attachmentsCount');
-            if (list) {
-                const remaining = list.querySelectorAll('.attachment-detail-card').length;
-                if (countBadge) countBadge.textContent = remaining;
-                if (remaining === 0) {
-                    const empty = document.getElementById('existingEmptyState');
-                    if (empty) empty.style.display = 'block';
-                    else {
-                        list.innerHTML = '<div class="empty-detail-state" id="existingEmptyState" style="padding: 12px; margin-bottom: 8px;"><p style="margin:0;">No evidence or attachments uploaded yet.</p></div>';
-                    }
-                }
-            }
-        }
-        window.agapNotify?.('Attachment deleted successfully.', 'success');
-    } catch (err) {
-        alert(err.message || 'Unable to delete attachment.');
-    }
-}
-
 document.addEventListener('DOMContentLoaded', () => {
-    // Intercept form submit event (e.g. Enter key pressed)
-    const editForm = document.getElementById('editComplaintForm');
-    if (editForm) {
-        editForm.addEventListener('submit', (e) => {
-            if (!isConfirmedSubmit) {
-                e.preventDefault();
-                openSaveModal();
-            }
-        });
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>'"]/g, character => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            "'": '&#39;',
+            '"': '&quot;'
+        }[character] || character));
     }
-
-    // Modal dismiss on backdrop click
-    ['discardChangesModal', 'saveChangesModal'].forEach(id => {
-        const modal = document.getElementById(id);
-        if (modal) {
-            modal.addEventListener('click', (e) => {
-                if (e.target === modal) {
-                    modal.style.display = 'none';
-                }
-            });
-        }
-    });
-
-    // Modal dismiss on Escape key
-    window.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            closeDiscardModal();
-            closeSaveModal();
-        }
-    });
 
     // Expose registered residents data for combobox components
     window.AGAP_RESIDENTS = <?php echo json_encode($residentsJsonData, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
 
-    // Initialize all searchable resident comboboxes
+    // Distinct parties validation
+    window.validateDistinctParties = function() {
+        const compInput = document.getElementById('complainantResidentId');
+        const respInput = document.getElementById('respondentResidentId');
+        const errorBox  = document.getElementById('partyDistinctError');
+        const compGroup = document.getElementById('complainantsGroupSection');
+        const respGroup = document.getElementById('respondentsGroupSection');
+
+        const compVal = compInput ? compInput.value.trim() : '';
+        const respVal = respInput ? respInput.value.trim() : '';
+
+        const compFirst = document.getElementById('complainantFirstName')?.value?.trim().toLowerCase() || '';
+        const compLast  = document.getElementById('complainantLastName')?.value?.trim().toLowerCase() || '';
+        const respFirst = document.getElementById('respondentFirstName')?.value?.trim().toLowerCase() || '';
+        const respLast  = document.getElementById('respondentLastName')?.value?.trim().toLowerCase() || '';
+
+        const isSameProfile = (compVal && respVal && compVal === respVal);
+        const isSameName = (compFirst && compLast && respFirst && respLast && compFirst === respFirst && compLast === respLast);
+
+        if (isSameProfile || isSameName) {
+            if (errorBox) {
+                errorBox.innerHTML = '<strong>⚠️ Same person selected!</strong> The complainant and respondent cannot be the same person. Please specify different individuals.';
+                errorBox.style.display = 'block';
+            }
+            [compGroup, respGroup].forEach(g => {
+                if (!g) return;
+                g.style.outline = '2px solid #dc2626';
+                g.style.outlineOffset = '2px';
+            });
+            return false;
+        }
+
+        if (errorBox) {
+            errorBox.style.display = 'none';
+        }
+        [compGroup, respGroup].forEach(g => {
+            if (!g) return;
+            g.style.outline = '';
+            g.style.outlineOffset = '';
+        });
+        return true;
+    };
+
+    window.syncDistinctPartyOptions = function() {
+        window.validateDistinctParties();
+    };
+
+    // Initialize all searchable resident comboboxes if helper exists
     if (window.initAllPartyComboboxes) {
         window.initAllPartyComboboxes();
     }
-    updatePartiesCount();
 
     // Dynamic additional parties
-    const addPartyBtn = document.getElementById('addPartyBtn');
     const container = document.getElementById('additionalPartiesContainer');
-    let partyCounter = <?php echo count($additionalParties) + 1; ?>;
+    const addBtn = document.getElementById('addPartyBtn');
+    let partyCount = 0;
 
-    if (addPartyBtn && container) {
-        addPartyBtn.addEventListener('click', () => {
-            partyCounter++;
-            const rowId = `extraPartyRow_${partyCounter}`;
-            const div = document.createElement('div');
-            div.className = 'additional-party-row';
-            div.id = rowId;
-            div.innerHTML = `
-                <div class="party-row-fields">
-                    <div class="form-group party-type-col">
-                        <select name="party_types[]">
-                            <option value="Witness">Witness</option>
-                            <option value="Complainant">Complainant</option>
-                            <option value="Respondent">Respondent</option>
-                        </select>
+    function addWitnessRow(wData = null) {
+        partyCount++;
+        const rowId = `additionalParty_${partyCount}`;
+        const div = document.createElement('div');
+        div.className = 'additional-party-row';
+        div.id = rowId;
+        const selType = wData?.party_type || 'Witness';
+        const pId = wData?.resident_id || '';
+        const pName = wData?.name || '';
+        div.innerHTML = `
+            <div class="party-row-fields">
+                <div class="form-group party-type-col">
+                    <select name="party_types[]" class="party-type-select">
+                        <option value="Witness" ${selType === 'Witness' ? 'selected' : ''}>Witness</option>
+                        <option value="Complainant" ${selType === 'Complainant' ? 'selected' : ''}>Complainant</option>
+                        <option value="Respondent" ${selType === 'Respondent' ? 'selected' : ''}>Respondent</option>
+                    </select>
+                </div>
+                <div class="form-group party-name-col">
+                    <div class="party-search-combobox" data-party-role="additional">
+                        <div class="party-search-input-wrap">
+                            <input type="text" class="party-search-input" placeholder="Type resident name or address to search..." autocomplete="off" value="${escapeHtml(pName)}">
+                            <button type="button" class="party-search-clear" title="Clear selection" style="${pName ? 'display:inline-block;' : 'display:none;'}">&times;</button>
+                        </div>
+                        <input type="hidden" name="party_resident_ids[]" value="${escapeHtml(pId)}">
+                        <input type="hidden" name="party_names[]" value="${escapeHtml(pName)}">
+                        <div class="party-search-dropdown" style="display:none;"></div>
                     </div>
-                    <div class="form-group party-name-col">
-                        <div class="party-search-combobox" data-party-role="additional">
-                            <div class="party-search-input-wrap">
-                                <svg class="party-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                                <input type="text" class="party-search-input" placeholder="Type resident name or address to search..." autocomplete="off">
-                                <button type="button" class="party-search-clear" title="Clear selection" style="display:none;">&times;</button>
+                </div>
+                <button type="button" class="btn-remove-party" title="Remove party" onclick="document.getElementById('${rowId}').remove()">&times;</button>
+            </div>
+            <div class="party-selected-preview additional-party-preview" style="display:none;"></div>
+        `;
+        container.appendChild(div);
+
+        const newCombobox = div.querySelector('.party-search-combobox');
+        if (newCombobox && window.initPartySearchCombobox) {
+            window.initPartySearchCombobox(newCombobox, window.AGAP_RESIDENTS);
+        }
+    }
+
+    if (addBtn && container) {
+        addBtn.addEventListener('click', () => addWitnessRow());
+    }
+
+    // Pre-populate existing witnesses
+    const initialWitnesses = <?php echo json_encode($initialWitnesses, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?> || [];
+    if (container && initialWitnesses.length > 0) {
+        initialWitnesses.forEach(w => addWitnessRow(w));
+    }
+
+    // Form submission validation (Frictionless: direct party details allowed)
+    const editForm = document.getElementById('editComplaintForm');
+    if (editForm) {
+        editForm.addEventListener('submit', (e) => {
+            const isDraft = document.getElementById('isDraftInput')?.value === '1';
+            if (isDraft) {
+                const submitBtn = document.getElementById('btnSubmitComplaint');
+                if (submitBtn) submitBtn.disabled = true;
+                return;
+            }
+
+            const compFirst = document.getElementById('complainantFirstName')?.value?.trim();
+            const compLast  = document.getElementById('complainantLastName')?.value?.trim();
+            const compId    = document.getElementById('complainantResidentId')?.value?.trim();
+
+            const respFirst = document.getElementById('respondentFirstName')?.value?.trim();
+            const respLast  = document.getElementById('respondentLastName')?.value?.trim();
+            const respId    = document.getElementById('respondentResidentId')?.value?.trim();
+
+            if (!compId && (!compFirst || !compLast)) {
+                e.preventDefault();
+                window.agapNotify?.('Please provide the complainant\'s First Name and Last Name.', 'error');
+                window.openPartyModal('complainant', complainantsList.length > 0 ? 'edit' : 'add', 0);
+                return;
+            }
+
+            if (!respId && (!respFirst || !respLast)) {
+                e.preventDefault();
+                window.agapNotify?.('Please provide the respondent\'s First Name and Last Name.', 'error');
+                window.openPartyModal('respondent', respondentsList.length > 0 ? 'edit' : 'add', 0);
+                return;
+            }
+
+            // Check distinctness
+            const fullComp = `${compFirst || ''} ${compLast || ''}`.trim().toLowerCase();
+            const fullResp = `${respFirst || ''} ${respLast || ''}`.trim().toLowerCase();
+            if ((compId && respId && compId === respId) || (fullComp && fullResp && fullComp === fullResp)) {
+                e.preventDefault();
+                window.validateDistinctParties();
+                window.agapNotify?.('The complainant and respondent cannot be the exact same person.', 'error');
+                return;
+            }
+
+            // Check if complainant is a minor and require guardian details
+            const compIsMinor = document.getElementById('complainantIsMinor')?.value === '1';
+            if (compIsMinor) {
+                const gName = document.getElementById('complainantGuardianName')?.value?.trim();
+                const gRel  = document.getElementById('complainantGuardianRelationship')?.value?.trim();
+                if (!gName || !gRel) {
+                    e.preventDefault();
+                    window.agapNotify?.('Since the complainant is a minor, the legal guardian\'s full name and relationship are required.', 'error');
+                    window.openPartyModal('complainant', 'edit', 0);
+                    return;
+                }
+            }
+
+            const cityInput = document.getElementById('incidentCity');
+            if (cityInput && (!cityInput.value || !cityInput.value.toLowerCase().includes('marikina'))) {
+                e.preventDefault();
+                window.agapNotify?.('Incident location must be within Marikina City.', 'error');
+                return;
+            }
+
+            const mapStateInput = document.querySelector('[data-map-state]');
+            const mapLatInput = document.querySelector('[data-map-latitude]');
+            const mapLngInput = document.querySelector('[data-map-longitude]');
+            if (mapStateInput && mapStateInput.value === 'selected' && mapLatInput && mapLngInput) {
+                const latVal = parseFloat(mapLatInput.value);
+                const lngVal = parseFloat(mapLngInput.value);
+                if (isNaN(latVal) || isNaN(lngVal) || latVal < 14.610 || latVal > 14.690 || lngVal < 121.075 || lngVal > 121.155) {
+                    e.preventDefault();
+                    window.agapNotify?.('Incident location must be within Marikina City.', 'error');
+                    return;
+                }
+            }
+
+            const submitBtn = document.getElementById('btnSubmitComplaint');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Saving Changes...';
+            }
+        });
+    }
+
+    // ── Age Calculation Helper ──
+    function calculateAge(birthDateStr) {
+        if (!birthDateStr) return null;
+        const dob = new Date(birthDateStr);
+        if (isNaN(dob.getTime())) return null;
+        const today = new Date();
+        let age = today.getFullYear() - dob.getFullYear();
+        const m = today.getMonth() - dob.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) {
+            age--;
+        }
+        return age >= 0 ? age : null;
+    }
+
+    // ── Involved Parties State & Modal Controller ──
+    let complainantsList = <?php echo json_encode($initialComplainants, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?> || [];
+    let respondentsList = <?php echo json_encode($initialRespondents, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?> || [];
+
+    // Modal state variables
+    let currentModalRole = 'complainant';
+    let currentModalMode = 'add';
+    let currentModalIndex = null;
+
+    const modalEl = document.getElementById('partyDetailsModal');
+    const modalTitle = document.getElementById('partyModalTitle');
+    const modalSubtitle = document.getElementById('partyModalSubtitle');
+
+    window.openPartyModal = function(role, mode = 'add', index = null) {
+        currentModalRole = role;
+        currentModalMode = mode;
+        currentModalIndex = index;
+
+        const isComplainant = (role === 'complainant');
+        if (modalTitle) {
+            modalTitle.textContent = mode === 'edit'
+                ? `Edit ${isComplainant ? 'Complainant' : 'Respondent'} Details`
+                : `Add ${isComplainant ? 'Complainant' : 'Respondent'}`;
+        }
+        if (modalSubtitle) {
+            modalSubtitle.textContent = isComplainant
+                ? 'Enter complainant personal details directly or quick-fill from resident directory.'
+                : 'Enter respondent details directly or indicate unknown information if unavailable.';
+        }
+
+        // Show/hide respondent-specific unknown toggles
+        const wrapMiddle = document.getElementById('modalWrapMiddleUnknown');
+        const wrapBirth  = document.getElementById('modalWrapBirthUnknown');
+        const wrapContact= document.getElementById('modalWrapContactUnknown');
+        if (wrapMiddle) wrapMiddle.style.display = isComplainant ? 'none' : 'inline-flex';
+        if (wrapBirth) wrapBirth.style.display = isComplainant ? 'none' : 'inline-flex';
+        if (wrapContact) wrapContact.style.display = isComplainant ? 'none' : 'inline-flex';
+
+        // Reset quick-fill search
+        resetModalQuickFill();
+
+        if (mode === 'add') {
+            resetModalFields();
+        } else {
+            const party = isComplainant ? complainantsList[index] : respondentsList[index];
+            if (party) {
+                populateModalWithData(party);
+            } else {
+                resetModalFields();
+            }
+        }
+
+        if (modalEl) {
+            modalEl.style.display = 'flex';
+            setTimeout(() => {
+                document.getElementById('modalFirstName')?.focus();
+            }, 50);
+        }
+    };
+
+    window.closePartyModal = function() {
+        if (modalEl) {
+            modalEl.style.display = 'none';
+        }
+    };
+
+    document.getElementById('btnClosePartyModal')?.addEventListener('click', window.closePartyModal);
+    document.getElementById('btnCancelPartyModal')?.addEventListener('click', window.closePartyModal);
+    modalEl?.addEventListener('click', (e) => {
+        if (e.target === modalEl) {
+            window.closePartyModal();
+        }
+    });
+
+    document.getElementById('btnAddComplainantModal')?.addEventListener('click', () => {
+        window.openPartyModal('complainant', 'add');
+    });
+
+    document.getElementById('btnAddRespondentModal')?.addEventListener('click', () => {
+        window.openPartyModal('respondent', 'add');
+    });
+
+    function resetModalFields() {
+        const resIdEl = document.getElementById('modalResidentId');
+        if (resIdEl) resIdEl.value = '';
+        ['modalFirstName', 'modalMiddleName', 'modalLastName', 'modalSuffix',
+         'modalBirthdate', 'modalAge', 'modalContactNo', 'modalEmail', 'modalAddress',
+         'modalGuardianName', 'modalGuardianRelationship', 'modalGuardianContact', 'modalGuardianAddress'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) { el.value = ''; el.disabled = false; }
+        });
+        ['modalGender', 'modalCivilStatus', 'modalPurok'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        const pref = document.getElementById('modalPreferredContact');
+        if (pref) pref.value = 'SMS';
+        const tenant = document.getElementById('modalIsTenant');
+        if (tenant) tenant.value = '0';
+
+        const isMinor = document.getElementById('modalIsMinor');
+        if (isMinor) isMinor.checked = false;
+        const gSec = document.getElementById('modalGuardianSection');
+        if (gSec) gSec.style.display = 'none';
+
+        ['modalMiddleUnknown', 'modalBirthUnknown', 'modalContactUnknown'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.checked = false;
+        });
+    }
+
+    function populateModalWithData(p) {
+        const setV = (id, val) => {
+            const el = document.getElementById(id);
+            if (el) el.value = val ?? '';
+        };
+
+        setV('modalResidentId', p.resident_id);
+        setV('modalFirstName', p.first_name);
+        setV('modalMiddleName', p.middle_name);
+        setV('modalLastName', p.last_name);
+        setV('modalSuffix', p.suffix);
+        setV('modalBirthdate', p.birthdate);
+        setV('modalAge', p.age);
+        setV('modalGender', p.gender);
+        setV('modalCivilStatus', p.civil_status);
+        setV('modalContactNo', p.contact_no);
+        setV('modalEmail', p.email);
+        setV('modalPreferredContact', p.preferred_contact || 'SMS');
+        setV('modalPurok', p.purok);
+        setV('modalIsTenant', p.is_tenant ?? '0');
+        setV('modalAddress', p.address);
+
+        const isMinor = document.getElementById('modalIsMinor');
+        if (isMinor) isMinor.checked = !!p.is_minor;
+        const gSec = document.getElementById('modalGuardianSection');
+        if (gSec) gSec.style.display = p.is_minor ? 'block' : 'none';
+
+        setV('modalGuardianName', p.guardian_name);
+        setV('modalGuardianRelationship', p.guardian_relationship);
+        setV('modalGuardianContact', p.guardian_contact);
+        setV('modalGuardianAddress', p.guardian_address);
+
+        const chkMid = document.getElementById('modalMiddleUnknown');
+        const midInput = document.getElementById('modalMiddleName');
+        if (chkMid && midInput) {
+            chkMid.checked = !!p.middle_unknown;
+            midInput.disabled = !!p.middle_unknown;
+        }
+
+        const chkBirth = document.getElementById('modalBirthUnknown');
+        const bdayInput = document.getElementById('modalBirthdate');
+        const ageInput = document.getElementById('modalAge');
+        if (chkBirth && bdayInput && ageInput) {
+            chkBirth.checked = !!p.birth_unknown;
+            bdayInput.disabled = !!p.birth_unknown;
+            ageInput.disabled = !!p.birth_unknown;
+        }
+
+        const chkContact = document.getElementById('modalContactUnknown');
+        const contactInput = document.getElementById('modalContactNo');
+        if (chkContact && contactInput) {
+            chkContact.checked = !!p.contact_unknown;
+            contactInput.disabled = !!p.contact_unknown;
+        }
+
+        if (p.resident_id && window.AGAP_RESIDENTS) {
+            const res = window.AGAP_RESIDENTS.find(r => String(r.resident_id) === String(p.resident_id));
+            if (res) {
+                const sInput = document.getElementById('modalPartySearchInput');
+                if (sInput) sInput.value = res.display_name;
+                const clearBtn = document.getElementById('modalClearQuickFill');
+                if (clearBtn) clearBtn.style.display = 'inline-block';
+                const sClear = document.getElementById('modalPartySearchClear');
+                if (sClear) sClear.style.display = 'inline-block';
+            }
+        }
+    }
+
+    // Modal Directory Quick-Fill Combobox
+    const modalSearchInput = document.getElementById('modalPartySearchInput');
+    const modalSearchDropdown = document.getElementById('modalPartySearchDropdown');
+    const modalSearchClear = document.getElementById('modalPartySearchClear');
+    const modalClearQuickFill = document.getElementById('modalClearQuickFill');
+
+    function resetModalQuickFill() {
+        if (modalSearchInput) modalSearchInput.value = '';
+        if (modalSearchDropdown) {
+            modalSearchDropdown.style.display = 'none';
+            modalSearchDropdown.innerHTML = '';
+        }
+        if (modalSearchClear) modalSearchClear.style.display = 'none';
+        if (modalClearQuickFill) modalClearQuickFill.style.display = 'none';
+    }
+
+    if (modalSearchInput && modalSearchDropdown) {
+        modalSearchInput.addEventListener('input', () => {
+            const query = modalSearchInput.value.trim().toLowerCase();
+            if (modalSearchClear) modalSearchClear.style.display = query ? 'inline-block' : 'none';
+
+            if (!query || query.length < 2 || !window.AGAP_RESIDENTS) {
+                modalSearchDropdown.style.display = 'none';
+                modalSearchDropdown.innerHTML = '';
+                return;
+            }
+
+            const matches = window.AGAP_RESIDENTS.filter(r => (r.search_text && r.search_text.includes(query))).slice(0, 8);
+            if (matches.length === 0) {
+                modalSearchDropdown.innerHTML = '<div class="party-search-item" style="color:#94a3b8;cursor:default;">No matching registered residents found</div>';
+                modalSearchDropdown.style.display = 'block';
+                return;
+            }
+
+            modalSearchDropdown.innerHTML = matches.map(r => `
+                <div class="party-search-item" data-id="${r.resident_id}">
+                    <div class="party-search-item-name">${escapeHtml(r.display_name)}</div>
+                    <div class="party-search-item-meta">${escapeHtml(r.residency_label)} • ${escapeHtml(r.address_text)}</div>
+                </div>
+            `).join('');
+            modalSearchDropdown.style.display = 'block';
+        });
+
+        modalSearchDropdown.addEventListener('click', (e) => {
+            const item = e.target.closest('.party-search-item[data-id]');
+            if (!item) return;
+            const resId = parseInt(item.dataset.id, 10);
+            const res = window.AGAP_RESIDENTS?.find(r => r.resident_id === resId);
+            if (res) {
+                const resIdInput = document.getElementById('modalResidentId');
+                if (resIdInput) resIdInput.value = res.resident_id;
+                modalSearchInput.value = res.display_name;
+                if (modalClearQuickFill) modalClearQuickFill.style.display = 'inline-block';
+                if (modalSearchClear) modalSearchClear.style.display = 'inline-block';
+
+                const setV = (id, val) => {
+                    const el = document.getElementById(id);
+                    if (el) el.value = val ?? '';
+                };
+
+                setV('modalFirstName', res.first_name || '');
+                setV('modalMiddleName', res.middle_name || '');
+                setV('modalLastName', (res.last_name && res.last_name !== '-') ? res.last_name : '');
+                setV('modalSuffix', res.suffix || '');
+                if (res.birth_date) {
+                    setV('modalBirthdate', res.birth_date);
+                    const age = calculateAge(res.birth_date);
+                    if (age !== null) {
+                        setV('modalAge', age);
+                        if (age < 18) {
+                            const isMinor = document.getElementById('modalIsMinor');
+                            if (isMinor) isMinor.checked = true;
+                            const gSec = document.getElementById('modalGuardianSection');
+                            if (gSec) gSec.style.display = 'block';
+                        }
+                    }
+                }
+                if (res.gender) setV('modalGender', res.gender);
+                if (res.civil_status) setV('modalCivilStatus', res.civil_status);
+                if (res.contact_no) setV('modalContactNo', res.contact_no);
+                if (res.email) setV('modalEmail', res.email);
+                if (res.preferred_contact) setV('modalPreferredContact', res.preferred_contact);
+                if (res.purok) setV('modalPurok', res.purok);
+                if (res.is_tenant !== undefined) setV('modalIsTenant', String(res.is_tenant));
+                if (res.address) setV('modalAddress', res.address);
+            }
+            modalSearchDropdown.style.display = 'none';
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!modalSearchInput.contains(e.target) && !modalSearchDropdown.contains(e.target)) {
+                modalSearchDropdown.style.display = 'none';
+            }
+        });
+    }
+
+    modalSearchClear?.addEventListener('click', () => {
+        resetModalQuickFill();
+        const resId = document.getElementById('modalResidentId');
+        if (resId) resId.value = '';
+    });
+    modalClearQuickFill?.addEventListener('click', () => {
+        resetModalQuickFill();
+        const resId = document.getElementById('modalResidentId');
+        if (resId) resId.value = '';
+    });
+
+    // Modal Birthdate, Age & Minor listeners
+    document.getElementById('modalBirthdate')?.addEventListener('change', () => {
+        const bday = document.getElementById('modalBirthdate')?.value;
+        const age = calculateAge(bday);
+        const ageInput = document.getElementById('modalAge');
+        const minorCheck = document.getElementById('modalIsMinor');
+        const gSec = document.getElementById('modalGuardianSection');
+        if (age !== null && ageInput) {
+            ageInput.value = age;
+            if (age < 18 && minorCheck) {
+                minorCheck.checked = true;
+                if (gSec) gSec.style.display = 'block';
+            }
+        }
+    });
+
+    document.getElementById('modalAge')?.addEventListener('input', () => {
+        const age = parseInt(document.getElementById('modalAge')?.value, 10);
+        const minorCheck = document.getElementById('modalIsMinor');
+        const gSec = document.getElementById('modalGuardianSection');
+        if (!isNaN(age) && age < 18 && minorCheck) {
+            minorCheck.checked = true;
+            if (gSec) gSec.style.display = 'block';
+        }
+    });
+
+    document.getElementById('modalIsMinor')?.addEventListener('change', () => {
+        const isMinor = document.getElementById('modalIsMinor')?.checked;
+        const gSec = document.getElementById('modalGuardianSection');
+        if (gSec) gSec.style.display = isMinor ? 'block' : 'none';
+    });
+
+    // Modal Respondent Unknown Toggles
+    document.getElementById('modalMiddleUnknown')?.addEventListener('change', (e) => {
+        const inp = document.getElementById('modalMiddleName');
+        if (inp) {
+            if (e.target.checked) { inp.value = ''; inp.disabled = true; }
+            else { inp.disabled = false; }
+        }
+    });
+
+    document.getElementById('modalBirthUnknown')?.addEventListener('change', (e) => {
+        const bday = document.getElementById('modalBirthdate');
+        const age = document.getElementById('modalAge');
+        if (e.target.checked) {
+            if (bday) { bday.value = ''; bday.disabled = true; }
+            if (age) { age.value = ''; age.disabled = true; }
+        } else {
+            if (bday) bday.disabled = false;
+            if (age) age.disabled = false;
+        }
+    });
+
+    document.getElementById('modalContactUnknown')?.addEventListener('change', (e) => {
+        const contact = document.getElementById('modalContactNo');
+        if (contact) {
+            if (e.target.checked) { contact.value = ''; contact.disabled = true; }
+            else { contact.disabled = false; }
+        }
+    });
+
+    // Save Party from Modal
+    document.getElementById('btnSavePartyModal')?.addEventListener('click', () => {
+        const firstName = document.getElementById('modalFirstName')?.value?.trim() || '';
+        const lastName  = document.getElementById('modalLastName')?.value?.trim() || '';
+
+        if (!firstName || !lastName) {
+            window.agapNotify?.('Please provide both the First Name and Last Name.', 'error');
+            if (!firstName) document.getElementById('modalFirstName')?.focus();
+            else document.getElementById('modalLastName')?.focus();
+            return;
+        }
+
+        const isMinor = document.getElementById('modalIsMinor')?.checked;
+        if (isMinor) {
+            const gName = document.getElementById('modalGuardianName')?.value?.trim();
+            const gRel  = document.getElementById('modalGuardianRelationship')?.value?.trim();
+            if (!gName) {
+                window.agapNotify?.('Since this person is a minor, the legal guardian\'s full name is required.', 'error');
+                document.getElementById('modalGuardianName')?.focus();
+                return;
+            }
+            if (!gRel) {
+                window.agapNotify?.('Please specify the legal guardian\'s relationship to the minor.', 'error');
+                document.getElementById('modalGuardianRelationship')?.focus();
+                return;
+            }
+        }
+
+        const partyData = {
+            resident_id: document.getElementById('modalResidentId')?.value?.trim() || '',
+            first_name: firstName,
+            middle_name: document.getElementById('modalMiddleName')?.value?.trim() || '',
+            last_name: lastName,
+            suffix: document.getElementById('modalSuffix')?.value?.trim() || '',
+            birthdate: document.getElementById('modalBirthdate')?.value || '',
+            age: document.getElementById('modalAge')?.value || '',
+            gender: document.getElementById('modalGender')?.value || '',
+            civil_status: document.getElementById('modalCivilStatus')?.value || '',
+            occupation: '',
+            contact_no: document.getElementById('modalContactNo')?.value?.trim() || '',
+            email: document.getElementById('modalEmail')?.value?.trim() || '',
+            preferred_contact: document.getElementById('modalPreferredContact')?.value || 'SMS',
+            purok: document.getElementById('modalPurok')?.value || '',
+            is_tenant: document.getElementById('modalIsTenant')?.value || '0',
+            address: document.getElementById('modalAddress')?.value?.trim() || '',
+            is_minor: !!isMinor,
+            guardian_name: document.getElementById('modalGuardianName')?.value?.trim() || '',
+            guardian_relationship: document.getElementById('modalGuardianRelationship')?.value?.trim() || '',
+            guardian_contact: document.getElementById('modalGuardianContact')?.value?.trim() || '',
+            guardian_address: document.getElementById('modalGuardianAddress')?.value?.trim() || '',
+            contact_unknown: document.getElementById('modalContactUnknown')?.checked || false,
+            middle_unknown: document.getElementById('modalMiddleUnknown')?.checked || false,
+            birth_unknown: document.getElementById('modalBirthUnknown')?.checked || false,
+        };
+
+        if (currentModalRole === 'complainant') {
+            if (currentModalMode === 'add') {
+                complainantsList.push(partyData);
+            } else if (currentModalIndex !== null && complainantsList[currentModalIndex]) {
+                complainantsList[currentModalIndex] = partyData;
+            }
+        } else {
+            if (currentModalMode === 'add') {
+                respondentsList.push(partyData);
+            } else if (currentModalIndex !== null && respondentsList[currentModalIndex]) {
+                respondentsList[currentModalIndex] = partyData;
+            }
+        }
+
+        window.closePartyModal();
+        syncHiddenPartyInputs();
+        renderParties();
+        window.validateDistinctParties?.();
+        triggerDuplicateCheck();
+    });
+
+    window.removeParty = function(role, index) {
+        if (role === 'complainant') {
+            complainantsList.splice(index, 1);
+        } else {
+            respondentsList.splice(index, 1);
+        }
+        syncHiddenPartyInputs();
+        renderParties();
+        window.validateDistinctParties?.();
+        triggerDuplicateCheck();
+    };
+
+    function syncHiddenPartyInputs() {
+        // Sync primary complainant
+        const comp = complainantsList[0] || null;
+        const setComp = (id, val) => {
+            const el = document.getElementById(id);
+            if (el) el.value = val ?? '';
+        };
+
+        if (comp) {
+            const compFullName = [comp.first_name, comp.middle_name, comp.last_name, comp.suffix].filter(Boolean).join(' ');
+            setComp('complainantResidentId', comp.resident_id);
+            setComp('complainantName', compFullName);
+            setComp('complainantFirstName', comp.first_name);
+            setComp('complainantMiddleName', comp.middle_name);
+            setComp('complainantLastName', comp.last_name);
+            setComp('complainantSuffix', comp.suffix);
+            setComp('complainantBirthdate', comp.birthdate);
+            setComp('complainantAge', comp.age);
+            setComp('complainantGender', comp.gender);
+            setComp('complainantCivilStatus', comp.civil_status);
+            setComp('complainantOccupation', comp.occupation);
+            setComp('complainantContactNo', comp.contact_no);
+            setComp('complainantEmail', comp.email);
+            setComp('complainantPreferredContact', comp.preferred_contact);
+            setComp('complainantPurok', comp.purok);
+            setComp('complainantIsTenant', comp.is_tenant);
+            setComp('complainantAddress', comp.address);
+            setComp('complainantIsMinor', comp.is_minor ? '1' : '0');
+            setComp('complainantGuardianName', comp.guardian_name);
+            setComp('complainantGuardianRelationship', comp.guardian_relationship);
+            setComp('complainantGuardianContact', comp.guardian_contact);
+            setComp('complainantGuardianAddress', comp.guardian_address);
+        } else {
+            ['complainantResidentId', 'complainantName', 'complainantFirstName', 'complainantMiddleName',
+             'complainantLastName', 'complainantSuffix', 'complainantBirthdate', 'complainantAge',
+             'complainantGender', 'complainantCivilStatus', 'complainantOccupation', 'complainantContactNo',
+             'complainantEmail', 'complainantPurok', 'complainantAddress', 'complainantGuardianName',
+             'complainantGuardianRelationship', 'complainantGuardianContact', 'complainantGuardianAddress'].forEach(id => setComp(id, ''));
+            setComp('complainantPreferredContact', 'SMS');
+            setComp('complainantIsTenant', '0');
+            setComp('complainantIsMinor', '0');
+        }
+
+        // Sync primary respondent
+        const resp = respondentsList[0] || null;
+        const setResp = (id, val) => {
+            const el = document.getElementById(id);
+            if (el) el.value = val ?? '';
+        };
+
+        if (resp) {
+            const respFullName = [resp.first_name, resp.middle_name, resp.last_name, resp.suffix].filter(Boolean).join(' ');
+            setResp('respondentResidentId', resp.resident_id);
+            setResp('respondentName', respFullName);
+            setResp('respondentFirstName', resp.first_name);
+            setResp('respondentMiddleName', resp.middle_name);
+            setResp('respondentLastName', resp.last_name);
+            setResp('respondentSuffix', resp.suffix);
+            setResp('respondentBirthdate', resp.birthdate);
+            setResp('respondentAge', resp.age);
+            setResp('respondentGender', resp.gender);
+            setResp('respondentCivilStatus', resp.civil_status);
+            setResp('respondentOccupation', resp.occupation);
+            setResp('respondentContactNo', resp.contact_no);
+            setResp('respondentEmail', resp.email);
+            setResp('respondentPurok', resp.purok);
+            setResp('respondentIsTenant', resp.is_tenant);
+            setResp('respondentAddress', resp.address);
+            setResp('respondentIsMinor', resp.is_minor ? '1' : '0');
+            setResp('respondentGuardianName', resp.guardian_name);
+            setResp('respondentGuardianRelationship', resp.guardian_relationship);
+            setResp('respondentGuardianContact', resp.guardian_contact);
+            setResp('respondentGuardianAddress', resp.guardian_address);
+            setResp('respContactUnknown', resp.contact_unknown ? '1' : '0');
+            setResp('respMiddleUnknown', resp.middle_unknown ? '1' : '0');
+            setResp('respBirthUnknown', resp.birth_unknown ? '1' : '0');
+        } else {
+            ['respondentResidentId', 'respondentName', 'respondentFirstName', 'respondentMiddleName',
+             'respondentLastName', 'respondentSuffix', 'respondentBirthdate', 'respondentAge',
+             'respondentGender', 'respondentCivilStatus', 'respondentOccupation', 'respondentContactNo',
+             'respondentEmail', 'respondentPurok', 'respondentAddress', 'respondentGuardianName',
+             'respondentGuardianRelationship', 'respondentGuardianContact', 'respondentGuardianAddress',
+             'respContactUnknown', 'respMiddleUnknown', 'respBirthUnknown'].forEach(id => setResp(id, ''));
+            setResp('respondentIsTenant', '0');
+            setResp('respondentIsMinor', '0');
+        }
+
+        // Sync additional parties container
+        const addContainer = document.getElementById('additionalPartiesHiddenContainer');
+        if (addContainer) {
+            let html = '';
+            // Additional complainants (index 1+)
+            for (let i = 1; i < complainantsList.length; i++) {
+                const p = complainantsList[i];
+                const fn = [p.first_name, p.middle_name, p.last_name, p.suffix].filter(Boolean).join(' ');
+                html += `
+                    <input type="hidden" name="party_types[]" value="Complainant">
+                    <input type="hidden" name="party_resident_ids[]" value="${escapeHtml(p.resident_id || '')}">
+                    <input type="hidden" name="party_names[]" value="${escapeHtml(fn)}">
+                    <input type="hidden" name="party_first_names[]" value="${escapeHtml(p.first_name || '')}">
+                    <input type="hidden" name="party_middle_names[]" value="${escapeHtml(p.middle_name || '')}">
+                    <input type="hidden" name="party_last_names[]" value="${escapeHtml(p.last_name || '')}">
+                    <input type="hidden" name="party_suffixes[]" value="${escapeHtml(p.suffix || '')}">
+                    <input type="hidden" name="party_contacts[]" value="${escapeHtml(p.contact_no || '')}">
+                    <input type="hidden" name="party_addresses[]" value="${escapeHtml(p.address || '')}">
+                    <input type="hidden" name="party_puroks[]" value="${escapeHtml(p.purok || '')}">
+                `;
+            }
+            // Additional respondents (index 1+)
+            for (let i = 1; i < respondentsList.length; i++) {
+                const p = respondentsList[i];
+                const fn = [p.first_name, p.middle_name, p.last_name, p.suffix].filter(Boolean).join(' ');
+                html += `
+                    <input type="hidden" name="party_types[]" value="Respondent">
+                    <input type="hidden" name="party_resident_ids[]" value="${escapeHtml(p.resident_id || '')}">
+                    <input type="hidden" name="party_names[]" value="${escapeHtml(fn)}">
+                    <input type="hidden" name="party_first_names[]" value="${escapeHtml(p.first_name || '')}">
+                    <input type="hidden" name="party_middle_names[]" value="${escapeHtml(p.middle_name || '')}">
+                    <input type="hidden" name="party_last_names[]" value="${escapeHtml(p.last_name || '')}">
+                    <input type="hidden" name="party_suffixes[]" value="${escapeHtml(p.suffix || '')}">
+                    <input type="hidden" name="party_contacts[]" value="${escapeHtml(p.contact_no || '')}">
+                    <input type="hidden" name="party_addresses[]" value="${escapeHtml(p.address || '')}">
+                    <input type="hidden" name="party_puroks[]" value="${escapeHtml(p.purok || '')}">
+                `;
+            }
+            addContainer.innerHTML = html;
+        }
+    }
+
+    function renderParties() {
+        renderComplainants();
+        renderRespondents();
+    }
+
+    function renderComplainants() {
+        const listEl = document.getElementById('complainantsSummaryList');
+        if (!listEl) return;
+
+        if (complainantsList.length === 0) {
+            listEl.innerHTML = `
+                <div class="party-empty-card" onclick="openPartyModal('complainant', 'add')">
+                    <span style="font-size: 1.3rem;">👤</span>
+                    <div>
+                        <strong>No complainant added yet</strong>
+                        <div style="font-size: 0.78rem; color: #64748b;">Click here or "+ Add Complainant" to fill in complainant details</div>
+                    </div>
+                </div>
+            `;
+        } else {
+            listEl.innerHTML = complainantsList.map((c, idx) => {
+                const initials = ((c.first_name?.[0] || '') + (c.last_name?.[0] || '')).toUpperCase() || 'C';
+                const fullName = [c.first_name, c.middle_name, c.last_name, c.suffix].filter(Boolean).join(' ');
+                const roleLabel = idx === 0 ? 'Primary Complainant' : `Additional Complainant #${idx + 1}`;
+                const rolePillClass = idx === 0 ? 'primary-complainant' : 'additional-party';
+
+                const details = [];
+                if (c.contact_no) details.push(`<span>📞 ${escapeHtml(c.contact_no)}</span>`);
+                if (c.purok || c.address) details.push(`<span>📍 ${escapeHtml(c.address || c.purok)}</span>`);
+                const demo = [];
+                if (c.age) demo.push(`${escapeHtml(c.age)} yrs old`);
+                if (c.gender) demo.push(escapeHtml(c.gender));
+                if (c.civil_status) demo.push(escapeHtml(c.civil_status));
+                if (demo.length) details.push(`<span>${demo.join(' • ')}</span>`);
+                if (c.is_minor && c.guardian_name) {
+                    details.push(`<span>🛡️ Minor (Guardian: ${escapeHtml(c.guardian_name)}${c.guardian_relationship ? ' - ' + escapeHtml(c.guardian_relationship) : ''})</span>`);
+                }
+
+                return `
+                    <div class="party-summary-card">
+                        <div class="party-avatar-badge is-complainant">${escapeHtml(initials)}</div>
+                        <div class="party-summary-info">
+                            <div class="party-summary-title-row">
+                                <span class="party-summary-name">${escapeHtml(fullName)}</span>
+                                <span class="party-role-pill ${rolePillClass}">${roleLabel}</span>
                             </div>
-                            <input type="hidden" name="party_resident_ids[]" required value="">
-                            <input type="hidden" name="party_names[]" value="">
-                            <div class="party-search-dropdown" style="display:none;"></div>
+                            <div class="party-summary-details">
+                                ${details.join('')}
+                            </div>
+                        </div>
+                        <div class="party-summary-actions">
+                            <button type="button" class="btn-summary-action" onclick="openPartyModal('complainant', 'edit', ${idx})">✏️ Edit</button>
+                            <button type="button" class="btn-summary-action remove-party-action" onclick="removeParty('complainant', ${idx})">&times; Remove</button>
                         </div>
                     </div>
-                    <button type="button" class="btn-remove-party" title="Remove party" onclick="removePartyRow('${rowId}')">&times;</button>
-                </div>
-                <div class="party-selected-preview additional-party-preview" style="display:none;"></div>
-            `;
-            container.appendChild(div);
+                `;
+            }).join('');
+        }
 
-            const newCombobox = div.querySelector('.party-search-combobox');
-            if (newCombobox && window.initPartySearchCombobox) {
-                window.initPartySearchCombobox(newCombobox, window.AGAP_RESIDENTS);
+        const addBtn = document.getElementById('btnAddComplainantModal');
+        const isMultiple = document.getElementById('chkMultipleComplainants')?.checked;
+        if (addBtn) {
+            if (complainantsList.length === 0) {
+                addBtn.style.display = 'inline-flex';
+                addBtn.textContent = '+ Add Complainant';
+            } else if (isMultiple) {
+                addBtn.style.display = 'inline-flex';
+                addBtn.textContent = '+ Add Another Complainant';
+            } else {
+                addBtn.style.display = 'none';
             }
-            updatePartiesCount();
+        }
+    }
+
+    function renderRespondents() {
+        const listEl = document.getElementById('respondentsSummaryList');
+        if (!listEl) return;
+
+        if (respondentsList.length === 0) {
+            listEl.innerHTML = `
+                <div class="party-empty-card" onclick="openPartyModal('respondent', 'add')">
+                    <span style="font-size: 1.3rem;">👤</span>
+                    <div>
+                        <strong>No respondent added yet</strong>
+                        <div style="font-size: 0.78rem; color: #64748b;">Click here or "+ Add Respondent" to fill in respondent details</div>
+                    </div>
+                </div>
+            `;
+        } else {
+            listEl.innerHTML = respondentsList.map((r, idx) => {
+                const initials = ((r.first_name?.[0] || '') + (r.last_name?.[0] || '')).toUpperCase() || 'R';
+                const fullName = [r.first_name, r.middle_name, r.last_name, r.suffix].filter(Boolean).join(' ');
+                const roleLabel = idx === 0 ? 'Primary Respondent' : `Additional Respondent #${idx + 1}`;
+                const rolePillClass = idx === 0 ? 'primary-respondent' : 'additional-party';
+
+                const details = [];
+                if (r.contact_unknown) {
+                    details.push('<span>📞 Contact Unknown</span>');
+                } else if (r.contact_no) {
+                    details.push(`<span>📞 ${escapeHtml(r.contact_no)}</span>`);
+                }
+                if (r.purok || r.address) details.push(`<span>📍 ${escapeHtml(r.address || r.purok)}</span>`);
+                const demo = [];
+                if (r.birth_unknown) {
+                    demo.push('<span>Birthdate Unknown</span>');
+                } else if (r.age) {
+                    demo.push(`<span>${escapeHtml(r.age)} yrs old</span>`);
+                }
+                if (r.gender) demo.push(`<span>${escapeHtml(r.gender)}</span>`);
+                if (r.civil_status) demo.push(`<span>${escapeHtml(r.civil_status)}</span>`);
+                if (demo.length) details.push(`<span>${demo.join(' • ')}</span>`);
+                if (r.is_minor && r.guardian_name) {
+                    details.push(`<span>🛡️ Minor (Guardian: ${escapeHtml(r.guardian_name)}${r.guardian_relationship ? ' - ' + escapeHtml(r.guardian_relationship) : ''})</span>`);
+                }
+
+                return `
+                    <div class="party-summary-card">
+                        <div class="party-avatar-badge is-respondent">${escapeHtml(initials)}</div>
+                        <div class="party-summary-info">
+                            <div class="party-summary-title-row">
+                                <span class="party-summary-name">${escapeHtml(fullName)}</span>
+                                <span class="party-role-pill ${rolePillClass}">${roleLabel}</span>
+                            </div>
+                            <div class="party-summary-details">
+                                ${details.join('')}
+                            </div>
+                        </div>
+                        <div class="party-summary-actions">
+                            <button type="button" class="btn-summary-action" onclick="openPartyModal('respondent', 'edit', ${idx})">✏️ Edit</button>
+                            <button type="button" class="btn-summary-action remove-party-action" onclick="removeParty('respondent', ${idx})">&times; Remove</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        const addBtn = document.getElementById('btnAddRespondentModal');
+        const isMultiple = document.getElementById('chkMultipleRespondents')?.checked;
+        if (addBtn) {
+            if (respondentsList.length === 0) {
+                addBtn.style.display = 'inline-flex';
+                addBtn.textContent = '+ Add Respondent';
+            } else if (isMultiple) {
+                addBtn.style.display = 'inline-flex';
+                addBtn.textContent = '+ Add Another Respondent';
+            } else {
+                addBtn.style.display = 'none';
+            }
+        }
+    }
+
+    // Multiple Checkbox Listeners
+    const chkMultComp = document.getElementById('chkMultipleComplainants');
+    if (chkMultComp) {
+        if (complainantsList.length > 1) chkMultComp.checked = true;
+        chkMultComp.addEventListener('change', () => {
+            if (!chkMultComp.checked && complainantsList.length > 1) {
+                if (confirm('Unchecking multiple complainants will keep only the primary complainant. Continue?')) {
+                    complainantsList = complainantsList.slice(0, 1);
+                    syncHiddenPartyInputs();
+                    renderParties();
+                } else {
+                    chkMultComp.checked = true;
+                }
+            } else {
+                renderParties();
+            }
         });
     }
 
-    // Sync header badges with form controls
-    const titleInput = document.getElementById('complaintTitle');
-    const titleHeading = document.getElementById('editComplaintSubheading');
-    if (titleInput && titleHeading) {
-        titleInput.addEventListener('input', () => {
-            titleHeading.textContent = titleInput.value.trim() || 'Untitled Complaint';
+    const chkMultResp = document.getElementById('chkMultipleRespondents');
+    if (chkMultResp) {
+        if (respondentsList.length > 1) chkMultResp.checked = true;
+        chkMultResp.addEventListener('change', () => {
+            if (!chkMultResp.checked && respondentsList.length > 1) {
+                if (confirm('Unchecking multiple respondents will keep only the primary respondent. Continue?')) {
+                    respondentsList = respondentsList.slice(0, 1);
+                    syncHiddenPartyInputs();
+                    renderParties();
+                } else {
+                    chkMultResp.checked = true;
+                }
+            } else {
+                renderParties();
+            }
         });
     }
 
-    const categorySelect = document.getElementById('categoryId');
-    const categoryBadge = document.getElementById('headerCategoryBadge');
-    if (categorySelect && categoryBadge) {
-        categorySelect.addEventListener('change', () => {
-            const opt = categorySelect.options[categorySelect.selectedIndex];
-            categoryBadge.textContent = opt ? opt.text : 'General';
+    // Initialize state
+    syncHiddenPartyInputs();
+    renderParties();
+
+    // ── Real-time Duplicate Complaint Detection ──
+    async function triggerDuplicateCheck() {
+        const compId = document.getElementById('complainantResidentId')?.value?.trim();
+        const respId = document.getElementById('respondentResidentId')?.value?.trim();
+        const compFirst = document.getElementById('complainantFirstName')?.value?.trim();
+        const compLast  = document.getElementById('complainantLastName')?.value?.trim();
+        const respFirst = document.getElementById('respondentFirstName')?.value?.trim();
+        const respLast  = document.getElementById('respondentLastName')?.value?.trim();
+
+        const banner = document.getElementById('duplicateComplaintBanner');
+        const list   = document.getElementById('duplicateComplaintList');
+        if (!banner || !list) return;
+
+        if ((!compId && (!compFirst || !compLast)) || (!respId && (!respFirst || !respLast))) {
+            banner.style.display = 'none';
+            list.innerHTML = '';
+            return;
+        }
+
+        const title = document.getElementById('complaintTitle')?.value?.trim() || '';
+        const dt = document.getElementById('incidentDateTime')?.value?.trim() || '';
+        const incDate = dt.includes('T') ? dt.split('T')[0] : dt;
+
+        try {
+            const params = new URLSearchParams();
+            if (compId) params.append('complainant_resident_id', compId);
+            if (respId) params.append('respondent_resident_id', respId);
+            if (compFirst) params.append('complainant_first_name', compFirst);
+            if (compLast) params.append('complainant_last_name', compLast);
+            if (respFirst) params.append('respondent_first_name', respFirst);
+            if (respLast) params.append('respondent_last_name', respLast);
+            if (title) params.append('complaint_title', title);
+            if (incDate) params.append('incident_date', incDate);
+            params.append('exclude_complaint_id', '<?php echo $complaintId; ?>');
+
+            const resp = await fetch(`../../../backend/api/complaints/check-duplicate.php?${params.toString()}`);
+            const data = await resp.json();
+            if (data && data.has_duplicate && data.duplicates && data.duplicates.length > 0) {
+                list.innerHTML = data.duplicates.map(d => `
+                    <li>
+                        <strong>${escapeHtml(d.complaint_number || 'No Case #')}</strong>:
+                        ${escapeHtml(d.complaint_title)}
+                        <span class="badge-lifecycle-pending" style="font-size:0.75rem;padding:1px 6px;margin-left:4px;">${escapeHtml(d.status)}</span>
+                        <span style="color:#64748b;font-size:0.75rem;">(Incident: ${escapeHtml(d.incident_date || 'N/A')})</span>
+                        <a href="complaint-details.php?id=${d.complaint_id}" target="_blank" class="duplicate-warning-link" style="margin-left:6px;">View Record &rarr;</a>
+                    </li>
+                `).join('');
+                banner.style.display = 'block';
+            } else {
+                banner.style.display = 'none';
+                list.innerHTML = '';
+            }
+        } catch (err) {
+            console.warn('Duplicate check error:', err);
+        }
+    }
+
+    document.getElementById('dismissDuplicateBanner')?.addEventListener('click', () => {
+        const banner = document.getElementById('duplicateComplaintBanner');
+        if (banner) banner.style.display = 'none';
+    });
+    document.getElementById('complaintTitle')?.addEventListener('input', triggerDuplicateCheck);
+    document.getElementById('incidentDateTime')?.addEventListener('change', triggerDuplicateCheck);
+
+    // ── Time & Future Date Helpers ──
+    const dtField = document.getElementById('incidentDateTime');
+    const lblDtField = document.getElementById('lblIncidentDateTime');
+    const futureNotice = document.getElementById('futureDateNotice');
+    function checkFutureDate() {
+        if (!dtField || !futureNotice) return;
+        const val = dtField.value;
+        if (!val) {
+            futureNotice.style.display = 'none';
+            return;
+        }
+        const selDate = new Date(val);
+        const now = new Date();
+        futureNotice.style.display = (selDate > now) ? 'block' : 'none';
+    }
+    if (dtField) {
+        dtField.addEventListener('change', checkFutureDate);
+        dtField.addEventListener('input', checkFutureDate);
+        checkFutureDate();
+    }
+
+    const timeUnknownCheck = document.getElementById('isTimeUnknown');
+    const timeApproxCheck  = document.getElementById('isTimeApproximate');
+
+    function syncDateTimeInputs() {
+        if (!dtField) return;
+        if (timeUnknownCheck && timeUnknownCheck.checked) {
+            if (lblDtField) lblDtField.innerHTML = 'Incident Date (Exact Time Unknown) <span class="required-mark">*</span>';
+            const currVal = dtField.value;
+            if (currVal && currVal.includes('T')) {
+                dtField.value = currVal.split('T')[0];
+            }
+            dtField.type = 'date';
+            if (timeApproxCheck) {
+                timeApproxCheck.checked = false;
+                timeApproxCheck.disabled = true;
+            }
+        } else {
+            if (lblDtField) lblDtField.innerHTML = 'Incident Date &amp; Time <span class="required-mark">*</span>';
+            const currVal = dtField.value;
+            dtField.type = 'datetime-local';
+            if (currVal && !currVal.includes('T') && currVal.length === 10) {
+                dtField.value = currVal + 'T12:00';
+            }
+            if (timeApproxCheck) {
+                timeApproxCheck.disabled = false;
+            }
+        }
+        checkFutureDate();
+    }
+
+    if (timeUnknownCheck) {
+        timeUnknownCheck.addEventListener('change', syncDateTimeInputs);
+        if (timeUnknownCheck.checked) {
+            syncDateTimeInputs();
+        }
+    }
+
+    if (timeApproxCheck) {
+        timeApproxCheck.addEventListener('change', () => {
+            if (timeApproxCheck.checked && timeUnknownCheck && timeUnknownCheck.checked) {
+                timeUnknownCheck.checked = false;
+                syncDateTimeInputs();
+            }
         });
     }
 
-    const caseTypeSelect = document.getElementById('caseType');
-    const caseTypeBadge = document.getElementById('headerCaseTypeBadge');
-    if (caseTypeSelect && caseTypeBadge) {
-        caseTypeSelect.addEventListener('change', () => {
-            caseTypeBadge.textContent = caseTypeSelect.value || 'Civil';
+    // ── Formal Complaint Document (KP Form 7) Upload & Replacement Handling ──
+    const kp7Input = document.getElementById('scannedKp7Input');
+    const kp7DropZone = document.getElementById('kp7DropZone');
+    const btnBrowseKp7 = document.getElementById('btnBrowseKp7');
+    const kp7Preview = document.getElementById('kp7SelectedPreview');
+    const kp7FileName = document.getElementById('kp7FileName');
+    const kp7FileTypeBadge = document.getElementById('kp7FileTypeBadge');
+    const kp7FileSize = document.getElementById('kp7FileSize');
+    const kp7ThumbWrap = document.getElementById('kp7ThumbWrap');
+    const kp7Badge = document.getElementById('kp7DocStatusBadge');
+    const kp7Alert = document.getElementById('kp7UploadAlert');
+    const btnReplaceKp7 = document.getElementById('btnReplaceKp7');
+    const btnRemoveKp7 = document.getElementById('btnRemoveKp7');
+    const btnPreviewModal = document.getElementById('btnPreviewKp7Modal');
+    const kp7Modal = document.getElementById('kp7DocPreviewModal');
+    const kp7ModalBody = document.getElementById('kp7ModalBody');
+    const btnToggleReplace = document.getElementById('btnToggleReplaceScan');
+    const replacementWrap = document.getElementById('replacementDropzoneWrap');
+
+    if (btnToggleReplace && replacementWrap) {
+        btnToggleReplace.addEventListener('click', () => {
+            const isHidden = replacementWrap.style.display === 'none';
+            replacementWrap.style.display = isHidden ? 'block' : 'none';
+            btnToggleReplace.textContent = isHidden ? 'Hide Replacement Box' : 'Upload Replacement';
         });
     }
 
-    // The shared complaints script initializes the Tumana-restricted map.
+    let currentKp7File = null;
+    let currentKp7Url = null;
+
+    function handleKp7FileSelection(file) {
+        if (!file) return;
+        if (kp7Alert) { kp7Alert.style.display = 'none'; kp7Alert.textContent = ''; }
+
+        const maxBytes = 25 * 1024 * 1024;
+        const allowedExts = ['pdf', 'jpg', 'jpeg', 'png'];
+        const ext = file.name.split('.').pop().toLowerCase();
+
+        if (file.size > maxBytes) {
+            if (kp7Alert) {
+                kp7Alert.textContent = `File exceeds 25 MB limit (${(file.size / (1024*1024)).toFixed(1)} MB). Please select a smaller scan.`;
+                kp7Alert.style.display = 'block';
+            }
+            return;
+        }
+        if (!allowedExts.includes(ext)) {
+            if (kp7Alert) {
+                kp7Alert.textContent = `Format .${ext} is not allowed. Only PDF, JPG, JPEG, and PNG files are accepted.`;
+                kp7Alert.style.display = 'block';
+            }
+            return;
+        }
+
+        currentKp7File = file;
+        if (currentKp7Url) URL.revokeObjectURL(currentKp7Url);
+        currentKp7Url = URL.createObjectURL(file);
+
+        if (kp7FileName) kp7FileName.textContent = file.name;
+        if (kp7FileTypeBadge) kp7FileTypeBadge.textContent = ext.toUpperCase();
+        if (kp7FileSize) kp7FileSize.textContent = formatFileSize(file.size);
+
+        if (kp7ThumbWrap) {
+            if (['jpg', 'jpeg', 'png'].includes(ext)) {
+                kp7ThumbWrap.innerHTML = `<img src="${currentKp7Url}" class="kp7-preview-thumb" alt="Preview">`;
+            } else {
+                kp7ThumbWrap.innerHTML = `<div class="kp7-preview-icon">PDF</div>`;
+            }
+        }
+
+        if (kp7DropZone) kp7DropZone.style.display = 'none';
+        if (kp7Preview) kp7Preview.style.display = 'flex';
+        if (kp7Badge) {
+            kp7Badge.className = 'badge-doc-status badge-doc-uploaded';
+            kp7Badge.textContent = 'Replacement Ready';
+        }
+    }
+
+    function resetKp7Selection() {
+        currentKp7File = null;
+        if (currentKp7Url) {
+            URL.revokeObjectURL(currentKp7Url);
+            currentKp7Url = null;
+        }
+        if (kp7Input) kp7Input.value = '';
+        if (kp7Preview) kp7Preview.style.display = 'none';
+        if (kp7DropZone) kp7DropZone.style.display = 'block';
+        if (kp7Alert) {
+            kp7Alert.style.display = 'none';
+            kp7Alert.textContent = '';
+        }
+    }
+
+    if (btnBrowseKp7 && kp7Input) {
+        btnBrowseKp7.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            kp7Input.click();
+        });
+    }
+    if (kp7DropZone && kp7Input) {
+        kp7DropZone.addEventListener('click', (e) => {
+            if (e.target !== btnBrowseKp7) {
+                kp7Input.click();
+            }
+        });
+        ['dragenter', 'dragover'].forEach(name => {
+            kp7DropZone.addEventListener(name, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                kp7DropZone.classList.add('dragover');
+            });
+        });
+        ['dragleave', 'dragend', 'drop'].forEach(name => {
+            kp7DropZone.addEventListener(name, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                kp7DropZone.classList.remove('dragover');
+            });
+        });
+        kp7DropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            kp7DropZone.classList.remove('dragover');
+            if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                const file = e.dataTransfer.files[0];
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                kp7Input.files = dt.files;
+                handleKp7FileSelection(file);
+            }
+        });
+    }
+
+    if (kp7Input) {
+        kp7Input.addEventListener('change', () => {
+            if (kp7Input.files && kp7Input.files.length > 0) {
+                handleKp7FileSelection(kp7Input.files[0]);
+            }
+        });
+    }
+
+    if (btnReplaceKp7 && kp7Input) {
+        btnReplaceKp7.addEventListener('click', () => kp7Input.click());
+    }
+    if (btnRemoveKp7) {
+        btnRemoveKp7.addEventListener('click', resetKp7Selection);
+    }
+
+    // Preview Modal
+    if (btnPreviewModal && kp7Modal && kp7ModalBody) {
+        btnPreviewModal.addEventListener('click', () => {
+            if (!currentKp7Url || !currentKp7File) return;
+            const ext = currentKp7File.name.split('.').pop().toLowerCase();
+            if (['jpg', 'jpeg', 'png'].includes(ext)) {
+                kp7ModalBody.innerHTML = `<img src="${currentKp7Url}" style="max-width:100%; max-height:70vh; object-fit:contain; border-radius:6px; box-shadow:0 4px 6px rgba(0,0,0,0.1);" alt="KP Form 7 Preview">`;
+            } else {
+                kp7ModalBody.innerHTML = `<iframe src="${currentKp7Url}" style="width:100%; height:70vh; border:none; border-radius:6px;"></iframe>`;
+            }
+            kp7Modal.style.display = 'flex';
+        });
+    }
+
+    ['btnCloseKp7PreviewModal', 'btnCloseKp7PreviewModalBtn'].forEach(id => {
+        document.getElementById(id)?.addEventListener('click', () => {
+            if (kp7Modal) kp7Modal.style.display = 'none';
+        });
+    });
+    if (kp7Modal) {
+        kp7Modal.addEventListener('click', (e) => {
+            if (e.target === kp7Modal) kp7Modal.style.display = 'none';
+        });
+    }
+
+    // ── Save as Draft Handler ──
+    function handleSaveDraft(triggerBtn) {
+        const isDraftInput = document.getElementById('isDraftInput');
+        if (isDraftInput) isDraftInput.value = '1';
+        if (triggerBtn) {
+            triggerBtn.disabled = true;
+            triggerBtn.textContent = 'Saving Draft...';
+        }
+
+        const form = document.getElementById('editComplaintForm');
+        if (form) {
+            form.querySelectorAll('[required]').forEach(el => {
+                el.dataset.wasRequired = 'true';
+                el.removeAttribute('required');
+            });
+            form.submit();
+        }
+    }
+
+    ['btnHeaderSaveDraft', 'btnBottomSaveDraft'].forEach(id => {
+        document.getElementById(id)?.addEventListener('click', function() {
+            handleSaveDraft(this);
+        });
+    });
+
+    // ── Quick-Nav ScrollSpy & Smooth Scrolling ──
+    const quickNavLinks = document.querySelectorAll('#intakeQuickNav .quicknav-link');
+    const navSectionIds = ['section-ingestion', 'section-parties', 'section-narrative', 'section-location', 'section-evidence'];
+    const navSections = navSectionIds.map(id => document.getElementById(id)).filter(Boolean);
+
+    quickNavLinks.forEach(link => {
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            const targetId = link.getAttribute('href')?.replace('#', '');
+            const targetEl = document.getElementById(targetId);
+            if (targetEl) {
+                const topOffset = 70;
+                const elementPosition = targetEl.getBoundingClientRect().top + window.pageYOffset;
+                window.scrollTo({
+                    top: Math.max(0, elementPosition - topOffset),
+                    behavior: 'smooth'
+                });
+                quickNavLinks.forEach(l => l.classList.remove('is-active'));
+                link.classList.add('is-active');
+            }
+        });
+    });
+
+    if ('IntersectionObserver' in window && navSections.length > 0) {
+        const navObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const id = entry.target.id;
+                    quickNavLinks.forEach(link => {
+                        const href = link.getAttribute('href');
+                        if (href === `#${id}`) {
+                            link.classList.add('is-active');
+                        } else {
+                            link.classList.remove('is-active');
+                        }
+                    });
+                }
+            });
+        }, {
+            root: null,
+            rootMargin: '-15% 0px -65% 0px',
+            threshold: 0
+        });
+        navSections.forEach(sec => navObserver.observe(sec));
+    }
+
+    // ── Filing Method Dynamic Selector ──
+    const methodRadios = document.querySelectorAll('input[name="filing_method"]');
+    const cardDigital = document.getElementById('labelMethodDigital');
+    const cardPaper = document.getElementById('labelMethodPaper');
+    const paperUploadBox = document.getElementById('paperUploadBox');
+    const narrativeInput = document.getElementById('narrative');
+    const narrativeReqStar = document.getElementById('narrativeRequiredStar');
+
+    function syncFilingMethod() {
+        const selected = document.querySelector('input[name="filing_method"]:checked')?.value || 'digital';
+        if (selected === 'paper') {
+            cardDigital?.classList.remove('is-selected');
+            cardPaper?.classList.add('is-selected');
+            if (paperUploadBox) paperUploadBox.style.display = 'block';
+            if (narrativeInput) {
+                narrativeInput.removeAttribute('required');
+            }
+            if (narrativeReqStar) narrativeReqStar.style.display = 'none';
+        } else {
+            cardDigital?.classList.add('is-selected');
+            cardPaper?.classList.remove('is-selected');
+            if (paperUploadBox) paperUploadBox.style.display = 'none';
+            if (narrativeInput) {
+                narrativeInput.setAttribute('required', 'required');
+            }
+            if (narrativeReqStar) narrativeReqStar.style.display = 'inline';
+        }
+    }
+    methodRadios.forEach(r => r.addEventListener('change', syncFilingMethod));
+
+    // ── Map Controls & Live Coordinates Badge ──
+    const btnRecenter = document.getElementById('btnRecenterMap');
+    if (btnRecenter) {
+        btnRecenter.addEventListener('click', (e) => {
+            e.preventDefault();
+            const mapController = window.complaintMaps?.editComplaintMap;
+            if (mapController?.map) {
+                mapController.map.setView([14.6521, 121.0854], 16);
+                mapController.refresh?.();
+            }
+        });
+    }
+
+    const latInput = document.querySelector('[data-map-latitude]');
+    const lngInput = document.querySelector('[data-map-longitude]');
+    const coordsDisplay = document.getElementById('mapCoordsDisplay');
+
+    function updateCoordsDisplay() {
+        if (!coordsDisplay) return;
+        const lat = parseFloat(latInput?.value);
+        const lng = parseFloat(lngInput?.value);
+        if (!isNaN(lat) && !isNaN(lng)) {
+            coordsDisplay.textContent = `${lat.toFixed(6)}° N, ${lng.toFixed(6)}° E`;
+        } else {
+            coordsDisplay.textContent = '14.6521° N, 121.0854° E (Default)';
+        }
+    }
+    if (latInput) {
+        latInput.addEventListener('change', updateCoordsDisplay);
+        latInput.addEventListener('input', updateCoordsDisplay);
+    }
+    const mapBox = document.getElementById('editComplaintMap');
+    if (mapBox) {
+        mapBox.addEventListener('click', () => setTimeout(updateCoordsDisplay, 200));
+    }
+    document.querySelector('[data-clear-map]')?.addEventListener('click', () => {
+        setTimeout(updateCoordsDisplay, 100);
+    });
+    updateCoordsDisplay();
+
+    // Initialize standalone map with saved state
+    if (window.initialiseComplaintMap) {
+        window.initialiseComplaintMap('editComplaintMap', '<?php echo $savedState; ?>');
+    }
 
     // Evidence file queue handling (DataTransfer backed)
     const evidenceInput = document.getElementById('evidenceFiles');
@@ -1216,7 +2675,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const metaSpan = document.createElement('span');
             metaSpan.className = 'evidence-item-meta';
-            metaSpan.innerHTML = `<span class="evidence-type-badge">${fileInfo.badge}</span> &bull; ${formatFileSize(file.size)}`;
+            metaSpan.innerHTML = `<span class="evidence-type-badge">${fileInfo.badge}</span> ${formatFileSize(file.size)}`;
 
             detailsDiv.appendChild(nameSpan);
             detailsDiv.appendChild(metaSpan);
@@ -1224,7 +2683,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const actionsDiv = document.createElement('div');
             actionsDiv.className = 'evidence-item-actions';
-            actionsDiv.style.cssText = 'display:flex;align-items:center;gap:6px;flex-shrink:0;';
+            actionsDiv.style.cssText = 'display:flex;align-items:center;gap:8px;flex-shrink:0;';
+
+            // Document Category Tag Selector
+            const tagSelect = document.createElement('select');
+            tagSelect.name = 'evidence_tags[]';
+            tagSelect.className = 'evidence-tag-select';
+            tagSelect.innerHTML = `
+                <option value="Photo Evidence">Photo Evidence</option>
+                <option value="Barangay Blotter Copy">Barangay Blotter Copy</option>
+                <option value="KP Form 7">KP Form 7</option>
+                <option value="Medical Certificate">Medical Certificate</option>
+                <option value="Sworn Statement">Sworn Statement</option>
+                <option value="Other Document">Other Document</option>
+            `;
+            const lowerName = file.name.toLowerCase();
+            if (lowerName.includes('blotter')) {
+                tagSelect.value = 'Barangay Blotter Copy';
+            } else if (lowerName.includes('kp') || lowerName.includes('form 7') || lowerName.includes('form7')) {
+                tagSelect.value = 'KP Form 7';
+            } else if (lowerName.includes('med') || lowerName.includes('cert')) {
+                tagSelect.value = 'Medical Certificate';
+            } else if (lowerName.includes('affidavit') || lowerName.includes('salaysay') || lowerName.includes('statement')) {
+                tagSelect.value = 'Sworn Statement';
+            } else if (fileInfo.type === 'image') {
+                tagSelect.value = 'Photo Evidence';
+            } else {
+                tagSelect.value = 'Other Document';
+            }
+            actionsDiv.appendChild(tagSelect);
 
             if (fileInfo.type === 'image') {
                 const ocrBtn = document.createElement('button');
@@ -1242,10 +2729,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const removeBtn = document.createElement('button');
             removeBtn.type = 'button';
-            removeBtn.className = 'btn-remove-queue-item';
-            removeBtn.title = 'Remove file';
+            removeBtn.className = 'btn-remove-evidence-item';
             removeBtn.innerHTML = '&times;';
-            removeBtn.addEventListener('click', () => {
+            removeBtn.title = 'Remove this file';
+            removeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
                 removeFileFromQueue(index);
             });
             actionsDiv.appendChild(removeBtn);
@@ -1256,67 +2744,69 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function removeFileFromQueue(indexToRemove) {
-        const nextDt = new DataTransfer();
-        Array.from(evidenceDataTransfer.files).forEach((file, index) => {
-            if (index !== indexToRemove) {
-                nextDt.items.add(file);
-            }
-        });
-        evidenceDataTransfer = nextDt;
-        if (evidenceInput) {
-            evidenceInput.files = evidenceDataTransfer.files;
-        }
-        renderEvidenceQueue();
-    }
-
-    function handleFilesAdded(fileList) {
+    function addFilesToQueue(incomingFiles) {
         hideEvidenceAlert();
         let errors = [];
 
-        Array.from(fileList).forEach(file => {
+        Array.from(incomingFiles).forEach(file => {
+            if (file.size > maxFileSize) {
+                errors.push(`"${file.name}" exceeds the 25 MB limit.`);
+                return;
+            }
+
             const ext = file.name.split('.').pop().toLowerCase();
             if (!allowedExtensions.includes(ext)) {
-                errors.push(`"${file.name}": Unsupported format. Allowed: JPG, PNG, GIF, WebP, MP4, WebM, PDF, DOC, DOCX.`);
+                errors.push(`"${file.name}" is not an allowed format (JPG, PNG, GIF, WebP, MP4, WebM, PDF, DOC, DOCX).`);
                 return;
             }
-            if (file.size > maxFileSize) {
-                errors.push(`"${file.name}": File size exceeds 25 MB limit.`);
-                return;
-            }
-            const exists = Array.from(evidenceDataTransfer.files).some(existing => existing.name === file.name && existing.size === file.size);
-            if (!exists) {
-                evidenceDataTransfer.items.add(file);
-            }
+
+            const alreadyExists = Array.from(evidenceDataTransfer.files).some(
+                existing => existing.name === file.name && existing.size === file.size && existing.lastModified === file.lastModified
+            );
+            if (alreadyExists) return;
+
+            evidenceDataTransfer.items.add(file);
         });
-
-        if (evidenceInput) {
-            evidenceInput.files = evidenceDataTransfer.files;
-        }
-
-        renderEvidenceQueue();
 
         if (errors.length > 0) {
             showEvidenceAlert(errors.join(' '));
         }
+
+        evidenceInput.files = evidenceDataTransfer.files;
+        renderEvidenceQueue();
     }
 
-    if (btnBrowseEvidence && evidenceInput) {
-        btnBrowseEvidence.addEventListener('click', () => {
-            evidenceInput.click();
+    function removeFileFromQueue(indexToRemove) {
+        const newDt = new DataTransfer();
+        Array.from(evidenceDataTransfer.files).forEach((file, idx) => {
+            if (idx !== indexToRemove) {
+                newDt.items.add(file);
+            }
         });
+        evidenceDataTransfer = newDt;
+        evidenceInput.files = evidenceDataTransfer.files;
+        renderEvidenceQueue();
     }
 
     if (evidenceInput) {
-        evidenceInput.addEventListener('change', (e) => {
-            if (e.target.files && e.target.files.length > 0) {
-                handleFilesAdded(e.target.files);
+        evidenceInput.addEventListener('change', () => {
+            if (evidenceInput.files && evidenceInput.files.length > 0) {
+                addFilesToQueue(evidenceInput.files);
             }
         });
     }
 
+    if (btnBrowseEvidence && evidenceInput) {
+        btnBrowseEvidence.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            evidenceInput.click();
+        });
+    }
+
     if (clearAllBtn) {
-        clearAllBtn.addEventListener('click', () => {
+        clearAllBtn.addEventListener('click', (e) => {
+            e.preventDefault();
             evidenceDataTransfer = new DataTransfer();
             if (evidenceInput) evidenceInput.files = evidenceDataTransfer.files;
             hideEvidenceAlert();
@@ -1329,24 +2819,26 @@ document.addEventListener('DOMContentLoaded', () => {
             evidenceDropZone.addEventListener(eventName, (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                evidenceDropZone.classList.add('is-dragover');
-            }, false);
+                evidenceDropZone.classList.add('drag-over');
+            });
         });
 
-        ['dragleave', 'drop'].forEach(eventName => {
+        ['dragleave', 'dragend'].forEach(eventName => {
             evidenceDropZone.addEventListener(eventName, (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                evidenceDropZone.classList.remove('is-dragover');
-            }, false);
+                evidenceDropZone.classList.remove('drag-over');
+            });
         });
 
         evidenceDropZone.addEventListener('drop', (e) => {
-            const dt = e.dataTransfer;
-            if (dt && dt.files && dt.files.length > 0) {
-                handleFilesAdded(dt.files);
+            e.preventDefault();
+            e.stopPropagation();
+            evidenceDropZone.classList.remove('drag-over');
+            if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                addFilesToQueue(e.dataTransfer.files);
             }
-        }, false);
+        });
     }
 
     // ── Proof OCR: Card-5 button ─────────────────────────────────────────────
@@ -1391,67 +2883,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 notesTa.dispatchEvent(new Event('input'));
                 window.agapNotify?.('Proof text extracted and added to Proof Notes.', 'success', 'Proof OCR');
             } else {
-                window.agapNotify?.(data.error || 'OCR did not extract any text.', 'error', 'Proof OCR');
+                window.agapNotify?.(data.error || 'OCR did not extract any text from the image.', 'error', 'Proof OCR');
             }
         } catch (err) {
             console.error('Proof OCR error:', err);
-            window.agapNotify?.('Failed to connect to the OCR service.', 'error', 'Proof OCR');
+            window.agapNotify?.('Failed to connect to the OCR service. Please try again.', 'error', 'Proof OCR');
         } finally {
             triggerBtn.disabled = false;
             triggerBtn.textContent = originalLabel;
         }
     }
-
-    // OCR helper: existing saved attachments (fetches the image URL, converts to blob)
-    window.runOcrOnExistingAttachment = async function(btn) {
-        const narrativeTa = document.getElementById('narrative');
-        if (!narrativeTa) return;
-
-        const url     = btn.dataset.attUrl;
-        const attName = btn.dataset.attName || 'attachment';
-
-        if (!url) return;
-
-        const originalTitle = btn.title;
-        btn.disabled = true;
-        btn.title = 'Scanning…';
-        btn.style.opacity = '0.6';
-
-        try {
-            // Fetch the image as blob so we can POST it
-            const imgResp = await fetch(url);
-            if (!imgResp.ok) throw new Error('Could not fetch image.');
-            const blob = await imgResp.blob();
-            const file = new File([blob], attName, { type: blob.type });
-
-            const formData = new FormData();
-            formData.append('image', file, attName);
-
-            const ocrResp = await fetch('../../../backend/api/ai/ocr-notes.php', {
-                method: 'POST',
-                body: formData
-            });
-            const data = await ocrResp.json();
-
-            if (data.success && data.text && data.text.trim()) {
-                const label = `[Scanned Proof – ${attName}]:\n${data.text.trim()}`;
-                const current = narrativeTa.value.trim();
-                narrativeTa.value = current ? current + '\n\n' + label : label;
-                narrativeTa.dispatchEvent(new Event('input'));
-                window.agapNotify?.('Proof text extracted and appended to the narrative.', 'success', 'Proof OCR');
-            } else {
-                window.agapNotify?.(data.error || 'OCR did not extract any text.', 'error', 'Proof OCR');
-            }
-        } catch (err) {
-            console.error('Existing attachment OCR error:', err);
-            window.agapNotify?.('Failed to scan attachment. Please try again.', 'error', 'Proof OCR');
-        } finally {
-            btn.disabled = false;
-            btn.title = originalTitle;
-            btn.style.opacity = '';
-        }
-    };
 });
 </script>
 
-<?php include '../../layouts/footer.php'; ?>
+<?php include __DIR__ . '/../../layouts/footer.php'; ?>

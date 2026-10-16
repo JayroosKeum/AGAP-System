@@ -338,15 +338,22 @@ async function loadComplaintDetails() {
 
         window.complaintData = data;
 
-        // Keep the complaint reference available for the map popup and internal UI.
-        const compNum = data.complaint_number || ('CMP-' + String(data.complaint_id).padStart(5, '0'));
+        // Format Docket Number (e.g. 10-17-2026) - never show CMP- prefix
+        const formatDocketDisplay = (num, id, dt) => {
+            if (num && !String(num).startsWith('CMP-')) return String(num);
+            const d = dt ? new Date(dt) : new Date();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const ss = String(id || 1).padStart(2, '0');
+            const yy = d.getFullYear() || 2026;
+            return `${mm}-${ss}-${yy}`;
+        };
+        const docketNum = formatDocketDisplay(data.case_number || data.complaint_number, data.complaint_id, data.created_at);
+        const compNum = docketNum;
 
         // Header Case Number
         const compNumEl = document.getElementById('complaintNumber');
         if (compNumEl) {
-            compNumEl.textContent = data.case_id && data.case_number
-                ? 'Case #' + data.case_number
-                : 'Case #' + (data.complaint_number || ('CMP-' + String(data.complaint_id).padStart(5, '0')));
+            compNumEl.textContent = 'Case #' + docketNum;
         }
 
         const compTitleEl = document.getElementById('complaintTitle');
@@ -518,11 +525,37 @@ async function loadComplaintDetails() {
             `;
         }
 
+        // Requested Resolution & Location Details
+        const reqWrap = document.getElementById('complaintRequestedResolutionWrap');
+        const reqEl = document.getElementById('complaintRequestedResolution');
+        if (reqWrap && reqEl) {
+            if (data.requested_resolution && data.requested_resolution.trim()) {
+                reqWrap.style.display = 'block';
+                reqEl.textContent = data.requested_resolution;
+            } else {
+                reqWrap.style.display = 'none';
+            }
+        }
+
+        const locDetRow = document.getElementById('locationDetailsRow');
+        const locDetText = document.getElementById('locationDetailsText');
+        if (locDetRow && locDetText) {
+            if (data.incident_location_details && data.incident_location_details.trim()) {
+                locDetRow.style.display = 'flex';
+                locDetText.textContent = data.incident_location_details;
+            } else {
+                locDetRow.style.display = 'none';
+            }
+        }
+
         // Render Parties and Attachments
         const parties = data.parties || [];
         const attachments = data.attachments || [];
         renderParties(parties);
         renderAttachments(attachments);
+
+        // Render KP Form 7 Overview & Scanned Document
+        renderKp7Overview(data);
 
         // Render Combined Case Workspace if docketed
         renderCaseWorkspace(data.case_workspace, data);
@@ -638,15 +671,25 @@ function renderParties(parties) {
         }
         const fullAddress = addrParts.length > 0 ? addrParts.join(', ') : 'No address on file';
 
+        const isMinor = Number(party.is_minor) === 1 || (party.age !== undefined && party.age !== null && party.age !== '' && Number(party.age) < 18);
+        const guardianInfo = party.guardian_name ? `🛡️ Guardian: ${escapeHtml(party.guardian_name)}${party.guardian_relationship ? ` (${escapeHtml(party.guardian_relationship)})` : ''}` : '';
+        const prefContact = party.preferred_contact ? `✉️ ${escapeHtml(party.preferred_contact)}` : '';
+        const ageText = (party.age !== undefined && party.age !== null && party.age !== '') ? `🎂 ${party.age} yrs` : '';
+
         cards += `
             <div class="party-entry-card">
                 <div class="party-entry-top">
-                    <span class="party-pill-tag ${typeClass}">${escapeHtml((party.party_type || 'Party').toUpperCase())}</span>
-                    ${isPrimary ? '<span class="party-sub-badge">Primary</span>' : ''}
+                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                        <span class="party-pill-tag ${typeClass}">${escapeHtml((party.party_type || 'Party').toUpperCase())}</span>
+                        ${isPrimary ? '<span class="party-sub-badge">Primary</span>' : ''}
+                        ${isMinor ? '<span style="background:#fee2e2;color:#991b1b;font-size:0.7rem;font-weight:700;padding:2px 6px;border-radius:4px;">Minor</span>' : ''}
+                        ${ageText ? `<span style="font-size:0.75rem;color:#64748b;font-weight:600;">${ageText}</span>` : ''}
+                    </div>
                 </div>
-                <div class="party-entry-name">${escapeHtml(party.resident_name || 'Unnamed Party')}</div>
-                <div class="party-entry-meta">📞 ${escapeHtml(party.contact_no || 'No contact on file')}</div>
-                <div class="party-entry-meta">📍 ${escapeHtml(fullAddress)}</div>
+                <div class="party-entry-name">${escapeHtml(party.resident_name || 'Unnamed Party')}${party.suffix ? ' ' + escapeHtml(party.suffix) : ''}</div>
+                <div class="party-entry-meta">📞 ${party.contact_unknown ? 'Contact: Unknown' : escapeHtml(party.contact_no || 'No contact on file')}${prefContact ? ' &bull; ' + prefContact : ''}</div>
+                <div class="party-entry-meta">📍 ${escapeHtml(fullAddress)}${party.address_requires_verification ? ' <span style="color:#b45309;font-weight:600;">(Needs Verification)</span>' : ''}</div>
+                ${guardianInfo ? `<div class="party-entry-meta" style="color:#4338ca;font-weight:600;font-size:0.78rem;">${guardianInfo}</div>` : ''}
             </div>
         `;
     });
@@ -993,26 +1036,63 @@ function renderOfficialKpForms(workspace, complaint) {
     const tabDocsBadge = document.getElementById('tabDocsCountBadge');
     const cwDocCountBadge = document.getElementById('cwDocCountBadge');
 
+    const activeComplaint = complaint || window.complaintData || {};
+    const complaintId = activeComplaint.complaint_id || 0;
+    const scanDoc = activeComplaint.current_scan || null;
+    const hasScan = Boolean(scanDoc && scanDoc.file_path);
+    const filedDate = activeComplaint.created_at ? formatDateReadable(activeComplaint.created_at) : 'N/A';
+
     const docs = workspace?.documents || [];
-    const countText = `${docs.length} Issued`;
-    const formsCountText = `${docs.length} form${docs.length === 1 ? '' : 's'}`;
+    const totalCount = docs.length + (complaintId > 0 ? 1 : 0);
+    const countText = `${totalCount} Issued`;
+    const formsCountText = `${totalCount} form${totalCount === 1 ? '' : 's'}`;
 
     if (heroBadge) heroBadge.textContent = countText;
-    if (tabDocsBadge) tabDocsBadge.textContent = String(docs.length);
+    if (tabDocsBadge) tabDocsBadge.textContent = String(totalCount);
     if (cwDocCountBadge) cwDocCountBadge.textContent = formsCountText;
 
-    if (!docs.length) {
-        const emptyHtml = `
-            <div class="empty-detail-state" style="text-align: center; padding: 20px; color: #64748b;">
-                <p style="margin: 0; font-size: 0.88rem;">No official KP documents have been generated for this case yet.</p>
+    let rowsHtml = '';
+
+    // 1. Primary Complaint Form: KP Form 7 (Reklamo)
+    if (complaintId > 0) {
+        rowsHtml += `
+            <div class="kp-form-item-row" style="background: #ffffff;">
+                <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
+                    <span style="font-size: 1.5rem; color: #0284c7; line-height: 1;">⚖️</span>
+                    <div>
+                        <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <span style="font-weight: 700; color: #0f172a;">Pormularyo ng KP Blg. 7 (Reklamo / Formal Complaint)</span>
+                        </div>
+                        <div class="kp-form-meta-text">
+                            <span>Filed: ${escapeHtml(filedDate)}</span>
+                            <span style="display: inline-block; padding: 1px 7px; border-radius: 4px; font-weight: 700; font-size: 0.72rem; background: ${hasScan ? '#dcfce7' : '#e0f2fe'}; color: ${hasScan ? '#15803d' : '#0369a1'};">
+                                ${hasScan ? `SCANNED COPY ATTACHED (v${escapeHtml(String(scanDoc.version_number || 1))})` : 'DIGITAL FORM ISSUED'}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <button type="button" class="btn-small-link" onclick="openKp7DigitalPreviewModal(${Number(complaintId)})" style="color: #0284c7; border-color: #bae6fd; font-weight: 600;">
+                        Preview / Print
+                    </button>
+                    ${hasScan ? `
+                        <a href="../../../backend/api/complaints/scanned-document.php?id=${encodeURIComponent(complaintId)}" target="_blank" class="btn-small-link" style="color: #15803d; border-color: #bbf7d0; text-decoration: none;" title="View scanned handwritten copy">
+                            View Scan
+                        </a>
+                        <button type="button" class="btn-small-link" onclick="openScanHistoryModal(${Number(complaintId)})" title="View version history">
+                            Version History
+                        </button>
+                    ` : `
+                        <button type="button" class="btn-small-link" onclick="openUploadScanModal()" style="color: #64748b; border-color: #cbd5e1;">
+                            + Upload Scan
+                        </button>
+                    `}
+                </div>
             </div>
         `;
-        if (heroList) heroList.innerHTML = emptyHtml;
-        if (docContainer) docContainer.innerHTML = emptyHtml;
-        return;
     }
 
-    let rowsHtml = '';
+    // 2. Subsequent Issued Documents (Summons, Notices, etc.)
     docs.forEach(doc => {
         const docStatus = doc.service_status || 'Issued';
         let statusBg = '#f1f5f9', statusColor = '#475569';
@@ -1023,7 +1103,7 @@ function renderOfficialKpForms(workspace, complaint) {
         }
 
         const isSummonOrKp9 = doc.template_name?.includes('KP Form 9') || doc.template_name?.includes('Summon');
-        const caseId = complaint?.case_id || workspace?.case?.case_id || 0;
+        const caseId = activeComplaint?.case_id || workspace?.case?.case_id || 0;
 
         rowsHtml += `
             <div class="kp-form-item-row">
@@ -2306,6 +2386,9 @@ function confirmArchiveComplaint() {
 window.archiveComplaint = archiveComplaint;
 window.closeArchiveComplaintModal = closeArchiveComplaintModal;
 window.confirmArchiveComplaint = confirmArchiveComplaint;
+window.complaintMaps = complaintMaps;
+window.initialiseComplaintMap = initialiseComplaintMap;
+window.refreshComplaintMap = refreshComplaintMap;
 
 // Backward-compatibility aliases
 function deleteComplaint(id) {
@@ -3175,4 +3258,292 @@ document.addEventListener('DOMContentLoaded', () => {
             if (e.target === spModal) closeSessionProcessDetailsModal();
         });
     }
+
+    ['kp7DigitalPreviewModal', 'kp7UploadScanModal', 'kp7ScanHistoryModal'].forEach(id => {
+        const m = document.getElementById(id);
+        if (m) {
+            m.addEventListener('click', (e) => {
+                if (e.target === m) m.style.display = 'none';
+            });
+        }
+    });
+
+    const scanInput = document.getElementById('scanFileInput');
+    const scanDetails = document.getElementById('scanFileDetails');
+    if (scanInput && scanDetails) {
+        scanInput.addEventListener('change', () => {
+            if (scanInput.files && scanInput.files[0]) {
+                const f = scanInput.files[0];
+                scanDetails.textContent = `Selected: ${f.name} (${(f.size/1024).toFixed(1)} KB)`;
+                scanDetails.style.display = 'block';
+            } else {
+                scanDetails.style.display = 'none';
+            }
+        });
+    }
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// KP Form 7 Overview & Scanned Document Handlers
+// ══════════════════════════════════════════════════════════════════════════════
+function renderKp7Overview(complaint) {
+    if (!complaint) return;
+    const docStatus = complaint.document_status || (complaint.current_scan ? 'Scan Uploaded' : 'No Scan Uploaded');
+    const badgeEl = document.getElementById('kp7DocStatusBadge');
+    if (badgeEl) {
+        let badgeCls = 'badge-doc-no-scan';
+        if (docStatus === 'Updated Scan Uploaded') badgeCls = 'badge-doc-updated';
+        else if (docStatus === 'Scan Uploaded') badgeCls = 'badge-doc-uploaded';
+        badgeEl.className = 'badge-doc-status ' + badgeCls;
+        badgeEl.textContent = docStatus;
+    }
+
+    const pillEl = document.getElementById('kp7ScanStatusPill');
+    if (pillEl) {
+        if (complaint.current_scan) {
+            pillEl.textContent = `v${complaint.current_scan.version_number || 1} Uploaded`;
+            pillEl.style.background = '#dcfce7';
+            pillEl.style.color = '#15803d';
+        } else {
+            pillEl.textContent = 'No Scan';
+            pillEl.style.background = '#f1f5f9';
+            pillEl.style.color = '#64748b';
+        }
+    }
+
+    const contentWrap = document.getElementById('kp7ScanContentWrap');
+    const actionsWrap = document.getElementById('kp7ScanActionsWrap');
+    const complaintId = complaint.complaint_id;
+
+    if (!contentWrap) return;
+
+    if (complaint.current_scan) {
+        const scan = complaint.current_scan;
+        const scanUrl = `../../../backend/api/complaints/scanned-document.php?id=${encodeURIComponent(complaintId)}`;
+        const downloadUrl = `${scanUrl}&download=1`;
+        const isImg = scan.file_type && scan.file_type.startsWith('image/');
+        const sizeFormatted = scan.file_size ? (scan.file_size / 1024).toFixed(1) + ' KB' : '—';
+        const dateFormatted = scan.uploaded_at ? formatDateReadable(scan.uploaded_at) : '—';
+
+        contentWrap.innerHTML = `
+            <div style="display: flex; gap: 12px; align-items: center; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px;">
+                <div style="width: 44px; height: 44px; border-radius: 6px; overflow: hidden; background: #e2e8f0; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                    ${isImg
+                        ? `<img src="${scanUrl}" style="width: 100%; height: 100%; object-fit: cover;" alt="Scan">`
+                        : `<span style="font-weight: 700; font-size: 0.78rem; color: #dc2626;">PDF</span>`
+                    }
+                </div>
+                <div style="min-width: 0; flex: 1;">
+                    <div style="font-weight: 600; font-size: 0.88rem; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(scan.file_name)}">
+                        ${escapeHtml(scan.file_name)}
+                    </div>
+                    <div style="font-size: 0.75rem; color: #64748b; margin-top: 2px;">
+                        <span>Version ${scan.version_number}</span> &bull;
+                        <span>${sizeFormatted}</span> &bull;
+                        <span>Uploaded by ${escapeHtml(scan.uploader_name || 'Staff')} (${dateFormatted})</span>
+                    </div>
+                    ${scan.replacement_reason ? `<div style="font-size: 0.74rem; color: #475569; font-style: italic; margin-top: 3px;">"${escapeHtml(scan.replacement_reason)}"</div>` : ''}
+                </div>
+            </div>
+        `;
+
+        if (actionsWrap) {
+            actionsWrap.innerHTML = `
+                <a href="${scanUrl}" target="_blank" class="btn-outline-sm" title="View scan in new tab">
+                    👁️ View Scan
+                </a>
+                <a href="${downloadUrl}" class="btn-outline-sm" title="Download scan">
+                    📥 Download
+                </a>
+                <button type="button" class="btn-outline-sm" onclick="openUploadScanModal()" title="Upload a clearer or corrected copy">
+                    🔄 Replace Scan
+                </button>
+                <button type="button" class="btn-outline-sm" onclick="openScanHistoryModal(${complaintId})" title="View upload and replacement history">
+                    📜 Version History (${(complaint.scan_history && complaint.scan_history.length) || 1})
+                </button>
+            `;
+        }
+    } else {
+        contentWrap.innerHTML = `
+            <div style="padding: 12px; background: #ffffff; border: 1px dashed #cbd5e1; border-radius: 8px; text-align: center; color: #64748b; font-size: 0.82rem;">
+                No handwritten or scanned KP Form 7 uploaded yet. You can attach a scanned copy anytime.
+            </div>
+        `;
+        if (actionsWrap) {
+            actionsWrap.innerHTML = `
+                <button type="button" class="btn-outline-sm" onclick="openUploadScanModal()">
+                    📤 Upload Handwritten Scan
+                </button>
+            `;
+        }
+    }
+}
+window.renderKp7Overview = renderKp7Overview;
+
+function openKp7DigitalPreviewModal(complaintId) {
+    const modal = document.getElementById('kp7DigitalPreviewModal');
+    const iframe = document.getElementById('kp7PreviewIframe');
+    if (!modal || !iframe) return;
+    iframe.src = `../../../backend/api/complaints/kp7-preview.php?id=${encodeURIComponent(complaintId)}&_t=${Date.now()}`;
+    modal.style.display = 'flex';
+}
+window.openKp7DigitalPreviewModal = openKp7DigitalPreviewModal;
+
+function closeKp7DigitalPreviewModal() {
+    const modal = document.getElementById('kp7DigitalPreviewModal');
+    const iframe = document.getElementById('kp7PreviewIframe');
+    if (iframe) iframe.src = '';
+    if (modal) modal.style.display = 'none';
+}
+window.closeKp7DigitalPreviewModal = closeKp7DigitalPreviewModal;
+
+function printKp7Iframe() {
+    const iframe = document.getElementById('kp7PreviewIframe');
+    if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+    }
+}
+window.printKp7Iframe = printKp7Iframe;
+
+function openUploadScanModal() {
+    const modal = document.getElementById('kp7UploadScanModal');
+    const errBox = document.getElementById('scanUploadError');
+    const details = document.getElementById('scanFileDetails');
+    const form = document.getElementById('uploadScanForm');
+    if (errBox) { errBox.style.display = 'none'; errBox.textContent = ''; }
+    if (details) { details.style.display = 'none'; details.textContent = ''; }
+    if (form) form.reset();
+    if (modal) modal.style.display = 'flex';
+}
+window.openUploadScanModal = openUploadScanModal;
+
+function closeUploadScanModal() {
+    const modal = document.getElementById('kp7UploadScanModal');
+    if (modal) modal.style.display = 'none';
+}
+window.closeUploadScanModal = closeUploadScanModal;
+
+async function submitScanUpload(event) {
+    event.preventDefault();
+    const form = event.target;
+    const btn = document.getElementById('btnSubmitScanUpload');
+    const errBox = document.getElementById('scanUploadError');
+    const fileInput = document.getElementById('scanFileInput');
+
+    if (!fileInput || !fileInput.files || !fileInput.files.length) {
+        if (errBox) {
+            errBox.textContent = 'Please choose a scan file to upload.';
+            errBox.style.display = 'block';
+        }
+        return;
+    }
+
+    const file = fileInput.files[0];
+    const maxBytes = 25 * 1024 * 1024;
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!['pdf', 'jpg', 'jpeg', 'png'].includes(ext)) {
+        if (errBox) {
+            errBox.textContent = `File extension .${ext} is not allowed. Only PDF, JPG, JPEG, and PNG files are accepted.`;
+            errBox.style.display = 'block';
+        }
+        return;
+    }
+    if (file.size > maxBytes) {
+        if (errBox) {
+            errBox.textContent = `File size exceeds 25 MB limit (${(file.size / (1024*1024)).toFixed(1)} MB).`;
+            errBox.style.display = 'block';
+        }
+        return;
+    }
+
+    const formData = new FormData(form);
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Uploading...';
+    }
+
+    try {
+        const resp = await fetch('../../../backend/api/complaints/scanned-document.php', {
+            method: 'POST',
+            body: formData
+        });
+        const result = await resp.json();
+        if (!resp.ok || !result.success) {
+            throw new Error(result.message || 'Upload failed.');
+        }
+
+        closeUploadScanModal();
+        window.agapNotify?.(result.message || 'Scanned KP Form 7 uploaded successfully.', 'success');
+        await loadComplaintDetails();
+    } catch (err) {
+        if (errBox) {
+            errBox.textContent = err.message || 'An error occurred during upload.';
+            errBox.style.display = 'block';
+        }
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Upload Document';
+        }
+    }
+}
+window.submitScanUpload = submitScanUpload;
+
+async function openScanHistoryModal(complaintId) {
+    const modal = document.getElementById('kp7ScanHistoryModal');
+    const body = document.getElementById('scanHistoryBody');
+    if (!modal || !body) return;
+
+    modal.style.display = 'flex';
+    body.innerHTML = '<div style="text-align: center; color: #64748b; padding: 20px;">Loading version history...</div>';
+
+    try {
+        const resp = await fetch(`../../../backend/api/complaints/scanned-document.php?id=${encodeURIComponent(complaintId)}&action=history&_t=${Date.now()}`);
+        const result = await resp.json();
+
+        if (!resp.ok || !result.success || !result.history || !result.history.length) {
+            body.innerHTML = '<div style="text-align: center; color: #64748b; padding: 20px;">No version history records found.</div>';
+            return;
+        }
+
+        let html = '<div style="display: flex; flex-direction: column; gap: 10px;">';
+        result.history.forEach(item => {
+            const isCurrent = Number(item.is_current) === 1;
+            const sizeStr = item.file_size ? (item.file_size / 1024).toFixed(1) + ' KB' : '';
+            const downloadUrl = `../../../backend/api/complaints/scanned-document.php?id=${complaintId}&version=${item.version_number}&download=1`;
+
+            html += `
+                <div style="background: ${isCurrent ? '#f0fdf4' : '#f8fafc'}; border: 1px solid ${isCurrent ? '#86efac' : '#e2e8f0'}; border-radius: 8px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <strong style="color: #0f172a; font-size: 0.9rem;">Version ${item.version_number}</strong>
+                            ${isCurrent ? '<span style="background: #dcfce7; color: #15803d; font-size: 0.72rem; font-weight: 700; padding: 1px 6px; border-radius: 4px;">CURRENT</span>' : '<span style="background: #f1f5f9; color: #64748b; font-size: 0.72rem; font-weight: 700; padding: 1px 6px; border-radius: 4px;">ARCHIVED</span>'}
+                            <span style="font-size: 0.8rem; color: #64748b;">${escapeHtml(item.file_name)} (${sizeStr})</span>
+                        </div>
+                        <div style="font-size: 0.78rem; color: #64748b; margin-top: 3px;">
+                            Uploaded by <strong>${escapeHtml(item.uploader_name || 'Staff')}</strong> on ${formatDateTimeReadable(item.uploaded_at)}
+                        </div>
+                        ${item.replacement_reason ? `<div style="font-size: 0.75rem; color: #475569; font-style: italic; margin-top: 2px;">Note: "${escapeHtml(item.replacement_reason)}"</div>` : ''}
+                    </div>
+                    <div style="flex-shrink: 0;">
+                        <a href="${downloadUrl}" class="btn-outline-sm" style="font-size: 0.78rem;" download title="Download this version">
+                            📥 Download
+                        </a>
+                    </div>
+                </div>
+            `;
+        });
+        html += '</div>';
+        body.innerHTML = html;
+    } catch (err) {
+        body.innerHTML = `<div style="color: #dc2626; padding: 20px; text-align: center;">Error loading history: ${escapeHtml(err.message)}</div>`;
+    }
+}
+window.openScanHistoryModal = openScanHistoryModal;
+
+function closeScanHistoryModal() {
+    const modal = document.getElementById('kp7ScanHistoryModal');
+    if (modal) modal.style.display = 'none';
+}
+window.closeScanHistoryModal = closeScanHistoryModal;

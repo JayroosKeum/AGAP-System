@@ -91,6 +91,33 @@ class PDFService
         }
     }
 
+    public function generateKp7(
+        array $data,
+        string $absolutePath
+    ): void {
+        $options = new Options();
+        $options->set('isRemoteEnabled', false);
+        $options->set('isHtml5ParserEnabled', true);
+        $options->set('defaultFont', 'DejaVu Sans');
+
+        $dompdf = new Dompdf($options);
+        $dompdf->setPaper('legal', 'portrait');
+        $dompdf->loadHtml(
+            $this->kp7Html($data, true),
+            'UTF-8'
+        );
+        $dompdf->render();
+
+        $pdf = $dompdf->output();
+        if ($pdf === '') {
+            throw new RuntimeException('The PDF renderer returned an empty document.');
+        }
+
+        if (file_put_contents($absolutePath, $pdf, LOCK_EX) === false) {
+            throw new RuntimeException('Unable to save the generated PDF.');
+        }
+    }
+
     public function generateKp8(
         array $data,
         string $absolutePath
@@ -870,6 +897,317 @@ class PDFService
             <div style="font-size: 8.5pt;">Lagda sa ibabaw ng nakalimbag na pangalan</div>
         </div>
     </div>' : '') . '
+</body>
+</html>';
+    }
+
+    public function renderKp7Html(array $data): string
+    {
+        return $this->kp7Html($data);
+    }
+
+    private function partyLinesForKp7(array $parties, string $fallback = '___________________________'): string
+    {
+        if ($parties === []) {
+            return '<div style="border-bottom: 1px solid #1e293b; padding-bottom: 2px; margin-bottom: 4px;">' . $fallback . '</div>';
+        }
+
+        $html = '';
+        foreach ($parties as $party) {
+            $name = is_array($party) ? ($party['full_name'] ?? '') : (string) $party;
+            $addr = is_array($party) ? ($party['address'] ?? '') : '';
+            $line = '<strong>' . $this->escape($name) . '</strong>';
+            if (is_array($party) && !empty($party['is_minor']) && !empty($party['guardian_name'])) {
+                $line .= ' <span style="font-size: 8pt; font-weight: normal; color: #475569;">(Kinatawan: ' . $this->escape($party['guardian_name']) . (!empty($party['guardian_relationship']) ? ' — ' . $this->escape($party['guardian_relationship']) : '') . ')</span>';
+            }
+            if ($addr !== '') {
+                $line .= '<div style="font-size: 8pt; font-weight: normal; color: #475569; margin-top: 0.5mm;">' . $this->escape($addr) . '</div>';
+            }
+            $html .= '<div style="border-bottom: 1px solid #1e293b; padding-bottom: 1.5px; margin-bottom: 3.5px;">' . $line . '</div>';
+        }
+        return $html;
+    }
+
+    private function partyNamesList(array $parties, string $fallback = '________________________'): string
+    {
+        $names = [];
+        foreach ($parties as $party) {
+            $name = is_array($party) ? ($party['full_name'] ?? '') : (string) $party;
+            if (trim($name) !== '') {
+                $names[] = trim($name);
+            }
+        }
+        return !empty($names) ? implode(', ', $names) : $fallback;
+    }
+
+    private function kp7Html(array $data, bool $forPdf = false): string
+    {
+        // Load logos as base64 for reliable embedding in Dompdf & HTML iframes
+        $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
+        $marikinaPath = __DIR__ . '/../../frontend/assets/images/marikina_logo.jpg';
+        $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
+        $marikinaLogo = file_exists($marikinaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($marikinaPath)) : '';
+
+        $complainantsHtml = $this->partyLinesForKp7($data['complainants'] ?? []);
+        $respondentsHtml = $this->partyLinesForKp7($data['respondents'] ?? []);
+
+        $compNamesStr = $this->escape($this->partyNamesList($data['complainants'] ?? []));
+        $respNamesStr = $this->escape($this->partyNamesList($data['respondents'] ?? []));
+
+        $signatureCompName = $this->partyNamesList($data['complainants'] ?? [], '___________________________');
+        if ($signatureCompName !== '___________________________') {
+            $compNames = [];
+            foreach ($data['complainants'] ?? [] as $c) {
+                $cName = is_array($c) ? ($c['full_name'] ?? '') : (string)$c;
+                if (trim($cName) !== '') $compNames[] = trim($cName);
+            }
+            $signatureCompName = !empty($compNames) ? implode(' / ', $compNames) : '___________________________';
+        }
+
+        $caseNumber = !empty($data['case_number']) ? $this->escape((string) $data['case_number']) : (!empty($data['complaint_number']) ? $this->escape((string) $data['complaint_number']) : '_________');
+        $title = !empty($data['complaint_title']) ? $this->escape((string) $data['complaint_title']) : '_____________________';
+        $category = !empty($data['category_name']) ? $this->escape((string) $data['category_name']) : '';
+
+        $narrative = trim((string) ($data['narrative'] ?? ''));
+        $additional = trim((string) ($data['additional_details'] ?? ''));
+        $resolution = trim((string) ($data['requested_resolution'] ?? ''));
+
+        $location = $this->escape((string) ($data['incident_location'] ?? ''));
+        if (!empty($data['incident_landmark'])) {
+            $location .= ($location !== '' ? ' ' : '') . '(Malapit sa: ' . $this->escape((string) $data['incident_landmark']) . ')';
+        }
+
+        $incidentDateStr = '';
+        if (!empty($data['incident_date'])) {
+            $ts = strtotime($data['incident_date']);
+            if ($ts) {
+                $incidentDateStr = 'ika-' . date('j', $ts) . ' ng ' . $this->filipinoMonth((int) date('n', $ts)) . ', ' . date('Y', $ts);
+            }
+        }
+        $incidentTimeStr = '';
+        if (!empty($data['is_time_unknown'])) {
+            $incidentTimeStr = 'Hindi tiyak ang oras';
+        } elseif (!empty($data['incident_time'])) {
+            $tTs = strtotime($data['incident_time']);
+            if ($tTs) {
+                $incidentTimeStr = 'sa ganap na ika-' . date('g:i A', $tTs);
+                if (!empty($data['is_time_approximate'])) {
+                    $incidentTimeStr .= ' (tinatayang oras)';
+                }
+            }
+        }
+
+        $filedTs = !empty($data['filed_date']) ? strtotime($data['filed_date']) : (!empty($data['created_at']) ? strtotime($data['created_at']) : time());
+        $day = date('j', $filedTs);
+        $month = $this->filipinoMonth((int) date('n', $filedTs));
+        $year = date('Y', $filedTs);
+
+        $captainName = !empty($data['punong_barangay']) ? $this->escape((string) $data['punong_barangay']) : 'HON. AKIKO LYNNE CENTENO';
+
+        // Styling differences for Dompdf vs Interactive Screen Preview + Browser Print
+        $cssStyles = $forPdf ? '
+        @page { size: legal portrait; margin: 15mm 20mm 15mm 20mm; }
+        * { box-sizing: border-box; }
+        body { font-family: "DejaVu Sans", Arial, sans-serif; font-size: 10pt; color: #0f172a; line-height: 1.4; margin: 0; padding: 0; background: #ffffff; }
+        .page-sheet { width: 100%; margin: 0; padding: 0; background: #ffffff; }
+        ' : '
+        @page { size: 8.5in 14in; margin: 0; }
+        * { box-sizing: border-box; }
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: #475569;
+            font-family: "DejaVu Sans", Arial, sans-serif;
+            color: #0f172a;
+            line-height: 1.4;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .preview-canvas {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 24px 16px;
+            min-height: 100vh;
+            background: #475569;
+            box-sizing: border-box;
+        }
+        .page-sheet {
+            background: #ffffff;
+            width: 8.5in;
+            min-height: 14in;
+            padding: 16mm 20mm 20mm 20mm;
+            box-sizing: border-box;
+            box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.2);
+            border-radius: 3px;
+            margin: 0 auto;
+        }
+        @media print {
+            html, body {
+                background: #ffffff !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 8.5in !important;
+            }
+            .preview-canvas {
+                padding: 0 !important;
+                margin: 0 !important;
+                background: #ffffff !important;
+                display: block !important;
+            }
+            .page-sheet {
+                width: 8.5in !important;
+                min-height: 14in !important;
+                margin: 0 !important;
+                padding: 15mm 20mm 15mm 20mm !important;
+                box-shadow: none !important;
+                border-radius: 0 !important;
+                border: none !important;
+                page-break-after: avoid;
+                page-break-inside: avoid;
+            }
+        }
+        ';
+
+        $sheetContent = '
+        <div class="form-top-code">Pormularyo ng KP Blg. 7</div>
+
+        <table class="header-table">
+            <tr>
+                <td class="header-logo-left">
+                    ' . ($tumanaLogo !== '' ? '<img src="' . $tumanaLogo . '" class="header-logo-img" alt="Barangay Tumana">' : '') . '
+                </td>
+                <td class="header-center-text">
+                    <div>Republika ng Pilipinas</div>
+                    <div>Lalawigan ng NCR</div>
+                    <div>Lungsod ng Marikina</div>
+                    <div>Barangay Tumana</div>
+                    <div style="font-size: 8.5pt;">Telephone Nos. 8-238-4208</div>
+                    <div style="font-size: 8.5pt;">EMAIL ADDRESS: barangaytumana2023@gmail.com</div>
+                    <div class="title-bold" style="margin-top: 1.5mm;">TANGGAPAN NG PUNONG BARANGAY</div>
+                    <div class="office-bold">TANGGAPAN NG LUPONG TAGAPAMAYAPA</div>
+                </td>
+                <td class="header-logo-right">
+                    ' . ($marikinaLogo !== '' ? '<img src="' . $marikinaLogo . '" class="header-logo-img" alt="Lungsod ng Marikina">' : '') . '
+                </td>
+            </tr>
+        </table>
+
+        <table class="case-table">
+            <tr>
+                <td class="parties-col">
+                    <div>' . $complainantsHtml . '</div>
+                    <div class="party-role-tag">(Mga) Nagrereklamo</div>
+                    <div class="versus-tag">-laban kay/kina</div>
+                    <div>' . $respondentsHtml . '</div>
+                    <div class="party-role-tag">(Mga) Inirereklamo</div>
+                </td>
+                <td class="meta-col">
+                    <div style="margin-bottom: 3.5mm; font-size: 9.5pt;">
+                        Usapin ng Barangay Blg. <strong>' . $caseNumber . '</strong>
+                    </div>
+                    <div style="font-size: 9.5pt;">
+                        Para sa: <strong>' . $title . '</strong>' . ($category !== '' ? '<br><span style="font-size: 8.5pt; color: #475569;">Kategorya: ' . $category . '</span>' : '') . '
+                    </div>
+                </td>
+            </tr>
+        </table>
+
+        <div class="doc-title-block">
+            <h2>REKLAMO</h2>
+            <div class="subtitle">(Complaint)</div>
+        </div>
+
+        <div class="narrative-block">
+            <p>AKO/KAMI ay nagrereklamo laban sa mga taong pinangalanan sa itaas dahil sa paglabag sa aking/aming karapatan at interes sa mga sumusunod:</p>
+            
+            <p class="narrative-indent">
+                Personal na nagtungo sa tanggapan sa Barangay si <strong>' . $compNamesStr . '</strong> upang ireklamo si <strong>' . $respNamesStr . '</strong> sa kadahilanang ' . ($narrative !== '' ? nl2br($this->escape($narrative)) : 'kami ay may kasunduan na ngunit hindi niya ito natupad.') . '
+            </p>
+            ' . ($additional !== '' ? '<p class="narrative-indent" style="font-size: 9.5pt; color: #1e293b;"><strong>Karagdagang Salaysay:</strong> ' . nl2br($this->escape($additional)) . '</p>' : '') . '
+            ' . (($incidentDateStr !== '' || $location !== '') ? '
+            <div style="margin-top: 2.5mm; padding: 2mm 3mm; background: #f8fafc; border-left: 2px solid #cbd5e1; font-size: 9pt; color: #334155;">
+                ' . ($incidentDateStr !== '' ? '<div><strong>Petsa at Oras ng Pangyayari:</strong> ' . $incidentDateStr . ($incidentTimeStr !== '' ? ' (' . $incidentTimeStr . ')' : '') . '</div>' : '') . '
+                ' . ($location !== '' ? '<div><strong>Lugar ng Pangyayari:</strong> ' . $location . '</div>' : '') . '
+            </div>' : '') . '
+
+            <p style="margin-top: 3.5mm;">DAHIL DITO, AKO/KAMI ay nakikiusap na ang mga sumusunod na lunas ay ipagkaloob sa akin/amin nang naaayon sa batas at/sa katarungan.</p>
+            
+            <div class="narrative-indent" style="margin-top: 1.5mm; font-style: italic;">
+                ' . ($resolution !== '' ? nl2br($this->escape($resolution)) : 'Mapayapang pag-aayos, pagwawasto sa idinulot na pinsala o abala, at kaukulang lunas alinsunod sa batas at mga umiiral na alituntunin ng Katarungang Pambarangay.') . '
+            </div>
+        </div>
+
+        <div class="date-statement">
+            <div>Ginawa ngayong ika- <strong>' . $day . '</strong> ng <strong>' . $month . '</strong>, <strong>' . $year . '</strong>.</div>
+            <div style="margin-top: 1.5mm;">Tinanggap ngayong ika- <strong>' . $day . '</strong> ng <strong>' . $month . '</strong>, <strong>' . $year . '</strong>.</div>
+        </div>
+
+        <table class="sig-table">
+            <tr>
+                <td style="width: 48%; vertical-align: bottom; text-align: center;">
+                    <div class="sig-space"></div>
+                    <div class="sig-line">
+                        <strong style="font-size: 10pt; text-transform: uppercase;">' . $this->escape($signatureCompName) . '</strong>
+                    </div>
+                    <div class="sig-title">(Mga) Nagrereklamo</div>
+                </td>
+                <td style="width: 4%;"></td>
+                <td style="width: 48%; vertical-align: bottom; text-align: center;">
+                    <div class="sig-space"></div>
+                    <div class="sig-line">
+                        <strong style="font-size: 10pt; text-transform: uppercase;">' . $captainName . '</strong>
+                    </div>
+                    <div class="sig-title">Punong Barangay / Tagapangulo ng Lupon</div>
+                </td>
+            </tr>
+        </table>';
+
+        $bodyWrapped = $forPdf ? '<div class="page-sheet">' . $sheetContent . '</div>' : '<div class="preview-canvas"><div class="page-sheet">' . $sheetContent . '</div></div>';
+
+        return '<!DOCTYPE html>
+<html lang="tl">
+<head>
+    <meta charset="UTF-8">
+    <title>Pormularyo ng KP Blg. 7 - Reklamo</title>
+    <style>
+        ' . $cssStyles . '
+        .form-top-code { font-size: 10pt; font-weight: bold; margin-bottom: 2mm; text-align: left; }
+
+        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 4mm; }
+        .header-table td { vertical-align: middle; }
+        .header-logo-left { width: 95px; text-align: left; }
+        .header-logo-right { width: 95px; text-align: right; }
+        .header-logo-img { width: 88px; height: 88px; object-fit: contain; }
+        .header-center-text { text-align: center; font-size: 9.5pt; line-height: 1.25; }
+        .header-center-text .title-bold { font-weight: bold; font-size: 10pt; }
+        .header-center-text .office-bold { font-weight: bold; font-size: 10.5pt; letter-spacing: 0.3px; }
+
+        .case-table { width: 100%; border-collapse: collapse; margin: 3mm 0 4mm; }
+        .case-table td { vertical-align: top; }
+        .parties-col { width: 52%; }
+        .meta-col { width: 48%; padding-left: 6mm; }
+        .party-role-tag { font-size: 9pt; color: #1e293b; margin-top: 1mm; margin-bottom: 2mm; }
+        .versus-tag { font-size: 9pt; margin: 2mm 0; }
+
+        .doc-title-block { text-align: center; margin: 3mm 0 4mm; }
+        .doc-title-block h2 { font-size: 13pt; font-weight: bold; margin: 0; letter-spacing: 0.5px; }
+        .doc-title-block .subtitle { font-size: 10.5pt; font-weight: bold; margin-top: 1px; }
+
+        .narrative-block { margin: 2.5mm 0 3.5mm; text-align: justify; line-height: 1.45; }
+        .narrative-block p { margin: 0 0 2.5mm 0; }
+        .narrative-indent { text-indent: 10mm; }
+
+        .date-statement { margin: 3mm 0 2mm; font-size: 10pt; }
+
+        .sig-table { width: 100%; border-collapse: collapse; margin-top: 10mm; }
+        .sig-space { height: 48px; min-height: 48px; }
+        .sig-line { border-bottom: 1.5px solid #0f172a; width: 90%; margin: 0 auto; padding-bottom: 1.5mm; }
+        .sig-title { font-size: 9pt; margin-top: 2mm; color: #1e293b; }
+    </style>
+</head>
+<body>
+    ' . $bodyWrapped . '
 </body>
 </html>';
     }

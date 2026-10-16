@@ -70,6 +70,9 @@ include '../../layouts/header.php';
             <button type="button" class="nav-tab-btn active" data-tab-status="">
                 All <span class="tab-count-pill" id="tabCountAll">0</span>
             </button>
+            <button type="button" class="nav-tab-btn" data-tab-status="Draft">
+                Drafts <span class="tab-count-pill" id="tabCountDraft">0</span>
+            </button>
             <button type="button" class="nav-tab-btn" data-tab-status="Pending">
                 Pending <span class="tab-count-pill" id="tabCountPending">0</span>
             </button>
@@ -146,6 +149,7 @@ include '../../layouts/header.php';
                             <label for="searchIntake">1. Intake Status</label>
                             <select id="searchIntake" name="intake_status">
                                 <option value="">All Intake States</option>
+                                <option value="Draft">Draft (Incomplete)</option>
                                 <option value="Under Review">Under Review</option>
                             </select>
                         </div>

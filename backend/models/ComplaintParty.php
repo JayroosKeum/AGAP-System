@@ -48,9 +48,12 @@ class ComplaintParty
     public function getByComplaint(int $complaintId): array
     {
         $stmt = $this->conn->prepare(
-            "SELECT cp.party_id, cp.party_type, r.resident_id,
-                    TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS resident_name,
-                    r.contact_no, r.purok, r.address
+            "SELECT cp.*,
+                    TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name, r.suffix)) AS resident_name,
+                    r.first_name, r.middle_name, r.last_name, r.suffix AS resident_suffix,
+                    r.contact_no AS resident_contact, r.purok, r.address, r.email,
+                    r.birth_date AS resident_birth_date, r.gender AS resident_gender,
+                    r.civil_status AS resident_civil_status, r.is_tenant
              FROM complaint_parties cp
              INNER JOIN residents r ON r.resident_id = cp.resident_id
              WHERE cp.complaint_id = ?

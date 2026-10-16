@@ -131,3 +131,25 @@ For existing databases updating to the modernized hearing workspace, apply:
 - Under Katarungang Pambarangay rules (RA 7160 Sec. 410), summons issuance applies to the initial mediation hearing.
 - Subsequent mediation hearings (`2nd Mediation`, `3rd Mediation`) do not insert new pending records into `summon_deliveries` and do not require re-issuance of summonses. Prior notice is recognized, and attendance tracking is unlocked.
 - If a party is recorded absent in the 2nd Mediation, the non-appearance escalation path issues KP Form 18 (for absent complainant) or KP Form 19 (for absent respondent).
+
+## File Complaint & KP Form 7 Enhancements (October 2026)
+
+For existing databases updating to the enhanced File Complaint module and versioned KP Form 7 handwritten scans, apply:
+- `database/migrations/20261016_001_enhance_file_complaint_kp7.sql`:
+  - **`complaints` Table**:
+    - Expands `status` ENUM to support `'Draft'` filing mode.
+    - Adds `document_status` ENUM (`'No Scan Uploaded'`, `'Scan Uploaded'`, `'Updated Scan Uploaded'`) to track physical document intake state.
+    - Adds `requested_resolution` (TEXT) for prayer for relief, settlement assistance, or restitution requests.
+    - Adds `is_time_approximate` (TINYINT 1) and `is_time_unknown` (TINYINT 1) to support flexible incident time recording.
+    - Adds `incident_location_details` (TEXT) and `is_draft` (TINYINT 1).
+  - **`complaint_parties` Table**:
+    - Adds minor complainant/respondent protection and legal guardian representation: `is_minor`, `guardian_name`, `guardian_relationship`, `guardian_contact`, `guardian_address`.
+    - Adds detailed demographic and verification fields: `preferred_contact` (`SMS`, `Call`, `Email`, `In-Person`), `suffix`, `occupation`, `age`, `birth_date`, `gender`, `civil_status`.
+    - Adds unavailable information flags: `contact_unknown`, `middle_name_unknown`, `birthdate_unknown`, `address_requires_verification`, `residency_verified`.
+  - **`residents` Table**:
+    - Adds `suffix`, `occupation`, `preferred_contact`, and `residency_verified`.
+  - **`complaint_scanned_documents` Table**:
+    - Dedicated versioned repository for pre-signed and handwritten physical KP Form 7 uploads with metadata (`doc_id`, `complaint_id`, `case_id`, `file_name`, `file_path`, `file_type`, `file_size`, `version_number`, `is_current`, `replacement_reason`, `uploaded_by`, `uploaded_at`).
+  - **`document_templates` Table**:
+    - Ensures official entry for `KP Form 7` (Sumbong / Complaint) is registered.
+

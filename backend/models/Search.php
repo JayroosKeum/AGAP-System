@@ -22,11 +22,14 @@ class Search
             $params[':term'] = '%' . $term . '%';
         }
 
-        $statuses = ['Filed', 'Under Review', 'Needs Information', 'Accepted', 'Rejected', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Dismissed', 'CFA Issued', 'Archived'];
+        $statuses = ['Filed', 'Under Review', 'Needs Information', 'Accepted', 'Rejected', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Dismissed', 'CFA Issued', 'Archived', 'Draft'];
         $filterStatus = $filters['status'] ?? '';
 
-        if ($filterStatus === 'Pending') {
-            $where[] = "(NOT EXISTS (SELECT 1 FROM settlements s_std WHERE s_std.case_id = c.case_id)
+        if ($filterStatus === 'Draft') {
+            $where[] = "(co.is_draft = 1 OR co.status = 'Draft')";
+        } elseif ($filterStatus === 'Pending') {
+            $where[] = "(COALESCE(co.is_draft, 0) = 0 AND co.status != 'Draft'
+                AND NOT EXISTS (SELECT 1 FROM settlements s_std WHERE s_std.case_id = c.case_id)
                 AND NOT EXISTS (SELECT 1 FROM cfa_records cf_std WHERE cf_std.case_id = c.case_id)
                 AND NOT EXISTS (SELECT 1 FROM arbitration_records ar_std WHERE ar_std.case_id = c.case_id)
                 AND COALESCE(c.case_status, '') NOT IN ('Mediation','Conciliation','CFA Issued','Settled','Dismissed','Archived','Arbitration','DISMISSED_BARRED','RESPONDENT_DEFAULT')
@@ -112,7 +115,7 @@ class Search
             $params[':date_to'] = $filters['date_to'];
         }
 
-        $sql = "SELECT c.case_id, c.case_number, COALESCE(c.case_type, co.case_type) AS case_type, c.case_status, co.status AS complaint_status, COALESCE(c.case_status, co.status) AS raw_record_status, c.docket_date, co.complaint_id, co.complaint_number, co.complaint_title, co.incident_date, cc.category_name,
+        $sql = "SELECT c.case_id, c.case_number, COALESCE(c.case_type, co.case_type) AS case_type, c.case_status, co.status AS complaint_status, COALESCE(c.case_status, co.status) AS raw_record_status, c.docket_date, co.complaint_id, co.complaint_number, co.complaint_title, co.incident_date, cc.category_name, co.document_status, co.is_draft,
         GROUP_CONCAT(DISTINCT CONCAT(cp.party_type, ': ', TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name))) ORDER BY cp.party_type SEPARATOR ' | ') AS parties,
         MAX(history.repeat_count) AS repeat_party_count,
         (SELECT COUNT(*) FROM hearings h_med WHERE h_med.case_id = c.case_id AND h_med.hearing_type = 'Mediation') AS mediation_count,
@@ -178,7 +181,7 @@ class Search
 
         $orderClause = $sortColumns[$sortBy] ?? "co.incident_date DESC, c.case_id DESC, co.complaint_id DESC";
 
-        $sql .= " GROUP BY c.case_id, c.case_number, c.case_type, co.case_type, c.case_status, co.status, c.docket_date, co.complaint_id, co.complaint_number, co.complaint_title, co.incident_date, cc.category_name ORDER BY {$orderClause} LIMIT 250";
+        $sql .= " GROUP BY c.case_id, c.case_number, c.case_type, co.case_type, c.case_status, co.status, c.docket_date, co.complaint_id, co.complaint_number, co.complaint_title, co.incident_date, cc.category_name, co.document_status, co.is_draft ORDER BY {$orderClause} LIMIT 250";
         $stmt = $this->conn->prepare($sql);
         $stmt->execute($params);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -234,7 +237,9 @@ class Search
 
         // 3. Intake / Administrative Status (Current administrative state)
         $intake = 'Under Review';
-        if (!empty($row['case_id']) || ($row['case_status'] ?? '') === 'Docketed' || ($row['complaint_status'] ?? '') === 'Docketed' || $stage !== 'None' || $isStageExhausted) {
+        if (!empty($row['is_draft']) || ($row['complaint_status'] ?? '') === 'Draft') {
+            $intake = 'Draft';
+        } elseif (!empty($row['case_id']) || ($row['case_status'] ?? '') === 'Docketed' || ($row['complaint_status'] ?? '') === 'Docketed' || $stage !== 'None' || $isStageExhausted) {
             $intake = 'Docketed';
         }
 
@@ -267,6 +272,11 @@ class Search
     {
         $caseStatus = (string) ($row['case_status'] ?? '');
         $complaintStatus = (string) ($row['complaint_status'] ?? '');
+
+        if (!empty($row['is_draft']) || $complaintStatus === 'Draft') {
+            return 'Draft';
+        }
+
         $closedStatuses = ['Settled', 'Dismissed', 'Archived', 'Rejected', 'Arbitration', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT'];
 
         if ((int) ($row['settlement_count'] ?? 0) > 0

@@ -526,6 +526,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (isDefaultView || !cachedGlobalCounts) {
             const allCount = rows.length;
+            const draftCount = rows.filter(r => r.lifecycle_status === 'Draft' || r.is_draft == 1 || r.intake_status === 'Draft').length;
             const pendingCount = rows.filter(r => r.lifecycle_status === 'Pending').length;
             const mediationCount = rows.filter(r => r.lifecycle_status === 'Mediation').length;
             const conciliationCount = rows.filter(r => r.lifecycle_status === 'Conciliation').length;
@@ -534,6 +535,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             cachedGlobalCounts = {
                 all: allCount,
+                draft: draftCount,
                 pending: pendingCount,
                 mediation: mediationCount,
                 conciliation: conciliationCount,
@@ -549,6 +551,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         setEl('tabCountAll', counts.all);
+        setEl('tabCountDraft', counts.draft);
         setEl('tabCountPending', counts.pending);
         setEl('tabCountMediation', counts.mediation);
         setEl('tabCountConciliation', counts.conciliation);
@@ -684,13 +687,27 @@ document.addEventListener('DOMContentLoaded', () => {
         const caseType = String(row.case_type || 'Civil');
         const caseTypeClass = caseType.toLowerCase() === 'criminal' ? 'badge-type-criminal' : 'badge-type-civil';
 
+        const isDraft = Number(row.is_draft) === 1 || row.lifecycle_status === 'Draft' || row.intake_status === 'Draft';
+
         // 1. Case No.
-        const caseNumberHtml = row.case_number
-            ? `<span class="badge-case-docket">${escapeHtml(row.case_number)}</span>`
-            : `<span class="badge-case-none">Undocketed</span>`;
+        let caseNumberHtml;
+        if (isDraft) {
+            caseNumberHtml = `<span class="badge-case-draft" style="background:#fef3c7; color:#92400e; border:1px solid #fde68a; font-weight:600; padding:2px 8px; border-radius:9999px; font-size:0.75rem;">Draft</span>`;
+        } else {
+            caseNumberHtml = row.case_number
+                ? `<span class="badge-case-docket">${escapeHtml(row.case_number)}</span>`
+                : `<span class="badge-case-none">Undocketed</span>`;
+        }
 
         // 2. Complaint (Title of complaint / short description)
         const complaintTitle = row.complaint_title ? String(row.complaint_title).trim() : '';
+        let docBadgeHtml = '';
+        if (row.document_status === 'Scan Uploaded') {
+            docBadgeHtml = `<span class="badge-doc-status badge-doc-uploaded" style="padding:1px 6px; font-size:0.7rem; font-weight:600;" title="KP Form 7 handwritten scan uploaded">📄 Scan</span>`;
+        } else if (row.document_status === 'Updated Scan Uploaded') {
+            docBadgeHtml = `<span class="badge-doc-status badge-doc-updated" style="padding:1px 6px; font-size:0.7rem; font-weight:600;" title="Updated KP Form 7 scan uploaded">📄 Updated</span>`;
+        }
+
         const complaintHtml = `
             <div class="cell-complaint-meta">
                 <a href="complaint-details.php?id=${id}" class="complaint-title-link" title="${escapeHtml(complaintTitle || 'Untitled Complaint')}">
@@ -698,6 +715,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </a>
                 <div class="complaint-sub-meta">
                     <span class="badge-case-type ${caseTypeClass}">${escapeHtml(caseType)}</span>
+                    ${docBadgeHtml}
                 </div>
             </div>
         `;
@@ -725,14 +743,19 @@ document.addEventListener('DOMContentLoaded', () => {
             partiesHtml = `<div class="parties-stack">${renderedParties}${extraCount}${repeatFlag}</div>`;
         }
 
-        // 4. Standardized lifecycle status: exactly one of five values.
-        const lifecycleStatus = [
+        // 4. Standardized lifecycle status
+        let lifecycleStatus = 'Pending';
+        if (isDraft) {
+            lifecycleStatus = 'Draft';
+        } else if ([
             'Pending',
             'Mediation',
             'Conciliation',
             'CFA',
             'Resolution / Closed'
-        ].includes(row.lifecycle_status) ? row.lifecycle_status : 'Pending';
+        ].includes(row.lifecycle_status)) {
+            lifecycleStatus = row.lifecycle_status;
+        }
         const lifecycleClass = lifecycleStatus
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, '-')

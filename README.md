@@ -28,17 +28,25 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
 
 ## Key Features
 
-### 1. Complaint Intake, Management & Records Search
+#### 1. Complaint Intake, Management & Records Search
 
-- **Dedicated Add Complaint Page (`complaint-create.php`)**:
+- **Dedicated File Complaint Page (`complaint-create.php`)**:
   - Full-page, compact two-column card intake layout replacing legacy modal popups.
-  - **Classification**: Incident category, narrative description, prayer for relief, and a mandatory **Case Type** dropdown (`Civil` or `Criminal`).
-  - **Parties Involved**: Complainant and Respondent textboxes directly embedded in the intake form (eliminating separate "Add Party" modals), featuring live datalist autocomplete against registered barangay residents (`#residentOptions`) and automatic database linking to `complaint_parties`.
-  - **Merged Incident Datetime**: Merged single `<input type="datetime-local" name="incident_datetime">` parsed server-side into `incident_date` (DATE) and `incident_time` (TIME).
-  - **Geographic Tagging**: Specific incident location, landmark, and an interactive Leaflet/OpenStreetMap pin selector persisting exact GPS coordinates into `incident_locations`.
+  - **Dual Filing Architecture**:
+    - **Digital Filing**:
+      - Multiple parties support with `has_multiple_complainants` and `has_multiple_respondents` checkboxes.
+      - **Demographic Modal (`#partyDetailsModal`)**: Capture comprehensive details without cluttering the main screen—minor status with mandatory legal guardian details (name, relationship, contact, address), demographics (birthdate, calculated age, gender, civil status, occupation, suffix), contact preferences (`SMS`, `Call`, `Email`, `In-Person`), and unknown info flags (`contact_unknown`, `middle_name_unknown`, `birthdate_unknown`).
+      - **Streamlined Narrative**: Focused "Complaint Narrative" textarea without redundant instructional text or optional fields.
+      - **Flexible Incident Date & Time**: "Exact Time Unknown" and "Approximate Time" toggles dynamically switching the input element between `date` and `datetime-local`.
+      - **Relocated Primary Action**: Primary **Submit Complaint** button positioned directly beneath Section 5 (Evidence & Attachments), simplifying the header to **Cancel**.
+      - **Pre-Submission Legal Preview**: Submitting triggers an interactive Legal-size modal preview of **Pormularyo ng KP Blg. 7 (Reklamo)** for review and printing before final database insertion.
+    - **Pre-Signed Paper Form (Fast Intake Mode)**:
+      - 2-panel split screen: Left panel (50%–60% width) in-browser document viewer for uploaded handwritten/scanned KP Form 7 with Zoom In/Out, 90° rotation, and fullscreen; Right panel fast indexing form (Category, Case Type, Incident Date & Time, and auto-filled narrative "See attached scanned KP Form 7").
+      - Versioned scan storage in `storage/uploads/complaint-scans/` and `complaint_scanned_documents`.
 - **Dedicated Edit Complaint Page (`complaint-edit.php`)**:
   - Full-page edit interface with complete structural parity with `complaint-create.php`.
-  - Preloads all existing facts, category, `case_type`, merged datetime (`YYYY-MM-DDTHH:MM`), parties, and Leaflet pin coordinates.
+  - Header actions featuring **Cancel** alongside top **Save Changes** button.
+  - Preloads all existing facts, category, `case_type`, merged datetime (`YYYY-MM-DDTHH:MM`), parties, demographic details, and Leaflet pin coordinates.
   - Atomic server updates: synchronizes `complaints`, propagates `case_type` to linked `cases`, updates/inserts `complaint_parties`, and persists or clears coordinates in `incident_locations`.
 - **Modern, Compact Complaints List (`complaint-list.php`)**:
   - **4 Top KPI Metric Cards**: "Total Complaints", "Under Review", "In Progress", and "Settled" with one-click filtering.
@@ -52,7 +60,7 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
   - **10 Items Per Page Pagination**: Clean, responsive pagination bar below the table displaying a dynamic range summary ("Showing 1–10 of 14 complaint records"), Previous/Next navigation controls, and direct numeric page selectors.
   - **7-Column Table Layout**:
     1. **Complaint** (Complaint Number, Title, Case Type badge)
-    2. **Case No.** (Formatted Docket Case No. or "Undocketed" badge)
+    2. **Case No.** (Formatted Docket Case No. `MM-DD-YYYY` or "Undocketed" badge)
     3. **Category** (Badge)
     4. **Parties** (Complainant, Respondent, and Witness pills with role tags)
     5. **Incident Date** (Formatted date)
@@ -61,12 +69,14 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
 - **Complaint Workspace (`complaint-details.php`)**:
   - Multi-stage review gate: `Filed` $\rightarrow$ `Under Review` / `Needs Information` $\rightarrow$ `Accepted` / `Rejected`.
   - Secure evidence upload vault supporting images (JPG, PNG), videos (MP4, WebM), and PDF documents up to 25 MB with MIME verification.
+  - **Official KP Forms Table**: Houses **KP Form 7 (Reklamo)** alongside other KP forms, supporting high-fidelity Legal-size modal preview, zero-watermark printing, and versioned scan replacements.
 
 ### 2. Mediation & Conciliation Progression Engine
 
-- **Case Numbering Convention (`MM-SS-YYYY`)**:
-  - Format: `month(10)-series(01)-year(2026)` (e.g., `10-01-2026`, `10-45-2026`).
-  - Thread-safe atomic generation via `CaseModel::generateCaseNumber()` incrementing sequential cases per calendar year.
+- **Standardized Case Docketing Numbering (`MM-DD-YYYY`)**:
+  - Format: `MM-DD-YYYY` (e.g., `10-17-2026`).
+  - Standardized across all complaint and case screens, eliminating non-standard alphanumeric prefixes.
+  - Thread-safe atomic generation via `CaseModel::generateCaseNumber()`.
 - **Statutory Hearing Progression & 2nd Mediation Summons Exemption**:
   - **Mediation Stage**: 1st Mediation $\rightarrow$ 2nd Mediation $\rightarrow$ 3rd Mediation (up to 3 mediation sessions conducted by the Punong Barangay).
   - **Second Mediation Summons Exemption (RA 7160 Sec. 410)**: After the 1st Mediation, scheduling the 2nd Mediation does not require re-issuance of summonses. Prior notice is recognized, attendance gate is unlocked, and party service badges display `Served (Prior Notice)`.
@@ -120,6 +130,7 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
 ### 4. KP Document Generation & Proof of Service
 
 - **Official Katarungang Pambarangay (KP) Forms**:
+  - **KP Form 7**: Pormularyo ng KP Blg. 7 (Reklamo / Formal Complaint) — formatted strictly for standard **Legal Size Bondpaper** (`8.5in x 14in`) with Barangay Tumana Seal (Left) and City of Marikina Seal (Right), generous signature clearances (`48px`), zero-watermark browser printing, and interactive modal preview.
   - **KP Form 8**: Notice of Hearing (Complainant).
   - **KP Form 9**: Summons for Respondent.
   - **KP Form 10**: Notice for Constitution of Pangkat.
@@ -268,5 +279,5 @@ For development and testing, `database/schema.sql` seeds the following local acc
 ## Database & Migrations
 
 - `database/schema.sql` is the authoritative definition for fresh database installations.
-- For updating existing databases that predate specific increments, refer to the step-by-step instructions in [database/README.md](database/README.md).
+- For updating existing databases that predate specific increments, refer to the step-by-step instructions in [database/README.md](database/README.md). Recent migrations include `database/migrations/20261016_001_enhance_file_complaint_kp7.sql` for the File Complaint module, versioned scanned KP Form 7 uploads, and demographic/guardian fields.
 - Reference guides for developers and AI agents are maintained in [AI_DEVELOPMENT_GUIDE.md](AI_DEVELOPMENT_GUIDE.md) and [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md).
