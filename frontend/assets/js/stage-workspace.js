@@ -678,12 +678,40 @@ function renderMinutesSection(data, stage) {
     const isFinalized = (activeSession.minutes_status === 'Finalized');
     const readonlyAttr = isFinalized ? 'readonly disabled' : '';
 
+    const sessionIndex = Number(activeSession.session_index || 1);
+    const nextSessionIndex = sessionIndex + 1;
+    const nextSession = sessions.find(s => Number(s.session_index) === nextSessionIndex);
+
+    // Compute min and default next hearing date based on current session
+    let minNextDate = '';
+    let defaultNextDate = '';
+    if (activeSession.hearing_date) {
+        const curD = new Date(activeSession.hearing_date.replace(' ', 'T'));
+        if (!isNaN(curD.getTime())) {
+            const minD = new Date(curD);
+            minD.setDate(minD.getDate() + 1);
+            minNextDate = minD.toISOString().substring(0, 10);
+
+            const defD = new Date(curD);
+            defD.setDate(defD.getDate() + 3);
+            if (defD.getDay() === 0) defD.setDate(defD.getDate() + 1);
+            else if (defD.getDay() === 6) defD.setDate(defD.getDate() + 2);
+            defaultNextDate = defD.toISOString().substring(0, 10);
+        }
+    }
+    if (!minNextDate) {
+        const today = new Date();
+        today.setDate(today.getDate() + 1);
+        minNextDate = today.toISOString().substring(0, 10);
+        defaultNextDate = minNextDate;
+    }
+
     // Stage-adapted outcome options
     let outcomeOptions = '';
     const curOutcome = activeSession.session_outcome || 'Pending';
     if (mode === 'Mediation') {
         const opts = [
-            { val: 'Continue Mediation', label: 'Continue Mediation (Next Session Required)' },
+            { val: 'Continue Mediation', label: 'No Settlement → Set Another Meeting' },
             { val: 'Settled', label: 'Settled (Amicable Settlement Reached — KP Form 16)' },
             { val: 'Elevate to Pangkat', label: 'Elevate to Pangkat ng Tagapagkasundo (KP Form 10)' },
             { val: 'Party Absent', label: 'Party Absent / Non-appearance Recorded' },
@@ -1110,6 +1138,84 @@ function renderMinutesSection(data, stage) {
 
                     <!-- Row 3: Dynamic Next-Step Action Banner -->
                     <div id="minStageActionBanner" style="margin-bottom: 12px;"></div>
+
+                    <!-- Row 4: Integrated Direct Next Hearing Booking Section -->
+                    <div id="minNextStepsSection" style="${curOutcome === 'Continue Mediation' && mode === 'Mediation' ? 'display: block;' : 'display: none;'} margin-top: 14px; margin-bottom: 14px; background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 16px;">
+                        ${nextSession ? `
+                            <div style="display: flex; align-items: flex-start; gap: 12px;">
+                                <span style="background: #16a34a; color: #fff; width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.84rem; font-weight: 700; flex-shrink: 0;">✓</span>
+                                <div>
+                                    <strong style="color: #14532d; font-size: 0.92rem; display: block;">
+                                        ${nextSessionIndex === 2 ? '2nd' : (nextSessionIndex === 3 ? '3rd' : 'Next')} Mediation Hearing is Already Booked
+                                    </strong>
+                                    <p style="color: #166534; font-size: 0.84rem; margin: 4px 0 0; line-height: 1.45;">
+                                        Scheduled on <strong>${formatDateTime ? formatDateTime(nextSession.hearing_date) : nextSession.hearing_date}</strong> at <strong>${escapeHtml(nextSession.venue || 'Barangay Hall')}</strong>.
+                                        <br>
+                                        <span style="color: #475569; font-size: 0.78rem;">✓ Redundant summons (KP Form 9) was bypassed; both parties were personally notified during this session.</span>
+                                    </p>
+                                </div>
+                            </div>
+                        ` : (sessionIndex >= 3 ? `
+                            <div style="display: flex; align-items: flex-start; gap: 12px;">
+                                <span style="background: #0284c7; color: #fff; width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.84rem; font-weight: 700; flex-shrink: 0;">ℹ️</span>
+                                <div>
+                                    <strong style="color: #0c4a6e; font-size: 0.92rem; display: block;">
+                                        Mediation Phase Exhausted (3 of 3 Sessions Held)
+                                    </strong>
+                                    <p style="color: #0369a1; font-size: 0.84rem; margin: 4px 0 0; line-height: 1.45;">
+                                        Under Katarungang Pambarangay rules (RA 7160 Sec. 410), a maximum of three mediation sessions may be held before the Punong Barangay. If no settlement is reached, this case must be elevated to the <strong>Pangkat ng Tagapagkasundo</strong> for formal conciliation (KP Form 10).
+                                    </p>
+                                </div>
+                            </div>
+                        ` : `
+                            <div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #bbf7d0;">
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                        <span style="background: #16a34a; color: #fff; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.78rem; font-weight: 700;">📅</span>
+                                        <div>
+                                            <strong style="color: #14532d; font-size: 0.92rem;">
+                                                Next Steps: Book ${nextSessionIndex === 2 ? '2nd' : '3rd'} Mediation Hearing
+                                            </strong>
+                                            <span style="display: block; font-size: 0.76rem; color: #166534;">
+                                                Enter the date and time to automatically schedule the ${nextSessionIndex === 2 ? '2nd' : '3rd'} mediation session immediately upon saving these minutes.
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <span style="font-size: 0.74rem; background: #dcfce7; color: #15803d; font-weight: 700; padding: 4px 10px; border-radius: 6px; border: 1px solid #86efac; display: inline-flex; align-items: center; gap: 4px;">
+                                        ✓ NO SUMMONS (KP-9) NEEDED
+                                    </span>
+                                </div>
+
+                                <div style="background: #ffffff; border: 1px solid #bbf7d0; border-radius: 6px; padding: 9px 12px; margin-bottom: 12px; font-size: 0.8rem; color: #166534; display: flex; align-items: flex-start; gap: 8px; line-height: 1.45;">
+                                    <span style="font-size: 1rem; line-height: 1;">ℹ️</span>
+                                    <div>
+                                        <strong>RA 7160 Sec. 410 Notice Exemption:</strong> Because both parties are present in this session and sign the minutes, prior personal notice is legally recognized. <strong>No redundant summons (KP Form 9)</strong> will be generated for the ${nextSessionIndex === 2 ? '2nd' : '3rd'} mediation session.
+                                    </div>
+                                </div>
+
+                                <div style="display: grid; grid-template-columns: 1.2fr 1fr 1.2fr; gap: 12px;">
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label for="minNextHearingDate" style="font-weight: 600; font-size: 0.82rem; color: #14532d; margin-bottom: 4px; display: block;">
+                                            Next Hearing Date <span style="color: #dc2626;">*</span>
+                                        </label>
+                                        <input type="date" id="minNextHearingDate" min="${minNextDate}" value="${defaultNextDate}" ${readonlyAttr} style="width: 100%; border: 1px solid #86efac; border-radius: 6px; padding: 8px 10px; font-size: 0.84rem; box-sizing: border-box; background: #fff;">
+                                    </div>
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label for="minNextHearingTime" style="font-weight: 600; font-size: 0.82rem; color: #14532d; margin-bottom: 4px; display: block;">
+                                            Next Hearing Time <span style="color: #dc2626;">*</span>
+                                        </label>
+                                        <input type="time" id="minNextHearingTime" value="09:00" ${readonlyAttr} style="width: 100%; border: 1px solid #86efac; border-radius: 6px; padding: 8px 10px; font-size: 0.84rem; box-sizing: border-box; background: #fff;">
+                                    </div>
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label for="minNextHearingVenue" style="font-weight: 600; font-size: 0.82rem; color: #14532d; margin-bottom: 4px; display: block;">
+                                            Venue
+                                        </label>
+                                        <input type="text" id="minNextHearingVenue" value="${escapeHtml(activeSession.venue || 'Barangay Hall - Lupon Office')}" ${readonlyAttr} style="width: 100%; border: 1px solid #86efac; border-radius: 6px; padding: 8px 10px; font-size: 0.84rem; box-sizing: border-box; background: #fff;">
+                                    </div>
+                                </div>
+                            </div>
+                        `)}
+                    </div>
                 </div>
 
                 <!-- Actions Footer -->
@@ -1164,6 +1270,12 @@ function handleMinutesOutcomeChange(outcomeVal) {
     const activeSession = stageWorkspaceState.sessions.find(s => Number(s.hearing_id) === Number(activeHearingId)) || {};
     const sessionIndex = Number(activeSession.session_index || 1);
 
+    // Toggle integrated Next Steps direct booking section
+    const nextStepsEl = document.getElementById('minNextStepsSection');
+    if (nextStepsEl) {
+        nextStepsEl.style.display = (outcomeVal === 'Continue Mediation' && mode === 'Mediation') ? 'block' : 'none';
+    }
+
     if (outcomeVal === 'Settled') {
         bannerEl.innerHTML = `
             <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
@@ -1203,22 +1315,24 @@ function handleMinutesOutcomeChange(outcomeVal) {
                     </div>
                 </div>
             `;
-        } else if (sessionIndex === 1) {
-            bannerEl.innerHTML = `
-                <div style="margin: 8px 0 12px; display: flex; align-items: center;">
-                    <button type="button" class="btn-create" onclick="openScheduleModal()" style="font-size: 0.84rem; padding: 8px 18px; background: #2563eb !important; color: #ffffff !important; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; border: none; font-weight: 600; box-shadow: 0 1px 3px rgba(37,99,235,0.2);">
-                        📅 Book 2nd Mediation Hearing &rarr;
-                    </button>
-                </div>
-            `;
-        } else if (sessionIndex === 2) {
-            bannerEl.innerHTML = `
-                <div style="margin: 8px 0 12px; display: flex; align-items: center;">
-                    <button type="button" class="btn-create" onclick="openScheduleModal()" style="font-size: 0.84rem; padding: 8px 18px; background: #2563eb !important; color: #ffffff !important; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; border: none; font-weight: 600; box-shadow: 0 1px 3px rgba(37,99,235,0.2);">
-                        📅 Book 3rd Mediation Hearing &rarr;
-                    </button>
-                </div>
-            `;
+        } else if (sessionIndex === 1 || sessionIndex === 2) {
+            const nextOrdinal = (sessionIndex === 1) ? '2nd' : '3rd';
+            const hasNextSession = stageWorkspaceState.sessions.some(s => Number(s.session_index) === sessionIndex + 1);
+            if (hasNextSession) {
+                bannerEl.innerHTML = `
+                    <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 10px 14px; font-size: 0.84rem; color: #166534; display: flex; align-items: center; gap: 8px;">
+                        <span>✓</span>
+                        <span><strong>${nextOrdinal} Mediation hearing is already booked.</strong> Review session notes and save or finalize minutes below.</span>
+                    </div>
+                `;
+            } else {
+                bannerEl.innerHTML = `
+                    <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 10px 14px; font-size: 0.84rem; color: #166534; display: flex; align-items: center; gap: 8px;">
+                        <span>📅</span>
+                        <span><strong>Direct Booking Active:</strong> Enter Date &amp; Time in the <strong>Next Steps</strong> section below. The ${nextOrdinal} Mediation session will be booked automatically upon saving these minutes (no summons required).</span>
+                    </div>
+                `;
+            }
         } else {
             // Session 3 or higher
             bannerEl.innerHTML = `
@@ -1354,6 +1468,33 @@ async function saveHearingMinutes(status = 'Draft') {
         status: status
     };
 
+    const isMediation = stageWorkspaceState.mode === 'Mediation';
+    const sessionIndex = Number(session.session_index || 1);
+    const nextSessionIndex = sessionIndex + 1;
+    const hasNextSession = stageWorkspaceState.sessions.some(s => Number(s.session_index) === nextSessionIndex);
+
+    if (outcomeVal === 'Continue Mediation' && isMediation && !hasNextSession && sessionIndex < 3) {
+        const nextDate = document.getElementById('minNextHearingDate')?.value?.trim();
+        const nextTime = document.getElementById('minNextHearingTime')?.value?.trim();
+        const nextVenue = document.getElementById('minNextHearingVenue')?.value?.trim() || 'Barangay Hall - Lupon Office';
+        if (!nextDate || !nextTime) {
+            alert('Please specify the Date and Time for the next mediation session in the Next Steps section.');
+            const dateInput = document.getElementById('minNextHearingDate');
+            if (dateInput) {
+                dateInput.focus();
+                dateInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            if (draftBtn) draftBtn.disabled = false;
+            if (finalizeBtn) finalizeBtn.disabled = false;
+            return;
+        }
+        payload.book_next_hearing = 1;
+        payload.next_hearing_date = nextDate;
+        payload.next_hearing_time = nextTime;
+        payload.next_hearing_venue = nextVenue;
+        payload.next_hearing_presider_id = session.presiding_officer_id || null;
+    }
+
     try {
         const res = await fetch(getStageApiUrl('hearings/minutes.php'), {
             method: 'POST',
@@ -1363,8 +1504,19 @@ async function saveHearingMinutes(status = 'Draft') {
         const json = await res.json();
         if (json.success) {
             await loadStageData();
-            if (status === 'Finalized') showCloseoutFollowUp();
-            else alert('Session minutes draft saved successfully.');
+            if (json.next_hearing_booked && json.next_hearing) {
+                const seqLabel = json.next_hearing?.sequence === 2 ? '2nd' : (json.next_hearing?.sequence === 3 ? '3rd' : 'Next');
+                if (json.next_hearing?.already_existed) {
+                    alert(`Session minutes ${status === 'Finalized' ? 'finalized' : 'saved'} successfully.\n(${seqLabel} Mediation was already scheduled).`);
+                } else {
+                    alert(`✓ Session minutes ${status === 'Finalized' ? 'finalized and locked' : 'saved'} successfully!\n\n📅 ${seqLabel} Mediation hearing booked for ${json.next_hearing.hearing_date} at ${json.next_hearing.venue || 'Barangay Hall'}.\n\nNotice: Summons (KP Form 9) was bypassed because both parties were personally notified during the session and signed the minutes.`);
+                }
+            } else if (json.next_hearing_error) {
+                alert(`Session minutes ${status === 'Finalized' ? 'finalized' : 'saved'}.\n\n⚠️ Warning: Next mediation session could not be scheduled: ${json.next_hearing_error}\n\nPlease check for schedule conflicts or business hours.`);
+            } else {
+                if (status === 'Finalized') showCloseoutFollowUp();
+                else alert('Session minutes draft saved successfully.');
+            }
         } else {
             alert(json.message || 'Unable to save session minutes.');
         }

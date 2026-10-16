@@ -1,6 +1,10 @@
 <?php
 session_start();
 
+// Profile module hidden for now
+header('Location: ../complaints/complaint-list.php');
+exit;
+
 if (
     !isset($_SESSION['role_id']) ||
     !in_array($_SESSION['role_id'], [1, 2])

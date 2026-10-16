@@ -985,10 +985,10 @@ include __DIR__ . '/../../layouts/header.php';
                             <input type="text" id="modalFirstName" placeholder="e.g. Juan" maxlength="100">
                         </div>
                         <div class="party-field-col">
-                            <div style="display:flex; justify-content:space-between; align-items:center;">
-                                <label for="modalMiddleName">Middle Name</label>
-                                <label class="unknown-check-inline" id="modalWrapMiddleUnknown" style="display:none; font-size:0.75rem; color:#64748b; cursor:pointer;">
-                                    <input type="checkbox" id="modalMiddleUnknown"> Unknown
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                                <label for="modalMiddleName" style="margin-bottom:0;">Middle Name</label>
+                                <label class="unknown-check-inline" id="modalWrapMiddleUnknown" style="display:none; align-items:center; gap:5px; font-size:0.74rem; font-weight:500; color:#64748b; cursor:pointer; margin-bottom:0; user-select:none; white-space:nowrap;">
+                                    <input type="checkbox" id="modalMiddleUnknown" style="width:14px; height:14px; min-height:14px; margin:0; padding:0; cursor:pointer; flex-shrink:0;"> Unknown
                                 </label>
                             </div>
                             <input type="text" id="modalMiddleName" placeholder="e.g. Santos (Optional)" maxlength="100">
@@ -1006,10 +1006,10 @@ include __DIR__ . '/../../layouts/header.php';
                     <!-- Demographics & Contact -->
                     <div class="party-fields-grid-4" style="margin-top: 10px;">
                         <div class="party-field-col">
-                            <div style="display:flex; justify-content:space-between; align-items:center;">
-                                <label for="modalBirthdate">Birthdate</label>
-                                <label class="unknown-check-inline" id="modalWrapBirthUnknown" style="display:none; font-size:0.75rem; color:#64748b; cursor:pointer;">
-                                    <input type="checkbox" id="modalBirthUnknown"> Unknown
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                                <label for="modalBirthdate" style="margin-bottom:0;">Birthdate</label>
+                                <label class="unknown-check-inline" id="modalWrapBirthUnknown" style="display:none; align-items:center; gap:5px; font-size:0.74rem; font-weight:500; color:#64748b; cursor:pointer; margin-bottom:0; user-select:none; white-space:nowrap;">
+                                    <input type="checkbox" id="modalBirthUnknown" style="width:14px; height:14px; min-height:14px; margin:0; padding:0; cursor:pointer; flex-shrink:0;"> Unknown
                                 </label>
                             </div>
                             <input type="date" id="modalBirthdate" max="<?php echo date('Y-m-d'); ?>">
@@ -1041,10 +1041,10 @@ include __DIR__ . '/../../layouts/header.php';
 
                     <div class="party-fields-grid-3" style="margin-top: 10px;">
                         <div class="party-field-col">
-                            <div style="display:flex; justify-content:space-between; align-items:center;">
-                                <label for="modalContactNo">Contact Number</label>
-                                <label class="unknown-check-inline" id="modalWrapContactUnknown" style="display:none; font-size:0.75rem; color:#64748b; cursor:pointer;">
-                                    <input type="checkbox" id="modalContactUnknown"> Unknown
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                                <label for="modalContactNo" style="margin-bottom:0;">Contact Number</label>
+                                <label class="unknown-check-inline" id="modalWrapContactUnknown" style="display:none; align-items:center; gap:5px; font-size:0.74rem; font-weight:500; color:#64748b; cursor:pointer; margin-bottom:0; user-select:none; white-space:nowrap;">
+                                    <input type="checkbox" id="modalContactUnknown" style="width:14px; height:14px; min-height:14px; margin:0; padding:0; cursor:pointer; flex-shrink:0;"> Unknown
                                 </label>
                             </div>
                             <input type="text" id="modalContactNo" placeholder="e.g. 0917 123 4567" maxlength="50">
@@ -1103,16 +1103,13 @@ include __DIR__ . '/../../layouts/header.php';
                     </div>
 
                     <!-- Minor & Legal Guardian Section -->
-                    <div style="margin-top:16px; padding-top:12px; border-top:1px solid #f1f5f9;">
-                        <label class="unknown-checkbox-label" style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
-                            <input type="checkbox" id="modalIsMinor" value="1">
-                            <strong style="font-size:0.86rem; color:#1e293b;">Person is a Minor (&lt; 18 years old)</strong>
-                        </label>
+                    <input type="hidden" id="modalIsMinor" value="0">
 
-                        <div id="modalGuardianSection" class="conditional-party-details guardian-box" style="display:none; margin-top:10px;">
-                            <div class="guardian-box-title" style="font-size:0.82rem; font-weight:700; color:#0369a1; margin-bottom:8px;">
-                                🛡️ Legal Guardian / Representative Details
-                            </div>
+                    <div id="modalGuardianSection" class="conditional-party-details guardian-box" style="display:none; margin-top:16px;">
+                        <div class="guardian-box-title" style="font-size:0.84rem; font-weight:700; color:#0369a1; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px;">
+                            <span>🛡️ Legal Guardian / Representative Details</span>
+                            <span style="background:#e0f2fe; color:#0369a1; font-size:0.75rem; font-weight:600; padding:2px 8px; border-radius:9999px;">Person is a Minor (&lt; 18 years old)</span>
+                        </div>
                             <div class="party-fields-grid-2">
                                 <div class="party-field-col">
                                     <label for="modalGuardianName">Guardian Full Name <span class="required-mark" id="modalGuardianReqName">*</span></label>
@@ -1135,15 +1132,14 @@ include __DIR__ . '/../../layouts/header.php';
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Modal Footer -->
-                <div class="party-modal-footer">
-                    <button type="button" class="btn-secondary" id="btnCancelPartyModal">Cancel</button>
-                    <button type="button" class="btn-create" id="btnSavePartyModal">Save &amp; Apply Details</button>
+                    <!-- Modal Footer -->
+                    <div class="party-modal-footer">
+                        <button type="button" class="btn-secondary" id="btnCancelPartyModal">Cancel</button>
+                        <button type="button" class="btn-create" id="btnSavePartyModal">Save &amp; Apply Details</button>
+                    </div>
                 </div>
             </div>
-        </div>
 
         <template id="residentOptionsTemplate">
             <?php echo $renderResidentOptions(null); ?>
@@ -1475,7 +1471,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (tenant) tenant.value = '0';
 
         const isMinor = document.getElementById('modalIsMinor');
-        if (isMinor) isMinor.checked = false;
+        if (isMinor) {
+            if (isMinor.type === 'checkbox') isMinor.checked = false;
+            isMinor.value = '0';
+        }
         const gSec = document.getElementById('modalGuardianSection');
         if (gSec) gSec.style.display = 'none';
 
@@ -1507,10 +1506,23 @@ document.addEventListener('DOMContentLoaded', () => {
         setV('modalIsTenant', p.is_tenant ?? '0');
         setV('modalAddress', p.address);
 
-        const isMinor = document.getElementById('modalIsMinor');
-        if (isMinor) isMinor.checked = !!p.is_minor;
+        let isMinorVal = false;
+        if (p.age !== undefined && p.age !== null && p.age !== '' && !isNaN(p.age)) {
+            isMinorVal = Number(p.age) < 18;
+        } else if (p.birthdate) {
+            const calculated = calculateAge(p.birthdate);
+            isMinorVal = (calculated !== null) ? (calculated < 18) : !!p.is_minor;
+        } else {
+            isMinorVal = !!p.is_minor;
+        }
+
+        const isMinorEl = document.getElementById('modalIsMinor');
+        if (isMinorEl) {
+            isMinorEl.value = isMinorVal ? '1' : '0';
+            if (isMinorEl.type === 'checkbox') isMinorEl.checked = isMinorVal;
+        }
         const gSec = document.getElementById('modalGuardianSection');
-        if (gSec) gSec.style.display = p.is_minor ? 'block' : 'none';
+        if (gSec) gSec.style.display = isMinorVal ? 'block' : 'none';
 
         setV('modalGuardianName', p.guardian_name);
         setV('modalGuardianRelationship', p.guardian_relationship);
@@ -1622,13 +1634,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     const age = calculateAge(res.birth_date);
                     if (age !== null) {
                         setV('modalAge', age);
-                        if (age < 18) {
-                            const isMinor = document.getElementById('modalIsMinor');
-                            if (isMinor) isMinor.checked = true;
-                            const gSec = document.getElementById('modalGuardianSection');
-                            if (gSec) gSec.style.display = 'block';
-                        }
+                        updateModalMinorState(age);
                     }
+                } else if (res.age !== undefined && res.age !== null && res.age !== '') {
+                    setV('modalAge', res.age);
+                    updateModalMinorState(res.age);
                 }
                 if (res.gender) setV('modalGender', res.gender);
                 if (res.civil_status) setV('modalCivilStatus', res.civil_status);
@@ -1660,37 +1670,46 @@ document.addEventListener('DOMContentLoaded', () => {
         if (resId) resId.value = '';
     });
 
+    // Helper to automatically update Minor status & Guardian section based on age
+    function updateModalMinorState(age) {
+        const minorInput = document.getElementById('modalIsMinor');
+        const gSec = document.getElementById('modalGuardianSection');
+        if (age !== null && age !== undefined && !isNaN(age)) {
+            const isMinor = (parseInt(age, 10) < 18);
+            if (minorInput) {
+                minorInput.value = isMinor ? '1' : '0';
+                if (minorInput.type === 'checkbox') minorInput.checked = isMinor;
+            }
+            if (gSec) gSec.style.display = isMinor ? 'block' : 'none';
+        }
+    }
+
     // Modal Birthdate, Age & Minor listeners
-    document.getElementById('modalBirthdate')?.addEventListener('change', () => {
-        const bday = document.getElementById('modalBirthdate')?.value;
+    const modalBdayInput = document.getElementById('modalBirthdate');
+    const onModalBirthdateChange = () => {
+        const bday = modalBdayInput?.value;
         const age = calculateAge(bday);
         const ageInput = document.getElementById('modalAge');
-        const minorCheck = document.getElementById('modalIsMinor');
-        const gSec = document.getElementById('modalGuardianSection');
         if (age !== null && ageInput) {
             ageInput.value = age;
-            if (age < 18 && minorCheck) {
-                minorCheck.checked = true;
-                if (gSec) gSec.style.display = 'block';
+            updateModalMinorState(age);
+        }
+    };
+    modalBdayInput?.addEventListener('change', onModalBirthdateChange);
+    modalBdayInput?.addEventListener('input', onModalBirthdateChange);
+
+    const modalAgeInput = document.getElementById('modalAge');
+    const onModalAgeInput = () => {
+        const val = modalAgeInput?.value?.trim();
+        if (val !== '' && !isNaN(val)) {
+            const age = parseInt(val, 10);
+            if (!isNaN(age)) {
+                updateModalMinorState(age);
             }
         }
-    });
-
-    document.getElementById('modalAge')?.addEventListener('input', () => {
-        const age = parseInt(document.getElementById('modalAge')?.value, 10);
-        const minorCheck = document.getElementById('modalIsMinor');
-        const gSec = document.getElementById('modalGuardianSection');
-        if (!isNaN(age) && age < 18 && minorCheck) {
-            minorCheck.checked = true;
-            if (gSec) gSec.style.display = 'block';
-        }
-    });
-
-    document.getElementById('modalIsMinor')?.addEventListener('change', () => {
-        const isMinor = document.getElementById('modalIsMinor')?.checked;
-        const gSec = document.getElementById('modalGuardianSection');
-        if (gSec) gSec.style.display = isMinor ? 'block' : 'none';
-    });
+    };
+    modalAgeInput?.addEventListener('input', onModalAgeInput);
+    modalAgeInput?.addEventListener('change', onModalAgeInput);
 
     // Modal Respondent Unknown Toggles
     document.getElementById('modalMiddleUnknown')?.addEventListener('change', (e) => {
@@ -1733,7 +1752,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const isMinor = document.getElementById('modalIsMinor')?.checked;
+        const minorEl = document.getElementById('modalIsMinor');
+        const isMinor = (minorEl?.type === 'checkbox') ? !!minorEl?.checked : (minorEl?.value === '1');
         if (isMinor) {
             const gName = document.getElementById('modalGuardianName')?.value?.trim();
             const gRel  = document.getElementById('modalGuardianRelationship')?.value?.trim();
@@ -1767,10 +1787,10 @@ document.addEventListener('DOMContentLoaded', () => {
             is_tenant: document.getElementById('modalIsTenant')?.value || '0',
             address: document.getElementById('modalAddress')?.value?.trim() || '',
             is_minor: !!isMinor,
-            guardian_name: document.getElementById('modalGuardianName')?.value?.trim() || '',
-            guardian_relationship: document.getElementById('modalGuardianRelationship')?.value?.trim() || '',
-            guardian_contact: document.getElementById('modalGuardianContact')?.value?.trim() || '',
-            guardian_address: document.getElementById('modalGuardianAddress')?.value?.trim() || '',
+            guardian_name: isMinor ? (document.getElementById('modalGuardianName')?.value?.trim() || '') : '',
+            guardian_relationship: isMinor ? (document.getElementById('modalGuardianRelationship')?.value?.trim() || '') : '',
+            guardian_contact: isMinor ? (document.getElementById('modalGuardianContact')?.value?.trim() || '') : '',
+            guardian_address: isMinor ? (document.getElementById('modalGuardianAddress')?.value?.trim() || '') : '',
             contact_unknown: document.getElementById('modalContactUnknown')?.checked || false,
             middle_unknown: document.getElementById('modalMiddleUnknown')?.checked || false,
             birth_unknown: document.getElementById('modalBirthUnknown')?.checked || false,

@@ -1250,6 +1250,19 @@ The Complaint Details and Proof of Service modules provide an integrated, end-to
   - Created `complaint_scanned_documents` table.
   - Seeded `KP Form 7` in `document_templates`.
 
+### 17. Minutes of the Meeting: Direct "Next Hearing" Booking & Summons Suppression (October 2026)
+
+- **Integrated "Next Steps" Section inside Minutes Form**:
+  - Eliminated the disconnected two-step workflow where saving minutes and booking the next session were separate modal actions.
+  - Selecting **"No Settlement → Set Another Meeting"** (`Continue Mediation`) in the outcome dropdown dynamically expands the integrated **Next Steps** booking panel directly within the Minutes of the Meeting form.
+  - Provides date, time, and venue inputs with intelligent defaults (suggested next business day, operating hours validation).
+- **Summons (KP Form 9) Suppression (RA 7160 Sec. 410)**:
+  - Because both parties are present during the session and sign the official minutes, statutory personal notice is fulfilled.
+  - Suppresses generating a redundant summons (KP Form 9) or inserting pending delivery records in `summon_deliveries` for the subsequent mediation session.
+- **Immediate Booking Upon Minutes Submission**:
+  - When staff clicks **Save Minutes Draft** or **Finalize & Lock**, `backend/models/HearingMinutes.php` saves the minutes and immediately invokes `Hearing::createProgression()` in sequence.
+  - Seamlessly returns confirmation: books 2nd or 3rd Mediation, logs case history, and automatically updates session tabs and stage status without navigating away from the workspace.
+
 ---
 
 ## Present but Incomplete or Requiring Verification

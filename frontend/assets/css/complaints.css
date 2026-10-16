@@ -2802,7 +2802,7 @@ button:disabled, button.is-disabled, button[disabled], .btn-create:disabled, .bt
     font-weight: 700;
     color: #334155;
 }
-.party-field-col input,
+.party-field-col input:not([type="checkbox"]):not([type="radio"]),
 .party-field-col select,
 .party-field-col textarea {
     box-sizing: border-box;
@@ -2817,19 +2817,45 @@ button:disabled, button.is-disabled, button[disabled], .btn-create:disabled, .bt
     transition: all 0.15s ease;
     outline: none;
 }
-.party-field-col input:focus,
+.party-field-col input:not([type="checkbox"]):not([type="radio"]):focus,
 .party-field-col select:focus,
 .party-field-col textarea:focus {
     border-color: #0284c7;
     box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.12);
 }
-.party-field-col input:disabled,
+.party-field-col input:not([type="checkbox"]):not([type="radio"]):disabled,
 .party-field-col select:disabled,
 .party-field-col textarea:disabled {
     background-color: #f1f5f9;
     color: #94a3b8;
     cursor: not-allowed;
     border-color: #e2e8f0;
+}
+.unknown-check-inline {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+    font-size: 0.74rem !important;
+    font-weight: 500 !important;
+    color: #64748b !important;
+    cursor: pointer !important;
+    margin-bottom: 0 !important;
+    line-height: 1 !important;
+    user-select: none !important;
+    white-space: nowrap !important;
+}
+.unknown-check-inline input[type="checkbox"],
+.party-field-col input[type="checkbox"] {
+    width: 14px !important;
+    height: 14px !important;
+    min-height: 14px !important;
+    max-height: 14px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    cursor: pointer !important;
+    flex-shrink: 0 !important;
+    accent-color: #0284c7 !important;
+    box-shadow: none !important;
 }
 .age-badge-wrap {
     display: flex;

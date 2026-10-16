@@ -112,6 +112,13 @@ class HearingMinutes
 
         // 5. Validate session outcome enum
         $rawOutcome = trim((string) ($data['session_outcome'] ?? ''));
+        if (in_array($rawOutcome, [
+            'No Settlement - Set Another Meeting',
+            'No Settlement → Set Another Meeting',
+            'No Settlement -> Set Another Meeting'
+        ], true)) {
+            $rawOutcome = 'Continue Mediation';
+        }
         $allowedOutcomes = [
             'Settled', 'Continue Mediation', 'Continue Conciliation', 'Continue Arbitration',
             'Failed', 'Party Absent', 'Rescheduled', 'Elevate to Pangkat',
@@ -238,7 +245,94 @@ class HearingMinutes
                 $this->conn->commit();
             }
 
-            return [
+            // Direct Next Hearing Booking from Minutes of Meeting (RA 7160 Sec. 410)
+            // When "No Settlement -> Set Another Meeting" is selected and date/time are provided,
+            // immediately schedule the 2nd/3rd mediation session.
+            // Redundant summons (KP Form 9) is suppressed because both parties are personally notified.
+            $nextHearingBooked = false;
+            $nextHearingInfo = null;
+            $nextHearingError = null;
+
+            $shouldBookNext = (
+                (!empty($data['book_next_hearing']) || in_array($outcome, ['Continue Mediation', 'Continue Conciliation'], true)) &&
+                !empty($data['next_hearing_date']) &&
+                !empty($data['next_hearing_time'])
+            );
+
+            if ($shouldBookNext) {
+                $nextDate = trim((string) $data['next_hearing_date']);
+                $nextTime = trim((string) $data['next_hearing_time']);
+                $nextDateTime = $nextDate . ' ' . (strlen($nextTime) === 5 ? ($nextTime . ':00') : $nextTime);
+                $targetType = $hearing['hearing_type']; // 'Mediation' or 'Conciliation'
+
+                // Verify if a subsequent hearing is already booked for this case & stage
+                $checkNext = $this->conn->prepare("
+                    SELECT hearing_id, hearing_date, venue FROM hearings
+                    WHERE case_id = ? AND hearing_type = ? AND hearing_date > ? AND status NOT IN ('Cancelled', 'Office Cancelled')
+                    ORDER BY hearing_date ASC LIMIT 1
+                ");
+                $checkNext->execute([$caseId, $targetType, $hearing['hearing_date']]);
+                $alreadyScheduled = $checkNext->fetch(PDO::FETCH_ASSOC);
+
+                if (!$alreadyScheduled) {
+                    require_once __DIR__ . '/Hearing.php';
+                    require_once __DIR__ . '/../services/DeadlineService.php';
+
+                    try {
+                        $hearingModel = new Hearing($this->conn);
+                        $venue = trim((string) ($data['next_hearing_venue'] ?? '')) ?: ($hearing['venue'] ?: 'Barangay Hall - Lupon Office');
+                        $presiderId = !empty($data['next_hearing_presider_id']) ? (int) $data['next_hearing_presider_id'] : ($hearing['presiding_officer_id'] ?? null);
+
+                        $schedValues = [
+                            'case_id' => $caseId,
+                            'hearing_type' => $targetType,
+                            'hearing_date' => $nextDateTime,
+                            'venue' => $venue,
+                            'remarks' => sprintf('Directly booked from %s session minutes (parties personally notified; summons KP Form 9 suppressed under RA 7160 Sec. 410).', $sessionType),
+                            'presiding_officer_id' => $presiderId,
+                            'duration_minutes' => 45,
+                            'schedule_reviewed' => '1'
+                        ];
+
+                        $deadline = DeadlineService::deadlineForHearing($targetType, $nextDateTime);
+                        $bookResult = $hearingModel->createProgression($schedValues, $deadline, $userId);
+
+                        if (!empty($bookResult['success'])) {
+                            $nextHearingBooked = true;
+                            $nextHearingInfo = [
+                                'hearing_id' => $bookResult['hearing_id'],
+                                'sequence' => $bookResult['sequence'] ?? 2,
+                                'hearing_date' => $nextDateTime,
+                                'hearing_type' => $targetType,
+                                'venue' => $venue,
+                                'summons_suppressed' => true
+                            ];
+                            $ord = $hearingModel->ordinal($bookResult['sequence'] ?? 2);
+                            $this->logCaseHistory(
+                                $caseId,
+                                $hearing['case_status'] ?? 'Mediation',
+                                "Scheduled {$ord} {$targetType} for {$nextDateTime} directly from session minutes. Summons (KP Form 9) suppressed under RA 7160 Sec. 410.",
+                                $userId
+                            );
+                        } else {
+                            $nextHearingError = $bookResult['message'] ?? 'Unable to schedule next hearing session.';
+                        }
+                    } catch (Throwable $schedEx) {
+                        error_log('Error booking next hearing from minutes: ' . $schedEx->getMessage());
+                        $nextHearingError = $schedEx->getMessage();
+                    }
+                } else {
+                    $nextHearingBooked = true;
+                    $nextHearingInfo = [
+                        'hearing_id' => $alreadyScheduled['hearing_id'],
+                        'hearing_date' => $alreadyScheduled['hearing_date'],
+                        'venue' => $alreadyScheduled['venue'],
+                        'already_existed' => true
+                    ];
+                }
+            }
+
+            $response = [
                 'success' => true,
                 'message' => ($status === 'Finalized') ? 'Hearing session minutes finalized and locked successfully.' : 'Hearing session minutes saved successfully.',
                 'hearing_id' => $hearingId,
@@ -246,6 +340,21 @@ class HearingMinutes
                 'status' => $status,
                 'case_id' => $caseId
             ];
+
+            if ($nextHearingBooked && $nextHearingInfo) {
+                $response['next_hearing_booked'] = true;
+                $response['next_hearing'] = $nextHearingInfo;
+                if (!empty($nextHearingInfo['already_existed'])) {
+                    $response['message'] .= ' (Next session is already scheduled).';
+                } else {
+                    $response['message'] .= ' Next mediation session was also booked successfully without summons.';
+                }
+            } elseif ($nextHearingError) {
+                $response['next_hearing_error'] = $nextHearingError;
+                $response['message'] .= ' (Note: Next hearing could not be scheduled: ' . $nextHearingError . ')';
+            }
+
+            return $response;
         } catch (Throwable $e) {
             if ($manageTx && $this->conn->inTransaction()) {
                 $this->conn->rollBack();
