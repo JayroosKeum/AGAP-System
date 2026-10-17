@@ -195,6 +195,9 @@ include '../../layouts/header.php';
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                 <div class="form-group">
                     <label for="hearingDate">Start Date &amp; Time <span class="required-mark" aria-hidden="true">*</span></label>
+                    <div id="hearing15DayStatutoryBadge" style="display: none; margin-bottom: 6px; padding: 6px 10px; border-radius: 6px; font-size: 0.78rem; font-weight: 600; background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; line-height: 1.4;">
+                        ⚖️ <span>15-Working-Day Window (RA 7160 Sec. 410): Must be on or before <strong id="hearing15DayDeadlineDate">—</strong></span>
+                    </div>
                     <input type="datetime-local" id="hearingDate" name="hearing_date" required onchange="handleHearingDateOrDurationChange()">
                     <small id="hearingDateStaticHint" style="color: #64748b; font-size: 0.8rem; display: block; margin-top: 4px;">Office hours: Monday to Friday, 8:00 AM – 5:00 PM.</small>
                     <div class="date-validation-hint" data-for="hearingDate" role="alert" aria-live="polite">
