@@ -1,15 +1,37 @@
 <?php
 
-require_once '../../controllers/SettlementController.php';
+session_start();
 
-$controller = new SettlementController();
+require_once __DIR__ . '/../../controllers/SettlementController.php';
+require_once __DIR__ . '/../../services/CsrfService.php';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST')
-{
-    $controller->create($_POST);
+header('Content-Type: application/json; charset=utf-8');
 
-    echo json_encode([
-        'success' => true,
-        'message' => 'Settlement saved successfully.'
-    ]);
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['success' => false, 'message' => 'Method not allowed.']);
+    exit;
 }
+
+if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2], true)) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Unauthorized.']);
+    exit;
+}
+
+if (!CsrfService::validateRequest()) {
+    http_response_code(419);
+    echo json_encode(['success' => false, 'message' => 'Invalid or missing request token.']);
+    exit;
+}
+
+$caseId = filter_input(INPUT_POST, 'case_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+if (!$caseId) {
+    http_response_code(422);
+    echo json_encode(['success' => false, 'message' => 'A valid case ID is required.']);
+    exit;
+}
+
+$result = (new SettlementController())->save($_POST, (int) $_SESSION['user_id']);
+http_response_code(!empty($result['success']) ? 200 : 422);
+echo json_encode($result);

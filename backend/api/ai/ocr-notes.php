@@ -3,6 +3,7 @@ session_start();
 header('Content-Type: application/json; charset=utf-8');
 
 require_once __DIR__ . '/../../controllers/AiServiceController.php';
+require_once __DIR__ . '/../../services/CsrfService.php';
 
 // Verify authentication
 if (!isset($_SESSION['user_id'])) {
@@ -16,6 +17,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     echo json_encode(['success' => false, 'message' => 'Method not allowed. Only POST is accepted.']);
     exit;
 }
+
+CsrfService::enforceForApiRequest();
 
 $file = $_FILES['image'] ?? ($_FILES['file'] ?? null);
 

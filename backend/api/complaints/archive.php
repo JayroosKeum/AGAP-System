@@ -2,32 +2,43 @@
 
 session_start();
 
-require_once '../../controllers/ComplaintController.php';
+require_once __DIR__ . '/../../controllers/ComplaintController.php';
+require_once __DIR__ . '/../../services/CsrfService.php';
 
-$id = isset($_POST['complaint_id'])
-    ? (int) $_POST['complaint_id']
-    : (isset($_POST['id'])
-        ? (int) $_POST['id']
-        : (isset($_GET['id']) ? (int) $_GET['id'] : 0));
+header('Content-Type: application/json; charset=utf-8');
 
-$success = false;
-if ($id > 0) {
-    $controller = new ComplaintController();
-    $success = $controller->archive($id);
-}
-
-// Support AJAX requests if needed
-$isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
-    || (isset($_SERVER['HTTP_ACCEPT']) && strpos($_SERVER['HTTP_ACCEPT'], 'application/json') !== false);
-
-if ($isAjax) {
-    header('Content-Type: application/json');
-    echo json_encode([
-        'success' => $success,
-        'message' => $success ? 'Complaint archived successfully.' : 'Failed to archive complaint.'
-    ]);
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['success' => false, 'message' => 'Method not allowed.']);
     exit;
 }
 
-header('Location: ../../../frontend/pages/complaints/complaint-list.php?status=archived');
+if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2], true)) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Unauthorized.']);
+    exit;
+}
+
+if (!CsrfService::validateRequest()) {
+    http_response_code(419);
+    echo json_encode(['success' => false, 'message' => 'Invalid or missing request token.']);
+    exit;
+}
+
+$id = filter_input(INPUT_POST, 'complaint_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+if (!$id) {
+    $id = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+}
+if (!$id) {
+    http_response_code(422);
+    echo json_encode(['success' => false, 'message' => 'A valid complaint ID is required.']);
+    exit;
+}
+
+$success = (new ComplaintController())->archive((int) $id);
+http_response_code($success ? 200 : 422);
+echo json_encode([
+    'success' => $success,
+    'message' => $success ? 'Complaint archived successfully.' : 'Failed to archive complaint.'
+]);
 exit;

@@ -1,15 +1,42 @@
 <?php
 
-require_once '../../controllers/CaseController.php';
+session_start();
 
-$id = $_POST['case_id'];
+require_once __DIR__ . '/../../controllers/CaseController.php';
+require_once __DIR__ . '/../../services/CsrfService.php';
 
-$controller = new CaseController();
+header('Content-Type: application/json; charset=utf-8');
 
-$controller->archive($id);
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['success' => false, 'message' => 'Method not allowed.']);
+    exit;
+}
 
-header(
-    'Location: ../../../frontend/pages/cases/case-list.php'
-);
+if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2], true)) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Unauthorized.']);
+    exit;
+}
+
+if (!CsrfService::validateRequest()) {
+    http_response_code(419);
+    echo json_encode(['success' => false, 'message' => 'Invalid or missing request token.']);
+    exit;
+}
+
+$id = filter_input(INPUT_POST, 'case_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+if (!$id) {
+    http_response_code(422);
+    echo json_encode(['success' => false, 'message' => 'A valid case ID is required.']);
+    exit;
+}
+
+$success = (new CaseController())->archive((int) $id);
+http_response_code($success ? 200 : 422);
+echo json_encode([
+    'success' => (bool) $success,
+    'message' => $success ? 'Case archived successfully.' : 'Unable to archive case.'
+]);
 
 exit;

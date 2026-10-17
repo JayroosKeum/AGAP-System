@@ -13,6 +13,7 @@ $complaintFlash = $_SESSION['complaint_flash'] ?? null;
 unset($_SESSION['complaint_flash']);
 
 require_once __DIR__ . '/../../../backend/config/database.php';
+require_once __DIR__ . '/../../../backend/services/CsrfService.php';
 $categories = [];
 try {
     $db = (new Database())->connect();
@@ -277,6 +278,7 @@ window.agapComplaintFlash = <?php echo json_encode(
     $complaintFlash,
     JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
 ); ?>;
+window.agapCsrfToken = <?php echo json_encode(CsrfService::token(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 </script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="../../assets/js/complaints.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/complaints.js'); ?>"></script>

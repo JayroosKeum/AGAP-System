@@ -286,8 +286,14 @@ class Hearing
 
     public function createProgression(array $data, ?array $deadline, int $userId): array
     {
+        $scheduleLocks = [];
         try {
             $this->conn->beginTransaction();
+            $scheduleLocks = $this->acquireScheduleLocks($data);
+            if ($scheduleLocks === false) {
+                $this->conn->rollBack();
+                return ['success' => false, 'message' => 'Another scheduling request is being processed. Please try again.'];
+            }
             $caseQuery = $this->conn->prepare('SELECT * FROM cases WHERE case_id = ? FOR UPDATE');
             $caseQuery->execute([$data['case_id']]);
             $caseRecord = $caseQuery->fetch(PDO::FETCH_ASSOC);
@@ -631,11 +637,58 @@ class Hearing
                 $this->conn->rollBack();
             }
             throw $exception;
+        } finally {
+            if (is_array($scheduleLocks)) {
+                $this->releaseScheduleLocks($scheduleLocks);
+            }
+        }
+    }
+
+    /**
+     * Serializes capacity, venue, and presiding-officer checks long enough for
+     * their corresponding insert to commit. MySQL range checks cannot be made
+     * unique with an ordinary index, so the named locks close that race.
+     */
+    private function acquireScheduleLocks(array $data): array|false
+    {
+        $date = (new DateTimeImmutable((string) $data['hearing_date']))->format('Ymd');
+        $venue = strtolower(trim((string) ($data['venue'] ?? '')));
+        $keys = [
+            'agap_hearing_day_' . $date,
+            'agap_hearing_venue_' . substr(hash('sha256', $venue . $date), 0, 32),
+        ];
+        if (!empty($data['presiding_officer_id'])) {
+            $keys[] = 'agap_hearing_officer_' . (int) $data['presiding_officer_id'] . '_' . $date;
+        }
+
+        $acquired = [];
+        foreach ($keys as $key) {
+            $stmt = $this->conn->prepare('SELECT GET_LOCK(?, 5)');
+            $stmt->execute([$key]);
+            if ((int) $stmt->fetchColumn() !== 1) {
+                $this->releaseScheduleLocks($acquired);
+                return false;
+            }
+            $acquired[] = $key;
+        }
+        return $acquired;
+    }
+
+    private function releaseScheduleLocks(array $keys): void
+    {
+        foreach ($keys as $key) {
+            try {
+                $stmt = $this->conn->prepare('SELECT RELEASE_LOCK(?)');
+                $stmt->execute([$key]);
+            } catch (Throwable $exception) {
+                error_log('Unable to release hearing scheduling lock: ' . $exception->getMessage());
+            }
         }
     }
 
     public function update(int $id, array $data, ?array $deadline): bool
     {
+        $scheduleLocks = [];
         try {
             $this->conn->beginTransaction();
 
@@ -682,6 +735,15 @@ class Hearing
             $presidingOfficerId = isset($data['presiding_officer_id']) && $data['presiding_officer_id'] !== ''
                 ? (int) $data['presiding_officer_id']
                 : (!empty($prevHearing['presiding_officer_id']) ? (int) $prevHearing['presiding_officer_id'] : null);
+
+            $lockData = $data;
+            $lockData['hearing_date'] = $startTime;
+            $lockData['venue'] = $venue;
+            $lockData['presiding_officer_id'] = $presidingOfficerId;
+            $scheduleLocks = $this->acquireScheduleLocks($lockData);
+            if ($scheduleLocks === false) {
+                throw new RuntimeException('Another scheduling request is being processed. Please try again.');
+            }
 
             require_once __DIR__ . '/../services/OfficeLogisticsService.php';
             $logistics = new OfficeLogisticsService($this->conn);
@@ -796,6 +858,10 @@ class Hearing
                 $this->conn->rollBack();
             }
             throw $exception;
+        } finally {
+            if (is_array($scheduleLocks)) {
+                $this->releaseScheduleLocks($scheduleLocks);
+            }
         }
     }
 

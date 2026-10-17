@@ -2515,11 +2515,30 @@ function closeArchiveComplaintModal() {
     if (modal) modal.style.display = 'none';
 }
 
-function confirmArchiveComplaint() {
+async function confirmArchiveComplaint() {
     const input = document.getElementById('archiveComplaintId') || document.getElementById('deleteComplaintId');
     const id = input ? input.value : '';
     if (!id) return;
-    window.location.href = '../../../backend/api/complaints/archive.php?id=' + encodeURIComponent(id);
+    try {
+        const response = await fetch('../../../backend/api/complaints/archive.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+                'X-CSRF-Token': window.agapCsrfToken || ''
+            },
+            body: new URLSearchParams({ complaint_id: id }),
+            credentials: 'same-origin'
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.message || 'Unable to archive complaint.');
+        }
+        closeArchiveComplaintModal();
+        window.agapNotify?.(result.message, 'success');
+        window.location.reload();
+    } catch (error) {
+        window.agapNotify?.(error.message || 'Unable to archive complaint.', 'error');
+    }
 }
 
 window.archiveComplaint = archiveComplaint;

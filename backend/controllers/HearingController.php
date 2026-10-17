@@ -131,7 +131,7 @@ class HearingController
             ];
         } catch (Throwable $exception) {
             error_log($exception->getMessage());
-            return ['success' => false, 'message' => 'Unable to schedule the hearing: ' . $exception->getMessage()];
+            return ['success' => false, 'message' => 'Unable to schedule the hearing. Please try again or contact an administrator with the time of the request.'];
         }
     }
 
@@ -190,7 +190,7 @@ class HearingController
             return ['success' => true, 'message' => 'Hearing rescheduled successfully.'];
         } catch (Throwable $exception) {
             error_log($exception->getMessage());
-            return ['success' => false, 'message' => 'Unable to update the hearing: ' . $exception->getMessage()];
+            return ['success' => false, 'message' => 'Unable to update the hearing. Please try again or contact an administrator with the time of the request.'];
         }
     }
 
@@ -401,7 +401,10 @@ class HearingController
         if (mb_strlen($remarks) > 5000) {
             return ['success' => false, 'message' => 'Remarks must not exceed 5,000 characters.'];
         }
-        // Future date restriction bypassed for testing/development
+        $today = new DateTimeImmutable('today');
+        if ($date < $today) {
+            return ['success' => false, 'message' => 'Hearings cannot be scheduled in the past.'];
+        }
 
         // Validation: Approved hearing blocks, lunch break, Monday 8-9am, legal holidays, duration rules
         $hoursValidation = $this->hearing->validateHearingOperatingHours(
