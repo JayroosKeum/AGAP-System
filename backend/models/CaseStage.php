@@ -262,6 +262,91 @@ class CaseStage
 
         $canBookNextMediation = ($completedMediationCount >= 1 && $completedMediationCount < 3 && $outcome !== 'Settled' && $case['case_status'] !== 'Settled');
 
+        // Determine next permitted canonical action for workspace
+        $hasActiveScheduledHearing = false;
+        foreach ($hearings as $mh) {
+            if (in_array($mh['status'], ['Scheduled', 'Pending'], true)) {
+                $hasActiveScheduledHearing = true;
+                break;
+            }
+        }
+
+        $latestHearing = !empty($hearings) ? end($hearings) : null;
+        $latestCompAtt = $latestHearing['complainant_attendance'] ?? null;
+        $latestRespAtt = $latestHearing['respondent_attendance'] ?? null;
+
+        $nextPermittedAction = [
+            'action' => 'Schedule Mediation 1',
+            'description' => 'Schedule the initial mediation session with the Punong Barangay (KP Form 8 / KP Form 9).',
+            'action_type' => 'schedule_hearing',
+            'badge' => 'badge-primary'
+        ];
+
+        if ($case['case_status'] === 'Settled' || $outcome === 'Settled' || $hasSettledSession) {
+            $nextPermittedAction = [
+                'action' => 'Amicable Settlement Reached',
+                'description' => 'Dispute resolved amicably. Monitor settlement compliance or close case.',
+                'action_type' => 'settlement_reached',
+                'badge' => 'badge-success'
+            ];
+        } elseif ($case['case_status'] === 'Conciliation' || $stageStatus === 'Referred to Pangkat') {
+            $nextPermittedAction = [
+                'action' => 'Convene Pangkat Conciliation',
+                'description' => 'Mediation concluded. Dispute elevated to Pangkat ng Tagapagkasundo panel.',
+                'action_type' => 'pangkat_convened',
+                'badge' => 'badge-info'
+            ];
+        } elseif ($sessionCount === 0) {
+            $nextPermittedAction = [
+                'action' => 'Schedule Mediation 1',
+                'description' => 'Book the 1st mediation hearing session with the Punong Barangay.',
+                'action_type' => 'schedule_hearing',
+                'badge' => 'badge-primary'
+            ];
+        } elseif ($hasActiveScheduledHearing) {
+            $nextPermittedAction = [
+                'action' => 'Conduct Session & Record Attendance',
+                'description' => 'An active hearing is scheduled. Verify summons service and record party attendance.',
+                'action_type' => 'record_attendance',
+                'badge' => 'badge-warning'
+            ];
+        } elseif ($latestCompAtt === 'Absent') {
+            $nextPermittedAction = [
+                'action' => 'Issue Show Cause Order (KP Form 18)',
+                'description' => 'Complainant was absent without verified excuse. Require justification or dismiss complaint.',
+                'action_type' => 'show_cause',
+                'badge' => 'badge-danger'
+            ];
+        } elseif ($latestRespAtt === 'Absent') {
+            $nextPermittedAction = [
+                'action' => 'Issue Show Cause Notice (KP Form 19)',
+                'description' => 'Respondent was absent without verified excuse. Require justification or note CFA eligibility.',
+                'action_type' => 'show_cause',
+                'badge' => 'badge-danger'
+            ];
+        } elseif ($completedMediationCount === 1) {
+            $nextPermittedAction = [
+                'action' => 'Schedule Mediation 2',
+                'description' => 'Mediation 1 concluded without settlement. Proceed to second mediation attempt.',
+                'action_type' => 'schedule_hearing',
+                'badge' => 'badge-primary'
+            ];
+        } elseif ($completedMediationCount === 2) {
+            $nextPermittedAction = [
+                'action' => 'Schedule Mediation 3',
+                'description' => 'Mediation 2 concluded without settlement. Proceed to third mediation attempt.',
+                'action_type' => 'schedule_hearing',
+                'badge' => 'badge-primary'
+            ];
+        } elseif ($completedMediationCount >= 3 || $isLapsed) {
+            $nextPermittedAction = [
+                'action' => 'Elevate to Pangkat (KP Form 10)',
+                'description' => '3 mediation attempts completed without settlement. Refer dispute to Pangkat panel.',
+                'action_type' => 'elevate_pangkat',
+                'badge' => 'badge-warning'
+            ];
+        }
+
         return [
             'stage_type' => 'Mediation',
             'stage_title' => '7. Mediation',
@@ -285,6 +370,7 @@ class CaseStage
                 'latest_status' => $latestMinutesStatus,
                 'latest_session_date' => $latestMinutesSessionDate
             ],
+            'next_permitted_action' => $nextPermittedAction,
             'documents_and_actions' => [
                 'can_record_attendance' => ($sessionCount > 0),
                 'can_add_minutes' => ($sessionCount > 0),
@@ -296,6 +382,7 @@ class CaseStage
                 'can_book_next_mediation' => $canBookNextMediation,
                 'next_mediation_session_number' => min(3, $completedMediationCount + 1),
                 'completed_mediation_count' => $completedMediationCount,
+                'next_permitted_action' => $nextPermittedAction,
             ],
             'outcome' => $outcome,
             'outcome_remarks' => $outcomeRemarks,
@@ -776,6 +863,7 @@ class CaseStage
 
         $stmt = $this->conn->prepare("
             SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.venue, h.status,
+                   h.mediation_attempt, h.attempt_exception_reason, h.cancellation_category, h.rescheduled_from_id,
                    h.complainant_attendance, h.respondent_attendance, h.remarks,
                    h.presiding_officer_id, h.substitute_presider_id, h.substitute_reason, h.parties_consent_to_substitute,
                    h.attendance_recorded_at, h.attendance_notes,
@@ -841,13 +929,24 @@ class CaseStage
                 $proofStatus = 'Served';
             }
 
+            $attemptNum = !empty($h['mediation_attempt']) ? (int) $h['mediation_attempt'] : $index;
+            $sessionNumber = $stageType === 'Mediation'
+                ? sprintf('Mediation %d', $attemptNum)
+                : sprintf('%s Session %d', $stageType, $index);
+
             $sessions[] = [
                 'session_index' => $index,
-                'session_number' => sprintf('%s Session %d', $stageType, $index),
+                'session_number' => $sessionNumber,
+                'mediation_attempt' => $attemptNum,
+                'attempt_label' => $sessionNumber,
+                'attempt_exception_reason' => $h['attempt_exception_reason'] ?? null,
+                'cancellation_category' => $h['cancellation_category'] ?? null,
+                'rescheduled_from_id' => $h['rescheduled_from_id'] ? (int) $h['rescheduled_from_id'] : null,
                 'hearing_id' => $hId,
                 'hearing_type' => $h['hearing_type'],
                 'hearing_date' => $h['hearing_date'],
                 'venue' => $h['venue'],
+                'parties' => $parties,
                 'status' => $h['status'],
                 'complainant_attendance' => $h['complainant_attendance'] ?: 'Pending',
                 'respondent_attendance' => $h['respondent_attendance'] ?: 'Pending',

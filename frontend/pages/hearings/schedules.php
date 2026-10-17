@@ -397,13 +397,23 @@ include '../../layouts/header.php';
         <form id="officeCancelForm" onsubmit="handleOfficeCancelSubmit(event)">
             <input type="hidden" id="officeCancelHearingId" name="hearing_id">
             <div class="form-group">
-                <label for="officeCancelReason">Official Reason for Office Cancellation <span class="required-mark">*</span></label>
-                <textarea id="officeCancelReason" name="cancellation_reason" rows="3" required placeholder="e.g. Punong Barangay called to emergency municipal coordination meeting; Hall closed due to storm signal"></textarea>
+                <label for="officeCancelCategory">Emergency Cancellation Category <span class="required-mark">*</span></label>
+                <select id="officeCancelCategory" name="cancellation_category" required style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px;">
+                    <option value="Severe Weather / Natural Disaster">Severe Weather / Natural Disaster (Typhoon, Flood, Quake)</option>
+                    <option value="Barangay Safety / Security Incident">Barangay Safety / Security Incident</option>
+                    <option value="Venue Closure / Facility Maintenance">Venue Closure / Facility Maintenance</option>
+                    <option value="Official Emergency Duty of Punong Barangay">Official Emergency Duty of Punong Barangay</option>
+                    <option value="Other Force Majeure">Other Force Majeure</option>
+                </select>
             </div>
             <div class="form-group">
-                <label for="officeCancelRescheduleDate">Optional New Schedule Date &amp; Time</label>
+                <label for="officeCancelReason">Official Reason for Emergency Cancellation <span class="required-mark">*</span></label>
+                <textarea id="officeCancelReason" name="cancellation_reason" rows="3" required placeholder="e.g. Punong Barangay called to emergency disaster coordination; Hall closed due to storm signal"></textarea>
+            </div>
+            <div class="form-group">
+                <label for="officeCancelRescheduleDate">Optional Immediate Reschedule Date &amp; Time</label>
                 <input type="datetime-local" id="officeCancelRescheduleDate" name="reschedule_date">
-                <small style="color: #64748b; font-size: 0.78rem;">Leave blank if parties will be notified of reset date later.</small>
+                <small style="color: #64748b; font-size: 0.78rem;">Leave blank to cancel now and reschedule later via the workspace.</small>
             </div>
             <div class="modal-actions">
                 <button type="button" class="btn-secondary" onclick="closeModal('officeCancelModal')">Cancel</button>

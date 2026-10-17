@@ -96,13 +96,17 @@ class HearingController
         $conflict = $this->hearing->findConflict(
             $values['hearing_date'],
             $values['venue'],
-            $values['case_id']
+            $values['case_id'],
+            null,
+            $values['presiding_officer_id'] ?? null,
+            $values['duration_minutes'] ?? null,
+            $values['hearing_type'] ?? 'Mediation'
         );
-        if ($conflict) {
+        if ($conflict && !empty($conflict['conflict'])) {
             return [
                 'success' => false,
-                'message' => 'Schedule conflict with case ' . $conflict['case_number'] .
-                    ' at the same date/time or venue.',
+                'message' => $conflict['message'] ?? 'Schedule conflict detected.',
+                'alternative_slots' => $conflict['alternative_slots'] ?? []
             ];
         }
 
@@ -127,7 +131,7 @@ class HearingController
             ];
         } catch (Throwable $exception) {
             error_log($exception->getMessage());
-            return ['success' => false, 'message' => 'Unable to schedule the hearing.'];
+            return ['success' => false, 'message' => 'Unable to schedule the hearing: ' . $exception->getMessage()];
         }
     }
 
@@ -148,7 +152,9 @@ class HearingController
         // A schedule may be rescheduled, but its workflow stage cannot be changed by editing it.
         $data['hearing_type'] = $existing['hearing_type'];
         $data['reschedule_reason'] = trim((string)($data['reschedule_reason'] ?? ''));
-        if ($data['reschedule_reason'] === '' || mb_strlen($data['reschedule_reason']) > 2000) return ['success'=>false,'message'=>'A rescheduling reason is required (up to 2,000 characters).'];
+        if ($data['reschedule_reason'] === '' || mb_strlen($data['reschedule_reason']) > 2000) {
+            return ['success' => false, 'message' => 'A rescheduling reason is required (up to 2,000 characters).'];
+        }
         $validated = $this->validate($data, true, $id);
         if (!$validated['success']) {
             return $validated;
@@ -160,10 +166,17 @@ class HearingController
             $values['hearing_date'],
             $values['venue'],
             $values['case_id'],
-            $id
+            $id,
+            $values['presiding_officer_id'] ?? null,
+            $values['duration_minutes'] ?? null,
+            $values['hearing_type'] ?? 'Mediation'
         );
-        if ($conflict) {
-            return ['success' => false, 'message' => 'The requested date/time conflicts with another hearing.'];
+        if ($conflict && !empty($conflict['conflict'])) {
+            return [
+                'success' => false,
+                'message' => $conflict['message'] ?? 'The requested date/time conflicts with another hearing.',
+                'alternative_slots' => $conflict['alternative_slots'] ?? []
+            ];
         }
 
         try {
@@ -181,22 +194,68 @@ class HearingController
         }
     }
 
+    public function checkAvailability(array $data): array
+    {
+        $caseId = !empty($data['case_id']) ? (int) $data['case_id'] : null;
+        $hearingDate = trim((string) ($data['hearing_date'] ?? ''));
+        $venue = trim((string) ($data['venue'] ?? ''));
+        $excludeHearingId = !empty($data['exclude_hearing_id']) ? (int) $data['exclude_hearing_id'] : null;
+        $presidingOfficerId = !empty($data['presiding_officer_id']) ? (int) $data['presiding_officer_id'] : null;
+        $durationMinutes = !empty($data['duration_minutes']) ? (int) $data['duration_minutes'] : 45;
+        $hearingType = !empty($data['hearing_type']) ? trim((string) $data['hearing_type']) : 'Mediation';
+
+        if ($hearingDate === '') {
+            return ['valid' => false, 'conflict' => false, 'message' => 'Please provide a hearing date and time.'];
+        }
+
+        $rawDate = str_replace('T', ' ', $hearingDate);
+        if (strlen($rawDate) === 16) {
+            $rawDate .= ':00';
+        }
+
+        $conflict = $this->hearing->findConflict(
+            $rawDate,
+            $venue,
+            $caseId,
+            $excludeHearingId,
+            $presidingOfficerId,
+            $durationMinutes,
+            $hearingType
+        );
+
+        if ($conflict['conflict']) {
+            return [
+                'valid' => false,
+                'conflict' => true,
+                'message' => $conflict['message'],
+                'alternative_slots' => $conflict['alternative_slots'] ?? []
+            ];
+        }
+
+        return [
+            'valid' => true,
+            'conflict' => false,
+            'message' => 'The selected date, time, venue, and officers are available.'
+        ];
+    }
+
     public function officeCancel(array $data, int $userId): array
     {
         $hearingId = filter_var($data['hearing_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         $reason = trim((string) ($data['cancellation_reason'] ?? ''));
+        $category = !empty($data['cancellation_category']) ? trim((string) $data['cancellation_category']) : 'Emergency';
         $rescheduleDate = !empty($data['reschedule_date']) ? trim($data['reschedule_date']) : null;
 
         if (!$hearingId) {
             return ['success' => false, 'message' => 'Invalid hearing ID.'];
         }
         if ($reason === '') {
-            return ['success' => false, 'message' => 'An office cancellation reason is required.'];
+            return ['success' => false, 'message' => 'An emergency cancellation reason is required.'];
         }
 
-        $result = $this->hearing->officeCancel((int) $hearingId, $userId, $reason, $rescheduleDate);
+        $result = $this->hearing->officeCancel((int) $hearingId, $userId, $reason, $category, $rescheduleDate);
         if ($result['success']) {
-            $this->audit->log($userId, "Office cancelled hearing #{$hearingId}. Reason: {$reason}", 'Hearings', (int) $hearingId);
+            $this->audit->log($userId, "Emergency cancelled hearing #{$hearingId} ({$category}). Reason: {$reason}", 'Hearings', (int) $hearingId);
         }
         return $result;
     }
@@ -410,6 +469,8 @@ class HearingController
                 'reschedule_justification_category' => !empty($data['reschedule_justification_category']) ? trim($data['reschedule_justification_category']) : null,
                 'reschedule_document_path' => !empty($data['reschedule_document_path']) ? trim($data['reschedule_document_path']) : null,
                 'force_reschedule' => !empty($data['force_reschedule']) ? 1 : 0,
+                'authorized_exception' => !empty($data['authorized_exception']) ? 1 : 0,
+                'attempt_exception_reason' => !empty($data['attempt_exception_reason']) ? trim((string) $data['attempt_exception_reason']) : null,
             ],
         ];
     }

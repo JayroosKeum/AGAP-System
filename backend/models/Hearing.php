@@ -39,6 +39,7 @@ class Hearing
         $stmt = $this->conn->prepare(
             "SELECT h.*, c.case_number, c.case_status, c.docket_date,
                     co.complaint_number, co.complaint_title,
+                    TRIM(CONCAT_WS(' ', po.first_name, po.middle_name, po.last_name)) AS presiding_officer_name,
                     CASE WHEN EXISTS (
                         SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
                     ) THEN 1 ELSE 0 END AS is_superseded,
@@ -48,6 +49,7 @@ class Hearing
              FROM hearings h
              INNER JOIN cases c ON c.case_id = h.case_id
              INNER JOIN complaints co ON co.complaint_id = c.complaint_id
+             LEFT JOIN users po ON po.user_id = h.presiding_officer_id
              WHERE h.hearing_id = ?"
         );
         $stmt->execute([$id]);
@@ -67,24 +69,82 @@ class Hearing
         string $hearingDate,
         string $venue,
         int $caseId,
-        ?int $excludeHearingId = null
+        ?int $excludeHearingId = null,
+        ?int $presidingOfficerId = null,
+        int $durationMinutes = 45,
+        string $hearingType = 'Mediation',
+        ?int $mediationAttempt = null
     ): array|false {
-        $sql = "SELECT h.hearing_id, h.case_id, h.hearing_date, h.venue, c.case_number
-                FROM hearings h
-                INNER JOIN cases c ON c.case_id = h.case_id
-                WHERE h.hearing_date = ?
-                  AND (LOWER(TRIM(h.venue)) = LOWER(TRIM(?)) OR h.case_id = ?)";
-        $params = [$hearingDate, $venue, $caseId];
+        require_once __DIR__ . '/../services/OfficeLogisticsService.php';
+        $logistics = new OfficeLogisticsService($this->conn);
 
-        if ($excludeHearingId !== null) {
-            $sql .= ' AND h.hearing_id <> ?';
-            $params[] = $excludeHearingId;
+        // 1. Check holiday
+        $holidayName = $logistics->isPhilippineHoliday($hearingDate);
+        if ($holidayName !== null) {
+            $formattedDate = date('F j, Y', strtotime($hearingDate));
+            return [
+                'conflict' => true,
+                'message' => "Scheduling is blocked on {$formattedDate}: Official / configured holiday ({$holidayName}). Hearings cannot be scheduled on non-working holidays.",
+                'alternative_slots' => $logistics->findAlternativeSlots($caseId, $hearingDate, $durationMinutes, $venue, $presidingOfficerId)
+            ];
         }
 
-        $sql .= ' LIMIT 1';
-        $stmt = $this->conn->prepare($sql);
-        $stmt->execute($params);
-        return $stmt->fetch(PDO::FETCH_ASSOC);
+        // 2. Check daily capacity across barangay (enforce max 8 hearings/day)
+        $capCheck = $logistics->validateDailyCapacity($hearingDate, $presidingOfficerId, $excludeHearingId);
+        if (!$capCheck['valid']) {
+            return [
+                'conflict' => true,
+                'message' => $capCheck['message'],
+                'alternative_slots' => $logistics->findAlternativeSlots($caseId, $hearingDate, $durationMinutes, $venue, $presidingOfficerId)
+            ];
+        }
+
+        $startDateTime = date('Y-m-d H:i:s', strtotime($hearingDate));
+        $endDateTime = date('Y-m-d H:i:s', strtotime("{$startDateTime} +{$durationMinutes} minutes"));
+
+        // 3. Check venue availability (maintenance & overlapping active hearings)
+        $venueCheck = $logistics->validateVenueAvailability($venue, $startDateTime, $endDateTime, $excludeHearingId);
+        if (!$venueCheck['available']) {
+            return [
+                'conflict' => true,
+                'message' => $venueCheck['message'],
+                'alternative_slots' => $logistics->findAlternativeSlots($caseId, $hearingDate, $durationMinutes, $venue, $presidingOfficerId)
+            ];
+        }
+
+        // 4. Check presiding officer availability
+        if ($presidingOfficerId) {
+            $presCheck = $logistics->validateMemberAvailability($presidingOfficerId, $startDateTime, $endDateTime, $excludeHearingId, 'Presiding Officer');
+            if (!$presCheck['available']) {
+                return [
+                    'conflict' => true,
+                    'message' => $presCheck['message'],
+                    'alternative_slots' => $logistics->findAlternativeSlots($caseId, $hearingDate, $durationMinutes, $venue, $presidingOfficerId)
+                ];
+            }
+        }
+
+        // 5. Check required case officers availability
+        $offCheck = $logistics->validateCaseRequiredOfficersAvailability($caseId, $startDateTime, $endDateTime, $excludeHearingId);
+        if (!$offCheck['available']) {
+            return [
+                'conflict' => true,
+                'message' => $offCheck['message'],
+                'alternative_slots' => $logistics->findAlternativeSlots($caseId, $hearingDate, $durationMinutes, $venue, $presidingOfficerId)
+            ];
+        }
+
+        // 6. Check duplicate active hearings for this case
+        $dupCheck = $logistics->validateDuplicateHearing($caseId, $startDateTime, $endDateTime, $hearingType, $mediationAttempt, $excludeHearingId);
+        if (!$dupCheck['valid']) {
+            return [
+                'conflict' => true,
+                'message' => $dupCheck['message'],
+                'alternative_slots' => $logistics->findAlternativeSlots($caseId, $hearingDate, $durationMinutes, $venue, $presidingOfficerId)
+            ];
+        }
+
+        return false;
     }
 
     /**
@@ -273,21 +333,47 @@ class Hearing
             // transition has moved the case to Conciliation (for example, an
             // approved failed-mediation referral or a lapsed-period referral).
             // The number of mediation schedules must never infer that outcome.
-            $expectedType = $caseRecord['case_status'] === 'Conciliation'
+            $expectedType = ($caseRecord['case_status'] === 'Conciliation')
                 ? 'Conciliation'
                 : 'Mediation';
 
-            if ($expectedType === 'Mediation' && $scheduled['Mediation'] >= 3) {
-                $this->conn->rollBack();
-                return [
-                    'success' => false,
-                    'message' => 'Three mediation sessions are already scheduled. Record and approve a mediation outcome before referring this case to Pangkat; Conciliation cannot be scheduled from the session count alone.'
-                ];
+            // Active mediation attempt count for this case (excluding cancelled/superseded)
+            $medQuery = $this->conn->prepare("
+                SELECT hearing_id, mediation_attempt, status
+                FROM hearings
+                WHERE case_id = ? AND hearing_type IN ('Initial Hearing', 'Mediation')
+                  AND status NOT IN ('Cancelled', 'Office Cancelled')
+                  AND NOT EXISTS (SELECT 1 FROM hearings nh WHERE nh.rescheduled_from_id = hearings.hearing_id)
+                ORDER BY hearing_date ASC, hearing_id ASC
+            ");
+            $medQuery->execute([$data['case_id']]);
+            $existingMedHearings = $medQuery->fetchAll(PDO::FETCH_ASSOC);
+            $activeMediationCount = count($existingMedHearings);
+
+            $mediationAttempt = null;
+            $attemptExceptionReason = null;
+
+            if ($expectedType === 'Mediation') {
+                $nextAttempt = $activeMediationCount + 1;
+                $isAuthorizedException = !empty($data['authorized_exception']) || !empty($data['attempt_exception_reason']);
+
+                if ($activeMediationCount >= 3 && !$isAuthorizedException) {
+                    $this->conn->rollBack();
+                    return [
+                        'success' => false,
+                        'message' => 'Three mediation attempts (Mediation 1, 2, and 3) have already been conducted or scheduled for this case. Under Katarungang Pambarangay rules, additional mediation attempts are prohibited unless an authorized rule explicitly permits an exception. You may record the mediation outcome or refer the dispute to the Pangkat Tagapagkasundo.'
+                    ];
+                }
+
+                $mediationAttempt = $nextAttempt;
+                if ($isAuthorizedException) {
+                    $attemptExceptionReason = trim((string) ($data['attempt_exception_reason'] ?? 'Authorized exception recorded by officer'));
+                }
             }
 
             if ($data['hearing_type'] !== $expectedType) {
                 $this->conn->rollBack();
-                $nextSeq = $scheduled[$expectedType] + 1;
+                $nextSeq = ($expectedType === 'Mediation') ? ($activeMediationCount + 1) : ($scheduled[$expectedType] + 1);
                 $ordinalStr = match ($nextSeq) {
                     1 => '1st',
                     2 => '2nd',
@@ -381,44 +467,94 @@ class Hearing
             $endTime = $schedValidation['end_time'];
             $durationMin = $schedValidation['duration_minutes'];
 
-            // Daily Capacity validation
+            // Venue selection with default fallback
+            $venue = trim((string) ($data['venue'] ?? ''));
+            if ($venue === '') {
+                require_once __DIR__ . '/../services/OfficeLogisticsService.php';
+                $venue = OfficeLogisticsService::getDefaultVenue($data['hearing_type']);
+            }
+
             require_once __DIR__ . '/../services/OfficeLogisticsService.php';
             $logistics = new OfficeLogisticsService($this->conn);
             $presidingOfficerId = !empty($data['presiding_officer_id']) ? (int) $data['presiding_officer_id'] : null;
+
+            // 1. Daily Capacity validation (max 8 hearings/day across barangay)
             $capacityCheck = $logistics->validateDailyCapacity($startTime, $presidingOfficerId);
             if (!$capacityCheck['valid']) {
                 $this->conn->rollBack();
+                $alternatives = $logistics->findAlternativeSlots((int) $data['case_id'], $startTime, $durationMin, $venue, $presidingOfficerId);
                 return [
                     'success' => false,
                     'message' => $capacityCheck['message'],
+                    'alternative_slots' => $alternatives
                 ];
             }
 
-            // Presiding officer conflict check if assigned
+            // 2. Duplicate active hearing check (same case overlapping date/time, or duplicate mediation attempt)
+            $dupCheck = $logistics->validateDuplicateHearing(
+                (int) $data['case_id'],
+                $startTime,
+                $endTime,
+                $data['hearing_type'],
+                $expectedType === 'Mediation' ? $mediationAttempt : null
+            );
+            if (!$dupCheck['valid']) {
+                $this->conn->rollBack();
+                $alternatives = $logistics->findAlternativeSlots((int) $data['case_id'], $startTime, $durationMin, $venue, $presidingOfficerId);
+                return [
+                    'success' => false,
+                    'message' => $dupCheck['message'],
+                    'alternative_slots' => $alternatives
+                ];
+            }
+
+            // 3. Venue availability check (maintenance/closure & overlapping active bookings)
+            $venueCheck = $logistics->validateVenueAvailability($venue, $startTime, $endTime);
+            if (!$venueCheck['available']) {
+                $this->conn->rollBack();
+                $alternatives = $logistics->findAlternativeSlots((int) $data['case_id'], $startTime, $durationMin, $venue, $presidingOfficerId);
+                return [
+                    'success' => false,
+                    'message' => $venueCheck['message'],
+                    'alternative_slots' => $alternatives
+                ];
+            }
+
+            // 4. Presiding officer conflict check if assigned
             if ($presidingOfficerId) {
-                $availCheck = $logistics->validateMemberAvailability($presidingOfficerId, $startTime, $endTime);
+                $availCheck = $logistics->validateMemberAvailability($presidingOfficerId, $startTime, $endTime, null, 'Presiding Officer');
                 if (!$availCheck['available']) {
                     $this->conn->rollBack();
+                    $alternatives = $logistics->findAlternativeSlots((int) $data['case_id'], $startTime, $durationMin, $venue, $presidingOfficerId);
                     return [
                         'success' => false,
                         'message' => $availCheck['message'],
+                        'alternative_slots' => $alternatives
                     ];
                 }
             }
 
-            // Default venue validation & assignment
-            $venue = trim((string) ($data['venue'] ?? ''));
-            if ($venue === '') {
-                $venue = OfficeLogisticsService::getDefaultVenue($data['hearing_type']);
+            // 5. Case required Lupon officers availability check
+            $offCheck = $logistics->validateCaseRequiredOfficersAvailability((int) $data['case_id'], $startTime, $endTime);
+            if (!$offCheck['available']) {
+                $this->conn->rollBack();
+                $alternatives = $logistics->findAlternativeSlots((int) $data['case_id'], $startTime, $durationMin, $venue, $presidingOfficerId);
+                return [
+                    'success' => false,
+                    'message' => $offCheck['message'],
+                    'alternative_slots' => $alternatives
+                ];
             }
 
             $stmt = $this->conn->prepare(
-                'INSERT INTO hearings (case_id, hearing_type, hearing_date, end_time, duration_minutes, duration_exceed_reason, venue, remarks, presiding_officer_id)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                'INSERT INTO hearings (case_id, hearing_type, mediation_attempt, attempt_exception_reason, hearing_date, end_time, duration_minutes, duration_exceed_reason, venue, remarks, presiding_officer_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
             );
             $stmt->execute([
                 $data['case_id'],
                 $data['hearing_type'],
+                $expectedType === 'Mediation' ? $mediationAttempt : null,
+                $attemptExceptionReason,
                 $startTime,
                 $endTime,
                 $durationMin,
@@ -502,8 +638,16 @@ class Hearing
     {
         try {
             $this->conn->beginTransaction();
+
+            $prevHearing = $this->getById($id);
+            if (!$prevHearing) {
+                throw new InvalidArgumentException('Original hearing record not found.');
+            }
+
             $reason = trim((string)($data['reschedule_reason'] ?? ''));
-            if ($reason === '' || mb_strlen($reason) > 2000) throw new InvalidArgumentException('A rescheduling reason up to 2,000 characters is required.');
+            if ($reason === '' || mb_strlen($reason) > 2000) {
+                throw new InvalidArgumentException('A rescheduling reason up to 2,000 characters is required.');
+            }
             
             $schedValidation = $this->validateHearingOperatingHours(
                 $data['hearing_date'],
@@ -532,17 +676,68 @@ class Hearing
 
             $venue = trim((string) ($data['venue'] ?? ''));
             if ($venue === '') {
-                require_once __DIR__ . '/../services/OfficeLogisticsService.php';
-                $venue = OfficeLogisticsService::getDefaultVenue($data['hearing_type']);
+                $venue = !empty($prevHearing['venue']) ? $prevHearing['venue'] : OfficeLogisticsService::getDefaultVenue($data['hearing_type']);
             }
 
+            $presidingOfficerId = isset($data['presiding_officer_id']) && $data['presiding_officer_id'] !== ''
+                ? (int) $data['presiding_officer_id']
+                : (!empty($prevHearing['presiding_officer_id']) ? (int) $prevHearing['presiding_officer_id'] : null);
+
+            require_once __DIR__ . '/../services/OfficeLogisticsService.php';
+            $logistics = new OfficeLogisticsService($this->conn);
+
+            // 1. Daily Capacity check (max 8 hearings/day across barangay, excluding this hearing)
+            $capCheck = $logistics->validateDailyCapacity($startTime, $presidingOfficerId, $id);
+            if (!$capCheck['valid']) {
+                throw new InvalidArgumentException($capCheck['message']);
+            }
+
+            // 2. Duplicate active hearing check (excluding this hearing)
+            $medAttempt = !empty($prevHearing['mediation_attempt']) ? (int) $prevHearing['mediation_attempt'] : null;
+            $attemptExceptionReason = $prevHearing['attempt_exception_reason'] ?? null;
+            $dupCheck = $logistics->validateDuplicateHearing(
+                (int) $data['case_id'],
+                $startTime,
+                $endTime,
+                $data['hearing_type'],
+                $medAttempt,
+                $id
+            );
+            if (!$dupCheck['valid']) {
+                throw new InvalidArgumentException($dupCheck['message']);
+            }
+
+            // 3. Venue availability check (including maintenance/closures, excluding this hearing)
+            $venueCheck = $logistics->validateVenueAvailability($venue, $startTime, $endTime, $id);
+            if (!$venueCheck['available']) {
+                throw new InvalidArgumentException($venueCheck['message']);
+            }
+
+            // 4. Presiding officer availability check (excluding this hearing)
+            if ($presidingOfficerId) {
+                $presCheck = $logistics->validateMemberAvailability($presidingOfficerId, $startTime, $endTime, $id, 'Presiding Officer');
+                if (!$presCheck['available']) {
+                    throw new InvalidArgumentException($presCheck['message']);
+                }
+            }
+
+            // 5. Case required Lupon officers availability check (excluding this hearing)
+            $offCheck = $logistics->validateCaseRequiredOfficersAvailability((int) $data['case_id'], $startTime, $endTime, $id);
+            if (!$offCheck['available']) {
+                throw new InvalidArgumentException($offCheck['message']);
+            }
+
+            $userId = $_SESSION['user_id'] ?? null;
+
             $stmt = $this->conn->prepare(
-                'INSERT INTO hearings (case_id, hearing_type, hearing_date, end_time, duration_minutes, duration_exceed_reason, venue, remarks, rescheduled_from_id, reschedule_reason, rescheduled_by_party, reschedule_justification_category, reschedule_document_path, reschedule_approved_by, reschedule_approved_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())'
+                'INSERT INTO hearings (case_id, hearing_type, mediation_attempt, attempt_exception_reason, hearing_date, end_time, duration_minutes, duration_exceed_reason, venue, remarks, rescheduled_from_id, reschedule_reason, rescheduled_by_party, reschedule_justification_category, reschedule_document_path, reschedule_approved_by, reschedule_approved_at, presiding_officer_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)'
             );
             $stmt->execute([
                 $data['case_id'],
                 $data['hearing_type'],
+                $medAttempt,
+                $attemptExceptionReason,
                 $startTime,
                 $endTime,
                 $durationMin,
@@ -554,8 +749,15 @@ class Hearing
                 $partyType ?: null,
                 !empty($data['reschedule_justification_category']) ? $data['reschedule_justification_category'] : null,
                 !empty($data['reschedule_document_path']) ? $data['reschedule_document_path'] : null,
-                $_SESSION['user_id'] ?? null,
+                $userId,
+                $presidingOfficerId,
             ]);
+
+            $newId = (int) $this->conn->lastInsertId();
+
+            // Mark old hearing as Rescheduled
+            $this->conn->prepare("UPDATE hearings SET status = 'Rescheduled', updated_at = NOW() WHERE hearing_id = ? AND status IN ('Scheduled', 'Pending')")
+                ->execute([$id]);
 
             if ($deadline !== null && ($data['hearing_type'] ?? '') !== 'Conciliation') {
                 $this->upsertDeadline(
@@ -565,15 +767,25 @@ class Hearing
                 );
             }
 
+            // Preserve full original schedule, reason, actor, and timestamp in case history
+            $origFmt = !empty($prevHearing['hearing_date']) ? date('M j, Y g:i A', strtotime($prevHearing['hearing_date'])) : 'previous date';
+            $newFmt = date('M j, Y g:i A', strtotime($startTime));
+            $origVenue = $prevHearing['venue'] ?? 'Barangay Hall';
+            $histRemarks = "Hearing #{$id} ({$prevHearing['hearing_type']}, originally {$origFmt} at {$origVenue}) rescheduled to {$newFmt} at {$venue} by user #" . ($userId ?? 'System') . ". Reason: {$reason}";
+
+            $history = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) SELECT case_id, (SELECT case_status FROM cases WHERE case_id=?), ?, ? FROM hearings WHERE hearing_id=?");
+            $history->execute([$data['case_id'], $histRemarks, $userId, $newId]);
+
             $this->conn->commit();
-            $newId = (int)$this->conn->lastInsertId();
-            $history = $this->conn->prepare("INSERT INTO case_history (case_id,status,remarks,updated_by) SELECT case_id,(SELECT case_status FROM cases WHERE case_id=?),?,? FROM hearings WHERE hearing_id=?");
-            $history->execute([$data['case_id'], 'Hearing #' . $id . ' rescheduled as hearing #' . $newId . '. Reason: ' . $reason, $_SESSION['user_id'] ?? null, $newId]);
+
+            // Automatically dispatch notification to affected officers and parties
+            require_once __DIR__ . '/../services/NotificationService.php';
+            (new NotificationService())->notifyHearingRescheduled($newId, $id, $reason, (int) ($userId ?? 0));
 
             // Automatically initialize hearing deliveries for all parties and witnesses for rescheduled hearing
             require_once __DIR__ . '/../services/SummonDeliveryService.php';
             try {
-                (new SummonDeliveryService($this->conn))->initializeHearingDeliveries($newId, $_SESSION['user_id'] ?? null);
+                (new SummonDeliveryService($this->conn))->initializeHearingDeliveries($newId, $userId);
             } catch (Throwable $delivEx) {
                 error_log("Failed to initialize deliveries for rescheduled hearing {$newId}: " . $delivEx->getMessage());
             }
@@ -876,7 +1088,7 @@ class Hearing
         $stmt->execute([$caseId, $type, $dueDate]);
     }
 
-    public function officeCancel(int $hearingId, int $cancelledBy, string $reason, ?string $rescheduleDate = null): array
+    public function officeCancel(int $hearingId, int $cancelledBy, string $reason, string $category = 'Emergency', ?string $rescheduleDate = null): array
     {
         try {
             $this->conn->beginTransaction();
@@ -891,19 +1103,22 @@ class Hearing
                  SET status = 'Office Cancelled', 
                      cancelled_by = ?, 
                      cancellation_reason = ?, 
+                     cancellation_category = ?,
+                     cancellation_notice_sent = 1,
                      updated_at = NOW() 
                  WHERE hearing_id = ?"
             );
-            $stmt->execute([$cancelledBy, $reason, $hearingId]);
+            $stmt->execute([$cancelledBy, $reason, $category, $hearingId]);
 
             $historyStmt = $this->conn->prepare(
                 "INSERT INTO case_history (case_id, status, remarks, updated_by)
                  VALUES (?, ?, ?, ?)"
             );
+            $origDate = date('F j, Y g:i A', strtotime($hearing['hearing_date']));
             $historyStmt->execute([
                 $hearing['case_id'],
                 $hearing['case_status'],
-                "Hearing #{$hearingId} cancelled by office: {$reason}. Not recorded as party absence.",
+                "Hearing #{$hearingId} ({$origDate}) cancelled due to {$category}: {$reason}. Recorded by user #{$cancelledBy}. Not recorded as party absence.",
                 $cancelledBy
             ]);
 
@@ -917,19 +1132,21 @@ class Hearing
                 );
                 if ($schedValidation['valid']) {
                     $insertNew = $this->conn->prepare(
-                        "INSERT INTO hearings (case_id, hearing_type, hearing_date, end_time, duration_minutes, venue, remarks, rescheduled_from_id, reschedule_reason, reschedule_approved_by, reschedule_approved_at, presiding_officer_id)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)"
+                        "INSERT INTO hearings (case_id, hearing_type, mediation_attempt, attempt_exception_reason, hearing_date, end_time, duration_minutes, venue, remarks, rescheduled_from_id, reschedule_reason, reschedule_approved_by, reschedule_approved_at, presiding_officer_id)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)"
                     );
                     $insertNew->execute([
                         $hearing['case_id'],
                         $hearing['hearing_type'],
+                        $hearing['mediation_attempt'] ?? null,
+                        $hearing['attempt_exception_reason'] ?? null,
                         $schedValidation['start_time'],
                         $schedValidation['end_time'],
                         $schedValidation['duration_minutes'],
                         $hearing['venue'],
-                        "Rescheduled due to office cancellation: {$reason}",
+                        "Rescheduled due to {$category} cancellation: {$reason}",
                         $hearingId,
-                        "Office cancellation: {$reason}",
+                        "{$category} cancellation: {$reason}",
                         $cancelledBy,
                         $hearing['presiding_officer_id']
                     ]);
@@ -938,9 +1155,20 @@ class Hearing
             }
 
             $this->conn->commit();
+
+            // Automatically dispatch emergency cancellation notifications
+            require_once __DIR__ . '/../services/NotificationService.php';
+            (new NotificationService())->notifyHearingCancelled($hearingId, "{$category}: {$reason}", $cancelledBy);
+
             return [
                 'success' => true,
-                'message' => 'Hearing cancelled by office. Parties are not penalized.',
+                'message' => "Hearing cancelled due to {$category}. Parties are not penalized.",
+                'hearing_id' => $hearingId,
+                'case_id' => (int) $hearing['case_id'],
+                'case_number' => $hearing['case_number'] ?? null,
+                'can_reschedule' => true,
+                'hearing_type' => $hearing['hearing_type'],
+                'mediation_attempt' => $hearing['mediation_attempt'] ?? null,
                 'new_hearing_id' => $newHearingId
             ];
         } catch (Throwable $e) {

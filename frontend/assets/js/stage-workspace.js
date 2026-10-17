@@ -508,6 +508,13 @@ function renderStageOverview(data, stage) {
             <strong class="stat-value" style="font-size: 0.92rem; color: ${stage.outcome === 'Settled' ? '#15803d' : '#b45309'};">${escapeHtml(stage.outcome || 'Pending')}</strong>
             <span class="stat-sub">${escapeHtml(stage.outcome_remarks || 'Awaiting formal hearing outcome')}</span>
         </div>
+        ${stage.next_permitted_action ? `
+        <div class="overview-stat-card" style="border-left: 4px solid #2563eb; background: #f8fafc;">
+            <span class="stat-label">Next Permitted Action</span>
+            <strong class="stat-value" style="font-size: 0.95rem; color: #1e40af;">${escapeHtml(stage.next_permitted_action.action)}</strong>
+            <span class="stat-sub">${escapeHtml(stage.next_permitted_action.description)}</span>
+        </div>
+        ` : ''}
     `;
 }
 
@@ -542,24 +549,70 @@ function renderSessionsList(data, stage) {
         const hasMinutes = s.minutes_id && s.minutes_status !== 'Not Recorded';
         const isFinalized = s.minutes_status === 'Finalized';
 
+        let partyAttHtml = '';
+        if (s.parties && s.parties.length) {
+            partyAttHtml = s.parties.map(p => {
+                let badgeStyle = 'background: #f1f5f9; color: #64748b;';
+                let icon = '⏳';
+                const st = p.attendance_status || 'Pending';
+                if (st === 'Present') {
+                    badgeStyle = 'background: #dcfce7; color: #15803d;';
+                    icon = '✓';
+                } else if (st === 'Late') {
+                    badgeStyle = 'background: #dbeafe; color: #1e40af;';
+                    icon = '⏰';
+                } else if (st === 'Excused') {
+                    badgeStyle = 'background: #fef3c7; color: #b45309;';
+                    icon = 'ℹ️';
+                } else if (st === 'Absent') {
+                    badgeStyle = 'background: #fee2e2; color: #991b1b;';
+                    icon = '✗';
+                }
+                const excuseText = p.justification_reason ? ` (${escapeHtml(p.justification_reason)})` : '';
+                return `<div style="font-size: 0.78rem; margin-top: 2px;">
+                    <span style="font-weight: 600; color: #475569;">${escapeHtml(p.party_type)}: ${escapeHtml(p.full_name)}</span> &rarr;
+                    <span style="display: inline-flex; align-items: center; gap: 3px; font-weight: 700; padding: 1px 6px; border-radius: 4px; font-size: 0.74rem; ${badgeStyle}">
+                        ${icon} ${escapeHtml(st)}${excuseText}
+                    </span>
+                </div>`;
+            }).join('');
+        } else {
+            partyAttHtml = `
+                <div style="margin-top: 3px; color: #334155;">
+                    Complainant: <strong>${escapeHtml(s.complainant_attendance || 'Pending')}</strong> · Respondent: <strong>${escapeHtml(s.respondent_attendance || 'Pending')}</strong>
+                </div>
+            `;
+        }
+
         cardsHtml += `
             <div class="session-card" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
                     <div>
-                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
                             <span style="font-size: 0.72rem; font-weight: 800; text-transform: uppercase; padding: 2px 7px; border-radius: 4px; background: #e0f2fe; color: #0369a1;">
                                 #${s.session_index}
                             </span>
                             <h4 style="margin: 0; font-size: 1.05rem; color: #0f172a; font-weight: 700;">
-                                ${escapeHtml(s.session_number)}
+                                ${escapeHtml(s.attempt_label || s.session_number)}
                             </h4>
                             <span class="status-pill status-${escapeHtml(s.status.toLowerCase())}" style="font-size: 0.74rem; padding: 2px 8px; border-radius: 4px; font-weight: 700;">
                                 ${escapeHtml(s.status)}
                             </span>
+                            ${s.attempt_exception_reason ? `
+                                <span style="font-size: 0.72rem; color: #b45309; background: #fef3c7; border: 1px solid #fde68a; padding: 2px 7px; border-radius: 4px; font-weight: 600;">
+                                    ⚠️ Exception: ${escapeHtml(s.attempt_exception_reason)}
+                                </span>
+                            ` : ''}
+                            ${s.cancellation_category ? `
+                                <span style="font-size: 0.72rem; color: #dc2626; background: #fee2e2; border: 1px solid #fecaca; padding: 2px 7px; border-radius: 4px; font-weight: 600;">
+                                    Emergency: ${escapeHtml(s.cancellation_category)}
+                                </span>
+                            ` : ''}
                         </div>
                         <div style="font-size: 0.84rem; color: #475569; display: flex; gap: 14px; flex-wrap: wrap;">
                             <span>📅 <strong>${formatDateTimeReadable(s.hearing_date)}</strong></span>
                             <span>📍 Venue: <strong>${escapeHtml(s.venue || 'Barangay Hall')}</strong></span>
+                            ${s.presiding_officer_name ? `<span>👤 Presider: <strong>${escapeHtml(s.presiding_officer_name)}</strong></span>` : ''}
                         </div>
                     </div>
                     <div style="display: flex; gap: 6px; flex-wrap: wrap;">
@@ -589,9 +642,8 @@ function renderSessionsList(data, stage) {
                     </div>
                     <div>
                         <span style="color: #64748b; font-size: 0.74rem; display: block; font-weight: 600;">ATTENDANCE RECORD</span>
-                        <div style="margin-top: 3px; color: #334155;">
-                            Complainant: <strong>${escapeHtml(s.complainant_attendance || 'Pending')}</strong> · Respondent: <strong>${escapeHtml(s.respondent_attendance || 'Pending')}</strong>
-                        </div>
+                        ${partyAttHtml}
+                        ${s.attendance_notes ? `<div style="font-size: 0.75rem; color: #64748b; margin-top: 4px; font-style: italic;">Notes: ${escapeHtml(s.attendance_notes)}</div>` : ''}
                     </div>
                     <div>
                         <span style="color: #64748b; font-size: 0.74rem; display: block; font-weight: 600;">MINUTES OF THE MEETING</span>
@@ -1789,6 +1841,39 @@ async function submitSchedule(e) {
                     } else {
                         alert(retryJson.message || 'Hearing scheduled successfully with recorded administrative justification.');
                     }
+                    return;
+                } else {
+                    alert(retryJson.message || 'Unable to schedule hearing.');
+                }
+            }
+        } else if (json.alternative_slots && json.alternative_slots.length) {
+            let altMsg = `${json.message}\n\nSuggested Available Alternative Slots:\n`;
+            json.alternative_slots.forEach((slot, idx) => {
+                altMsg += `${idx + 1}. ${slot.formatted_date} (${slot.start_time} - ${slot.end_time})\n`;
+            });
+            altMsg += `\nWould you like to schedule slot #1 (${json.alternative_slots[0].formatted_date} ${json.alternative_slots[0].start_time})?`;
+            if (confirm(altMsg)) {
+                const chosen = json.alternative_slots[0];
+                const dt = chosen.datetime.split(' ');
+                document.getElementById('schedDate').value = dt[0];
+                document.getElementById('schedTime').value = dt[1].substring(0, 5);
+                submitSchedule(e);
+                return;
+            }
+        } else if (json.message && (json.message.includes('Maximum 3 mediation attempts') || json.message.includes('more than 3 mediation'))) {
+            const excReason = prompt(`${json.message}\n\nIf an authorized rule or exception explicitly permits an additional mediation session, please enter the exception justification:`);
+            if (excReason && excReason.trim()) {
+                payload.append('authorized_exception', '1');
+                payload.append('attempt_exception_reason', excReason.trim());
+                const retryRes = await fetch(getStageApiUrl('hearings/create.php'), {
+                    method: 'POST',
+                    body: payload
+                });
+                const retryJson = await retryRes.json();
+                if (retryJson.success) {
+                    closeScheduleModal();
+                    await loadStageData();
+                    alert(retryJson.message || 'Hearing scheduled successfully with recorded exception.');
                     return;
                 } else {
                     alert(retryJson.message || 'Unable to schedule hearing.');

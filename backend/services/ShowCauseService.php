@@ -43,10 +43,11 @@ class ShowCauseService
         $complainantAtt = trim($data['complainant_attendance'] ?? '');
         $respondentAtt = trim($data['respondent_attendance'] ?? '');
 
-        if (!in_array($complainantAtt, ['Present', 'Absent'], true) || !in_array($respondentAtt, ['Present', 'Absent'], true)) {
+        $validStatuses = ['Present', 'Absent', 'Late', 'Excused'];
+        if (!in_array($complainantAtt, $validStatuses, true) || !in_array($respondentAtt, $validStatuses, true)) {
             return [
                 'success' => false,
-                'message' => 'Both Complainant and Respondent attendance must be marked as Present or Absent.',
+                'message' => 'Both Complainant and Respondent attendance must be marked (Present, Absent, Late, or Excused).',
             ];
         }
 
@@ -68,13 +69,8 @@ class ShowCauseService
         $attendanceNotes = trim($data['attendance_notes'] ?? '');
         $now = date('Y-m-d H:i:s');
 
-        // Determine the correct hearing status:
-        // - 'Completed'            → both parties present; no follow-up hearing needed.
-        // - 'Attendance Recorded'  → at least one party absent; a Show Cause hearing will
-        //                           be spawned, so the original hearing is not yet resolved.
-        $hearingStatus = ($complainantAtt === 'Present' && $respondentAtt === 'Present')
-            ? 'Completed'
-            : 'Attendance Recorded';
+        $isBothAppeared = in_array($complainantAtt, ['Present', 'Late'], true) && in_array($respondentAtt, ['Present', 'Late'], true);
+        $hearingStatus = $isBothAppeared ? 'Completed' : 'Attendance Recorded';
 
         // Extract explanations
         $compExplanation = trim((string) ($data['complainant_explanation'] ?? $data['complainant_reason'] ?? ''));
@@ -86,9 +82,18 @@ class ShowCauseService
         }
         if ($complainantAtt === 'Absent') {
             $notesParts[] = 'Complainant absent: ' . ($compExplanation !== '' ? $compExplanation : 'No explanation provided');
+        } elseif ($complainantAtt === 'Excused') {
+            $notesParts[] = 'Complainant excused: ' . ($compExplanation !== '' ? $compExplanation : 'Excused by office');
+        } elseif ($complainantAtt === 'Late') {
+            $notesParts[] = 'Complainant late: ' . ($compExplanation !== '' ? $compExplanation : 'Late arrival noted');
         }
+
         if ($respondentAtt === 'Absent') {
             $notesParts[] = 'Respondent absent: ' . ($respExplanation !== '' ? $respExplanation : 'No explanation provided');
+        } elseif ($respondentAtt === 'Excused') {
+            $notesParts[] = 'Respondent excused: ' . ($respExplanation !== '' ? $respExplanation : 'Excused by office');
+        } elseif ($respondentAtt === 'Late') {
+            $notesParts[] = 'Respondent late: ' . ($respExplanation !== '' ? $respExplanation : 'Late arrival noted');
         }
 
         // Handle presider absence & substitution if provided
@@ -174,16 +179,31 @@ class ShowCauseService
             'actions_triggered' => [],
         ];
 
-        // 1. Both Present
-        if ($complainantAtt === 'Present' && $respondentAtt === 'Present') {
-            $msg = "Mediation hearing on " . date('F j, Y', strtotime($hearing['hearing_date'])) . " conducted. Both parties present.";
+        // 1. Both Appeared (Present or Late)
+        if ($isBothAppeared) {
+            $lateNote = ($complainantAtt === 'Late' || $respondentAtt === 'Late') ? ' (Late arrival recorded)' : '';
+            $msg = "Mediation hearing on " . date('F j, Y', strtotime($hearing['hearing_date'])) . " conducted. Both parties present{$lateNote}.";
             $this->logCaseHistory($caseId, 'Mediation', $msg, $actorUserId);
-            $this->audit->log($actorUserId, "Recorded hearing attendance: Both Present for Case #{$hearing['case_number']}", 'Hearings', $caseId);
+            $this->audit->log($actorUserId, "Recorded hearing attendance: Both Present{$lateNote} for Case #{$hearing['case_number']}", 'Hearings', $caseId);
 
             return [
                 'success' => true,
                 'outcome' => 'both_present',
-                'message' => 'Both parties are present. You may now proceed to Mediation Notes and Settlement drafting.',
+                'message' => 'Both parties appeared. You may now proceed to Mediation Notes and Settlement drafting.',
+                'results' => $results,
+            ];
+        }
+
+        // 1b. Excused Non-Appearance without Unexcused Absence
+        if ($complainantAtt !== 'Absent' && $respondentAtt !== 'Absent' && ($complainantAtt === 'Excused' || $respondentAtt === 'Excused')) {
+            $msg = "Mediation hearing on " . date('F j, Y', strtotime($hearing['hearing_date'])) . " attendance recorded with excused non-appearance. No sanctions imposed.";
+            $this->logCaseHistory($caseId, 'Mediation', $msg, $actorUserId);
+            $this->audit->log($actorUserId, "Recorded hearing attendance: Excused non-appearance for Case #{$hearing['case_number']}", 'Hearings', $caseId);
+
+            return [
+                'success' => true,
+                'outcome' => 'excused_non_appearance',
+                'message' => 'Attendance recorded with excused non-appearance. You may reschedule this mediation session without penalty.',
                 'results' => $results,
             ];
         }
@@ -614,25 +634,27 @@ class ShowCauseService
         ");
 
         if (isset($parties['complainant']['resident_id'])) {
-            $isJust = ($compReason !== null && $compReason !== '') ? 1 : 0;
+            $isJust = ($complainantAtt === 'Excused' || ($compReason !== null && $compReason !== '')) ? 1 : 0;
+            $justReason = $compReason ?: ($complainantAtt === 'Excused' ? 'Excused Non-Appearance' : null);
             $upsertAtt->execute([
                 $hearingId,
                 $parties['complainant']['resident_id'],
                 $complainantAtt,
                 $isJust,
-                $compReason ?: null,
+                $justReason,
                 $actorUserId,
             ]);
         }
 
         if (isset($parties['respondent']['resident_id'])) {
-            $isJust = ($respReason !== null && $respReason !== '') ? 1 : 0;
+            $isJust = ($respondentAtt === 'Excused' || ($respReason !== null && $respReason !== '')) ? 1 : 0;
+            $justReason = $respReason ?: ($respondentAtt === 'Excused' ? 'Excused Non-Appearance' : null);
             $upsertAtt->execute([
                 $hearingId,
                 $parties['respondent']['resident_id'],
                 $respondentAtt,
                 $isJust,
-                $respReason ?: null,
+                $justReason,
                 $actorUserId,
             ]);
         }

@@ -72,7 +72,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function api(url, options = {}) {
     const response = await fetch(url, options);
     const result = await response.json().catch(() => ({ success: false, message: 'Invalid server response.' }));
-    if (!response.ok || result.success === false) throw new Error(result.message || 'Request failed.');
+    if (!response.ok || result.success === false) {
+        const error = new Error(result.message || 'Request failed.');
+        error.data = result;
+        error.alternative_slots = result.alternative_slots || [];
+        throw error;
+    }
     return result;
 }
 
@@ -756,11 +761,39 @@ async function confirmHearingSchedule() {
             }
         }
     } catch (error) {
-        setMessage(error.message);
+        let msgHtml = `<strong>Scheduling Blocked:</strong> ${escapeHtml(error.message)}`;
+        if (error.alternative_slots && error.alternative_slots.length) {
+            msgHtml += `<div style="margin-top: 10px; font-size: 0.85rem;"><strong>Available Alternative Slots:</strong><div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px;">`;
+            error.alternative_slots.forEach((s) => {
+                msgHtml += `<button type="button" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 10px; border-radius: 4px; background: #fff; cursor: pointer;" onclick="applySuggestedSlot('${escapeHtml(s.datetime)}')">📅 ${escapeHtml(s.formatted_date)} (${escapeHtml(s.start_time)} - ${escapeHtml(s.end_time)})</button>`;
+            });
+            msgHtml += `</div></div>`;
+        }
+        const box = document.getElementById('hearingMessage');
+        if (box) {
+            box.className = 'alert error';
+            box.innerHTML = msgHtml;
+            box.style.display = 'block';
+        } else {
+            setMessage(error.message);
+        }
+        closeReviewHearingModal();
     } finally {
         pendingScheduleForm = null;
     }
 }
+
+function applySuggestedSlot(datetimeStr) {
+    const addDateInput = document.getElementById('hearingDate');
+    const editDateInput = document.getElementById('editHearingDate');
+    const targetInput = (addDateInput && addDateInput.offsetParent !== null) ? addDateInput : editDateInput;
+    if (targetInput && datetimeStr) {
+        targetInput.value = datetimeStr.replace(' ', 'T').substring(0, 16);
+        validateHearingDateInput(targetInput);
+        setMessage(`Applied suggested slot: ${datetimeStr}. Click Review Schedule to proceed.`, true);
+    }
+}
+window.applySuggestedSlot = applySuggestedSlot;
 
 async function getHearing(id) { return (await api('../../../backend/api/hearings/view.php?id=' + encodeURIComponent(id))).data; }
 async function viewHearing(id) {
@@ -2206,7 +2239,16 @@ async function handleOfficeCancelSubmit(event) {
             body: formData
         });
         closeModal('officeCancelModal');
-        setMessage(result.message || 'Hearing cancelled by office without party penalties.', true);
+        const hearingId = formData.get('hearing_id');
+        const successMsg = result.message || 'Hearing cancelled due to emergency. Parties are not penalized.';
+        const box = document.getElementById('hearingMessage');
+        if (box && result.can_reschedule && !result.new_hearing_id) {
+            box.className = 'alert success';
+            box.innerHTML = `${escapeHtml(successMsg)} <button type="button" class="btn-secondary" style="margin-left: 10px; font-weight: 700; color: #1e40af; padding: 3px 8px; font-size: 0.8rem;" onclick="editHearing(${Number(hearingId)})">📅 Reschedule Hearing Now &rarr;</button>`;
+            box.style.display = 'block';
+        } else {
+            setMessage(successMsg, true);
+        }
         await Promise.all([loadHearings(), loadCombinedRecords(currentPage), loadAttendanceKPIs()]);
         if (activeHearingAttendanceData?.hearing_id) {
             await openHearingAttendanceModal(activeHearingAttendanceData.hearing_id);

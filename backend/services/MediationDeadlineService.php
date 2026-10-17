@@ -476,14 +476,15 @@ class MediationDeadlineService
         $stmt->execute([$scheduledDate, $caseId]);
 
         // Insert a Pending placeholder — due_date will be updated by MediationCommencementService.
+        $tentativeDueDate = date('Y-m-d', strtotime($scheduledDate . ' + 15 days'));
         $deadlineStmt = $this->conn->prepare(
             "INSERT INTO case_deadlines (case_id, deadline_type, due_date, status)
-             VALUES (?, 'Mediation Period', NULL, 'Awaiting Commencement')
+             VALUES (?, 'Mediation Period', ?, 'Pending')
              ON DUPLICATE KEY UPDATE
-                status = IF(status = 'Completed', 'Completed', 'Awaiting Commencement'),
+                due_date = IF(status = 'Pending', VALUES(due_date), due_date),
                 updated_at = CURRENT_TIMESTAMP"
         );
-        $deadlineStmt->execute([$caseId]);
+        $deadlineStmt->execute([$caseId, $tentativeDueDate]);
 
         $this->audit->log(
             $actorUserId ?? 0,

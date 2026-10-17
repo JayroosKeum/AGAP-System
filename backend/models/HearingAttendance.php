@@ -419,6 +419,27 @@ class HearingAttendance
                 }
             }
 
+            // Sync hearings table complainant_attendance and respondent_attendance
+            $compStatus = null;
+            $respStatus = null;
+            foreach ($updatedParties as $up) {
+                if ($up['party_type'] === 'Complainant' && $compStatus === null) {
+                    $compStatus = in_array($up['attendance_status'], ['Present', 'Absent', 'Late', 'Excused', 'Pending'], true) ? $up['attendance_status'] : null;
+                } elseif ($up['party_type'] === 'Respondent' && $respStatus === null) {
+                    $respStatus = in_array($up['attendance_status'], ['Present', 'Absent', 'Late', 'Excused', 'Pending'], true) ? $up['attendance_status'] : null;
+                }
+            }
+            if ($compStatus !== null || $respStatus !== null) {
+                $syncHearing = $this->conn->prepare("
+                    UPDATE hearings
+                    SET complainant_attendance = COALESCE(?, complainant_attendance),
+                        respondent_attendance = COALESCE(?, respondent_attendance),
+                        attendance_recorded_at = CURRENT_TIMESTAMP
+                    WHERE hearing_id = ?
+                ");
+                $syncHearing->execute([$compStatus, $respStatus, $hearingId]);
+            }
+
             $this->conn->commit();
 
             // Log in audit trail

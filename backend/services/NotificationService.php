@@ -48,4 +48,137 @@ class NotificationService
     {
         return $this->notification->getCaseNumber($caseId) ?? ('case #' . $caseId);
     }
+
+    public function notifyHearingCancelled(int $hearingId, string $reason, int $actorUserId): void
+    {
+        try {
+            $stmt = (new Database())->connect()->prepare("
+                SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.venue,
+                       h.presiding_officer_id, h.substitute_presider_id,
+                       c.case_number, co.encoded_by
+                FROM hearings h
+                INNER JOIN cases c ON c.case_id = h.case_id
+                INNER JOIN complaints co ON co.complaint_id = c.complaint_id
+                WHERE h.hearing_id = ?
+            ");
+            $stmt->execute([$hearingId]);
+            $hearing = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$hearing) return;
+
+            $caseId = (int) $hearing['case_id'];
+            $caseNum = $hearing['case_number'];
+            $dateFmt = date('F j, Y g:i A', strtotime($hearing['hearing_date']));
+            $title = "Hearing Cancelled (Emergency)";
+            $msg = sprintf(
+                "Hearing for %s scheduled on %s (%s) was cancelled due to an emergency: %s. Parties are not penalized. Rescheduling will follow.",
+                $caseNum,
+                $dateFmt,
+                $hearing['venue'],
+                $reason
+            );
+
+            // 1. Notify case assigned officers
+            $this->notifyCaseMembers($caseId, $title, $msg, $actorUserId);
+
+            // 2. Notify presider
+            if (!empty($hearing['presiding_officer_id'])) {
+                $this->notifyUser((int) $hearing['presiding_officer_id'], $title, $msg, $actorUserId);
+            }
+            if (!empty($hearing['substitute_presider_id'])) {
+                $this->notifyUser((int) $hearing['substitute_presider_id'], $title, $msg, $actorUserId);
+            }
+
+            // 3. Notify encoder/clerk
+            if (!empty($hearing['encoded_by'])) {
+                $this->notifyUser((int) $hearing['encoded_by'], $title, $msg, $actorUserId);
+            }
+
+            // 4. Notify registered complainant and respondent user accounts
+            $this->notifyParties($caseId, $title, $msg, $actorUserId);
+        } catch (Throwable $e) {
+            error_log('Failed to dispatch hearing cancellation notifications: ' . $e->getMessage());
+        }
+    }
+
+    public function notifyHearingRescheduled(int $newHearingId, int $origHearingId, string $reason, int $actorUserId): void
+    {
+        try {
+            $db = (new Database())->connect();
+            $stmt = $db->prepare("
+                SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.venue,
+                       h.presiding_officer_id, c.case_number, co.encoded_by,
+                       orig.hearing_date AS orig_date, orig.venue AS orig_venue,
+                       orig.presiding_officer_id AS orig_presiding_officer_id
+                FROM hearings h
+                INNER JOIN cases c ON c.case_id = h.case_id
+                INNER JOIN complaints co ON co.complaint_id = c.complaint_id
+                LEFT JOIN hearings orig ON orig.hearing_id = ?
+                WHERE h.hearing_id = ?
+            ");
+            $stmt->execute([$origHearingId, $newHearingId]);
+            $hearing = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$hearing) return;
+
+            $caseId = (int) $hearing['case_id'];
+            $caseNum = $hearing['case_number'];
+            $origFmt = !empty($hearing['orig_date']) ? date('F j, Y g:i A', strtotime($hearing['orig_date'])) : 'previous schedule';
+            $newFmt = date('F j, Y g:i A', strtotime($hearing['hearing_date']));
+            $title = "Hearing Rescheduled";
+            $msg = sprintf(
+                "Hearing for %s was rescheduled from %s to %s at %s. Reason: %s.",
+                $caseNum,
+                $origFmt,
+                $newFmt,
+                $hearing['venue'],
+                $reason
+            );
+
+            // 1. Notify case assigned officers
+            $this->notifyCaseMembers($caseId, $title, $msg, $actorUserId);
+
+            // 2. Notify new presider
+            if (!empty($hearing['presiding_officer_id'])) {
+                $this->notifyUser((int) $hearing['presiding_officer_id'], $title, $msg, $actorUserId);
+            }
+
+            // 3. Notify original presider if different
+            if (!empty($hearing['orig_presiding_officer_id']) && (int) $hearing['orig_presiding_officer_id'] !== (int) $hearing['presiding_officer_id']) {
+                $this->notifyUser((int) $hearing['orig_presiding_officer_id'], $title, $msg, $actorUserId);
+            }
+
+            // 4. Notify encoder/clerk
+            if (!empty($hearing['encoded_by'])) {
+                $this->notifyUser((int) $hearing['encoded_by'], $title, $msg, $actorUserId);
+            }
+
+            // 5. Notify registered complainant and respondent user accounts
+            $this->notifyParties($caseId, $title, $msg, $actorUserId);
+        } catch (Throwable $e) {
+            error_log('Failed to dispatch hearing rescheduled notifications: ' . $e->getMessage());
+        }
+    }
+
+    public function notifyParties(int $caseId, string $title, string $message, ?int $excludeUserId = null): void
+    {
+        try {
+            $db = (new Database())->connect();
+            $stmt = $db->prepare("
+                SELECT DISTINCT u.user_id
+                FROM complaint_parties cp
+                INNER JOIN residents r ON r.resident_id = cp.resident_id
+                INNER JOIN users u ON (u.email IS NOT NULL AND u.email != '' AND u.email = r.email)
+                   OR (u.contact_no IS NOT NULL AND u.contact_no != '' AND u.contact_no = r.contact_no)
+                   OR (u.first_name = r.first_name AND u.last_name = r.last_name)
+                WHERE cp.complaint_id = (SELECT complaint_id FROM cases WHERE case_id = ?)
+                  AND u.status = 'Active'
+            ");
+            $stmt->execute([$caseId]);
+            $partyUserIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            foreach ($partyUserIds as $pUid) {
+                $this->notifyUser((int) $pUid, $title, $message, $excludeUserId);
+            }
+        } catch (Throwable $e) {
+            error_log('Failed to dispatch party notifications: ' . $e->getMessage());
+        }
+    }
 }

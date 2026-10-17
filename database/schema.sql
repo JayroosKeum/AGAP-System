@@ -428,6 +428,8 @@ CREATE TABLE hearings (
     hearing_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     case_id INT UNSIGNED NOT NULL,
     hearing_type ENUM('Initial Hearing', 'Mediation', 'Conciliation', 'Arbitration', 'Show Cause (Complainant)', 'Show Cause (Respondent)') NOT NULL,
+    mediation_attempt TINYINT UNSIGNED NULL DEFAULT NULL,
+    attempt_exception_reason TEXT NULL,
     hearing_date DATETIME NOT NULL,
     end_time DATETIME NULL,
     duration_minutes INT UNSIGNED NULL DEFAULT 45,
@@ -449,9 +451,10 @@ CREATE TABLE hearings (
     status ENUM('Scheduled', 'Completed', 'Rescheduled', 'Cancelled', 'Office Cancelled', 'Attendance Recorded') NOT NULL DEFAULT 'Scheduled',
     cancelled_by INT UNSIGNED NULL,
     cancellation_reason TEXT NULL,
+    cancellation_category VARCHAR(100) NULL,
     cancellation_notice_sent TINYINT(1) NOT NULL DEFAULT 0,
-    complainant_attendance ENUM('Pending', 'Present', 'Absent') NOT NULL DEFAULT 'Pending',
-    respondent_attendance ENUM('Pending', 'Present', 'Absent') NOT NULL DEFAULT 'Pending',
+    complainant_attendance ENUM('Present', 'Absent', 'Excused', 'Pending', 'Late') NULL DEFAULT 'Pending',
+    respondent_attendance ENUM('Present', 'Absent', 'Excused', 'Pending', 'Late') NULL DEFAULT 'Pending',
     attendance_recorded_at DATETIME NULL,
     attendance_notes TEXT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -614,6 +617,27 @@ CREATE TABLE deadline_alert_log (
     sent_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_deadline_alert_once (deadline_id, alert_type),
     CONSTRAINT fk_deadline_alert_log_deadline FOREIGN KEY (deadline_id) REFERENCES case_deadlines (deadline_id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE scheduling_holidays (
+    holiday_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    holiday_date DATE NOT NULL UNIQUE,
+    holiday_name VARCHAR(150) NOT NULL,
+    is_recurring TINYINT(1) NOT NULL DEFAULT 0,
+    description TEXT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE venue_unavailabilities (
+    unavailability_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    venue VARCHAR(255) NOT NULL,
+    start_time DATETIME NOT NULL,
+    end_time DATETIME NOT NULL,
+    reason VARCHAR(255) NOT NULL,
+    recorded_by INT UNSIGNED NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_vu_venue_time (venue, start_time, end_time),
+    CONSTRAINT fk_vu_user FOREIGN KEY (recorded_by) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 -- =====================================================
@@ -948,7 +972,7 @@ INSERT INTO document_templates (template_name, description) VALUES
 ON DUPLICATE KEY UPDATE description = VALUES(description);
 
 INSERT INTO system_settings (setting_key, setting_value, description) VALUES
-    ('daily_hearing_capacity', '14', 'Maximum total hearings allowed per day across the barangay (10-18)'),
+    ('daily_hearing_capacity', '8', 'Maximum total hearings allowed per day across the barangay (max 8)'),
     ('officer_daily_hearing_capacity', '6', 'Maximum hearings per presiding officer per day (5-8)'),
     ('mediation_default_duration_min', '45', 'Default duration for mediation session in minutes (30-60)'),
     ('mediation_max_duration_min', '60', 'Maximum duration before logged justification is required for mediation'),
