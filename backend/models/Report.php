@@ -13,11 +13,76 @@ class Report
 
     public function dashboardStats(): array
     {
+        $today = date('Y-m-d');
+        $nextSevenDays = date('Y-m-d', strtotime('+7 days'));
+        $statusRows = $this->conn->query(
+            'SELECT case_status AS status, COUNT(*) AS total
+             FROM cases
+             GROUP BY case_status
+             ORDER BY total DESC, case_status ASC'
+        )->fetchAll(PDO::FETCH_ASSOC);
+
+        $todayHearings = $this->conn->prepare(
+            "SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.venue, h.status,
+                    c.case_number, co.complaint_title
+             FROM hearings h
+             INNER JOIN cases c ON c.case_id = h.case_id
+             INNER JOIN complaints co ON co.complaint_id = c.complaint_id
+             WHERE DATE(h.hearing_date) = ?
+               AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')
+             ORDER BY h.hearing_date ASC
+             LIMIT 8"
+        );
+        $todayHearings->execute([$today]);
+
+        $deadlineCases = $this->conn->prepare(
+            "SELECT case_id, case_number, case_status, mediation_deadline_date
+             FROM cases
+             WHERE case_status IN ('Mediation', 'Conciliation')
+               AND mediation_deadline_date IS NOT NULL
+               AND mediation_deadline_date <= ?
+             ORDER BY mediation_deadline_date ASC
+             LIMIT 8"
+        );
+        $deadlineCases->execute([$nextSevenDays]);
+        $deadlineRows = $deadlineCases->fetchAll(PDO::FETCH_ASSOC);
+
+        $deadlineCount = $this->conn->prepare(
+            "SELECT COUNT(*) FROM cases
+             WHERE case_status IN ('Mediation', 'Conciliation')
+               AND mediation_deadline_date IS NOT NULL
+               AND mediation_deadline_date <= ?"
+        );
+        $deadlineCount->execute([$nextSevenDays]);
+
+        $hearingCountToday = $this->conn->prepare(
+            "SELECT COUNT(*) FROM hearings
+             WHERE DATE(hearing_date) = ?
+               AND status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')"
+        );
+        $hearingCountToday->execute([$today]);
+
+        $hearingCountWeek = $this->conn->prepare(
+            "SELECT COUNT(*) FROM hearings
+             WHERE DATE(hearing_date) BETWEEN ? AND ?
+               AND status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')"
+        );
+        $hearingCountWeek->execute([$today, $nextSevenDays]);
+
         return [
             'total_cases' => (int) $this->conn->query('SELECT COUNT(*) FROM cases')->fetchColumn(),
             'settled_cases' => (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status = 'Settled'")->fetchColumn(),
             'cfa_cases' => (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status = 'CFA Issued'")->fetchColumn(),
             'archived_cases' => (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status = 'Archived'")->fetchColumn(),
+            'pending_review' => (int) $this->conn->query("SELECT COUNT(*) FROM complaints WHERE status IN ('Under Review', 'Needs Information')")->fetchColumn(),
+            'draft_complaints' => (int) $this->conn->query("SELECT COUNT(*) FROM complaints WHERE status = 'Draft' OR is_draft = 1")->fetchColumn(),
+            'hearings_today' => (int) $hearingCountToday->fetchColumn(),
+            'hearings_this_week' => (int) $hearingCountWeek->fetchColumn(),
+            'active_mediations' => (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status IN ('Mediation', 'Conciliation')")->fetchColumn(),
+            'deadlines_due' => (int) $deadlineCount->fetchColumn(),
+            'today_hearings' => $todayHearings->fetchAll(PDO::FETCH_ASSOC),
+            'mediation_deadlines' => $deadlineRows,
+            'status_totals' => $statusRows,
         ];
     }
 

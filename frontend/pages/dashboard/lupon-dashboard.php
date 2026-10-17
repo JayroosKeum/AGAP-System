@@ -19,29 +19,7 @@ include '../../layouts/header.php';
             <p>Welcome, <?php echo $_SESSION['username']; ?></p>
         </div>
 
-        <div class="stats-grid">
-
-            <div class="stat-card">
-                <h3>Total Cases</h3>
-                <h2 id="totalCases">0</h2>
-            </div>
-
-            <div class="stat-card">
-                <h3>Settled Cases</h3>
-                <h2 id="settledCases">0</h2>
-            </div>
-
-            <div class="stat-card">
-                <h3>CFA Issued</h3>
-                <h2 id="cfaCases">0</h2>
-            </div>
-
-            <div class="stat-card">
-                <h3>Archived Cases</h3>
-                <h2 id="archivedCases">0</h2>
-            </div>
-
-        </div>
+        <?php include '../../layouts/dashboard-overview.php'; ?>
 
     </div>
 

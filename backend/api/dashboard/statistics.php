@@ -1,12 +1,21 @@
 <?php
 
+session_start();
 require_once '../../controllers/ReportController.php';
 
 header('Content-Type: application/json');
 
-$controller =
-    new ReportController();
+if (!isset($_SESSION['user_id']) || !in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2, 3, 4], true)) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'You are not authorized to view dashboard statistics.']);
+    exit;
+}
 
-echo json_encode(
-    $controller->dashboard()
-);
+try {
+    $controller = new ReportController();
+    echo json_encode(['success' => true, 'data' => $controller->dashboard()]);
+} catch (Throwable $exception) {
+    error_log($exception->getMessage());
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'Unable to load dashboard statistics.']);
+}
