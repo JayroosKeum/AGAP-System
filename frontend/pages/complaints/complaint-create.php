@@ -416,6 +416,28 @@ include '../../layouts/header.php';
                                 <input type="text" id="blotterRefNo" name="blotter_ref_no" placeholder="e.g. BLOTTER-2026-1089" value="<?php echo htmlspecialchars($old['blotter_ref_no'] ?? ''); ?>">
                                 <small class="field-hint">Record internal or physical blotter reference number if applicable.</small>
                             </div>
+
+                            <div class="intake-card" style="margin:20px 0 0;background:#f8fafc;border:1px solid #bfdbfe;">
+                                <div class="intake-card-header"><div><h3 style="margin:0;font-size:0.98rem;">Pre-filing Jurisdiction &amp; Eligibility Screen</h3><span class="card-subtitle">Record intake facts before submitting. This is a preliminary administrative screen; authorized review determines the final disposition.</span></div></div>
+                                <div class="form-row-2" style="margin-top:14px;">
+                                    <label class="time-option-label"><input type="checkbox" name="party_is_government" value="1"> A party is a government entity</label>
+                                    <label class="time-option-label"><input type="checkbox" name="party_is_public_officer" value="1"> A party is a public officer acting officially</label>
+                                    <label class="time-option-label"><input type="checkbox" name="parties_in_diff_lgu" value="1"> Parties reside in different cities or municipalities</label>
+                                    <label class="time-option-label"><input type="checkbox" name="property_in_diff_lgu" value="1"> The disputed property is outside the local area</label>
+                                    <label class="time-option-label"><input type="checkbox" name="accused_under_detention" value="1"> A respondent is in detention</label>
+                                    <label class="time-option-label"><input type="checkbox" name="habeas_corpus_needed" value="1"> The matter involves habeas corpus</label>
+                                    <label class="time-option-label"><input type="checkbox" name="provisional_remedy_needed" value="1"> Immediate provisional relief is needed</label>
+                                    <label class="time-option-label"><input type="checkbox" name="prescription_risk" value="1"> Filing deadline or prescription may be affected</label>
+                                    <label class="time-option-label"><input type="checkbox" name="indigenous_community" value="1"> The dispute involves an indigenous cultural community</label>
+                                    <label class="time-option-label"><input type="hidden" name="has_private_offended_party" value="0"><input type="checkbox" name="has_private_offended_party" value="1" checked> A private offended party is identified</label>
+                                </div>
+                                <div class="form-row-2" style="margin-top:14px;">
+                                    <div class="form-group"><label for="offenseImprisonmentMax">Maximum possible imprisonment, if known <span class="optional-label">Years</span></label><input type="number" min="0" step="0.01" id="offenseImprisonmentMax" name="offense_imprisonment_max" placeholder="e.g. 1"></div>
+                                    <div class="form-group"><label for="offenseFineMax">Maximum possible fine, if known <span class="optional-label">PHP</span></label><input type="number" min="0" step="0.01" id="offenseFineMax" name="offense_fine_max" placeholder="e.g. 5000"></div>
+                                </div>
+                                <div class="form-group" style="margin:0;"><label for="screeningNotes">Screening notes <span class="optional-label">Optional</span></label><textarea id="screeningNotes" name="screening_notes" rows="3" maxlength="2000" placeholder="Note facts requiring authorized review or referral."></textarea></div>
+                                <label class="time-option-label" style="display:flex;align-items:flex-start;gap:8px;margin-top:14px;font-weight:700;color:#1e3a8a;"><input type="checkbox" name="jurisdiction_screened" id="jurisdictionScreened" value="1" required style="margin-top:2px;"><span>I completed the preliminary jurisdiction and eligibility screen.</span></label>
+                            </div>
                         </section>
 
 
@@ -440,7 +462,10 @@ include '../../layouts/header.php';
                                 </div>
                                 <p style="margin:0;font-size:0.83rem;">The system found active complaint record(s) involving the same complainant and respondent:</p>
                                 <ul class="duplicate-warning-list" id="duplicateComplaintList"></ul>
-                                <p style="margin:6px 0 0;font-size:0.78rem;color:#7c2d12;">Please verify if this complaint is a duplicate before proceeding.</p>
+                                <label style="display:flex;align-items:flex-start;gap:8px;margin-top:10px;font-size:0.8rem;color:#7c2d12;font-weight:600;">
+                                    <input type="checkbox" name="duplicate_acknowledged" id="duplicateAcknowledged" value="1" style="margin-top:2px;">
+                                    <span>I reviewed the possible duplicate record(s) and confirm that this filing should proceed.</span>
+                                </label>
                             </div>
 
                             <div id="partyDistinctError" class="alert alert-danger" style="display:none; margin: 0 0 16px; padding: 10px 14px; font-size: 0.88rem; border-radius: 6px; background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5;">
@@ -1533,6 +1558,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            if (!document.getElementById('jurisdictionScreened')?.checked) {
+                e.preventDefault();
+                window.agapNotify?.('Complete the preliminary jurisdiction and eligibility screen before submitting.', 'error');
+                document.getElementById('jurisdictionScreened')?.focus();
+                return;
+            }
+            if (potentialDuplicatesDetected && !document.getElementById('duplicateAcknowledged')?.checked) {
+                e.preventDefault();
+                window.agapNotify?.('Review the potential duplicate record(s) and confirm whether this filing should proceed.', 'error');
+                document.getElementById('duplicateAcknowledged')?.focus();
+                return;
+            }
+
             const compFirst = document.getElementById('complainantFirstName')?.value?.trim();
             const compLast  = document.getElementById('complainantLastName')?.value?.trim();
             const compId    = document.getElementById('complainantResidentId')?.value?.trim();
@@ -2480,6 +2518,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Real-Time Duplicate Complaint Check ──
     let dupTimeout = null;
+    let potentialDuplicatesDetected = false;
     function triggerDuplicateCheck() {
         clearTimeout(dupTimeout);
         dupTimeout = setTimeout(runDuplicateCheck, 400);
@@ -2500,6 +2539,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if ((!compId && (!compFirst || !compLast)) || (!respId && (!respFirst || !respLast))) {
             banner.style.display = 'none';
             list.innerHTML = '';
+            potentialDuplicatesDetected = false;
             return;
         }
 
@@ -2531,9 +2571,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     </li>
                 `).join('');
                 banner.style.display = 'block';
+                potentialDuplicatesDetected = true;
             } else {
                 banner.style.display = 'none';
                 list.innerHTML = '';
+                potentialDuplicatesDetected = false;
+                const acknowledgement = document.getElementById('duplicateAcknowledged');
+                if (acknowledgement) acknowledgement.checked = false;
             }
         } catch (err) {
             console.warn('Duplicate check error:', err);

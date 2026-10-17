@@ -13,7 +13,6 @@ $dashboardLink = [1 => '../dashboard/admin-dashboard.php', 2 => '../dashboard/cl
     <div class="sidebar-brand">
         <span class="brand-mark">A</span>
         <div class="sidebar-brand-text"><strong>AGAP</strong><span>Case Management</span></div>
-        <button class="sidebar-collapse-toggle" type="button" aria-label="Collapse navigation" aria-expanded="true" data-sidebar-collapse>‹</button>
     </div>
     <nav class="sidebar-nav" aria-label="Main navigation">
         <details class="nav-group" open data-nav-group="workspace">

@@ -224,7 +224,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const sidebar = document.getElementById('appSidebar');
     const mobileToggle = document.querySelector('[data-sidebar-toggle]');
-    const collapseToggle = document.querySelector('[data-sidebar-collapse]');
     if (!sidebar) return;
 
     const closeMobileSidebar = () => {
@@ -232,17 +231,6 @@ document.addEventListener('DOMContentLoaded', () => {
         mobileToggle?.setAttribute('aria-expanded', 'false');
         document.querySelector('.sidebar-overlay')?.remove();
     };
-    const setCollapsed = (collapsed) => {
-        sidebar.classList.toggle('is-collapsed', collapsed);
-        collapseToggle?.setAttribute('aria-expanded', String(!collapsed));
-        collapseToggle?.setAttribute('aria-label', collapsed ? 'Expand navigation' : 'Collapse navigation');
-        if (collapseToggle) collapseToggle.textContent = collapsed ? '›' : '‹';
-        localStorage.setItem('agap-sidebar-collapsed', String(collapsed));
-    };
-
-    setCollapsed(localStorage.getItem('agap-sidebar-collapsed') === 'true');
-    collapseToggle?.addEventListener('click', () => setCollapsed(!sidebar.classList.contains('is-collapsed')));
-
     mobileToggle?.addEventListener('click', () => {
         const open = sidebar.classList.toggle('is-open');
         mobileToggle.setAttribute('aria-expanded', String(open));

@@ -75,6 +75,9 @@ class Complaint
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
             if ($row) {
                 $row['lifecycle_status'] = (new ComplaintLifecycleService($this->conn))->forComplaint((int) $row['complaint_id']);
+                $screening = $this->conn->prepare('SELECT * FROM complaint_intake_screenings WHERE complaint_id = ?');
+                $screening->execute([(int) $row['complaint_id']]);
+                $row['intake_screening'] = $screening->fetch(PDO::FETCH_ASSOC) ?: null;
                 require_once __DIR__ . '/ComplaintScannedDocument.php';
                 $scannedDocModel = new ComplaintScannedDocument($this->conn);
                 $row['scanned_document'] = $scannedDocModel->getCurrentByComplaint((int) $row['complaint_id']);
@@ -150,6 +153,15 @@ class Complaint
                 $jurisdictionValidation = $this->validateJurisdictionInput($data);
                 if (!$jurisdictionValidation['success']) {
                     return $jurisdictionValidation;
+                }
+                $duplicates = $this->findPotentialDuplicates($data);
+                if ($duplicates !== [] && empty($data['duplicate_acknowledged'])) {
+                    return [
+                        'success' => false,
+                        'code' => 'POSSIBLE_DUPLICATE_REQUIRES_ACKNOWLEDGEMENT',
+                        'message' => 'A possible duplicate complaint was found. Review it and confirm that this filing should proceed.',
+                        'duplicates' => $duplicates,
+                    ];
                 }
             }
 
@@ -228,6 +240,9 @@ class Complaint
             $numberStatement->execute([$complaintNumber, $complaintId]);
             $this->applyMapLocation($complaintId, $data);
             $this->applyParties($complaintId, $data);
+            if (!$isDraft) {
+                $this->saveIntakeScreening($complaintId, $data);
+            }
 
             $this->conn->commit();
             return [
@@ -288,9 +303,22 @@ class Complaint
                 if (!$partiesValidation['success']) {
                     return $partiesValidation;
                 }
-                $jurisdictionValidation = $this->validateJurisdictionInput($data);
-                if (!$jurisdictionValidation['success']) {
-                    return $jurisdictionValidation;
+                // Screening is required when filing. Older records can be
+                // corrected without replacing their saved intake assessment.
+                if (array_key_exists('jurisdiction_screened', $data)) {
+                    $jurisdictionValidation = $this->validateJurisdictionInput($data);
+                    if (!$jurisdictionValidation['success']) {
+                        return $jurisdictionValidation;
+                    }
+                }
+                $duplicates = $this->findPotentialDuplicates($data, $complaintId);
+                if ($duplicates !== [] && empty($data['duplicate_acknowledged'])) {
+                    return [
+                        'success' => false,
+                        'code' => 'POSSIBLE_DUPLICATE_REQUIRES_ACKNOWLEDGEMENT',
+                        'message' => 'A possible duplicate complaint was found. Review it and confirm that this filing should proceed.',
+                        'duplicates' => $duplicates,
+                    ];
                 }
             }
 
@@ -373,6 +401,9 @@ class Complaint
                 $delParties = $this->conn->prepare('DELETE FROM complaint_parties WHERE complaint_id = ?');
                 $delParties->execute([$complaintId]);
                 $this->applyParties($complaintId, $data);
+            }
+            if (!$isDraft && array_key_exists('jurisdiction_screened', $data)) {
+                $this->saveIntakeScreening($complaintId, $data);
             }
 
             $this->conn->commit();
@@ -1017,6 +1048,13 @@ class Complaint
     {
         require_once __DIR__ . '/../services/MediationDeadlineService.php';
 
+        if (empty($data['jurisdiction_screened'])) {
+            return [
+                'success' => false,
+                'message' => 'Complete the preliminary jurisdiction and eligibility screen before submitting the complaint.'
+            ];
+        }
+
         $disputeContext = [];
 
         // 1. Explicit statutory exclusion flags passed from UI / API
@@ -1108,6 +1146,114 @@ class Complaint
             'success'    => true,
             'evaluation' => $eval,
         ];
+    }
+
+    private function saveIntakeScreening(int $complaintId, array $data): void
+    {
+        $bool = static fn (string $field): int => !empty($data[$field]) ? 1 : 0;
+        $privateOffended = array_key_exists('has_private_offended_party', $data)
+            ? $bool('has_private_offended_party')
+            : 1;
+        $notes = trim((string) ($data['screening_notes'] ?? '')) ?: null;
+        if ($notes !== null && mb_strlen($notes) > 2000) {
+            throw new InvalidArgumentException('Screening notes must be 2,000 characters or fewer.');
+        }
+
+        $stmt = $this->conn->prepare(
+            'INSERT INTO complaint_intake_screenings (
+                complaint_id, party_is_government, party_is_public_officer,
+                parties_in_diff_lgu, property_in_diff_lgu, accused_under_detention,
+                habeas_corpus_needed, provisional_remedy_needed, prescription_risk,
+                indigenous_community, offense_imprisonment_max, offense_fine_max,
+                has_private_offended_party, duplicate_acknowledged, screening_notes, screened_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                party_is_government = VALUES(party_is_government),
+                party_is_public_officer = VALUES(party_is_public_officer),
+                parties_in_diff_lgu = VALUES(parties_in_diff_lgu),
+                property_in_diff_lgu = VALUES(property_in_diff_lgu),
+                accused_under_detention = VALUES(accused_under_detention),
+                habeas_corpus_needed = VALUES(habeas_corpus_needed),
+                provisional_remedy_needed = VALUES(provisional_remedy_needed),
+                prescription_risk = VALUES(prescription_risk),
+                indigenous_community = VALUES(indigenous_community),
+                offense_imprisonment_max = VALUES(offense_imprisonment_max),
+                offense_fine_max = VALUES(offense_fine_max),
+                has_private_offended_party = VALUES(has_private_offended_party),
+                duplicate_acknowledged = VALUES(duplicate_acknowledged),
+                screening_notes = VALUES(screening_notes),
+                screened_by = VALUES(screened_by),
+                screened_at = CURRENT_TIMESTAMP'
+        );
+        $stmt->execute([
+            $complaintId,
+            $bool('party_is_government'),
+            $bool('party_is_public_officer'),
+            $bool('parties_in_diff_lgu'),
+            $bool('property_in_diff_lgu'),
+            $bool('accused_under_detention'),
+            $bool('habeas_corpus_needed'),
+            $bool('provisional_remedy_needed'),
+            $bool('prescription_risk'),
+            $bool('indigenous_community'),
+            max(0, (float) ($data['offense_imprisonment_max'] ?? 0)),
+            max(0, (float) ($data['offense_fine_max'] ?? 0)),
+            $privateOffended,
+            $bool('duplicate_acknowledged'),
+            $notes,
+            $_SESSION['user_id'] ?? null,
+        ]);
+    }
+
+    private function findPotentialDuplicates(array $data, ?int $excludeComplaintId = null): array
+    {
+        $complainantId = filter_var($data['complainant_resident_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $respondentId = filter_var($data['respondent_resident_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if (!$complainantId) {
+            $complainantId = $this->findResidentIdByName(
+                trim((string) ($data['complainant_first_name'] ?? '')),
+                trim((string) ($data['complainant_last_name'] ?? ''))
+            );
+        }
+        if (!$respondentId) {
+            $respondentId = $this->findResidentIdByName(
+                trim((string) ($data['respondent_first_name'] ?? '')),
+                trim((string) ($data['respondent_last_name'] ?? ''))
+            );
+        }
+        if (!$complainantId || !$respondentId) {
+            return [];
+        }
+
+        $sql = "SELECT c.complaint_id, c.complaint_number, c.complaint_title, c.status, c.incident_date
+                FROM complaints c
+                INNER JOIN complaint_parties complainant ON complainant.complaint_id = c.complaint_id
+                    AND complainant.resident_id = ? AND complainant.party_type = 'Complainant'
+                INNER JOIN complaint_parties respondent ON respondent.complaint_id = c.complaint_id
+                    AND respondent.resident_id = ? AND respondent.party_type = 'Respondent'
+                WHERE c.status NOT IN ('Archived', 'Dismissed', 'Rejected')";
+        $params = [(int) $complainantId, (int) $respondentId];
+        if ($excludeComplaintId !== null) {
+            $sql .= ' AND c.complaint_id != ?';
+            $params[] = $excludeComplaintId;
+        }
+        $sql .= ' ORDER BY c.created_at DESC LIMIT 5';
+        $stmt = $this->conn->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    private function findResidentIdByName(string $firstName, string $lastName): ?int
+    {
+        if ($firstName === '' || $lastName === '') {
+            return null;
+        }
+        $stmt = $this->conn->prepare(
+            'SELECT resident_id FROM residents WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?) LIMIT 1'
+        );
+        $stmt->execute([$firstName, $lastName]);
+        $id = $stmt->fetchColumn();
+        return $id ? (int) $id : null;
     }
 
     private function resolveResidentId(string $name, ?int $residentId = null): ?int

@@ -1263,6 +1263,30 @@ The Complaint Details and Proof of Service modules provide an integrated, end-to
   - When staff clicks **Save Minutes Draft** or **Finalize & Lock**, `backend/models/HearingMinutes.php` saves the minutes and immediately invokes `Hearing::createProgression()` in sequence.
   - Seamlessly returns confirmation: books 2nd or 3rd Mediation, logs case history, and automatically updates session tabs and stage status without navigating away from the workspace.
 
+### 18. Complaint Intake Screening & Hover Navigation (October 2026)
+
+- **Pre-filing jurisdiction and eligibility screen**:
+  - The File Complaint page now requires staff to complete a preliminary administrative screen before a non-draft complaint can be submitted.
+  - The screen records statutory-exclusion facts, optional offence penalty context, a private-offended-party indicator, and free-text screening notes. It explicitly states that authorized review, rather than intake, determines final disposition.
+  - Server-side validation enforces completion and evaluates the existing KP jurisdiction gate; browser validation only provides immediate feedback.
+- **Auditable screening record**:
+  - Added `complaint_intake_screenings`, with one screening record per complaint, including screen inputs, duplicate acknowledgement, actor, and timestamp.
+  - `Complaint::getById()` returns the saved screening as `intake_screening` for downstream complaint detail/API consumers.
+  - Existing complaints can still be corrected without silently replacing an assessment that was not part of the edit form.
+- **Duplicate protection**:
+  - The existing client-side duplicate warning now requires a staff acknowledgement before filing continues.
+  - The complaint model repeats the duplicate check server-side for matching complainant/respondent pairs, including name-based resident lookup, so a browser-side check cannot be bypassed.
+- **Migration and fresh schema**:
+  - Apply `database/migrations/20261017_001_intake_screening_and_duplicate_acknowledgement.sql` once to an existing database before using this feature.
+  - `database/schema.sql` includes the new table for clean installs. Do not import the full schema over a populated database.
+- **Sidebar interaction**:
+  - Desktop navigation is now a compact icon rail that expands on hover or keyboard focus; the click-to-collapse control and its saved local-storage state were removed.
+  - The desktop sidebar remains sticky while page content scrolls and can scroll independently if its own contents exceed the viewport.
+  - Mobile navigation retains the existing Menu-button drawer behavior.
+- **Verification completed**:
+  - `php -l` passed for the changed complaint model, File Complaint page, and sidebar layout.
+  - JavaScript syntax validation for `frontend/assets/js/app.js` and `git diff --check` passed.
+
 ---
 
 ## Present but Incomplete or Requiring Verification
