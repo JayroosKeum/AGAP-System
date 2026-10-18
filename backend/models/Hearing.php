@@ -375,6 +375,27 @@ class Hearing
                 if ($isAuthorizedException) {
                     $attemptExceptionReason = trim((string) ($data['attempt_exception_reason'] ?? 'Authorized exception recorded by officer'));
                 }
+
+                // Enforce 15-working-day statutory limit for 1st Mediation Hearing (RA 7160 Sec. 410)
+                if ($activeMediationCount === 0) {
+                    $compStmt = $this->conn->prepare('SELECT created_at FROM complaints WHERE complaint_id = ?');
+                    $compStmt->execute([$caseRecord['complaint_id']]);
+                    $compCreatedAt = $compStmt->fetchColumn();
+                    $filingDateStr = $compCreatedAt ? substr($compCreatedAt, 0, 10) : substr($caseRecord['docket_date'] ?? date('Y-m-d'), 0, 10);
+                    $filingDeadline = MediationDeadlineService::calculateBusinessDays($filingDateStr, 15);
+                    $scheduledDate = new \DateTime(substr($data['hearing_date'], 0, 10));
+                    $deadlineDate = new \DateTime($filingDeadline);
+                    if ($scheduledDate > $deadlineDate) {
+                        $this->conn->rollBack();
+                        return [
+                            'success' => false,
+                            'message' => sprintf(
+                                'The 1st mediation hearing must be scheduled within 15 working days of the complaint filing date (RA 7160 Sec. 410). Statutory deadline: %s.',
+                                $deadlineDate->format('F j, Y')
+                            ),
+                        ];
+                    }
+                }
             }
 
             if ($data['hearing_type'] !== $expectedType) {

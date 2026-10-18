@@ -153,3 +153,23 @@ For existing databases updating to the enhanced File Complaint module and versio
   - **`document_templates` Table**:
     - Ensures official entry for `KP Form 7` (Sumbong / Complaint) is registered.
 
+## Intake Screening, Scheduling Conflicts & Mediation Improvements (October 2026)
+
+For existing databases updating to the intake preliminary screening and enhanced scheduling conflict features, apply:
+- `database/migrations/20261017_001_intake_screening_and_duplicate_acknowledgement.sql`:
+  - **`complaint_intake_screenings` Table**:
+    - Stores preliminary Katarungang Pambarangay eligibility criteria (government/public officer party, LGU jurisdiction checks, detention/habeas corpus flags, statutory penalty thresholds, duplicate dispute acknowledgement).
+- `database/migrations/20261017_002_scheduling_conflict_and_mediation_improvements.sql`:
+  - **`system_settings` Table**:
+    - Updates/ensures `daily_hearing_capacity` default limit is set to 8.
+  - **`hearings` Table**:
+    - Adds `mediation_attempt` (TINYINT UNSIGNED) and `attempt_exception_reason` (TEXT) to track mediation attempt numbering (1 to 3).
+    - Adds `cancellation_category` (VARCHAR 100) to classify hearing cancellations.
+    - Expands `complainant_attendance` and `respondent_attendance` ENUMs to include `'Pending'`, `'Present'`, `'Absent'`, `'Late'`, and `'Excused'`.
+    - Backfills `mediation_attempt` for existing mediation hearings.
+  - **`scheduling_holidays` Table**:
+    - Stores statutory and declared non-working holidays to prevent invalid hearing bookings.
+  - **`venue_unavailabilities` Table**:
+    - Stores facility/venue blackout windows and maintenance schedules to avoid room booking conflicts.
+
+

@@ -455,6 +455,8 @@ async function loadCases() {
         cases.filter((item) => item.case_status !== 'Archived').forEach((item) => {
             const option = new Option(`${item.case_number} - ${item.complaint_title}`, item.case_id);
             option.dataset.docketDate = item.docket_date || '';
+            option.dataset.filingDate = item.filing_date || item.docket_date || '';
+            option.dataset.firstHearingDeadline = item.first_hearing_deadline || '';
             option.dataset.caseStatus = item.case_status || '';
             option.dataset.isLapsed = item.mediation_timer?.is_lapsed ? '1' : '0';
             option.dataset.isPaused = item.mediation_timer?.is_paused ? '1' : '0';
@@ -487,6 +489,32 @@ function getCaseLatestHearingDate(caseId) {
     return opt?.dataset.latestHearingDate || '';
 }
 
+function calculateBusinessDays(startDate, daysToAdd = 15, holidayList = null) {
+    if (typeof window.calculateBusinessDays === 'function' && window.calculateBusinessDays !== calculateBusinessDays) {
+        return window.calculateBusinessDays(startDate, daysToAdd, holidayList);
+    }
+    const fixedHolidays = holidayList || [
+        '01-01', '04-09', '05-01', '06-12', '08-21', '11-01', '11-02', '11-30', '12-08', '12-25', '12-30', '12-31'
+    ];
+    let cur = new Date(startDate);
+    cur.setHours(0, 0, 0, 0);
+    let added = 0;
+    while (added < daysToAdd) {
+        cur.setDate(cur.getDate() + 1);
+        const day = cur.getDay(); // 0 = Sun, 6 = Sat
+        if (day === 0 || day === 6) continue;
+        const mm = String(cur.getMonth() + 1).padStart(2, '0');
+        const dd = String(cur.getDate()).padStart(2, '0');
+        if (fixedHolidays.includes(`${mm}-${dd}`)) continue;
+        added++;
+    }
+    const yyyy = cur.getFullYear();
+    const mm = String(cur.getMonth() + 1).padStart(2, '0');
+    const dd = String(cur.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+}
+window.calculateBusinessDays = calculateBusinessDays;
+
 function validateHearingDateInput(dateInput) {
     if (!dateInput) return true;
     const value = dateInput.value;
@@ -510,11 +538,17 @@ function validateHearingDateInput(dateInput) {
         }
     };
 
+    const submitBtn = document.querySelector('#addHearingForm button[type="submit"]');
+
     const markError = (msg) => {
         dateInput.setCustomValidity(msg);
         dateInput.classList.add('date-input-error');
         dateInput.classList.remove('date-input-valid');
         setHint(msg, false);
+        if (submitBtn && dateInput.id === 'hearingDate') {
+            submitBtn.disabled = true;
+            submitBtn.title = msg;
+        }
         return false;
     };
 
@@ -527,6 +561,10 @@ function validateHearingDateInput(dateInput) {
         } else {
             dateInput.classList.remove('date-input-valid');
             setHint('');
+        }
+        if (submitBtn && dateInput.id === 'hearingDate') {
+            submitBtn.disabled = false;
+            submitBtn.title = '';
         }
         return true;
     };
@@ -545,26 +583,61 @@ function validateHearingDateInput(dateInput) {
 
     // Weekend and office hours restrictions bypassed for testing/development
 
-    // 3. Existing hearing date progression check (same day or prior date relative to booked hearings)
+    const selectedDay = value.slice(0, 10);
+
+    // 1. Check 15-working-day statutory restriction on 1st Hearing Modal (RA 7160 Sec. 410)
+    if (dateInput.dataset.isFirstHearing === '1' && dateInput.dataset.firstHearingDeadline) {
+        const deadline = dateInput.dataset.firstHearingDeadline;
+        if (selectedDay > deadline) {
+            const formattedDl = formatFriendlyDate(deadline);
+            return markError(`Under RA 7160 Sec. 410, the 1st mediation hearing must be scheduled within 15 working days of filing. Statutory deadline: ${formattedDl}.`);
+        }
+    }
+
+    // 2. Existing hearing date progression check (same day or prior date relative to booked hearings)
     const latestDay = dateInput.dataset.latestHearingDay;
     const latestFormatted = dateInput.dataset.latestHearingFormatted || latestDay;
     if (latestDay) {
-        const selectedDay = value.slice(0, 10);
         if (selectedDay <= latestDay) {
             return markError(`A hearing for this case is already booked on ${latestFormatted}. You cannot schedule another hearing on the same day or on any prior date.`);
         }
     }
 
+    // 3. Min date check if set
+    if (dateInput.min && value < dateInput.min) {
+        return markError('Hearing date and time cannot be in the past.');
+    }
+
     return markValid();
 }
-
 
 function updateDateRestrictions() {
     const date = document.getElementById('hearingDate');
     const caseSelect = document.getElementById('hearingCaseId');
+    const statutoryBadge = document.getElementById('hearing15DayStatutoryBadge');
+    const statutoryDeadlineEl = document.getElementById('hearing15DayDeadlineDate');
     if (!date || !caseSelect) return;
 
     const caseId = caseSelect.value;
+    if (!caseId) {
+        date.removeAttribute('min');
+        date.removeAttribute('max');
+        delete date.dataset.firstHearingDeadline;
+        delete date.dataset.filingDate;
+        delete date.dataset.isFirstHearing;
+        delete date.dataset.latestHearingDay;
+        delete date.dataset.latestHearingFormatted;
+        if (statutoryBadge) statutoryBadge.style.display = 'none';
+        validateHearingDateInput(date);
+        return;
+    }
+
+    const selectedOption = caseSelect.selectedOptions[0];
+    const caseStatus = selectedOption?.dataset.caseStatus || '';
+    const hearings = calendarHearings.filter((item) => String(item.case_id) === String(caseId));
+    const mediationCount = hearings.filter((item) => item.hearing_type === 'Mediation').length;
+    const isFirstMediation = (caseStatus !== 'Conciliation' && mediationCount === 0);
+
     const latestDateStr = getCaseLatestHearingDate(caseId);
 
     if (caseId && latestDateStr) {
@@ -574,6 +647,68 @@ function updateDateRestrictions() {
     } else {
         delete date.dataset.latestHearingDay;
         delete date.dataset.latestHearingFormatted;
+    }
+
+    if (isFirstMediation) {
+        const filingDate = selectedOption?.dataset.filingDate || selectedOption?.dataset.docketDate || '';
+        let deadline = selectedOption?.dataset.firstHearingDeadline || '';
+        if (!deadline && filingDate) {
+            deadline = calculateBusinessDays(filingDate, 15);
+        }
+
+        date.dataset.isFirstHearing = '1';
+        date.dataset.filingDate = filingDate;
+        date.dataset.firstHearingDeadline = deadline;
+
+        const today = new Date();
+        const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        const minDay = (filingDate && filingDate > todayStr) ? filingDate : todayStr;
+        date.min = `${minDay}T08:00`;
+
+        if (deadline) {
+            date.max = `${deadline}T17:00`;
+            if (statutoryBadge && statutoryDeadlineEl) {
+                const formattedDeadline = formatFriendlyDate(deadline);
+                const formattedFiling = filingDate ? formatFriendlyDate(filingDate) : 'Filing';
+                statutoryDeadlineEl.textContent = `${formattedDeadline} (Filing date: ${formattedFiling})`;
+                statutoryBadge.style.display = 'block';
+            }
+
+            // If current date is empty or outside statutory window, set to next available business day
+            if (!date.value) {
+                const defaultDate = calculateBusinessDays(minDay, 2);
+                const clampedDefault = (defaultDate > deadline) ? deadline : defaultDate;
+                date.value = `${clampedDefault}T09:00`;
+                handleHearingDateOrDurationChange();
+            } else {
+                const curDay = date.value.slice(0, 10);
+                if (curDay > deadline) {
+                    date.value = `${deadline}T09:00`;
+                    handleHearingDateOrDurationChange();
+                }
+            }
+        }
+    } else {
+        date.removeAttribute('max');
+        delete date.dataset.firstHearingDeadline;
+        delete date.dataset.isFirstHearing;
+        delete date.dataset.filingDate;
+        if (statutoryBadge) statutoryBadge.style.display = 'none';
+
+        if (latestDateStr) {
+            const latestDay = latestDateStr.slice(0, 10);
+            const nextDay = new Date(latestDay + 'T00:00:00');
+            nextDay.setDate(nextDay.getDate() + 1);
+            while (nextDay.getDay() === 0 || nextDay.getDay() === 6) {
+                nextDay.setDate(nextDay.getDate() + 1);
+            }
+            const nextDayStr = `${nextDay.getFullYear()}-${String(nextDay.getMonth() + 1).padStart(2, '0')}-${String(nextDay.getDate()).padStart(2, '0')}`;
+            date.min = `${nextDayStr}T08:00`;
+        } else {
+            const today = new Date();
+            const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+            date.min = `${todayStr}T08:00`;
+        }
     }
 
     validateHearingDateInput(date);
@@ -718,6 +853,7 @@ function updateNextSchedule() {
 
     help.innerHTML = helpContent;
     if (submitBtn) { submitBtn.disabled = false; submitBtn.title = ''; }
+    updateDateRestrictions();
 }
 
 function bindReviewForm(id, onSuccess) {
@@ -2140,6 +2276,11 @@ function setApprovedBlock(block) {
             tomorrow.setDate(tomorrow.getDate() + 1);
         }
         baseDate = tomorrow.toISOString().slice(0, 10);
+    }
+    if (dateInput.dataset.isFirstHearing === '1' && dateInput.dataset.firstHearingDeadline) {
+        if (baseDate > dateInput.dataset.firstHearingDeadline) {
+            baseDate = dateInput.dataset.firstHearingDeadline;
+        }
     }
     const time = block === 'morning' ? '09:00' : '13:30';
     dateInput.value = `${baseDate}T${time}`;

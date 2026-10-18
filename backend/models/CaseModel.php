@@ -19,6 +19,7 @@ class CaseModel
                 c.*,
                 co.complaint_number,
                 co.complaint_title,
+                co.created_at AS complaint_created_at,
 
                 COALESCE(
                     (
@@ -127,6 +128,9 @@ class CaseModel
             $caseItem['stage_outcome'] = $st['outcome'] ?? null;
             $caseItem['stage_status'] = $st['stage_status'] ?? null;
             $caseItem['latest_outcome'] = $st['outcome'] ?? null;
+            $filingDate = substr($caseItem['complaint_created_at'] ?? ($caseItem['docket_date'] ?? date('Y-m-d')), 0, 10);
+            $caseItem['filing_date'] = $filingDate;
+            $caseItem['first_hearing_deadline'] = MediationDeadlineService::calculateBusinessDays($filingDate, 15);
         }
         unset($caseItem);
 
@@ -149,6 +153,7 @@ class CaseModel
                 c.*,
                 co.complaint_number,
                 co.complaint_title,
+                co.created_at AS complaint_created_at,
 
                 COALESCE(
                     (
@@ -258,6 +263,9 @@ class CaseModel
             $caseItem['stage_outcome'] = $st['outcome'] ?? null;
             $caseItem['stage_status'] = $st['stage_status'] ?? null;
             $caseItem['latest_outcome'] = $st['outcome'] ?? null;
+            $filingDate = substr($caseItem['complaint_created_at'] ?? ($caseItem['docket_date'] ?? date('Y-m-d')), 0, 10);
+            $caseItem['filing_date'] = $filingDate;
+            $caseItem['first_hearing_deadline'] = MediationDeadlineService::calculateBusinessDays($filingDate, 15);
         }
         unset($caseItem);
 
