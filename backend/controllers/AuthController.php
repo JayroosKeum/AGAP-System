@@ -98,16 +98,13 @@ class AuthController {
         return null;
     }
 
-    public function logout()
+    public function logout(): void
     {
-        session_start();
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
 
-        session_unset();
-
+        $_SESSION = [];
         session_destroy();
-
-        header(
-            "Location: /frontend/pages/auth/login.php"
-        );
     }
 }
