@@ -9,6 +9,14 @@ function escapeGpsHtml(value) {
         .replace(/'/g, '&#039;');
 }
 
+function escapeGpsJsArgument(value) {
+    return JSON.stringify(String(value ?? ''))
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
 async function gpsApi(url) {
     const separator = url.includes('?') ? '&' : '?';
 
@@ -688,8 +696,9 @@ async function renderExpandedCaseView(caseId) {
                     iconText = '⏳';
                     statusText = 'Pending';
                     subText = 'Awaiting Return';
-                    const targetResId = att.resident_id || respResidentId || 0;
-                    clickAttr = `onclick="openOfficerReturnModal('Respondent', ${targetResId}, ${activeHearing.hearing_id}, ${caseId}, '${escapeGpsHtml(att.delivery_status || '')}', '${escapeGpsHtml(att.recipient_name || respName)}', '${escapeGpsHtml(att.relationship || '')}', '${escapeGpsHtml(att.remarks || '')}', '${escapeGpsHtml(att.unserved_reason || '')}', ${num}, ${att.delivery_id || 'null'})"`;
+                    const targetResId = Number(att.resident_id || respResidentId) || 0;
+                    const deliveryId = Number(att.delivery_id);
+                    clickAttr = `onclick="openOfficerReturnModal('Respondent', ${targetResId}, ${Number(activeHearing.hearing_id)}, ${caseId}, ${escapeGpsJsArgument(att.delivery_status || '')}, ${escapeGpsJsArgument(att.recipient_name || respName)}, ${escapeGpsJsArgument(att.relationship || '')}, ${escapeGpsJsArgument(att.remarks || '')}, ${escapeGpsJsArgument(att.unserved_reason || '')}, ${num}, ${Number.isSafeInteger(deliveryId) && deliveryId > 0 ? deliveryId : 'null'})"`;
                     stepCursor = 'pointer';
                 }
             }

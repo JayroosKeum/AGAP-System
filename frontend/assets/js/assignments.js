@@ -694,7 +694,7 @@
             }
 
             resultsBox.innerHTML = matches.slice(0, 8).map((item) => `
-                <div class="search-result-item" data-case-id="${item.case_id}" style="padding: 9px 12px; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background 0.15s ease;">
+                <div class="search-result-item" data-case-id="${Number(item.case_id)}" style="padding: 9px 12px; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background 0.15s ease;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <strong style="color: #0f172a; font-size: 0.86rem;">${escapeHtml(item.case_number || `Case #${item.case_id}`)}</strong>
                         <span style="font-size: 0.72rem; padding: 2px 7px; border-radius: 999px; background: #e0f2fe; color: #0369a1; font-weight: 600;">${escapeHtml(item.case_status || '')}</span>

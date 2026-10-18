@@ -834,6 +834,10 @@ class Hearing
             $newFmt = date('M j, Y g:i A', strtotime($startTime));
             $origVenue = $prevHearing['venue'] ?? 'Barangay Hall';
             $histRemarks = "Hearing #{$id} ({$prevHearing['hearing_type']}, originally {$origFmt} at {$origVenue}) rescheduled to {$newFmt} at {$venue} by user #" . ($userId ?? 'System') . ". Reason: {$reason}";
+            if (!empty($data['past_date_exception_reason'])) {
+                $histRemarks .= ' Administrator-approved past-date scheduling exception: '
+                    . trim((string) $data['past_date_exception_reason']);
+            }
 
             $history = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) SELECT case_id, (SELECT case_status FROM cases WHERE case_id=?), ?, ? FROM hearings WHERE hearing_id=?");
             $history->execute([$data['case_id'], $histRemarks, $userId, $newId]);

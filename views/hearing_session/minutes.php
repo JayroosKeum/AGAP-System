@@ -94,6 +94,10 @@
     <p style="color: #64748b; font-size: 0.9rem; margin-top: -4px; margin-bottom: 20px;">
         Record formal session proceedings, party statements, proposals, and settlement terms. Use Gemini AI for Speech-to-Text and handwritten notes OCR.
     </p>
+    <label style="display: block; margin-bottom: 16px; font-size: 0.85rem; color: #475569;">
+        <input type="checkbox" id="aiExternalConsent">
+        I understand that selected recordings or notes will be sent to Google Gemini for processing.
+    </label>
 
     <!-- AI Action Toolbar -->
     <div class="ai-toolbar">
@@ -133,6 +137,10 @@ async function toggleVoiceRecording() {
     const statusBanner = document.getElementById('aiStatusBanner');
 
     if (!isRecording) {
+        if (!document.getElementById('aiExternalConsent').checked) {
+            alert('Confirm that the recording may be sent to Google Gemini before using AI transcription.');
+            return;
+        }
         // Start Recording
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             alert('Audio recording is not supported in this browser.');
@@ -187,6 +195,7 @@ async function sendAudioToGeminiSTT(audioBlob) {
     try {
         const formData = new FormData();
         formData.append('audio', audioBlob, 'session_recording.webm');
+        formData.append('external_ai_consent', '1');
 
         const response = await fetch('../../backend/api/ai/transcribe-audio.php', {
             method: 'POST',
@@ -214,6 +223,11 @@ function triggerNotesUpload() {
 
 async function handleNotesFileSelected(input) {
     if (!input.files || !input.files[0]) return;
+    if (!document.getElementById('aiExternalConsent').checked) {
+        alert('Confirm that the notes may be sent to Google Gemini before using AI OCR.');
+        input.value = '';
+        return;
+    }
     const file = input.files[0];
     const statusBanner = document.getElementById('aiStatusBanner');
     const uploadBtn = document.getElementById('btnUploadNotes');
@@ -226,6 +240,7 @@ async function handleNotesFileSelected(input) {
     try {
         const formData = new FormData();
         formData.append('image', file);
+        formData.append('external_ai_consent', '1');
 
         const response = await fetch('../../backend/api/ai/ocr-notes.php', {
             method: 'POST',

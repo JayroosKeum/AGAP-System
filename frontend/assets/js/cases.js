@@ -514,7 +514,7 @@ function renderCaseRow(item, isSelected = false) {
             </td>
 
             <td>
-                <span class="status status-${statusClass}">
+                <span class="status status-${escapeHtml(statusClass)}">
                     ${escapeHtml(
                         item.case_status ||
                         'Unknown'

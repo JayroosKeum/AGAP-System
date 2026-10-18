@@ -36,45 +36,18 @@ class AiServiceController
             ];
         }
 
-        $audioData = null;
-        $detectedMime = $mimeType;
-
-        if (is_array($audioInput) && isset($audioInput['tmp_name'])) {
-            if ($audioInput['error'] !== UPLOAD_ERR_OK) {
-                return ['success' => false, 'message' => 'Failed to upload audio file (Upload Error Code: ' . $audioInput['error'] . ').'];
-            }
-            if (!is_uploaded_file($audioInput['tmp_name'])) {
-                return ['success' => false, 'message' => 'Invalid uploaded audio file.'];
-            }
-            if ($audioInput['size'] > 25 * 1024 * 1024) {
-                return ['success' => false, 'message' => 'Audio file exceeds the maximum allowed size of 25MB.'];
-            }
-
-            $detectedMime = $this->detectMimeType($audioInput['tmp_name'], $audioInput['type'] ?? 'audio/webm');
-            $rawContent = file_get_contents($audioInput['tmp_name']);
-            if ($rawContent === false || strlen($rawContent) === 0) {
-                return ['success' => false, 'message' => 'Unable to read audio content.'];
-            }
-            $audioData = base64_encode($rawContent);
-        } elseif (is_string($audioInput) && file_exists($audioInput)) {
-            $detectedMime = $this->detectMimeType($audioInput, $mimeType ?: 'audio/webm');
-            $rawContent = file_get_contents($audioInput);
-            if ($rawContent === false || strlen($rawContent) === 0) {
-                return ['success' => false, 'message' => 'Unable to read audio content from file path.'];
-            }
-            $audioData = base64_encode($rawContent);
-        } elseif (is_string($audioInput) && !empty($audioInput)) {
-            $audioData = $audioInput;
-            $detectedMime = $mimeType ?: 'audio/webm';
-        } else {
-            return ['success' => false, 'message' => 'No valid audio file or data was provided.'];
+        $media = $this->prepareMediaInput(
+            $audioInput,
+            $mimeType,
+            25 * 1024 * 1024,
+            ['audio/webm', 'audio/wav', 'audio/x-wav', 'audio/mp3', 'audio/mpeg', 'audio/ogg', 'audio/m4a', 'audio/mp4', 'audio/aac'],
+            'Audio'
+        );
+        if (!$media['success']) {
+            return $media;
         }
-
-        // Normalize audio MIME types for Gemini
-        $allowedMimes = ['audio/webm', 'audio/wav', 'audio/x-wav', 'audio/mp3', 'audio/mpeg', 'audio/ogg', 'audio/m4a', 'audio/mp4', 'audio/aac'];
-        if (!in_array($detectedMime, $allowedMimes, true)) {
-            $detectedMime = 'audio/webm';
-        }
+        $audioData = $media['data'];
+        $detectedMime = $media['mime_type'];
 
         $prompt = "You are an accurate transcription assistant for a barangay dispute resolution session (Katarungang Pambarangay). Transcribe all spoken dialogue from this audio verbatim into clear text. Support Tagalog, English, Taglish, or local Philippine dialects. Preserve names, amounts, dates, commitments, and statements accurately. Output ONLY the clean transcribed text without preamble, commentary, markdown headings, or timestamps.";
 
@@ -124,45 +97,18 @@ class AiServiceController
             ];
         }
 
-        $imageData = null;
-        $detectedMime = $mimeType;
-
-        if (is_array($imageInput) && isset($imageInput['tmp_name'])) {
-            if ($imageInput['error'] !== UPLOAD_ERR_OK) {
-                return ['success' => false, 'message' => 'Failed to upload image file (Upload Error Code: ' . $imageInput['error'] . ').'];
-            }
-            if (!is_uploaded_file($imageInput['tmp_name'])) {
-                return ['success' => false, 'message' => 'Invalid uploaded image file.'];
-            }
-            if ($imageInput['size'] > 15 * 1024 * 1024) {
-                return ['success' => false, 'message' => 'Image file exceeds the maximum allowed size of 15MB.'];
-            }
-
-            $detectedMime = $this->detectMimeType($imageInput['tmp_name'], $imageInput['type'] ?? 'image/jpeg');
-            $rawContent = file_get_contents($imageInput['tmp_name']);
-            if ($rawContent === false || strlen($rawContent) === 0) {
-                return ['success' => false, 'message' => 'Unable to read image content.'];
-            }
-            $imageData = base64_encode($rawContent);
-        } elseif (is_string($imageInput) && file_exists($imageInput)) {
-            $detectedMime = $this->detectMimeType($imageInput, $mimeType ?: 'image/jpeg');
-            $rawContent = file_get_contents($imageInput);
-            if ($rawContent === false || strlen($rawContent) === 0) {
-                return ['success' => false, 'message' => 'Unable to read image content from file path.'];
-            }
-            $imageData = base64_encode($rawContent);
-        } elseif (is_string($imageInput) && !empty($imageInput)) {
-            $imageData = $imageInput;
-            $detectedMime = $mimeType ?: 'image/jpeg';
-        } else {
-            return ['success' => false, 'message' => 'No valid image file or data was provided.'];
+        $media = $this->prepareMediaInput(
+            $imageInput,
+            $mimeType,
+            15 * 1024 * 1024,
+            ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'],
+            'Image'
+        );
+        if (!$media['success']) {
+            return $media;
         }
-
-        // Normalize image MIME types
-        $allowedImageMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
-        if (!in_array($detectedMime, $allowedImageMimes, true)) {
-            $detectedMime = 'image/jpeg';
-        }
+        $imageData = $media['data'];
+        $detectedMime = $media['mime_type'];
 
         $prompt = "You are an expert OCR and transcription assistant for barangay dispute resolution and session minutes. Transcribe all handwritten or printed notes from this image accurately. Preserve bullet points, names, dates, amounts, agreed terms, and key statements. If handwriting is partially obscured, transcribe what is clearly visible and indicate illegible words with [illegible]. Output ONLY the transcribed text without conversational commentary.";
 
@@ -255,5 +201,103 @@ class AiServiceController
             if ($mime) return $mime;
         }
         return $fallback;
+    }
+
+    private function prepareMediaInput($input, string $mimeType, int $maxBytes, array $allowedMimes, string $label): array
+    {
+        $rawContent = null;
+        $detectedMime = strtolower(trim($mimeType));
+        $maxEncodedBytes = (int) (ceil($maxBytes / 3) * 4);
+
+        if (is_array($input)) {
+            if ((int) ($input['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+                return ['success' => false, 'message' => $label . ' upload failed.'];
+            }
+
+            $path = (string) ($input['tmp_name'] ?? '');
+            $size = is_file($path) ? filesize($path) : false;
+            if ($path === '' || !is_uploaded_file($path) || $size === false) {
+                return ['success' => false, 'message' => 'Invalid uploaded ' . strtolower($label) . ' file.'];
+            }
+            if ($size > $maxBytes || (int) ($input['size'] ?? 0) > $maxBytes) {
+                return ['success' => false, 'message' => $label . ' file exceeds the maximum allowed size of ' . (int) ($maxBytes / 1024 / 1024) . 'MB.'];
+            }
+
+            $detectedMime = $this->detectMimeType($path, (string) ($input['type'] ?? ''));
+            $detectedMime = $this->normalizeMediaMime($detectedMime, $allowedMimes);
+            if ($detectedMime === null) {
+                return ['success' => false, 'message' => 'Unsupported ' . strtolower($label) . ' MIME type.'];
+            }
+            $rawContent = file_get_contents($path);
+        } elseif (is_string($input) && strlen($input) <= 4096 && is_file($input)) {
+            $size = filesize($input);
+            if ($size === false || $size > $maxBytes) {
+                return ['success' => false, 'message' => $label . ' file exceeds the maximum allowed size of ' . (int) ($maxBytes / 1024 / 1024) . 'MB.'];
+            }
+
+            $detectedMime = $this->detectMimeType($input, $detectedMime);
+            $detectedMime = $this->normalizeMediaMime($detectedMime, $allowedMimes);
+            if ($detectedMime === null) {
+                return ['success' => false, 'message' => 'Unsupported ' . strtolower($label) . ' MIME type.'];
+            }
+            $rawContent = file_get_contents($input);
+        } elseif (is_string($input)) {
+            $encoded = trim($input);
+            if (strlen($encoded) > ($maxEncodedBytes + 4096)) {
+                return ['success' => false, 'message' => $label . ' data exceeds the maximum allowed size of ' . (int) ($maxBytes / 1024 / 1024) . 'MB.'];
+            }
+            if (preg_match('/\Adata:([^;,]+);base64,(.*)\z/is', $encoded, $matches)) {
+                if ($detectedMime !== '' && strcasecmp($detectedMime, $matches[1]) !== 0) {
+                    return ['success' => false, 'message' => $label . ' MIME type does not match its data URI.'];
+                }
+                $detectedMime = strtolower($matches[1]);
+                $encoded = $matches[2];
+            }
+            $detectedMime = $this->normalizeMediaMime($detectedMime, $allowedMimes);
+            if ($detectedMime === null) {
+                return ['success' => false, 'message' => 'Unsupported ' . strtolower($label) . ' MIME type.'];
+            }
+            $encoded = preg_replace('/\s+/', '', $encoded);
+            if ($encoded === '' || strlen($encoded) > $maxEncodedBytes) {
+                return ['success' => false, 'message' => $label . ' data exceeds the maximum allowed size of ' . (int) ($maxBytes / 1024 / 1024) . 'MB.'];
+            }
+
+            $rawContent = base64_decode($encoded, true);
+            if ($rawContent === false) {
+                return ['success' => false, 'message' => $label . ' data must be valid base64.'];
+            }
+            if (strlen($rawContent) > $maxBytes) {
+                return ['success' => false, 'message' => $label . ' data exceeds the maximum allowed size of ' . (int) ($maxBytes / 1024 / 1024) . 'MB.'];
+            }
+        } else {
+            return ['success' => false, 'message' => 'No valid ' . strtolower($label) . ' file or data was provided.'];
+        }
+
+        if ($rawContent === false || $rawContent === null || $rawContent === '') {
+            return ['success' => false, 'message' => 'Unable to read ' . strtolower($label) . ' content.'];
+        }
+
+        return [
+            'success' => true,
+            'data' => base64_encode($rawContent),
+            'mime_type' => $detectedMime,
+        ];
+    }
+
+    private function normalizeMediaMime(string $mimeType, array $allowedMimes): ?string
+    {
+        $mimeType = strtolower(trim($mimeType));
+        $mimeType = match ($mimeType) {
+            'image/jpg' => 'image/jpeg',
+            'video/webm' => 'audio/webm',
+            'application/ogg' => 'audio/ogg',
+            default => $mimeType,
+        };
+        $allowedMimes = array_map(
+            static fn(string $mime): string => strtolower($mime) === 'image/jpg' ? 'image/jpeg' : strtolower($mime),
+            $allowedMimes
+        );
+
+        return in_array($mimeType, $allowedMimes, true) ? $mimeType : null;
     }
 }

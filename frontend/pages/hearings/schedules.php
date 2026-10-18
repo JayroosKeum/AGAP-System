@@ -9,6 +9,7 @@ if (!in_array($roleId, [1, 2, 3], true)) {
 }
 
 $canManageHearings = in_array($roleId, [1, 2], true);
+$canAuthorizePastDate = $roleId === 1;
 
 include '../../layouts/header.php';
 ?>
@@ -202,6 +203,13 @@ include '../../layouts/header.php';
                         <span class="hint-msg"></span>
                     </div>
                 </div>
+                <?php if ($canAuthorizePastDate): ?>
+                <div class="form-group">
+                    <label for="pastDateExceptionReason">Administrator past-date exception reason</label>
+                    <textarea id="pastDateExceptionReason" name="past_date_exception_reason" rows="2" maxlength="2000" placeholder="Required only when scheduling a past date or time (10–2,000 characters)."></textarea>
+                    <small class="field-hint">The reason is saved with the hearing and audit history.</small>
+                </div>
+                <?php endif; ?>
                 <div class="form-group">
                     <label for="hearingDuration">Duration (Minutes) <span class="required-mark">*</span></label>
                     <select id="hearingDuration" name="duration_minutes" onchange="handleHearingDateOrDurationChange()">
@@ -525,10 +533,10 @@ include '../../layouts/header.php';
 
 <script>
 window.AGAP_HEARINGS = Object.freeze({
-    canManage: <?php echo $canManageHearings ? 'true' : 'false'; ?>
+    canManage: <?php echo $canManageHearings ? 'true' : 'false'; ?>,
+    canAuthorizePastDate: <?php echo $canAuthorizePastDate ? 'true' : 'false'; ?>
 });
 </script>
 <script src="../../assets/js/hearings.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/hearings.js'); ?>"></script>
 
 <?php include '../../layouts/footer.php'; ?>
-

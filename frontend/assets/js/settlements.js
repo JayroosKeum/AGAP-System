@@ -124,7 +124,7 @@ function updateKPIs(items) {
 }
 
 function renderSettlementRow(item) {
-    const id = item.settlement_id;
+    const id = Number(item.settlement_id);
     const daysLeft = Number(item.repudiation_days_left);
 
     // Repudiation badge
@@ -161,7 +161,7 @@ function renderSettlementRow(item) {
     // Obligation info
     const amountStr = formatCurrency(item.total_amount);
     const instStr = Number(item.has_installment) === 1
-        ? `<br><small style="color:#64748b;">${item.paid_installments || 0}/${item.total_installments || 0} Installments Paid</small>`
+        ? `<br><small style="color:#64748b;">${Number(item.paid_installments) || 0}/${Number(item.total_installments) || 0} Installments Paid</small>`
         : '';
 
     return `
@@ -480,7 +480,7 @@ async function viewSettlementDetails(id) {
                     <div style="font-size:0.84rem; color:#1d4ed8; margin-top:4px;">
                         Settlement Date: ${formatDate(item.settlement_date)}<br>
                         Repudiation Deadline: ${formatDate(item.repudiation_deadline)}
-                        ${Number(item.repudiation_days_left) >= 0 ? `<br><strong>⏳ ${item.repudiation_days_left} calendar days remaining to repudiate</strong>` : '<br><strong>✓ Repudiation window has elapsed. Enforceable by execution.</strong>'}
+                        ${Number(item.repudiation_days_left) >= 0 ? `<br><strong>⏳ ${Number(item.repudiation_days_left)} calendar days remaining to repudiate</strong>` : '<br><strong>✓ Repudiation window has elapsed. Enforceable by execution.</strong>'}
                     </div>
                 </div>
             </div>

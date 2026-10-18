@@ -700,6 +700,7 @@ include __DIR__ . '/../../layouts/header.php';
                                 <div class="ai-narrative-actions">
                                     <button type="button" class="btn-outline-sm" data-enhance-narrative>✨ Enhance with AI</button>
                                     <small class="field-hint">Keep statements chronological, clear, and focused on key incident details.</small>
+                                    <label class="field-hint"><input type="checkbox" data-ai-external-consent> I understand this narrative will be sent to Google Gemini for AI processing.</label>
                                 </div>
                                 <div class="ai-narrative-preview" data-narrative-preview hidden>
                                     <strong>AI suggestion</strong>

@@ -87,21 +87,31 @@ class HearingController
 
     public function create(array $data, int $userId): array
     {
-        $validated = $this->validate($data);
+        try {
+            $validated = $this->validate($data);
+        } catch (Throwable $exception) {
+            error_log($exception->getMessage());
+            return ['success' => false, 'message' => 'Unable to schedule the hearing. Please try again or contact an administrator with the time of the request.'];
+        }
         if (!$validated['success']) {
             return $validated;
         }
 
         $values = $validated['data'];
-        $conflict = $this->hearing->findConflict(
-            $values['hearing_date'],
-            $values['venue'],
-            $values['case_id'],
-            null,
-            $values['presiding_officer_id'] ?? null,
-            $values['duration_minutes'] ?? null,
-            $values['hearing_type'] ?? 'Mediation'
-        );
+        try {
+            $conflict = $this->hearing->findConflict(
+                $values['hearing_date'],
+                $values['venue'],
+                $values['case_id'],
+                null,
+                $values['presiding_officer_id'] ?? null,
+                $values['duration_minutes'] ?? null,
+                $values['hearing_type'] ?? 'Mediation'
+            );
+        } catch (Throwable $exception) {
+            error_log($exception->getMessage());
+            return ['success' => false, 'message' => 'Unable to schedule the hearing. Please try again or contact an administrator with the time of the request.'];
+        }
         if ($conflict && !empty($conflict['conflict'])) {
             return [
                 'success' => false,
@@ -120,7 +130,11 @@ class HearingController
                 return $result;
             }
             $label = $this->ordinal($result['sequence']) . ' ' . $result['hearing_type'];
-            $this->audit->log($userId, 'Scheduled ' . $label, 'Hearings', $result['hearing_id']);
+            $auditAction = 'Scheduled ' . $label;
+            if (!empty($values['past_date_exception_reason'])) {
+                $auditAction .= ' with Administrator-approved past-date exception';
+            }
+            $this->audit->log($userId, $auditAction, 'Hearings', $result['hearing_id']);
             $this->notifyHearingMembers($values, $label . ' scheduled', $userId, $label);
             return [
                 'success' => true,
@@ -137,11 +151,17 @@ class HearingController
 
     public function update(int $id, array $data, int $userId): array
     {
-        $existing = $this->hearing->getById($id);
+        try {
+            $existing = $this->hearing->getById($id);
+            $isSuperseded = $existing && (!empty($existing['is_superseded']) || $this->hearing->isSuperseded($id));
+        } catch (Throwable $exception) {
+            error_log($exception->getMessage());
+            return ['success' => false, 'message' => 'Unable to update the hearing. Please try again or contact an administrator with the time of the request.'];
+        }
         if (!$existing) {
             return ['success' => false, 'message' => 'Hearing not found.'];
         }
-        if (!empty($existing['is_superseded']) || $this->hearing->isSuperseded($id)) {
+        if ($isSuperseded) {
             return [
                 'success' => false,
                 'message' => 'This hearing was superseded by a newer schedule and is permanently locked.'
@@ -155,22 +175,32 @@ class HearingController
         if ($data['reschedule_reason'] === '' || mb_strlen($data['reschedule_reason']) > 2000) {
             return ['success' => false, 'message' => 'A rescheduling reason is required (up to 2,000 characters).'];
         }
-        $validated = $this->validate($data, true, $id);
+        try {
+            $validated = $this->validate($data, true, $id);
+        } catch (Throwable $exception) {
+            error_log($exception->getMessage());
+            return ['success' => false, 'message' => 'Unable to update the hearing. Please try again or contact an administrator with the time of the request.'];
+        }
         if (!$validated['success']) {
             return $validated;
         }
 
         $values = $validated['data'];
         $values['reschedule_reason'] = $data['reschedule_reason'];
-        $conflict = $this->hearing->findConflict(
-            $values['hearing_date'],
-            $values['venue'],
-            $values['case_id'],
-            $id,
-            $values['presiding_officer_id'] ?? null,
-            $values['duration_minutes'] ?? null,
-            $values['hearing_type'] ?? 'Mediation'
-        );
+        try {
+            $conflict = $this->hearing->findConflict(
+                $values['hearing_date'],
+                $values['venue'],
+                $values['case_id'],
+                $id,
+                $values['presiding_officer_id'] ?? null,
+                $values['duration_minutes'] ?? null,
+                $values['hearing_type'] ?? 'Mediation'
+            );
+        } catch (Throwable $exception) {
+            error_log($exception->getMessage());
+            return ['success' => false, 'message' => 'Unable to update the hearing. Please try again or contact an administrator with the time of the request.'];
+        }
         if ($conflict && !empty($conflict['conflict'])) {
             return [
                 'success' => false,
@@ -184,8 +214,14 @@ class HearingController
                 $values['hearing_type'],
                 $values['hearing_date']
             );
-            $this->hearing->update($id, $values, $deadline);
-            $this->audit->log($userId, 'Created rescheduled hearing event from #' . $id, 'Hearings', $id);
+            if (!$this->hearing->update($id, $values, $deadline)) {
+                return ['success' => false, 'message' => 'Unable to update the hearing. Please try again.'];
+            }
+            $auditAction = 'Created rescheduled hearing event from #' . $id;
+            if (!empty($values['past_date_exception_reason'])) {
+                $auditAction .= ' with Administrator-approved past-date exception';
+            }
+            $this->audit->log($userId, $auditAction, 'Hearings', $id);
             $this->notifyHearingMembers($values, 'Hearing rescheduled', $userId);
             return ['success' => true, 'message' => 'Hearing rescheduled successfully.'];
         } catch (Throwable $exception) {
@@ -401,9 +437,27 @@ class HearingController
         if (mb_strlen($remarks) > 5000) {
             return ['success' => false, 'message' => 'Remarks must not exceed 5,000 characters.'];
         }
-        $today = new DateTimeImmutable('today');
-        if ($date < $today) {
-            return ['success' => false, 'message' => 'Hearings cannot be scheduled in the past.'];
+        $pastDateExceptionReason = $data['past_date_exception_reason'] ?? '';
+        if (!is_string($pastDateExceptionReason)) {
+            return ['success' => false, 'message' => 'A valid past-date exception reason is required.'];
+        }
+        $pastDateExceptionReason = trim($pastDateExceptionReason);
+        $isPastDate = $date < new DateTimeImmutable('now');
+        if ($pastDateExceptionReason !== '' && (int) ($_SESSION['role_id'] ?? 0) !== 1) {
+            return ['success' => false, 'message' => 'Only an Administrator may request a past-date scheduling exception.'];
+        }
+        if ($isPastDate) {
+            if ((int) ($_SESSION['role_id'] ?? 0) !== 1) {
+                return ['success' => false, 'message' => 'Hearings must be scheduled in the future. Only an Administrator may approve a past-date exception.'];
+            }
+            if (mb_strlen($pastDateExceptionReason) < 10 || mb_strlen($pastDateExceptionReason) > 2000) {
+                return ['success' => false, 'message' => 'An Administrator past-date exception requires a reason between 10 and 2,000 characters.'];
+            }
+        }
+        $recordRemarks = $remarks;
+        if ($isPastDate) {
+            $exceptionNote = 'Administrator-approved past-date scheduling exception: ' . $pastDateExceptionReason;
+            $recordRemarks = trim($recordRemarks . ($recordRemarks === '' ? '' : "\n\n") . $exceptionNote);
         }
 
         // Validation: Approved hearing blocks, lunch break, Monday 8-9am, legal holidays, duration rules
@@ -467,7 +521,8 @@ class HearingController
                 'duration_exceed_reason' => !empty($data['duration_exceed_reason']) ? trim($data['duration_exceed_reason']) : null,
                 'presiding_officer_id' => !empty($data['presiding_officer_id']) ? (int) $data['presiding_officer_id'] : null,
                 'venue' => $venue,
-                'remarks' => $remarks !== '' ? $remarks : null,
+                'remarks' => $recordRemarks !== '' ? $recordRemarks : null,
+                'past_date_exception_reason' => $isPastDate ? $pastDateExceptionReason : null,
                 'rescheduled_by_party' => !empty($data['rescheduled_by_party']) ? trim($data['rescheduled_by_party']) : null,
                 'reschedule_justification_category' => !empty($data['reschedule_justification_category']) ? trim($data['reschedule_justification_category']) : null,
                 'reschedule_document_path' => !empty($data['reschedule_document_path']) ? trim($data['reschedule_document_path']) : null,

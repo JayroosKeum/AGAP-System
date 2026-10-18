@@ -2,92 +2,61 @@
 $loginError = ($_GET['error'] ?? '') === 'invalid_credentials';
 include '../../layouts/header.php';
 ?>
+<link rel="stylesheet" href="../../assets/css/login.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/login.css'); ?>">
 
-<link rel="stylesheet" href="../../assets/css/login.css">
+<main class="login-screen">
+    <div class="login-shell">
+        <section class="login-welcome" aria-labelledby="login-welcome-title">
+            <a class="login-brand" href="../landing/index.php" aria-label="AGAP home">
+                <img src="../../assets/images/tumana_logo.jpg" alt="">
+                <span><strong>AGAP</strong><small>Barangay Tumana</small></span>
+            </a>
 
-<div class="login-page">
+            <div class="welcome-copy">
+                <p class="login-eyebrow">Katarungang Pambarangay · Marikina City</p>
+                <h1 id="login-welcome-title">Good work starts with a <span>clear process.</span></h1>
+            </div>
 
-    <div class="login-left">
+            <div class="welcome-foot">
+                <img src="../../assets/images/marikina_logo.jpg" alt="City of Marikina seal">
+                <span>Supporting fair and orderly community resolution.</span>
+            </div>
+            <div class="login-decoration login-decoration-one" aria-hidden="true"></div>
+            <div class="login-decoration login-decoration-two" aria-hidden="true"></div>
+        </section>
 
-        <div class="brand">
-            <h1>AGAP</h1>
+        <section class="login-form-area" aria-label="Staff sign in">
+            <form action="../../../backend/api/auth/login.php" method="POST" class="login-card">
+                <p class="login-eyebrow">AGAP STAFF PORTAL</p>
+                <h2>Welcome back</h2>
+                <p class="login-intro">Sign in with your staff account to continue.</p>
 
-            <p>
-                Automated Grievance Assistance Platform
-            </p>
-        </div>
+                <?php if ($loginError): ?>
+                    <div class="auth-message error" role="alert">
+                        Invalid username or password.
+                    </div>
+                <?php endif; ?>
 
-        <div class="features">
-            <div>✓ Complaint Management</div>
-            <div>✓ Case Monitoring</div>
-            <div>✓ Hearing Scheduling</div>
-            <div>✓ GPS Verification</div>
-            <div>✓ AI Complaint Assistant</div>
-        </div>
-
-    </div>
-
-    <div class="login-right">
-
-        <form
-            action="../../../backend/api/auth/login.php"
-            method="POST"
-            class="login-card">
-
-            <h2>Welcome Back</h2>
-
-            <p>
-                Sign in to continue
-            </p>
-
-            <?php if ($loginError): ?>
-                <div class="auth-message error" role="alert">
-                    Invalid username or password.
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" autocomplete="username" required>
                 </div>
-            <?php endif; ?>
 
-            <div class="form-group">
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" autocomplete="current-password" required>
+                </div>
 
-                <label for="username">
-                    Username
-                </label>
-
-                <input
-                    type="text"
-                    id="username"
-                    name="username"
-                    required>
-
-            </div>
-
-            <div class="form-group">
-
-                <label for="password">
-                    Password
-                </label>
-
-                <input
-                    type="password"
-                    id="password"
-                    name="password"
-                    required>
-
-            </div>
-
-            <button type="submit">
-                Sign In
-            </button>
-
-            <p class="auth-link"><a href="forgot-password.php">Forgot your password?</a></p>
-
-        </form>
-
+                <button type="submit">Sign in</button>
+                <p class="auth-link"><a href="forgot-password.php">Forgot your password?</a></p>
+            </form>
+        </section>
     </div>
+</main>
 
-</div>
+<footer class="login-footer">
+    AGAP <span aria-hidden="true">·</span> Automated Grievance Assistance Platform <span aria-hidden="true">·</span> © <?php echo date('Y'); ?>
+</footer>
 
-<script src="../../assets/js/login.js"></script>
-
-<?php
-include '../../layouts/footer.php';
-?>
+<script src="../../assets/js/login.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/login.js'); ?>"></script>
+<?php include '../../layouts/footer.php'; ?>

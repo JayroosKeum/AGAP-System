@@ -52,6 +52,7 @@ Complaint → Reviewed → Docketed
 - Non-appearance in 2nd mediation unlocks KP Form 18 (Complainant) and KP Form 19 (Respondent) show-cause hearing notices.
 - Certificate to Bar Action (KP Form 21) or Counterclaim (KP Form 22) requires a recorded show-cause evaluation ruling non-appearance as unjustified.
 - A hearing count never changes a case stage by itself.
+- Hearings must be scheduled for a future date and time. Only an Administrator may approve a past-date exception, with the reason retained on the hearing record and in audit history.
 - Elevation to Pangkat Conciliation requires completion of 3 mediation sessions with an unresolved outcome and an explicit authorized action.
 - A stage changes only through an explicit, authorized server-side action.
 - A terminal outcome prevents ordinary scheduling.
@@ -129,6 +130,7 @@ After editing:
 - Auto-escalate to Conciliation because a count reaches three.
 - Auto-issue CFA from a button click or keyword match.
 - Put security, authorization, or legal gates only in the browser.
+- Send complaint text or other sensitive records to an external AI provider without explicit user acknowledgement; enforce bounded inputs and server-side rate limits.
 - Rewrite working modules or change unrelated data without approval.
 
 ## 10. Definition of done

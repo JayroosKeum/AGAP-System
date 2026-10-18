@@ -2,9 +2,11 @@
 
 session_start();
 
-if (!isset($_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2, 3], true)) {
+$roleId = (int) ($_SESSION['role_id'] ?? 0);
+if (!in_array($roleId, [1, 2, 3], true)) {
     die('Access Denied');
 }
+$canAuthorizePastDate = $roleId === 1;
 
 require_once __DIR__ . '/../../../backend/config/database.php';
 $db = (new Database())->connect();
@@ -234,6 +236,13 @@ include '../../layouts/header.php';
                 <label for="schedRemarks">Session Instructions / Remarks <span class="optional-label">Optional</span></label>
                 <textarea id="schedRemarks" rows="2" placeholder="Optional notes for parties or server..."></textarea>
             </div>
+            <?php if ($canAuthorizePastDate): ?>
+            <div class="form-group">
+                <label for="schedPastDateExceptionReason">Administrator past-date exception reason</label>
+                <textarea id="schedPastDateExceptionReason" rows="2" maxlength="2000" placeholder="Required only when scheduling a past date or time (10–2,000 characters)."></textarea>
+                <small>The reason is saved with the hearing and audit history.</small>
+            </div>
+            <?php endif; ?>
             <div class="modal-actions">
                 <button type="button" class="btn-secondary" onclick="closeScheduleModal()">Cancel</button>
                 <button type="submit" class="btn-create" id="submitSchedBtn">Schedule Session &amp; Generate Notices</button>

@@ -112,7 +112,8 @@ function initialiseNarrativeEnhancement() {
     const narrative = document.getElementById('narrative');
     const preview = document.querySelector('[data-narrative-preview]');
     const suggestion = document.querySelector('[data-narrative-suggestion]');
-    if (!button || !narrative || !preview || !suggestion) return;
+    const consent = document.querySelector('[data-ai-external-consent]');
+    if (!button || !narrative || !preview || !suggestion || !consent) return;
 
     const applyButton = preview.querySelector('[data-apply-narrative]');
     const discardButton = preview.querySelector('[data-discard-narrative]');
@@ -129,6 +130,11 @@ function initialiseNarrativeEnhancement() {
             narrative.focus();
             return;
         }
+        if (!consent.checked) {
+            window.agapNotify?.('Confirm that the narrative may be sent to Google Gemini before using AI enhancement.', 'error');
+            consent.focus();
+            return;
+        }
 
         setBusy(true);
         preview.hidden = true;
@@ -136,7 +142,7 @@ function initialiseNarrativeEnhancement() {
             const response = await fetch('../../../backend/api/ai/refine-narrative.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                body: JSON.stringify({ narrative: original })
+                body: JSON.stringify({ narrative: original, external_ai_consent: consent.checked })
             });
             const result = await response.json().catch(() => ({}));
             if (!response.ok || !result.success || !result.narrative) {
@@ -596,7 +602,7 @@ function loadResidents() {
                 addrParts.push(resident.purok.trim());
             }
             const addrText = addrParts.length > 0 ? addrParts.join(', ') : 'No address on file';
-            options += `<option value="${resident.resident_id}">${escapeHtml(name + ' — ' + addrText)}</option>`;
+            options += `<option value="${Number(resident.resident_id)}">${escapeHtml(name + ' — ' + addrText)}</option>`;
         });
         select.innerHTML = options;
     });
@@ -716,7 +722,7 @@ function renderAttachments(attachments) {
                         <td>${escapeHtml(attachment.file_type)}</td>
                         <td>${new Date(attachment.uploaded_at).toLocaleString()}</td>
                         <td class="action-buttons">
-                            <button type="button" class="delete-button" onclick="deleteAttachment(${attachment.attachment_id})">Delete</button>
+                            <button type="button" class="delete-button" onclick="deleteAttachment(${Number(attachment.attachment_id)})">Delete</button>
                         </td>
                     </tr>
                 `;
@@ -767,7 +773,7 @@ function renderAttachments(attachments) {
                     <a href="${downloadUrl}" class="btn-icon-action" title="Download file" download>
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                     </a>
-                    <button type="button" class="btn-icon-action delete" title="Delete attachment" onclick="deleteAttachment(${att.attachment_id})">
+                    <button type="button" class="btn-icon-action delete" title="Delete attachment" onclick="deleteAttachment(${Number(att.attachment_id)})">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                     </button>
                 </div>
@@ -3653,11 +3659,18 @@ async function openScanHistoryModal(complaintId) {
     const body = document.getElementById('scanHistoryBody');
     if (!modal || !body) return;
 
+    const safeComplaintId = Number(complaintId);
+    if (!Number.isSafeInteger(safeComplaintId) || safeComplaintId < 1) {
+        body.textContent = 'A valid complaint is required to view version history.';
+        modal.style.display = 'flex';
+        return;
+    }
+
     modal.style.display = 'flex';
     body.innerHTML = '<div style="text-align: center; color: #64748b; padding: 20px;">Loading version history...</div>';
 
     try {
-        const resp = await fetch(`../../../backend/api/complaints/scanned-document.php?id=${encodeURIComponent(complaintId)}&action=history&_t=${Date.now()}`);
+        const resp = await fetch(`../../../backend/api/complaints/scanned-document.php?id=${safeComplaintId}&action=history&_t=${Date.now()}`);
         const result = await resp.json();
 
         if (!resp.ok || !result.success || !result.history || !result.history.length) {
@@ -3668,14 +3681,18 @@ async function openScanHistoryModal(complaintId) {
         let html = '<div style="display: flex; flex-direction: column; gap: 10px;">';
         result.history.forEach(item => {
             const isCurrent = Number(item.is_current) === 1;
+            const versionNumber = Number(item.version_number);
+            if (!Number.isSafeInteger(versionNumber) || versionNumber < 1) {
+                throw new Error('The document history contains an invalid version number.');
+            }
             const sizeStr = item.file_size ? (item.file_size / 1024).toFixed(1) + ' KB' : '';
-            const downloadUrl = `../../../backend/api/complaints/scanned-document.php?id=${complaintId}&version=${item.version_number}&download=1`;
+            const downloadUrl = `../../../backend/api/complaints/scanned-document.php?id=${safeComplaintId}&version=${versionNumber}&download=1`;
 
             html += `
                 <div style="background: ${isCurrent ? '#f0fdf4' : '#f8fafc'}; border: 1px solid ${isCurrent ? '#86efac' : '#e2e8f0'}; border-radius: 8px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
                     <div>
                         <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                            <strong style="color: #0f172a; font-size: 0.9rem;">Version ${item.version_number}</strong>
+                            <strong style="color: #0f172a; font-size: 0.9rem;">Version ${versionNumber}</strong>
                             ${isCurrent ? '<span style="background: #dcfce7; color: #15803d; font-size: 0.72rem; font-weight: 700; padding: 1px 6px; border-radius: 4px;">CURRENT</span>' : '<span style="background: #f1f5f9; color: #64748b; font-size: 0.72rem; font-weight: 700; padding: 1px 6px; border-radius: 4px;">ARCHIVED</span>'}
                             <span style="font-size: 0.8rem; color: #64748b;">${escapeHtml(item.file_name)} (${sizeStr})</span>
                         </div>

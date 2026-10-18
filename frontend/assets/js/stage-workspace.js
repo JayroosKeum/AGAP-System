@@ -176,7 +176,7 @@ function populateLuponDropdowns() {
         let opts = '<option value="">-- Select Lupon Member --</option>';
         members.forEach(m => {
             const name = `${m.last_name}, ${m.first_name} ${m.middle_name || ''}`.trim();
-            opts += `<option value="${m.member_id}">${escapeHtml(name)}</option>`;
+            opts += `<option value="${Number(m.member_id)}">${escapeHtml(name)}</option>`;
         });
         sel.innerHTML = opts;
         if (currentVal) sel.value = currentVal;
@@ -1789,6 +1789,7 @@ async function submitSchedule(e) {
     const timeVal = document.getElementById('schedTime').value;
     const venueVal = document.getElementById('schedVenue').value;
     const remarksVal = document.getElementById('schedRemarks').value;
+    const pastDateExceptionReason = document.getElementById('schedPastDateExceptionReason')?.value.trim() || '';
     const typeVal = document.getElementById('schedHearingType').value || (stageWorkspaceState.mode === 'Mediation' ? 'Mediation' : 'Conciliation');
 
     if (!dateVal || !timeVal) {
@@ -1804,6 +1805,9 @@ async function submitSchedule(e) {
     payload.append('venue', venueVal || 'Barangay Hall');
     payload.append('remarks', remarksVal);
     payload.append('schedule_reviewed', '1');
+    if (pastDateExceptionReason) {
+        payload.append('past_date_exception_reason', pastDateExceptionReason);
+    }
 
     try {
         const res = await fetch(getStageApiUrl('hearings/create.php'), {
@@ -2168,7 +2172,7 @@ function renderAttendanceModalForm(data) {
 
         rowsHtml += `
             <div class="att-party-row" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-                <input type="hidden" name="resident_id[]" value="${p.resident_id}">
+                <input type="hidden" name="resident_id[]" value="${Number(p.resident_id)}">
                 <input type="hidden" name="party_type[]" value="${escapeHtml(p.party_type)}">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                     <div>
@@ -3710,5 +3714,3 @@ window.executeEmergencyReschedule = executeEmergencyReschedule;
 window.getSuggestedRescheduleDateTime = getSuggestedRescheduleDateTime;
 window.toggleAttJustification = toggleAttJustification;
 window.submitAttendance = submitAttendance;
-
-

@@ -737,8 +737,28 @@ function bindReviewForm(id, onSuccess) {
 }
 
 function renderScheduleReview(form) {
-    const values = Object.fromEntries(new FormData(form)); const caseLabel = form.querySelector('[name="case_id"]')?.selectedOptions?.[0]?.textContent || 'Current case'; const details = document.getElementById('reviewHearingDetails');
-    details.replaceChildren(); [['Case', caseLabel], ['Hearing type', values.hearing_type], ['Date & time', formatDateTime(values.hearing_date)], ['Venue', values.venue], ['Remarks', values.remarks || 'None'], ['Rescheduling reason', values.reschedule_reason || 'Not applicable']].forEach(([label, value]) => { const dt = document.createElement('dt'); dt.textContent = label; const dd = document.createElement('dd'); dd.textContent = value; details.append(dt, dd); });
+    const values = Object.fromEntries(new FormData(form));
+    const caseLabel = form.querySelector('[name="case_id"]')?.selectedOptions?.[0]?.textContent || 'Current case';
+    const details = document.getElementById('reviewHearingDetails');
+    const rows = [
+        ['Case', caseLabel],
+        ['Hearing type', values.hearing_type],
+        ['Date & time', formatDateTime(values.hearing_date)],
+        ['Venue', values.venue],
+        ['Remarks', values.remarks || 'None'],
+        ['Rescheduling reason', values.reschedule_reason || 'Not applicable']
+    ];
+    if (values.past_date_exception_reason?.trim()) {
+        rows.push(['Administrator past-date exception reason', values.past_date_exception_reason.trim()]);
+    }
+    details.replaceChildren();
+    rows.forEach(([label, value]) => {
+        const dt = document.createElement('dt');
+        dt.textContent = label;
+        const dd = document.createElement('dd');
+        dd.textContent = value;
+        details.append(dt, dd);
+    });
 }
 
 async function confirmHearingSchedule() {
@@ -1279,9 +1299,9 @@ function renderAttendanceParties(parties) {
             : '<li>No service attempts recorded for this hearing.</li>';
 
         return `
-            <div class="party-att-card ${cardClass}" data-resident-id="${p.resident_id}" data-party-type="${escapeHtml(p.party_type)}" data-party-name="${escapeHtml(p.full_name)}">
-                <input type="hidden" class="att-input-status" name="records[${p.resident_id}][status]" value="${escapeHtml(initialStatus)}">
-                <input type="hidden" class="att-input-justified" name="records[${p.resident_id}][is_justified]" value="${Number(p.is_justified) === 1 ? '1' : '0'}">
+            <div class="party-att-card ${cardClass}" data-resident-id="${Number(p.resident_id)}" data-party-type="${escapeHtml(p.party_type)}" data-party-name="${escapeHtml(p.full_name)}">
+                <input type="hidden" class="att-input-status" name="records[${Number(p.resident_id)}][status]" value="${escapeHtml(initialStatus)}">
+                <input type="hidden" class="att-input-justified" name="records[${Number(p.resident_id)}][is_justified]" value="${Number(p.is_justified) === 1 ? '1' : '0'}">
 
                 <div class="party-att-header">
                     <div>
@@ -1337,9 +1357,9 @@ function renderAttendanceParties(parties) {
                     </button>
                 </div>
 
-                <div class="att-justification-box" id="justBox_${p.resident_id}" style="${isExcused ? '' : 'display: none;'}">
-                    <label for="justReason_${p.resident_id}">Justification Cause <span class="required-mark">*</span></label>
-                    <select id="justReason_${p.resident_id}" name="records[${p.resident_id}][justification_reason]" class="form-control" style="width: 100%; font-size: 0.84rem; padding: 4px 8px; border: 1px solid #cbd5e1; border-radius: 4px;" ${!canManageHearings ? 'disabled' : ''}>
+                <div class="att-justification-box" id="justBox_${Number(p.resident_id)}" style="${isExcused ? '' : 'display: none;'}">
+                    <label for="justReason_${Number(p.resident_id)}">Justification Cause <span class="required-mark">*</span></label>
+                    <select id="justReason_${Number(p.resident_id)}" name="records[${Number(p.resident_id)}][justification_reason]" class="form-control" style="width: 100%; font-size: 0.84rem; padding: 4px 8px; border: 1px solid #cbd5e1; border-radius: 4px;" ${!canManageHearings ? 'disabled' : ''}>
                         <option value="Medical Emergency / Illness" ${p.justification_reason === 'Medical Emergency / Illness' ? 'selected' : ''}>Medical Emergency / Illness</option>
                         <option value="Official Duty / Employment Obligation" ${p.justification_reason === 'Official Duty / Employment Obligation' ? 'selected' : ''}>Official Duty / Employment Obligation</option>
                         <option value="Force Majeure / Calamity / Severe Weather" ${p.justification_reason === 'Force Majeure / Calamity / Severe Weather' ? 'selected' : ''}>Force Majeure / Calamity / Severe Weather</option>
@@ -1350,7 +1370,7 @@ function renderAttendanceParties(parties) {
                 ` : ''}
 
                 <div class="att-remarks-box">
-                    <input type="text" name="records[${p.resident_id}][remarks]" value="${escapeHtml(p.remarks || '')}" placeholder="${(isComplainant || isRespondent) ? 'Appearance remarks or incident notes (optional)...' : 'Witness testimony notes / remarks (optional)...'}" style="width: 100%; font-size: 0.82rem; border: 1px solid #cbd5e1; border-radius: 4px; padding: 5px 8px;" ${!canManageHearings ? 'readonly' : ''}>
+                    <input type="text" name="records[${Number(p.resident_id)}][remarks]" value="${escapeHtml(p.remarks || '')}" placeholder="${(isComplainant || isRespondent) ? 'Appearance remarks or incident notes (optional)...' : 'Witness testimony notes / remarks (optional)...'}" style="width: 100%; font-size: 0.82rem; border: 1px solid #cbd5e1; border-radius: 4px; padding: 5px 8px;" ${!canManageHearings ? 'readonly' : ''}>
                 </div>
 
                 ${(isComplainant || isRespondent) && canManageHearings ? `
@@ -1360,13 +1380,13 @@ function renderAttendanceParties(parties) {
                     </summary>
                     <div style="margin-top: 10px;">
                         <div class="post-absence-tabs">
-                            <button type="button" class="post-absence-tab-btn active" data-tab-target="tabNotice_${p.resident_id}">1. Issue Notice (${isComplainant ? 'KP Form 18' : 'KP Form 19'})</button>
-                            <button type="button" class="post-absence-tab-btn" data-tab-target="tabExplanation_${p.resident_id}">2. Record Explanation</button>
-                            <button type="button" class="post-absence-tab-btn" data-tab-target="tabLegal_${p.resident_id}">3. Legal Action Review</button>
+                            <button type="button" class="post-absence-tab-btn active" data-tab-target="tabNotice_${Number(p.resident_id)}">1. Issue Notice (${isComplainant ? 'KP Form 18' : 'KP Form 19'})</button>
+                            <button type="button" class="post-absence-tab-btn" data-tab-target="tabExplanation_${Number(p.resident_id)}">2. Record Explanation</button>
+                            <button type="button" class="post-absence-tab-btn" data-tab-target="tabLegal_${Number(p.resident_id)}">3. Legal Action Review</button>
                         </div>
 
                         <!-- Tab 1: Issue Notice of Hearing -->
-                        <div id="tabNotice_${p.resident_id}" class="workflow-tab-content" style="display: block;">
+                        <div id="tabNotice_${Number(p.resident_id)}" class="workflow-tab-content" style="display: block;">
                             <div style="font-size: 0.82rem; color: #475569; margin-bottom: 8px;">
                                 Issue official notice to explain failure to appear (${isComplainant ? 'KP Form 18' : 'KP Form 19'}) and assign to Summons Server.
                             </div>
@@ -1381,7 +1401,7 @@ function renderAttendanceParties(parties) {
                                         ${officerOptions}
                                     </select>
                                 </div>
-                                <button type="button" class="btn-create" data-issue-notice="${p.resident_id}" style="margin-top: 4px;">
+                                <button type="button" class="btn-create" data-issue-notice="${Number(p.resident_id)}" style="margin-top: 4px;">
                                     Generate ${isComplainant ? 'KP Form 18' : 'KP Form 19'} &amp; Assign Server
                                 </button>
                                 <div class="notice-download-container" style="margin-top: 6px;"></div>
@@ -1389,7 +1409,7 @@ function renderAttendanceParties(parties) {
                         </div>
 
                         <!-- Tab 2: Record Explanation Hearing Outcome -->
-                        <div id="tabExplanation_${p.resident_id}" class="workflow-tab-content" style="display: none;">
+                        <div id="tabExplanation_${Number(p.resident_id)}" class="workflow-tab-content" style="display: none;">
                             <div style="font-size: 0.82rem; color: #475569; margin-bottom: 8px;">
                                 Record the explanation hearing result. If Justified, the original hearing record is preserved and eligible for rescheduling.
                             </div>
@@ -1410,14 +1430,14 @@ function renderAttendanceParties(parties) {
                                     <label style="font-size: 0.78rem; font-weight: 600; color: #334155;">Supporting File (Medical cert, etc.):</label>
                                     <input type="file" data-explanation-file accept=".pdf,.jpg,.jpeg,.png" style="font-size: 0.8rem;">
                                 </div>
-                                <button type="button" class="btn-create" data-save-explanation="${p.resident_id}" style="margin-top: 4px;">
+                                <button type="button" class="btn-create" data-save-explanation="${Number(p.resident_id)}" style="margin-top: 4px;">
                                     Save Explanation Finding
                                 </button>
                             </div>
                         </div>
 
                         <!-- Tab 3: Authorized Legal Action Review -->
-                        <div id="tabLegal_${p.resident_id}" class="workflow-tab-content" style="display: none;">
+                        <div id="tabLegal_${Number(p.resident_id)}" class="workflow-tab-content" style="display: none;">
                             <div class="human-review-callout">
                                 ⚖️ <strong>Human Review Required:</strong> AGAP never automatically imposes legal consequences. An authorized official must review and approve adverse certifications or court transmittals.
                             </div>
@@ -1446,7 +1466,7 @@ function renderAttendanceParties(parties) {
                                     <label style="font-size: 0.78rem; font-weight: 600; color: #334155;">Review Findings &amp; Rationale:</label>
                                     <textarea data-legal-action-details rows="2" placeholder="Record official legal review rationale..." style="width: 100%; font-size: 0.82rem; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px;"></textarea>
                                 </div>
-                                <button type="button" class="btn-create" data-save-legal-action="${p.resident_id}" style="margin-top: 4px;">
+                                <button type="button" class="btn-create" data-save-legal-action="${Number(p.resident_id)}" style="margin-top: 4px;">
                                     Record Authorized Legal Review
                                 </button>
                             </div>
