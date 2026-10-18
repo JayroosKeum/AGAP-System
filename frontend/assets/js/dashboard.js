@@ -88,8 +88,8 @@ document.addEventListener('DOMContentLoaded', () => {
     fetch('../../../backend/api/dashboard/statistics.php', { headers: { Accept: 'application/json' } })
         .then(async (response) => {
             const payload = await response.json().catch(() => ({}));
-            if (!response.ok || !payload.success) throw new Error(payload.message || 'Unable to load the dashboard.');
-            return payload.data;
+            if (!response.ok || (payload.success === false)) throw new Error(payload.message || 'Unable to load the dashboard.');
+            return payload.data || payload;
         })
         .then((data) => {
             setText('totalCases', data.total_cases);

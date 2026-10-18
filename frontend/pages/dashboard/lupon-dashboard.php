@@ -4,7 +4,7 @@ session_start();
 include '../../layouts/header.php';
 ?>
 
-<link rel="stylesheet" href="../../assets/css/dashboard.css">
+<link rel="stylesheet" href="../../assets/css/dashboard.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/dashboard.css'); ?>">
 
 <div class="dashboard-layout">
 
@@ -25,6 +25,6 @@ include '../../layouts/header.php';
 
 </div>
 
-<script src="../../assets/js/dashboard.js"></script>
+<script src="../../assets/js/dashboard.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/dashboard.js'); ?>"></script>
 
 <?php include '../../layouts/footer.php'; ?>

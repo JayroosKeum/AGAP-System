@@ -26,4 +26,6 @@
             <div id="statusTotals" class="status-summary" aria-live="polite"></div>
         </section>
     </div>
+    <span id="cfaCases" style="display:none;" aria-hidden="true"></span>
+    <span id="archivedCases" style="display:none;" aria-hidden="true"></span>
 </section>
