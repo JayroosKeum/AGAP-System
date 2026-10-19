@@ -15,9 +15,100 @@ class ReportController
         $this->service = new ReportService();
     }
 
-    public function dashboard(): array
+    public function dashboard(array $params = []): array
     {
-        return $this->getReportModel()->dashboardStats();
+        $resolved = $this->resolvePeriod($params);
+        $stats = $this->getReportModel()->dashboardStats(
+            $resolved['period'],
+            $resolved['start_date'],
+            $resolved['end_date']
+        );
+        return array_merge($resolved, $stats);
+    }
+
+    private function resolvePeriod(array $params): array
+    {
+        $period = strtolower(trim((string) ($params['period'] ?? 'all')));
+        if (!in_array($period, ['all', 'weekly', 'monthly', 'quarterly', 'annual'], true)) {
+            $period = 'all';
+        }
+
+        $now = new DateTime('now');
+        $offset = (int) ($params['offset'] ?? 0);
+        $year = !empty($params['year']) ? (int) $params['year'] : null;
+        $month = !empty($params['month']) ? (int) $params['month'] : null;
+        $quarter = !empty($params['quarter']) ? (int) $params['quarter'] : null;
+
+        $startDate = null;
+        $endDate = null;
+        $label = 'All Time';
+        $sublabel = 'All recorded data in the system';
+
+        if ($period === 'weekly') {
+            $ref = clone $now;
+            if ($offset !== 0) {
+                $ref->modify("{$offset} week");
+            }
+            $dayOfWeek = (int) $ref->format('N'); // 1 = Monday, 7 = Sunday
+            $start = clone $ref;
+            $start->modify('-' . ($dayOfWeek - 1) . ' days');
+            $end = clone $start;
+            $end->modify('+6 days');
+            $startDate = $start->format('Y-m-d');
+            $endDate = $end->format('Y-m-d');
+            $label = 'Week of ' . $start->format('M j') . ' – ' . $end->format('M j, Y');
+            $sublabel = 'Monday to Sunday case activity';
+        } elseif ($period === 'monthly') {
+            $ref = clone $now;
+            if ($year && $month) {
+                $ref->setDate($year, $month, 1);
+            } elseif ($offset !== 0) {
+                $ref->modify("{$offset} month");
+            }
+            $startDate = $ref->format('Y-m-01');
+            $endDate = $ref->format('Y-m-t');
+            $label = $ref->format('F Y');
+            $sublabel = 'Monthly overview for ' . $label;
+        } elseif ($period === 'quarterly') {
+            $ref = clone $now;
+            $currQuarter = (int) ceil(((int) $ref->format('n')) / 3);
+            $targetYear = $year ?: (int) $ref->format('Y');
+            $targetQuarter = $quarter ?: $currQuarter;
+            if ($offset !== 0 && !$quarter) {
+                $targetQuarter += $offset;
+                while ($targetQuarter < 1) {
+                    $targetQuarter += 4;
+                    $targetYear--;
+                }
+                while ($targetQuarter > 4) {
+                    $targetQuarter -= 4;
+                    $targetYear++;
+                }
+            }
+            $startMonth = (($targetQuarter - 1) * 3) + 1;
+            $startDate = sprintf('%04d-%02d-01', $targetYear, $startMonth);
+            $endDate = date('Y-m-t', strtotime(sprintf('%04d-%02d-01', $targetYear, $startMonth + 2)));
+            $label = 'Q' . $targetQuarter . ' ' . $targetYear . ' (' . date('M', strtotime($startDate)) . ' – ' . date('M', strtotime($endDate)) . ')';
+            $sublabel = 'Quarterly overview for ' . $targetYear;
+        } elseif ($period === 'annual') {
+            $targetYear = $year ?: ((int) $now->format('Y') + $offset);
+            $startDate = sprintf('%04d-01-01', $targetYear);
+            $endDate = sprintf('%04d-12-31', $targetYear);
+            $label = 'Year ' . $targetYear;
+            $sublabel = 'Annual case records for ' . $targetYear;
+        }
+
+        return [
+            'period' => $period,
+            'period_label' => $label,
+            'period_sublabel' => $sublabel,
+            'start_date' => $startDate,
+            'end_date' => $endDate,
+            'offset' => $offset,
+            'year' => $year ?: (int) $now->format('Y'),
+            'month' => $month ?: (int) $now->format('n'),
+            'quarter' => $quarter ?: (int) ceil(((int) $now->format('n')) / 3),
+        ];
     }
 
     public function generate(array $filters): array

@@ -15,7 +15,7 @@ if (!isset($_SESSION['user_id']) || !in_array((int) ($_SESSION['role_id'] ?? 0),
 
 try {
     $controller = new ReportController();
-    $data = $controller->dashboard();
+    $data = $controller->dashboard($_GET);
     echo json_encode(array_merge(['success' => true, 'data' => $data], $data));
 } catch (Throwable $exception) {
     error_log($exception->getMessage());
