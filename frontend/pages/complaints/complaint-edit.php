@@ -698,9 +698,14 @@ include __DIR__ . '/../../layouts/header.php';
                                 <label for="narrative">Complaint Narrative <span class="required-mark" id="narrativeRequiredStar">*</span></label>
                                 <textarea id="narrative" name="narrative" rows="5" maxlength="15000" required placeholder="Describe in detail what occurred, when, and the circumstances surrounding the incident..."><?php echo htmlspecialchars($effNarrative); ?></textarea>
                                 <div class="ai-narrative-actions">
-                                    <button type="button" class="btn-outline-sm" data-enhance-narrative>✨ Enhance with AI</button>
-                                    <small class="field-hint">Keep statements chronological, clear, and focused on key incident details.</small>
-                                    <label class="field-hint"><input type="checkbox" data-ai-external-consent> I understand this narrative will be sent to Google Gemini for AI processing.</label>
+                                    <div class="ai-narrative-tools">
+                                        <button type="button" class="btn-outline-sm" data-enhance-narrative>✨ Enhance with AI</button>
+                                        <small class="field-hint">Keep statements chronological, clear, and focused on key incident details.</small>
+                                    </div>
+                                    <label class="ai-consent-checkbox-label">
+                                        <input type="checkbox" data-ai-external-consent>
+                                        <span>I understand this narrative will be sent to Google Gemini for AI processing.</span>
+                                    </label>
                                 </div>
                                 <div class="ai-narrative-preview" data-narrative-preview hidden>
                                     <strong>AI suggestion</strong>
@@ -712,7 +717,7 @@ include __DIR__ . '/../../layouts/header.php';
                                 </div>
                             </div>
 
-                            <div class="form-group" style="margin-bottom:0;">
+                            <div class="form-group" id="prayerForReliefGroup" style="margin-bottom:0;">
                                 <label for="requestedResolution">Relief / Settlement Desired by Complainant <span class="optional-label">Optional</span></label>
                                 <textarea id="requestedResolution" name="requested_resolution" rows="3" maxlength="5000" placeholder="Specify desired resolution (e.g., payment of debt, boundary wall restoration, public apology, cessation of nuisance)..."><?php echo htmlspecialchars($effRequestedResolution); ?></textarea>
                             </div>
@@ -1068,12 +1073,12 @@ include __DIR__ . '/../../layouts/header.php';
                     <!-- Residence & Address -->
                     <div class="party-section-heading" style="margin-top: 16px;">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
-                        Residence Details
+                        Residence Details <span class="required-mark">*</span>
                     </div>
                     <div class="party-fields-grid-2">
                         <div class="party-field-col">
-                            <label for="modalPurok">Purok / Area (Barangay Tumana)</label>
-                            <select id="modalPurok">
+                            <label for="modalPurok">Purok / Area (Barangay Tumana) <span class="required-mark">*</span></label>
+                            <select id="modalPurok" required>
                                 <option value="">Select Purok...</option>
                                 <optgroup label="Tumana Puroks / Compounds">
                                     <option value="Doña Petra">Doña Petra Compound</option>
@@ -1089,8 +1094,8 @@ include __DIR__ . '/../../layouts/header.php';
                             </select>
                         </div>
                         <div class="party-field-col">
-                            <label for="modalIsTenant">Residency Status</label>
-                            <select id="modalIsTenant">
+                            <label for="modalIsTenant">Residency Status <span class="required-mark">*</span></label>
+                            <select id="modalIsTenant" required>
                                 <option value="0">Permanent Resident</option>
                                 <option value="1">Tenant / Renter</option>
                                 <option value="2">Non-Resident</option>
@@ -1099,8 +1104,8 @@ include __DIR__ . '/../../layouts/header.php';
                     </div>
 
                     <div class="party-field-col" style="margin-top: 10px;">
-                        <label for="modalAddress">Complete Street Address</label>
-                        <input type="text" id="modalAddress" placeholder="House #, Street name, Purok/Compound, Barangay Tumana">
+                        <label for="modalAddress">Complete Street Address <span class="required-mark">*</span></label>
+                        <input type="text" id="modalAddress" required placeholder="House #, Street name, Purok/Compound, Barangay Tumana">
                     </div>
 
                     <!-- Minor & Legal Guardian Section -->
@@ -1304,6 +1309,44 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.agapNotify?.('Please provide the respondent\'s First Name and Last Name.', 'error');
                 window.openPartyModal('respondent', respondentsList.length > 0 ? 'edit' : 'add', 0);
                 return;
+            }
+
+            const compPurok = document.getElementById('complainantPurok')?.value?.trim();
+            const compAddress = document.getElementById('complainantAddress')?.value?.trim();
+            if (!compPurok || !compAddress) {
+                e.preventDefault();
+                window.agapNotify?.('Please provide the complainant\'s complete residence details (Purok/Area and Street Address).', 'error');
+                window.openPartyModal('complainant', complainantsList.length > 0 ? 'edit' : 'add', 0);
+                return;
+            }
+
+            const respPurok = document.getElementById('respondentPurok')?.value?.trim();
+            const respAddress = document.getElementById('respondentAddress')?.value?.trim();
+            if (!respPurok || !respAddress) {
+                e.preventDefault();
+                window.agapNotify?.('Please provide the respondent\'s complete residence details (Purok/Area and Street Address).', 'error');
+                window.openPartyModal('respondent', respondentsList.length > 0 ? 'edit' : 'add', 0);
+                return;
+            }
+
+            for (let i = 0; i < complainantsList.length; i++) {
+                const c = complainantsList[i];
+                if (!c.purok || !c.address) {
+                    e.preventDefault();
+                    window.agapNotify?.(`Please provide complete residence details for Complainant ${i + 1} (${c.first_name} ${c.last_name}).`, 'error');
+                    window.openPartyModal('complainant', 'edit', i);
+                    return;
+                }
+            }
+
+            for (let i = 0; i < respondentsList.length; i++) {
+                const r = respondentsList[i];
+                if (!r.purok || !r.address) {
+                    e.preventDefault();
+                    window.agapNotify?.(`Please provide complete residence details for Respondent ${i + 1} (${r.first_name} ${r.last_name}).`, 'error');
+                    window.openPartyModal('respondent', 'edit', i);
+                    return;
+                }
             }
 
             // Check distinctness
@@ -1753,6 +1796,28 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        const purok = document.getElementById('modalPurok')?.value?.trim() || '';
+        const isTenant = document.getElementById('modalIsTenant')?.value;
+        const address = document.getElementById('modalAddress')?.value?.trim() || '';
+
+        if (!purok) {
+            window.agapNotify?.('Please select a Purok / Area under Residence Details.', 'error');
+            document.getElementById('modalPurok')?.focus();
+            return;
+        }
+
+        if (isTenant === '' || isTenant === undefined || isTenant === null) {
+            window.agapNotify?.('Please select a Residency Status under Residence Details.', 'error');
+            document.getElementById('modalIsTenant')?.focus();
+            return;
+        }
+
+        if (!address) {
+            window.agapNotify?.('Please enter the Complete Street Address under Residence Details.', 'error');
+            document.getElementById('modalAddress')?.focus();
+            return;
+        }
+
         const minorEl = document.getElementById('modalIsMinor');
         const isMinor = (minorEl?.type === 'checkbox') ? !!minorEl?.checked : (minorEl?.value === '1');
         if (isMinor) {
@@ -1820,8 +1885,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.removeParty = function(role, index) {
         if (role === 'complainant') {
+            if (complainantsList.length <= 1) {
+                if (!confirm('Are you sure you want to remove this complainant? A complaint requires at least one complainant.')) {
+                    return;
+                }
+            }
             complainantsList.splice(index, 1);
         } else {
+            if (respondentsList.length <= 1) {
+                if (!confirm('Are you sure you want to remove this respondent? A complaint requires at least one respondent.')) {
+                    return;
+                }
+            }
             respondentsList.splice(index, 1);
         }
         syncHiddenPartyInputs();
@@ -1999,19 +2074,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 return `
                     <div class="party-summary-card">
-                        <div class="party-avatar-badge is-complainant">${escapeHtml(initials)}</div>
-                        <div class="party-summary-info">
-                            <div class="party-summary-title-row">
-                                <span class="party-summary-name">${escapeHtml(fullName)}</span>
-                                <span class="party-role-pill ${rolePillClass}">${roleLabel}</span>
-                            </div>
-                            <div class="party-summary-details">
-                                ${details.join('')}
+                        <div class="party-summary-left">
+                            <div class="party-avatar-badge is-complainant">${escapeHtml(initials)}</div>
+                            <div class="party-summary-info">
+                                <div class="party-summary-title-row">
+                                    <span class="party-summary-name">${escapeHtml(fullName)}</span>
+                                    <span class="party-role-pill ${rolePillClass}">${roleLabel}</span>
+                                </div>
+                                <div class="party-summary-details">
+                                    ${details.join('')}
+                                </div>
                             </div>
                         </div>
                         <div class="party-summary-actions">
-                            <button type="button" class="btn-summary-action" onclick="openPartyModal('complainant', 'edit', ${idx})">✏️ Edit</button>
-                            <button type="button" class="btn-summary-action remove-party-action" onclick="removeParty('complainant', ${idx})">&times; Remove</button>
+                            <button type="button" class="btn-summary-action" onclick="openPartyModal('complainant', 'edit', ${idx})" title="Edit Details">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                <span>Edit</span>
+                            </button>
+                            <button type="button" class="btn-summary-action remove-party-action" onclick="removeParty('complainant', ${idx})" title="Remove Party">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                <span>Remove</span>
+                            </button>
                         </div>
                     </div>
                 `;
@@ -2076,19 +2159,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 return `
                     <div class="party-summary-card">
-                        <div class="party-avatar-badge is-respondent">${escapeHtml(initials)}</div>
-                        <div class="party-summary-info">
-                            <div class="party-summary-title-row">
-                                <span class="party-summary-name">${escapeHtml(fullName)}</span>
-                                <span class="party-role-pill ${rolePillClass}">${roleLabel}</span>
-                            </div>
-                            <div class="party-summary-details">
-                                ${details.join('')}
+                        <div class="party-summary-left">
+                            <div class="party-avatar-badge is-respondent">${escapeHtml(initials)}</div>
+                            <div class="party-summary-info">
+                                <div class="party-summary-title-row">
+                                    <span class="party-summary-name">${escapeHtml(fullName)}</span>
+                                    <span class="party-role-pill ${rolePillClass}">${roleLabel}</span>
+                                </div>
+                                <div class="party-summary-details">
+                                    ${details.join('')}
+                                </div>
                             </div>
                         </div>
                         <div class="party-summary-actions">
-                            <button type="button" class="btn-summary-action" onclick="openPartyModal('respondent', 'edit', ${idx})">✏️ Edit</button>
-                            <button type="button" class="btn-summary-action remove-party-action" onclick="removeParty('respondent', ${idx})">&times; Remove</button>
+                            <button type="button" class="btn-summary-action" onclick="openPartyModal('respondent', 'edit', ${idx})" title="Edit Details">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                <span>Edit</span>
+                            </button>
+                            <button type="button" class="btn-summary-action remove-party-action" onclick="removeParty('respondent', ${idx})" title="Remove Party">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                <span>Remove</span>
+                            </button>
                         </div>
                     </div>
                 `;

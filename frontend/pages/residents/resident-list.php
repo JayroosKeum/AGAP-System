@@ -376,8 +376,8 @@ include '../../layouts/header.php';
 
                 <!-- Purok Dropdown in Barangay Tumana -->
                 <div class="form-group">
-                    <label for="addPurok">Purok / Zone (Tumana)</label>
-                    <select name="purok" id="addPurok">
+                    <label for="addPurok">Purok / Zone (Tumana) <span class="required-mark">*</span></label>
+                    <select name="purok" id="addPurok" required>
                         <option value="">Select Purok / Area</option>
                         <option value="Non-Resident">Non-Resident / Outside Tumana</option>
                         <optgroup label="Numbered Puroks">
@@ -631,8 +631,8 @@ include '../../layouts/header.php';
 
                 <!-- Purok Dropdown in Barangay Tumana -->
                 <div class="form-group">
-                    <label for="editPurok">Purok / Zone (Tumana)</label>
-                    <select name="purok" id="editPurok">
+                    <label for="editPurok">Purok / Zone (Tumana) <span class="required-mark">*</span></label>
+                    <select name="purok" id="editPurok" required>
                         <option value="">Select Purok / Area</option>
                         <option value="Non-Resident">Non-Resident / Outside Tumana</option>
                         <optgroup label="Numbered Puroks">

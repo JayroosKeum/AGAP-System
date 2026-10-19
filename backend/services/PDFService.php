@@ -909,7 +909,9 @@ class PDFService
     private function partyLinesForKp7(array $parties, string $fallback = '___________________________'): string
     {
         if ($parties === []) {
-            return '<div style="border-bottom: 1px solid #1e293b; padding-bottom: 2px; margin-bottom: 4px;">' . $fallback . '</div>';
+            return '<div style="border-bottom: 1px solid #1e293b; min-height: 4mm; margin-bottom: 5px;">&nbsp;</div>' .
+                   '<div style="border-bottom: 1px solid #1e293b; min-height: 4mm; margin-bottom: 5px;">&nbsp;</div>' .
+                   '<div style="border-bottom: 1px solid #1e293b; min-height: 4mm; margin-bottom: 5px;">&nbsp;</div>';
         }
 
         $html = '';
@@ -1133,31 +1135,29 @@ class PDFService
 
             <p style="margin-top: 3.5mm;">DAHIL DITO, AKO/KAMI ay nakikiusap na ang mga sumusunod na lunas ay ipagkaloob sa akin/amin nang naaayon sa batas at/sa katarungan.</p>
             
-            <div class="narrative-indent" style="margin-top: 1.5mm; font-style: italic;">
-                ' . ($resolution !== '' ? nl2br($this->escape($resolution)) : 'Mapayapang pag-aayos, pagwawasto sa idinulot na pinsala o abala, at kaukulang lunas alinsunod sa batas at mga umiiral na alituntunin ng Katarungang Pambarangay.') . '
-            </div>
+            ' . ($resolution !== '' ? '<div class="narrative-indent" style="margin-top: 1.5mm; font-style: italic;">' . nl2br($this->escape($resolution)) . '</div>' : '') . '
         </div>
 
         <div class="date-statement">
             <div>Ginawa ngayong ika- <strong>' . $day . '</strong> ng <strong>' . $month . '</strong>, <strong>' . $year . '</strong>.</div>
-            <div style="margin-top: 1.5mm;">Tinanggap ngayong ika- <strong>' . $day . '</strong> ng <strong>' . $month . '</strong>, <strong>' . $year . '</strong>.</div>
+            <div style="margin-top: 3.5mm;">Tinanggap ngayong ika- <strong>' . $day . '</strong> ng <strong>' . $month . '</strong>, <strong>' . $year . '</strong>.</div>
         </div>
 
         <table class="sig-table">
             <tr>
-                <td style="width: 48%; vertical-align: bottom; text-align: center;">
-                    <div class="sig-space"></div>
-                    <div class="sig-line">
-                        <strong style="font-size: 10pt; text-transform: uppercase;">' . $this->escape($signatureCompName) . '</strong>
-                    </div>
+                <td style="width: 48%; vertical-align: top; text-align: center;">
+                    <div class="sig-comp-name">' . $this->escape($signatureCompName) . '</div>
+                    <div class="sig-comp-line"></div>
                     <div class="sig-title">(Mga) Nagrereklamo</div>
                 </td>
                 <td style="width: 4%;"></td>
-                <td style="width: 48%; vertical-align: bottom; text-align: center;">
-                    <div class="sig-space"></div>
-                    <div class="sig-line">
-                        <strong style="font-size: 10pt; text-transform: uppercase;">' . $captainName . '</strong>
-                    </div>
+                <td style="width: 48%;"></td>
+            </tr>
+            <tr>
+                <td style="width: 48%;"></td>
+                <td style="width: 4%;"></td>
+                <td style="width: 48%; vertical-align: top; text-align: center; padding-top: 14mm;">
+                    <div class="sig-capt-line">' . $captainName . '</div>
                     <div class="sig-title">Punong Barangay / Tagapangulo ng Lupon</div>
                 </td>
             </tr>
@@ -1198,12 +1198,13 @@ class PDFService
         .narrative-block p { margin: 0 0 2.5mm 0; }
         .narrative-indent { text-indent: 10mm; }
 
-        .date-statement { margin: 3mm 0 2mm; font-size: 10pt; }
+        .date-statement { margin: 6mm 0 6mm 10mm; font-size: 10pt; line-height: 1.5; }
 
-        .sig-table { width: 100%; border-collapse: collapse; margin-top: 10mm; }
-        .sig-space { height: 48px; min-height: 48px; }
-        .sig-line { border-bottom: 1.5px solid #0f172a; width: 90%; margin: 0 auto; padding-bottom: 1.5mm; }
-        .sig-title { font-size: 9pt; margin-top: 2mm; color: #1e293b; }
+        .sig-table { width: 100%; border-collapse: collapse; margin-top: 4mm; }
+        .sig-comp-name { font-weight: bold; font-size: 10pt; text-transform: uppercase; margin-bottom: 1.5mm; }
+        .sig-comp-line { border-bottom: 1.5px solid #0f172a; width: 92%; margin: 0 auto; }
+        .sig-capt-line { border-top: 1.5px solid #0f172a; width: 92%; margin: 0 auto; padding-top: 1.5mm; font-weight: bold; font-size: 10pt; text-transform: uppercase; }
+        .sig-title { font-size: 9pt; margin-top: 1.5mm; color: #1e293b; }
     </style>
 </head>
 <body>
