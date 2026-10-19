@@ -765,73 +765,74 @@ function viewCase(id) {
                 );
             }
 
+            const caseNumber = item.case_number || ('Case #' + item.case_id);
+            const statusClass = (item.case_status || 'Docketed').toLowerCase().replace(/[^a-z0-9]/g, '-');
+            const typeClass = (item.case_type || 'Civil').toLowerCase();
+
             details.innerHTML = `
-                <dl class="case-details">
-                    <dt>Case Number</dt>
-                    <dd>
-                        ${escapeHtml(
-                            item.case_number ||
-                            'Not assigned'
-                        )}
-                    </dd>
+                <div class="case-summary-modal-content" style="display:flex; flex-direction:column; gap:16px;">
+                    <!-- Case Summary Header -->
+                    <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:16px;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+                            <div>
+                                <span style="font-size:0.75rem; font-weight:800; color:#64748b; text-transform:uppercase; letter-spacing:0.05em; display:block; margin-bottom:2px;">
+                                    ${escapeHtml(item.category_name || 'Dispute Case')}
+                                </span>
+                                <h3 style="margin:0; font-size:1.2rem; color:#0f172a; font-weight:800;">
+                                    ${escapeHtml(item.complaint_title || 'Untitled Complaint')}
+                                </h3>
+                                <span style="font-size:0.85rem; color:#3b82f6; font-weight:700;">
+                                    ${escapeHtml(caseNumber)}
+                                </span>
+                            </div>
+                            <div style="display:flex; gap:6px; align-items:center;">
+                                <span class="type-pill type-${typeClass}">${escapeHtml(item.case_type || 'Civil')}</span>
+                                <span class="case-stage-pill status-${statusClass}">${escapeHtml(item.case_status || 'Active')}</span>
+                            </div>
+                        </div>
 
-                    <dt>Complaint</dt>
-                    <dd>
-                        ${escapeHtml(
-                            item.complaint_number ||
-                            'No complaint number'
-                        )}
-                        -
-                        ${escapeHtml(
-                            item.complaint_title ||
-                            'Untitled complaint'
-                        )}
-                    </dd>
+                        <!-- Core Metadata Grid -->
+                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:10px; margin-top:14px; padding-top:12px; border-top:1px solid #e2e8f0; font-size:0.82rem;">
+                            <div>
+                                <span style="color:#64748b; display:block; font-size:0.72rem; text-transform:uppercase; font-weight:700;">Docket Date</span>
+                                <strong style="color:#0f172a;">${escapeHtml(item.docket_date || 'Not recorded')}</strong>
+                            </div>
+                            <div>
+                                <span style="color:#64748b; display:block; font-size:0.72rem; text-transform:uppercase; font-weight:700;">Incident Date</span>
+                                <strong style="color:#0f172a;">${escapeHtml(item.incident_date || 'Not recorded')}</strong>
+                            </div>
+                            <div>
+                                <span style="color:#64748b; display:block; font-size:0.72rem; text-transform:uppercase; font-weight:700;">Incident Location</span>
+                                <strong style="color:#0f172a;" title="${escapeHtml(item.incident_location || '')}">${escapeHtml(item.incident_location ? (item.incident_location.length > 25 ? item.incident_location.slice(0, 25) + '…' : item.incident_location) : 'Barangay')}</strong>
+                            </div>
+                        </div>
+                    </div>
 
-                    <dt>Case Type</dt>
-                    <dd>
-                        ${escapeHtml(
-                            item.case_type ||
-                            'Not recorded'
-                        )}
-                    </dd>
+                    <!-- Parties Summary -->
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
+                        <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:12px;">
+                            <span style="font-size:0.75rem; font-weight:800; color:#0284c7; text-transform:uppercase; display:block; margin-bottom:4px;">Complainant(s)</span>
+                            <div style="font-size:0.88rem; color:#0f172a; font-weight:600;">${escapeHtml(item.complainant_names || 'Complainant')}</div>
+                        </div>
+                        <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:12px;">
+                            <span style="font-size:0.75rem; font-weight:800; color:#e11d48; text-transform:uppercase; display:block; margin-bottom:4px;">Respondent(s)</span>
+                            <div style="font-size:0.88rem; color:#0f172a; font-weight:600;">${escapeHtml(item.respondent_names || 'Respondent')}</div>
+                        </div>
+                    </div>
 
-                    <dt>Status</dt>
-                    <dd>
-                        ${escapeHtml(
-                            item.case_status ||
-                            'Unknown'
-                        )}
-                    </dd>
+                    <!-- Narrative & Relief Summary -->
+                    <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:14px;">
+                        <span style="font-size:0.75rem; font-weight:800; color:#475569; text-transform:uppercase; display:block; margin-bottom:6px;">Statement of Facts</span>
+                        <div style="font-size:0.86rem; color:#334155; line-height:1.55; max-height:160px; overflow-y:auto; background:#f8fafc; padding:10px 12px; border-radius:6px; border:1px solid #f1f5f9; white-space:pre-wrap;">${escapeHtml(item.narrative || 'No statement narrative provided.')}</div>
+                    </div>
 
-                    <dt>Docket Date</dt>
-                    <dd>
-                        ${escapeHtml(
-                            item.docket_date ||
-                            'Not recorded'
-                        )}
-                    </dd>
-
-                    <dt>Incident Date</dt>
-                    <dd>
-                        ${escapeHtml(
-                            item.incident_date ||
-                            'Not recorded'
-                        )}
-                    </dd>
-
-                    <dt>Narrative</dt>
-                    <dd>
-                        ${escapeHtml(
-                            item.narrative ||
-                            'Not recorded'
-                        )}
-                    </dd>
-                </dl>
-                <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid #e2e8f0; text-align: right;">
-                    <a href="../complaints/complaint-details.php?id=${encodeURIComponent(item.complaint_id)}" class="btn-create" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem;">
-                        Open Complaint &amp; Case Workspace &rarr;
-                    </a>
+                    <!-- Modal Action Footer -->
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding-top:12px; border-top:1px solid #e2e8f0; flex-wrap:wrap; gap:10px;">
+                        <button type="button" class="btn-secondary" onclick="closeViewCaseModal()" style="font-size:0.85rem; padding:8px 14px;">Close</button>
+                        <a href="../complaints/complaint-details.php?id=${encodeURIComponent(item.complaint_id)}#tab-summary" class="btn-create" style="text-decoration:none; display:inline-flex; align-items:center; gap:6px; font-size:0.85rem; padding:8px 16px;">
+                            <span>Open Full Case Summary &rarr;</span>
+                        </a>
+                    </div>
                 </div>
             `;
 

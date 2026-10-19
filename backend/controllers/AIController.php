@@ -120,4 +120,74 @@ PROMPT;
 
         return ['success' => true, 'narrative' => $refined];
     }
+
+    public function caseSummary(array $caseData): array
+    {
+        $caseNumber = trim((string) ($caseData['case_number'] ?? ($caseData['complaint_number'] ?? 'N/A')));
+        $title = trim((string) ($caseData['complaint_title'] ?? 'Untitled Case'));
+        $type = trim((string) ($caseData['case_type'] ?? 'Civil'));
+        $category = trim((string) ($caseData['category_name'] ?? 'General Dispute'));
+        $status = trim((string) ($caseData['case_status'] ?? ($caseData['status'] ?? 'Active')));
+        $complainants = trim((string) ($caseData['complainants'] ?? 'Not specified'));
+        $respondents = trim((string) ($caseData['respondents'] ?? 'Not specified'));
+        $incidentDate = trim((string) ($caseData['incident_date'] ?? 'Not recorded'));
+        $location = trim((string) ($caseData['incident_location'] ?? 'Not specified'));
+        $narrative = trim((string) ($caseData['narrative'] ?? 'No statement provided.'));
+        $additional = trim((string) ($caseData['additional_details'] ?? 'None'));
+        $relief = trim((string) ($caseData['requested_resolution'] ?? 'None specified'));
+        $hearings = trim((string) ($caseData['hearings_summary'] ?? 'No hearings recorded yet.'));
+
+        $prompt = <<<PROMPT
+You are an expert dispute-resolution assistant for the Katarungang Pambarangay (Barangay Justice System, RA 7160) in the Philippines.
+Analyze the following case information and generate a professional, objective, high-level Case Summary Briefing for the Punong Barangay, Pangkat Members, and Lupon Secretary.
+
+Case Details:
+- Case Number: {$caseNumber}
+- Title: {$title}
+- Case Type: {$type}
+- Category: {$category}
+- Current Stage / Status: {$status}
+- Complainant(s): {$complainants}
+- Respondent(s): {$respondents}
+- Incident Date & Location: {$incidentDate} at {$location}
+- Statement of Complaint: {$narrative}
+- Prior Attempts & Additional Facts: {$additional}
+- Relief / Remedy Demanded: {$relief}
+- Proceedings & Sessions Record: {$hearings}
+
+Generate a clear, structured summary in plain text using the following sections:
+1. EXECUTIVE BRIEFING
+(A 2-3 sentence overview of the parties, dispute origin, and current posture)
+
+2. DISPUTED ISSUES & CLAIMS
+- Facts Alleged:
+- Core Conflict:
+- Relief / Settlement Sought:
+
+3. PROCEEDINGS & MEDIATION STATUS
+(Summary of attendance, mediation progress, and any preliminary proposals or impasses)
+
+4. PROCEDURAL ASSESSMENT & RECOMMENDED NEXT STEPS
+(Clear recommendations under Katarungang Pambarangay rules, such as next hearing schedule, pangkat constitution, amicable settlement execution, or referral/CFA)
+
+Maintain a neutral, factual, and strictly professional tone. Do not invent facts beyond the provided details.
+PROMPT;
+
+        $response = $this->gemini->generate($prompt, [
+            'temperature' => 0.1,
+            'maxOutputTokens' => 4096
+        ]);
+
+        if (!$response['success']) {
+            return $response;
+        }
+
+        $summaryText = trim((string) ($response['data']['candidates'][0]['content']['parts'][0]['text'] ?? ''));
+        if ($summaryText === '') {
+            return ['success' => false, 'message' => 'AI case briefing returned an empty result.'];
+        }
+
+        return ['success' => true, 'summary' => $summaryText];
+    }
 }
+

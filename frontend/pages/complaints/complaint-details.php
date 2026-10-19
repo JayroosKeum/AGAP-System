@@ -50,6 +50,10 @@ include '../../layouts/header.php';
             </div>
 
             <div class="case-bar-right">
+                <button type="button" class="btn-case-outline" id="btnCaseSummaryTab" onclick="switchCaseTab('tab-summary')" title="View summary of this case">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                    <span>Case Summary</span>
+                </button>
                 <button type="button" class="btn-case-outline" id="issueSummonButton" onclick="handleIssueSummonClick()">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                     <span id="issueSummonButtonText">Issue Summon 1st Attempt</span>
@@ -82,6 +86,10 @@ include '../../layouts/header.php';
             <button type="button" class="case-tab-item active" data-tab="tab-overview" onclick="switchCaseTab('tab-overview')">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
                 <span>Overview &amp; Workflow</span>
+            </button>
+            <button type="button" class="case-tab-item" data-tab="tab-summary" onclick="switchCaseTab('tab-summary')">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                <span>Case Summary</span>
             </button>
             <button type="button" class="case-tab-item" data-tab="tab-mediation" onclick="switchCaseTab('tab-mediation')">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
@@ -296,6 +304,204 @@ include '../../layouts/header.php';
                 </div>
             </div>
 
+        </div>
+
+        <!-- ===================================================================
+             TAB PANE: CASE SUMMARY (Comprehensive Case Briefing)
+             =================================================================== -->
+        <div id="tab-summary" class="case-tab-pane">
+            <div class="case-summary-wrapper" style="margin: 0 30px 30px;">
+                <!-- Summary Actions / Control Strip -->
+                <div class="summary-control-strip">
+                    <div class="summary-strip-left">
+                        <span class="summary-badge-chip">CASE SUMMARY DOSSIER</span>
+                        <span id="summaryLastUpdated" class="summary-timestamp">Compiled in real-time</span>
+                    </div>
+                    <div class="summary-strip-right">
+                        <button type="button" class="btn-summary-action" onclick="copyCaseSummaryText()" title="Copy case summary to clipboard">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                            <span>Copy Summary</span>
+                        </button>
+                        <button type="button" class="btn-summary-action btn-summary-print" onclick="printCaseSummary()" title="Print official case briefing sheet">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                            <span>Print Brief</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Section 1: Executive Case Header -->
+                <div class="summary-hero-card">
+                    <div class="summary-hero-top">
+                        <div>
+                            <span class="summary-meta-sub">OFFICIAL BARANGAY DISPUTE RECORD</span>
+                            <h2 id="summaryCaseTitle" class="summary-hero-title">Loading case summary...</h2>
+                        </div>
+                        <div class="summary-hero-badges" id="summaryHeroBadges">
+                            <span id="summaryCaseTypeBadge" class="type-pill type-civil">Civil</span>
+                            <span id="summaryStatusBadge" class="status-badge status-mediation">Mediation</span>
+                        </div>
+                    </div>
+
+                    <!-- KPI Snapshot Grid -->
+                    <div class="summary-kpi-grid">
+                        <div class="summary-kpi-card">
+                            <span class="kpi-title">Case Number</span>
+                            <strong id="summaryCaseNumber">—</strong>
+                        </div>
+                        <div class="summary-kpi-card">
+                            <span class="kpi-title">Category</span>
+                            <strong id="summaryCategory">—</strong>
+                        </div>
+                        <div class="summary-kpi-card">
+                            <span class="kpi-title">Date Filed</span>
+                            <strong id="summaryDateFiled">—</strong>
+                        </div>
+                        <div class="summary-kpi-card">
+                            <span class="kpi-title">Incident Date</span>
+                            <strong id="summaryIncidentDate">—</strong>
+                        </div>
+                        <div class="summary-kpi-card">
+                            <span class="kpi-title">Statutory Deadline</span>
+                            <strong id="summaryDeadline">—</strong>
+                        </div>
+                        <div class="summary-kpi-card">
+                            <span class="kpi-title">Hearings Held</span>
+                            <strong id="summaryHearingsCount">0 sessions</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 2: AI-Powered Executive Briefing Card -->
+                <div class="summary-ai-card">
+                    <div class="summary-card-header">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span class="ai-spark-icon">✨</span>
+                            <h3 style="margin:0; font-size:1.05rem;">AI Executive Case Brief</h3>
+                        </div>
+                        <button type="button" id="btnGenerateAiBrief" class="btn-ai-generate" onclick="generateAiCaseBrief()">
+                            <span id="aiBriefBtnSpinner" style="display:none;">⏳</span>
+                            <span id="aiBriefBtnText">Generate AI Brief</span>
+                        </button>
+                    </div>
+
+                    <div id="aiBriefConsentBox" class="ai-consent-box">
+                        <label class="ai-consent-label">
+                            <input type="checkbox" id="aiBriefConsentCheck" checked>
+                            <span>I understand this case data will be analyzed by Google Gemini to compile an executive briefing under Katarungang Pambarangay rules.</span>
+                        </label>
+                    </div>
+
+                    <div id="aiBriefOutputContainer" class="ai-brief-output">
+                        <p class="ai-brief-placeholder">
+                            Click <strong>"Generate AI Brief"</strong> to analyze all facts, statements, hearings, and proceedings into an executive briefing sheet.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Section 3: Two-Column Parties & Facts Summary -->
+                <div class="summary-two-col-grid">
+                    <!-- Column 1: Parties Summary -->
+                    <div class="summary-content-card">
+                        <div class="summary-card-header">
+                            <h3 style="margin:0; font-size:1rem;">Involved Parties</h3>
+                            <span id="summaryPartiesCount" class="panel-count-badge">0 parties</span>
+                        </div>
+                        <div class="summary-card-body">
+                            <div class="summary-parties-group">
+                                <h4 class="party-group-title complainant-title">Complainant(s)</h4>
+                                <div id="summaryComplainantsList" class="summary-parties-list">
+                                    <p class="empty-text">Loading complainants...</p>
+                                </div>
+                            </div>
+                            <div class="summary-parties-group" style="margin-top:16px;">
+                                <h4 class="party-group-title respondent-title">Respondent(s)</h4>
+                                <div id="summaryRespondentsList" class="summary-parties-list">
+                                    <p class="empty-text">Loading respondents...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Column 2: Incident & Location Summary -->
+                    <div class="summary-content-card">
+                        <div class="summary-card-header">
+                            <h3 style="margin:0; font-size:1rem;">Incident &amp; Location</h3>
+                        </div>
+                        <div class="summary-card-body">
+                            <div class="summary-info-row">
+                                <span class="info-label">Incident Date &amp; Time:</span>
+                                <span id="summaryIncidentDateTime" class="info-val">—</span>
+                            </div>
+                            <div class="summary-info-row">
+                                <span class="info-label">Location Address:</span>
+                                <span id="summaryLocationAddress" class="info-val">—</span>
+                            </div>
+                            <div class="summary-info-row">
+                                <span class="info-label">Landmark:</span>
+                                <span id="summaryLocationLandmark" class="info-val">None</span>
+                            </div>
+                            <div class="summary-info-row">
+                                <span class="info-label">GPS Coordinates:</span>
+                                <span id="summaryCoordinates" class="info-val">—</span>
+                            </div>
+                            <div class="summary-info-row" style="margin-top:12px; border-top:1px dashed #e2e8f0; padding-top:10px;">
+                                <span class="info-label">Presiding Officer:</span>
+                                <span id="summaryPresidingOfficer" class="info-val">Punong Barangay</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 4: Narrative, Facts & Relief Sought -->
+                <div class="summary-content-card" style="margin-top:20px;">
+                    <div class="summary-card-header">
+                        <h3 style="margin:0; font-size:1rem;">Facts, Allegations &amp; Relief Demanded</h3>
+                    </div>
+                    <div class="summary-card-body">
+                        <div class="summary-fact-block">
+                            <strong>Statement of Complaint / Allegations:</strong>
+                            <div id="summaryNarrativeText" class="fact-text-box">Loading statement...</div>
+                        </div>
+                        <div id="summaryAdditionalWrap" class="summary-fact-block" style="display:none; margin-top:14px;">
+                            <strong>Prior Attempts / Additional Context:</strong>
+                            <div id="summaryAdditionalText" class="fact-text-box"></div>
+                        </div>
+                        <div id="summaryReliefWrap" class="summary-fact-block" style="margin-top:14px;">
+                            <strong>Relief Demanded / Settlement Remedy:</strong>
+                            <div id="summaryReliefText" class="fact-text-box fact-relief-box">None specified</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 5: Proceedings, Hearings & Document Log -->
+                <div class="summary-two-col-grid" style="margin-top:20px;">
+                    <!-- Hearings Log -->
+                    <div class="summary-content-card">
+                        <div class="summary-card-header">
+                            <h3 style="margin:0; font-size:1rem;">Hearings &amp; Session Records</h3>
+                            <span id="summaryHearingsBadge" class="panel-count-badge">0 recorded</span>
+                        </div>
+                        <div class="summary-card-body">
+                            <div id="summaryHearingsList" class="summary-log-list">
+                                <p class="empty-text">No hearings recorded yet.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Issued KP Forms & Proofs -->
+                    <div class="summary-content-card">
+                        <div class="summary-card-header">
+                            <h3 style="margin:0; font-size:1rem;">Issued KP Forms &amp; Service</h3>
+                            <span id="summaryKpDocsBadge" class="panel-count-badge">0 documents</span>
+                        </div>
+                        <div class="summary-card-body">
+                            <div id="summaryKpDocsList" class="summary-log-list">
+                                <p class="empty-text">No KP forms issued yet.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- ===================================================================

@@ -565,6 +565,9 @@ async function loadComplaintDetails() {
 
         // Render Combined Case Workspace if docketed
         renderCaseWorkspace(data.case_workspace, data);
+
+        // Render Comprehensive Case Summary Dossier
+        renderCaseSummary(data);
     } catch (err) {
         console.error('Error loading complaint details:', err);
     }
@@ -3722,3 +3725,311 @@ function closeScanHistoryModal() {
     if (modal) modal.style.display = 'none';
 }
 window.closeScanHistoryModal = closeScanHistoryModal;
+
+// ==========================================================================
+// CASE SUMMARY & EXECUTIVE BRIEFING
+// ==========================================================================
+function getStatusBadgeClass(status) {
+    const s = String(status || '').toLowerCase();
+    if (s.includes('settled')) return 'status-settled';
+    if (s.includes('conciliation')) return 'status-conciliation';
+    if (s.includes('mediation')) return 'status-mediation';
+    if (s.includes('arbitration')) return 'status-arbitration';
+    if (s.includes('cfa')) return 'status-cfa';
+    if (s.includes('dismissed')) return 'status-dismissed';
+    if (s.includes('archived')) return 'status-archived';
+    if (s.includes('docketed')) return 'status-docketed';
+    return 'status-default';
+}
+
+function renderCaseSummary(data) {
+    if (!data) return;
+    const caseWorkspace = data.case_workspace || {};
+    const caseItem = caseWorkspace.case || {};
+    const hearings = caseWorkspace.hearings || [];
+    const documents = caseWorkspace.documents || [];
+    const parties = data.parties || [];
+
+    // Title & Header
+    const formatDocketDisplay = (num, id, dt) => {
+        if (num && !String(num).startsWith('CMP-')) return String(num);
+        const d = dt ? new Date(dt) : new Date();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const ss = String(id || 1).padStart(2, '0');
+        const yy = d.getFullYear() || 2026;
+        return `${mm}-${ss}-${yy}`;
+    };
+    const docketNum = formatDocketDisplay(caseItem.case_number || data.case_number || data.complaint_number, data.complaint_id, data.created_at);
+    setText('summaryCaseTitle', data.complaint_title || 'Untitled Case');
+    setText('summaryCaseNumber', docketNum ? ('Case #' + docketNum) : 'Not assigned');
+    setText('summaryCategory', data.category_name || (data.category_id ? 'Category #' + data.category_id : 'General Dispute'));
+    setText('summaryDateFiled', data.created_at ? formatDateReadable(data.created_at) : '—');
+
+    const incTime = data.incident_time ? formatTime12(data.incident_time) : '';
+    const incDate = data.incident_date ? formatDateReadable(data.incident_date) : 'N/A';
+    const incDateTime = (incDate !== 'N/A' && incTime && incTime !== 'Not recorded') ? `${incDate} at ${incTime}` : incDate;
+    setText('summaryIncidentDate', incDate);
+    setText('summaryIncidentDateTime', incDateTime);
+
+    const timer = caseWorkspace.case?.mediation_timer;
+    const deadlineText = timer ? (timer.days_remaining !== undefined ? `${timer.days_remaining} days remaining` : timer.badge_label) : (caseItem.mediation_deadline_date ? formatDateReadable(caseItem.mediation_deadline_date) : 'Within 15 days of filing');
+    setText('summaryDeadline', deadlineText);
+    setText('summaryHearingsCount', `${hearings.length} session${hearings.length === 1 ? '' : 's'}`);
+    setText('summaryHearingsBadge', `${hearings.length} recorded`);
+    setText('summaryKpDocsBadge', `${documents.length} document${documents.length === 1 ? '' : 's'}`);
+
+    const caseStatus = caseItem.case_status || data.lifecycle_status || 'Under Review';
+    const statusBadge = document.getElementById('summaryStatusBadge');
+    if (statusBadge) {
+        statusBadge.textContent = caseStatus;
+        statusBadge.className = `status-badge ${getStatusBadgeClass(caseStatus)}`;
+    }
+    const typeBadge = document.getElementById('summaryCaseTypeBadge');
+    if (typeBadge) {
+        typeBadge.textContent = data.case_type || 'Civil';
+        typeBadge.className = `type-pill ${data.case_type === 'Criminal' ? 'type-criminal' : 'type-civil'}`;
+    }
+
+    // Location & Presider
+    const locAddress = data.incident_location || (data.location && data.location.address) || 'Not specified';
+    const locLandmark = data.incident_landmark || 'None';
+    setText('summaryLocationAddress', locAddress);
+    setText('summaryLocationLandmark', locLandmark);
+    const lat = data.location && data.location.latitude ? parseFloat(data.location.latitude) : null;
+    const lng = data.location && data.location.longitude ? parseFloat(data.location.longitude) : null;
+    setText('summaryCoordinates', (lat && lng) ? `${lat.toFixed(6)}, ${lng.toFixed(6)}` : 'None');
+    setText('summaryPresidingOfficer', caseItem.presiding_officer_name || 'Punong Barangay');
+
+    // Parties
+    const compContainer = document.getElementById('summaryComplainantsList');
+    const respContainer = document.getElementById('summaryRespondentsList');
+    setText('summaryPartiesCount', `${parties.length} part${parties.length === 1 ? 'y' : 'ies'}`);
+
+    const complainants = parties.filter(p => p.party_type === 'Complainant');
+    const respondents = parties.filter(p => p.party_type === 'Respondent');
+
+    if (compContainer) {
+        compContainer.replaceChildren();
+        if (complainants.length === 0) {
+            compContainer.innerHTML = '<p class="empty-text">No complainant recorded.</p>';
+        } else {
+            complainants.forEach(p => {
+                const item = document.createElement('div');
+                item.className = 'summary-party-item';
+                const name = [p.first_name, p.middle_name, p.last_name].filter(Boolean).join(' ');
+                const contact = p.contact_no || p.phone || 'No phone recorded';
+                const addr = p.address || 'Address unrecorded';
+                item.innerHTML = `<strong>${escapeHtml(name)}</strong><span>${escapeHtml(addr)} &bull; ${escapeHtml(contact)}</span>`;
+                compContainer.appendChild(item);
+            });
+        }
+    }
+
+    if (respContainer) {
+        respContainer.replaceChildren();
+        if (respondents.length === 0) {
+            respContainer.innerHTML = '<p class="empty-text">No respondent recorded.</p>';
+        } else {
+            respondents.forEach(p => {
+                const item = document.createElement('div');
+                item.className = 'summary-party-item';
+                const name = [p.first_name, p.middle_name, p.last_name].filter(Boolean).join(' ');
+                const contact = p.contact_no || p.phone || 'No phone recorded';
+                const addr = p.address || 'Address unrecorded';
+                item.innerHTML = `<strong>${escapeHtml(name)}</strong><span>${escapeHtml(addr)} &bull; ${escapeHtml(contact)}</span>`;
+                respContainer.appendChild(item);
+            });
+        }
+    }
+
+    // Narrative & Facts
+    const narrEl = document.getElementById('summaryNarrativeText');
+    if (narrEl) narrEl.textContent = data.narrative || 'No statement of complaint recorded.';
+
+    const addWrap = document.getElementById('summaryAdditionalWrap');
+    const addEl = document.getElementById('summaryAdditionalText');
+    if (addWrap && addEl) {
+        if (data.additional_details && data.additional_details.trim()) {
+            addWrap.style.display = 'block';
+            addEl.textContent = data.additional_details;
+        } else {
+            addWrap.style.display = 'none';
+        }
+    }
+
+    const relEl = document.getElementById('summaryReliefText');
+    if (relEl) {
+        relEl.textContent = (data.requested_resolution && data.requested_resolution.trim()) ? data.requested_resolution : 'No specific relief or settlement terms recorded.';
+    }
+
+    // Hearings list
+    const hearingsContainer = document.getElementById('summaryHearingsList');
+    if (hearingsContainer) {
+        hearingsContainer.replaceChildren();
+        if (!hearings.length) {
+            hearingsContainer.innerHTML = '<p class="empty-text">No mediation or conciliation sessions scheduled yet.</p>';
+        } else {
+            hearings.forEach(h => {
+                const item = document.createElement('div');
+                item.className = 'summary-log-item';
+                const hDate = h.hearing_date ? formatDateReadable(h.hearing_date) + ' ' + (formatTime12(h.hearing_date.split(' ')[1] || '') || '') : 'Date unrecorded';
+                item.innerHTML = `
+                    <div class="log-item-header">
+                        <strong>${escapeHtml(h.hearing_type || 'Session')}</strong>
+                        <span class="status-badge ${getStatusBadgeClass(h.status)}">${escapeHtml(h.status || 'Scheduled')}</span>
+                    </div>
+                    <div class="log-item-meta">
+                        <span>📅 ${escapeHtml(hDate)}</span> &bull; <span>📍 ${escapeHtml(h.venue || 'Barangay Hall')}</span>
+                    </div>
+                `;
+                hearingsContainer.appendChild(item);
+            });
+        }
+    }
+
+    // Documents list
+    const docsContainer = document.getElementById('summaryKpDocsList');
+    if (docsContainer) {
+        docsContainer.replaceChildren();
+        if (!documents.length) {
+            docsContainer.innerHTML = '<p class="empty-text">No official KP documents generated for this case yet.</p>';
+        } else {
+            documents.forEach(doc => {
+                const item = document.createElement('div');
+                item.className = 'summary-log-item';
+                const docDate = doc.generated_at ? formatDateReadable(doc.generated_at) : '—';
+                item.innerHTML = `
+                    <div class="log-item-header">
+                        <strong>${escapeHtml(doc.template_name || 'KP Form')}</strong>
+                        <span class="status-badge ${doc.service_status === 'Served' ? 'status-settled' : 'status-docketed'}">${escapeHtml(doc.service_status || 'Generated')}</span>
+                    </div>
+                    <div class="log-item-meta">
+                        <span>Issued: ${escapeHtml(docDate)}</span>
+                    </div>
+                `;
+                docsContainer.appendChild(item);
+            });
+        }
+    }
+}
+window.renderCaseSummary = renderCaseSummary;
+
+function formatAiSummaryHtml(text) {
+    if (!text) return '';
+    let html = escapeHtml(text);
+    html = html.replace(/^###\s*(.+)$/gm, '<strong class="brief-heading">📌 $1</strong>');
+    html = html.replace(/^##\s*(.+)$/gm, '<strong class="brief-heading">📌 $1</strong>');
+    html = html.replace(/^([0-9]+\.\s+[A-Z\s&]+)$/gm, '<strong class="brief-heading">📌 $1</strong>');
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/^[\*\-\•]\s+(.+)$/gm, '• $1');
+    return html;
+}
+
+async function generateAiCaseBrief() {
+    const consentCheck = document.getElementById('aiBriefConsentCheck');
+    if (consentCheck && !consentCheck.checked) {
+        window.agapNotify?.('Please confirm consent to allow processing by Google Gemini.', 'error');
+        return;
+    }
+
+    const complaintId = new URLSearchParams(window.location.search).get('id');
+    if (!complaintId) return;
+
+    const btn = document.getElementById('btnGenerateAiBrief');
+    const spinner = document.getElementById('aiBriefBtnSpinner');
+    const btnText = document.getElementById('aiBriefBtnText');
+    const outputContainer = document.getElementById('aiBriefOutputContainer');
+
+    if (btn) btn.disabled = true;
+    if (spinner) spinner.style.display = 'inline';
+    if (btnText) btnText.textContent = 'Compiling Brief...';
+
+    try {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+        const response = await fetch('../../../backend/api/ai/case-summary.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': csrfToken
+            },
+            body: JSON.stringify({
+                complaint_id: parseInt(complaintId, 10),
+                external_ai_consent: true
+            })
+        });
+
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.success) {
+            throw new Error(result.message || 'Unable to generate AI case summary.');
+        }
+
+        if (outputContainer) {
+            outputContainer.innerHTML = `
+                <div class="ai-brief-content">
+                    <div class="ai-brief-toolbar">
+                        <span class="ai-brief-tag">${result.is_fallback ? '📋 Structured Case Brief' : '⚡ Gemini AI Legal Briefing'}</span>
+                        <span class="ai-brief-timestamp">Generated on ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                    <div class="ai-brief-body">${formatAiSummaryHtml(result.summary)}</div>
+                </div>
+            `;
+        }
+        window.agapNotify?.('Case Brief successfully compiled.', 'success');
+    } catch (err) {
+        console.error('AI brief error:', err);
+        window.agapNotify?.(err.message || 'Failed to generate AI brief.', 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+        if (spinner) spinner.style.display = 'none';
+        if (btnText) btnText.textContent = 'Regenerate AI Brief';
+    }
+}
+window.generateAiCaseBrief = generateAiCaseBrief;
+
+function copyCaseSummaryText() {
+    const title = document.getElementById('summaryCaseTitle')?.textContent || '';
+    const caseNum = document.getElementById('summaryCaseNumber')?.textContent || '';
+    const cat = document.getElementById('summaryCategory')?.textContent || '';
+    const dateFiled = document.getElementById('summaryDateFiled')?.textContent || '';
+    const incident = document.getElementById('summaryIncidentDateTime')?.textContent || '';
+    const address = document.getElementById('summaryLocationAddress')?.textContent || '';
+    const narrative = document.getElementById('summaryNarrativeText')?.textContent || '';
+    const relief = document.getElementById('summaryReliefText')?.textContent || '';
+    const aiBrief = document.querySelector('.ai-brief-body')?.textContent || '';
+
+    const textToCopy = `=== BARANGAY CASE SUMMARY ===
+${caseNum}: ${title}
+Category: ${cat} | Filed: ${dateFiled}
+Incident: ${incident} (${address})
+
+STATEMENT OF COMPLAINT:
+${narrative}
+
+RELIEF DEMANDED:
+${relief}
+${aiBrief ? `\nEXECUTIVE BRIEFING:\n${aiBrief}` : ''}
+=============================`;
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(textToCopy).then(() => {
+            window.agapNotify?.('Case summary copied to clipboard.', 'success');
+        }).catch(() => {
+            window.agapNotify?.('Unable to copy to clipboard.', 'error');
+        });
+    } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = textToCopy;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        window.agapNotify?.('Case summary copied to clipboard.', 'success');
+    }
+}
+window.copyCaseSummaryText = copyCaseSummaryText;
+
+function printCaseSummary() {
+    window.print();
+}
+window.printCaseSummary = printCaseSummary;
+
