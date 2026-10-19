@@ -324,6 +324,268 @@
     color: #2563eb;
 }
 
+/* Paanyaya Pre-Docketing Workflow Card */
+.paanyaya-workflow-card {
+    margin: 0 30px 24px;
+    background: #ffffff;
+    border: 1px solid #86efac;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 12px -2px rgba(22, 101, 52, 0.08);
+}
+
+.paanyaya-header-banner {
+    background: linear-gradient(135deg, #15803d, #166534);
+    padding: 16px 22px;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 14px;
+}
+
+.paanyaya-header-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.paanyaya-icon-badge {
+    width: 44px;
+    height: 44px;
+    background: rgba(255, 255, 255, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    flex-shrink: 0;
+}
+
+.paanyaya-header-title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.paanyaya-header-title {
+    margin: 0;
+    font-size: 1.08rem;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: -0.2px;
+}
+
+.paanyaya-header-subtext {
+    margin: 4px 0 0;
+    font-size: 0.84rem;
+    color: #dcfce7;
+    line-height: 1.4;
+}
+
+.paanyaya-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.paanyaya-btn-glass {
+    background: rgba(255, 255, 255, 0.15);
+    color: #ffffff !important;
+    border: 1px solid rgba(255, 255, 255, 0.32);
+    font-weight: 600;
+    font-size: 0.82rem;
+    padding: 7px 14px;
+    border-radius: 7px;
+    backdrop-filter: blur(4px);
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.18s ease;
+}
+
+.paanyaya-btn-glass:hover {
+    background: rgba(255, 255, 255, 0.25);
+    color: #ffffff !important;
+    border-color: rgba(255, 255, 255, 0.5);
+}
+
+.paanyaya-btn-solid {
+    background: #ffffff;
+    color: #166534 !important;
+    border: 1px solid #ffffff;
+    font-weight: 700;
+    font-size: 0.82rem;
+    padding: 7px 16px;
+    border-radius: 7px;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: all 0.18s ease;
+}
+
+.paanyaya-btn-solid:hover {
+    background: #f0fdf4;
+    color: #14532d !important;
+    transform: translateY(-1px);
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.14);
+}
+
+.paanyaya-body {
+    padding: 18px 22px;
+    background: #ffffff;
+}
+
+.paanyaya-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 16px;
+}
+
+.paanyaya-stat-tile {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 14px;
+}
+
+.paanyaya-stat-label {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #64748b;
+    margin-bottom: 4px;
+}
+
+.paanyaya-stat-value {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.paanyaya-actions-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 14px;
+    border-top: 1px solid #e2e8f0;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.paanyaya-actions-hint {
+    font-size: 0.85rem;
+    color: #475569;
+}
+
+.paanyaya-actions-buttons {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.paanyaya-btn-resolve {
+    background: #ecfdf5;
+    border: 1.5px solid #10b981;
+    color: #047857;
+    font-weight: 600;
+    font-size: 0.84rem;
+    padding: 8px 15px;
+    border-radius: 7px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s ease;
+}
+
+.paanyaya-btn-resolve:hover {
+    background: #d1fae5;
+    border-color: #059669;
+    color: #065f46;
+}
+
+.paanyaya-btn-escalate {
+    background: #fef2f2;
+    border: 1.5px solid #ef4444;
+    color: #b91c1c;
+    font-weight: 600;
+    font-size: 0.84rem;
+    padding: 8px 15px;
+    border-radius: 7px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s ease;
+}
+
+.paanyaya-btn-escalate:hover {
+    background: #fee2e2;
+    border-color: #dc2626;
+    color: #991b1b;
+}
+
+@media (max-width: 900px) {
+    .paanyaya-stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 540px) {
+    .paanyaya-stats-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Paanyaya Session Cards & LTIA Banner */
+.session-card {
+    background: #f8fafc;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 10px;
+    padding: 18px 20px;
+    margin-bottom: 18px;
+    transition: border-color 0.15s ease;
+}
+.session-card.is-active {
+    background: #ffffff;
+    border-color: #22c55e;
+    box-shadow: 0 4px 12px rgba(34, 197, 94, 0.08);
+}
+.session-card.is-settled {
+    background: #f0fdf4;
+    border-color: #16a34a;
+}
+.session-card.is-failed {
+    background: #fffbeb;
+    border-color: #f59e0b;
+}
+.session-card.is-escalated {
+    background: #eff6ff;
+    border-color: #3b82f6;
+}
+.ltia-banner {
+    background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
+    border: 1.5px solid #86efac;
+    border-radius: 10px;
+    padding: 16px 20px;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+}
+
 /* Side-by-Side Context Grid */
 .case-context-grid {
     display: grid;
@@ -1056,6 +1318,10 @@
         margin-left: 16px;
         margin-right: 16px;
         padding: 16px;
+    }
+    .paanyaya-workflow-card {
+        margin-left: 16px;
+        margin-right: 16px;
     }
     .hero-meta-columns {
         grid-template-columns: 1fr;

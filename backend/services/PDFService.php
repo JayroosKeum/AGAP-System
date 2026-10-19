@@ -215,7 +215,7 @@ class PDFService
             'complaint_title' => $case['complaint_title'],
             'complainants' => $complainants,
             'respondents' => $respondents,
-            'venue' => $options['venue'] ?? 'Lupon Office, Barangay Tumana',
+            'venue' => $options['venue'] ?? 'Lupon Court Room',
             'constitution_date' => $constitutionDate,
             'notice_date' => date('Y-m-d'),
         ];
@@ -650,6 +650,43 @@ class PDFService
         return $months[$month] ?? '';
     }
 
+    private function filipinoDayOfWeek(int $dow): string
+    {
+        $days = [
+            0 => 'Linggo',
+            1 => 'Lunes',
+            2 => 'Martes',
+            3 => 'Miyerkules',
+            4 => 'Huwebes',
+            5 => 'Biyernes',
+            6 => 'Sabado',
+        ];
+
+        return $days[$dow] ?? '';
+    }
+
+    private function filipinoTime(string $timeStr): string
+    {
+        $ts = strtotime($timeStr);
+        if (!$ts) {
+            return $timeStr;
+        }
+        $hour24 = (int) date('G', $ts);
+        $formattedTime = date('g:i', $ts);
+
+        if ($hour24 < 12) {
+            $period = 'ng umaga';
+        } elseif ($hour24 === 12) {
+            $period = 'ng tanghali';
+        } elseif ($hour24 < 18) {
+            $period = 'ng hapon';
+        } else {
+            $period = 'ng gabi';
+        }
+
+        return $formattedTime . ' ' . $period;
+    }
+
     public function renderNoticeHtml(string $formCode, array $data): string
     {
         return $this->noticeHtml($formCode, $data);
@@ -662,7 +699,7 @@ class PDFService
         $caseNumber = $this->escape((string) ($data['case_number'] ?? ''));
         $title = $this->escape((string) ($data['complaint_title'] ?? ''));
         $targetParty = $this->escape((string) ($data['target_party_name'] ?? ''));
-        $venue = $this->escape((string) ($data['venue'] ?? 'Tanggapan ng Lupong Tagapamayapa, Barangay Hall'));
+        $venue = $this->escape((string) ($data['venue'] ?? 'Lupon Court Room'));
         $officialName = $this->escape((string) ($data['official_name'] ?? $data['chairman_name'] ?? 'Punong Barangay / Lupon Tagapamayapa'));
 
         $hearingDate = !empty($data['hearing_date']) ? date('F j, Y g:i A', strtotime($data['hearing_date'])) : 'itinakdang pagdinig';
@@ -1209,6 +1246,1007 @@ class PDFService
 </head>
 <body>
     ' . $bodyWrapped . '
+</body>
+</html>';
+    }
+
+    /**
+     * Generates the official MTC and DILG Transmittal Letter for an amicable settlement.
+     */
+    public function generateTransmittalLetter(int $caseId, array $options = []): string
+    {
+        require_once __DIR__ . '/../models/CaseTransmittal.php';
+        $model = new CaseTransmittal($this->conn);
+        $details = $model->getTransmittalFullDetails($caseId);
+
+        if (!empty($options['transmittal_date'])) {
+            $details['transmittal']['transmittal_date'] = $options['transmittal_date'];
+        }
+        if (!empty($options['secretary_name'])) {
+            $details['secretary_name'] = $options['secretary_name'];
+        }
+        if (!empty($options['punong_barangay_name'])) {
+            $details['punong_barangay_name'] = $options['punong_barangay_name'];
+        }
+
+        $html = $this->transmittalLetterHtml($details, empty($options['return_html']));
+
+        if (!empty($options['return_html'])) {
+            return $html;
+        }
+
+        $dompdfOptions = new Options();
+        $dompdfOptions->set('isRemoteEnabled', false);
+        $dompdfOptions->set('isHtml5ParserEnabled', true);
+        $dompdfOptions->set('defaultFont', 'DejaVu Sans');
+
+        $dompdf = new Dompdf($dompdfOptions);
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->loadHtml($html, 'UTF-8');
+        $dompdf->render();
+
+        $pdf = $dompdf->output();
+        if ($pdf === '') {
+            throw new RuntimeException('The PDF renderer returned an empty transmittal letter document.');
+        }
+
+        if (!empty($options['save_path'])) {
+            if (file_put_contents($options['save_path'], $pdf, LOCK_EX) === false) {
+                throw new RuntimeException('Unable to save generated transmittal letter PDF.');
+            }
+            return $options['save_path'];
+        }
+
+        return $pdf;
+    }
+
+    /**
+     * Generates formatted HTML for the MTC & DILG Transmittal Letter under RA 7160 Section 411.
+     */
+    public function transmittalLetterHtml(array $data, bool $forPdf = true): string
+    {
+        $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
+        $marikinaPath = __DIR__ . '/../../frontend/assets/images/marikina_logo.jpg';
+        $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
+        $marikinaLogo = file_exists($marikinaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($marikinaPath)) : '';
+
+        $case = $data['case'] ?? [];
+        $transmittal = $data['transmittal'] ?? [];
+        $settlement = $data['settlement'] ?? [];
+
+        $caseNumber = $this->escape((string) ($case['case_number'] ?? '_________'));
+        $complaintTitle = $this->escape((string) ($case['complaint_title'] ?? 'Amicable Settlement'));
+        $category = !empty($case['category_name']) ? ' (' . $this->escape((string) $case['category_name']) . ')' : '';
+
+        $complainants = !empty($data['complainants']) ? implode(', ', array_map([$this, 'escape'], $data['complainants'])) : '_________________________';
+        $respondents = !empty($data['respondents']) ? implode(', ', array_map([$this, 'escape'], $data['respondents'])) : '_________________________';
+
+        $transmittalNumber = $this->escape((string) ($transmittal['transmittal_number'] ?? 'TR-' . date('Y') . '-0001'));
+
+        $transmittalDateRaw = !empty($transmittal['transmittal_date']) ? $transmittal['transmittal_date'] : date('Y-m-d');
+        $transmittalDateFormatted = date('F j, Y', strtotime($transmittalDateRaw));
+
+        $settlementDateRaw = !empty($transmittal['settlement_date']) ? $transmittal['settlement_date'] : (!empty($settlement['settlement_date']) ? $settlement['settlement_date'] : date('Y-m-d'));
+        $settlementDateFormatted = date('F j, Y', strtotime($settlementDateRaw));
+
+        $expiryDateRaw = !empty($transmittal['ten_day_expiry_date']) ? $transmittal['ten_day_expiry_date'] : (!empty($settlement['repudiation_deadline']) ? $settlement['repudiation_deadline'] : date('Y-m-d', strtotime('+10 weekdays')));
+        $expiryDateFormatted = date('F j, Y', strtotime($expiryDateRaw));
+
+        $secName = $this->escape((string) ($data['secretary_name'] ?? 'Lupon Secretary'));
+        $pbName = $this->escape((string) ($data['punong_barangay_name'] ?? 'Punong Barangay'));
+
+        return '<!DOCTYPE html>
+<html lang="fil">
+<head>
+    <meta charset="UTF-8">
+    <title>Transmittal Letter - ' . $caseNumber . '</title>
+    <style>
+        @page {
+            size: A4 portrait;
+            margin: 12mm 14mm 12mm 14mm;
+        }
+        body {
+            font-family: DejaVu Sans, Arial, Helvetica, sans-serif;
+            font-size: 9.5pt;
+            color: #0f172a;
+            line-height: 1.45;
+            background: #ffffff;
+            margin: 0;
+            padding: 0;
+        }
+        .header-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 2mm;
+        }
+        .header-logo-left { width: 85px; text-align: left; vertical-align: middle; }
+        .header-logo-right { width: 85px; text-align: right; vertical-align: middle; }
+        .header-logo-img { width: 75px; height: 75px; object-fit: contain; }
+        .header-center-text {
+            text-align: center;
+            line-height: 1.25;
+            font-size: 8.5pt;
+            vertical-align: middle;
+        }
+        .header-center-text .gov-title { font-size: 9pt; }
+        .header-center-text .office-title {
+            font-size: 11pt;
+            font-weight: bold;
+            color: #0f172a;
+            margin-top: 2px;
+            letter-spacing: 0.5px;
+        }
+        .header-center-text .sec-title {
+            font-size: 9pt;
+            font-weight: bold;
+            color: #1e3a8a;
+            margin-top: 1px;
+        }
+        .meta-bar {
+            width: 100%;
+            border-top: 1.5px solid #0f172a;
+            border-bottom: 0.5px solid #64748b;
+            padding: 2.5mm 0;
+            margin-top: 2mm;
+            margin-bottom: 4mm;
+        }
+        .meta-bar td { font-size: 9pt; }
+        .addr-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 3.5mm;
+            font-size: 9.5pt;
+        }
+        .addr-table td {
+            vertical-align: top;
+            padding: 1.5mm 0;
+        }
+        .addr-lbl {
+            width: 75px;
+            font-weight: bold;
+            color: #0f172a;
+        }
+        .subject-box {
+            background: #f8fafc;
+            border-left: 3.5px solid #1e3a8a;
+            padding: 2.5mm 3.5mm;
+            font-weight: bold;
+            font-size: 9pt;
+            line-height: 1.35;
+            color: #0f172a;
+        }
+        .dispute-box {
+            width: 100%;
+            border: 1px solid #cbd5e1;
+            border-collapse: collapse;
+            margin: 3mm 0 3mm;
+            background: #f8fafc;
+        }
+        .dispute-box td {
+            padding: 1.8mm 3mm;
+            font-size: 8.5pt;
+            border-bottom: 1px solid #e2e8f0;
+            vertical-align: top;
+        }
+        .dispute-lbl {
+            width: 28%;
+            font-weight: bold;
+            color: #334155;
+        }
+        .dispute-val {
+            width: 72%;
+            color: #0f172a;
+        }
+        .statutory-cert {
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-left: 3.5px solid #2563eb;
+            padding: 2.5mm 3.5mm;
+            margin: 2.5mm 0;
+            font-size: 9pt;
+            font-weight: bold;
+            color: #1e3a8a;
+            line-height: 1.4;
+        }
+        .body-p {
+            text-align: justify;
+            margin: 2.5mm 0;
+            font-size: 9.2pt;
+            line-height: 1.45;
+        }
+        .inventory-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1.5mm;
+            font-size: 8.8pt;
+        }
+        .inventory-table td {
+            padding: 1mm 0;
+            vertical-align: top;
+        }
+        .chk-box {
+            width: 22px;
+            font-weight: bold;
+            color: #1e3a8a;
+            font-size: 10.5pt;
+        }
+        .sig-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 5mm;
+        }
+        .sig-col {
+            width: 50%;
+            vertical-align: top;
+        }
+        .sig-line {
+            font-weight: bold;
+            font-size: 9.5pt;
+            text-transform: uppercase;
+            color: #0f172a;
+            border-bottom: 1px solid #0f172a;
+            display: inline-block;
+            min-width: 65%;
+            padding-bottom: 1px;
+            margin-top: 12mm;
+        }
+        .sig-role {
+            font-size: 8.5pt;
+            color: #475569;
+            margin-top: 1mm;
+        }
+        .stamp-section {
+            margin-top: 5mm;
+            border-top: 1px dashed #94a3b8;
+            padding-top: 2.5mm;
+        }
+        .stamp-title {
+            font-size: 8pt;
+            font-weight: bold;
+            text-transform: uppercase;
+            color: #475569;
+            margin-bottom: 2mm;
+            text-align: center;
+            letter-spacing: 0.5px;
+        }
+        .stamp-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .stamp-box {
+            width: 50%;
+            border: 1.5px solid #475569;
+            padding: 2.5mm 3.5mm;
+            vertical-align: top;
+            font-size: 8pt;
+            background: #fafafa;
+        }
+        .stamp-heading {
+            font-size: 8pt;
+            font-weight: bold;
+            color: #0f172a;
+            text-decoration: underline;
+            margin-bottom: 2mm;
+        }
+        .stamp-field {
+            margin-top: 1.8mm;
+            color: #334155;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header with Official Barangay Tumana & City of Marikina Logos -->
+    <table class="header-table">
+        <tr>
+            <td class="header-logo-left">
+                ' . ($tumanaLogo !== '' ? '<img src="' . $tumanaLogo . '" class="header-logo-img" alt="Barangay Tumana">' : '') . '
+            </td>
+            <td class="header-center-text">
+                <div class="gov-title">Republika ng Pilipinas</div>
+                <div class="gov-title">Lalawigan ng NCR &bull; Lungsod ng Marikina</div>
+                <div class="gov-title"><strong>BARANGAY TUMANA</strong></div>
+                <div style="font-size: 8pt; color: #475569;">Telephone Nos. 8-238-4208 &bull; Email: barangaytumana2023@gmail.com</div>
+                <div class="office-title">TANGGAPAN NG LUPONG TAGAPAMAYAPA</div>
+                <div class="sec-title">OFFICE OF THE BARANGAY SECRETARY</div>
+            </td>
+            <td class="header-logo-right">
+                ' . ($marikinaLogo !== '' ? '<img src="' . $marikinaLogo . '" class="header-logo-img" alt="Lungsod ng Marikina">' : '') . '
+            </td>
+        </tr>
+    </table>
+
+    <!-- Reference & Date Meta Bar -->
+    <table class="meta-bar">
+        <tr>
+            <td style="width: 55%; font-weight: bold; color: #1e3a8a;">
+                TRANSMITTAL REF. NO.: <span style="font-family: monospace; font-size: 9.5pt;">' . $transmittalNumber . '</span>
+            </td>
+            <td style="width: 45%; text-align: right; font-weight: bold;">
+                DATE OF TRANSMITTAL: ' . $transmittalDateFormatted . '
+            </td>
+        </tr>
+    </table>
+
+    <!-- Addressees -->
+    <table class="addr-table">
+        <tr>
+            <td class="addr-lbl">TO:</td>
+            <td style="line-height: 1.4;">
+                <strong>THE OFFICE OF THE CLERK OF COURT</strong><br>
+                Municipal Trial Court in Cities (MTCC)<br>
+                Marikina City, Metro Manila<br><br>
+                <strong>THE CITY DIRECTOR</strong><br>
+                Department of the Interior and Local Government (DILG)<br>
+                Marikina Field Office, Marikina City
+            </td>
+        </tr>
+        <tr>
+            <td class="addr-lbl" style="padding-top: 2.5mm;">FROM:</td>
+            <td style="padding-top: 2.5mm; line-height: 1.35;">
+                <strong>THE OFFICE OF THE LUPONG TAGAPAMAYAPA / BARANGAY SECRETARY</strong><br>
+                Barangay Tumana, Marikina City
+            </td>
+        </tr>
+        <tr>
+            <td class="addr-lbl" style="padding-top: 2.5mm;">SUBJECT:</td>
+            <td style="padding-top: 2.5mm;">
+                <div class="subject-box">
+                    FORMAL TRANSMITTAL OF AMICABLE SETTLEMENT (KP FORM NO. 16) &amp; DISPUTE RESOLUTION RECORDS FOR BARANGAY CASE NO. ' . $caseNumber . '
+                </div>
+            </td>
+        </tr>
+    </table>
+
+    <!-- Body -->
+    <p class="body-p">
+        Sir / Madam:
+    </p>
+    <p class="body-p">
+        Pursuant to <strong>Section 411 of Republic Act No. 7160</strong> (The Local Government Code of 1991) and the Katarungang Pambarangay Rules, the Office of the Lupong Tagapamayapa and the Barangay Secretary of Barangay Tumana, Marikina City, respectfully transmit herewith certified true copies of the Amicable Settlement agreement and the dispute resolution case records for:
+    </p>
+
+    <!-- Dispute Particulars Box -->
+    <table class="dispute-box">
+        <tr>
+            <td class="dispute-lbl">Barangay Case No.:</td>
+            <td class="dispute-val"><strong>' . $caseNumber . '</strong></td>
+        </tr>
+        <tr>
+            <td class="dispute-lbl">Title / Subject Matter:</td>
+            <td class="dispute-val"><strong>' . $complaintTitle . '</strong>' . $category . '</td>
+        </tr>
+        <tr>
+            <td class="dispute-lbl">Complainant(s):</td>
+            <td class="dispute-val"><strong>' . $complainants . '</strong> <em>(May-sumbong)</em></td>
+        </tr>
+        <tr>
+            <td class="dispute-lbl">Respondent(s):</td>
+            <td class="dispute-val"><strong>' . $respondents . '</strong> <em>(Ipinagsusumbong)</em></td>
+        </tr>
+        <tr>
+            <td class="dispute-lbl">Date Settlement Signed:</td>
+            <td class="dispute-val"><strong>' . $settlementDateFormatted . '</strong></td>
+        </tr>
+        <tr>
+            <td class="dispute-lbl">10-Day Repudiation Expiry:</td>
+            <td class="dispute-val"><strong>' . $expiryDateFormatted . '</strong> <em>(Excluding weekends &amp; statutory Philippine holidays)</em></td>
+        </tr>
+    </table>
+
+    <!-- Statutory Certification -->
+    <div class="statutory-cert">
+        STATUTORY CERTIFICATION (R.A. 7160 SEC. 411):<br>
+        This is to further certify that the mandatory ten (10) working-day repudiation period under Section 411 of RA 7160 has officially elapsed with no repudiation filed by either party.
+    </div>
+
+    <p class="body-p">
+        In accordance with Section 411 of RA 7160, the attached Amicable Settlement carries the full force and effect of a final judgment of a court upon the expiration of ten (10) days from the date thereof. It is therefore respectfully transmitted for official court archiving, administrative monitoring, and future judicial execution as provided by law in case of non-compliance.
+    </p>
+
+    <!-- Inventory Checklist -->
+    <div style="margin-top: 2.5mm;">
+        <strong style="font-size: 8.8pt; color: #1e293b;">INVENTORY OF ATTACHED DISPUTE RESOLUTION RECORDS:</strong>
+        <table class="inventory-table">
+            <tr>
+                <td class="chk-box">&#9745;</td>
+                <td>Certified True Copy of KP Form No. 7 (Complaint / Sumbong)</td>
+            </tr>
+            <tr>
+                <td class="chk-box">&#9745;</td>
+                <td>Certified True Copy of Minutes of Mediation / Conciliation Proceedings</td>
+            </tr>
+            <tr>
+                <td class="chk-box">&#9745;</td>
+                <td>Original / Certified True Copy of KP Form No. 16 (Amicable Settlement / Kasunduang Pag-aayos)</td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- Signatories -->
+    <table class="sig-table">
+        <tr>
+            <td class="sig-col" style="padding-right: 10mm;">
+                <div>Prepared &amp; Transmitted by:</div>
+                <div class="sig-line">' . $secName . '</div>
+                <div class="sig-role">Barangay Secretary / Kalihim ng Lupon</div>
+            </td>
+            <td class="sig-col" style="padding-left: 10mm;">
+                <div>Noted &amp; Attested by:</div>
+                <div class="sig-line">' . $pbName . '</div>
+                <div class="sig-role">Punong Barangay / Tagapangulo ng Lupon</div>
+            </td>
+        </tr>
+    </table>
+
+    <!-- Receiving Copy Stamp Blocks -->
+    <div class="stamp-section">
+        <div class="stamp-title">
+            Official Receiving Copy Stamp Blocks (To be accomplished by receiving agency)
+        </div>
+        <table class="stamp-table">
+            <tr>
+                <td class="stamp-box" style="margin-right: 4mm;">
+                    <div class="stamp-heading">
+                        MUNICIPAL TRIAL COURT IN CITIES (MTCC) &bull; MARIKINA CITY
+                    </div>
+                    <div class="stamp-field">Received by: _____________________________________________</div>
+                    <div class="stamp-field">Signature: _______________________________________________</div>
+                    <div class="stamp-field">Date Received: ____________________ Time: _________________</div>
+                    <div class="stamp-field">Receiving Action: [ &nbsp; ] Docketed / Filed &nbsp;&nbsp; [ &nbsp; ] Certified Entry</div>
+                </td>
+                <td class="stamp-box" style="margin-left: 4mm;">
+                    <div class="stamp-heading">
+                        DILG FIELD OFFICE &bull; MARIKINA CITY
+                    </div>
+                    <div class="stamp-field">Received by: _____________________________________________</div>
+                    <div class="stamp-field">Signature: _______________________________________________</div>
+                    <div class="stamp-field">Date Received: ____________________ Time: _________________</div>
+                    <div class="stamp-field">Receiving Action: [ &nbsp; ] Logged in KP Registry &nbsp;&nbsp; [ &nbsp; ] Archived</div>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+</body>
+</html>';
+    }
+
+    /**
+     * Generates the Paanyaya (Informal Invitation) Letter PDF.
+     */
+    public function generatePaanyaya(int $complaintId, array $options = []): string
+    {
+        $data = $options['data'] ?? null;
+        if ($data === null) {
+            $data = $this->loadPaanyayaData($complaintId, $options);
+        }
+
+        $dompdfOptions = new Options();
+        $dompdfOptions->set('isRemoteEnabled', false);
+        $dompdfOptions->set('isHtml5ParserEnabled', true);
+        $dompdfOptions->set('defaultFont', 'Times-Roman');
+
+        $dompdf = new Dompdf($dompdfOptions);
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->loadHtml($this->paanyayaLetterHtml($data, true), 'UTF-8');
+        $dompdf->render();
+
+        $pdf = $dompdf->output();
+        if ($pdf === '') {
+            throw new RuntimeException('The PDF renderer returned an empty document.');
+        }
+
+        if (!empty($options['save_path'])) {
+            $dir = dirname($options['save_path']);
+            if (!is_dir($dir)) {
+                mkdir($dir, 0777, true);
+            }
+            if (file_put_contents($options['save_path'], $pdf, LOCK_EX) === false) {
+                throw new RuntimeException('Unable to save generated Paanyaya PDF to: ' . $options['save_path']);
+            }
+            return $options['save_path'];
+        }
+
+        return $pdf;
+    }
+
+    /**
+     * Renders HTML for Paanyaya preview in browser or modal.
+     */
+    public function renderPaanyayaHtml(int $complaintId, array $options = []): string
+    {
+        $data = $options['data'] ?? null;
+        if ($data === null) {
+            $data = $this->loadPaanyayaData($complaintId, $options);
+        }
+        return $this->paanyayaLetterHtml($data, false);
+    }
+
+    /**
+     * Loads complaint, parties, and paanyaya data from database.
+     */
+    public function loadPaanyayaData(int $complaintId, array $options = []): array
+    {
+        if ($this->conn === null) {
+            require_once __DIR__ . '/../config/database.php';
+            $this->conn = (new Database())->connect();
+        }
+
+        // Fetch complaint
+        $cStmt = $this->conn->prepare('SELECT * FROM complaints WHERE complaint_id = ? LIMIT 1');
+        $cStmt->execute([$complaintId]);
+        $complaint = $cStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$complaint) {
+            throw new RuntimeException('Complaint not found.');
+        }
+
+        // Fetch parties
+        $pStmt = $this->conn->prepare("
+            SELECT cp.party_type,
+                   TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name, r.suffix)) AS full_name,
+                   r.address, r.purok
+            FROM complaint_parties cp
+            INNER JOIN residents r ON r.resident_id = cp.resident_id
+            WHERE cp.complaint_id = ?
+            ORDER BY FIELD(cp.party_type, 'Complainant', 'Respondent', 'Witness'), r.last_name, r.first_name
+        ");
+        $pStmt->execute([$complaintId]);
+        $parties = $pStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $complainants = [];
+        $respondents = [];
+        foreach ($parties as $p) {
+            $addr = trim((string)($p['address'] ?? ''));
+            if ($addr === '' && !empty($p['purok'])) {
+                $addr = 'Purok ' . $p['purok'] . ', Barangay Tumana, Marikina City';
+            } elseif ($addr === '') {
+                $addr = 'Barangay Tumana, Marikina City';
+            }
+            $item = [
+                'full_name' => $p['full_name'],
+                'address' => $addr
+            ];
+            if ($p['party_type'] === 'Complainant') {
+                $complainants[] = $item;
+            } elseif ($p['party_type'] === 'Respondent') {
+                $respondents[] = $item;
+            }
+        }
+
+        // Fetch latest paanyaya session record if exists
+        $sessionStmt = $this->conn->prepare('SELECT * FROM paanyaya_sessions WHERE complaint_id = ? ORDER BY attempt_number DESC, session_id DESC LIMIT 1');
+        $sessionStmt->execute([$complaintId]);
+        $paanyaya = $sessionStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        if (empty($paanyaya)) {
+            $paaStmt = $this->conn->prepare('SELECT * FROM complaint_paanyaya WHERE complaint_id = ? ORDER BY paanyaya_id DESC LIMIT 1');
+            $paaStmt->execute([$complaintId]);
+            $paanyaya = $paaStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        }
+
+        // Punong barangay setting
+        $pbStmt = $this->conn->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'captain_name' LIMIT 1");
+        $pbStmt->execute();
+        $captainName = $pbStmt->fetchColumn() ?: 'HON. AKIKO LYNNE CENTENO';
+
+        $attemptNumber = (int) ($options['attempt_number'] ?? ($paanyaya['attempt_number'] ?? ($complaint['paanyaya_attempt_count'] ?? 1)));
+
+        return [
+            'complaint' => $complaint,
+            'complainants' => $complainants,
+            'respondents' => $respondents,
+            'paanyaya' => $paanyaya,
+            'attempt_number' => $attemptNumber,
+            'invitation_date' => $options['invitation_date'] ?? ($paanyaya['scheduled_date'] ?? ($paanyaya['invitation_date'] ?? date('Y-m-d', strtotime('+3 weekdays')))),
+            'invitation_time' => $options['invitation_time'] ?? ($paanyaya['scheduled_time'] ?? ($paanyaya['invitation_time'] ?? '14:00:00')),
+            'venue' => $options['venue'] ?? ($paanyaya['venue'] ?? 'Tanggapan ng Barangay Tumana'),
+            'salaysay' => $options['salaysay'] ?? ($paanyaya['salaysay'] ?? ($complaint['narrative'] ?? '')),
+            'has_e_signature' => isset($options['has_e_signature']) ? (bool)$options['has_e_signature'] : (!isset($paanyaya['has_e_signature']) || (bool)$paanyaya['has_e_signature']),
+            'captain_name' => $options['captain_name'] ?? $captainName,
+            'issued_date' => $options['issued_date'] ?? (!empty($paanyaya['created_at']) ? substr($paanyaya['created_at'], 0, 10) : date('Y-m-d')),
+        ];
+    }
+
+    /**
+     * Renders exact layout matching Barangay Tumana\'s Paanyaya template.
+     */
+    public function paanyayaLetterHtml(array $data, bool $forPdf = true): string
+    {
+        $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
+        $bagongPath = __DIR__ . '/../../frontend/assets/images/bagong_pilipinas_logo.png';
+        $signaturePath = __DIR__ . '/../../frontend/assets/images/captain_signature.png';
+
+        $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
+        $bagongLogo = file_exists($bagongPath) ? 'data:image/png;base64,' . base64_encode(file_get_contents($bagongPath)) : '';
+        $sigLogo = file_exists($signaturePath) ? 'data:image/png;base64,' . base64_encode(file_get_contents($signaturePath)) : '';
+
+        $complainants = $data['complainants'] ?? [];
+        $respondents = $data['respondents'] ?? [];
+
+        $compNames = [];
+        $compAddrs = [];
+        foreach ($complainants as $c) {
+            $cName = is_array($c) ? ($c['full_name'] ?? '') : (string)$c;
+            $cAddr = is_array($c) ? ($c['address'] ?? '') : '';
+            if (trim($cName) !== '') $compNames[] = trim($cName);
+            if (trim($cAddr) !== '') $compAddrs[] = trim($cAddr);
+        }
+        $compNameStr = !empty($compNames) ? implode(' / ', $compNames) : 'NAGPAANYAYA';
+        $compAddrStr = !empty($compAddrs) ? implode(', ', array_unique($compAddrs)) : 'Barangay Tumana, Marikina City';
+
+        $respNames = [];
+        $respAddrs = [];
+        foreach ($respondents as $r) {
+            $rName = is_array($r) ? ($r['full_name'] ?? '') : (string)$r;
+            $rAddr = is_array($r) ? ($r['address'] ?? '') : '';
+            if (trim($rName) !== '') $respNames[] = trim($rName);
+            if (trim($rAddr) !== '') $respAddrs[] = trim($rAddr);
+        }
+        $respNameStr = !empty($respNames) ? implode(' / ', $respNames) : 'INANYAYAHAN';
+        $respAddrStr = !empty($respAddrs) ? implode(', ', array_unique($respAddrs)) : 'Barangay Tumana, Marikina City';
+
+        $compCount = count($compNames);
+        $niNina = ($compCount > 1) ? 'nina' : 'ni';
+        $pronoun = ($compCount > 1) ? 'sila' : 'siya';
+
+        $issuedTs = !empty($data['issued_date']) ? strtotime($data['issued_date']) : time();
+        $dateFormatted = strtoupper(date('F j, Y', $issuedTs));
+
+        $invDate = !empty($data['invitation_date']) ? $data['invitation_date'] : date('Y-m-d', strtotime('+3 weekdays'));
+        $invTs = strtotime($invDate);
+        $petsa = date('j', $invTs);
+        $buwan = strtoupper($this->filipinoMonth((int)date('n', $invTs)));
+        $taon = date('Y', $invTs);
+        $dow = (int)date('w', $invTs);
+        $araw = strtoupper($this->filipinoDayOfWeek($dow));
+        $oras = strtoupper($this->filipinoTime(!empty($data['invitation_time']) ? $data['invitation_time'] : '14:00:00'));
+
+        $venue = !empty($data['venue']) ? $this->escape($data['venue']) : 'tanggapan ng Barangay Tumana';
+        $salaysayRaw = !empty($data['salaysay']) ? trim((string)$data['salaysay']) : 'naisin nilang magkausap at magkaliwanagan.';
+        if ($salaysayRaw !== '' && !in_array(substr($salaysayRaw, -1), ['.', '!', '?'], true)) {
+            $salaysayRaw .= '.';
+        }
+        $salaysay = $this->escape($salaysayRaw);
+        $captainName = !empty($data['captain_name']) ? $this->escape($data['captain_name']) : 'HON. AKIKO LYNNE CENTENO';
+        $hasESignature = !empty($data['has_e_signature']);
+        $attemptNumber = (int)($data['attempt_number'] ?? 1);
+        $docTitleText = ($attemptNumber === 2) ? 'I K A L A W A N G   P A A N Y A Y A' : 'P A A N Y A Y A';
+
+        $signatureHtml = ($hasESignature && $sigLogo !== '')
+            ? '<img src="' . $sigLogo . '" class="sig-img" alt="Hon. Akiko Lynne Centeno">'
+            : '';
+
+        $cssStyles = $forPdf ? '
+        @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
+        * { box-sizing: border-box; }
+        body { font-family: "Times New Roman", Times, "DejaVu Serif", Georgia, serif; font-size: 10pt; color: #111111; line-height: 1.45; background: #ffffff; margin: 0; padding: 0; }
+        .page-sheet { width: 100%; margin: 0; padding: 0; background: #ffffff; }
+        ' : '
+        @page { size: A4 portrait; margin: 0; }
+        * { box-sizing: border-box; }
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: #475569;
+            font-family: "Times New Roman", Times, "DejaVu Serif", Georgia, serif;
+            color: #111111;
+            line-height: 1.45;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .preview-canvas {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 24px 16px;
+            min-height: 100vh;
+            background: #475569;
+            box-sizing: border-box;
+        }
+        .page-sheet {
+            background: #ffffff;
+            width: 210mm;
+            min-height: 297mm;
+            padding: 18mm 20mm 20mm 20mm;
+            box-sizing: border-box;
+            box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.2);
+            border-radius: 3px;
+            margin: 0 auto;
+        }
+        @media print {
+            html, body {
+                background: #ffffff !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 210mm !important;
+            }
+            .preview-canvas {
+                padding: 0 !important;
+                margin: 0 !important;
+                background: #ffffff !important;
+                display: block !important;
+            }
+            .page-sheet {
+                width: 210mm !important;
+                min-height: 297mm !important;
+                margin: 0 !important;
+                padding: 15mm 18mm 15mm 18mm !important;
+                box-shadow: none !important;
+                border-radius: 0 !important;
+                border: none !important;
+                page-break-after: avoid;
+                page-break-inside: avoid;
+            }
+        }
+        ';
+
+        $sheetContent = '
+        <table class="header-table">
+            <tr>
+                <td class="header-logo-left">
+                    ' . ($tumanaLogo !== '' ? '<img src="' . $tumanaLogo . '" class="header-logo-img" alt="Barangay Tumana">' : '') . '
+                </td>
+                <td class="header-center-text">
+                    <div class="rep-title">Republika ng Pilipinas</div>
+                    <div class="brgy-title">BARANGAY TUMANA</div>
+                    <div class="city-title">CITY OF MARIKINA</div>
+                    <div class="addr-title">ROAD 1 EXTENSION DOÑA PETRA , BARANGAY TUMANA,</div>
+                    <div class="addr-title">MARIKINA CITY</div>
+                    <div class="tel-title">Tel. No. 02-8457-2818</div>
+                    <div class="pb-office-title">TANGGAPAN NG PUNONGBARANGAY</div>
+                    <div class="ooo">— oOo —</div>
+                </td>
+                <td class="header-logo-right">
+                    ' . ($bagongLogo !== '' ? '<img src="' . $bagongLogo . '" class="header-logo-img" alt="Bagong Pilipinas">' : '') . '
+                </td>
+            </tr>
+        </table>
+
+        <div class="doc-title-box">
+            <div class="doc-title">' . $docTitleText . '</div>
+            <div class="doc-divider">-----------------------------------------</div>
+        </div>
+
+        <div class="meta-date">' . $dateFormatted . '</div>
+
+        <div class="party-block">
+            <div class="party-role">(Nagpaanyaya)</div>
+            <div class="party-name">' . $this->escape($compNameStr) . '</div>
+            <div class="party-address">' . $this->escape($compAddrStr) . '</div>
+            <div class="party-divider">--- --- --- --- ---</div>
+            <div class="party-role">(Inanyayahan)</div>
+            <div class="party-name">' . $this->escape($respNameStr) . '</div>
+            <div class="party-address">' . $this->escape($respAddrStr) . '</div>
+        </div>
+
+        <div class="salutation">Mahal na G/Gng/Bb:</div>
+
+        <div class="body-p">
+            Kayo po ay malugod na inaanyayahan sa <strong>' . $venue . '</strong>, sa ika <strong>' . $petsa . '</strong> ng <strong>' . $buwan . '</strong>, <strong>' . $taon . '</strong> araw ng <strong>' . $araw . '</strong> sa ganap na <strong>' . $oras . '</strong> upang pagusapan at mabigyang linaw ukol sa inihaing alintana o usapin ' . $niNina . ' <strong>' . $this->escape($compNameStr) . '</strong>. Dahil ayon sa kanila ' . $salaysay . ' Kung kaya\'t ' . $pronoun . ' ay dumulog sa Barangay upang kayo ay Paanyayahan.
+        </div>
+
+        <div class="body-p">
+            Ang inyo pong lingkod ay para lamang mamagitan sa anumang inyong mapag-uusapan.
+        </div>
+
+        <div class="body-p">
+            Kung Kaya\'t inaasahan ang inyong pagtalima sa inyong imbitasyon.
+        </div>
+
+        <div class="body-p" style="margin-bottom: 2mm;">
+            Salamat po.
+        </div>
+
+        <table class="bottom-table">
+            <tr>
+                <td class="bottom-left-empty">&nbsp;</td>
+                <td class="bottom-right-col">
+                    <div class="sig-block">
+                        <div class="sig-sumasainyo">Sumasainyo,</div>
+                        <div class="sig-space">
+                            ' . $signatureHtml . '
+                        </div>
+                        <div class="sig-name">' . $captainName . '</div>
+                        <div class="sig-role">Punong Barangay</div>
+                    </div>
+                </td>
+            </tr>
+            <tr>
+                <td class="bottom-left-col">
+                    <div class="party-name">' . $this->escape($compNameStr) . '</div>
+                    <div class="comp-addr-italic">' . $this->escape($compAddrStr) . '</div>
+                    <div class="comp-role-tag">(Mga) Nagpaanyaya</div>
+                    <div class="received-box">Received Copy</div>
+                </td>
+                <td class="bottom-right-empty">&nbsp;</td>
+            </tr>
+        </table>
+        ';
+
+        return '<!DOCTYPE html>
+<html lang="fil">
+<head>
+    <meta charset="UTF-8">
+    <title>Paanyaya - ' . $this->escape($compNameStr) . ' laban kay ' . $this->escape($respNameStr) . '</title>
+    <style>
+        ' . $cssStyles . '
+        .header-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 1mm;
+        }
+        .header-logo-left { width: 75px; text-align: left; vertical-align: top; }
+        .header-logo-right { width: 75px; text-align: right; vertical-align: top; }
+        .header-logo-img { width: 70px; height: 70px; object-fit: contain; }
+        .header-center-text {
+            text-align: center;
+            line-height: 1.25;
+            vertical-align: top;
+        }
+        .header-center-text .rep-title {
+            font-family: "Old English Text MT", "Cloister Black", "Times New Roman", serif;
+            font-size: 11pt;
+            letter-spacing: 0.5px;
+        }
+        .header-center-text .brgy-title {
+            font-size: 13pt;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+            margin-top: 1px;
+        }
+        .header-center-text .city-title {
+            font-size: 9.5pt;
+            font-weight: bold;
+            margin-top: 1px;
+        }
+        .header-center-text .addr-title {
+            font-size: 8pt;
+            margin-top: 1px;
+        }
+        .header-center-text .tel-title {
+            font-size: 8pt;
+            margin-top: 1px;
+        }
+        .header-center-text .pb-office-title {
+            font-size: 9.5pt;
+            font-weight: bold;
+            margin-top: 2px;
+        }
+        .header-center-text .ooo {
+            font-size: 8.5pt;
+            margin-top: 1px;
+        }
+        .doc-title-box {
+            text-align: center;
+            margin-top: 4mm;
+            margin-bottom: 4mm;
+        }
+        .doc-title {
+            font-size: 16pt;
+            font-weight: bold;
+            letter-spacing: 6px;
+        }
+        .doc-divider {
+            font-size: 9pt;
+            letter-spacing: 1px;
+            color: #222222;
+            margin-top: 1mm;
+        }
+        .meta-date {
+            font-size: 10pt;
+            font-weight: bold;
+            margin-top: 2mm;
+            margin-bottom: 3.5mm;
+        }
+        .party-block {
+            font-size: 10pt;
+            line-height: 1.35;
+            margin-bottom: 4mm;
+        }
+        .party-role {
+            color: #222222;
+            font-size: 9.5pt;
+        }
+        .party-name {
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 10pt;
+        }
+        .party-address {
+            color: #222222;
+            font-size: 9.5pt;
+        }
+        .party-divider {
+            letter-spacing: 2px;
+            color: #333333;
+            margin: 2.5mm 0;
+            font-size: 9.5pt;
+        }
+        .salutation {
+            font-size: 10pt;
+            font-weight: bold;
+            margin-bottom: 3.5mm;
+        }
+        .body-p {
+            text-align: justify;
+            font-size: 10pt;
+            line-height: 1.5;
+            margin-bottom: 3.5mm;
+        }
+        .bottom-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 6mm;
+        }
+        .bottom-left-empty {
+            width: 48%;
+        }
+        .bottom-right-col {
+            width: 52%;
+            vertical-align: top;
+            text-align: right;
+            padding-bottom: 6mm;
+        }
+        .sig-block {
+            display: inline-block;
+            text-align: center;
+            min-width: 230px;
+        }
+        .sig-sumasainyo {
+            font-size: 10pt;
+            text-align: left;
+            margin-bottom: 2mm;
+            margin-left: 10px;
+        }
+        .sig-space {
+            height: 48px;
+            position: relative;
+            text-align: center;
+        }
+        .sig-img {
+            max-height: 48px;
+            max-width: 180px;
+            object-fit: contain;
+        }
+        .sig-name {
+            font-size: 10.5pt;
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-top: 1mm;
+        }
+        .sig-role {
+            font-size: 9.5pt;
+            color: #222222;
+        }
+        .bottom-left-col {
+            width: 48%;
+            vertical-align: top;
+            text-align: left;
+            font-size: 9.5pt;
+            line-height: 1.35;
+        }
+        .comp-addr-italic {
+            font-style: italic;
+            color: #333333;
+            font-size: 9.5pt;
+            margin-top: 1px;
+        }
+        .comp-role-tag {
+            margin-top: 4mm;
+            font-size: 9.5pt;
+        }
+        .received-box {
+            margin-top: 7mm;
+            font-size: 9.5pt;
+        }
+        .bottom-right-empty {
+            width: 52%;
+        }
+    </style>
+</head>
+<body>
+' . ($forPdf ? '<div class="page-sheet">' . $sheetContent . '</div>' : '<div class="preview-canvas"><div class="page-sheet">' . $sheetContent . '</div></div>') . '
 </body>
 </html>';
     }

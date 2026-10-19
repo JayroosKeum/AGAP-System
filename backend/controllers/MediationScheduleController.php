@@ -22,7 +22,7 @@ class MediationScheduleController
         $complaintId = filter_var($data['complaint_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         $date = trim((string) ($data['mediation_date'] ?? ''));
         $time = trim((string) ($data['mediation_time'] ?? ''));
-        $venue = trim((string) ($data['venue'] ?? 'Barangay Hall'));
+        $venue = trim((string) ($data['venue'] ?? 'Lupon Court Room'));
         $remarks = trim((string) ($data['remarks'] ?? ''));
         if (($data['schedule_confirmed'] ?? '') !== '1') {
             return ['success' => false, 'message' => 'Confirm the mediation schedule before continuing.'];
@@ -42,6 +42,19 @@ class MediationScheduleController
         }
         if (mb_strlen($remarks) > 5000) {
             return ['success' => false, 'message' => 'Remarks must not exceed 5,000 characters.'];
+        }
+
+        $dayOfWeek = (int) $hearingDate->format('w');
+        $hour = (int) $hearingDate->format('H');
+        if ($dayOfWeek !== 2) {
+            return ['success' => false, 'message' => 'Mediation hearings can only be scheduled on Tuesdays.'];
+        }
+        if ($hour < 13 || $hour >= 17) {
+            return ['success' => false, 'message' => 'Mediation hearings must be between 1:00 PM and 5:00 PM.'];
+        }
+        require_once __DIR__ . '/../services/MediationDeadlineService.php';
+        if (MediationDeadlineService::isNonWorkingDay($hearingDate)) {
+            return ['success' => false, 'message' => 'Mediation hearings cannot be scheduled on declared holidays or non-working days.'];
         }
 
         $result = $this->mediation->create((int) $complaintId, $hearingDate->format('Y-m-d H:i:s'), $venue, $remarks !== '' ? $remarks : null);

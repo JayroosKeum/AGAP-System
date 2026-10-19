@@ -276,16 +276,10 @@ include __DIR__ . '/../../layouts/header.php';
             <!-- Header Bar -->
             <div class="intake-header-bar">
                 <div>
-                    <div class="intake-breadcrumb">
-                        <a href="complaint-list.php">
-                            <svg class="back-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
-                            <span>Complaints Blotter</span>
-                        </a>
-                        <span class="breadcrumb-sep">/</span>
-                        <a href="complaint-details.php?id=<?php echo $complaintId; ?>">Case #<?php echo htmlspecialchars($docketNumber); ?></a>
-                        <span class="breadcrumb-sep">/</span>
-                        <span class="breadcrumb-curr">Edit Complaint</span>
-                    </div>
+                    <a href="complaint-details.php?id=<?php echo $complaintId; ?>" class="back-link">
+                        <svg class="back-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                        <span>Back to Case Details</span>
+                    </a>
                     <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 4px;">
                         <h1 class="intake-title" style="margin: 0;">Edit Complaint — Case #<?php echo htmlspecialchars($docketNumber); ?></h1>
                         <span class="status-pill status-<?php echo $statusSlug; ?>"><?php echo htmlspecialchars($complaint['status'] ?: 'Filed'); ?></span>
@@ -322,23 +316,23 @@ include __DIR__ . '/../../layouts/header.php';
                         <div class="quicknav-title">Form Quick-Nav</div>
                         
                         <a href="#section-ingestion" id="nav-sec-ingestion" class="quicknav-link is-active">
-                            <span class="quicknav-badge">1</span> 1. Filing &amp; Classification
+                            <span class="quicknav-badge">1</span> Filing Method &amp; Case Classification
                         </a>
                         
                         <a href="#section-parties" id="nav-sec-parties" class="quicknav-link">
-                            <span class="quicknav-badge">2</span> 2. Involved Parties
+                            <span class="quicknav-badge">2</span> Involved Parties
                         </a>
 
                         <a href="#section-narrative" id="nav-sec-narrative" class="quicknav-link">
-                            <span class="quicknav-badge">3</span> 3. Narrative &amp; Relief
+                            <span class="quicknav-badge">3</span> Statement of Facts &amp; Relief Sought
                         </a>
                         
                         <a href="#section-location" id="nav-sec-location" class="quicknav-link">
-                            <span class="quicknav-badge">4</span> 4. Incident Location
+                            <span class="quicknav-badge">4</span> Incident Location &amp; Map Pin
                         </a>
 
                         <a href="#section-evidence" id="nav-sec-evidence" class="quicknav-link">
-                            <span class="quicknav-badge">5</span> 5. Evidence &amp; Attachments
+                            <span class="quicknav-badge">5</span> Evidence &amp; Attachments
                         </a>
 
                         <div class="quicknav-footer">

@@ -532,10 +532,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const conciliationCount = rows.filter(r => r.lifecycle_status === 'Conciliation').length;
             const cfaCount = rows.filter(r => r.lifecycle_status === 'CFA').length;
             const closedCount = rows.filter(r => r.lifecycle_status === 'Resolution / Closed').length;
+            const paanyayaCount = rows.filter(r => (r.lifecycle_status && r.lifecycle_status.includes('Paanyaya')) || (r.status && r.status.includes('Paanyaya'))).length;
 
             cachedGlobalCounts = {
                 all: allCount,
                 draft: draftCount,
+                paanyaya: paanyayaCount,
                 pending: pendingCount,
                 mediation: mediationCount,
                 conciliation: conciliationCount,
@@ -552,6 +554,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         setEl('tabCountAll', counts.all);
         setEl('tabCountDraft', counts.draft);
+        setEl('tabCountPaanyaya', counts.paanyaya || 0);
         setEl('tabCountPending', counts.pending);
         setEl('tabCountMediation', counts.mediation);
         setEl('tabCountConciliation', counts.conciliation);
@@ -747,6 +750,10 @@ document.addEventListener('DOMContentLoaded', () => {
         let lifecycleStatus = 'Pending';
         if (isDraft) {
             lifecycleStatus = 'Draft';
+        } else if (row.status === 'Pre-Docketed (Paanyaya)' || row.lifecycle_status === 'Pre-Docketed (Paanyaya)') {
+            lifecycleStatus = 'Pre-Docketed (Paanyaya)';
+        } else if (row.status === 'Resolved at Paanyaya / Closed' || row.lifecycle_status === 'Resolved at Paanyaya / Closed') {
+            lifecycleStatus = 'Resolved at Paanyaya / Closed';
         } else if ([
             'Pending',
             'Mediation',

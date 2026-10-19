@@ -26,6 +26,30 @@ class MediationSchedule
         string $venue,
         ?string $remarks
     ): array {
+        $dayOfWeek = (int) date('w', strtotime($hearingDate)); // 0 = Sun, 2 = Tue, etc.
+        $hour = (int) date('H', strtotime($hearingDate));
+
+        if ($dayOfWeek !== 2) {
+            return [
+                'success' => false,
+                'message' => 'Mediation hearings can only be scheduled on Tuesdays.'
+            ];
+        }
+        if ($hour < 13 || $hour >= 17) {
+            return [
+                'success' => false,
+                'message' => 'Mediation hearings must be between 1:00 PM and 5:00 PM.'
+            ];
+        }
+
+        require_once __DIR__ . '/../services/MediationDeadlineService.php';
+        if (MediationDeadlineService::isNonWorkingDay(new DateTimeImmutable($hearingDate))) {
+            return [
+                'success' => false,
+                'message' => 'Mediation hearings cannot be scheduled on official holidays or non-working days.'
+            ];
+        }
+
         try {
             $this->conn->beginTransaction();
 

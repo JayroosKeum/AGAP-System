@@ -280,7 +280,7 @@ class HearingMinutes
 
                     try {
                         $hearingModel = new Hearing($this->conn);
-                        $venue = trim((string) ($data['next_hearing_venue'] ?? '')) ?: ($hearing['venue'] ?: 'Barangay Hall - Lupon Office');
+                        $venue = trim((string) ($data['next_hearing_venue'] ?? '')) ?: ($hearing['venue'] ?: 'Lupon Court Room');
                         $presiderId = !empty($data['next_hearing_presider_id']) ? (int) $data['next_hearing_presider_id'] : ($hearing['presiding_officer_id'] ?? null);
 
                         $schedValues = [

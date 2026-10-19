@@ -161,6 +161,10 @@ CREATE TABLE complaints (
     status ENUM('Draft', 'Filed', 'Under Review', 'Needs Information', 'Accepted', 'Rejected', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Dismissed', 'CFA Issued', 'Archived', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT') NOT NULL DEFAULT 'Filed',
     document_status ENUM('No Scan Uploaded', 'Scan Uploaded', 'Updated Scan Uploaded') NOT NULL DEFAULT 'No Scan Uploaded',
     is_draft TINYINT(1) NOT NULL DEFAULT 0,
+    paanyaya_attempt_count TINYINT UNSIGNED DEFAULT 1,
+    max_paanyaya_reached TINYINT(1) DEFAULT 0,
+    resolved_without_docketing TINYINT(1) DEFAULT 0,
+    ltia_category VARCHAR(100) NULL,
     encoded_by INT UNSIGNED NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -228,6 +232,31 @@ CREATE TABLE complaint_intake_screenings (
     UNIQUE KEY uq_complaint_intake_screening (complaint_id),
     CONSTRAINT fk_cis_complaint FOREIGN KEY (complaint_id) REFERENCES complaints (complaint_id) ON DELETE CASCADE,
     CONSTRAINT fk_cis_user FOREIGN KEY (screened_by) REFERENCES users (user_id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE paanyaya_sessions (
+    session_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    complaint_id INT UNSIGNED NOT NULL,
+    attempt_number TINYINT UNSIGNED NOT NULL DEFAULT 1,
+    scheduled_date DATE NOT NULL,
+    scheduled_time TIME NOT NULL,
+    venue VARCHAR(255) NOT NULL DEFAULT 'Tanggapan ng Barangay Tumana',
+    has_e_signature TINYINT(1) NOT NULL DEFAULT 1,
+    pdf_path VARCHAR(255) NULL,
+    salaysay TEXT NULL,
+    complainant_attended ENUM('Present', 'Absent') DEFAULT 'Absent',
+    respondent_attended ENUM('Present', 'Absent') DEFAULT 'Absent',
+    session_outcome ENUM('Settled', 'Absent_Retry', 'Continued_Dialogue', 'Impasse_Escalate', 'Max_Failed_Escalate') NULL,
+    outcome_notes TEXT NULL,
+    scheduled_by INT UNSIGNED NULL,
+    resolved_at DATETIME NULL,
+    escalated_at DATETIME NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_paanyaya_sessions_complaint (complaint_id),
+    KEY idx_paanyaya_sessions_attempt (attempt_number),
+    CONSTRAINT fk_paanyaya_sessions_complaint FOREIGN KEY (complaint_id) REFERENCES complaints (complaint_id) ON DELETE CASCADE,
+    CONSTRAINT fk_paanyaya_sessions_user FOREIGN KEY (scheduled_by) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE complaint_scanned_documents (
@@ -944,16 +973,16 @@ FROM roles WHERE role_name = 'Summons Server'
 AND NOT EXISTS (SELECT 1 FROM users WHERE username = 'summonsserver');
 
 INSERT INTO complaint_categories (category_name) VALUES
-    ('Non-Payment of Debt'),
-    ('Breach of Agreement'),
-    ('Physical Injuries'),
-    ('Defamation'),
-    ('Threats'),
-    ('Property and Rental Disputes'),
-    ('Disturbance and Public Disorder'),
-    ('Malicious Mischief'),
-    ('Trespassing'),
-    ('Family and Domestic Disputes')
+    ('Non-Payment of Debt / Hindi Pagbabayad ng Utang'),
+    ('Breach of Agreement / Paglabag sa Kasunduan'),
+    ('Physical Injuries / Pananakit sa Katawan'),
+    ('Defamation / Paninirang-puri'),
+    ('Threats / Pagbabanta'),
+    ('Property and Rental Disputes / Alitan sa Ari-arian at Paupahan'),
+    ('Disturbance and Public Disorder / Panggugulo sa Kaayusan'),
+    ('Malicious Mischief / Paninira ng Ari-arian'),
+    ('Trespassing / Ilegal na Pagpasok'),
+    ('Family and Domestic Disputes / Alitan sa Pamilya at Tahanan')
 ON DUPLICATE KEY UPDATE category_name = VALUES(category_name);
 
 INSERT INTO document_templates (template_name, description) VALUES

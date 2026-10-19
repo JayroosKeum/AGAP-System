@@ -95,6 +95,17 @@ class Report
             );
             $casesList = $casesStmt->fetchAll(PDO::FETCH_ASSOC);
 
+            $calendarHearingsStmt = $this->conn->query(
+                "SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.venue, h.status,
+                        c.case_id, c.case_number, co.complaint_title
+                 FROM hearings h
+                 INNER JOIN cases c ON c.case_id = h.case_id
+                 INNER JOIN complaints co ON co.complaint_id = c.complaint_id
+                 WHERE h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')
+                 ORDER BY h.hearing_date ASC"
+            );
+            $calendarHearings = $calendarHearingsStmt->fetchAll(PDO::FETCH_ASSOC);
+
             return [
                 'total_cases' => (int) $this->conn->query('SELECT COUNT(*) FROM cases')->fetchColumn(),
                 'settled_cases' => (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status = 'Settled'")->fetchColumn(),
@@ -107,6 +118,7 @@ class Report
                 'active_mediations' => (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status IN ('Mediation', 'Conciliation')")->fetchColumn(),
                 'deadlines_due' => (int) $deadlineCount->fetchColumn(),
                 'today_hearings' => $todayHearings->fetchAll(PDO::FETCH_ASSOC),
+                'calendar_hearings' => $calendarHearings,
                 'mediation_deadlines' => $deadlineRows,
                 'status_totals' => $statusRows,
                 'cases' => $casesList,
@@ -240,6 +252,17 @@ class Report
         $casesStmt->execute($params);
         $casesList = $casesStmt->fetchAll(PDO::FETCH_ASSOC);
 
+        $calendarHearingsStmt = $this->conn->query(
+            "SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.venue, h.status,
+                    c.case_id, c.case_number, co.complaint_title
+             FROM hearings h
+             INNER JOIN cases c ON c.case_id = h.case_id
+             INNER JOIN complaints co ON co.complaint_id = c.complaint_id
+             WHERE h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')
+             ORDER BY h.hearing_date ASC"
+        );
+        $calendarHearings = $calendarHearingsStmt->fetchAll(PDO::FETCH_ASSOC);
+
         return [
             'total_cases' => (int) $totalCasesStmt->fetchColumn(),
             'settled_cases' => (int) $settledStmt->fetchColumn(),
@@ -252,6 +275,7 @@ class Report
             'active_mediations' => (int) $activeMediationStmt->fetchColumn(),
             'deadlines_due' => (int) $deadlineCountStmt->fetchColumn(),
             'today_hearings' => $periodHearings,
+            'calendar_hearings' => $calendarHearings,
             'mediation_deadlines' => $deadlineRows,
             'status_totals' => $statusRows,
             'cases' => $casesList,

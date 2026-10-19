@@ -55,9 +55,9 @@
             <span id="hearingsTodaySub">Scheduled sessions</span>
         </article>
         <article class="stat-card">
-            <p id="deadlinesDueLabel">Deadlines due</p>
-            <h2 id="deadlinesDue">—</h2>
-            <span id="deadlinesDueSub">Mediation deadlines within 7 days</span>
+            <p id="archivedCasesLabel">Archived cases</p>
+            <h2 id="archivedCases">—</h2>
+            <span id="archivedCasesSub">Closed and archived records</span>
         </article>
         <article class="stat-card">
             <p id="activeMediationsLabel">Active mediation</p>
@@ -83,7 +83,59 @@
 
     <p id="dashboardMessage" class="dashboard-message" role="status"></p>
 
-    <!-- Period Cases Panel -->
+    <!-- Hearings & Calendar Row (Placed Above Cases Table to match layout) -->
+    <div class="dashboard-panels">
+        <section class="dashboard-panel" id="dashboardHearingsPanel">
+            <div class="panel-heading">
+                <div>
+                    <h2 id="hearingsPanelHeading">Today's hearings</h2>
+                    <p id="hearingsPanelSub">Sessions scheduled for today.</p>
+                </div>
+                <div class="panel-heading-actions">
+                    <span id="periodHearingCountBadge" class="panel-count-badge" style="display:none;">0 hearings</span>
+                    <a href="../hearings/schedules.php">View schedule</a>
+                </div>
+            </div>
+            <div id="todayHearings" class="dashboard-list" aria-live="polite"></div>
+            <!-- Pagination: Only show 10 at a time -->
+            <div class="dashboard-table-pagination" id="hearingsTablePagination" style="display:none;">
+                <div class="pagination-info" id="hearingsPaginationInfo">Showing 1 to 10 of 0 hearings</div>
+                <div class="pagination-buttons" id="hearingsPaginationButtons">
+                    <button type="button" class="btn-page-nav" id="hearingsPrevPageBtn" disabled>&laquo; Prev</button>
+                    <div class="pagination-page-numbers" id="hearingsPageNumbers"></div>
+                    <button type="button" class="btn-page-nav" id="hearingsNextPageBtn">Next &raquo;</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Interactive Monthly Hearings Calendar -->
+        <section class="dashboard-panel dashboard-calendar-panel" id="dashboardCalendarPanel">
+            <div class="panel-heading">
+                <div>
+                    <h2 id="calendarPanelHeading">Hearings Calendar</h2>
+                    <p id="calendarPanelSub">Monthly schedule of dispute hearings</p>
+                </div>
+                <div class="panel-heading-actions">
+                    <div class="dash-cal-nav">
+                        <button type="button" id="dashCalPrevBtn" class="btn-cal-nav" title="Previous Month" aria-label="Previous Month">&#8249;</button>
+                        <span id="dashCalMonthDisplay" class="dash-cal-month-title">October 2026</span>
+                        <button type="button" id="dashCalNextBtn" class="btn-cal-nav" title="Next Month" aria-label="Next Month">&#8250;</button>
+                        <button type="button" id="dashCalTodayBtn" class="btn-cal-today" title="Go to Current Month">Today</button>
+                    </div>
+                    <a href="../hearings/schedules.php" class="panel-link">Full schedule</a>
+                </div>
+            </div>
+            <div class="dashboard-calendar-wrap">
+                <div class="dashboard-calendar-grid" id="dashboardCalendarGrid" aria-label="Hearing Calendar"></div>
+            </div>
+            <div class="dashboard-cal-legend">
+                <span class="cal-legend-item"><span class="cal-legend-dot has-hearing"></span> Hearing Scheduled</span>
+                <span class="cal-legend-item"><span class="cal-legend-dot is-today"></span> Today</span>
+            </div>
+        </section>
+    </div>
+
+    <!-- Period Cases Panel (10 at a time with pagination) -->
     <section class="dashboard-panel dashboard-panel-wide" id="dashboardCasesPanel">
         <div class="panel-heading">
             <div>
@@ -112,29 +164,19 @@
                 </tbody>
             </table>
         </div>
+        <!-- Pagination: Only show 10 at a time -->
+        <div class="dashboard-table-pagination" id="casesTablePagination" style="display:none;">
+            <div class="pagination-info" id="casesPaginationInfo">Showing 1 to 10 of 0 cases</div>
+            <div class="pagination-buttons" id="casesPaginationButtons">
+                <button type="button" class="btn-page-nav" id="casesPrevPageBtn" disabled>&laquo; Prev</button>
+                <div class="pagination-page-numbers" id="casesPageNumbers"></div>
+                <button type="button" class="btn-page-nav" id="casesNextPageBtn">Next &raquo;</button>
+            </div>
+        </div>
     </section>
 
-    <div class="dashboard-panels">
-        <section class="dashboard-panel">
-            <div class="panel-heading">
-                <div>
-                    <h2 id="hearingsPanelHeading">Today's hearings</h2>
-                    <p id="hearingsPanelSub">Sessions that need attention.</p>
-                </div>
-                <a href="../hearings/schedules.php">View schedule</a>
-            </div>
-            <div id="todayHearings" class="dashboard-list" aria-live="polite"></div>
-        </section>
-        <section class="dashboard-panel">
-            <div class="panel-heading">
-                <div>
-                    <h2 id="deadlinesPanelHeading">Upcoming mediation deadlines</h2>
-                    <p id="deadlinesPanelSub">Active cases due for settlement.</p>
-                </div>
-                <a href="../cases/case-list.php">View cases</a>
-            </div>
-            <div id="mediationDeadlines" class="dashboard-list" aria-live="polite"></div>
-        </section>
+    <!-- Case Status Overview -->
+    <div class="dashboard-panels dashboard-panels-bottom">
         <section class="dashboard-panel dashboard-panel-wide">
             <div class="panel-heading">
                 <div>
@@ -145,6 +187,8 @@
             <div id="statusTotals" class="status-summary" aria-live="polite"></div>
         </section>
     </div>
+
     <span id="cfaCases" style="display:none;" aria-hidden="true"></span>
-    <span id="archivedCases" style="display:none;" aria-hidden="true"></span>
+    <span id="deadlinesDue" style="display:none;" aria-hidden="true"></span>
+    <div id="mediationDeadlines" style="display:none;" aria-hidden="true"></div>
 </section>

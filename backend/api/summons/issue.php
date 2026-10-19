@@ -52,7 +52,7 @@ if (in_array($lifecycleStatus, [
 $mediationData = [
     'mediation_date' => trim((string) ($_POST['mediation_date'] ?? '')),
     'mediation_time' => trim((string) ($_POST['mediation_time'] ?? '')),
-    'venue' => trim((string) ($_POST['venue'] ?? 'Barangay Hall')),
+    'venue' => trim((string) ($_POST['venue'] ?? 'Lupon Court Room')),
     'remarks' => trim((string) ($_POST['remarks'] ?? ''))
 ];
 

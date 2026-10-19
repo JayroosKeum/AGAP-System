@@ -225,17 +225,16 @@ class Complaint
                 trim((string) $data['narrative']),
                 trim((string) ($data['additional_details'] ?? '')) ?: null,
                 trim((string) ($data['requested_resolution'] ?? '')) ?: null,
-                $isDraft ? 'Draft' : 'Under Review',
+                $isDraft ? 'Draft' : 'Pre-Docketed (Paanyaya)',
                 'No Scan Uploaded',
                 $isDraft ? 1 : 0,
                 $_SESSION['user_id'] ?? $data['clerk_id'] ?? $data['encoded_by'] ?? 1
             ]);
 
             $complaintId = (int) $this->conn->lastInsertId();
-            $docketSeries = str_pad((string)$complaintId, 2, '0', STR_PAD_LEFT);
-            $complaintNumber = sprintf('%02d-%s-%s', (int) date('m'), $docketSeries, date('Y'));
+            $complaintNumber = sprintf('CMP-%s-%05d', date('Y'), $complaintId);
             $numberStatement = $this->conn->prepare(
-                'UPDATE complaints SET complaint_number = ? WHERE complaint_id = ?'
+                'UPDATE complaints SET complaint_number = ?, paanyaya_attempt_count = 1, max_paanyaya_reached = 0, resolved_without_docketing = 0 WHERE complaint_id = ?'
             );
             $numberStatement->execute([$complaintNumber, $complaintId]);
             $this->applyMapLocation($complaintId, $data);
@@ -247,8 +246,9 @@ class Complaint
             $this->conn->commit();
             return [
                 'success' => true,
-                'message' => $isDraft ? 'Complaint saved as draft. You can resume editing anytime.' : 'Complaint submitted and placed under review.',
+                'message' => $isDraft ? 'Complaint saved as draft. You can resume editing anytime.' : 'Complaint submitted and placed into Pre-Docketing (Paanyaya) stage.',
                 'complaint_id' => $complaintId,
+                'complaint_number' => $complaintNumber,
                 'is_draft' => $isDraft
             ];
 

@@ -166,7 +166,7 @@ if (!$doc) {
 
 $pdfService = new PDFService();
 $hearingDateTime = $hearing['hearing_date'];
-$venue = $hearing['venue'] ?: 'Barangay Hall';
+$venue = $hearing['venue'] ?: 'Lupon Court Room';
 
 $kp9Data = [
     'case_number' => $case['case_number'],

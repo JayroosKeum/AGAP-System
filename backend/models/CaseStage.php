@@ -1282,7 +1282,7 @@ class CaseStage
             require_once __DIR__ . '/../services/PDFService.php';
             $pdfService = new PDFService();
             $kp10Result = $pdfService->generateKp10($caseId, $userId, [
-                'venue' => 'Lupon Office, Barangay Tumana',
+                'venue' => 'Lupon Court Room',
                 'constitution_date' => $referralDate
             ], $this->conn);
 

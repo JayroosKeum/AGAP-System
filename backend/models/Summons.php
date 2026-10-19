@@ -38,7 +38,7 @@ class Summons
             // Parse and prepare mediation schedule parameters
             $medDate = !empty($mediationData['mediation_date']) ? trim((string)$mediationData['mediation_date']) : '';
             $medTime = !empty($mediationData['mediation_time']) ? trim((string)$mediationData['mediation_time']) : '';
-            $venue = !empty($mediationData['venue']) ? trim((string)$mediationData['venue']) : 'Barangay Hall';
+            $venue = !empty($mediationData['venue']) ? trim((string)$mediationData['venue']) : 'Lupon Court Room';
             $remarks = !empty($mediationData['remarks']) ? trim((string)$mediationData['remarks']) : null;
 
             if ($medDate === '') {
@@ -54,7 +54,20 @@ class Summons
 
             require_once __DIR__ . '/../services/MediationDeadlineService.php';
 
-            // Time restrictions (weekends, holidays, lunch break, office hours) bypassed for testing/development
+            $dayOfWeek = (int) date('w', strtotime($medDate));
+            $hour = (int) date('H', strtotime($medTime));
+            if ($dayOfWeek !== 2) {
+                $this->conn->rollBack();
+                return ['success' => false, 'message' => 'Mediation hearings can only be scheduled on Tuesdays.'];
+            }
+            if ($hour < 13 || $hour >= 17) {
+                $this->conn->rollBack();
+                return ['success' => false, 'message' => 'Mediation hearings must be between 1:00 PM and 5:00 PM.'];
+            }
+            if (MediationDeadlineService::isNonWorkingDay(new \DateTimeImmutable($medDate))) {
+                $this->conn->rollBack();
+                return ['success' => false, 'message' => 'Mediation hearings cannot be scheduled on non-working days or Philippine holidays.'];
+            }
 
             // Check daily 8-slot capacity limit
             $capacityStmt = $this->conn->prepare("
@@ -73,9 +86,10 @@ class Summons
                 ];
             }
 
-            // Enforce: mediation must be scheduled within 15 working days of complaint filing date
+            // Enforce: mediation must be scheduled within 15 working days of complaint filing date (or escalation date if Pre-Docketed Paanyaya)
             if (!empty($complaint['created_at'])) {
-                $filingDateStr = substr($complaint['created_at'], 0, 10);
+                $isPaanyaya = ($complaint['status'] === 'Pre-Docketed (Paanyaya)');
+                $filingDateStr = $isPaanyaya ? date('Y-m-d') : substr($complaint['created_at'], 0, 10);
                 $filingDeadline = MediationDeadlineService::calculateBusinessDays($filingDateStr, 15);
                 $scheduledDate = new \DateTime($medDate);
                 $deadlineDate = new \DateTime($filingDeadline);
@@ -84,7 +98,8 @@ class Summons
                     return [
                         'success' => false,
                         'message' => sprintf(
-                            'The mediation date must be within 15 working days of the complaint filing date. Deadline: %s.',
+                            'The mediation date must be within 15 working days of %s. Deadline: %s.',
+                            $isPaanyaya ? 'formal docketing / escalation' : 'the complaint filing date',
                             $deadlineDate->format('F j, Y')
                         ),
                     ];
@@ -293,7 +308,7 @@ class Summons
                 $attemptCheck->execute([$latestDocId, $caseId, $caseId, $latestDocId, $existingCount]);
                 if (!$attemptCheck->fetchColumn()) {
                     $this->conn->commit();
-                    $ordinals = ['', '1st', '2nd', '3rd'];
+                    $ordinals = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th'];
                     $currOrd = $ordinals[$existingCount] ?? ($existingCount . 'th');
                     $nextOrd = $ordinals[$existingCount + 1] ?? (($existingCount + 1) . 'th');
                     return [
@@ -303,8 +318,8 @@ class Summons
                 }
             }
 
-            // 3. Cap at 3 summons per mediation/conciliation
-            if ($existingCount >= 3) {
+            // 3. Cap at 6 summons per mediation/conciliation
+            if ($existingCount >= 6) {
                 $this->conn->commit();
                 $latest = end($existingSummons);
                 return [
@@ -313,8 +328,8 @@ class Summons
                     'case_id' => $caseId,
                     'case_number' => $caseNumber,
                     'document_id' => (int) $latest['document_id'],
-                    'summons_number' => 3,
-                    'message' => 'All 3 summons attempts have already been issued. No further summons can be issued.',
+                    'summons_number' => 6,
+                    'message' => 'All 6 summons attempts have already been issued. No further summons can be issued.',
                 ];
             }
 
@@ -609,7 +624,7 @@ class Summons
                     'complainants' => $compList,
                     'respondents' => $respList,
                     'target_party_name' => $firstResp['full_name'] ?? '',
-                    'venue' => $hInfo['venue'] ?? 'Barangay Hall',
+                    'venue' => $hInfo['venue'] ?? 'Lupon Court Room',
                     'hearing_date' => $hInfo['hearing_date'] ?? date('Y-m-d 09:00:00', strtotime('+3 days')),
                     'notice_date' => date('Y-m-d'),
                 ], $fullPath);

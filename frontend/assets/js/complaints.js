@@ -182,6 +182,20 @@ function initialiseCaseTabs() {
             if (tabId) switchCaseTab(tabId);
         });
     });
+
+    // Check URL parameter or hash to activate specific tab on page load
+    const urlParams = new URLSearchParams(window.location.search);
+    const requestedTab = urlParams.get('tab') || window.location.hash.replace('#', '');
+    if (requestedTab) {
+        let targetId = requestedTab;
+        if (!targetId.startsWith('tab-')) {
+            targetId = 'tab-' + targetId;
+        }
+        const targetBtn = document.querySelector(`.case-tab-item[data-tab="${targetId}"]`);
+        if (targetBtn) {
+            switchCaseTab(targetId);
+        }
+    }
 }
 
 function switchCaseTab(tabId) {
@@ -194,6 +208,12 @@ function switchCaseTab(tabId) {
     document.querySelectorAll('.case-tab-pane').forEach(pane => {
         pane.classList.toggle('active', pane.id === tabId);
     });
+
+    try {
+        const url = new URL(window.location);
+        url.searchParams.set('tab', tabId.replace('tab-', ''));
+        window.history.replaceState({}, '', url);
+    } catch (_) {}
 
     // Invalidate map sizes to ensure tiles render properly after tab switch
     if (tabId === 'tab-overview' && window.complaintDetailMapInstance) {
@@ -368,22 +388,39 @@ async function loadComplaintDetails() {
         // Status Badge
         const statusEl = document.getElementById('complaintStatusBadge');
         const caseStage = data.case_workspace?.case?.case_status;
-        const displayStage = caseStage ? (caseStage + ' Stage') : (data.lifecycle_status || 'Under Review');
+        let displayStage = caseStage ? (caseStage + ' Stage') : (data.lifecycle_status || 'Under Review');
+        if (data.status === 'Pre-Docketed (Paanyaya)') {
+            displayStage = 'Pre-Docketed (Paanyaya)';
+        } else if (data.status === 'Resolved at Paanyaya / Closed') {
+            displayStage = 'Resolved at Paanyaya / Closed';
+        }
         if (statusEl) {
-            const stSlug = (caseStage || data.lifecycle_status || 'pending').toLowerCase().replace(/[^a-z0-9]/g, '-');
-            statusEl.className = 'case-stage-pill status-' + stSlug;
+            if (data.status === 'Pre-Docketed (Paanyaya)') {
+                statusEl.className = 'case-stage-pill';
+                statusEl.style.background = '#dcfce7';
+                statusEl.style.color = '#15803d';
+                statusEl.style.border = '1px solid #86efac';
+            } else if (data.status === 'Resolved at Paanyaya / Closed') {
+                statusEl.className = 'case-stage-pill';
+                statusEl.style.background = '#f1f5f9';
+                statusEl.style.color = '#334155';
+                statusEl.style.border = '1px solid #cbd5e1';
+            } else {
+                const stSlug = (caseStage || data.lifecycle_status || 'pending').toLowerCase().replace(/[^a-z0-9]/g, '-');
+                statusEl.className = 'case-stage-pill status-' + stSlug;
+            }
             statusEl.textContent = displayStage;
         }
 
         // Action Bar Status Tracker Button
         const statusBtnLabel = document.getElementById('statusTrackerButtonLabel');
         if (statusBtnLabel) {
-            statusBtnLabel.textContent = 'Status: ' + (caseStage ? 'In Progress' : (data.lifecycle_status || 'In Progress'));
+            statusBtnLabel.textContent = 'Status: ' + (caseStage ? 'In Progress' : (data.status === 'Pre-Docketed (Paanyaya)' ? 'Paanyaya' : (data.lifecycle_status || 'In Progress')));
         }
         const statusDot = document.getElementById('statusDotIndicator');
         if (statusDot) {
-            const isClosed = ['Amicable Settlement', 'Arbitration Award', 'Settled', 'Closed'].includes(data.lifecycle_status);
-            statusDot.style.background = isClosed ? '#10b981' : '#f59e0b';
+            const isClosed = ['Amicable Settlement', 'Arbitration Award', 'Settled', 'Closed', 'Resolved at Paanyaya / Closed'].includes(data.lifecycle_status) || data.status === 'Resolved at Paanyaya / Closed';
+            statusDot.style.background = isClosed ? '#10b981' : (data.status === 'Pre-Docketed (Paanyaya)' ? '#16a34a' : '#f59e0b');
         }
 
         // Hero Case Type Badge
@@ -395,7 +432,14 @@ async function loadComplaintDetails() {
         const daysText = document.getElementById('heroDaysRemainingText');
         const timer = data.case_workspace?.case?.mediation_timer;
         if (daysBadge && daysText) {
-            if (timer) {
+            if (data.status === 'Pre-Docketed (Paanyaya)') {
+                daysBadge.style.display = 'inline-flex';
+                daysBadge.className = 'hero-days-pill';
+                daysBadge.style.background = '#dcfce7';
+                daysBadge.style.color = '#15803d';
+                daysBadge.style.border = '1px solid #86efac';
+                daysText.textContent = 'Paanyaya (Statutory Clock Paused)';
+            } else if (timer) {
                 daysBadge.style.display = 'inline-flex';
                 daysBadge.className = 'hero-days-pill ' + (timer.badge_class || 'badge-within-period');
                 daysText.textContent = timer.badge_label || (timer.days_remaining !== undefined ? `${timer.days_remaining} days remaining` : 'Within Period');
@@ -425,6 +469,9 @@ async function loadComplaintDetails() {
 
         // Load Case Status / Progress Tracker & Action Buttons first
         await loadCaseProgress(complaintId);
+
+        // Render dedicated Paanyaya Pre-Docketing Tab
+        renderPaanyayaTab(data);
 
         // Hero Meta Columns
         setText('infoComplaintTitle', data.complaint_title);
@@ -1033,7 +1080,10 @@ function renderCaseWorkspace(workspace, complaint) {
     // 6. Official KP Forms (both Overview Tab and Documents Tab)
     renderOfficialKpForms(workspace, complaint);
 
-    // Call mediation and arbitration helpers to keep respective tab containers populated
+    // Call paanyaya, mediation and arbitration helpers to keep respective tab containers populated
+    if (complaint || window.complaintData) {
+        renderPaanyayaTab(complaint || window.complaintData);
+    }
     renderMediationCard(stages, stageCaseId, complaint, workspace);
     renderArbitrationCard(stages, stageCaseId, complaint);
 }
@@ -1052,7 +1102,19 @@ function renderOfficialKpForms(workspace, complaint) {
     const filedDate = activeComplaint.created_at ? formatDateReadable(activeComplaint.created_at) : 'N/A';
 
     const docs = workspace?.documents || [];
-    const totalCount = docs.length + (complaintId > 0 ? 1 : 0);
+    const paanyayaStatuses = [
+        'Pre-Docketed (Paanyaya)',
+        '1st Paanyaya Failed (No-Show)',
+        'Paanyaya In Progress',
+        'Resolved at Paanyaya / Closed',
+        'Paanyaya'
+    ];
+    const isPaanyaya = paanyayaStatuses.includes(activeComplaint.status || '') ||
+                       Boolean(activeComplaint.resolved_without_docketing) ||
+                       (typeof activeComplaint.status === 'string' && activeComplaint.status.toLowerCase().includes('paanyaya'));
+    const hasPaanyayaDoc = isPaanyaya || Boolean(activeComplaint.paanyaya);
+
+    const totalCount = docs.length + (complaintId > 0 ? (hasPaanyayaDoc ? 2 : 1) : 0);
     const countText = `${totalCount} Issued`;
     const formsCountText = `${totalCount} form${totalCount === 1 ? '' : 's'}`;
 
@@ -1062,43 +1124,103 @@ function renderOfficialKpForms(workspace, complaint) {
 
     let rowsHtml = '';
 
-    // 1. Primary Complaint Form: KP Form 7 (Reklamo)
-    if (complaintId > 0) {
+    // 0. Paanyaya (Informal Invitation Letter) - Visible during Pre-Docketing phase
+    if (hasPaanyayaDoc && complaintId > 0) {
+        const pSess = activeComplaint.paanyaya || {};
+        const pDate = pSess.invitation_date ? formatDateReadable(pSess.invitation_date) : 'Scheduled';
+        const pTime = pSess.invitation_time || '';
+        const pStatus = pSess.status || activeComplaint.status || 'Active';
         rowsHtml += `
-            <div class="kp-form-item-row" style="background: #ffffff;">
+            <div class="kp-form-item-row" style="background: #f0fdf4; border-left: 4px solid #16a34a;">
                 <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
-                    <span style="font-size: 1.5rem; color: #0284c7; line-height: 1;">⚖️</span>
+                    <span style="font-size: 1.5rem; color: #16a34a; line-height: 1;">✉️</span>
                     <div>
                         <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                            <span style="font-weight: 700; color: #0f172a;">Pormularyo ng KP Blg. 7 (Reklamo / Formal Complaint)</span>
+                            <span style="font-weight: 700; color: #0f172a;">Paanyaya (Informal Invitation Letter)</span>
+                            <span style="font-size: 0.72rem; padding: 1px 7px; border-radius: 4px; background: #dcfce7; color: #15803d; font-weight: 700;">PRE-DOCKETING</span>
                         </div>
                         <div class="kp-form-meta-text">
-                            <span>Filed: ${escapeHtml(filedDate)}</span>
-                            <span style="display: inline-block; padding: 1px 7px; border-radius: 4px; font-weight: 700; font-size: 0.72rem; background: ${hasScan ? '#dcfce7' : '#e0f2fe'}; color: ${hasScan ? '#15803d' : '#0369a1'};">
-                                ${hasScan ? `SCANNED COPY ATTACHED (v${escapeHtml(String(scanDoc.version_number || 1))})` : 'DIGITAL FORM ISSUED'}
-                            </span>
+                            <span>Dialogue: ${escapeHtml(pDate)} ${escapeHtml(pTime)}</span>
+                            <span>&bull; Status: ${escapeHtml(pStatus)}</span>
                         </div>
                     </div>
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                    <button type="button" class="btn-small-link" onclick="openKp7DigitalPreviewModal(${Number(complaintId)})" style="color: #0284c7; border-color: #bae6fd; font-weight: 600;">
+                    <button type="button" class="btn-small-link" onclick="openPaanyayaPreviewModal()" style="color: #16a34a; border-color: #bbf7d0; font-weight: 600;">
                         Preview / Print
                     </button>
-                    ${hasScan ? `
-                        <a href="../../../backend/api/complaints/scanned-document.php?id=${encodeURIComponent(complaintId)}" target="_blank" class="btn-small-link" style="color: #15803d; border-color: #bbf7d0; text-decoration: none;" title="View scanned handwritten copy">
-                            View Scan
-                        </a>
-                        <button type="button" class="btn-small-link" onclick="openScanHistoryModal(${Number(complaintId)})" title="View version history">
-                            Version History
-                        </button>
-                    ` : `
-                        <button type="button" class="btn-small-link" onclick="openUploadScanModal()" style="color: #64748b; border-color: #cbd5e1;">
-                            + Upload Scan
-                        </button>
-                    `}
+                    <a href="../../../backend/api/paanyaya/preview.php?id=${encodeURIComponent(complaintId)}&download=1" class="btn-pdf-chip" download title="Download Paanyaya PDF" style="background: #16a34a; color: #ffffff;">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        <span>PDF</span>
+                    </a>
                 </div>
             </div>
         `;
+    }
+
+    // 1. Primary Complaint Form: KP Form 7 (Reklamo)
+    if (complaintId > 0) {
+        if (isPaanyaya) {
+            rowsHtml += `
+                <div class="kp-form-item-row" style="background: #f8fafc; border-left: 4px solid #f59e0b;">
+                    <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
+                        <span style="font-size: 1.5rem; color: #94a3b8; line-height: 1;">⚖️</span>
+                        <div>
+                            <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <span style="font-weight: 700; color: #64748b;">Pormularyo ng KP Blg. 7 (Reklamo / Formal Complaint)</span>
+                                <span style="display: inline-block; padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 0.72rem; background: #fef3c7; color: #b45309; border: 1px solid #fde68a;">
+                                    KP Form 7: On Hold (Pending Paanyaya Outcome)
+                                </span>
+                            </div>
+                            <div class="kp-form-meta-text">
+                                <span>Pre-Docketing Phase &bull; Form will only generate if formal escalation occurs</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button type="button" class="btn-small-link" disabled style="opacity: 0.55; cursor: not-allowed; color: #94a3b8; border-color: #cbd5e1;" title="KP Form 7 is on hold pending Paanyaya outcome.">
+                            On Hold
+                        </button>
+                    </div>
+                </div>
+            `;
+        } else {
+            rowsHtml += `
+                <div class="kp-form-item-row" style="background: #ffffff;">
+                    <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
+                        <span style="font-size: 1.5rem; color: #0284c7; line-height: 1;">⚖️</span>
+                        <div>
+                            <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <span style="font-weight: 700; color: #0f172a;">Pormularyo ng KP Blg. 7 (Reklamo / Formal Complaint)</span>
+                            </div>
+                            <div class="kp-form-meta-text">
+                                <span>Filed: ${escapeHtml(filedDate)}</span>
+                                <span style="display: inline-block; padding: 1px 7px; border-radius: 4px; font-weight: 700; font-size: 0.72rem; background: ${hasScan ? '#dcfce7' : '#e0f2fe'}; color: ${hasScan ? '#15803d' : '#0369a1'};">
+                                    ${hasScan ? `SCANNED COPY ATTACHED (v${escapeHtml(String(scanDoc.version_number || 1))})` : 'DIGITAL FORM ISSUED'}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button type="button" class="btn-small-link" onclick="openKp7DigitalPreviewModal(${Number(complaintId)})" style="color: #0284c7; border-color: #bae6fd; font-weight: 600;">
+                            Preview / Print
+                        </button>
+                        ${hasScan ? `
+                            <a href="../../../backend/api/complaints/scanned-document.php?id=${encodeURIComponent(complaintId)}" target="_blank" class="btn-small-link" style="color: #15803d; border-color: #bbf7d0; text-decoration: none;" title="View scanned handwritten copy">
+                                View Scan
+                            </a>
+                            <button type="button" class="btn-small-link" onclick="openScanHistoryModal(${Number(complaintId)})" title="View version history">
+                                Version History
+                            </button>
+                        ` : `
+                            <button type="button" class="btn-small-link" onclick="openUploadScanModal()" style="color: #64748b; border-color: #cbd5e1;">
+                                + Upload Scan
+                            </button>
+                        `}
+                    </div>
+                </div>
+            `;
+        }
     }
 
     // 2. Subsequent Issued Documents (Summons, Notices, etc.)
@@ -1153,6 +1275,219 @@ function renderOfficialKpForms(workspace, complaint) {
 
     if (heroList) heroList.innerHTML = rowsHtml;
     if (docContainer) docContainer.innerHTML = rowsHtml;
+}
+
+function renderPaanyayaTab(data) {
+    if (!data) return;
+    const ws = data.paanyaya_workspace || {};
+    const p = data.paanyaya || ws.latest_session || {};
+    const complaintId = data.complaint_id || 0;
+    const isResolved = Boolean(ws.is_resolved || data.status === 'Resolved at Paanyaya / Closed' || data.resolved_without_docketing);
+    const isEscalated = Boolean(ws.is_escalated || data.case_id);
+    const attemptCount = ws.attempt_count || data.paanyaya_attempt_count || (ws.sessions?.length) || 1;
+
+    const esc = (s) => String(s ?? '').replace(/[&<>'"]/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+    }[c] || c));
+
+    // 1. Stage 0 Banner Text and Badges
+    const stage0Badge = document.getElementById('stage0StatusText');
+    const stage0Icon = document.getElementById('stage0Icon');
+    if (stage0Badge) {
+        if (isResolved) {
+            stage0Badge.textContent = 'Resolved at Paanyaya / Closed';
+            stage0Badge.style.background = '#bbf7d0';
+            stage0Badge.style.color = '#14532d';
+            if (stage0Icon) stage0Icon.textContent = '✓';
+        } else if (isEscalated) {
+            stage0Badge.textContent = 'Formally Docketed (Escalated to Mediation)';
+            stage0Badge.style.background = '#bfdbfe';
+            stage0Badge.style.color = '#1e40af';
+            if (stage0Icon) stage0Icon.textContent = '→';
+        } else {
+            stage0Badge.textContent = `Pre-Docketed (Attempt ${attemptCount} of 2)`;
+            stage0Badge.style.background = '#fef08a';
+            stage0Badge.style.color = '#854d0e';
+            if (stage0Icon) stage0Icon.textContent = '✉️';
+        }
+    }
+
+    // 2. Nagpaanyaya (Complainants) & Inanyayahan (Respondents)
+    const complainants = ws.complainants || (data.parties ? data.parties.filter(x => x.party_type === 'Complainant') : []);
+    const respondents = ws.respondents || (data.parties ? data.parties.filter(x => x.party_type === 'Respondent') : []);
+
+    const compBadge = document.getElementById('tabPaaComplainantsCountBadge');
+    if (compBadge) compBadge.textContent = `${complainants.length} Party(ies)`;
+    const respBadge = document.getElementById('tabPaaRespondentsCountBadge');
+    if (respBadge) respBadge.textContent = `${respondents.length} Party(ies)`;
+
+    const renderPartyRows = (parties) => {
+        if (!parties || parties.length === 0) {
+            return '<p style="color: #64748b; font-size: 0.85rem; margin: 0; padding: 6px 0;">No party recorded on file.</p>';
+        }
+        return parties.map(pt => {
+            const name = pt.full_name || `${pt.first_name || ''} ${pt.last_name || ''}`.trim() || 'Unknown';
+            const addr = pt.address || pt.purok || 'Barangay Tumana';
+            const phone = pt.contact_no || pt.phone || '';
+            return `
+                <div style="margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px dashed #e2e8f0;">
+                    <div style="font-weight: 700; color: #0f172a; font-size: 0.95rem;">${esc(name)}</div>
+                    <div style="font-size: 0.82rem; color: #64748b; margin-top: 2px;">
+                        📍 ${esc(addr)}
+                        ${phone ? ` &bull; 📞 ${esc(phone)}` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    };
+
+    const compList = document.getElementById('tabPaaComplainantsList');
+    if (compList) compList.innerHTML = renderPartyRows(complainants);
+
+    const respList = document.getElementById('tabPaaRespondentsList');
+    if (respList) respList.innerHTML = renderPartyRows(respondents);
+
+    // 3. Current Paanyaya Session Schedule & KPI Grid
+    const rawDate = p.scheduled_date || p.invitation_date;
+    const rawTime = p.scheduled_time || p.invitation_time;
+    const paaDate = rawDate ? formatDateReadable(rawDate) : 'Pending Schedule';
+    const paaTime = rawTime ? (formatTime12(rawTime) + (p.hearing_day ? ` (${p.hearing_day})` : '')) : '—';
+    const paaVenue = p.venue || 'Tanggapan ng Barangay Tumana';
+    const paaSig = (p.has_e_signature !== undefined && Number(p.has_e_signature) === 0) ? 'Manual Signature' : 'Hon. Akiko Lynne Centeno (Embedded)';
+
+    setText('tabPaaSessionTitleHeading', `Paanyaya Dialogue Session (Attempt #${attemptCount})`);
+    setText('tabPaaSessionSubtitleHeading', `Scheduled Dialogue at ${paaVenue}`);
+    setText('tabPaaKpiDate', paaDate);
+    setText('tabPaaKpiTime', paaTime);
+    setText('tabPaaKpiVenue', paaVenue);
+    setText('tabPaaKpiSig', paaSig);
+
+    const dlLink = document.getElementById('tabPaaBtnDownloadPdf');
+    if (dlLink) {
+        dlLink.href = `../../../backend/api/paanyaya/preview.php?id=${encodeURIComponent(complaintId)}&download=1`;
+    }
+
+    const sched2Btn = document.getElementById('tabPaaBtnScheduleSecond');
+    if (sched2Btn) {
+        sched2Btn.style.display = ws.can_schedule_second ? 'inline-flex' : 'none';
+    }
+
+    const actionsGroup = document.getElementById('tabPaaActionsPendingGroup');
+    if (actionsGroup) {
+        if (isResolved || isEscalated || p.status === 'Resolved' || p.status === 'Escalated') {
+            actionsGroup.innerHTML = `
+                <span class="stat-pill" style="background: ${isResolved ? '#bbf7d0' : '#fee2e2'}; color: ${isResolved ? '#14532d' : '#991b1b'}; font-weight: 700; padding: 6px 12px; border-radius: 6px;">
+                    ${isResolved ? '✓ Resolved at Paanyaya' : '⚖️ Formally Escalated'}
+                </span>
+            `;
+        } else {
+            actionsGroup.innerHTML = `
+                <button type="button" class="btn-sess-green" onclick="openPaanyayaOutcomeModal('Resolved')">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <span>Amicably Resolved</span>
+                </button>
+                <button type="button" class="btn-create" onclick="openPaanyayaOutcomeModal('Escalate')" style="background: #dc2626; border-color: #dc2626; padding: 7px 14px; font-size: 0.82rem;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                    <span>Escalate to Formal</span>
+                </button>
+            `;
+        }
+    }
+
+    // 4. Paanyaya Sessions History Timeline
+    const historyContainer = document.getElementById('tabPaaHistoryContainer');
+    const historyBadge = document.getElementById('tabPaaHistoryStatusBadge');
+    if (historyBadge) {
+        historyBadge.textContent = `Attempt ${attemptCount} of 2`;
+    }
+
+    const sessions = (ws.sessions && ws.sessions.length > 0) ? ws.sessions : (rawDate ? [p] : []);
+
+    if (!historyContainer) return;
+
+    if (!sessions || sessions.length === 0) {
+        historyContainer.innerHTML = `
+            <div class="empty-detail-state" style="padding: 24px; text-align: center;">
+                <p style="margin: 0; font-size: 0.9rem; color: #64748b;">No informal Paanyaya dialogue session scheduled yet.</p>
+            </div>
+        `;
+        return;
+    }
+
+    let sessionsHtml = '';
+    sessions.forEach((s, idx) => {
+        const attNum = s.attempt_number || (idx + 1);
+        const sDate = s.scheduled_date || s.invitation_date;
+        const sTime = s.scheduled_time || s.invitation_time;
+        const sVenue = s.venue || 'Tanggapan ng Barangay Tumana';
+        const formattedDate = sDate ? formatDateReadable(sDate) : 'Not scheduled';
+        const formattedTime = sTime ? formatTime12(sTime) : '';
+        const day = s.hearing_day ? ` (${s.hearing_day})` : '';
+        const outcome = s.session_outcome || s.status;
+
+        let outcomeBadge = '<span class="stat-pill" style="background: #fef08a; color: #854d0e;">Scheduled / Awaiting Dialogue</span>';
+        let cardClass = 'session-card is-active';
+
+        if (outcome === 'Resolved' || outcome === 'Amicably Resolved') {
+            outcomeBadge = '<span class="stat-pill" style="background: #bbf7d0; color: #14532d;">✓ Resolved Amicably (Closed)</span>';
+            cardClass = 'session-card is-settled';
+        } else if (outcome === 'Absent_Retry' || outcome === 'Party Absent') {
+            outcomeBadge = '<span class="stat-pill" style="background: #fef08a; color: #854d0e;">⚠️ Party Absent (2nd Chance Extended)</span>';
+            cardClass = 'session-card is-failed';
+        } else if (outcome === 'Continued_Dialogue') {
+            outcomeBadge = '<span class="stat-pill" style="background: #dbeafe; color: #1e40af;">💬 Dialogue Incomplete (2nd Meeting Needed)</span>';
+            cardClass = 'session-card is-failed';
+        } else if (outcome === 'Impasse_Escalate' || outcome === 'Escalate' || outcome === 'Escalated') {
+            outcomeBadge = '<span class="stat-pill" style="background: #fee2e2; color: #991b1b;">⚡ Refusal / Escalated to Formal Docketing</span>';
+            cardClass = 'session-card is-escalated';
+        }
+
+        sessionsHtml += `
+            <div class="${cardClass}">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+                    <div>
+                        <h4 style="margin: 0; font-size: 1rem; font-weight: 700; color: #0f172a;">
+                            Attempt #${attNum}: ${attNum === 1 ? '1st Paanyaya (Unang Paanyaya)' : '2nd Paanyaya (Ikalawang Paanyaya)'}
+                        </h4>
+                        <div style="display: flex; align-items: center; gap: 12px; font-size: 0.82rem; color: #64748b; margin-top: 4px; flex-wrap: wrap;">
+                            <span>📅 <strong>Date:</strong> ${esc(formattedDate)} ${esc(day)}</span>
+                            <span>⏰ <strong>Time:</strong> ${esc(formattedTime)}</span>
+                            <span>📍 <strong>Venue:</strong> ${esc(sVenue)}</span>
+                        </div>
+                    </div>
+                    <div>${outcomeBadge}</div>
+                </div>
+
+                ${(s.complainant_attended || s.respondent_attended) ? `
+                    <div style="display: flex; align-items: center; gap: 16px; font-size: 0.8rem; color: #475569; margin-bottom: 10px; padding: 6px 12px; background: rgba(0,0,0,0.02); border-radius: 6px;">
+                        <span><strong>Complainant:</strong> ${esc(s.complainant_attended || 'Pending')}</span>
+                        <span>&bull;</span>
+                        <span><strong>Respondent:</strong> ${esc(s.respondent_attended || 'Pending')}</span>
+                    </div>
+                ` : ''}
+
+                ${s.outcome_notes ? `
+                    <div style="margin-top: 8px; font-size: 0.84rem; color: #334155; background: #fff; padding: 8px 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                        <strong>Dialogue Notes:</strong> ${esc(s.outcome_notes)}
+                    </div>
+                ` : ''}
+
+                <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(0,0,0,0.06);">
+                    <button type="button" class="btn-small-link" onclick="openPaanyayaPreviewModal()" style="display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; font-size: 0.78rem;">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                        <span>View Letter</span>
+                    </button>
+                    ${(!isResolved && !isEscalated && !s.session_outcome) ? `
+                        <button type="button" class="btn-create" onclick="openPaanyayaOutcomeModal()" style="padding: 5px 12px; font-size: 0.78rem; display: inline-flex; align-items: center; gap: 4px;">
+                            <span>Record Outcome</span>
+                        </button>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+    });
+
+    historyContainer.innerHTML = sessionsHtml;
 }
 
 function renderMediationCard(stages, caseId, complaint, workspace) {
@@ -1578,7 +1913,7 @@ async function checkMediationScheduleConflict() {
 
     const dateVal = dateInput.value;
     const timeVal = timeInput ? timeInput.value : '';
-    const venueVal = venueInput ? venueInput.value : 'Barangay Hall';
+    const venueVal = venueInput ? venueInput.value : 'Lupon Court Room';
     const complaintIdVal = complaintInput ? complaintInput.value : '';
 
     const params = new URLSearchParams();
@@ -3455,19 +3790,42 @@ document.addEventListener('DOMContentLoaded', () => {
 // ══════════════════════════════════════════════════════════════════════════════
 function renderKp7Overview(complaint) {
     if (!complaint) return;
+    const paanyayaStatuses = [
+        'Pre-Docketed (Paanyaya)',
+        '1st Paanyaya Failed (No-Show)',
+        'Paanyaya In Progress',
+        'Resolved at Paanyaya / Closed',
+        'Paanyaya'
+    ];
+    const isPaanyaya = paanyayaStatuses.includes(complaint.status || '') ||
+                       Boolean(complaint.resolved_without_docketing) ||
+                       (typeof complaint.status === 'string' && complaint.status.toLowerCase().includes('paanyaya'));
+
     const docStatus = complaint.document_status || (complaint.current_scan ? 'Scan Uploaded' : 'No Scan Uploaded');
     const badgeEl = document.getElementById('kp7DocStatusBadge');
     if (badgeEl) {
-        let badgeCls = 'badge-doc-no-scan';
-        if (docStatus === 'Updated Scan Uploaded') badgeCls = 'badge-doc-updated';
-        else if (docStatus === 'Scan Uploaded') badgeCls = 'badge-doc-uploaded';
-        badgeEl.className = 'badge-doc-status ' + badgeCls;
-        badgeEl.textContent = docStatus;
+        if (isPaanyaya) {
+            badgeEl.className = 'badge-doc-status badge-doc-pending';
+            badgeEl.style.background = '#fef3c7';
+            badgeEl.style.color = '#b45309';
+            badgeEl.style.borderColor = '#fde68a';
+            badgeEl.textContent = 'KP Form 7: On Hold (Pending Paanyaya Outcome)';
+        } else {
+            let badgeCls = 'badge-doc-no-scan';
+            if (docStatus === 'Updated Scan Uploaded') badgeCls = 'badge-doc-updated';
+            else if (docStatus === 'Scan Uploaded') badgeCls = 'badge-doc-uploaded';
+            badgeEl.className = 'badge-doc-status ' + badgeCls;
+            badgeEl.textContent = docStatus;
+        }
     }
 
     const pillEl = document.getElementById('kp7ScanStatusPill');
     if (pillEl) {
-        if (complaint.current_scan) {
+        if (isPaanyaya) {
+            pillEl.textContent = 'Held in Pre-Docketing';
+            pillEl.style.background = '#fffbeb';
+            pillEl.style.color = '#b45309';
+        } else if (complaint.current_scan) {
             pillEl.textContent = `v${complaint.current_scan.version_number || 1} Uploaded`;
             pillEl.style.background = '#dcfce7';
             pillEl.style.color = '#15803d';
@@ -3531,11 +3889,19 @@ function renderKp7Overview(complaint) {
             `;
         }
     } else {
-        contentWrap.innerHTML = `
-            <div style="padding: 12px; background: #ffffff; border: 1px dashed #cbd5e1; border-radius: 8px; text-align: center; color: #64748b; font-size: 0.82rem;">
-                No handwritten or scanned KP Form 7 uploaded yet. You can attach a scanned copy anytime.
-            </div>
-        `;
+        if (isPaanyaya) {
+            contentWrap.innerHTML = `
+                <div style="padding: 12px; background: #fffbeb; border: 1px dashed #fde68a; border-radius: 8px; text-align: center; color: #92400e; font-size: 0.82rem;">
+                    ⚖️ <strong>KP Form 7 is On Hold</strong> during the informal Paanyaya dialogue phase. If the dispute is settled informally, KP Form 7 is never created.
+                </div>
+            `;
+        } else {
+            contentWrap.innerHTML = `
+                <div style="padding: 12px; background: #ffffff; border: 1px dashed #cbd5e1; border-radius: 8px; text-align: center; color: #64748b; font-size: 0.82rem;">
+                    No handwritten or scanned KP Form 7 uploaded yet. You can attach a scanned copy anytime.
+                </div>
+            `;
+        }
         if (actionsWrap) {
             actionsWrap.innerHTML = `
                 <button type="button" class="btn-outline-sm" onclick="openUploadScanModal()">
@@ -3548,6 +3914,18 @@ function renderKp7Overview(complaint) {
 window.renderKp7Overview = renderKp7Overview;
 
 function openKp7DigitalPreviewModal(complaintId) {
+    const activeComp = window.complaintData;
+    const paanyayaStatuses = [
+        'Pre-Docketed (Paanyaya)',
+        '1st Paanyaya Failed (No-Show)',
+        'Paanyaya In Progress',
+        'Resolved at Paanyaya / Closed',
+        'Paanyaya'
+    ];
+    if (activeComp && (paanyayaStatuses.includes(activeComp.status || '') || Boolean(activeComp.resolved_without_docketing) || (typeof activeComp.status === 'string' && activeComp.status.toLowerCase().includes('paanyaya')))) {
+        window.agapNotify?.('KP Form 7 is on hold pending the outcome of the Paanyaya informal dialogue.', 'info');
+        return;
+    }
     const modal = document.getElementById('kp7DigitalPreviewModal');
     const iframe = document.getElementById('kp7PreviewIframe');
     if (!modal || !iframe) return;
@@ -4032,4 +4410,252 @@ function printCaseSummary() {
     window.print();
 }
 window.printCaseSummary = printCaseSummary;
+
+// ── Paanyaya Pre-Docketing Workflow Functions ──
+
+window.openPaanyayaPreviewModal = function() {
+    const params = new URLSearchParams(window.location.search);
+    const complaintId = params.get('id') || params.get('complaint_id') || window.complaintData?.complaint_id;
+    if (!complaintId) return;
+
+    const iframe = document.getElementById('paanyayaPreviewIframe');
+    if (iframe) {
+        iframe.src = `../../../backend/api/paanyaya/preview.php?id=${encodeURIComponent(complaintId)}&format=html&_t=${Date.now()}`;
+    }
+    const dlBtn = document.getElementById('btnModalDownloadPaanyaya');
+    if (dlBtn) {
+        dlBtn.href = `../../../backend/api/paanyaya/preview.php?id=${encodeURIComponent(complaintId)}&download=1`;
+    }
+
+    const modal = document.getElementById('paanyayaPreviewModal');
+    if (modal) modal.style.display = 'flex';
+};
+
+window.closePaanyayaPreviewModal = function() {
+    const modal = document.getElementById('paanyayaPreviewModal');
+    if (modal) modal.style.display = 'none';
+    const iframe = document.getElementById('paanyayaPreviewIframe');
+    if (iframe) iframe.src = 'about:blank';
+};
+
+window.printPaanyayaIframe = function() {
+    const iframe = document.getElementById('paanyayaPreviewIframe');
+    if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+    }
+};
+
+window.openPaanyayaScheduleModal = function() {
+    const modal = document.getElementById('paanyayaScheduleModal');
+    if (!modal) return;
+
+    const p = window.complaintData?.paanyaya || {};
+    const dateInput = document.getElementById('modalPaanyayaDate');
+    const timeInput = document.getElementById('modalPaanyayaTime');
+    const venueInput = document.getElementById('modalPaanyayaVenue');
+    const salaysayInput = document.getElementById('modalPaanyayaSalaysay');
+    const sigInput = document.getElementById('modalPaanyayaHasSig');
+
+    if (dateInput) {
+        dateInput.value = p.invitation_date || new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+    }
+    if (timeInput) {
+        timeInput.value = p.invitation_time ? p.invitation_time.slice(0, 5) : '14:00';
+    }
+    if (venueInput) {
+        venueInput.value = p.venue || 'Tanggapan ng Barangay Tumana';
+    }
+    if (salaysayInput) {
+        salaysayInput.value = p.salaysay || window.complaintData?.narrative || '';
+    }
+    if (sigInput) {
+        sigInput.checked = (p.has_e_signature !== undefined && p.has_e_signature !== null) ? Number(p.has_e_signature) === 1 : true;
+    }
+
+    const errBox = document.getElementById('paanyayaScheduleError');
+    if (errBox) errBox.style.display = 'none';
+
+    modal.style.display = 'flex';
+};
+
+window.closePaanyayaScheduleModal = function() {
+    const modal = document.getElementById('paanyayaScheduleModal');
+    if (modal) modal.style.display = 'none';
+};
+
+window.submitSchedulePaanyaya = async function(event) {
+    event.preventDefault();
+    const form = event.target;
+    const btn = document.getElementById('btnSubmitPaanyayaSchedule');
+    const errBox = document.getElementById('paanyayaScheduleError');
+
+    const formData = new FormData(form);
+    const payload = {
+        complaint_id: formData.get('complaint_id'),
+        invitation_date: formData.get('invitation_date'),
+        invitation_time: formData.get('invitation_time'),
+        venue: formData.get('venue'),
+        salaysay: formData.get('salaysay'),
+        has_e_signature: form.querySelector('input[name="has_e_signature"]').checked ? 1 : 0
+    };
+
+    try {
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Scheduling...';
+        }
+        if (errBox) errBox.style.display = 'none';
+
+        const res = await complaintApi('../../../backend/api/paanyaya/schedule.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (res.success) {
+            window.agapNotify?.(res.message || 'Paanyaya scheduled successfully!', 'success');
+            closePaanyayaScheduleModal();
+            await loadComplaintDetails();
+            openPaanyayaPreviewModal();
+        } else {
+            throw new Error(res.message || 'Failed to schedule Paanyaya.');
+        }
+    } catch (err) {
+        if (errBox) {
+            errBox.textContent = err.message || 'Error scheduling Paanyaya.';
+            errBox.style.display = 'block';
+        } else {
+            alert(err.message || 'Error scheduling Paanyaya.');
+        }
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Issue Paanyaya';
+        }
+    }
+};
+
+window.openPaanyayaOutcomeModal = function(outcomeType) {
+    const modal = document.getElementById('paanyayaOutcomeModal');
+    if (!modal) return;
+
+    const p = window.complaintData?.paanyaya || window.complaintData?.paanyaya_workspace?.latest_session;
+    const paaId = p?.paanyaya_id || p?.session_id || p?.id;
+    if (!p || !paaId) {
+        window.agapNotify?.('No scheduled Paanyaya session found.', 'error');
+        return;
+    }
+
+    document.getElementById('outcomePaanyayaId').value = paaId;
+    document.getElementById('outcomeActionType').value = outcomeType;
+
+    const modalTitle = document.getElementById('outcomeModalTitle');
+    const modalIcon = document.getElementById('outcomeModalIcon');
+    const resolvedNotice = document.getElementById('outcomeResolvedNotice');
+    const escalateNotice = document.getElementById('outcomeEscalateNotice');
+    const escalationSection = document.getElementById('escalationScheduleSection');
+    const submitBtn = document.getElementById('btnSubmitPaanyayaOutcome');
+    const errBox = document.getElementById('paanyayaOutcomeError');
+    if (errBox) errBox.style.display = 'none';
+
+    if (outcomeType === 'Resolved') {
+        if (modalTitle) modalTitle.textContent = 'Record Informal Amicable Resolution';
+        if (modalIcon) modalIcon.textContent = '✓';
+        if (resolvedNotice) resolvedNotice.style.display = 'block';
+        if (escalateNotice) escalateNotice.style.display = 'none';
+        if (escalationSection) escalationSection.style.display = 'none';
+        if (submitBtn) {
+            submitBtn.textContent = 'Confirm Resolution & Close Complaint';
+            submitBtn.style.background = '#16a34a';
+            submitBtn.style.borderColor = '#16a34a';
+        }
+    } else {
+        if (modalTitle) modalTitle.textContent = 'Escalate to Formal Docketing (KP Form 7 & 9)';
+        if (modalIcon) modalIcon.textContent = '⚡';
+        if (resolvedNotice) resolvedNotice.style.display = 'none';
+        if (escalateNotice) escalateNotice.style.display = 'block';
+        if (escalationSection) escalationSection.style.display = 'block';
+        if (submitBtn) {
+            submitBtn.textContent = 'Escalate & Issue Summons';
+            submitBtn.style.background = '#dc2626';
+            submitBtn.style.borderColor = '#dc2626';
+        }
+
+        // Configure next Tuesday date per Tumana mediation rules
+        const medDateInput = document.getElementById('escalationMedDate');
+        if (medDateInput) {
+            const d = new Date();
+            d.setDate(d.getDate() + 3);
+            while (d.getDay() !== 2) {
+                d.setDate(d.getDate() + 1);
+            }
+            medDateInput.value = d.toISOString().slice(0, 10);
+            medDateInput.min = new Date().toISOString().slice(0, 10);
+        }
+    }
+
+    modal.style.display = 'flex';
+};
+
+window.closePaanyayaOutcomeModal = function() {
+    const modal = document.getElementById('paanyayaOutcomeModal');
+    if (modal) modal.style.display = 'none';
+};
+
+window.submitPaanyayaOutcome = async function(event) {
+    event.preventDefault();
+    const form = event.target;
+    const btn = document.getElementById('btnSubmitPaanyayaOutcome');
+    const errBox = document.getElementById('paanyayaOutcomeError');
+
+    const formData = new FormData(form);
+    const payload = {
+        paanyaya_id: formData.get('paanyaya_id'),
+        outcome: formData.get('outcome'),
+        resolution_notes: formData.get('resolution_notes'),
+        mediation_date: formData.get('mediation_date'),
+        mediation_time: formData.get('mediation_time'),
+        venue: formData.get('venue')
+    };
+
+    try {
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Recording outcome...';
+        }
+        if (errBox) errBox.style.display = 'none';
+
+        const res = await complaintApi('../../../backend/api/paanyaya/record-outcome.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (res.success) {
+            window.agapNotify?.(res.message || 'Outcome recorded successfully!', 'success');
+            closePaanyayaOutcomeModal();
+            await loadComplaintDetails();
+            if (payload.outcome === 'Escalate' && res.case_id) {
+                if (typeof openSummonsPreviewModal === 'function') {
+                    openSummonsPreviewModal(res.case_id, null, null, true);
+                }
+            }
+        } else {
+            throw new Error(res.message || 'Failed to record outcome.');
+        }
+    } catch (err) {
+        if (errBox) {
+            errBox.textContent = err.message || 'Error recording outcome.';
+            errBox.style.display = 'block';
+        } else {
+            alert(err.message || 'Error recording outcome.');
+        }
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Confirm Outcome';
+        }
+    }
+};
 

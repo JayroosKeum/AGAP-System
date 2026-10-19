@@ -22,23 +22,25 @@ class Search
             $params[':term'] = '%' . $term . '%';
         }
 
-        $statuses = ['Filed', 'Under Review', 'Needs Information', 'Accepted', 'Rejected', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Dismissed', 'CFA Issued', 'Archived', 'Draft'];
+        $statuses = ['Filed', 'Under Review', 'Needs Information', 'Accepted', 'Rejected', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Dismissed', 'CFA Issued', 'Archived', 'Draft', 'Pre-Docketed (Paanyaya)', 'Resolved at Paanyaya / Closed'];
         $filterStatus = $filters['status'] ?? '';
 
         if ($filterStatus === 'Draft') {
             $where[] = "(co.is_draft = 1 OR co.status = 'Draft')";
+        } elseif ($filterStatus === 'Paanyaya' || $filterStatus === 'Pre-Docketed (Paanyaya)') {
+            $where[] = "(co.status = 'Pre-Docketed (Paanyaya)' OR co.status = 'Resolved at Paanyaya / Closed')";
         } elseif ($filterStatus === 'Pending') {
             $where[] = "(COALESCE(co.is_draft, 0) = 0 AND co.status != 'Draft'
                 AND NOT EXISTS (SELECT 1 FROM settlements s_std WHERE s_std.case_id = c.case_id)
                 AND NOT EXISTS (SELECT 1 FROM cfa_records cf_std WHERE cf_std.case_id = c.case_id)
                 AND NOT EXISTS (SELECT 1 FROM arbitration_records ar_std WHERE ar_std.case_id = c.case_id)
                 AND COALESCE(c.case_status, '') NOT IN ('Mediation','Conciliation','CFA Issued','Settled','Dismissed','Archived','Arbitration','DISMISSED_BARRED','RESPONDENT_DEFAULT')
-                AND co.status NOT IN ('Mediation','Conciliation','CFA Issued','Settled','Dismissed','Archived','Arbitration','Rejected','DISMISSED_BARRED','RESPONDENT_DEFAULT'))";
+                AND co.status NOT IN ('Mediation','Conciliation','CFA Issued','Settled','Dismissed','Archived','Arbitration','Rejected','DISMISSED_BARRED','RESPONDENT_DEFAULT','Pre-Docketed (Paanyaya)','Resolved at Paanyaya / Closed'))";
         } elseif ($filterStatus === 'Resolution / Closed') {
             $where[] = "(EXISTS (SELECT 1 FROM settlements s_closed WHERE s_closed.case_id = c.case_id)
                 OR EXISTS (SELECT 1 FROM arbitration_records ar_closed WHERE ar_closed.case_id = c.case_id)
                 OR c.case_status IN ('Settled','Dismissed','Archived','Arbitration','DISMISSED_BARRED','RESPONDENT_DEFAULT')
-                OR co.status IN ('Settled','Dismissed','Archived','Arbitration','Rejected','DISMISSED_BARRED','RESPONDENT_DEFAULT'))";
+                OR co.status IN ('Settled','Dismissed','Archived','Arbitration','Rejected','DISMISSED_BARRED','RESPONDENT_DEFAULT','Resolved at Paanyaya / Closed'))";
         } elseif ($filterStatus === 'Under Review') {
             $where[] = "(c.case_id IS NULL AND co.status IN ('Filed', 'Under Review', 'Needs Information', 'Accepted') AND co.status NOT IN ('Dismissed', 'Rejected', 'Settled'))";
         } elseif ($filterStatus === 'Docketed') {

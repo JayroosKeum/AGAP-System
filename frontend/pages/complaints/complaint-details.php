@@ -15,6 +15,12 @@ if (!isset($_GET['id']) || empty($_GET['id'])) {
 }
 
 $complaintId = (int)$_GET['id'];
+$rawTab = trim((string)($_GET['tab'] ?? 'tab-overview'));
+if (!str_starts_with($rawTab, 'tab-')) {
+    $rawTab = 'tab-' . $rawTab;
+}
+$validTabs = ['tab-overview', 'tab-summary', 'tab-paanyaya', 'tab-mediation', 'tab-conciliation', 'tab-arbitration'];
+$activeTab = in_array($rawTab, $validTabs, true) ? $rawTab : 'tab-overview';
 $complaintFlash = $_SESSION['complaint_flash'] ?? null;
 unset($_SESSION['complaint_flash']);
 
@@ -83,23 +89,27 @@ include '../../layouts/header.php';
 
         <!-- Horizontal Tabs Navigation Bar -->
         <nav class="case-tabs-nav" aria-label="Case Sections">
-            <button type="button" class="case-tab-item active" data-tab="tab-overview" onclick="switchCaseTab('tab-overview')">
+            <button type="button" class="case-tab-item <?php echo $activeTab === 'tab-overview' ? 'active' : ''; ?>" data-tab="tab-overview" onclick="switchCaseTab('tab-overview')">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
                 <span>Overview &amp; Workflow</span>
             </button>
-            <button type="button" class="case-tab-item" data-tab="tab-summary" onclick="switchCaseTab('tab-summary')">
+            <button type="button" class="case-tab-item <?php echo $activeTab === 'tab-summary' ? 'active' : ''; ?>" data-tab="tab-summary" onclick="switchCaseTab('tab-summary')">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
                 <span>Case Summary</span>
             </button>
-            <button type="button" class="case-tab-item" data-tab="tab-mediation" onclick="switchCaseTab('tab-mediation')">
+            <button type="button" class="case-tab-item <?php echo $activeTab === 'tab-paanyaya' ? 'active' : ''; ?>" data-tab="tab-paanyaya" onclick="switchCaseTab('tab-paanyaya')">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                <span>Paanyaya</span>
+            </button>
+            <button type="button" class="case-tab-item <?php echo $activeTab === 'tab-mediation' ? 'active' : ''; ?>" data-tab="tab-mediation" onclick="switchCaseTab('tab-mediation')">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
                 <span>Mediation</span>
             </button>
-            <button type="button" class="case-tab-item" data-tab="tab-conciliation" onclick="switchCaseTab('tab-conciliation')">
+            <button type="button" class="case-tab-item <?php echo $activeTab === 'tab-conciliation' ? 'active' : ''; ?>" data-tab="tab-conciliation" onclick="switchCaseTab('tab-conciliation')">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v1"></path><path d="M18 8h4a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-4"></path><circle cx="8" cy="12" r="2"></circle><circle cx="18" cy="13" r="1.5"></circle></svg>
                 <span>Conciliation</span>
             </button>
-            <button type="button" class="case-tab-item" data-tab="tab-arbitration" onclick="switchCaseTab('tab-arbitration')">
+            <button type="button" class="case-tab-item <?php echo $activeTab === 'tab-arbitration' ? 'active' : ''; ?>" data-tab="tab-arbitration" onclick="switchCaseTab('tab-arbitration')">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
                 <span>Arbitration / CFA</span>
             </button>
@@ -161,7 +171,7 @@ include '../../layouts/header.php';
         <!-- ===================================================================
              TAB PANE 1: OVERVIEW & WORKFLOW (Default Active Tab)
              =================================================================== -->
-        <div id="tab-overview" class="case-tab-pane active">
+        <div id="tab-overview" class="case-tab-pane <?php echo $activeTab === 'tab-overview' ? 'active' : ''; ?>">
 
             <!-- Top Hero Section: Primary Case Info & Immediate Context -->
             <div class="case-hero-card">
@@ -309,7 +319,7 @@ include '../../layouts/header.php';
         <!-- ===================================================================
              TAB PANE: CASE SUMMARY (Comprehensive Case Briefing)
              =================================================================== -->
-        <div id="tab-summary" class="case-tab-pane">
+        <div id="tab-summary" class="case-tab-pane <?php echo $activeTab === 'tab-summary' ? 'active' : ''; ?>">
             <div class="case-summary-wrapper" style="margin: 0 30px 30px;">
                 <!-- Summary Actions / Control Strip -->
                 <div class="summary-control-strip">
@@ -505,9 +515,196 @@ include '../../layouts/header.php';
         </div>
 
         <!-- ===================================================================
+             TAB PANE: PAANYAYA (STAGE 0: PRE-DOCKETING)
+             =================================================================== -->
+        <div id="tab-paanyaya" class="case-tab-pane <?php echo $activeTab === 'tab-paanyaya' ? 'active' : ''; ?>">
+            <!-- Stage 0 Banner: Paanyaya Pre-Docketing -->
+            <div style="margin: 0 30px 20px;">
+                <div id="stage0Card" class="stage-card-item active" style="background: linear-gradient(135deg, #15803d, #166534); border-color: #86efac; color: #ffffff;">
+                    <div class="stage-card-top">
+                        <span class="stage-label-num" style="background: rgba(255,255,255,0.2); color: #ffffff;">STAGE 0 &bull; PRE-DOCKETING (INFORMAL DIALOGUE)</span>
+                        <span id="stage0Icon" style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: rgba(255,255,255,0.25); font-size: 0.75rem;">✉️</span>
+                    </div>
+                    <h3 class="stage-card-title" style="font-size: 1.15rem; margin: 4px 0 4px; color: #ffffff;">Paanyaya (Informal Invitation)</h3>
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                        <span id="stage0StatusText" class="stage-sub-status" style="font-weight: 700; background: #fef08a; color: #854d0e; padding: 3px 10px; border-radius: 9999px;">Pre-Docketed (1 of 2)</span>
+                        <span style="font-size: 0.78rem; color: #dcfce7;">Presiding: Punong Barangay / Lupong Tagapamayapa &bull; Dalawang Beses Lang (Max 2 Attempts) &bull; Keeps contested case load low for LTIA</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- LTIA Guidance Banner -->
+            <div class="ltia-banner" style="margin: 0 30px 24px; background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border: 1.5px solid #86efac; border-radius: 10px; padding: 16px 20px; display: flex; align-items: flex-start; gap: 14px;">
+                <div style="font-size: 1.7rem; line-height: 1;">🏛️</div>
+                <div style="flex: 1;">
+                    <h4 style="margin: 0 0 4px; font-size: 0.95rem; font-weight: 800; color: #14532d;">
+                        LTIA Rule: Informal Pre-Docketing Keeps Contested Case Load Low
+                    </h4>
+                    <p style="margin: 0; font-size: 0.83rem; color: #166534; line-height: 1.45;">
+                        Disputes resolved at the <strong>Paanyaya phase</strong> do not enter the formal court-annexed docket, preventing unnecessary statutory filings and boosting Barangay Tumana's <em>Lupon Tagapamayapa Incentives Awards (LTIA)</em> efficiency score. Disputes are permitted a strict maximum of <strong>two (2) informal invitation attempts</strong> before mandatory formal docketing.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Side-by-Side Context Grid: Nagpaanyaya & Inanyayahan -->
+            <div class="case-context-grid" style="margin-bottom: 24px;">
+                <!-- LEFT COLUMN: Nagpaanyaya (Complainant / s) -->
+                <div class="context-box-card">
+                    <div class="context-box-header">
+                        <h3 style="display: flex; align-items: center; gap: 6px;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle></svg>
+                            <span>NAGPAANYAYA (COMPLAINANT / S)</span>
+                        </h3>
+                        <span class="context-subtitle" id="tabPaaComplainantsCountBadge">0 Party(ies)</span>
+                    </div>
+                    <div id="tabPaaComplainantsList" style="margin-top: 10px;">
+                        <p class="empty-detail-state" style="padding: 12px; margin: 0; font-size: 0.85rem;">Loading complainants...</p>
+                    </div>
+                </div>
+
+                <!-- RIGHT COLUMN: Inanyayahan (Respondent / s) -->
+                <div class="context-box-card">
+                    <div class="context-box-header">
+                        <h3 style="display: flex; align-items: center; gap: 6px;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                            <span>INANYAYAHAN (RESPONDENT / S)</span>
+                        </h3>
+                        <span class="context-subtitle" id="tabPaaRespondentsCountBadge">0 Party(ies)</span>
+                    </div>
+                    <div id="tabPaaRespondentsList" style="margin-top: 10px;">
+                        <p class="empty-detail-state" style="padding: 12px; margin: 0; font-size: 0.85rem;">Loading respondents...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Current Paanyaya Session Schedule & Attendance KPI Grid -->
+            <div class="session-schedule-box" style="margin: 0 30px 24px;">
+                <div class="session-box-header">
+                    <div>
+                        <h4 id="tabPaaSessionTitleHeading">Paanyaya Dialogue Session (Attempt #1)</h4>
+                        <p id="tabPaaSessionSubtitleHeading" class="session-lead-text">Scheduled Dialogue at Tanggapan ng Barangay Tumana</p>
+                    </div>
+                    <a id="tabPaaManageLink" href="paanyaya-workspace.php?id=<?php echo $complaintId; ?>" class="btn-manage-sched" style="display: inline-flex; align-items: center; gap: 6px; text-decoration: none;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                        <span>Open Paanyaya Workspace &rarr;</span>
+                    </a>
+                </div>
+
+                <!-- 4 KPI Grid (Date, Time, Venue, Signature) -->
+                <div class="session-kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                    <div class="session-kpi-item">
+                        <span class="kpi-label">Scheduled Dialogue Date</span>
+                        <div class="kpi-val-row">
+                            <span class="dot-status-green"></span>
+                            <span id="tabPaaKpiDate" style="font-weight: 700; color: #0f172a;">—</span>
+                        </div>
+                    </div>
+                    <div class="session-kpi-item">
+                        <span class="kpi-label">Time &amp; Day</span>
+                        <div class="kpi-val-row">
+                            <span class="dot-status-green"></span>
+                            <span id="tabPaaKpiTime" style="font-weight: 700; color: #0f172a;">—</span>
+                        </div>
+                    </div>
+                    <div class="session-kpi-item">
+                        <span class="kpi-label">Dialogue Venue</span>
+                        <div class="kpi-val-row">
+                            <span style="font-size: 0.95rem;">📍</span>
+                            <span id="tabPaaKpiVenue" style="font-weight: 600; color: #0f172a;">Tanggapan ng Barangay Tumana</span>
+                        </div>
+                    </div>
+                    <div class="session-kpi-item">
+                        <span class="kpi-label">Captain E-Signature</span>
+                        <div class="kpi-val-row">
+                            <span style="color: #16a34a; font-weight: 700;">✓</span>
+                            <span id="tabPaaKpiSig" style="font-weight: 600; color: #16a34a;">Embedded</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bottom Action Buttons Row -->
+                <div class="session-action-bar-row">
+                    <div class="session-btn-group-left">
+                        <button type="button" class="btn-sess-indigo" onclick="openPaanyayaPreviewModal()">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                            <span>Preview Paanyaya Letter</span>
+                        </button>
+                        <a id="tabPaaBtnDownloadPdf" href="../../../backend/api/paanyaya/preview.php?id=<?php echo $complaintId; ?>&download=1" target="_blank" class="btn-sess-white" style="text-decoration: none;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                            <span>Download PDF</span>
+                        </a>
+                        <button type="button" id="tabPaaBtnScheduleSecond" class="btn-sess-white" onclick="openPaanyayaScheduleModal()" style="display: none;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                            <span>Schedule 2nd Paanyaya</span>
+                        </button>
+                    </div>
+                    <div class="session-btn-group-right">
+                        <div id="tabPaaActionsPendingGroup" style="display: flex; align-items: center; gap: 8px;">
+                            <button type="button" class="btn-sess-green" onclick="openPaanyayaOutcomeModal('Resolved')">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                <span>Amicably Resolved</span>
+                            </button>
+                            <button type="button" class="btn-create" onclick="openPaanyayaOutcomeModal('Escalate')" style="background: #dc2626; border-color: #dc2626; padding: 7px 14px; font-size: 0.82rem;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                                <span>Escalate to Formal</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Paanyaya Sessions History & State Machine Card -->
+            <div class="hearings-schedule-card">
+                <div class="operational-card-header">
+                    <div>
+                        <h3 style="font-size: 1rem; font-weight: 800; color: #0f172a; margin: 0; display: flex; align-items: center; gap: 8px;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                            <span>Paanyaya Sessions History &amp; State Machine</span>
+                        </h3>
+                        <span class="card-subtitle">Strictly limited to a maximum of two (2) attempts before mandatory escalation to formal mediation.</span>
+                    </div>
+                    <span id="tabPaaHistoryStatusBadge" class="status-pill status-mediation" style="font-size:0.75rem;">Attempt 1 of 2</span>
+                </div>
+                <div id="tabPaaHistoryContainer" style="margin-top: 14px;">
+                    <div class="empty-detail-state">Loading Paanyaya sessions history...</div>
+                </div>
+            </div>
+
+            <!-- Paanyaya Procedural Rules & State Machine Guidelines Card -->
+            <div class="operational-card" style="margin: 0 30px 24px;">
+                <div class="operational-card-header">
+                    <div>
+                        <h3 style="font-size: 0.95rem; font-weight: 800; color: #0f172a; margin: 0;">Dalawang Beses Lang (Max 2 Attempts) Rule Guidelines</h3>
+                        <span class="card-subtitle">Barangay Tumana Pre-Docketing State Machine Outcomes</span>
+                    </div>
+                </div>
+                <div style="padding: 16px 20px; font-size: 0.86rem; color: #475569; line-height: 1.6;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px;">
+                        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 14px;">
+                            <strong style="color: #15803d; display: block; margin-bottom: 4px;">1. Settled Amicably (LTIA Win)</strong>
+                            <span style="font-size: 0.82rem; color: #166534;">Parties reached informal agreement. Case is closed as resolved at Paanyaya without ever assigning a court docket number.</span>
+                        </div>
+                        <div style="background: #fefce8; border: 1px solid #fef08a; border-radius: 8px; padding: 12px 14px;">
+                            <strong style="color: #854d0e; display: block; margin-bottom: 4px;">2. Party Absent / No-Show</strong>
+                            <span style="font-size: 0.82rem; color: #713f12;">One or both parties failed to appear. Extends 2nd and final Paanyaya informal dialogue attempt.</span>
+                        </div>
+                        <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px 14px;">
+                            <strong style="color: #1d4ed8; display: block; margin-bottom: 4px;">3. Dialogue Incomplete</strong>
+                            <span style="font-size: 0.82rem; color: #1e40af;">Progress made and parties agreed to a second session to finalize amicable terms. Unlocks 2nd Paanyaya.</span>
+                        </div>
+                        <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 14px;">
+                            <strong style="color: #b91c1c; display: block; margin-bottom: 4px;">4. Refusal or Max Reached</strong>
+                            <span style="font-size: 0.82rem; color: #991b1b;">Parties refuse to compromise or Attempt #2 completed. Automatically escalates to formal case docketing and 1st Mediation.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================================================================
              TAB PANE 2: MEDIATION
              =================================================================== -->
-        <div id="tab-mediation" class="case-tab-pane">
+        <div id="tab-mediation" class="case-tab-pane <?php echo $activeTab === 'tab-mediation' ? 'active' : ''; ?>">
             <!-- Punong Barangay Mediation Stage Card / Banner -->
             <div style="margin: 0 30px 20px;">
                 <div id="stage1Card" class="stage-card-item active">
@@ -612,7 +809,7 @@ include '../../layouts/header.php';
         <!-- ===================================================================
              TAB PANE 3: CONCILIATION
              =================================================================== -->
-        <div id="tab-conciliation" class="case-tab-pane">
+        <div id="tab-conciliation" class="case-tab-pane <?php echo $activeTab === 'tab-conciliation' ? 'active' : ''; ?>">
             <!-- Pangkat Conciliation Stage Card / Banner -->
             <div style="margin: 0 30px 20px;">
                 <div id="stage2Card" class="stage-card-item locked">
@@ -671,7 +868,7 @@ include '../../layouts/header.php';
         <!-- ===================================================================
              TAB PANE 4: ARBITRATION / CFA
              =================================================================== -->
-        <div id="tab-arbitration" class="case-tab-pane">
+        <div id="tab-arbitration" class="case-tab-pane <?php echo $activeTab === 'tab-arbitration' ? 'active' : ''; ?>">
             <!-- Arbitration / Court Referral Stage Card / Banner -->
             <div style="margin: 0 30px 20px;">
                 <div id="stage3Card" class="stage-card-item pending">
@@ -849,7 +1046,8 @@ include '../../layouts/header.php';
 
                 <div class="form-group">
                     <label for="summonMediationVenue">Venue <span class="required-mark" aria-hidden="true">*</span></label>
-                    <input type="text" id="summonMediationVenue" name="venue" maxlength="255" value="Barangay Hall" required>
+                    <input type="text" id="summonMediationVenue" name="venue" maxlength="255" value="Lupon Court Room" readonly required style="background: #f8fafc; cursor: not-allowed;">
+                    <small style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Mediation sessions are conducted exclusively in the Lupon Court Room.</small>
                 </div>
                 <div class="form-group" style="margin-bottom: 6px;">
                     <label for="summonMediationRemarks">Remarks <span class="optional-label">Optional</span></label>
@@ -973,6 +1171,147 @@ include '../../layouts/header.php';
         <div class="modal-actions" style="padding: 12px 24px; border-top: 1px solid #e2e8f0; background: #f8fafc; margin-top: 0; display: flex; justify-content: flex-end;">
             <button type="button" class="btn-secondary" onclick="closeScanHistoryModal()">Close</button>
         </div>
+    </div>
+</div>
+
+<!-- Modal 1: Paanyaya Document Preview Modal -->
+<div id="paanyayaPreviewModal" class="modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="paanyayaModalTitle">
+    <div class="modal-content" style="max-width: 900px; width: 95%; height: 90vh; display: flex; flex-direction: column; padding: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);">
+        <div class="modal-header" style="padding: 14px 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #ffffff;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 1.3rem;">✉️</span>
+                <div>
+                    <h2 id="paanyayaModalTitle" style="font-size: 1.15rem; font-weight: 700; color: #0f172a; margin: 0;">Official Paanyaya (Invitation Letter) Preview</h2>
+                    <span style="font-size: 0.78rem; color: #64748b;">Barangay Tumana &bull; Lungsod ng Marikina &bull; Pre-Docketed Informal Dialogue</span>
+                </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <button type="button" class="btn-sm btn-outline-sm" onclick="printPaanyayaIframe()" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px;">
+                    🖨️ Print
+                </button>
+                <a id="btnModalDownloadPaanyaya" href="#" target="_blank" class="btn-sm btn-create" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px; text-decoration: none;">
+                    ⬇ Download PDF
+                </a>
+                <button type="button" class="close-btn" onclick="closePaanyayaPreviewModal()">&times;</button>
+            </div>
+        </div>
+        <div style="flex: 1 1 auto; background: #475569; position: relative;">
+            <iframe id="paanyayaPreviewIframe" src="about:blank" style="width: 100%; height: 100%; border: none; background: #475569;"></iframe>
+        </div>
+        <div class="modal-actions" style="padding: 10px 20px; border-top: 1px solid #e2e8f0; background: #f8fafc; margin-top: 0; display: flex; justify-content: flex-end;">
+            <button type="button" class="btn-secondary" onclick="closePaanyayaPreviewModal()">Close Preview</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal 2: Schedule / Update Paanyaya Modal -->
+<div id="paanyayaScheduleModal" class="modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="scheduleModalTitle">
+    <div class="modal-content" style="max-width: 560px; padding: 24px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);">
+        <div class="modal-header" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 0;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 1.3rem;">✉️</span>
+                <h2 id="scheduleModalTitle" style="font-size: 1.15rem; font-weight: 700; color: #0f172a; margin: 0;">Schedule Paanyaya Session</h2>
+            </div>
+            <button type="button" class="close-btn" onclick="closePaanyayaScheduleModal()">&times;</button>
+        </div>
+        <form id="paanyayaScheduleForm" onsubmit="submitSchedulePaanyaya(event)">
+            <input type="hidden" name="complaint_id" value="<?php echo $complaintId; ?>">
+            <p style="font-size: 0.88rem; color: #475569; margin: 0 0 16px; line-height: 1.5;">
+                Issue an official <strong>Paanyaya (Informal Invitation)</strong> for the parties to appear at the Barangay Hall for an informal dialogue before formal case docketing.
+            </p>
+            <div class="form-row-2" style="margin-bottom: 12px;">
+                <div class="form-group">
+                    <label for="modalPaanyayaDate" style="font-weight: 600; font-size: 0.85rem;">Dialogue Date <span class="required-mark">*</span></label>
+                    <input type="date" id="modalPaanyayaDate" name="invitation_date" required style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                </div>
+                <div class="form-group">
+                    <label for="modalPaanyayaTime" style="font-weight: 600; font-size: 0.85rem;">Dialogue Time <span class="required-mark">*</span></label>
+                    <input type="time" id="modalPaanyayaTime" name="invitation_time" value="14:00" required style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                </div>
+            </div>
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label for="modalPaanyayaVenue" style="font-weight: 600; font-size: 0.85rem;">Venue</label>
+                <input type="text" id="modalPaanyayaVenue" name="venue" value="Tanggapan ng Barangay Tumana" style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+            </div>
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label for="modalPaanyayaSalaysay" style="font-weight: 600; font-size: 0.85rem;">Salaysay / Reason for Invitation (Optional override)</label>
+                <textarea id="modalPaanyayaSalaysay" name="salaysay" rows="2" placeholder="Leave blank to use complaint narrative..." style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;"></textarea>
+            </div>
+            <div class="form-group" style="margin-bottom: 18px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.88rem; color: #1e293b;">
+                    <input type="checkbox" id="modalPaanyayaHasSig" name="has_e_signature" value="1" checked style="width: 16px; height: 16px;">
+                    <span>Embed Punong Barangay (Hon. Akiko Lynne Centeno) calligraphic e-signature</span>
+                </label>
+            </div>
+            <div id="paanyayaScheduleError" class="alert alert-danger" style="display:none; margin-bottom: 14px; font-size: 0.84rem; padding: 8px 12px;"></div>
+            <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 0;">
+                <button type="button" class="btn-secondary" onclick="closePaanyayaScheduleModal()">Cancel</button>
+                <button type="submit" class="btn-create" id="btnSubmitPaanyayaSchedule" style="background: #16a34a; border-color: #16a34a;">Issue Paanyaya</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal 3: Paanyaya Hearing Outcome Modal -->
+<div id="paanyayaOutcomeModal" class="modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="outcomeModalTitle">
+    <div class="modal-content" style="max-width: 580px; padding: 24px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);">
+        <div class="modal-header" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 0;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span id="outcomeModalIcon" style="font-size: 1.3rem;">⚡</span>
+                <h2 id="outcomeModalTitle" style="font-size: 1.15rem; font-weight: 700; color: #0f172a; margin: 0;">Record Paanyaya Outcome</h2>
+            </div>
+            <button type="button" class="close-btn" onclick="closePaanyayaOutcomeModal()">&times;</button>
+        </div>
+        <form id="paanyayaOutcomeForm" onsubmit="submitPaanyayaOutcome(event)">
+            <input type="hidden" id="outcomePaanyayaId" name="paanyaya_id" value="">
+            <input type="hidden" id="outcomeActionType" name="outcome" value="Resolved">
+
+            <div id="outcomeResolvedNotice" style="display:none; margin-bottom: 16px; background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 12px 14px; font-size: 0.88rem; color: #166534;">
+                <strong>✓ Informal Amicable Resolution:</strong>
+                <p style="margin: 4px 0 0;">Parties reached an understanding during informal dialogue. The complaint will be closed without starting formal statutory court deadlines.</p>
+            </div>
+
+            <div id="outcomeEscalateNotice" style="display:none; margin-bottom: 16px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 14px; font-size: 0.88rem; color: #991b1b;">
+                <strong>⚡ Escalate to Formal Docketing (KP Form 7 &amp; 9):</strong>
+                <p style="margin: 4px 0 0;">Dialogue failed or respondent failed to attend. The system will assign an official Case Number, set stage to Mediation, and generate KP Form 7 Complaint and KP Form 9 Summons.</p>
+            </div>
+
+            <!-- Escalation 1st Mediation Hearing Picker (Visible ONLY on Escalate) -->
+            <div id="escalationScheduleSection" style="display: none; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                <h4 style="margin: 0 0 10px; font-size: 0.92rem; color: #0f172a; font-weight: 700;">1st Formal Mediation Hearing Schedule (Tumana Rules)</h4>
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label for="escalationMedDate" style="font-weight: 600; font-size: 0.82rem;">Mediation Date (Tuesdays ONLY) <span class="required-mark">*</span></label>
+                        <input type="date" id="escalationMedDate" name="mediation_date" style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                    </div>
+                    <div class="form-group">
+                        <label for="escalationMedTime" style="font-weight: 600; font-size: 0.82rem;">Mediation Slot (1:00 PM - 5:00 PM) <span class="required-mark">*</span></label>
+                        <select id="escalationMedTime" name="mediation_time" style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                            <option value="13:00">1:00 PM - 2:00 PM</option>
+                            <option value="14:00">2:00 PM - 3:00 PM</option>
+                            <option value="15:00">3:00 PM - 4:00 PM</option>
+                            <option value="16:00">4:00 PM - 5:00 PM</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group" style="margin-top: 8px;">
+                    <label for="escalationMedVenue" style="font-weight: 600; font-size: 0.82rem;">Hearing Venue</label>
+                    <input type="text" id="escalationMedVenue" name="venue" value="Lupon Court Room" readonly style="padding: 8px 10px; font-size: 0.88rem; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label for="outcomeNotes" style="font-weight: 600; font-size: 0.85rem;">Dialogue &amp; Proceedings Notes <span class="required-mark">*</span></label>
+                <textarea id="outcomeNotes" name="resolution_notes" rows="3" required placeholder="Describe dialogue outcome, reasons for escalation or terms of informal settlement..." style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;"></textarea>
+            </div>
+
+            <div id="paanyayaOutcomeError" class="alert alert-danger" style="display:none; margin-bottom: 14px; font-size: 0.84rem; padding: 8px 12px;"></div>
+
+            <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 0;">
+                <button type="button" class="btn-secondary" onclick="closePaanyayaOutcomeModal()">Cancel</button>
+                <button type="submit" class="btn-create" id="btnSubmitPaanyayaOutcome">Confirm Outcome</button>
+            </div>
+        </form>
     </div>
 </div>
 

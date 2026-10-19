@@ -213,7 +213,7 @@ class ShowCauseService
             $showCauseDate = !empty($data['complainant_show_cause_date'])
                 ? date('Y-m-d H:i:s', strtotime($data['complainant_show_cause_date']))
                 : date('Y-m-d 09:00:00', strtotime('+3 days'));
-            $showCauseVenue = trim($data['show_cause_venue'] ?? 'Tanggapan ng Lupong Tagapamayapa, Barangay Hall');
+            $showCauseVenue = trim($data['show_cause_venue'] ?? 'Lupon Court Room');
 
             $doc18 = $this->generateKpForm(
                 $caseId,
@@ -258,7 +258,7 @@ class ShowCauseService
             $showCauseDate = !empty($data['respondent_show_cause_date'])
                 ? date('Y-m-d H:i:s', strtotime($data['respondent_show_cause_date']))
                 : date('Y-m-d 09:00:00', strtotime('+3 days'));
-            $showCauseVenue = trim($data['show_cause_venue'] ?? 'Tanggapan ng Lupong Tagapamayapa, Barangay Hall');
+            $showCauseVenue = trim($data['show_cause_venue'] ?? 'Lupon Court Room');
 
             $doc19 = $this->generateKpForm(
                 $caseId,
@@ -362,7 +362,7 @@ class ShowCauseService
             $rescheduleDate = !empty($data['reschedule_date'])
                 ? date('Y-m-d H:i:s', strtotime($data['reschedule_date']))
                 : date('Y-m-d 09:00:00', strtotime('+3 days'));
-            $rescheduleVenue = trim($data['reschedule_venue'] ?? 'Tanggapan ng Lupong Tagapamayapa, Barangay Hall');
+            $rescheduleVenue = trim($data['reschedule_venue'] ?? 'Lupon Court Room');
 
             $rescheduledHearingId = $this->createRescheduledMediation(
                 $caseId,
@@ -507,7 +507,7 @@ class ShowCauseService
                     'complainants' => isset($parties['complainant']) ? [$parties['complainant']] : [],
                     'respondents' => isset($parties['respondent']) ? [$parties['respondent']] : [],
                     'target_party_name' => $targetPartyName,
-                    'venue' => $venue ?: ($hearing['venue'] ?? 'Tanggapan ng Lupong Tagapamayapa, Barangay Hall'),
+                    'venue' => $venue ?: ($hearing['venue'] ?? 'Lupon Court Room'),
                     'hearing_date' => $hearing['hearing_date'] ?? null,
                     'explanation_date' => $explanationDate,
                     'notice_date' => date('Y-m-d'),

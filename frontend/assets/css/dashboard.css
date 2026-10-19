@@ -151,7 +151,7 @@
 
 /* Panels */
 .dashboard-panels { display:grid; gap:16px; grid-template-columns:repeat(2,minmax(0,1fr)); margin-top:16px; }
-.dashboard-panel { background:#fff; border:1px solid #e4e4e7; border-radius:12px; box-shadow:0 1px 2px rgba(0,0,0,.03); padding:18px; }
+.dashboard-panel { background:#fff; border:1px solid #e4e4e7; border-radius:12px; box-shadow:0 1px 2px rgba(0,0,0,.03); padding:18px; display:flex; flex-direction:column; }
 .dashboard-panel-wide { grid-column:1 / -1; margin-top:16px; }
 .panel-heading { align-items:flex-start; display:flex; gap:16px; justify-content:space-between; margin-bottom:14px; }
 .panel-heading h2 { color:#18181b; font-size:16px; margin:0; }
@@ -161,6 +161,11 @@
 
 .panel-heading-actions { align-items:center; display:flex; gap:10px; }
 .panel-count-badge { background:#f4f4f5; border:1px solid #e4e4e7; border-radius:999px; color:#52525b; font-size:11px; font-weight:700; padding:3px 9px; }
+
+#todayHearings,
+.dashboard-cases-table-wrap {
+    flex: 1 1 auto;
+}
 
 /* Lists inside panels */
 .dashboard-list { border-top:1px solid #f1f1f3; }
@@ -249,4 +254,244 @@
     .stats-grid { grid-template-columns:1fr; }
     .panel-heading { align-items:flex-start; flex-direction:column; gap:8px; }
     .dashboard-list-item { align-items:flex-start; flex-direction:column; }
+    .dashboard-table-pagination { flex-direction:column; align-items:stretch; gap:8px; }
+    .pagination-buttons { justify-content:space-between; width:100%; }
 }
+
+/* Dashboard Calendar Panel */
+.dashboard-calendar-panel {
+    display: flex;
+    flex-direction: column;
+}
+.dash-cal-nav {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.btn-cal-nav {
+    background: #f4f4f5;
+    border: 1px solid #e4e4e7;
+    border-radius: 6px;
+    color: #18181b;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1;
+    padding: 4px 9px;
+    transition: all 0.15s ease;
+}
+.btn-cal-nav:hover {
+    background: #e4e4e7;
+    color: #09090b;
+}
+.btn-cal-today {
+    background: #f4f4f5;
+    border: 1px solid #e4e4e7;
+    border-radius: 6px;
+    color: #52525b;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 8px;
+    transition: all 0.15s ease;
+}
+.btn-cal-today:hover {
+    background: #e4e4e7;
+    color: #09090b;
+}
+.dash-cal-month-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #09090b;
+    min-width: 95px;
+    text-align: center;
+}
+.dashboard-calendar-wrap {
+    margin-top: 6px;
+}
+.dashboard-calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+}
+.dash-cal-weekday {
+    text-align: center;
+    font-size: 11px;
+    font-weight: 800;
+    color: #71717a;
+    text-transform: uppercase;
+    padding: 6px 0;
+    letter-spacing: 0.04em;
+}
+.dash-cal-day {
+    aspect-ratio: 1;
+    min-height: 34px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #27272a;
+    background: #fafafa;
+    border: 1px solid transparent;
+    cursor: pointer;
+    position: relative;
+    transition: all 0.15s ease;
+    user-select: none;
+}
+.dash-cal-day:hover {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+}
+.dash-cal-day.is-other-month {
+    color: #cbd5e1;
+    background: transparent;
+    cursor: default;
+}
+.dash-cal-day.is-today {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #1d4ed8;
+    font-weight: 800;
+}
+.dash-cal-day.has-hearing {
+    background: #f0fdf4;
+    border-color: #86efac;
+    color: #15803d;
+    font-weight: 800;
+}
+.dash-cal-day.has-hearing.is-today {
+    background: #ecfdf5;
+    border-color: #34d399;
+    color: #065f46;
+}
+.dash-cal-hearing-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #16a34a;
+    margin-top: 2px;
+}
+.dashboard-cal-legend {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid #f1f1f3;
+    font-size: 11px;
+    color: #71717a;
+}
+.cal-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+.cal-legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+.cal-legend-dot.has-hearing {
+    background: #16a34a;
+}
+.cal-legend-dot.is-today {
+    background: #3b82f6;
+}
+
+/* Card Table Pagination (Pinned to the bottom of cards) */
+.dashboard-table-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 18px;
+    border-top: 1px solid #e4e4e7;
+    background: #fafafa;
+    border-bottom-left-radius: 11px;
+    border-bottom-right-radius: 11px;
+    margin-top: auto;
+    margin-left: -18px;
+    margin-right: -18px;
+    margin-bottom: -18px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+.pagination-info {
+    color: #71717a;
+    font-size: 13px;
+    font-weight: 500;
+}
+.pagination-buttons {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.btn-page-nav {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 5px 12px;
+    border: 1px solid #d4d4d8;
+    background: #fff;
+    border-radius: 6px;
+    color: #18181b;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.btn-page-nav:hover:not(:disabled) {
+    background: #f4f4f5;
+    border-color: #a1a1aa;
+}
+.btn-page-nav:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    background: #fafafa;
+}
+.pagination-page-numbers {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.page-num-btn {
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #d4d4d8;
+    background: #fff;
+    border-radius: 6px;
+    color: #18181b;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.page-num-btn:hover:not(.is-active) {
+    background: #f4f4f5;
+    border-color: #a1a1aa;
+}
+.page-num-btn.is-active {
+    background: #09090b;
+    color: #ffffff;
+    border-color: #09090b;
+}
+
+.dashboard-panels-bottom {
+    margin-top: 16px;
+}
+
+#hearingsTablePagination,
+#casesTablePagination {
+    margin-top: auto;
+    margin-left: -18px;
+    margin-right: -18px;
+    margin-bottom: -18px;
+    border-bottom-left-radius: 11px;
+    border-bottom-right-radius: 11px;
+}
+

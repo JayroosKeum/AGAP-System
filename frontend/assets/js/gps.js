@@ -148,7 +148,7 @@ function isCasePending(item) {
     const respFailed = Number(item.respondent_failed_attempts || 0);
 
     // Pending delivery if either party's service obligation is incomplete
-    return (!compServed) || (!respServed && respFailed < 3);
+    return (!compServed) || (!respServed && respFailed < 6);
 }
 
 function isCaseCfaReady(item) {
@@ -157,42 +157,53 @@ function isCaseCfaReady(item) {
     const respStatus = String(item.respondent_service_status || '');
     const caseStatus = String(item.case_status || '');
 
-    return respFailed >= 3 && respServed === 0 && respStatus === 'Unserved' && caseStatus !== 'Archived' && caseStatus !== 'Settled';
+    return respFailed >= 6 && respServed === 0 && respStatus === 'Unserved' && caseStatus !== 'Archived' && caseStatus !== 'Settled';
 }
 
 function updateSummaryMetrics() {
     const total = allLoadedSummonCases.length;
     const pendingCount = allLoadedSummonCases.filter(isCasePending).length;
+    const servedCount = allLoadedSummonCases.filter(c => !isCasePending(c) && !isCaseCfaReady(c)).length;
 
     // Filter Tab Count Badges
     const countAll = document.getElementById('countAllCases');
     const countPending = document.getElementById('countPendingDelivery');
+    const countServed = document.getElementById('countServedDelivery');
 
     if (countAll) countAll.textContent = total;
     if (countPending) countPending.textContent = pendingCount;
+    if (countServed) countServed.textContent = servedCount;
 }
 
 function setProofFilter(filterKey) {
-    activeFilterTab = filterKey === 'pending' ? 'pending' : 'all';
+    activeFilterTab = (filterKey === 'pending' || filterKey === 'served' || filterKey === 'cfa_ready') ? filterKey : 'all';
 
     // Update Tab Buttons UI
     document.querySelectorAll('.proof-tab-btn').forEach(btn => {
-        btn.classList.remove('active');
-        btn.setAttribute('aria-selected', 'false');
+        const isMatch = (btn.dataset.filter === activeFilterTab) ||
+            (activeFilterTab === 'all' && btn.id === 'tabFilterAll') ||
+            (activeFilterTab === 'pending' && btn.id === 'tabFilterPending') ||
+            (activeFilterTab === 'served' && btn.id === 'tabFilterServed');
+        btn.classList.toggle('active', isMatch);
+        btn.setAttribute('aria-selected', isMatch ? 'true' : 'false');
     });
-
-    const targetTab = document.getElementById(
-        activeFilterTab === 'pending' ? 'tabFilterPending' : 'tabFilterAll'
-    );
-    if (targetTab) {
-        targetTab.classList.add('active');
-        targetTab.setAttribute('aria-selected', 'true');
-    }
 
     currentSummonPage = 1;
     applySummonFilterAndRender();
 }
 window.setProofFilter = setProofFilter;
+
+function setupProofFilterTabs() {
+    document.querySelectorAll('.proof-tab-btn').forEach(btn => {
+        if (btn.dataset.filterBound) return;
+        btn.dataset.filterBound = '1';
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const filter = btn.dataset.filter || (btn.id === 'tabFilterPending' ? 'pending' : (btn.id === 'tabFilterServed' ? 'served' : 'all'));
+            setProofFilter(filter);
+        });
+    });
+}
 
 function sortSummonCases(cases, key, dir) {
     const mult = (dir === 'asc') ? 1 : -1;
@@ -380,6 +391,8 @@ function applySummonFilterAndRender() {
     // Apply Filter Tab
     if (activeFilterTab === 'pending') {
         list = list.filter(isCasePending);
+    } else if (activeFilterTab === 'served') {
+        list = list.filter(item => !isCasePending(item) && !isCaseCfaReady(item));
     } else if (activeFilterTab === 'cfa_ready') {
         list = list.filter(isCaseCfaReady);
     }
@@ -404,7 +417,7 @@ function applySummonFilterAndRender() {
 
 function renderTableServiceStatus(item) {
     if (isCaseCfaReady(item)) {
-        return `<span class="service-status-pill badge-cfa-ready">🔒 CFA Ready (3/3 Failed)</span>`;
+        return `<span class="service-status-pill badge-cfa-ready">📄 CFA Ready (6/6 Failed)</span>`;
     }
 
     const compStatus = String(item.complainant_service_status || 'Pending');
@@ -450,10 +463,19 @@ function renderSummonCasesTable(cases) {
     if (!tbody) return;
 
     if (!total) {
+        let emptyDesc = 'No cases match the selected search or filter criteria.';
+        if (activeFilterTab === 'pending') {
+            emptyDesc = 'Great news! There are currently no pending summons deliveries awaiting service.';
+        } else if (activeFilterTab === 'served') {
+            emptyDesc = 'No fully served cases found matching your criteria.';
+        }
         tbody.innerHTML = `
             <tr>
-                <td colspan="6" class="empty-state" style="padding: 36px 16px; text-align: center; color: #94a3b8;">
-                    No cases match the selected filter criteria.
+                <td colspan="6" class="empty-state" style="padding: 40px 16px; text-align: center; color: #64748b;">
+                    <div style="font-size: 1.8rem; margin-bottom: 8px;">📬</div>
+                    <div style="font-weight: 700; color: #1e293b; font-size: 0.95rem; margin-bottom: 4px;">No cases found</div>
+                    <div style="font-size: 0.85rem; color: #64748b; max-width: 420px; margin: 0 auto;">${escapeGpsHtml(emptyDesc)}</div>
+                    ${activeFilterTab !== 'all' ? '<button type="button" class="btn-secondary" style="margin-top: 14px; padding: 6px 14px; border-radius: 6px; font-size: 0.82rem; cursor: pointer; border: 1px solid #cbd5e1; background: #fff;" onclick="setProofFilter(\'all\')">View All Cases</button>' : ''}
                 </td>
             </tr>
         `;
@@ -612,7 +634,7 @@ async function renderExpandedCaseView(caseId) {
             eligible: false,
             failed_count: 0,
             attempts_count: 0,
-            reason: 'CFA is locked until all 3 summons attempts have failed.'
+            reason: 'CFA is locked until all 6 summons attempts have failed.'
         };
         const failedCount = Number(cfaElig.failed_count || 0);
         const isCfaEligible = Boolean(cfaElig.eligible);
@@ -649,7 +671,7 @@ async function renderExpandedCaseView(caseId) {
 
         const canNext = Boolean(activeHearing.can_initiate_next_attempt);
         const nextNum = activeHearing.next_attempt_number || (respAttempts.length + 1);
-        const ordinals = ['', '1st', '2nd', '3rd', '4th'];
+        const ordinals = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th'];
         const nextOrd = ordinals[nextNum] || nextNum + 'th';
         const anyRespServed = respAttempts.some(a => a.is_served);
         const latestServedResp = respAttempts.find(a => a.is_served) || null;
@@ -659,8 +681,8 @@ async function renderExpandedCaseView(caseId) {
         let respBadgeHtml = '';
         if (anyRespServed) {
             respBadgeHtml = `<span class="service-result-badge badge-served">Served</span>`;
-        } else if (respAttempts.length >= 3 && failedCount >= 3) {
-            respBadgeHtml = `<span class="service-result-badge badge-not-served">Unserved (3/3 Failed)</span>`;
+        } else if (respAttempts.length >= 6 && failedCount >= 6) {
+            respBadgeHtml = `<span class="service-result-badge badge-not-served">6 Attempts Failed - Max Reached (Unserved)</span>`;
         } else if (failedCount > 0) {
             respBadgeHtml = `<span class="service-result-badge badge-not-served">Attempt #${failedCount} Failed</span>`;
         } else {
@@ -716,10 +738,10 @@ async function renderExpandedCaseView(caseId) {
             let circleClass = isCfaEligible ? 'cfa-ready' : 'cfa-locked';
             let iconText = isCfaEligible ? '📄' : '🔒';
             let statusText = isCfaEligible ? 'CFA Ready' : 'CFA Locked';
-            let subText = isCfaEligible ? 'Eligible' : `${failedCount}/3 Failed`;
+            let subText = isCfaEligible ? 'Eligible' : `${failedCount}/6 Failed`;
             let clickAction = isCfaEligible
                 ? `onclick="window.location.href='../documents/cfa.php?case_id=${encodeURIComponent(caseId)}'"`
-                : `onclick="window.agapNotify ? window.agapNotify('${escapeGpsHtml(cfaElig.reason || 'CFA is locked until all 3 summons attempts have failed.')}', 'warning', 'CFA Locked') : alert('${escapeGpsHtml(cfaElig.reason || 'CFA is locked until all 3 summons attempts have failed.')}')"`;
+                : `onclick="window.agapNotify ? window.agapNotify('${escapeGpsHtml(cfaElig.reason || 'CFA is locked until all 6 summons attempts have failed.')}', 'warning', 'CFA Locked') : alert('${escapeGpsHtml(cfaElig.reason || 'CFA is locked until all 6 summons attempts have failed.')}')"`;
 
             return `
                 <button type="button" class="stepper-step" ${clickAction} title="${statusText} — ${escapeGpsHtml(cfaElig.reason || '')}" style="${!isCfaEligible ? 'cursor: not-allowed;' : ''}">
@@ -818,7 +840,7 @@ async function renderExpandedCaseView(caseId) {
 
         // Action Buttons for Respondent Footer
         let respActionBtnHtml = '';
-        if (canNext && nextNum <= 3) {
+        if (canNext && nextNum <= 6) {
             respActionBtnHtml = `
                 <button type="button" class="btn-create" onclick="initiateNextSummonAttempt(${caseId}, ${activeHearing.hearing_id})" style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; padding: 6px 14px;">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
@@ -827,8 +849,8 @@ async function renderExpandedCaseView(caseId) {
             `;
         } else if (anyRespServed) {
             respActionBtnHtml = `<span style="background: #dcfce7; color: #166534; font-weight: 700; font-size: 0.8rem; padding: 6px 12px; border-radius: 6px; border: 1px solid #bbf7d0; display: inline-flex; align-items: center; gap: 4px;">✓ Successfully Served</span>`;
-        } else if (respAttempts.length >= 3 && failedCount >= 3) {
-            respActionBtnHtml = `<span style="background: #fee2e2; color: #991b1b; font-weight: 700; font-size: 0.8rem; padding: 6px 12px; border-radius: 6px; border: 1px solid #fecaca; display: inline-flex; align-items: center; gap: 4px;">3 Attempts Failed — Max Reached</span>`;
+        } else if (respAttempts.length >= 6 && failedCount >= 6) {
+            respActionBtnHtml = `<span style="background: #fee2e2; color: #991b1b; font-weight: 700; font-size: 0.8rem; padding: 6px 12px; border-radius: 6px; border: 1px solid #fecaca; display: inline-flex; align-items: center; gap: 4px;">6 Attempts Failed - Max Reached (Unserved)</span>`;
         }
 
         let cfaBtnHtml = '';
@@ -948,9 +970,21 @@ async function renderExpandedCaseView(caseId) {
                                     ${renderStepperNode(1)}
                                     ${renderStepperNode(2)}
                                     ${renderStepperNode(3)}
+                                    ${renderStepperNode(4)}
+                                    ${renderStepperNode(5)}
+                                    ${renderStepperNode(6)}
                                     ${renderCfaStepperNode()}
                                 </div>
                             </div>
+
+                            ${(respAttempts.length >= 6 && failedCount >= 6) ? `
+                                <div style="background: #fef2f2; border: 1px solid #f87171; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; color: #991b1b; font-size: 0.82rem; line-height: 1.45; display: flex; align-items: flex-start; gap: 8px;">
+                                    <span style="font-size: 1rem;">⚠️</span>
+                                    <div>
+                                        <strong>6 Attempts Failed - Max Reached (Unserved):</strong> The hearing schedule has been halted. Please verify the respondent's address with the complainant or refer the case for lack of jurisdiction / non-residence.
+                                    </div>
+                                </div>
+                            ` : ''}
 
                             <!-- Delivery Details List (matching Complainant side) -->
                             ${respDetailsHtml}
@@ -1049,6 +1083,7 @@ async function loadCases(preselectedCaseId = '') {
     }
 
     updateSummaryMetrics();
+    setupProofFilterTabs();
     setupSummonCaseSearch();
     setupSummonTableSorting();
     updateSummonSortHeadersUI();
@@ -1126,7 +1161,7 @@ window.printKp8Notice = printKp8Notice;
 
 function openOfficerReturnModal(partyType, residentId, hearingId, caseId, currentStatus, currentRecipient, currentRelationship, currentNotes, currentUnservedReason, attemptNumber = 1, deliveryId = null) {
     if (currentStatus && currentStatus !== 'Pending') {
-        const ordinals = ['', '1st', '2nd', '3rd', '4th'];
+        const ordinals = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th'];
         const ord = ordinals[attemptNumber] || attemptNumber + 'th';
         const msg = partyType === 'Respondent'
             ? `${ord} Attempt for Respondent has already been recorded (${currentStatus}) and is locked against changes.`
@@ -1160,7 +1195,7 @@ function openOfficerReturnModal(partyType, residentId, hearingId, caseId, curren
     const docBadge = document.getElementById('drawerDocBadge');
     const titleEl = document.getElementById('officerReturnModalTitle');
     const subTitleEl = document.getElementById('officerReturnModalSubtitle');
-    const ordinals = ['', '1st', '2nd', '3rd', '4th'];
+    const ordinals = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th'];
     const ord = ordinals[attemptNumber] || attemptNumber + 'th';
     const displayParty = (partyType === 'Respondent' && attemptNumber) ? `Respondent (${ord} Attempt)` : partyType;
 
@@ -1343,7 +1378,11 @@ async function submitOfficerReturn(event) {
             throw new Error(result.message || 'Failed to record officer return.');
         }
 
-        window.agapNotify?.(result.message || 'Officer return recorded successfully.', 'success');
+        if (result.max_attempts_reached) {
+            window.agapNotify?.(result.escalation_prompt || "6 Attempts Failed - Max Reached (Unserved). The hearing schedule has been halted. Please verify the respondent's address with the complainant or refer the case for lack of jurisdiction / non-residence.", 'warning', 'Max Attempts Reached (6/6 Failed)', 12000);
+        } else {
+            window.agapNotify?.(result.message || 'Officer return recorded successfully.', 'success');
+        }
         closeOfficerReturnModal();
 
         const caseId = document.getElementById('returnCaseId')?.value;
@@ -1367,6 +1406,7 @@ window.submitOfficerReturn = submitOfficerReturn;
    ========================================================================== */
 
 document.addEventListener('DOMContentLoaded', async () => {
+    setupProofFilterTabs();
     const refreshBtn = document.getElementById('refreshCasesBtn');
     if (refreshBtn) {
         refreshBtn.addEventListener('click', async () => {

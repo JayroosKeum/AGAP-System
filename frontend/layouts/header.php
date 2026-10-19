@@ -6,6 +6,8 @@
     <meta name="theme-color" content="#09090b">
     <title>AGAP | Automated Grievance Assistance Platform</title>
     <link rel="stylesheet" href="../../assets/css/app.css?v=<?php echo filemtime(__DIR__ . '/../assets/css/app.css'); ?>">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <?php require_once __DIR__ . '/../../backend/services/CsrfService.php'; ?>
     <meta name="agap-csrf-token" content="<?php echo htmlspecialchars(CsrfService::token(), ENT_QUOTES, 'UTF-8'); ?>">
 </head>

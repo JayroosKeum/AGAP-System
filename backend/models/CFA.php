@@ -41,7 +41,7 @@ class CFA
         if ($isSummonsFailureReason && !$eligibility['eligible']) {
             return [
                 'success' => false,
-                'message' => $eligibility['reason'] ?? 'CFA Locked — All three (3) summons delivery attempts must result in qualifying failure before CFA can be issued.'
+                'message' => $eligibility['reason'] ?? 'CFA Locked — All six (6) summons delivery attempts must result in qualifying failure before CFA can be issued.'
             ];
         }
 

@@ -679,7 +679,7 @@ class CaseProgress
             }
         }
 
-        $ordinals = ['', '1st', '2nd', '3rd'];
+        $ordinals = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th'];
 
         // Check if mediation has already commenced or been scheduled
         $mediationHearings = array_filter($hearings, fn($h) => in_array($h['hearing_type'] ?? '', ['Initial Hearing', 'Mediation'], true));
@@ -705,13 +705,13 @@ class CaseProgress
             $summonButton['action']  = 'issue';
             $summonButton['disabled'] = false;
             $summonButton['tooltip'] = 'Issue the 1st summons attempt and record proof of service.';
-        } elseif ($summonsCount >= 3) {
-            // All 3 summons have been issued — show view only
-            $summonButton['label']   = '3rd Summon Attempt Issued';
+        } elseif ($summonsCount >= 6) {
+            // All 6 summons have been issued — show view only
+            $summonButton['label']   = '6th Summon Attempt Issued';
             $summonButton['action']  = 'view_proof';
             $summonButton['disabled'] = false;
             $summonButton['url']     = '../gps/proof-service.php?case_id=' . $caseId . '&document_id=' . $latestDocId;
-            $summonButton['tooltip'] = 'All 3 summons attempts have been issued. Click to view proof of service history.';
+            $summonButton['tooltip'] = 'All 6 summons attempts have been issued. Click to view proof of service history.';
         } elseif (!$latestHasAttempt) {
             // Service attempt not yet recorded for the most recent summons — gate the next summons
             $nextOrdinal = $ordinals[$summonsCount + 1] ?? ($summonsCount + 1) . 'th';

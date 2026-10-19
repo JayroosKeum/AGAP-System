@@ -380,7 +380,7 @@ try {
     <?php elseif ($formCode === 'KP Form 8'): ?>
         <p>KAY: <strong><?= htmlspecialchars($parties['complainant']['full_name'] ?? $targetPartyName) ?></strong> (May-sumbong)</p>
         <p class="content">
-            Kayo ay tinatawagan at inaatasan na humarap sa akin sa <?= htmlspecialchars($hearing['venue'] ?? 'Tanggapan ng Lupong Tagapamayapa, Barangay Hall') ?> sa darating na <strong><?= !empty($hearing['hearing_date']) ? date('F j, Y \s\a \g\a\n\a\p \n\g g:i A', strtotime($hearing['hearing_date'])) : 'itinakdang araw' ?></strong>, para sa pagdinig ng inyong sumbong kaugnay ng usaping ito.
+            Kayo ay tinatawagan at inaatasan na humarap sa akin sa <?= htmlspecialchars($hearing['venue'] ?? 'Lupon Court Room') ?> sa darating na <strong><?= !empty($hearing['hearing_date']) ? date('F j, Y \s\a \g\a\n\a\p \n\g g:i A', strtotime($hearing['hearing_date'])) : 'itinakdang araw' ?></strong>, para sa pagdinig ng inyong sumbong kaugnay ng usaping ito.
         </p>
         <p class="content" style="font-size: 10pt; color: #444; font-style: italic;">
             PAUNAWA: Ang pagdinig na ito ay itinakda/muling itinakda (rescheduled) alinsunod sa mga alituntunin ng Katarungang Pambarangay (Batas Republika Blg. 7160).
@@ -388,7 +388,7 @@ try {
     <?php elseif ($formCode === 'KP Form 9'): ?>
         <p>KAY: <strong><?= htmlspecialchars($parties['respondent']['full_name'] ?? $targetPartyName) ?></strong> (Ipinagsusumbong)</p>
         <p class="content">
-            Kayo ay tinatawagan at inaatasan na humarap sa akin sa <?= htmlspecialchars($hearing['venue'] ?? 'Tanggapan ng Lupong Tagapamayapa, Barangay Hall') ?> sa darating na <strong><?= !empty($hearing['hearing_date']) ? date('F j, Y \s\a \g\a\n\a\p \n\g g:i A', strtotime($hearing['hearing_date'])) : 'itinakdang araw' ?></strong>, upang sagutin ang sumbong na inihain laban sa inyo kaugnay ng usaping ito. Kayo ay binabalaan na ang inyong pagtanggi o kabiguang humarap ay magkakaroon ng karampatang pananagutan alinsunod sa batas.
+            Kayo ay tinatawagan at inaatasan na humarap sa akin sa <?= htmlspecialchars($hearing['venue'] ?? 'Lupon Court Room') ?> sa darating na <strong><?= !empty($hearing['hearing_date']) ? date('F j, Y \s\a \g\a\n\a\p \n\g g:i A', strtotime($hearing['hearing_date'])) : 'itinakdang araw' ?></strong>, upang sagutin ang sumbong na inihain laban sa inyo kaugnay ng usaping ito. Kayo ay binabalaan na ang inyong pagtanggi o kabiguang humarap ay magkakaroon ng karampatang pananagutan alinsunod sa batas.
         </p>
         <p class="content" style="font-size: 10pt; color: #444; font-style: italic;">
             PAUNAWA: Ang patawag na ito ay inilabas kaugnay ng itinakda/muling itinakdang pagdinig alinsunod sa mga alituntunin ng Katarungang Pambarangay (Batas Republika Blg. 7160).

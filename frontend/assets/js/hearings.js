@@ -581,7 +581,30 @@ function validateHearingDateInput(dateInput) {
         return markError('Please enter a valid date and time.');
     }
 
-    // Weekend and office hours restrictions bypassed for testing/development
+    // Barangay Tumana Stage-Specific Day & Time Rules
+    const hearingTypeSelect = document.getElementById('hearingType') || document.getElementById('schedHearingType');
+    const hType = hearingTypeSelect?.value || 'Mediation';
+    const dayOfWeek = dateObj.getDay(); // 0 = Sun, 2 = Tue, 6 = Sat
+    const hour = dateObj.getHours();
+
+    if (hType === 'Mediation') {
+        if (dayOfWeek !== 2) {
+            return markError('Mediation sessions for Barangay Tumana are conducted exclusively on Tuesdays.');
+        }
+        if (hour < 13 || hour >= 17) {
+            return markError('Mediation sessions are conducted exclusively in the afternoon (1:00 PM – 5:00 PM).');
+        }
+    } else if (hType === 'Conciliation') {
+        if (dayOfWeek === 2) {
+            return markError('Tuesdays are reserved exclusively for the Barangay Captain\'s mediation hearings. Conciliation hearings are held on Mon, Wed, Thu, and Fri.');
+        }
+        if (dayOfWeek === 0 || dayOfWeek === 6) {
+            return markError('Conciliation hearings cannot be scheduled on weekends.');
+        }
+        if ((hour < 8 || hour >= 17) || (hour >= 12 && hour < 13)) {
+            return markError('Conciliation hearings must be during regular office hours (excluding 12-1 PM lunch break).');
+        }
+    }
 
     const selectedDay = value.slice(0, 10);
 
@@ -1252,6 +1275,8 @@ function hideModal(id) {
 function openAddHearingModal() {
     updateNextSchedule();
     loadPresiders();
+    const venueInput = document.getElementById('hearingVenue');
+    if (venueInput) venueInput.value = 'Lupon Court Room';
     handleHearingDateOrDurationChange();
     showModal('addHearingModal');
 }
@@ -2239,16 +2264,40 @@ window.closeModal = closeModal;
 function handleHearingTypeChange(type) {
     const durationSelect = document.getElementById('hearingDuration');
     const venueInput = document.getElementById('hearingVenue');
+    const hintEl = document.getElementById('hearingDateStaticHint');
+    const morningBtn = document.getElementById('btnApprovedMorning');
+    const afternoonBtn = document.getElementById('btnApprovedAfternoon');
+
     if (type === 'Mediation') {
-        if (durationSelect) durationSelect.value = '45';
-        if (venueInput && !venueInput.value) {
-            venueInput.value = "Punong Barangay / Barangay Captain's Office";
+        if (durationSelect) durationSelect.value = '60';
+        if (hintEl) hintEl.textContent = 'Mediation sessions for Barangay Tumana are conducted exclusively on Tuesday afternoons (1:00 PM – 5:00 PM).';
+        if (morningBtn) {
+            morningBtn.disabled = true;
+            morningBtn.style.opacity = '0.5';
+            morningBtn.title = 'Morning slots are disabled for Mediation (Tuesday afternoon only)';
+        }
+        if (afternoonBtn) {
+            afternoonBtn.disabled = false;
+            afternoonBtn.style.opacity = '1';
+            afternoonBtn.textContent = 'Afternoon: 1:00 PM – 5:00 PM';
         }
     } else if (type === 'Conciliation') {
         if (durationSelect) durationSelect.value = '60';
-        if (venueInput && !venueInput.value) {
-            venueInput.value = 'Lupon Office';
+        if (hintEl) hintEl.textContent = 'Conciliation hearings before the Pangkat are held on Mondays, Wednesdays, Thursdays, and Fridays (Tuesdays disabled).';
+        if (morningBtn) {
+            morningBtn.disabled = false;
+            morningBtn.style.opacity = '1';
+            morningBtn.textContent = 'Morning: 9:00 AM – 11:00 AM';
+            morningBtn.title = '';
         }
+        if (afternoonBtn) {
+            afternoonBtn.disabled = false;
+            afternoonBtn.style.opacity = '1';
+            afternoonBtn.textContent = 'Afternoon: 1:00 PM – 4:00 PM';
+        }
+    }
+    if (venueInput) {
+        venueInput.value = 'Lupon Court Room';
     }
     handleHearingDateOrDurationChange();
 }
@@ -2257,23 +2306,33 @@ window.handleHearingTypeChange = handleHearingTypeChange;
 function setVenuePreset(type) {
     const venueInput = document.getElementById('hearingVenue') || document.getElementById('editHearingVenue');
     if (!venueInput) return;
-    if (type === 'Mediation') {
-        venueInput.value = "Punong Barangay / Barangay Captain's Office";
-    } else if (type === 'Conciliation') {
-        venueInput.value = 'Lupon Office';
-    }
+    venueInput.value = 'Lupon Court Room';
 }
 window.setVenuePreset = setVenuePreset;
 
 function setApprovedBlock(block) {
     const dateInput = document.getElementById('hearingDate') || document.getElementById('editHearingDate');
+    const typeSelect = document.getElementById('hearingType');
+    const hType = typeSelect?.value || 'Mediation';
     if (!dateInput) return;
+
+    if (hType === 'Mediation' && block === 'morning') {
+        alert('Mediation sessions for Barangay Tumana are conducted exclusively on Tuesday afternoons (1:00 PM – 5:00 PM). Morning slots are not permitted for Mediation.');
+        return;
+    }
+
     let baseDate = dateInput.value ? dateInput.value.slice(0, 10) : '';
     if (!baseDate) {
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
-        while (tomorrow.getDay() === 0 || tomorrow.getDay() === 6) {
-            tomorrow.setDate(tomorrow.getDate() + 1);
+        if (hType === 'Mediation') {
+            while (tomorrow.getDay() !== 2) {
+                tomorrow.setDate(tomorrow.getDate() + 1);
+            }
+        } else {
+            while (tomorrow.getDay() === 0 || tomorrow.getDay() === 2 || tomorrow.getDay() === 6) {
+                tomorrow.setDate(tomorrow.getDate() + 1);
+            }
         }
         baseDate = tomorrow.toISOString().slice(0, 10);
     }
@@ -2282,7 +2341,7 @@ function setApprovedBlock(block) {
             baseDate = dateInput.dataset.firstHearingDeadline;
         }
     }
-    const time = block === 'morning' ? '09:00' : '13:30';
+    const time = block === 'morning' ? '09:00' : (hType === 'Mediation' ? '13:00' : '13:30');
     dateInput.value = `${baseDate}T${time}`;
     handleHearingDateOrDurationChange();
     validateHearingDateInput(dateInput);

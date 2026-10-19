@@ -183,14 +183,14 @@ include '../../layouts/header.php';
                 <small id="hearingProgressionHelp">Select a case to see its next permitted schedule.</small>
             </div>
             
-            <!-- Approved Hearing Blocks (Section A.2) -->
+            <!-- Approved Hearing Blocks (Section A.2 - Barangay Tumana Rules) -->
             <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px; margin-bottom: 14px;">
-                <span style="font-size: 0.78rem; font-weight: 700; color: #475569; text-transform: uppercase;">Approved Hearing Blocks:</span>
+                <span style="font-size: 0.78rem; font-weight: 700; color: #475569; text-transform: uppercase;">Barangay Tumana Hearing Windows:</span>
                 <div style="display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap;">
-                    <button type="button" class="btn-secondary" style="padding: 4px 10px; font-size: 0.78rem;" onclick="setApprovedBlock('morning')">Morning: 9:00 AM – 11:30 AM</button>
-                    <button type="button" class="btn-secondary" style="padding: 4px 10px; font-size: 0.78rem;" onclick="setApprovedBlock('afternoon')">Afternoon: 1:30 PM – 4:00 PM</button>
+                    <button type="button" id="btnApprovedMorning" class="btn-secondary" style="padding: 4px 10px; font-size: 0.78rem;" onclick="setApprovedBlock('morning')">Morning: 9:00 AM – 11:30 AM</button>
+                    <button type="button" id="btnApprovedAfternoon" class="btn-secondary" style="padding: 4px 10px; font-size: 0.78rem;" onclick="setApprovedBlock('afternoon')">Afternoon: 1:00 PM – 5:00 PM</button>
                 </div>
-                <small style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Rejected: 8:00–8:59 AM, 11:31 AM–1:29 PM (lunch block 12–1 PM), and after 4:00 PM.</small>
+                <small style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Mediation: Tuesdays only (1:00 PM – 5:00 PM). Conciliation: Mon, Wed, Thu, Fri (8:00 AM – 12:00 PM &amp; 1:00 PM – 5:00 PM).</small>
             </div>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
@@ -241,12 +241,10 @@ include '../../layouts/header.php';
             <div class="form-group">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                     <label for="hearingVenue" style="margin-bottom: 0;">Venue <span class="required-mark" aria-hidden="true">*</span></label>
-                    <div style="display: flex; gap: 6px;">
-                        <button type="button" class="btn-secondary" style="padding: 2px 8px; font-size: 0.74rem;" onclick="setVenuePreset('Mediation')">PB Office</button>
-                        <button type="button" class="btn-secondary" style="padding: 2px 8px; font-size: 0.74rem;" onclick="setVenuePreset('Conciliation')">Lupon Office</button>
-                    </div>
+                    <span style="font-size: 0.74rem; font-weight: 600; color: #15803d; background: #dcfce7; padding: 2px 8px; border-radius: 4px;">Designated Hearing Venue</span>
                 </div>
-                <input type="text" id="hearingVenue" name="venue" maxlength="255" placeholder="e.g., Punong Barangay / Barangay Captain's Office" required>
+                <input type="text" id="hearingVenue" name="venue" maxlength="255" value="Lupon Court Room" readonly required style="background: #f8fafc; cursor: not-allowed;">
+                <small style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Mediation and conciliation sessions are conducted exclusively in the Lupon Court Room.</small>
             </div>
 
             <div class="form-group">

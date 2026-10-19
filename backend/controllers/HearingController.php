@@ -233,46 +233,188 @@ class HearingController
     public function checkAvailability(array $data): array
     {
         $caseId = !empty($data['case_id']) ? (int) $data['case_id'] : null;
+        $dateParam = trim((string) ($data['date'] ?? ''));
         $hearingDate = trim((string) ($data['hearing_date'] ?? ''));
-        $venue = trim((string) ($data['venue'] ?? ''));
+        $venue = trim((string) ($data['venue'] ?? 'Lupon Court Room'));
         $excludeHearingId = !empty($data['exclude_hearing_id']) ? (int) $data['exclude_hearing_id'] : null;
         $presidingOfficerId = !empty($data['presiding_officer_id']) ? (int) $data['presiding_officer_id'] : null;
-        $durationMinutes = !empty($data['duration_minutes']) ? (int) $data['duration_minutes'] : 45;
+        $durationMinutes = !empty($data['duration_minutes']) ? (int) $data['duration_minutes'] : 60;
         $hearingType = !empty($data['hearing_type']) ? trim((string) $data['hearing_type']) : 'Mediation';
 
-        if ($hearingDate === '') {
-            return ['valid' => false, 'conflict' => false, 'message' => 'Please provide a hearing date and time.'];
+        $targetDate = $dateParam !== '' ? $dateParam : substr($hearingDate, 0, 10);
+        if ($targetDate === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $targetDate)) {
+            return ['valid' => false, 'conflict' => false, 'message' => 'Please provide a hearing date (YYYY-MM-DD).'];
         }
 
-        $rawDate = str_replace('T', ' ', $hearingDate);
-        if (strlen($rawDate) === 16) {
-            $rawDate .= ':00';
+        require_once __DIR__ . '/../services/OfficeLogisticsService.php';
+        require_once __DIR__ . '/../services/MediationDeadlineService.php';
+        $logistics = new OfficeLogisticsService();
+
+        $targetObj = new DateTimeImmutable($targetDate);
+        $dayOfWeek = (int) $targetObj->format('w'); // 0 = Sun, 1 = Mon, 2 = Tue, 3 = Wed, 4 = Thu, 5 = Fri, 6 = Sat
+        $holidayName = $logistics->isPhilippineHoliday($targetObj);
+        $isHoliday = ($holidayName !== null);
+
+        // Stage rules for Barangay Tumana
+        $isValidDay = true;
+        $ruleHint = '';
+        $defaultSlots = [];
+
+        if ($hearingType === 'Mediation') {
+            $ruleHint = 'Mediation sessions for Barangay Tumana are conducted exclusively on Tuesday afternoons (1:00 PM – 5:00 PM).';
+            $defaultSlots = [
+                ['time' => '13:00', 'label' => '1:00 PM – 2:00 PM'],
+                ['time' => '14:00', 'label' => '2:00 PM – 3:00 PM'],
+                ['time' => '15:00', 'label' => '3:00 PM – 4:00 PM'],
+                ['time' => '16:00', 'label' => '4:00 PM – 5:00 PM'],
+            ];
+            if ($dayOfWeek !== 2) {
+                $isValidDay = false;
+            }
+        } else {
+            // Conciliation
+            $ruleHint = 'Conciliation hearings before the Pangkat are held on Mondays, Wednesdays, Thursdays, and Fridays.';
+            $defaultSlots = [
+                ['time' => '08:00', 'label' => '8:00 AM – 9:00 AM'],
+                ['time' => '09:00', 'label' => '9:00 AM – 10:00 AM'],
+                ['time' => '10:00', 'label' => '10:00 AM – 11:00 AM'],
+                ['time' => '11:00', 'label' => '11:00 AM – 12:00 PM'],
+                ['time' => '13:00', 'label' => '1:00 PM – 2:00 PM'],
+                ['time' => '14:00', 'label' => '2:00 PM – 3:00 PM'],
+                ['time' => '15:00', 'label' => '3:00 PM – 4:00 PM'],
+                ['time' => '16:00', 'label' => '4:00 PM – 5:00 PM'],
+            ];
+            if ($dayOfWeek === 2 || $dayOfWeek === 0 || $dayOfWeek === 6) {
+                $isValidDay = false;
+            }
         }
 
-        $conflict = $this->hearing->findConflict(
-            $rawDate,
-            $venue,
-            $caseId,
-            $excludeHearingId,
-            $presidingOfficerId,
-            $durationMinutes,
-            $hearingType
-        );
+        if ($isHoliday) {
+            $isValidDay = false;
+        }
 
-        if ($conflict['conflict']) {
-            return [
-                'valid' => false,
-                'conflict' => true,
-                'message' => $conflict['message'],
-                'alternative_slots' => $conflict['alternative_slots'] ?? []
+        // Query existing active hearings on targetDate
+        $db = (new Database())->connect();
+        $hStmt = $db->prepare("
+            SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.end_time, h.duration_minutes,
+                   h.venue, c.case_id, c.case_number
+            FROM hearings h
+            LEFT JOIN cases c ON c.case_id = h.case_id
+            WHERE DATE(h.hearing_date) = ?
+              AND h.status NOT IN ('Cancelled', 'Office Cancelled')
+              " . ($excludeHearingId ? " AND h.hearing_id != {$excludeHearingId}" : "") . "
+        ");
+        $hStmt->execute([$targetDate]);
+        $existingHearings = $hStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Compute booked status for each 1-hour slot
+        $slots = [];
+        foreach ($defaultSlots as $slot) {
+            $slotTime = $slot['time'];
+            $slotStartTs = strtotime("{$targetDate} {$slotTime}:00");
+            $slotEndTs = $slotStartTs + 3600; // 1-hour session
+
+            $isBooked = false;
+            $conflictDetails = null;
+
+            foreach ($existingHearings as $eh) {
+                $ehStartTs = strtotime($eh['hearing_date']);
+                $ehDuration = !empty($eh['duration_minutes']) ? (int) $eh['duration_minutes'] : 60;
+                $ehEndTs = !empty($eh['end_time']) ? strtotime($eh['end_time']) : ($ehStartTs + ($ehDuration * 60));
+
+                if ($slotStartTs < $ehEndTs && $slotEndTs > $ehStartTs) {
+                    $isBooked = true;
+                    $conflictDetails = [
+                        'case_number' => $eh['case_number'] ?? '',
+                        'hearing_type' => $eh['hearing_type'] ?? '',
+                        'time_range' => date('g:i A', $ehStartTs) . ' – ' . date('g:i A', $ehEndTs),
+                    ];
+                    break;
+                }
+            }
+
+            $slots[] = [
+                'time' => $slotTime,
+                'label' => $slot['label'],
+                'booked' => $isBooked,
+                'conflict' => $conflictDetails
             ];
         }
 
-        return [
-            'valid' => true,
-            'conflict' => false,
-            'message' => 'The selected date, time, venue, and officers are available.'
+        $response = [
+            'success' => true,
+            'date' => $targetDate,
+            'day_of_week' => $dayOfWeek,
+            'is_valid_day' => $isValidDay,
+            'is_holiday' => $isHoliday,
+            'holiday_name' => $holidayName,
+            'hearing_type' => $hearingType,
+            'hint' => $ruleHint,
+            'slots' => $slots
         ];
+
+        // If a specific time was supplied, also validate that specific time slot
+        $timePart = trim((string) ($data['time'] ?? ''));
+        if ($timePart === '' && strlen($hearingDate) >= 16) {
+            $timePart = substr($hearingDate, 11, 5);
+        }
+
+        if ($timePart !== '') {
+            $rawDate = "{$targetDate} {$timePart}:00";
+            if (!$isValidDay) {
+                $response['valid'] = false;
+                $response['conflict'] = true;
+                if ($isHoliday) {
+                    $response['message'] = "Scheduling is blocked on {$targetDate}: Official Philippine holiday ({$holidayName}).";
+                } elseif ($hearingType === 'Mediation') {
+                    $response['message'] = 'Mediation hearings can only be scheduled on Tuesdays.';
+                } else {
+                    $response['message'] = ($dayOfWeek === 2)
+                        ? 'Conciliation cannot be scheduled on Tuesdays (reserved exclusively for the Barangay Captain\'s mediation hearings).'
+                        : 'Conciliation cannot be scheduled on weekends.';
+                }
+                return $response;
+            }
+
+            $conflict = $this->hearing->findConflict(
+                $rawDate,
+                $venue,
+                $caseId,
+                $excludeHearingId,
+                $presidingOfficerId,
+                $durationMinutes,
+                $hearingType
+            );
+
+            if ($conflict && !empty($conflict['conflict'])) {
+                $response['valid'] = false;
+                $response['conflict'] = true;
+                $response['message'] = $conflict['message'];
+                $response['alternative_slots'] = $conflict['alternative_slots'] ?? [];
+            } else {
+                $response['valid'] = true;
+                $response['conflict'] = false;
+                $response['message'] = 'The selected date, time, venue, and officers are available.';
+            }
+        } else {
+            $response['valid'] = $isValidDay;
+            $response['conflict'] = false;
+            if (!$isValidDay) {
+                if ($isHoliday) {
+                    $response['message'] = "Scheduling is blocked on {$targetDate}: Official Philippine holiday ({$holidayName}).";
+                } elseif ($hearingType === 'Mediation') {
+                    $response['message'] = 'Mediation hearings can only be scheduled on Tuesdays.';
+                } else {
+                    $response['message'] = ($dayOfWeek === 2)
+                        ? 'Conciliation cannot be scheduled on Tuesdays (reserved exclusively for the Barangay Captain\'s mediation hearings).'
+                        : 'Conciliation cannot be scheduled on weekends.';
+                }
+            } else {
+                $response['message'] = 'Date is valid. Select an available time slot.';
+            }
+        }
+
+        return $response;
     }
 
     public function officeCancel(array $data, int $userId): array
@@ -458,6 +600,28 @@ class HearingController
         if ($isPastDate) {
             $exceptionNote = 'Administrator-approved past-date scheduling exception: ' . $pastDateExceptionReason;
             $recordRemarks = trim($recordRemarks . ($recordRemarks === '' ? '' : "\n\n") . $exceptionNote);
+        }
+
+        // Strict Stage-Specific Day & Time Rules (Barangay Tumana)
+        $dayOfWeek = (int) date('w', strtotime($date->format('Y-m-d H:i:s'))); // 0 = Sun, 2 = Tue, etc.
+        $hour = (int) date('H', strtotime($date->format('Y-m-d H:i:s')));
+
+        if ($type === 'Mediation') {
+            if ($dayOfWeek !== 2) {
+                return ['success' => false, 'message' => 'Mediation hearings can only be scheduled on Tuesdays.'];
+            }
+            if ($hour < 13 || $hour >= 17) {
+                return ['success' => false, 'message' => 'Mediation hearings must be between 1:00 PM and 5:00 PM.'];
+            }
+        }
+
+        if ($type === 'Conciliation') {
+            if ($dayOfWeek === 2 || $dayOfWeek === 0 || $dayOfWeek === 6) {
+                return ['success' => false, 'message' => 'Conciliation cannot be scheduled on Tuesdays or weekends.'];
+            }
+            if (($hour < 8 || $hour >= 17) || ($hour >= 12 && $hour < 13)) {
+                return ['success' => false, 'message' => 'Conciliation hearings must be during regular office hours (excluding 12-1 PM lunch break).'];
+            }
         }
 
         // Validation: Approved hearing blocks, lunch break, Monday 8-9am, legal holidays, duration rules

@@ -156,6 +156,68 @@ class OfficeLogisticsService
             $end = $start->modify("+{$durationMin} minutes");
         }
 
+        // Stage-Specific Day & Time Rules for Barangay Tumana
+        $dayOfWeek = (int) $start->format('w'); // 0 = Sun, 1 = Mon, 2 = Tue, 3 = Wed, 4 = Thu, 5 = Fri, 6 = Sat
+        $hour = (int) $start->format('H');
+        $minute = (int) $start->format('i');
+
+        if ($hearingType === 'Mediation') {
+            if ($dayOfWeek !== 2) {
+                return [
+                    'valid' => false,
+                    'message' => 'Mediation hearings can only be scheduled on Tuesdays.'
+                ];
+            }
+            if ($hour < 13 || $hour >= 17) {
+                return [
+                    'valid' => false,
+                    'message' => 'Mediation hearings must be between 1:00 PM and 5:00 PM.'
+                ];
+            }
+            $endHour = (int) $end->format('H');
+            $endMin = (int) $end->format('i');
+            if ($endHour > 17 || ($endHour === 17 && $endMin > 0)) {
+                return [
+                    'valid' => false,
+                    'message' => 'Mediation hearings must conclude by 5:00 PM.'
+                ];
+            }
+        } elseif ($hearingType === 'Conciliation') {
+            if ($dayOfWeek === 2 || $dayOfWeek === 0 || $dayOfWeek === 6) {
+                return [
+                    'valid' => false,
+                    'message' => ($dayOfWeek === 2)
+                        ? 'Conciliation cannot be scheduled on Tuesdays (reserved exclusively for the Barangay Captain\'s mediation hearings).'
+                        : 'Conciliation cannot be scheduled on weekends.'
+                ];
+            }
+            if (($hour < 8 || $hour >= 17) || ($hour >= 12 && $hour < 13)) {
+                return [
+                    'valid' => false,
+                    'message' => 'Conciliation hearings must be during regular office hours (excluding 12-1 PM lunch break).'
+                ];
+            }
+            if ($hour < 12) {
+                $endHour = (int) $end->format('H');
+                $endMin = (int) $end->format('i');
+                if ($endHour > 12 || ($endHour === 12 && $endMin > 0)) {
+                    return [
+                        'valid' => false,
+                        'message' => 'Morning conciliation hearings must conclude by 12:00 PM for lunch break.'
+                    ];
+                }
+            } else {
+                $endHour = (int) $end->format('H');
+                $endMin = (int) $end->format('i');
+                if ($endHour > 17 || ($endHour === 17 && $endMin > 0)) {
+                    return [
+                        'valid' => false,
+                        'message' => 'Afternoon conciliation hearings must conclude by 5:00 PM.'
+                    ];
+                }
+            }
+        }
+
         return [
             'valid' => true,
             'start_time' => $start->format('Y-m-d H:i:s'),
@@ -540,7 +602,7 @@ class OfficeLogisticsService
         int $caseId,
         string $startDate,
         int $durationMinutes = 45,
-        string $venue = "Punong Barangay / Barangay Captain's Office",
+        string $venue = 'Lupon Court Room',
         ?int $presidingOfficerId = null,
         int $maxSuggestions = 4
     ): array {
@@ -668,13 +730,7 @@ class OfficeLogisticsService
      */
     public static function getDefaultVenue(string $hearingType): string
     {
-        return match ($hearingType) {
-            'Mediation', '1st Mediation', '2nd Mediation', '3rd Mediation' => "Punong Barangay / Barangay Captain's Office",
-            'Conciliation', '1st Conciliation', '2nd Conciliation', '3rd Conciliation' => 'Lupon Office',
-            'Arbitration' => 'Arbitration Hearing Chamber',
-            'Show Cause (Complainant)', 'Show Cause (Respondent)' => 'Tanggapan ng Lupong Tagapamayapa, Barangay Hall',
-            default => 'Barangay Tumana Hearing Room',
-        };
+        return 'Lupon Court Room';
     }
 
     /**

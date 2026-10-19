@@ -178,8 +178,8 @@ async function handleCfaSubmit(event) {
 
     const elig = window.currentCaseCfaEligibility;
     if (isSummonsFailureReason && elig && !elig.eligible) {
-        setMessage(elig.reason || 'CFA Locked — 3 summons delivery attempts must result in qualifying failure before CFA can be issued on this ground.', false);
-        window.agapNotify?.(elig.reason || 'CFA is locked until all 3 summons attempts have failed.', 'warning', 'CFA Locked');
+        setMessage(elig.reason || 'CFA Locked — 6 summons delivery attempts must result in qualifying failure before CFA can be issued on this ground.', false);
+        window.agapNotify?.(elig.reason || 'CFA is locked until all 6 summons attempts have failed.', 'warning', 'CFA Locked');
         return;
     }
 

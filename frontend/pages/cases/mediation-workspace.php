@@ -216,21 +216,31 @@ include '../../layouts/header.php';
         </div>
         <form id="wsScheduleForm" onsubmit="submitSchedule(event)">
             <input type="hidden" id="schedHearingType" value="Mediation">
-            <p style="margin: 0 0 16px; font-size: 0.86rem; color: #475569; line-height: 1.5;">
+            <p style="margin: 0 0 12px; font-size: 0.86rem; color: #475569; line-height: 1.5;">
                 Scheduling a mediation hearing automatically registers the session in the central calendar and generates <strong>KP Form 8 (Notice of Hearing)</strong> and <strong>KP Form 9 (Summons)</strong>.
             </p>
-            <div class="form-group">
-                <label for="schedDate">Hearing Date <span class="required-mark">*</span></label>
-                <input type="date" id="schedDate" required>
+            <div id="schedStageRuleHint" style="padding: 10px 14px; border-radius: 6px; font-size: 0.82rem; margin-bottom: 14px; background: #fefce8; border: 1px solid #fef08a; color: #854d0e; display: flex; align-items: flex-start; gap: 8px;">
+                <span style="font-size: 1rem; line-height: 1;">📅</span>
+                <div>
+                    <strong>Barangay Tumana Rule:</strong> Mediation sessions for Barangay Tumana are conducted exclusively on Tuesday afternoons (1:00 PM – 5:00 PM).
+                </div>
             </div>
             <div class="form-group">
-                <label for="schedTime">Hearing Time <span class="required-mark">*</span></label>
-                <input type="time" id="schedTime" value="09:00" required>
-                <small>Standard mediation sessions are scheduled during office hours (8:00 AM - 5:00 PM).</small>
+                <label for="schedDate">Hearing Date (Tuesdays Only) <span class="required-mark">*</span></label>
+                <input type="text" id="schedDate" placeholder="Select a Tuesday..." required style="background: #fff; cursor: pointer;">
+                <small id="schedDateError" style="color: #b91c1c; font-size: 0.75rem; display: none; margin-top: 4px;"></small>
+            </div>
+            <div class="form-group">
+                <label for="schedTime">Hearing Time Slot (1-Hour Session) <span class="required-mark">*</span></label>
+                <select id="schedTime" required style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem; background: #fff;">
+                    <option value="">Select a date first</option>
+                </select>
+                <small id="schedSlotFeedback" style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Available slots: 1:00 PM, 2:00 PM, 3:00 PM, 4:00 PM (1 hour each).</small>
             </div>
             <div class="form-group">
                 <label for="schedVenue">Venue <span class="required-mark">*</span></label>
-                <input type="text" id="schedVenue" value="Barangay Hall" required maxlength="255">
+                <input type="text" id="schedVenue" value="Lupon Court Room" readonly required maxlength="255" style="background: #f8fafc; cursor: not-allowed;">
+                <small style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Mediation sessions are conducted exclusively in the Lupon Court Room.</small>
             </div>
             <div class="form-group">
                 <label for="schedRemarks">Session Instructions / Remarks <span class="optional-label">Optional</span></label>
@@ -377,6 +387,7 @@ include '../../layouts/header.php';
     </div>
 </div>
 <?php include __DIR__ . '/../../layouts/summons-preview-modal.php'; ?>
+<?php include __DIR__ . '/../../layouts/transmittal-modal.php'; ?>
 
 <script src="../../assets/js/summons-preview.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/summons-preview.js'); ?>"></script>
 <script src="../../assets/js/stage-workspace.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/stage-workspace.js'); ?>"></script>

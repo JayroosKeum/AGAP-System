@@ -2410,6 +2410,8 @@ input[data-ai-external-consent]:focus {
 /* Standardized complaint lifecycle badges */
 .badge-lifecycle-draft,
 .status-draft { background:#f1f5f9; color:#475569; border-color:#cbd5e1; }
+.badge-lifecycle-pre-docketed-paanyaya,
+.status-pre-docketed-paanyaya { background:#e0e7ff; color:#3730a3; border-color:#c7d2fe; }
 .badge-lifecycle-pending,
 .status-pending { background:#fef3c7; color:#92400e; border-color:#fde68a; }
 .badge-lifecycle-mediation,
@@ -2418,6 +2420,8 @@ input[data-ai-external-consent]:focus {
 .status-conciliation { background:#ede9fe; color:#5b21b6; border-color:#ddd6fe; }
 .badge-lifecycle-cfa,
 .status-cfa { background:#ffedd5; color:#9a3412; border-color:#fed7aa; }
+.badge-lifecycle-resolved-at-paanyaya-closed,
+.status-resolved-at-paanyaya-closed,
 .badge-lifecycle-resolution-closed,
 .status-resolution-closed { background:#dcfce7; color:#166534; border-color:#bbf7d0; }
 
@@ -2974,6 +2978,46 @@ input[data-ai-external-consent]:focus {
     border-bottom: 1px solid var(--line, #e4e4e7);
     flex-wrap: wrap;
     gap: 16px;
+}
+.intake-header-bar .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background-color: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    color: #1e293b;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-decoration: none;
+    line-height: 1.25;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    margin-bottom: 12px;
+    cursor: pointer;
+    transition: all 0.15s ease-in-out;
+    user-select: none;
+}
+.intake-header-bar .back-link:hover {
+    background-color: #f8fafc;
+    border-color: #94a3b8;
+    color: #0f172a;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+    text-decoration: none;
+}
+.intake-header-bar .back-link:hover .back-icon,
+.intake-header-bar .back-link:hover svg {
+    transform: translateX(-3px);
+}
+.intake-header-bar .back-link .back-icon,
+.intake-header-bar .back-link svg {
+    display: inline-block;
+    vertical-align: middle;
+    width: 18px;
+    height: 18px;
+    stroke: currentColor;
+    transition: transform 0.15s ease;
+    flex-shrink: 0;
 }
 .intake-breadcrumb {
     display: flex;

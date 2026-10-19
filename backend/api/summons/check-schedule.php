@@ -22,7 +22,7 @@ $input = ($_SERVER['REQUEST_METHOD'] === 'POST') ? $_POST : $_GET;
 
 $date = trim((string) ($input['date'] ?? ''));
 $time = trim((string) ($input['time'] ?? ''));
-$venue = trim((string) ($input['venue'] ?? 'Barangay Hall'));
+$venue = trim((string) ($input['venue'] ?? 'Lupon Court Room'));
 $complaintId = filter_var($input['complaint_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
 $caseId = filter_var($input['case_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
 $getWindow = !empty($input['get_window']) || !empty($input['window']);

@@ -71,6 +71,7 @@
 @media (max-width: 800px) {
     .gps-card { margin-left: 18px; margin-right: 18px; padding: 18px; }
     .proof-message { margin-left: 18px; margin-right: 18px; }
+    .proof-workspace-toolbar { margin-left: 18px; margin-right: 18px; }
     .proof-title-row, .case-summary-header, .section-heading { flex-direction: column; }
     .summary-grid { grid-template-columns: 1fr; }
     .view-only-badge { align-self: flex-start; }
@@ -79,6 +80,25 @@
 @media (max-width: 480px) {
     .gps-card { margin-left: 12px; margin-right: 12px; border-radius: 11px; }
     .proof-message { margin-left: 12px; margin-right: 12px; }
+    .proof-workspace-toolbar {
+        margin-left: 12px;
+        margin-right: 12px;
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .proof-filter-tabs {
+        width: 100%;
+        overflow-x: auto;
+    }
+    .proof-tab-btn {
+        flex: 1;
+        justify-content: center;
+        white-space: nowrap;
+    }
+    .proof-search-container {
+        max-width: 100%;
+        min-width: 100%;
+    }
 }
 
 /* Officer's Return & Summon Deliveries */
@@ -554,48 +574,60 @@
     justify-content: space-between;
     align-items: center;
     gap: 14px;
-    margin-bottom: 16px;
+    margin: 0 30px 18px;
 }
 .proof-filter-tabs {
     display: inline-flex;
-    background: #f1f5f9;
+    align-items: center;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
     padding: 4px;
-    border-radius: 8px;
+    border-radius: 9999px;
     gap: 4px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
 }
 .proof-tab-btn {
-    border: none;
+    border: 1px solid transparent;
     background: transparent;
-    padding: 7px 14px;
-    border-radius: 6px;
-    font-size: 0.84rem;
+    padding: 7px 16px;
+    border-radius: 9999px;
+    font-size: 0.85rem;
     font-weight: 600;
-    color: #64748b;
+    color: #475569;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    transition: all 0.15s ease;
+    gap: 8px;
+    transition: all 0.18s ease;
     user-select: none;
+    line-height: 1.25;
 }
 .proof-tab-btn:hover {
+    background: #f1f5f9;
     color: #0f172a;
 }
 .proof-tab-btn.active {
-    background: #ffffff;
-    color: #0f172a;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    background: #0f172a;
+    color: #ffffff;
+    border-color: #0f172a;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.16);
 }
 .proof-tab-count {
     background: #e2e8f0;
     color: #475569;
-    padding: 2px 7px;
-    border-radius: 10px;
-    font-size: 0.72rem;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    font-size: 0.74rem;
     font-weight: 700;
+    line-height: 1;
+    transition: all 0.18s ease;
+}
+.proof-tab-btn:hover .proof-tab-count {
+    background: #cbd5e1;
+    color: #0f172a;
 }
 .proof-tab-btn.active .proof-tab-count {
-    background: #0284c7;
+    background: rgba(255, 255, 255, 0.22);
     color: #ffffff;
 }
 .proof-search-container {
@@ -603,6 +635,13 @@
     flex: 1;
     min-width: 260px;
     max-width: 440px;
+}
+.proof-search-container .search-input-field {
+    transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.proof-search-container .search-input-field:focus {
+    border-color: #0284c7 !important;
+    box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15) !important;
 }
 
 /* Expandable Main Table */
@@ -730,12 +769,14 @@
     border-radius: 10px;
     padding: 14px 16px;
     margin-bottom: 12px;
+    overflow-x: auto;
 }
 .summon-stepper {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     position: relative;
+    min-width: 580px;
 }
 .summon-stepper::before {
     content: '';

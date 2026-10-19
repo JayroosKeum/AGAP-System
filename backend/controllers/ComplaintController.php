@@ -47,6 +47,10 @@ class ComplaintController
         $complaint['location'] = $this->location->getByComplaint($id);
         $complaint['current_scan'] = $this->scannedDoc->getCurrentByComplaint($id);
         $complaint['scan_history'] = $this->scannedDoc->getHistoryByComplaint($id);
+        require_once __DIR__ . '/../models/Paanyaya.php';
+        $paaModel = new Paanyaya();
+        $complaint['paanyaya'] = $paaModel->getByComplaintId($id);
+        $complaint['paanyaya_workspace'] = $paaModel->getWorkspaceData($id);
         if (!empty($complaint['case_id'])) {
             // The case workspace is supplementary to the complaint record.  A
             // workspace/schema problem must never prevent the complaint itself,
@@ -148,6 +152,34 @@ class ComplaintController
                 } else {
                     $result['message'] .= ' (Warning: Scanned document could not be saved: ' . ($scanUpload['message'] ?? 'Upload error') . ')';
                 }
+            }
+
+            // Mandatory Entry: Automatic Paanyaya (Stage 0: Pre-Docketing) - No pathway choice
+            if ($complaintId > 0 && !$isDraft) {
+                require_once __DIR__ . '/../models/Paanyaya.php';
+                $paanyayaModel = new Paanyaya();
+                $paaDate = !empty($data['paanyaya_date']) ? trim((string)$data['paanyaya_date']) : date('Y-m-d', strtotime('+3 weekdays'));
+                $paaTime = !empty($data['paanyaya_time']) ? trim((string)$data['paanyaya_time']) : '14:00';
+                $paaVenue = !empty($data['paanyaya_venue']) ? trim((string)$data['paanyaya_venue']) : 'Tanggapan ng Barangay Tumana';
+                $paaSig = isset($data['paanyaya_has_e_signature']) ? (int) ((bool) $data['paanyaya_has_e_signature']) : 1;
+                $paaSalaysay = !empty($data['paanyaya_salaysay']) ? trim((string)$data['paanyaya_salaysay']) : ($data['narrative'] ?? '');
+
+                $paaResult = $paanyayaModel->schedule([
+                    'complaint_id' => $complaintId,
+                    'attempt_number' => 1,
+                    'invitation_date' => $paaDate,
+                    'invitation_time' => $paaTime,
+                    'venue' => $paaVenue,
+                    'salaysay' => $paaSalaysay,
+                    'has_e_signature' => $paaSig,
+                ], (int) ($_SESSION['user_id'] ?? 1));
+
+                if ($paaResult['success']) {
+                    $result['message'] .= ' (1st Paanyaya informal dialogue scheduled: Complaint placed in Pre-Docketing.)';
+                    $result['paanyaya_session_id'] = $paaResult['session_id'] ?? null;
+                    $result['pdf_path'] = $paaResult['pdf_path'] ?? null;
+                }
+                $result['redirect_url'] = '../../frontend/pages/complaints/complaint-details.php?id=' . $complaintId . '&tab=paanyaya';
             }
 
             if ($isDraft) {

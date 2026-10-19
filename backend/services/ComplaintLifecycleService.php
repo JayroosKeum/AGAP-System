@@ -5,6 +5,7 @@ require_once __DIR__ . '/../config/database.php';
 class ComplaintLifecycleService
 {
     public const PENDING = 'Pending';
+    public const PAANYAYA = 'Pre-Docketed (Paanyaya)';
     public const MEDIATION = 'Mediation';
     public const CONCILIATION = 'Conciliation';
     public const CFA = 'CFA';
@@ -24,6 +25,7 @@ class ComplaintLifecycleService
     {
         return [
             self::PENDING,
+            self::PAANYAYA,
             self::MEDIATION,
             self::CONCILIATION,
             self::CFA,
@@ -35,6 +37,9 @@ class ComplaintLifecycleService
         string $status
     ): string {
         return match ($status) {
+            self::PAANYAYA =>
+                'Pre-docketed informal Paanyaya dialogue session.',
+
             self::MEDIATION =>
                 'Active mediation with the Lupon Head.',
 
@@ -171,7 +176,8 @@ class ComplaintLifecycleService
             'Rejected',
             'Arbitration',
             'DISMISSED_BARRED',
-            'RESPONDENT_DEFAULT'
+            'RESPONDENT_DEFAULT',
+            'Resolved at Paanyaya / Closed'
         ];
 
         if (
@@ -189,6 +195,10 @@ class ComplaintLifecycleService
             )
         ) {
             return self::CLOSED;
+        }
+
+        if ($complaintStatus === 'Pre-Docketed (Paanyaya)') {
+            return self::PAANYAYA;
         }
 
         /*

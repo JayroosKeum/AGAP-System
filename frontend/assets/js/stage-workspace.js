@@ -1262,7 +1262,7 @@ function renderMinutesSection(data, stage) {
                                         <label for="minNextHearingVenue" style="font-weight: 600; font-size: 0.82rem; color: #14532d; margin-bottom: 4px; display: block;">
                                             Venue
                                         </label>
-                                        <input type="text" id="minNextHearingVenue" value="${escapeHtml(activeSession.venue || 'Barangay Hall - Lupon Office')}" ${readonlyAttr} style="width: 100%; border: 1px solid #86efac; border-radius: 6px; padding: 8px 10px; font-size: 0.84rem; box-sizing: border-box; background: #fff;">
+                                        <input type="text" id="minNextHearingVenue" value="${escapeHtml(activeSession.venue || 'Lupon Court Room')}" ${readonlyAttr} style="width: 100%; border: 1px solid #86efac; border-radius: 6px; padding: 8px 10px; font-size: 0.84rem; box-sizing: border-box; background: #fff;">
                                     </div>
                                 </div>
                             </div>
@@ -1528,7 +1528,7 @@ async function saveHearingMinutes(status = 'Draft') {
     if (outcomeVal === 'Continue Mediation' && isMediation && !hasNextSession && sessionIndex < 3) {
         const nextDate = document.getElementById('minNextHearingDate')?.value?.trim();
         const nextTime = document.getElementById('minNextHearingTime')?.value?.trim();
-        const nextVenue = document.getElementById('minNextHearingVenue')?.value?.trim() || 'Barangay Hall - Lupon Office';
+        const nextVenue = document.getElementById('minNextHearingVenue')?.value?.trim() || 'Lupon Court Room';
         if (!nextDate || !nextTime) {
             alert('Please specify the Date and Time for the next mediation session in the Next Steps section.');
             const dateInput = document.getElementById('minNextHearingDate');
@@ -1619,9 +1619,9 @@ function renderOutcomeAndReferralSection(data, stage) {
     const outcome = stage.outcome || 'Pending';
     const canRefer = stage.documents_and_actions?.can_proceed_to_pangkat;
 
-    if (outcome === 'Settled') {
+    if (outcome === 'Settled' || stage.outcome === 'Settled' || stage.stage_status === 'Settled') {
         outcomeBox.innerHTML = `
-            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 18px; color: #166534;">
+            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 18px; color: #166534; margin-bottom: 12px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                     <div>
                         <h4 style="margin: 0 0 4px; font-size: 1rem; color: #14532d; font-weight: 700;">
@@ -1641,7 +1641,16 @@ function renderOutcomeAndReferralSection(data, stage) {
                     </div>
                 </div>
             </div>
+
+            <!-- Court & DILG Transmittal Module (RA 7160 Sec. 411) -->
+            <div id="wsTransmittalCardContainer">
+                <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; text-align: center; color: #64748b; font-size: 0.85rem;">
+                    Loading Transmittal &amp; Repudiation status...
+                </div>
+            </div>
         `;
+
+        loadTransmittalCard(stageWorkspaceState.caseId);
     } else if (mode === 'Mediation') {
         if (stage.stage_status === 'Referred to Pangkat') {
             outcomeBox.innerHTML = `
@@ -1763,7 +1772,16 @@ function renderOutcomeAndReferralSection(data, stage) {
  * MODAL: Schedule Session Modal
  * -----------------------------------------------------------------------------
  */
+let wsFlatpickrInstance = null;
+
 function openScheduleModal(hearingId = null) {
+    const modal = document.getElementById('wsScheduleModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        initWorkspaceScheduleModal();
+        return;
+    }
+
     const urlParams = new URLSearchParams(window.location.search);
     const caseId = stageWorkspaceState.caseId || urlParams.get('case_id');
     const hId = hearingId || stageWorkspaceState.activeSessionHearingId || urlParams.get('hearing_id');
@@ -1780,6 +1798,190 @@ function closeScheduleModal() {
     if (modal) modal.style.display = 'none';
 }
 
+function initWorkspaceScheduleModal() {
+    const typeVal = document.getElementById('schedHearingType')?.value || (stageWorkspaceState.mode === 'Mediation' ? 'Mediation' : 'Conciliation');
+    const isMediation = (typeVal === 'Mediation');
+    const dateInput = document.getElementById('schedDate');
+    const timeSelect = document.getElementById('schedTime');
+    const hintEl = document.getElementById('schedStageRuleHint');
+    const errorEl = document.getElementById('schedDateError');
+    const feedbackEl = document.getElementById('schedSlotFeedback');
+    const submitBtn = document.getElementById('submitSchedBtn');
+
+    if (!dateInput || !timeSelect) return;
+
+    dateInput.value = '';
+    timeSelect.innerHTML = '<option value="">Select a date first</option>';
+    if (errorEl) errorEl.style.display = 'none';
+    if (feedbackEl) {
+        feedbackEl.textContent = isMediation
+            ? 'Available slots: 1:00 PM, 2:00 PM, 3:00 PM, 4:00 PM (1 hour each).'
+            : 'Available slots: 8:00 AM – 11:00 AM, 1:00 PM – 4:00 PM (1 hour each, excluding lunch).';
+        feedbackEl.style.color = '#64748b';
+    }
+    if (submitBtn) submitBtn.disabled = false;
+
+    // Hint text update
+    if (hintEl) {
+        if (isMediation) {
+            hintEl.style.background = '#fefce8';
+            hintEl.style.borderColor = '#fef08a';
+            hintEl.style.color = '#854d0e';
+            hintEl.innerHTML = `
+                <span style="font-size: 1rem; line-height: 1;">📅</span>
+                <div>
+                    <strong>Barangay Tumana Rule:</strong> Mediation sessions for Barangay Tumana are conducted exclusively on Tuesday afternoons (1:00 PM – 5:00 PM).
+                </div>
+            `;
+        } else {
+            hintEl.style.background = '#eff6ff';
+            hintEl.style.borderColor = '#bfdbfe';
+            hintEl.style.color = '#1e40af';
+            hintEl.innerHTML = `
+                <span style="font-size: 1rem; line-height: 1;">📅</span>
+                <div>
+                    <strong>Barangay Tumana Rule:</strong> Conciliation hearings before the Pangkat are held on Mondays, Wednesdays, Thursdays, and Fridays. (Tuesdays are reserved for mediation hearings).
+                </div>
+            `;
+        }
+    }
+
+    // Configure Flatpickr if present
+    if (typeof flatpickr === 'function') {
+        if (wsFlatpickrInstance) {
+            wsFlatpickrInstance.destroy();
+            wsFlatpickrInstance = null;
+        }
+
+        wsFlatpickrInstance = flatpickr(dateInput, {
+            dateFormat: "Y-m-d",
+            minDate: "today",
+            disable: [
+                function(date) {
+                    const day = date.getDay(); // 0 = Sun, 1 = Mon, 2 = Tue, 3 = Wed, 4 = Thu, 5 = Fri, 6 = Sat
+                    if (isMediation) {
+                        return day !== 2; // Tuesday only
+                    } else {
+                        return day === 0 || day === 2 || day === 6; // Mon, Wed, Thu, Fri
+                    }
+                }
+            ],
+            onChange: function(selectedDates, dateStr) {
+                if (dateStr) {
+                    loadStageSlots(dateStr, typeVal);
+                }
+            }
+        });
+    }
+
+    // Native listener fallback
+    dateInput.onchange = function() {
+        const val = this.value;
+        if (!val) return;
+        const d = new Date(val + 'T00:00:00');
+        const day = d.getDay();
+        if (isMediation && day !== 2) {
+            if (errorEl) {
+                errorEl.textContent = 'Mediation sessions for Barangay Tumana are conducted exclusively on Tuesdays.';
+                errorEl.style.display = 'block';
+            }
+            timeSelect.innerHTML = '<option value="">Invalid day selected (Tuesdays only)</option>';
+            if (submitBtn) submitBtn.disabled = true;
+            return;
+        }
+        if (!isMediation && (day === 2 || day === 0 || day === 6)) {
+            if (errorEl) {
+                errorEl.textContent = (day === 2)
+                    ? 'Tuesdays are reserved exclusively for the Barangay Captain\'s mediation hearings.'
+                    : 'Conciliation hearings cannot be scheduled on weekends.';
+                errorEl.style.display = 'block';
+            }
+            timeSelect.innerHTML = '<option value="">Invalid day selected</option>';
+            if (submitBtn) submitBtn.disabled = true;
+            return;
+        }
+        if (errorEl) errorEl.style.display = 'none';
+        loadStageSlots(val, typeVal);
+    };
+}
+
+async function loadStageSlots(dateStr, hearingType) {
+    const timeSelect = document.getElementById('schedTime');
+    const feedbackEl = document.getElementById('schedSlotFeedback');
+    const errorEl = document.getElementById('schedDateError');
+    const submitBtn = document.getElementById('submitSchedBtn');
+    if (!timeSelect) return;
+
+    timeSelect.innerHTML = '<option value="">Checking slot availability...</option>';
+    timeSelect.disabled = true;
+    if (feedbackEl) feedbackEl.textContent = 'Checking slot availability for ' + dateStr + '...';
+
+    try {
+        const res = await fetch(`../../backend/api/hearings/check-availability.php?date=${encodeURIComponent(dateStr)}&hearing_type=${encodeURIComponent(hearingType)}&case_id=${encodeURIComponent(stageWorkspaceState.caseId || '')}&venue=Lupon Court Room`);
+        const data = await res.json();
+
+        timeSelect.disabled = false;
+        timeSelect.innerHTML = '';
+
+        if (!data.success || !data.is_valid_day) {
+            const msg = data.message || (data.is_holiday ? `Blocked: Official holiday (${data.holiday_name})` : 'Invalid day selected.');
+            if (errorEl) {
+                errorEl.textContent = msg;
+                errorEl.style.display = 'block';
+            }
+            timeSelect.innerHTML = `<option value="">⚠️ ${msg}</option>`;
+            if (feedbackEl) feedbackEl.textContent = msg;
+            if (submitBtn) submitBtn.disabled = true;
+            return;
+        }
+
+        if (errorEl) errorEl.style.display = 'none';
+        if (submitBtn) submitBtn.disabled = false;
+
+        const slots = data.slots || [];
+        let availableCount = 0;
+
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = '-- Select 1-Hour Time Slot --';
+        timeSelect.appendChild(defaultOption);
+
+        slots.forEach(slot => {
+            const opt = document.createElement('option');
+            opt.value = slot.time;
+            if (slot.booked) {
+                opt.disabled = true;
+                const conflictInfo = slot.conflict?.case_number ? ` (Booked: Case ${slot.conflict.case_number})` : ' (Booked)';
+                opt.textContent = `${slot.label}${conflictInfo}`;
+                opt.style.color = '#94a3b8';
+            } else {
+                opt.textContent = `${slot.label} (Available)`;
+                availableCount++;
+            }
+            timeSelect.appendChild(opt);
+        });
+
+        if (availableCount === 0) {
+            if (feedbackEl) {
+                feedbackEl.textContent = 'All 1-hour slots on this date are fully booked. Please select another date.';
+                feedbackEl.style.color = '#b91c1c';
+            }
+            if (submitBtn) submitBtn.disabled = true;
+        } else {
+            if (feedbackEl) {
+                feedbackEl.textContent = `${availableCount} slot${availableCount === 1 ? '' : 's'} available on ${dateStr}. Sessions are 1 hour each.`;
+                feedbackEl.style.color = '#15803d';
+            }
+            if (submitBtn) submitBtn.disabled = false;
+        }
+    } catch (err) {
+        console.error('Error checking availability:', err);
+        timeSelect.disabled = false;
+        timeSelect.innerHTML = '<option value="">Error loading slots. Please retry.</option>';
+        if (feedbackEl) feedbackEl.textContent = 'Could not load slots from server.';
+    }
+}
+
 async function submitSchedule(e) {
     e.preventDefault();
     const btn = document.getElementById('submitSchedBtn');
@@ -1793,16 +1995,45 @@ async function submitSchedule(e) {
     const typeVal = document.getElementById('schedHearingType').value || (stageWorkspaceState.mode === 'Mediation' ? 'Mediation' : 'Conciliation');
 
     if (!dateVal || !timeVal) {
-        alert('Please specify the hearing date and time.');
+        alert('Please specify the hearing date and select an available time slot.');
         if (btn) btn.disabled = false;
         return;
+    }
+
+    const d = new Date(dateVal + 'T' + timeVal + ':00');
+    const day = d.getDay();
+    const hour = d.getHours();
+
+    if (typeVal === 'Mediation') {
+        if (day !== 2) {
+            alert('Mediation hearings can only be scheduled on Tuesdays.');
+            if (btn) btn.disabled = false;
+            return;
+        }
+        if (hour < 13 || hour >= 17) {
+            alert('Mediation hearings must be between 1:00 PM and 5:00 PM.');
+            if (btn) btn.disabled = false;
+            return;
+        }
+    } else if (typeVal === 'Conciliation') {
+        if (day === 2 || day === 0 || day === 6) {
+            alert('Conciliation cannot be scheduled on Tuesdays or weekends.');
+            if (btn) btn.disabled = false;
+            return;
+        }
+        if ((hour < 8 || hour >= 17) || (hour >= 12 && hour < 13)) {
+            alert('Conciliation hearings must be during regular office hours (excluding 12-1 PM lunch break).');
+            if (btn) btn.disabled = false;
+            return;
+        }
     }
 
     const payload = new FormData();
     payload.append('case_id', stageWorkspaceState.caseId);
     payload.append('hearing_type', typeVal);
     payload.append('hearing_date', `${dateVal} ${timeVal}:00`);
-    payload.append('venue', venueVal || 'Barangay Hall');
+    payload.append('duration_minutes', '60');
+    payload.append('venue', venueVal || 'Lupon Court Room');
     payload.append('remarks', remarksVal);
     payload.append('schedule_reviewed', '1');
     if (pastDateExceptionReason) {
@@ -3676,6 +3907,8 @@ window.closePreviewMinutesModal = closePreviewMinutesModal;
 window.printHearingMinutes = printHearingMinutes;
 window.openScheduleModal = openScheduleModal;
 window.closeScheduleModal = closeScheduleModal;
+window.initWorkspaceScheduleModal = initWorkspaceScheduleModal;
+window.loadStageSlots = loadStageSlots;
 window.openAttendanceModal = openAttendanceModal;
 window.closeAttendanceModal = closeAttendanceModal;
 window.openMinutesModal = openMinutesModal;
@@ -3712,5 +3945,263 @@ window.togglePresiderSubstituteSection = togglePresiderSubstituteSection;
 window.handlePresiderAbsenceChoiceChange = handlePresiderAbsenceChoiceChange;
 window.executeEmergencyReschedule = executeEmergencyReschedule;
 window.getSuggestedRescheduleDateTime = getSuggestedRescheduleDateTime;
-window.toggleAttJustification = toggleAttJustification;
 window.submitAttendance = submitAttendance;
+
+// ========================================================
+// COURT & DILG TRANSMITTAL MODULE (RA 7160 SEC. 411)
+// ========================================================
+
+async function loadTransmittalCard(caseId) {
+    const container = document.getElementById('wsTransmittalCardContainer');
+    if (!container) return;
+
+    try {
+        const res = await fetch(`../../../backend/api/transmittals/status.php?case_id=${encodeURIComponent(caseId)}`);
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+            container.innerHTML = `
+                <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; font-size: 0.84rem; color: #64748b;">
+                    Unable to load Court Transmittal status.
+                </div>
+            `;
+            return;
+        }
+
+        const data = json.data || {};
+        stageWorkspaceState.transmittalData = data;
+
+        let badgeStyle = 'background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;';
+        if (data.status === 'Transmitted') {
+            badgeStyle = 'background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe;';
+        } else if (data.status === 'Acknowledged') {
+            badgeStyle = 'background: #dcfce7; color: #15803d; border: 1px solid #86efac;';
+        } else if (data.is_repudiation_window_open) {
+            badgeStyle = 'background: #fef3c7; color: #92400e; border: 1px solid #fde68a;';
+        } else {
+            badgeStyle = 'background: #dcfce7; color: #15803d; border: 1px solid #86efac;';
+        }
+
+        const receivingCopyHtml = data.receiving_copy_path ? `
+            <div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed #cbd5e1; font-size: 0.82rem; color: #1e40af;">
+                📎 <strong>Stamped Receiving Copy on File:</strong> 
+                <a href="../../../${escapeHtml(data.receiving_copy_path)}" target="_blank" style="color: #0369a1; text-decoration: underline; font-weight: 600;">
+                    View Stamped Court / DILG Copy &rarr;
+                </a>
+            </div>
+        ` : '';
+
+        const receiverDetailsHtml = (data.status === 'Transmitted' || data.status === 'Acknowledged') ? `
+            <div style="margin-top: 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px; font-size: 0.82rem; color: #334155; line-height: 1.55;">
+                <div style="margin-bottom: 2px;">
+                    <strong>Transmitted on:</strong> ${escapeHtml(data.transmittal_date || 'Logged')} &bull; 
+                    <strong>Target:</strong> ${escapeHtml(data.target_agency_label || 'Both MTC & DILG')}
+                </div>
+                ${data.mtc_receiver_name ? `<div>⚖️ <strong>MTCC Receiver:</strong> ${escapeHtml(data.mtc_receiver_name)} ${data.mtc_received_date ? `(Received: ${escapeHtml(data.mtc_received_date)})` : ''}</div>` : ''}
+                ${data.dilg_receiver_name ? `<div>🏛️ <strong>DILG Receiver:</strong> ${escapeHtml(data.dilg_receiver_name)} ${data.dilg_received_date ? `(Received: ${escapeHtml(data.dilg_received_date)})` : ''}</div>` : ''}
+                ${data.remarks ? `<div style="margin-top: 3px; color: #64748b; font-style: italic;">📝 "${escapeHtml(data.remarks)}"</div>` : ''}
+            </div>
+        ` : '';
+
+        container.innerHTML = `
+            <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 18px; margin-top: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <h4 style="margin: 0; font-size: 0.98rem; color: #0f172a; font-weight: 700;">
+                                ⚖️ MTC &amp; DILG Court Transmittal Module
+                            </h4>
+                            <span style="font-size: 0.76rem; background: #f1f5f9; color: #475569; padding: 2px 7px; border-radius: 4px; font-weight: 600;">
+                                Ref: ${escapeHtml(data.transmittal_number || 'TR')}
+                            </span>
+                        </div>
+                        <p style="margin: 3px 0 0; font-size: 0.8rem; color: #64748b;">
+                            Statutory transmittal to Clerk of Court (MTCC Marikina) and DILG Field Office pursuant to RA 7160 Sec. 411.
+                        </p>
+                    </div>
+                    <div>
+                        <span style="display: inline-block; padding: 4px 10px; border-radius: 9999px; font-weight: 700; font-size: 0.78rem; ${badgeStyle}">
+                            ${escapeHtml(data.badge_label || data.status)}
+                        </span>
+                    </div>
+                </div>
+
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 14px; font-size: 0.84rem; color: #334155; line-height: 1.55;">
+                    <div>
+                        Settlement signed on <strong>${escapeHtml(data.settlement_date_formatted || data.settlement_date)}</strong>. 
+                        10-day working period ends on <strong>${escapeHtml(data.ten_day_expiry_date_formatted || data.ten_day_expiry_date)}</strong> 
+                        <span style="color: #64748b;">(excluding weekends &amp; statutory Philippine holidays)</span>.
+                    </div>
+                    ${data.is_repudiation_window_open ? `
+                        <div style="margin-top: 5px; color: #b45309; font-weight: 600;">
+                            ⏳ Repudiation countdown: ${data.working_days_remaining} working day${data.working_days_remaining === 1 ? '' : 's'} remaining before formal transmittal is prescribed.
+                        </div>
+                    ` : `
+                        <div style="margin-top: 5px; color: #15803d; font-weight: 600;">
+                            ✓ 10 working days elapsed with no repudiation filed. Amicable settlement now carries the force and effect of a final court judgment under Section 411.
+                        </div>
+                    `}
+                </div>
+
+                ${receiverDetailsHtml}
+                ${receivingCopyHtml}
+
+                <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; flex-wrap: wrap;">
+                    <button type="button" class="btn-secondary" onclick="openPreviewTransmittalModal(${Number(caseId)})" style="font-size: 0.82rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+                        📄 Preview / Print Transmittal Letter
+                    </button>
+                    <button type="button" class="btn-create" onclick="openRecordTransmittalModal(${Number(caseId)})" style="font-size: 0.82rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; background: #0f766e;">
+                        📤 Record Court / DILG Submission
+                    </button>
+                </div>
+            </div>
+        `;
+    } catch (err) {
+        console.error('Failed to load transmittal card:', err);
+    }
+}
+
+function openPreviewTransmittalModal(caseId) {
+    const modal = document.getElementById('previewTransmittalModal');
+    const iframe = document.getElementById('transmittalLetterPreviewIframe');
+    const downloadBtn = document.getElementById('btnDownloadTransmittalPdf');
+    if (!modal) return;
+
+    if (iframe) {
+        iframe.src = `../../../backend/api/transmittals/preview.php?case_id=${encodeURIComponent(caseId)}&html=1`;
+    }
+    if (downloadBtn) {
+        downloadBtn.href = `../../../backend/api/transmittals/preview.php?case_id=${encodeURIComponent(caseId)}&download=1`;
+    }
+
+    modal.style.display = 'flex';
+}
+
+function closePreviewTransmittalModal() {
+    const modal = document.getElementById('previewTransmittalModal');
+    if (modal) modal.style.display = 'none';
+    const iframe = document.getElementById('transmittalLetterPreviewIframe');
+    if (iframe) iframe.src = 'about:blank';
+}
+
+function printTransmittalIframe() {
+    const iframe = document.getElementById('transmittalLetterPreviewIframe');
+    if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+    }
+}
+
+function openRecordTransmittalModal(caseId) {
+    const modal = document.getElementById('recordTransmittalModal');
+    if (!modal) return;
+
+    const caseIdInput = document.getElementById('transmittalCaseId');
+    if (caseIdInput) caseIdInput.value = caseId;
+
+    const data = stageWorkspaceState.transmittalData || {};
+    const alertBox = document.getElementById('transmittalModalRepudiationAlert');
+    if (alertBox) {
+        if (data.is_repudiation_window_open) {
+            alertBox.innerHTML = `
+                <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 10px 12px; font-size: 0.82rem; color: #92400e; line-height: 1.45;">
+                    ⚠️ <strong>Notice (RA 7160 Sec. 411):</strong> The 10-working-day repudiation window is currently active 
+                    (<strong>${data.working_days_remaining} working day${data.working_days_remaining === 1 ? '' : 's'} remaining</strong> until ${data.ten_day_expiry_date_formatted}). 
+                    Formal transmittal is legally prescribed upon lapse of this period without repudiation.
+                </div>
+            `;
+            alertBox.style.display = 'block';
+        } else {
+            alertBox.innerHTML = `
+                <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 10px 12px; font-size: 0.82rem; color: #166534; line-height: 1.45;">
+                    ✓ <strong>Statutory Repudiation Window Elapsed:</strong> No repudiation has been recorded. This settlement carries the force and effect of a final court judgment and is ready for court &amp; DILG transmittal.
+                </div>
+            `;
+            alertBox.style.display = 'block';
+        }
+    }
+
+    const dateInput = document.getElementById('transmittalDate');
+    if (dateInput) dateInput.value = data.transmittal_date || new Date().toISOString().slice(0, 10);
+
+    const agencySelect = document.getElementById('transmittalTargetAgency');
+    if (agencySelect) agencySelect.value = data.target_agency || 'Both';
+
+    const mtcReceiver = document.getElementById('transmittalMtcReceiver');
+    if (mtcReceiver) mtcReceiver.value = data.mtc_receiver_name || '';
+
+    const mtcDate = document.getElementById('transmittalMtcDate');
+    if (mtcDate) mtcDate.value = data.mtc_received_date || (data.transmittal_date || new Date().toISOString().slice(0, 10));
+
+    const dilgReceiver = document.getElementById('transmittalDilgReceiver');
+    if (dilgReceiver) dilgReceiver.value = data.dilg_receiver_name || '';
+
+    const dilgDate = document.getElementById('transmittalDilgDate');
+    if (dilgDate) dilgDate.value = data.dilg_received_date || (data.transmittal_date || new Date().toISOString().slice(0, 10));
+
+    const remarksText = document.getElementById('transmittalRemarks');
+    if (remarksText) remarksText.value = data.remarks || '';
+
+    const badge = document.getElementById('transmittalCurrentFileBadge');
+    if (badge) {
+        if (data.receiving_copy_path) {
+            badge.innerHTML = `Current Stamped File: <a href="../../../${escapeHtml(data.receiving_copy_path)}" target="_blank" style="text-decoration: underline;">View Uploaded Copy</a>`;
+            badge.style.display = 'block';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+
+    modal.style.display = 'flex';
+}
+
+function closeRecordTransmittalModal() {
+    const modal = document.getElementById('recordTransmittalModal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function handleRecordTransmittalSubmit(event) {
+    event.preventDefault();
+    const form = document.getElementById('recordTransmittalForm');
+    const submitBtn = document.getElementById('btnSubmitTransmittal');
+    if (!form) return;
+
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Saving...';
+    }
+
+    const formData = new FormData(form);
+
+    try {
+        const res = await fetch('../../../backend/api/transmittals/submit.php', {
+            method: 'POST',
+            body: formData
+        });
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+            throw new Error(json.message || 'Failed to record transmittal.');
+        }
+
+        alert('✓ ' + (json.message || 'Court & DILG transmittal recorded successfully!'));
+        closeRecordTransmittalModal();
+        if (stageWorkspaceState.caseId) {
+            loadTransmittalCard(stageWorkspaceState.caseId);
+        }
+    } catch (err) {
+        alert('Error: ' + err.message);
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = '💾 Save Transmittal Record';
+        }
+    }
+}
+
+window.loadTransmittalCard = loadTransmittalCard;
+window.openPreviewTransmittalModal = openPreviewTransmittalModal;
+window.closePreviewTransmittalModal = closePreviewTransmittalModal;
+window.printTransmittalIframe = printTransmittalIframe;
+window.openRecordTransmittalModal = openRecordTransmittalModal;
+window.closeRecordTransmittalModal = closeRecordTransmittalModal;
+window.handleRecordTransmittalSubmit = handleRecordTransmittalSubmit;
+

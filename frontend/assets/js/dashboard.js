@@ -2,7 +2,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const state = {
         period: 'all',
         offset: 0,
-        isLoading: false
+        isLoading: false,
+        cases: [],
+        casesPage: 1,
+        casesPerPage: 10,
+        hearings: [],
+        hearingsPage: 1,
+        hearingsPerPage: 10,
+        hearingsPeriodLabel: '',
+        currentPeriodLabel: 'All Time',
+        calendarCursor: new Date(),
+        calendarHearings: []
     };
 
     // Check URL search params for initial tab selection
@@ -95,11 +105,13 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const renderHearings = (hearings, periodLabel) => {
-        const container = document.getElementById('todayHearings');
+        state.hearings = hearings || [];
+        state.hearingsPage = 1;
+        state.hearingsPeriodLabel = periodLabel;
+
         const heading = document.getElementById('hearingsPanelHeading');
         const sub = document.getElementById('hearingsPanelSub');
-        if (!container) return;
-        container.replaceChildren();
+        const countBadge = document.getElementById('periodHearingCountBadge');
 
         if (state.period === 'all') {
             if (heading) heading.textContent = "Today's hearings";
@@ -109,21 +121,85 @@ document.addEventListener('DOMContentLoaded', () => {
             if (sub) sub.textContent = `Sessions scheduled within this timeframe.`;
         }
 
-        if (!hearings || !hearings.length) {
+        if (countBadge) {
+            const count = state.hearings.length;
+            if (count > 0 && state.period !== 'all') {
+                countBadge.textContent = `${count} hearing${count === 1 ? '' : 's'}`;
+                countBadge.style.display = 'inline-block';
+            } else {
+                countBadge.style.display = 'none';
+            }
+        }
+
+        renderHearingsPage();
+    };
+
+    const renderHearingsPage = () => {
+        const container = document.getElementById('todayHearings');
+        const paginationWrap = document.getElementById('hearingsTablePagination');
+        const infoEl = document.getElementById('hearingsPaginationInfo');
+        const prevBtn = document.getElementById('hearingsPrevPageBtn');
+        const nextBtn = document.getElementById('hearingsNextPageBtn');
+        const pageNumbersContainer = document.getElementById('hearingsPageNumbers');
+        if (!container) return;
+
+        container.replaceChildren();
+
+        const totalHearings = (state.hearings || []).length;
+        if (!totalHearings) {
+            if (paginationWrap) paginationWrap.style.display = 'none';
             return container.appendChild(emptyState(
                 state.period === 'all'
                     ? 'No active hearings are scheduled for today.'
-                    : `No active hearings are scheduled for ${periodLabel}.`
+                    : `No active hearings are scheduled for ${state.hearingsPeriodLabel || 'this timeframe'}.`
             ));
         }
 
-        hearings.forEach((hearing) => addListItem(
+        const totalPages = Math.max(1, Math.ceil(totalHearings / state.hearingsPerPage));
+        if (state.hearingsPage > totalPages) state.hearingsPage = totalPages;
+        if (state.hearingsPage < 1) state.hearingsPage = 1;
+
+        const startIndex = (state.hearingsPage - 1) * state.hearingsPerPage;
+        const endIndex = Math.min(startIndex + state.hearingsPerPage, totalHearings);
+        const pageItems = state.hearings.slice(startIndex, endIndex);
+
+        pageItems.forEach((hearing) => addListItem(
             container,
             `${hearing.case_number || 'Case'} · ${hearing.hearing_type || 'Hearing'}`,
-            `${formatDateTime(hearing.hearing_date)} · ${hearing.venue || 'Barangay Hall'}${hearing.complaint_title ? ` · ${hearing.complaint_title}` : ''}`,
+            `${formatDateTime(hearing.hearing_date)} · ${hearing.venue || 'Lupon Court Room'}${hearing.complaint_title ? ` · ${hearing.complaint_title}` : ''}`,
             hearing.status,
             hearing.case_id ? `../cases/case-details.php?id=${hearing.case_id}` : null
         ));
+
+        // Pagination UI: Only show 10 at a time
+        if (paginationWrap) {
+            paginationWrap.style.display = totalPages > 1 ? 'flex' : 'none';
+        }
+        if (infoEl) {
+            infoEl.textContent = `Showing ${startIndex + 1} to ${endIndex} of ${totalHearings} hearing${totalHearings === 1 ? '' : 's'}`;
+        }
+        if (prevBtn) {
+            prevBtn.disabled = state.hearingsPage <= 1;
+        }
+        if (nextBtn) {
+            nextBtn.disabled = state.hearingsPage >= totalPages;
+        }
+        if (pageNumbersContainer) {
+            pageNumbersContainer.replaceChildren();
+            if (totalPages > 1) {
+                for (let i = 1; i <= totalPages; i++) {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = `page-num-btn ${i === state.hearingsPage ? 'is-active' : ''}`;
+                    btn.textContent = i;
+                    btn.addEventListener('click', () => {
+                        state.hearingsPage = i;
+                        renderHearingsPage();
+                    });
+                    pageNumbersContainer.appendChild(btn);
+                }
+            }
+        }
     };
 
     const renderDeadlines = (deadlines, periodLabel) => {
@@ -181,30 +257,35 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    const renderCasesTable = (cases, periodLabel) => {
+    const renderCasesPage = () => {
         const tbody = document.getElementById('periodCasesTableBody');
-        const titleSpan = document.getElementById('casesPeriodTitle');
-        const descP = document.getElementById('casesPeriodDescription');
-        const countBadge = document.getElementById('periodCaseCountBadge');
-
-        if (titleSpan) titleSpan.textContent = periodLabel;
-        if (descP) descP.textContent = `Docketed cases recorded for ${periodLabel}.`;
-        if (countBadge) {
-            const count = (cases || []).length;
-            countBadge.textContent = `${count} case${count === 1 ? '' : 's'}`;
-        }
+        const paginationWrap = document.getElementById('casesTablePagination');
+        const infoEl = document.getElementById('casesPaginationInfo');
+        const prevBtn = document.getElementById('casesPrevPageBtn');
+        const nextBtn = document.getElementById('casesNextPageBtn');
+        const pageNumbersContainer = document.getElementById('casesPageNumbers');
         if (!tbody) return;
 
         tbody.replaceChildren();
 
-        if (!cases || !cases.length) {
+        const totalCases = (state.cases || []).length;
+        if (totalCases === 0) {
             const row = document.createElement('tr');
-            row.innerHTML = `<td colspan="6" class="dashboard-empty-row"><p>No cases recorded for ${escapeHtml(periodLabel)}.</p></td>`;
+            row.innerHTML = `<td colspan="6" class="dashboard-empty-row"><p>No cases recorded for ${escapeHtml(state.currentPeriodLabel || 'this timeframe')}.</p></td>`;
             tbody.appendChild(row);
+            if (paginationWrap) paginationWrap.style.display = 'none';
             return;
         }
 
-        cases.forEach((caseItem) => {
+        const totalPages = Math.max(1, Math.ceil(totalCases / state.casesPerPage));
+        if (state.casesPage > totalPages) state.casesPage = totalPages;
+        if (state.casesPage < 1) state.casesPage = 1;
+
+        const startIndex = (state.casesPage - 1) * state.casesPerPage;
+        const endIndex = Math.min(startIndex + state.casesPerPage, totalCases);
+        const pageItems = state.cases.slice(startIndex, endIndex);
+
+        pageItems.forEach((caseItem) => {
             const tr = document.createElement('tr');
             tr.className = 'dashboard-case-row';
 
@@ -246,6 +327,148 @@ document.addEventListener('DOMContentLoaded', () => {
 
             tbody.appendChild(tr);
         });
+
+        // Pagination UI (only show 10 at a time)
+        if (paginationWrap) {
+            paginationWrap.style.display = totalCases > 0 ? 'flex' : 'none';
+        }
+        if (infoEl) {
+            infoEl.textContent = `Showing ${startIndex + 1} to ${endIndex} of ${totalCases} case${totalCases === 1 ? '' : 's'}`;
+        }
+        if (prevBtn) {
+            prevBtn.disabled = state.casesPage <= 1;
+        }
+        if (nextBtn) {
+            nextBtn.disabled = state.casesPage >= totalPages;
+        }
+        if (pageNumbersContainer) {
+            pageNumbersContainer.replaceChildren();
+            if (totalPages > 1) {
+                for (let i = 1; i <= totalPages; i++) {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = `page-num-btn ${i === state.casesPage ? 'is-active' : ''}`;
+                    btn.textContent = i;
+                    btn.addEventListener('click', () => {
+                        state.casesPage = i;
+                        renderCasesPage();
+                    });
+                    pageNumbersContainer.appendChild(btn);
+                }
+            }
+        }
+    };
+
+    const renderCasesTable = (cases, periodLabel) => {
+        state.cases = cases || [];
+        state.casesPage = 1;
+        state.currentPeriodLabel = periodLabel;
+
+        const titleSpan = document.getElementById('casesPeriodTitle');
+        const descP = document.getElementById('casesPeriodDescription');
+        const countBadge = document.getElementById('periodCaseCountBadge');
+
+        if (titleSpan) titleSpan.textContent = periodLabel;
+        if (descP) descP.textContent = `Docketed cases recorded for ${periodLabel}.`;
+        if (countBadge) {
+            const count = state.cases.length;
+            countBadge.textContent = `${count} case${count === 1 ? '' : 's'}`;
+        }
+
+        renderCasesPage();
+    };
+
+    const renderDashboardCalendar = () => {
+        const grid = document.getElementById('dashboardCalendarGrid');
+        const monthDisplay = document.getElementById('dashCalMonthDisplay');
+        if (!grid) return;
+
+        const cursor = state.calendarCursor;
+        const year = cursor.getFullYear();
+        const month = cursor.getMonth();
+
+        if (monthDisplay) {
+            monthDisplay.textContent = cursor.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        }
+
+        grid.replaceChildren();
+
+        // Weekday headers
+        ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(day => {
+            const header = document.createElement('div');
+            header.className = 'dash-cal-weekday';
+            header.textContent = day;
+            grid.appendChild(header);
+        });
+
+        const todayObj = new Date();
+        const todayStr = `${todayObj.getFullYear()}-${String(todayObj.getMonth() + 1).padStart(2, '0')}-${String(todayObj.getDate()).padStart(2, '0')}`;
+
+        const firstDayIdx = new Date(year, month, 1).getDay();
+        const totalDays = new Date(year, month + 1, 0).getDate();
+        const prevMonthTotalDays = new Date(year, month, 0).getDate();
+
+        // Index hearings by date: YYYY-MM-DD
+        const hearingsByDate = {};
+        (state.calendarHearings || []).forEach(h => {
+            if (!h.hearing_date) return;
+            const datePart = h.hearing_date.split(' ')[0] || h.hearing_date.split('T')[0];
+            if (!hearingsByDate[datePart]) hearingsByDate[datePart] = [];
+            hearingsByDate[datePart].push(h);
+        });
+
+        // Previous month filler days
+        for (let i = firstDayIdx - 1; i >= 0; i--) {
+            const prevDayNum = prevMonthTotalDays - i;
+            const cell = document.createElement('div');
+            cell.className = 'dash-cal-day is-other-month';
+            cell.textContent = prevDayNum;
+            grid.appendChild(cell);
+        }
+
+        // Current month days
+        for (let day = 1; day <= totalDays; day++) {
+            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const cell = document.createElement('div');
+            cell.className = 'dash-cal-day';
+            cell.dataset.date = dateStr;
+
+            const dayNum = document.createElement('span');
+            dayNum.textContent = day;
+            cell.appendChild(dayNum);
+
+            if (dateStr === todayStr) {
+                cell.classList.add('is-today');
+            }
+
+            const dayHearings = hearingsByDate[dateStr] || [];
+            if (dayHearings.length > 0) {
+                cell.classList.add('has-hearing');
+                const dot = document.createElement('span');
+                dot.className = 'dash-cal-hearing-dot';
+                cell.appendChild(dot);
+
+                const countText = `${dayHearings.length} hearing session${dayHearings.length > 1 ? 's' : ''}`;
+                const details = dayHearings.map(h => `${h.case_number || 'Case'}: ${h.hearing_type || 'Session'}`).join(' | ');
+                cell.title = `${countText}: ${details}`;
+            }
+
+            cell.addEventListener('click', () => {
+                window.location.href = `../hearings/schedules.php?date=${encodeURIComponent(dateStr)}`;
+            });
+
+            grid.appendChild(cell);
+        }
+
+        // Fill remaining days of the last row
+        const totalCells = firstDayIdx + totalDays;
+        const remaining = (7 - (totalCells % 7)) % 7;
+        for (let nextDay = 1; nextDay <= remaining; nextDay++) {
+            const cell = document.createElement('div');
+            cell.className = 'dash-cal-day is-other-month';
+            cell.textContent = nextDay;
+            grid.appendChild(cell);
+        }
     };
 
     const updateCardSubtitles = (period, periodLabel) => {
@@ -255,6 +478,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 reviewSub: 'Needs review or information',
                 hearingsLabel: 'Hearings today',
                 hearingsSub: 'Scheduled sessions today',
+                archivedSub: 'Closed and archived records',
                 deadlinesSub: 'Mediation deadlines within 7 days',
                 activeSub: 'Mediation or conciliation cases',
                 weekHearingsLabel: "This week's hearings",
@@ -267,6 +491,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 reviewSub: 'Filed this week pending review',
                 hearingsLabel: 'Hearings in week',
                 hearingsSub: 'Sessions in selected week',
+                archivedSub: 'Archived this week',
                 deadlinesSub: 'Due within selected week',
                 activeSub: 'Active mediation in week',
                 weekHearingsLabel: 'Total week hearings',
@@ -279,6 +504,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 reviewSub: 'Filed this month pending review',
                 hearingsLabel: 'Hearings in month',
                 hearingsSub: 'Sessions in selected month',
+                archivedSub: 'Archived this month',
                 deadlinesSub: 'Due within selected month',
                 activeSub: 'Active mediation in month',
                 weekHearingsLabel: 'Total month hearings',
@@ -291,6 +517,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 reviewSub: 'Filed this quarter pending review',
                 hearingsLabel: 'Hearings in quarter',
                 hearingsSub: 'Sessions in selected quarter',
+                archivedSub: 'Archived this quarter',
                 deadlinesSub: 'Due within selected quarter',
                 activeSub: 'Active mediation in quarter',
                 weekHearingsLabel: 'Total quarter hearings',
@@ -303,6 +530,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 reviewSub: 'Filed this year pending review',
                 hearingsLabel: 'Hearings in year',
                 hearingsSub: 'Sessions in selected year',
+                archivedSub: 'Archived this year',
                 deadlinesSub: 'Due within selected year',
                 activeSub: 'Active mediation in year',
                 weekHearingsLabel: 'Total year hearings',
@@ -322,6 +550,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setEl('pendingReviewSub', config.reviewSub);
         setEl('hearingsTodayLabel', config.hearingsLabel);
         setEl('hearingsTodaySub', config.hearingsSub);
+        setEl('archivedCasesSub', config.archivedSub);
         setEl('deadlinesDueSub', config.deadlinesSub);
         setEl('activeMediationsSub', config.activeSub);
         setEl('hearingsThisWeekLabel', config.weekHearingsLabel);
@@ -413,6 +642,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 setText('totalCases', data.total_cases);
                 setText('pendingReview', data.pending_review);
                 setText('hearingsToday', data.hearings_today);
+                setText('archivedCases', data.archived_cases);
                 setText('deadlinesDue', data.deadlines_due);
                 setText('activeMediations', data.active_mediations);
                 setText('hearingsThisWeek', data.hearings_this_week);
@@ -427,6 +657,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderStatuses(data.status_totals || [], periodLabel);
                 renderCasesTable(data.cases || [], periodLabel);
 
+                state.calendarHearings = data.calendar_hearings || [];
+                renderDashboardCalendar();
+
                 updateUrl();
             })
             .catch((error) => {
@@ -436,6 +669,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderDeadlines([], 'Error');
                 renderStatuses([], 'Error');
                 renderCasesTable([], 'Error');
+                state.calendarHearings = [];
+                renderDashboardCalendar();
             })
             .finally(() => {
                 state.isLoading = false;
@@ -463,7 +698,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Navigation buttons binding
+    // Period Navigation buttons binding
     const prevBtn = document.getElementById('prevPeriodBtn');
     if (prevBtn) {
         prevBtn.addEventListener('click', () => {
@@ -486,6 +721,75 @@ document.addEventListener('DOMContentLoaded', () => {
             if (state.offset === 0) return;
             state.offset = 0;
             fetchDashboardData();
+        });
+    }
+
+    // Hearings Panel Pagination buttons binding
+    const hearingsPrevBtn = document.getElementById('hearingsPrevPageBtn');
+    if (hearingsPrevBtn) {
+        hearingsPrevBtn.addEventListener('click', () => {
+            if (state.hearingsPage > 1) {
+                state.hearingsPage -= 1;
+                renderHearingsPage();
+            }
+        });
+    }
+
+    const hearingsNextBtn = document.getElementById('hearingsNextPageBtn');
+    if (hearingsNextBtn) {
+        hearingsNextBtn.addEventListener('click', () => {
+            const totalPages = Math.ceil((state.hearings || []).length / state.hearingsPerPage);
+            if (state.hearingsPage < totalPages) {
+                state.hearingsPage += 1;
+                renderHearingsPage();
+            }
+        });
+    }
+
+    // Cases Table Pagination buttons binding
+    const casesPrevBtn = document.getElementById('casesPrevPageBtn');
+    if (casesPrevBtn) {
+        casesPrevBtn.addEventListener('click', () => {
+            if (state.casesPage > 1) {
+                state.casesPage -= 1;
+                renderCasesPage();
+            }
+        });
+    }
+
+    const casesNextBtn = document.getElementById('casesNextPageBtn');
+    if (casesNextBtn) {
+        casesNextBtn.addEventListener('click', () => {
+            const totalPages = Math.ceil((state.cases || []).length / state.casesPerPage);
+            if (state.casesPage < totalPages) {
+                state.casesPage += 1;
+                renderCasesPage();
+            }
+        });
+    }
+
+    // Calendar Navigation buttons binding
+    const calPrevBtn = document.getElementById('dashCalPrevBtn');
+    if (calPrevBtn) {
+        calPrevBtn.addEventListener('click', () => {
+            state.calendarCursor = new Date(state.calendarCursor.getFullYear(), state.calendarCursor.getMonth() - 1, 1);
+            renderDashboardCalendar();
+        });
+    }
+
+    const calNextBtn = document.getElementById('dashCalNextBtn');
+    if (calNextBtn) {
+        calNextBtn.addEventListener('click', () => {
+            state.calendarCursor = new Date(state.calendarCursor.getFullYear(), state.calendarCursor.getMonth() + 1, 1);
+            renderDashboardCalendar();
+        });
+    }
+
+    const calTodayBtn = document.getElementById('dashCalTodayBtn');
+    if (calTodayBtn) {
+        calTodayBtn.addEventListener('click', () => {
+            state.calendarCursor = new Date();
+            renderDashboardCalendar();
         });
     }
 

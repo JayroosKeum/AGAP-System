@@ -265,7 +265,8 @@ include '../../layouts/header.php';
             </div>
             <div class="form-group">
                 <label for="schedVenue">Venue <span class="required-mark">*</span></label>
-                <input type="text" id="schedVenue" value="Barangay Hall" required maxlength="255">
+                <input type="text" id="schedVenue" value="Lupon Court Room" readonly required maxlength="255" style="background: #f8fafc; cursor: not-allowed;">
+                <small style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Arbitration hearings are conducted in the Lupon Court Room.</small>
             </div>
             <div class="form-group">
                 <label for="schedRemarks">Session Instructions / Remarks <span class="optional-label">Optional</span></label>

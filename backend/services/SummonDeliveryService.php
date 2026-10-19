@@ -6,6 +6,8 @@ require_once __DIR__ . '/MediationDeadlineService.php';
 
 class SummonDeliveryService
 {
+    public const MAX_SUMMON_ATTEMPTS = 6;
+
     private PDO $conn;
     private AuditService $audit;
     private MediationDeadlineService $deadlineService;
@@ -246,7 +248,7 @@ class SummonDeliveryService
 
         $canInitiateNextAttempt = false;
         $nextAttemptNumber = null;
-        if (!$anyServed && !$hasPending && $failedCount < 3) {
+        if (!$anyServed && !$hasPending && $failedCount < self::MAX_SUMMON_ATTEMPTS) {
             $canInitiateNextAttempt = true;
             $nextAttemptNumber = $failedCount + 1;
         }
@@ -851,7 +853,7 @@ class SummonDeliveryService
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         $formatted = [];
-        $ordinals = ['', '1st', '2nd', '3rd', '4th'];
+        $ordinals = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th'];
 
         foreach ($rows as $row) {
             $num = (int) ($row['attempt_number'] ?: 1);
@@ -964,34 +966,34 @@ class SummonDeliveryService
             }
 
             // 5. Evaluate current attempts progression
+            $ordinals = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th'];
+            if ($count >= self::MAX_SUMMON_ATTEMPTS) {
+                if ($startedTrans && $this->conn->inTransaction()) $this->conn->rollBack();
+                return ['success' => false, 'message' => 'Maximum of ' . self::MAX_SUMMON_ATTEMPTS . ' summons delivery attempts allowed for this hearing. A ' . (self::MAX_SUMMON_ATTEMPTS + 1) . 'th attempt cannot be created.'];
+            }
+
             if ($count === 0) {
                 $targetAttempt = 1;
-            } elseif ($count === 1) {
-                $att1 = $existingAttempts[0];
-                if ($att1['delivery_status'] === 'Pending') {
-                    if ($startedTrans && $this->conn->inTransaction()) $this->conn->rollBack();
-                    return ['success' => false, 'message' => 'Attempt 1 is still pending. Record the Officer\'s Return for Attempt 1 before initiating the 2nd attempt.'];
-                }
-                if ($att1['delivery_status'] !== 'Unserved') {
-                    if ($startedTrans && $this->conn->inTransaction()) $this->conn->rollBack();
-                    return ['success' => false, 'message' => 'Attempt 1 was not recorded as a qualifying delivery failure.'];
-                }
-                $targetAttempt = 2;
-            } elseif ($count === 2) {
-                $att1 = $existingAttempts[0];
-                $att2 = $existingAttempts[1];
-                if ($att2['delivery_status'] === 'Pending') {
-                    if ($startedTrans && $this->conn->inTransaction()) $this->conn->rollBack();
-                    return ['success' => false, 'message' => 'Attempt 2 is still pending. Record the Officer\'s Return for Attempt 2 before initiating the 3rd attempt.'];
-                }
-                if ($att1['delivery_status'] !== 'Unserved' || $att2['delivery_status'] !== 'Unserved') {
-                    if ($startedTrans && $this->conn->inTransaction()) $this->conn->rollBack();
-                    return ['success' => false, 'message' => 'Both previous attempts must be recorded as qualifying delivery failures before initiating Attempt 3.'];
-                }
-                $targetAttempt = 3;
             } else {
-                if ($startedTrans && $this->conn->inTransaction()) $this->conn->rollBack();
-                return ['success' => false, 'message' => 'Maximum of 3 summons delivery attempts allowed for this hearing. A 4th attempt cannot be created.'];
+                $lastAttempt = end($existingAttempts);
+                $lastNum = (int) ($lastAttempt['attempt_number'] ?: $count);
+                if ($lastAttempt['delivery_status'] === 'Pending') {
+                    if ($startedTrans && $this->conn->inTransaction()) $this->conn->rollBack();
+                    $currOrd = $ordinals[$lastNum] ?? $lastNum . 'th';
+                    $nextOrd = $ordinals[$lastNum + 1] ?? ($lastNum + 1) . 'th';
+                    return ['success' => false, 'message' => "Attempt {$lastNum} ({$currOrd}) is still pending. Record the Officer's Return for Attempt {$lastNum} before initiating the {$nextOrd} attempt."];
+                }
+                if ($lastAttempt['delivery_status'] !== 'Unserved') {
+                    if ($startedTrans && $this->conn->inTransaction()) $this->conn->rollBack();
+                    return ['success' => false, 'message' => "Attempt {$lastNum} was not recorded as a qualifying delivery failure."];
+                }
+                foreach ($existingAttempts as $prevAtt) {
+                    if ($prevAtt['delivery_status'] !== 'Unserved') {
+                        if ($startedTrans && $this->conn->inTransaction()) $this->conn->rollBack();
+                        return ['success' => false, 'message' => 'All previous attempts must be recorded as qualifying delivery failures before initiating Attempt ' . ($count + 1) . '.'];
+                    }
+                }
+                $targetAttempt = $count + 1;
             }
 
             // 6. Find respondent resident_id
@@ -1042,7 +1044,7 @@ class SummonDeliveryService
                 'complainants' => $complainants,
                 'respondents' => $respondents,
                 'target_party_name' => $respondent['resident_name'] ?? 'Respondent',
-                'venue' => $hearing['venue'] ?? 'Barangay Hall',
+                'venue' => $hearing['venue'] ?? 'Lupon Court Room',
                 'hearing_date' => $hearing['hearing_date'] ?? date('Y-m-d 09:00:00'),
                 'notice_date' => date('Y-m-d'),
             ];
@@ -1079,7 +1081,7 @@ class SummonDeliveryService
             $deliveryId = (int) $this->conn->lastInsertId();
 
             // 9. Case history & Audit log
-            $ordinals = ['', '1st', '2nd', '3rd'];
+            $ordinals = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th'];
             $targetOrd = $ordinals[$targetAttempt] ?? $targetAttempt . 'th';
             $auditAction = "Initiated Summons {$targetOrd} Attempt for Respondent in Case #{$case['case_number']}";
             $this->audit->log($actorUserId, $auditAction, 'Summons', $docId);
@@ -1190,13 +1192,13 @@ class SummonDeliveryService
             );
         }
 
-        // ── SCENARIO 1: Three failed delivery attempts (statutory diligence & operational policy) ────────
-        if ($failedCount >= 3) {
+        // ── SCENARIO 1: Six failed delivery attempts (statutory diligence & operational policy) ────────
+        if ($failedCount >= self::MAX_SUMMON_ATTEMPTS) {
             return [
                 'eligible'       => true,
-                'scenario'       => 'THREE_FAILURES',
-                'reason'         => 'CFA Unlocked — All 3 summons delivery attempts failed. RA 7160 §410 diligence requirement satisfied.',
-                'code'           => 'THREE_FAILURES_MET',
+                'scenario'       => 'SIX_FAILURES',
+                'reason'         => 'CFA Unlocked — All ' . self::MAX_SUMMON_ATTEMPTS . ' summons delivery attempts failed. Diligence requirement satisfied (6 Attempts Failed - Max Reached).',
+                'code'           => 'SIX_FAILURES_MET',
                 'attempts_count' => $totalAttempts,
                 'failed_count'   => $failedCount,
                 'can_issue'      => true,
@@ -1234,8 +1236,10 @@ class SummonDeliveryService
         return $this->cfaLocked(
             'INSUFFICIENT_FAILURES',
             sprintf(
-                'CFA Locked — %d of 3 failed delivery attempts recorded. All 3 summons attempts must fail before CFA can be issued on summons failure grounds.',
-                $failedCount
+                'CFA Locked — %d of %d failed delivery attempts recorded. All %d summons attempts must fail before CFA can be issued on summons failure grounds.',
+                $failedCount,
+                self::MAX_SUMMON_ATTEMPTS,
+                self::MAX_SUMMON_ATTEMPTS
             ),
             $totalAttempts, $failedCount, $attempts
         );
@@ -1594,14 +1598,20 @@ class SummonDeliveryService
             $this->conn->prepare("UPDATE summon_deliveries SET document_id = COALESCE(document_id, ?) WHERE delivery_id = ?")->execute([$docId, $deliveryId]);
         }
 
-        $ordinals = ['', '1st', '2nd', '3rd'];
+        $ordinals = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th'];
         $attemptOrd = $ordinals[$attemptNumber] ?? $attemptNumber . 'th';
+        $isMaxFailed = false;
 
         if ($deliveryStatus === 'Unserved') {
             // SCENARIO B: Delivery Failed (Unserved)
-            if ($hearing['case_status'] === 'Mediation' && empty($hearing['is_paused'])) {
+            $isMaxFailed = ($partyType === 'Respondent' && $attemptNumber >= self::MAX_SUMMON_ATTEMPTS);
+            if ($isMaxFailed) {
+                $pauseReason = "6 Attempts Failed - Max Reached (Unserved). Halting hearing schedule: Please verify respondent's address with the complainant or refer the case for lack of jurisdiction / non-residence.";
+                $this->conn->prepare("UPDATE hearings SET status = 'Cancelled', remarks = CONCAT(COALESCE(remarks, ''), ' [HALTED: 6 Attempts Failed - Max Reached (Unserved)]') WHERE hearing_id = ?")->execute([$hearingId]);
+                $this->deadlineService->pauseMediation($caseId, $pauseReason, $failureNotes, $actorUserId, 'Summon Unserved');
+            } elseif ($hearing['case_status'] === 'Mediation' && empty($hearing['is_paused'])) {
                 $pauseReason = "Summon Unserved ({$partyType} Attempt #{$attemptNumber}) - {$unservedReason}";
-                $this->deadlineService->pauseMediation($caseId, $pauseReason, $failureNotes, $actorUserId);
+                $this->deadlineService->pauseMediation($caseId, $pauseReason, $failureNotes, $actorUserId, 'Summon Unserved');
             }
 
             // Record in proof_of_service with attempt number
@@ -1619,7 +1629,7 @@ class SummonDeliveryService
 
             $this->audit->log(
                 $actorUserId,
-                "Summon {$attemptOrd} Attempt marked Unserved for {$partyType} in Case #{$hearing['case_number']}. Reason: {$unservedReason}",
+                "Summon {$attemptOrd} Attempt marked Unserved for {$partyType} in Case #{$hearing['case_number']}. Reason: {$unservedReason}" . ($isMaxFailed ? " [6 Attempts Failed - Max Reached]" : ""),
                 'Hearings',
                 $caseId
             );
@@ -1655,7 +1665,7 @@ class SummonDeliveryService
 
         $cfaElig = $this->getCfaEligibility($caseId);
 
-        return [
+        $response = [
             'success' => true,
             'message' => "Summon {$attemptOrd} Attempt for {$partyType} updated to {$deliveryStatus}.",
             'delivery_id' => $deliveryId,
@@ -1663,5 +1673,12 @@ class SummonDeliveryService
             'cfa_eligibility' => $cfaElig,
             'service_status' => $this->checkServiceStatus($hearingId),
         ];
+
+        if ($isMaxFailed) {
+            $response['max_attempts_reached'] = true;
+            $response['escalation_prompt'] = "6 Attempts Failed - Max Reached (Unserved). The hearing schedule has been halted. Please verify the respondent's address with the complainant or refer the case for lack of jurisdiction / non-residence.";
+        }
+
+        return $response;
     }
 }

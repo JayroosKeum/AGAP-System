@@ -135,18 +135,27 @@ include '../../layouts/header.php';
             <!-- Header Bar -->
             <div class="intake-header-bar">
                 <div>
-                    <div class="intake-breadcrumb">
-                        <a href="complaint-list.php">
-                            <svg class="back-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
-                            <span>Complaints Blotter</span>
-                        </a>
-                        <span class="breadcrumb-sep">/</span>
-                        <span class="breadcrumb-curr">File Complaint</span>
-                    </div>
+                    <a href="complaint-list.php" class="back-link">
+                        <svg class="back-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                        <span>Back to Complaints</span>
+                    </a>
                     <h1 class="intake-title">File Complaint</h1>
                 </div>
-                <div class="intake-header-actions">
-                    <a href="complaint-list.php" class="btn-secondary" style="text-decoration: none; display: inline-flex; align-items: center;">Cancel</a>
+            </div>
+
+            <!-- Auto-Save Draft Restored Banner -->
+            <div id="draftRestoredBanner" style="display: none; margin: 0 0 18px; padding: 12px 18px; background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 10px; color: #166534; font-size: 0.88rem; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.03);">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 1.25rem;">📝</span>
+                    <div>
+                        <strong style="color: #14532d;">Draft restored from your previous session.</strong>
+                        <span id="draftSavedTimestamp" style="color: #15803d; font-size: 0.82rem; margin-left: 6px;">(Auto-saved)</span>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <button type="button" id="btnDiscardDraft" style="background: #ffffff; border: 1px solid #fca5a5; color: #be123c; font-weight: 600; padding: 6px 14px; font-size: 0.82rem; border-radius: 6px; cursor: pointer; transition: all 0.15s ease;">
+                        ✕ Discard Draft / Clear
+                    </button>
                 </div>
             </div>
 
@@ -171,23 +180,23 @@ include '../../layouts/header.php';
                             <div class="quicknav-title">Form Quick-Nav</div>
                             
                             <a href="#section-ingestion" id="nav-sec-ingestion" class="quicknav-link is-active">
-                                <span class="quicknav-badge">1</span> 1. Filing &amp; Classification
+                                <span class="quicknav-badge">1</span> Filing Method &amp; Case Classification
                             </a>
                             
                             <a href="#section-parties" id="nav-sec-parties" class="quicknav-link">
-                                <span class="quicknav-badge">2</span> 2. Involved Parties
+                                <span class="quicknav-badge">2</span> Involved Parties
                             </a>
 
                             <a href="#section-narrative" id="nav-sec-narrative" class="quicknav-link">
-                                <span class="quicknav-badge">3</span> 3. Narrative &amp; Relief
+                                <span class="quicknav-badge">3</span> Statement of Facts &amp; Relief Sought
                             </a>
                             
                             <a href="#section-location" id="nav-sec-location" class="quicknav-link">
-                                <span class="quicknav-badge">4</span> 4. Incident Location
+                                <span class="quicknav-badge">4</span> Incident Location &amp; Map Pin
                             </a>
 
                             <a href="#section-evidence" id="nav-sec-evidence" class="quicknav-link">
-                                <span class="quicknav-badge">5</span> 5. Evidence &amp; Attachments
+                                <span class="quicknav-badge">5</span> Evidence &amp; Attachments
                             </a>
 
                             <div class="quicknav-footer">
@@ -255,7 +264,7 @@ include '../../layouts/header.php';
 
                         <div class="fast-intake-badge">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-                            <span>Fast Intake Form — Indexing from Scanned KP Form No. 7</span>
+                            <span>Dispute Intake &amp; Paanyaya Scheduling</span>
                         </div>
 
                         <!-- SECTION 1: FILING METHOD & CASE CLASSIFICATION -->
@@ -350,6 +359,57 @@ include '../../layouts/header.php';
 
                                         <div id="kp7UploadAlert" class="alert alert-danger" style="display: none; margin-top: 10px; font-size: 0.85rem; padding: 8px 12px;"></div>
                                     </div>
+                                </div>
+                            </div>
+
+                            <!-- Mandatory Pre-Docketing Phase (1st Paanyaya) -->
+                            <div class="paanyaya-intake-card" style="margin-bottom: 24px; background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 10px; padding: 18px 20px;">
+                                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                        <span style="font-size: 1.4rem;">✉️</span>
+                                        <div>
+                                            <h4 style="margin: 0; font-size: 1.02rem; color: #166534; font-weight: 800; letter-spacing: -0.01em;">
+                                                Mandatory Pre-Docketing Phase: 1st Paanyaya (Informal Invitation 1 of 2)
+                                            </h4>
+                                            <span style="font-size: 0.82rem; color: #15803d; line-height: 1.4; display: block; margin-top: 2px;">
+                                                Under LTIA &amp; Barangay Tumana KP rules, all disputes start with informal dialogue. Formal Case Docket Numbers are withheld until mediation is required.
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <span class="badge" style="background: #bbf7d0; color: #14532d; font-weight: 700; padding: 5px 10px; border-radius: 6px; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em;">
+                                        Stage 0: Pre-Docketing
+                                    </span>
+                                </div>
+
+                                <div class="form-row-2">
+                                    <div class="form-group">
+                                        <label for="paanyayaDate" style="color: #166534; font-weight: 700; font-size: 0.85rem;">1st Invitation Date <span class="required-mark">*</span></label>
+                                        <input type="date" id="paanyayaDate" name="paanyaya_date" value="<?php echo date('Y-m-d', strtotime('+3 weekdays')); ?>" required style="border-color: #86efac;">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="paanyayaTime" style="color: #166534; font-weight: 700; font-size: 0.85rem;">1st Invitation Time <span class="required-mark">*</span></label>
+                                        <input type="time" id="paanyayaTime" name="paanyaya_time" value="14:00" required style="border-color: #86efac;">
+                                    </div>
+                                </div>
+
+                                <div class="form-row-2" style="margin-top: 10px;">
+                                    <div class="form-group">
+                                        <label for="paanyayaVenue" style="color: #166534; font-weight: 700; font-size: 0.85rem;">Dialogue Venue</label>
+                                        <input type="text" id="paanyayaVenue" name="paanyaya_venue" value="Tanggapan ng Barangay Tumana" style="border-color: #86efac;">
+                                    </div>
+                                    <div class="form-group" style="display: flex; flex-direction: column; justify-content: center;">
+                                        <label style="color: #166534; font-weight: 700; font-size: 0.85rem; margin-bottom: 6px;">Punong Barangay E-Signature</label>
+                                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.88rem; color: #1e293b; background: #ffffff; padding: 7px 12px; border-radius: 6px; border: 1px solid #86efac;">
+                                            <input type="checkbox" name="paanyaya_has_e_signature" value="1" checked style="width: 16px; height: 16px;">
+                                            <span style="font-size: 0.85rem; font-weight: 600;">Embed Hon. Akiko Lynne Centeno calligraphic e-signature</span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div class="form-group" style="margin-top: 10px;">
+                                    <label for="paanyayaSalaysay" style="color: #166534; font-weight: 700; font-size: 0.85rem;">Specific Salaysay / Reason for Invitation (Optional override)</label>
+                                    <textarea id="paanyayaSalaysay" name="paanyaya_salaysay" rows="2" placeholder="Leave blank to automatically use the complaint narrative as {salaysay}..." style="font-size: 0.88rem; width: 100%; border: 1px solid #86efac; border-radius: 6px; padding: 8px; background: #ffffff;"></textarea>
+                                    <small style="color: #15803d; display: block; margin-top: 4px;">Inserted into <em>"...Dahil ayon sa kanila {salaysay}..."</em> in the official Paanyaya letter.</small>
                                 </div>
                             </div>
 
@@ -801,8 +861,7 @@ include '../../layouts/header.php';
                         <div class="intake-bottom-actions" style="display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 24px; padding: 20px 24px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
                             <a href="complaint-list.php" class="btn-secondary" style="text-decoration: none; padding: 10px 20px;">Cancel</a>
                             <button type="submit" form="createComplaintForm" class="btn-create" id="btnSubmitComplaint" style="display: inline-flex; align-items: center; gap: 8px; font-size: 0.95rem; font-weight: 700; padding: 11px 26px;">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                Submit Complaint
+                                💾 Save Complaint &amp; Issue 1st Paanyaya →
                             </button>
                         </div>
 
@@ -1451,6 +1510,7 @@ document.addEventListener('DOMContentLoaded', () => {
         this.disabled = true;
         this.textContent = 'Submitting Complaint...';
         window.isKp7Confirmed = true;
+        window.cleanupDraftOnSubmit?.();
         const form = document.getElementById('createComplaintForm');
         if (form) {
             form.submit();
@@ -1560,6 +1620,7 @@ document.addEventListener('DOMContentLoaded', () => {
         createForm.addEventListener('submit', (e) => {
             const isDraft = document.getElementById('isDraftInput')?.value === '1';
             if (isDraft) {
+                window.cleanupDraftOnSubmit?.();
                 const submitBtn = document.getElementById('btnSubmitComplaint');
                 if (submitBtn) submitBtn.disabled = true;
                 return;
@@ -1682,15 +1743,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const selectedMethod = document.querySelector('input[name="filing_method"]:checked')?.value || 'digital';
-            if (selectedMethod === 'digital') {
-                if (!window.isKp7Confirmed) {
-                    e.preventDefault();
-                    window.openKp7DigitalPreviewModal();
-                    return;
-                }
-            } else {
+            if (selectedMethod !== 'digital') {
                 if (!currentKp7File && !kp7Input?.files?.length) {
-                    const proceed = confirm('No scanned KP Form 7 file has been attached. Do you still wish to submit this complaint as a paper filing?');
+                    const proceed = confirm('No scanned handwritten document file has been attached. Do you still wish to submit this complaint as a paper filing?');
                     if (!proceed) {
                         e.preventDefault();
                         return;
@@ -1701,8 +1756,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const submitBtn = document.getElementById('btnSubmitComplaint');
             if (submitBtn) {
                 submitBtn.disabled = true;
-                submitBtn.textContent = 'Submitting Complaint...';
+                submitBtn.textContent = 'Saving & Issuing 1st Paanyaya...';
             }
+            window.cleanupDraftOnSubmit?.();
         });
     }
 
@@ -2248,6 +2304,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderParties();
         window.validateDistinctParties?.();
         triggerDuplicateCheck();
+        triggerDraftAutoSave();
     });
 
     window.removeParty = function(role, index) {
@@ -2270,6 +2327,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderParties();
         window.validateDistinctParties?.();
         triggerDuplicateCheck();
+        triggerDraftAutoSave();
     };
 
     function syncHiddenPartyInputs() {
@@ -3025,6 +3083,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 el.dataset.wasRequired = 'true';
                 el.removeAttribute('required');
             });
+            window.cleanupDraftOnSubmit?.();
             form.submit();
         }
     }
@@ -3140,6 +3199,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     methodRadios.forEach(r => r.addEventListener('change', syncFilingMethod));
     syncFilingMethod();
+
 
     // ── Map Controls & Live Coordinates Badge ──
     const btnTogglePaperMap = document.getElementById('btnTogglePaperMap');
@@ -3529,6 +3589,340 @@ document.addEventListener('DOMContentLoaded', () => {
             triggerBtn.textContent = originalLabel;
         }
     }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // AUTO-SAVE FORM DRAFT & ACCIDENTAL REFRESH PROTECTION
+    // ═════════════════════════════════════════════════════════════════════════
+    const DRAFT_STORAGE_KEY = 'agap_complaint_create_draft';
+    let isFormDirty = false;
+    let isSubmitting = false;
+    let isRestoringDraft = false;
+    let draftDebounceTimer = null;
+
+    function hasMeaningfulContent() {
+        const title = document.getElementById('complaintTitle')?.value?.trim() || '';
+        const narrative = document.getElementById('narrative')?.value?.trim() || '';
+        const salaysay = document.getElementById('paanyayaSalaysay')?.value?.trim() || '';
+        const resolution = document.getElementById('requestedResolution')?.value?.trim() || '';
+        const street = document.getElementById('incidentStreet')?.value?.trim() || '';
+        const categoryId = document.getElementById('categoryId')?.value || '';
+        const hasParties = (complainantsList && complainantsList.length > 0) || (respondentsList && respondentsList.length > 0);
+        return !!(title || narrative || salaysay || resolution || street || categoryId || hasParties);
+    }
+
+    function saveDraftToLocalStorage() {
+        if (isSubmitting || isRestoringDraft) return;
+        if (!hasMeaningfulContent()) {
+            return;
+        }
+
+        const now = new Date();
+        const draft = {
+            incident_datetime: document.getElementById('incidentDateTime')?.value || '',
+            is_time_approximate: !!document.getElementById('isTimeApproximate')?.checked,
+            is_time_unknown: !!document.getElementById('isTimeUnknown')?.checked,
+            category_id: document.getElementById('categoryId')?.value || '',
+            case_type: document.getElementById('caseType')?.value || 'Civil',
+            complaint_title: document.getElementById('complaintTitle')?.value || '',
+            narrative: document.getElementById('narrative')?.value || '',
+            paanyaya_salaysay: document.getElementById('paanyayaSalaysay')?.value || '',
+            requested_resolution: document.getElementById('requestedResolution')?.value || '',
+            incident_street: document.getElementById('incidentStreet')?.value || '',
+            incident_purok: document.getElementById('incidentPurok')?.value || '',
+            incident_barangay: document.getElementById('incidentBarangay')?.value || 'Tumana',
+            incident_city: document.getElementById('incidentCity')?.value || 'Marikina City',
+            incident_location_details: document.getElementById('incidentLocationDetails')?.value || '',
+            map_latitude: document.querySelector('[data-map-latitude]')?.value || '',
+            map_longitude: document.querySelector('[data-map-longitude]')?.value || '',
+            map_location_state: document.querySelector('[data-map-state]')?.value || 'none',
+            filing_method: document.querySelector('input[name="filing_method"]:checked')?.value || 'digital',
+            paanyaya_date: document.getElementById('paanyayaDate')?.value || '',
+            paanyaya_time: document.getElementById('paanyayaTime')?.value || '',
+            paanyaya_venue: document.getElementById('paanyayaVenue')?.value || '',
+            paanyaya_has_e_signature: !!document.querySelector('input[name="paanyaya_has_e_signature"]')?.checked,
+            chk_multiple_complainants: !!document.getElementById('chkMultipleComplainants')?.checked,
+            chk_multiple_respondents: !!document.getElementById('chkMultipleRespondents')?.checked,
+            complainant_resident_id: document.getElementById('complainantResidentId')?.value || '',
+            respondent_resident_id: document.getElementById('respondentResidentId')?.value || '',
+            complainantsList: (complainantsList || []).map(p => ({ ...p })),
+            respondentsList: (respondentsList || []).map(p => ({ ...p })),
+            saved_at: now.toISOString(),
+            saved_at_formatted: now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+        };
+
+        try {
+            localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
+            isFormDirty = true;
+        } catch (err) {
+            console.warn('Auto-save draft error:', err);
+        }
+    }
+
+    function triggerDraftAutoSave() {
+        if (isSubmitting || isRestoringDraft) return;
+        isFormDirty = true;
+        clearTimeout(draftDebounceTimer);
+        draftDebounceTimer = setTimeout(saveDraftToLocalStorage, 500);
+    }
+
+    function restoreDraftOnPageLoad() {
+        let rawDraft = null;
+        try {
+            rawDraft = localStorage.getItem(DRAFT_STORAGE_KEY);
+        } catch (_) {}
+
+        if (!rawDraft) return;
+
+        let draft = null;
+        try {
+            draft = JSON.parse(rawDraft);
+        } catch (e) {
+            console.warn('Failed to parse draft from localStorage:', e);
+            return;
+        }
+
+        if (!draft || typeof draft !== 'object') return;
+
+        isRestoringDraft = true;
+
+        // 1. Repopulate form inputs and dropdowns
+        const setFieldVal = (id, val) => {
+            if (val === undefined || val === null) return;
+            const el = document.getElementById(id);
+            if (el) el.value = val;
+        };
+
+        if (draft.category_id) setFieldVal('categoryId', draft.category_id);
+        if (draft.case_type) setFieldVal('caseType', draft.case_type);
+        if (draft.complaint_title) setFieldVal('complaintTitle', draft.complaint_title);
+        if (draft.narrative) setFieldVal('narrative', draft.narrative);
+        if (draft.paanyaya_salaysay) setFieldVal('paanyayaSalaysay', draft.paanyaya_salaysay);
+        if (draft.requested_resolution) setFieldVal('requestedResolution', draft.requested_resolution);
+        if (draft.incident_street) setFieldVal('incidentStreet', draft.incident_street);
+        if (draft.incident_purok) setFieldVal('incidentPurok', draft.incident_purok);
+        if (draft.incident_location_details) setFieldVal('incidentLocationDetails', draft.incident_location_details);
+
+        if (draft.paanyaya_date) setFieldVal('paanyayaDate', draft.paanyaya_date);
+        if (draft.paanyaya_time) setFieldVal('paanyayaTime', draft.paanyaya_time);
+        if (draft.paanyaya_venue) setFieldVal('paanyayaVenue', draft.paanyaya_venue);
+        if (draft.paanyaya_has_e_signature !== undefined) {
+            const eSigInput = document.querySelector('input[name="paanyaya_has_e_signature"]');
+            if (eSigInput) eSigInput.checked = !!draft.paanyaya_has_e_signature;
+        }
+
+        if (draft.is_time_unknown !== undefined) {
+            const timeUnknown = document.getElementById('isTimeUnknown');
+            if (timeUnknown) {
+                timeUnknown.checked = !!draft.is_time_unknown;
+                syncDateTimeInputs();
+            }
+        }
+        if (draft.incident_datetime) {
+            setFieldVal('incidentDateTime', draft.incident_datetime);
+            checkFutureDate();
+        }
+        if (draft.is_time_approximate !== undefined) {
+            const timeApprox = document.getElementById('isTimeApproximate');
+            if (timeApprox) timeApprox.checked = !!draft.is_time_approximate;
+        }
+
+        // Filing method
+        if (draft.filing_method) {
+            const radio = document.querySelector(`input[name="filing_method"][value="${draft.filing_method}"]`);
+            if (radio && !radio.checked) {
+                radio.checked = true;
+                syncFilingMethod();
+            }
+        }
+
+        // Map pin coordinates
+        if (draft.map_latitude && draft.map_longitude && draft.map_location_state === 'selected') {
+            const latInp = document.querySelector('[data-map-latitude]');
+            const lngInp = document.querySelector('[data-map-longitude]');
+            const stateInp = document.querySelector('[data-map-state]');
+            if (latInp) latInp.value = draft.map_latitude;
+            if (lngInp) lngInp.value = draft.map_longitude;
+            if (stateInp) stateInp.value = 'selected';
+            const coordsDisplay = document.getElementById('mapCoordsDisplay');
+            if (coordsDisplay) {
+                coordsDisplay.textContent = `${parseFloat(draft.map_latitude).toFixed(4)}° N, ${parseFloat(draft.map_longitude).toFixed(4)}° E`;
+            }
+            const statusDisplay = document.querySelector('[data-map-status]');
+            if (statusDisplay) {
+                statusDisplay.textContent = 'Pin placed on map.';
+            }
+        }
+
+        // 2. Repopulate involved parties
+        let partiesRestored = false;
+        if (Array.isArray(draft.complainantsList) && draft.complainantsList.length > 0) {
+            complainantsList = draft.complainantsList;
+            partiesRestored = true;
+        } else if (draft.complainant_resident_id && window.AGAP_RESIDENTS) {
+            const res = window.AGAP_RESIDENTS.find(r => String(r.resident_id) === String(draft.complainant_resident_id));
+            if (res) {
+                complainantsList = [{
+                    resident_id: res.resident_id,
+                    first_name: res.first_name || '',
+                    middle_name: res.middle_name || '',
+                    last_name: (res.last_name && res.last_name !== '-') ? res.last_name : '',
+                    suffix: res.suffix || '',
+                    birthdate: res.birth_date || '',
+                    age: res.age || '',
+                    gender: res.gender || '',
+                    civil_status: res.civil_status || '',
+                    occupation: res.occupation || '',
+                    contact_no: res.contact_no || '',
+                    email: res.email || '',
+                    preferred_contact: res.preferred_contact || 'SMS',
+                    purok: res.purok || '',
+                    is_tenant: String(res.is_tenant ?? 0),
+                    address: res.address || '',
+                    is_minor: (res.birth_date && calculateAge(res.birth_date) < 18)
+                }];
+                partiesRestored = true;
+            }
+        }
+
+        if (Array.isArray(draft.respondentsList) && draft.respondentsList.length > 0) {
+            respondentsList = draft.respondentsList;
+            partiesRestored = true;
+        } else if (draft.respondent_resident_id && window.AGAP_RESIDENTS) {
+            const res = window.AGAP_RESIDENTS.find(r => String(r.resident_id) === String(draft.respondent_resident_id));
+            if (res) {
+                respondentsList = [{
+                    resident_id: res.resident_id,
+                    first_name: res.first_name || '',
+                    middle_name: res.middle_name || '',
+                    last_name: (res.last_name && res.last_name !== '-') ? res.last_name : '',
+                    suffix: res.suffix || '',
+                    birthdate: res.birth_date || '',
+                    age: res.age || '',
+                    gender: res.gender || '',
+                    civil_status: res.civil_status || '',
+                    occupation: res.occupation || '',
+                    contact_no: res.contact_no || '',
+                    email: res.email || '',
+                    purok: res.purok || '',
+                    is_tenant: String(res.is_tenant ?? 0),
+                    address: res.address || '',
+                    is_minor: (res.birth_date && calculateAge(res.birth_date) < 18)
+                }];
+                partiesRestored = true;
+            }
+        }
+
+        if (draft.chk_multiple_complainants && complainantsList.length > 1) {
+            const chk = document.getElementById('chkMultipleComplainants');
+            if (chk) chk.checked = true;
+        }
+        if (draft.chk_multiple_respondents && respondentsList.length > 1) {
+            const chk = document.getElementById('chkMultipleRespondents');
+            if (chk) chk.checked = true;
+        }
+
+        if (partiesRestored) {
+            syncHiddenPartyInputs();
+            renderParties();
+            window.validateDistinctParties?.();
+            triggerDuplicateCheck();
+        }
+
+        isRestoringDraft = false;
+        isFormDirty = true;
+
+        // 3. Show Draft Restored Banner & Toast
+        const banner = document.getElementById('draftRestoredBanner');
+        if (banner) {
+            const tsSpan = document.getElementById('draftSavedTimestamp');
+            if (tsSpan) {
+                tsSpan.textContent = draft.saved_at_formatted ? `(Saved at ${draft.saved_at_formatted})` : '(Auto-saved)';
+            }
+            banner.style.display = 'flex';
+        }
+
+        window.agapNotify?.('Draft restored from your previous session.', 'info', 'Auto-Save');
+    }
+
+    function discardAndClearDraft() {
+        if (!confirm('Are you sure you want to discard this draft? All restored unsubmitted form data will be permanently cleared.')) {
+            return;
+        }
+
+        try {
+            localStorage.removeItem(DRAFT_STORAGE_KEY);
+        } catch (_) {}
+
+        isFormDirty = false;
+
+        const form = document.getElementById('createComplaintForm');
+        if (form) {
+            form.reset();
+        }
+
+        // Clear party lists and inputs
+        complainantsList = [];
+        respondentsList = [];
+        syncHiddenPartyInputs();
+        renderParties();
+
+        // Reset filing method UI
+        const digitalRadio = document.querySelector('input[name="filing_method"][value="digital"]');
+        if (digitalRadio) {
+            digitalRadio.checked = true;
+            syncFilingMethod();
+        }
+
+        // Hide restored banner
+        const banner = document.getElementById('draftRestoredBanner');
+        if (banner) {
+            banner.style.display = 'none';
+        }
+
+        // Reset Paanyaya defaults
+        const today = new Date();
+        const pDate = document.getElementById('paanyayaDate');
+        if (pDate) {
+            const next3 = new Date(today);
+            next3.setDate(next3.getDate() + 3);
+            pDate.value = next3.toISOString().slice(0, 10);
+        }
+        const pTime = document.getElementById('paanyayaTime');
+        if (pTime) pTime.value = '14:00';
+        const pVenue = document.getElementById('paanyayaVenue');
+        if (pVenue) pVenue.value = 'Tanggapan ng Barangay Tumana';
+
+        syncDateTimeInputs();
+        checkFutureDate();
+
+        window.agapNotify?.('Draft discarded and form cleared.', 'info', 'Draft Cleared');
+    }
+
+    document.getElementById('btnDiscardDraft')?.addEventListener('click', discardAndClearDraft);
+
+    // Auto-save listeners on form controls
+    createForm?.addEventListener('input', triggerDraftAutoSave);
+    createForm?.addEventListener('change', triggerDraftAutoSave);
+
+    // Accidental Navigation / Refresh Protection
+    window.addEventListener('beforeunload', (e) => {
+        if (isFormDirty && !isSubmitting) {
+            e.preventDefault();
+            e.returnValue = ''; // Standard browser confirmation prompt
+        }
+    });
+
+    // Cleanup on submission
+    window.cleanupDraftOnSubmit = function() {
+        isSubmitting = true;
+        isFormDirty = false;
+        try {
+            localStorage.removeItem(DRAFT_STORAGE_KEY);
+        } catch (_) {}
+    };
+
+    // Restore draft on load
+    restoreDraftOnPageLoad();
 });
 </script>
 

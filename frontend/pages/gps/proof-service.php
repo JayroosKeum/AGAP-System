@@ -44,11 +44,14 @@ include '../../layouts/header.php';
         <!-- Filter Tabs & Unified Search Toolbar -->
         <div class="proof-workspace-toolbar">
             <div class="proof-filter-tabs" role="tablist" aria-label="Case service filters">
-                <button type="button" id="tabFilterAll" class="proof-tab-btn active" role="tab" aria-selected="true" onclick="setProofFilter('all')">
+                <button type="button" id="tabFilterAll" class="proof-tab-btn active" role="tab" aria-selected="true" data-filter="all" onclick="setProofFilter('all')">
                     All Cases <span id="countAllCases" class="proof-tab-count">0</span>
                 </button>
-                <button type="button" id="tabFilterPending" class="proof-tab-btn" role="tab" aria-selected="false" onclick="setProofFilter('pending')">
+                <button type="button" id="tabFilterPending" class="proof-tab-btn" role="tab" aria-selected="false" data-filter="pending" onclick="setProofFilter('pending')">
                     Pending Delivery <span id="countPendingDelivery" class="proof-tab-count">0</span>
+                </button>
+                <button type="button" id="tabFilterServed" class="proof-tab-btn" role="tab" aria-selected="false" data-filter="served" onclick="setProofFilter('served')">
+                    Fully Served <span id="countServedDelivery" class="proof-tab-count">0</span>
                 </button>
             </div>
 
