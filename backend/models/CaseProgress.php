@@ -701,10 +701,21 @@ class CaseProgress
             $summonButton['url']     = '../gps/proof-service.php?case_id=' . $caseId;
             $summonButton['tooltip'] = 'Summons successfully served. View proof of service history.';
         } elseif ($summonsCount === 0) {
-            $summonButton['label']   = 'Issue Summon 1st Attempt';
-            $summonButton['action']  = 'issue';
-            $summonButton['disabled'] = false;
-            $summonButton['tooltip'] = 'Issue the 1st summons attempt and record proof of service.';
+            require_once __DIR__ . '/Paanyaya.php';
+            $paaModel = new Paanyaya($this->conn);
+            $prereq = $paaModel->checkSummonsPrerequisite((int)($complaint['complaint_id'] ?? 0));
+            if (!$prereq['allowed']) {
+                $summonButton['label']   = 'Issue Summon 1st Attempt';
+                $summonButton['action']  = 'open_paanyaya';
+                $summonButton['disabled'] = true;
+                $summonButton['tooltip'] = $prereq['message'] ?? 'Complete the required Paanyaya process before issuing the first formal summons.';
+                $summonButton['is_locked_by_paanyaya'] = true;
+            } else {
+                $summonButton['label']   = 'Issue Summon 1st Attempt';
+                $summonButton['action']  = 'issue';
+                $summonButton['disabled'] = false;
+                $summonButton['tooltip'] = 'Issue the 1st summons attempt and record proof of service.';
+            }
         } elseif ($summonsCount >= 6) {
             // All 6 summons have been issued — show view only
             $summonButton['label']   = '6th Summon Attempt Issued';

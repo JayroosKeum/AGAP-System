@@ -40,6 +40,9 @@ if (!empty($_GET['salaysay'])) {
 if (isset($_GET['has_e_signature'])) {
     $options['has_e_signature'] = in_array((string)$_GET['has_e_signature'], ['1', 'true'], true);
 }
+if (!empty($_GET['stage_type'])) {
+    $options['stage_type'] = trim((string) $_GET['stage_type']);
+}
 if (!empty($_GET['attempt_number'])) {
     $options['attempt_number'] = (int) $_GET['attempt_number'];
 }

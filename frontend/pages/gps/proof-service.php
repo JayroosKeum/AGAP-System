@@ -154,6 +154,9 @@ include '../../layouts/header.php';
         <input type="hidden" id="returnResidentId" name="resident_id" value="">
         <input type="hidden" id="returnAttemptNumber" name="attempt_number" value="1">
         <input type="hidden" id="returnDeliveryId" name="delivery_id" value="">
+        <input type="hidden" id="returnIsPaanyaya" name="is_paanyaya" value="0">
+        <input type="hidden" id="returnStageType" name="stage_type" value="">
+        <input type="hidden" id="returnComplaintId" name="complaint_id" value="">
         <input type="hidden" name="action" value="officer_return">
 
         <div class="proof-drawer-body">

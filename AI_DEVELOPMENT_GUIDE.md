@@ -27,6 +27,8 @@ If these cannot be named clearly, propose a simplification plan before implement
 | Attendance and non-appearance | `hearing_attendance`, `hearings.complainant_attendance`, `hearings.respondent_attendance` |
 | Show-cause justification evaluation | `show_cause_evaluations` |
 | Hearing minutes and settlement notes | `hearing_minutes` |
+| Preliminary Paanyaya stages & schedules | `paanyaya_stages` |
+| Paanyaya delivery attempts & Officer's Returns | `paanyaya_officer_returns` |
 | Summons service attempts | `summon_deliveries` |
 | Pangkat membership & challenges | `pangkat_groups`, `pangkat_members`, `pangkat_challenges`, `pangkat_extensions` |
 | Generated KP forms & templates | `document_templates`, `generated_documents` |
@@ -37,17 +39,21 @@ Do not introduce another table that represents the same fact. Dashboards may der
 ## 3. Canonical case flow
 
 ```text
-Complaint → Reviewed → Docketed
-          → Summons issued → Service recorded
-          → Mediation (1st → 2nd → 3rd) → approved outcome
-              ├─ Settled (KP Form 16) / dismissed / final outcome
-              └─ Referred to Pangkat → Conciliation (1st → 2nd → 3rd) → approved outcome
-                                                ├─ Settled
-                                                └─ CFA review → CFA issued (KP Form 20)
+Complaint → Reviewed → Pre-Docketed (Paanyaya 1: up to 6 delivery attempts)
+                     → Paanyaya 2 (if required: up to 6 delivery attempts)
+                     → Docketed (upon service or review escalation)
+                     → Summons issued (KP Form 8 & 9) → Service recorded
+                     → Mediation (1st → 2nd → 3rd) → approved outcome
+                         ├─ Settled (KP Form 16) / dismissed / final outcome
+                         └─ Referred to Pangkat → Conciliation (1st → 2nd → 3rd) → approved outcome
+                                                           ├─ Settled
+                                                           └─ CFA review → CFA issued (KP Form 20)
 ```
 
 - Scheduling a hearing is not an outcome.
 - Issuing a document is not proof of service.
+- **Mandatory Preliminary Paanyaya Process**: Before formal court-annexed summons (KP Form 8 & 9) are issued, cases undergo preliminary invitation dialogue. Paanyaya 1 and Paanyaya 2 each allow up to six (6) delivery attempts with recorded Officer's Returns before authorized case escalation.
+- **Officer's Return Editing**: Recorded returns can be edited/corrected by authorized officers; all edits are captured in the Lupon audit trail.
 - Initial summons (KP Form 9) serves for the 1st Mediation; 2nd and subsequent mediations do not require summons re-issuance and inherit prior service notice.
 - Non-appearance in 2nd mediation unlocks KP Form 18 (Complainant) and KP Form 19 (Respondent) show-cause hearing notices.
 - Certificate to Bar Action (KP Form 21) or Counterclaim (KP Form 22) requires a recorded show-cause evaluation ruling non-appearance as unjustified.
@@ -63,7 +69,7 @@ Complaint → Reviewed → Docketed
 Use `cases.case_status` only for broad stages and final outcomes:
 
 ```text
-Docketed → Mediation → Conciliation → Settled | Dismissed | CFA Issued | Archived
+Pre-Docketed (Paanyaya) → Docketed → Mediation → Conciliation → Settled | Dismissed | CFA Issued | Archived
 ```
 
 Do not use case status for UI hints such as “ready,” “attempt 2,” or “needs review.” Store a specific fact on the relevant record or calculate it for display.

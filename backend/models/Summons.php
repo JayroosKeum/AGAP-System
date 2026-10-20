@@ -35,6 +35,18 @@ class Summons
                 return ['success' => false, 'message' => 'Complaint not found.'];
             }
 
+            // Enforce Paanyaya prerequisite before allowing formal summons creation
+            require_once __DIR__ . '/Paanyaya.php';
+            $paaModel = new Paanyaya($this->conn);
+            $prereq = $paaModel->checkSummonsPrerequisite($complaintId);
+            if (!$prereq['allowed'] && empty($mediationData['override_paanyaya'])) {
+                $this->conn->rollBack();
+                return [
+                    'success' => false,
+                    'message' => $prereq['message'] ?? 'Complete the required Paanyaya process before issuing the first formal summons.'
+                ];
+            }
+
             // Parse and prepare mediation schedule parameters
             $medDate = !empty($mediationData['mediation_date']) ? trim((string)$mediationData['mediation_date']) : '';
             $medTime = !empty($mediationData['mediation_time']) ? trim((string)$mediationData['mediation_time']) : '';

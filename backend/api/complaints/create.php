@@ -55,7 +55,7 @@ if (!empty($result['complaint_id'])) {
     if (!empty($_POST['is_draft'])) {
         header('Location: ../../../frontend/pages/complaints/complaint-details.php?id=' . (int)$result['complaint_id']);
     } else {
-        header('Location: ../../../frontend/pages/complaints/complaint-details.php?id=' . (int)$result['complaint_id'] . '&tab=paanyaya');
+        header('Location: ../../../frontend/pages/complaints/complaint-details.php?id=' . (int)$result['complaint_id'] . '&tab=paanyaya&preview=1');
     }
     exit;
 }

@@ -13,10 +13,11 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
 
 - [Key Features](#key-features)
   - [1. Complaint Intake, Management & Records Search](#1-complaint-intake-management--records-search)
-  - [2. Mediation & Conciliation Progression Engine](#2-mediation--conciliation-progression-engine)
-  - [3. Case Management & Unified Case Teams](#3-case-management--unified-case-teams)
-  - [4. KP Document Generation & Proof of Service](#4-kp-document-generation--proof-of-service)
-  - [5. Security, Audit Trails & Notifications](#5-security-audit-trails--notifications)
+  - [2. Preliminary Paanyaya Process & Officer's Return Tracking](#2-preliminary-paanyaya-process--officers-return-tracking)
+  - [3. Mediation & Conciliation Progression Engine](#3-mediation--conciliation-progression-engine)
+  - [4. Case Management & Unified Case Teams](#4-case-management--unified-case-teams)
+  - [5. KP Document Generation & Proof of Service](#5-kp-document-generation--proof-of-service)
+  - [6. Security, Audit Trails & Notifications](#6-security-audit-trails--notifications)
 - [System Architecture](#system-architecture)
 - [Directory Structure](#directory-structure)
 - [Tech Stack](#tech-stack)
@@ -71,7 +72,32 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
   - Secure evidence upload vault supporting images (JPG, PNG), videos (MP4, WebM), and PDF documents up to 25 MB with MIME verification.
   - **Official KP Forms Table**: Houses **KP Form 7 (Reklamo)** alongside other KP forms, supporting high-fidelity Legal-size modal preview, zero-watermark printing, and versioned scan replacements.
 
-### 2. Mediation & Conciliation Progression Engine
+### 2. Preliminary Paanyaya Process & Officer's Return Tracking
+
+- **Mandatory Preliminary Workflow Insertion**:
+  - Seamlessly positioned between Complaint Details and formal Mediation:
+    `Complaint Intake / Overview` $\rightarrow$ `Paanyaya 1` $\rightarrow$ `Paanyaya 2` $\rightarrow$ `Mediation` $\rightarrow$ `Conciliation` $\rightarrow$ `Arbitration / CFA`.
+  - Cases in this preliminary phase hold the `Pre-Docketed (Paanyaya)` state until preliminary service requirements or administrative review escalations are satisfied.
+- **Dedicated Paanyaya Tab (`complaint-details.php`)**:
+  - Positioned between Case Summary and Mediation tabs, matching existing AGAP design guidelines.
+  - Two distinct sections:
+    - **Paanyaya 1 – First Preliminary Invitation**: Up to 6 recorded delivery attempts.
+    - **Paanyaya 2 – Second Preliminary Invitation**: Up to 6 delivery attempts, unlocked only when Paanyaya 1 completes with Lupon administrative review or escalation approval.
+  - Independent attempt counter (1 to 6) per stage enforced by database constraints and server-side model logic; attempt counters never reset on navigation or overlap between stages.
+- **Official Paanyaya Invitation Letter Generation & Print Preview**:
+  - Generates official Paanyaya invitation letters featuring Barangay Tumana and City of Marikina seals, hearing schedule (date, time, venue), salaysay facts excerpt, and Punong Barangay / Lupon signature block.
+  - Interactive post-filing modal preview (`#paanyayaPreviewModal`) displaying Legal-size print previews with one-click PDF downloading and direct handover to Officer's Return recording.
+- **Granular Officer's Return Delivery Tracking**:
+  - Tracks detailed delivery data per attempt: attempt number (1–6), date/time visited, serving officer, recipient visited, address visited, delivery outcome, failure reason, remarks/witness notes, proof photo/document attachment, and GPS coordinates.
+  - Non-equivalent outcome options: `Successfully delivered`, `Recipient unavailable`, `Recipient refused to receive`, `Respondent not found at the address`, `Incorrect or incomplete address`, and `Other reason`.
+  - Responsive delivery history table with outcome badges, serving officer info, proof links, and row-level edit actions (`✏️ Edit Return`).
+- **Lupon Administrative Review Workflow**:
+  - When all 6 attempts are exhausted without successful delivery, the stage transitions to `Attempts Exhausted – For Review`.
+  - Authorized Lupon officers review the history and record decisions: `Approved for Paanyaya 2`, `Approved for Summons`, or `Case Closed`.
+- **Summons Prerequisite Gate**:
+  - The `Issue Summon 1st Attempt` action remains locked until Paanyaya 1 is successfully delivered OR all attempts are exhausted and approved for formal court-annexed escalation via administrative review.
+
+### 3. Mediation & Conciliation Progression Engine
 
 - **Standardized Case Docketing Numbering (`MM-DD-YYYY`)**:
   - Format: `MM-DD-YYYY` (e.g., `10-17-2026`).
@@ -105,7 +131,7 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
   - Rejects hearings scheduled on the same date as an existing hearing for the case or on any prior date.
   - Room collision and presider conflict detection powered by `OfficeLogisticsService`.
 
-### 3. Case Management & Unified Case Teams
+### 4. Case Management & Unified Case Teams
 
 - **Redesigned Case Workspace (`case-details.php`)**:
   - **Top Hero Section**: Case Number (`Case #MM-SS-YYYY`), Title, status badges (`MEDIATION`, `CONCILIATION`, `ARBITRATION`), Case Type badge (`Civil`/`Criminal`), Category, Date Filed, Incident Date/Time, and live statutory deadline countdown.
@@ -127,7 +153,7 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
   - Mediation stages assign the active `Administrator` as Punong Barangay/Head.
   - Conciliation stages require a three-member team (Head, Secretary, Member) selected from active users with the `Lupon Member` role, atomically validated and stored in `case_assignments`.
 
-### 4. KP Document Generation & Proof of Service
+### 5. KP Document Generation & Proof of Service
 
 - **Official Katarungang Pambarangay (KP) Forms**:
   - **KP Form 7**: Pormularyo ng KP Blg. 7 (Reklamo / Formal Complaint) — formatted strictly for standard **Legal Size Bondpaper** (`8.5in x 14in`) with Barangay Tumana Seal (Left) and City of Marikina Seal (Right), generous signature clearances (`48px`), zero-watermark browser printing, and interactive modal preview.
@@ -142,16 +168,24 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
   - **KP Form 21**: Certificate to Bar Action (for Complainant default).
   - **KP Form 22**: Certificate to Bar Counterclaim (for Respondent default).
 - **Summons Management & Proof of Service Interface (`proof-service.php`)**:
-  - **Unified Expandable Case Table**: Displays all cases requiring summons tracking. Rows expand/collapse inline to reveal side-by-side service records for Complainant and Respondent.
-  - **Live Filter Tabs & Search**: Instant keyword search across Case No., parties, and titles; filter tabs for **All Cases** and **Pending Delivery** with live counter pills.
+  - **Unified Expandable Case Table**: Displays all cases requiring summons and preliminary invitation tracking, seamlessly integrating both formal hearings and Paanyaya cases. Rows expand/collapse inline to reveal service records.
+  - **Paanyaya Adaptive Layout**: For Paanyaya preliminary cases, displays a full-width Respondent delivery card (Complainant notice card is hidden as Paanyaya is delivered exclusively to the respondent).
+  - **Live Filter Tabs & Search**: Instant keyword search across Case No., parties, and titles; filter tabs for **All Cases**, **Pending Delivery**, and **Fully Served** with live counter badges.
   - **Top KPI Indicators**: Compact summary counters for Total Cases, Pending Delivery, CFA Eligible, and Served Today.
   - **Complainant & Respondent Visual Parity**: Matching two-column card structure, badges, typography, and detail lists (`Date/Time Served`, `Service Source / Server`, `Service Method`, `Remarks`, failure notes, proof links).
-  - **Horizontal Summons Stepper**: Interactive progression nodes for Attempt 1, Attempt 2, Attempt 3, and CFA status with dynamic state badges (`Served`, `Pending`, `Failed`, `Locked`).
+  - **Interactive Horizontal Steppers**:
+    - **Paanyaya Cases**: 6 interactive attempt nodes (1st to 6th Attempt) for Respondent preliminary invitations.
+    - **Formal Summons**: Progression nodes for Attempt 1, Attempt 2, Attempt 3, and CFA status with dynamic state badges (`Served`, `Pending`, `Failed`, `Locked`).
+  - **Fully Editable Officer's Return Workflow**:
+    - Stepper circles for all issued/recorded attempts have pointer cursors and open the return drawer on click.
+    - Row-level `✏️ Edit Return` buttons allow authorized personnel to update existing returns (outcome, recipient name, address visited, remarks, failure reason).
+    - Automatically operates in **Edit Mode** (`Edit Officer's Return`) when editing existing attempts and **Log Return Mode** when recording pending attempts.
+    - Updates are saved to `paanyaya_officer_returns` and `summon_deliveries` with audit logging via `AuditService`, without causing attempt counter collisions.
   - **Auto-Served Complainant Notice**: Automatically sets KP Form 8 to `Served` upon issuance of the 1st Attempt summons from the complaint page.
   - **Slide-in Officer's Return Drawer**: Modern off-canvas drawer (`#officerReturnModal`) with distinct Case Number, Party, and Document Form badges for recording delivery outcomes, recipient relationship, unserved reasons, notes, and photo proof attachments.
-  - **Clean Action Footers**: Streamlined card footers focused on **Log Officer's Return** alongside next-stage progression buttons (*Issue Summon 2nd Attempt*, *Proceed to CFA*), removing clutter from redundant print buttons.
+  - **Clean Action Footers**: Streamlined card footers focused on **Log Officer's Return** / **Edit Officer's Return** alongside next-stage progression buttons, removing clutter from redundant print buttons.
 
-### 5. Security, Audit Trails & Notifications
+### 6. Security, Audit Trails & Notifications
 
 - **Granular Role-Based Access Control (RBAC)**: Administrator, Lupon Clerk, Lupon Member, Summons Server.
 - **Account Security**: Session regeneration on authentication, 12-character complex password policies, and single-use SHA-256 hashed password reset tokens with 1-hour expiration.
@@ -279,5 +313,8 @@ For development and testing, `database/schema.sql` seeds the following local acc
 ## Database & Migrations
 
 - `database/schema.sql` is the authoritative definition for fresh database installations.
-- For updating existing databases that predate specific increments, refer to the step-by-step instructions in [database/README.md](database/README.md). Recent migrations include `database/migrations/20261016_001_enhance_file_complaint_kp7.sql` for the File Complaint module, versioned scanned KP Form 7 uploads, and demographic/guardian fields.
+- For updating existing databases that predate specific increments, refer to the step-by-step instructions in [database/README.md](database/README.md). Recent migrations include:
+  - `database/migrations/20261020_001_create_paanyaya_stages_and_returns.sql` for the mandatory preliminary Paanyaya workflow and independent Officer's Return tracking.
+  - `database/migrations/20261017_002_scheduling_conflict_and_mediation_improvements.sql` for scheduling capacity, holiday calendars, and venue conflict detection.
+  - `database/migrations/20261016_001_enhance_file_complaint_kp7.sql` for the File Complaint module, versioned scanned KP Form 7 uploads, and demographic/guardian fields.
 - Reference guides for developers and AI agents are maintained in [AI_DEVELOPMENT_GUIDE.md](AI_DEVELOPMENT_GUIDE.md) and [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md).

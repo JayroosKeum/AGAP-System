@@ -518,31 +518,18 @@ include '../../layouts/header.php';
              TAB PANE: PAANYAYA (STAGE 0: PRE-DOCKETING)
              =================================================================== -->
         <div id="tab-paanyaya" class="case-tab-pane <?php echo $activeTab === 'tab-paanyaya' ? 'active' : ''; ?>">
-            <!-- Stage 0 Banner: Paanyaya Pre-Docketing -->
+            <!-- Stage 0 Banner: Paanyaya Preliminary Process -->
             <div style="margin: 0 30px 20px;">
                 <div id="stage0Card" class="stage-card-item active" style="background: linear-gradient(135deg, #15803d, #166534); border-color: #86efac; color: #ffffff;">
                     <div class="stage-card-top">
-                        <span class="stage-label-num" style="background: rgba(255,255,255,0.2); color: #ffffff;">STAGE 0 &bull; PRE-DOCKETING (INFORMAL DIALOGUE)</span>
+                        <span class="stage-label-num" style="background: rgba(255,255,255,0.2); color: #ffffff;">PRELIMINARY STAGE &bull; PAANYAYA PROCESS (BEFORE MEDIATION)</span>
                         <span id="stage0Icon" style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: rgba(255,255,255,0.25); font-size: 0.75rem;">✉️</span>
                     </div>
-                    <h3 class="stage-card-title" style="font-size: 1.15rem; margin: 4px 0 4px; color: #ffffff;">Paanyaya (Informal Invitation)</h3>
+                    <h3 class="stage-card-title" style="font-size: 1.15rem; margin: 4px 0 4px; color: #ffffff;">Paanyaya (Preliminary Invitations &amp; Officer's Return Tracking)</h3>
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                        <span id="stage0StatusText" class="stage-sub-status" style="font-weight: 700; background: #fef08a; color: #854d0e; padding: 3px 10px; border-radius: 9999px;">Pre-Docketed (1 of 2)</span>
-                        <span style="font-size: 0.78rem; color: #dcfce7;">Presiding: Punong Barangay / Lupong Tagapamayapa &bull; Dalawang Beses Lang (Max 2 Attempts) &bull; Keeps contested case load low for LTIA</span>
+                        <span id="stage0StatusText" class="stage-sub-status" style="font-weight: 700; background: #fef08a; color: #854d0e; padding: 3px 10px; border-radius: 9999px;">Paanyaya In Progress</span>
+                        <span style="font-size: 0.78rem; color: #dcfce7;">Two Independent Stages (Paanyaya 1 &amp; Paanyaya 2) &bull; Up to 6 Delivery Attempts Each with Officer's Return Documentation</span>
                     </div>
-                </div>
-            </div>
-
-            <!-- LTIA Guidance Banner -->
-            <div class="ltia-banner" style="margin: 0 30px 24px; background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border: 1.5px solid #86efac; border-radius: 10px; padding: 16px 20px; display: flex; align-items: flex-start; gap: 14px;">
-                <div style="font-size: 1.7rem; line-height: 1;">🏛️</div>
-                <div style="flex: 1;">
-                    <h4 style="margin: 0 0 4px; font-size: 0.95rem; font-weight: 800; color: #14532d;">
-                        LTIA Rule: Informal Pre-Docketing Keeps Contested Case Load Low
-                    </h4>
-                    <p style="margin: 0; font-size: 0.83rem; color: #166534; line-height: 1.45;">
-                        Disputes resolved at the <strong>Paanyaya phase</strong> do not enter the formal court-annexed docket, preventing unnecessary statutory filings and boosting Barangay Tumana's <em>Lupon Tagapamayapa Incentives Awards (LTIA)</em> efficiency score. Disputes are permitted a strict maximum of <strong>two (2) informal invitation attempts</strong> before mandatory formal docketing.
-                    </p>
                 </div>
             </div>
 
@@ -577,125 +564,222 @@ include '../../layouts/header.php';
                 </div>
             </div>
 
-            <!-- Current Paanyaya Session Schedule & Attendance KPI Grid -->
-            <div class="session-schedule-box" style="margin: 0 30px 24px;">
-                <div class="session-box-header">
+            <!-- TWO PAANYAYA STAGES: SIDE BY SIDE SUMMARY CARDS -->
+            <div class="paanyaya-stages-grid">
+                <!-- CARD 1: PAANYAYA 1 (First Preliminary Invitation) -->
+                <div class="paanyaya-card" id="paanyaya1Card">
                     <div>
-                        <h4 id="tabPaaSessionTitleHeading">Paanyaya Dialogue Session (Attempt #1)</h4>
-                        <p id="tabPaaSessionSubtitleHeading" class="session-lead-text">Scheduled Dialogue at Tanggapan ng Barangay Tumana</p>
+                        <div class="paanyaya-card-header">
+                            <div class="paanyaya-stage-title-wrap">
+                                <span class="paanyaya-stage-tag">Stage 0.1 &bull; Officer's Return (Respondent Only)</span>
+                                <h3 class="paanyaya-card-title">Paanyaya 1 – Preliminary Invitation Delivery (Respondent)</h3>
+                            </div>
+                            <span id="p1StatusBadge" class="paanyaya-status-badge status-not-started">Not Started</span>
+                        </div>
+
+                        <!-- 4 Metric KPI Box -->
+                        <div class="paanyaya-metric-grid">
+                            <div class="paanyaya-metric-item">
+                                <span class="paanyaya-metric-label">Delivery Attempts</span>
+                                <span id="p1AttemptText" class="paanyaya-metric-val">0 of 6 used</span>
+                            </div>
+                            <div class="paanyaya-metric-item">
+                                <span class="paanyaya-metric-label">Latest Service Status</span>
+                                <span id="p1ServiceStatus" class="paanyaya-metric-val">—</span>
+                            </div>
+                            <div class="paanyaya-metric-item">
+                                <span class="paanyaya-metric-label">Assigned Serving Officer</span>
+                                <span id="p1ServingOfficer" class="paanyaya-metric-val">Unassigned</span>
+                            </div>
+                            <div class="paanyaya-metric-item">
+                                <span class="paanyaya-metric-label">Date Initiated</span>
+                                <span id="p1DateInitiated" class="paanyaya-metric-val">—</span>
+                            </div>
+                        </div>
+
+                        <!-- 6-Attempt Progress Stepper Indicator -->
+                        <div class="paanyaya-attempts-stepper">
+                            <div class="paanyaya-stepper-label">
+                                <span>Service Attempts Tracking (Max 6)</span>
+                                <span id="p1StepperCountText">0 / 6 Attempts</span>
+                            </div>
+                            <div class="paanyaya-stepper-dots" id="p1StepperDots">
+                                <div class="stepper-dot" title="Attempt 1"></div>
+                                <div class="stepper-dot" title="Attempt 2"></div>
+                                <div class="stepper-dot" title="Attempt 3"></div>
+                                <div class="stepper-dot" title="Attempt 4"></div>
+                                <div class="stepper-dot" title="Attempt 5"></div>
+                                <div class="stepper-dot" title="Attempt 6"></div>
+                            </div>
+                        </div>
+
+                        <!-- Case Details & Intended Recipient Info -->
+                        <div class="paanyaya-parties-box">
+                            <div class="party-row"><strong>Case / Tracking:</strong> <span id="p1CaseNumber">—</span></div>
+                            <div class="party-row"><strong>Complainant:</strong> <span id="p1ComplainantName">—</span></div>
+                            <div class="party-row"><strong>Respondent:</strong> <span id="p1RespondentName">—</span></div>
+                            <div class="party-row"><strong>Service Address:</strong> <span id="p1RespondentAddr">—</span></div>
+                            <div class="party-row" id="p1LatestOutcomeRow" style="display:none; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #e2e8f0;">
+                                <strong>Latest Outcome:</strong> <span id="p1LatestOutcomeBadge">None</span>
+                                <div id="p1LatestRemarks" style="font-size: 0.78rem; color: #64748b; margin-top: 2px;"></div>
+                            </div>
+                        </div>
                     </div>
-                    <a id="tabPaaManageLink" href="paanyaya-workspace.php?id=<?php echo $complaintId; ?>" class="btn-manage-sched" style="display: inline-flex; align-items: center; gap: 6px; text-decoration: none;">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                        <span>Open Paanyaya Workspace &rarr;</span>
-                    </a>
+
+                    <!-- Action Buttons -->
+                    <div class="paanyaya-card-actions">
+                        <button type="button" class="btn-create" id="btnIssueP1" onclick="openIssuePaanyayaModal('Paanyaya 1')">
+                            ✉️ Issue Paanyaya 1
+                        </button>
+                        <button type="button" class="btn-create" id="btnRecordReturnP1" onclick="openRecordReturnModal('Paanyaya 1')" style="background: #2563eb; border-color: #2563eb; display: none;">
+                            📝 Record Officer's Return
+                        </button>
+                        <button type="button" class="btn-sess-indigo" id="btnPreviewP1" onclick="previewPaanyayaStageLetter('Paanyaya 1')" style="display: none;">
+                            👁️ Preview Letter
+                        </button>
+                        <button type="button" class="btn-create" id="btnReviewP1" onclick="openPaanyayaReviewModal('Paanyaya 1')" style="background: #dc2626; border-color: #dc2626; display: none;">
+                            ⚖️ Review Case
+                        </button>
+                        <button type="button" class="btn-sess-white" onclick="switchDeliveryHistoryView('Paanyaya 1')">
+                            📜 View Delivery History
+                        </button>
+                    </div>
                 </div>
 
-                <!-- 4 KPI Grid (Date, Time, Venue, Signature) -->
-                <div class="session-kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
-                    <div class="session-kpi-item">
-                        <span class="kpi-label">Scheduled Dialogue Date</span>
-                        <div class="kpi-val-row">
-                            <span class="dot-status-green"></span>
-                            <span id="tabPaaKpiDate" style="font-weight: 700; color: #0f172a;">—</span>
+                <!-- CARD 2: PAANYAYA 2 (Second Preliminary Invitation) -->
+                <div class="paanyaya-card" id="paanyaya2Card">
+                    <div>
+                        <div class="paanyaya-card-header">
+                            <div class="paanyaya-stage-title-wrap">
+                                <span class="paanyaya-stage-tag tag-p2">Stage 0.2 &bull; Officer's Return (Respondent Only)</span>
+                                <h3 class="paanyaya-card-title">Paanyaya 2 – Second Preliminary Delivery (Respondent)</h3>
+                            </div>
+                            <span id="p2StatusBadge" class="paanyaya-status-badge status-locked">Locked</span>
                         </div>
-                    </div>
-                    <div class="session-kpi-item">
-                        <span class="kpi-label">Time &amp; Day</span>
-                        <div class="kpi-val-row">
-                            <span class="dot-status-green"></span>
-                            <span id="tabPaaKpiTime" style="font-weight: 700; color: #0f172a;">—</span>
-                        </div>
-                    </div>
-                    <div class="session-kpi-item">
-                        <span class="kpi-label">Dialogue Venue</span>
-                        <div class="kpi-val-row">
-                            <span style="font-size: 0.95rem;">📍</span>
-                            <span id="tabPaaKpiVenue" style="font-weight: 600; color: #0f172a;">Tanggapan ng Barangay Tumana</span>
-                        </div>
-                    </div>
-                    <div class="session-kpi-item">
-                        <span class="kpi-label">Captain E-Signature</span>
-                        <div class="kpi-val-row">
-                            <span style="color: #16a34a; font-weight: 700;">✓</span>
-                            <span id="tabPaaKpiSig" style="font-weight: 600; color: #16a34a;">Embedded</span>
-                        </div>
-                    </div>
-                </div>
 
-                <!-- Bottom Action Buttons Row -->
-                <div class="session-action-bar-row">
-                    <div class="session-btn-group-left">
-                        <button type="button" class="btn-sess-indigo" onclick="openPaanyayaPreviewModal()">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                            <span>Preview Paanyaya Letter</span>
-                        </button>
-                        <a id="tabPaaBtnDownloadPdf" href="../../../backend/api/paanyaya/preview.php?id=<?php echo $complaintId; ?>&download=1" target="_blank" class="btn-sess-white" style="text-decoration: none;">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                            <span>Download PDF</span>
-                        </a>
-                        <button type="button" id="tabPaaBtnScheduleSecond" class="btn-sess-white" onclick="openPaanyayaScheduleModal()" style="display: none;">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                            <span>Schedule 2nd Paanyaya</span>
-                        </button>
-                    </div>
-                    <div class="session-btn-group-right">
-                        <div id="tabPaaActionsPendingGroup" style="display: flex; align-items: center; gap: 8px;">
-                            <button type="button" class="btn-sess-green" onclick="openPaanyayaOutcomeModal('Resolved')">
-                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                <span>Amicably Resolved</span>
-                            </button>
-                            <button type="button" class="btn-create" onclick="openPaanyayaOutcomeModal('Escalate')" style="background: #dc2626; border-color: #dc2626; padding: 7px 14px; font-size: 0.82rem;">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-                                <span>Escalate to Formal</span>
-                            </button>
+                        <!-- Locked State Alert Banner (when Paanyaya 1 is still incomplete) -->
+                        <div id="p2LockedNotice" style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 14px; margin-bottom: 16px; font-size: 0.85rem; color: #64748b; display: flex; align-items: center; gap: 10px;">
+                            <span style="font-size: 1.3rem;">🔒</span>
+                            <span>Paanyaya 2 is locked. It unlocks only after Paanyaya 1 reaches completion condition or authorized review.</span>
                         </div>
+
+                        <!-- 4 Metric KPI Box -->
+                        <div class="paanyaya-metric-grid" id="p2MetricGrid" style="display: none;">
+                            <div class="paanyaya-metric-item">
+                                <span class="paanyaya-metric-label">Delivery Attempts</span>
+                                <span id="p2AttemptText" class="paanyaya-metric-val">0 of 6 used</span>
+                            </div>
+                            <div class="paanyaya-metric-item">
+                                <span class="paanyaya-metric-label">Latest Service Status</span>
+                                <span id="p2ServiceStatus" class="paanyaya-metric-val">—</span>
+                            </div>
+                            <div class="paanyaya-metric-item">
+                                <span class="paanyaya-metric-label">Assigned Serving Officer</span>
+                                <span id="p2ServingOfficer" class="paanyaya-metric-val">Unassigned</span>
+                            </div>
+                            <div class="paanyaya-metric-item">
+                                <span class="paanyaya-metric-label">Date Initiated</span>
+                                <span id="p2DateInitiated" class="paanyaya-metric-val">—</span>
+                            </div>
+                        </div>
+
+                        <!-- 6-Attempt Progress Stepper Indicator (Paanyaya 2) -->
+                        <div class="paanyaya-attempts-stepper" id="p2StepperWrap" style="display: none;">
+                            <div class="paanyaya-stepper-label">
+                                <span>Independent Service Attempts Tracking (Max 6)</span>
+                                <span id="p2StepperCountText">0 / 6 Attempts</span>
+                            </div>
+                            <div class="paanyaya-stepper-dots" id="p2StepperDots">
+                                <div class="stepper-dot" title="Attempt 1"></div>
+                                <div class="stepper-dot" title="Attempt 2"></div>
+                                <div class="stepper-dot" title="Attempt 3"></div>
+                                <div class="stepper-dot" title="Attempt 4"></div>
+                                <div class="stepper-dot" title="Attempt 5"></div>
+                                <div class="stepper-dot" title="Attempt 6"></div>
+                            </div>
+                        </div>
+
+                        <!-- Case Details & Party Info (Paanyaya 2) -->
+                        <div class="paanyaya-parties-box" id="p2PartiesBox" style="display: none;">
+                            <div class="party-row"><strong>Case / Tracking:</strong> <span id="p2CaseNumber">—</span></div>
+                            <div class="party-row"><strong>Complainant:</strong> <span id="p2ComplainantName">—</span></div>
+                            <div class="party-row"><strong>Respondent:</strong> <span id="p2RespondentName">—</span></div>
+                            <div class="party-row"><strong>Service Address:</strong> <span id="p2RespondentAddr">—</span></div>
+                            <div class="party-row" id="p2LatestOutcomeRow" style="display:none; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #e2e8f0;">
+                                <strong>Latest Outcome:</strong> <span id="p2LatestOutcomeBadge">None</span>
+                                <div id="p2LatestRemarks" style="font-size: 0.78rem; color: #64748b; margin-top: 2px;"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="paanyaya-card-actions">
+                        <button type="button" class="btn-create" id="btnIssueP2" onclick="openIssuePaanyayaModal('Paanyaya 2')" disabled style="opacity: 0.55; cursor: not-allowed;">
+                            ✉️ Issue Paanyaya 2
+                        </button>
+                        <button type="button" class="btn-create" id="btnRecordReturnP2" onclick="openRecordReturnModal('Paanyaya 2')" style="background: #2563eb; border-color: #2563eb; display: none;">
+                            📝 Record Officer's Return
+                        </button>
+                        <button type="button" class="btn-sess-indigo" id="btnPreviewP2" onclick="previewPaanyayaStageLetter('Paanyaya 2')" style="display: none;">
+                            👁️ Preview Letter
+                        </button>
+                        <button type="button" class="btn-create" id="btnReviewP2" onclick="openPaanyayaReviewModal('Paanyaya 2')" style="background: #dc2626; border-color: #dc2626; display: none;">
+                            ⚖️ Review Case
+                        </button>
+                        <button type="button" class="btn-sess-white" onclick="switchDeliveryHistoryView('Paanyaya 2')">
+                            📜 View Delivery History
+                        </button>
                     </div>
                 </div>
             </div>
 
-            <!-- Paanyaya Sessions History & State Machine Card -->
-            <div class="hearings-schedule-card">
-                <div class="operational-card-header">
+            <!-- PAANYAYA DELIVERY HISTORY & OFFICER'S RETURN TABLE -->
+            <div class="hearings-schedule-card" id="paanyayaHistoryCard" style="margin: 0 30px 24px;">
+                <div class="operational-card-header" style="flex-wrap: wrap; gap: 12px;">
                     <div>
                         <h3 style="font-size: 1rem; font-weight: 800; color: #0f172a; margin: 0; display: flex; align-items: center; gap: 8px;">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                            <span>Paanyaya Sessions History &amp; State Machine</span>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                            <span>Paanyaya Delivery History &amp; Officer's Return Records</span>
                         </h3>
-                        <span class="card-subtitle">Strictly limited to a maximum of two (2) attempts before mandatory escalation to formal mediation.</span>
+                        <span class="card-subtitle">Chronological record of service attempts. Max 6 attempts tracked independently per stage.</span>
                     </div>
-                    <span id="tabPaaHistoryStatusBadge" class="status-pill status-mediation" style="font-size:0.75rem;">Attempt 1 of 2</span>
-                </div>
-                <div id="tabPaaHistoryContainer" style="margin-top: 14px;">
-                    <div class="empty-detail-state">Loading Paanyaya sessions history...</div>
-                </div>
-            </div>
 
-            <!-- Paanyaya Procedural Rules & State Machine Guidelines Card -->
-            <div class="operational-card" style="margin: 0 30px 24px;">
-                <div class="operational-card-header">
-                    <div>
-                        <h3 style="font-size: 0.95rem; font-weight: 800; color: #0f172a; margin: 0;">Dalawang Beses Lang (Max 2 Attempts) Rule Guidelines</h3>
-                        <span class="card-subtitle">Barangay Tumana Pre-Docketing State Machine Outcomes</span>
+                    <!-- Stage Selector Pills -->
+                    <div class="paanyaya-history-tabs-row">
+                        <button type="button" class="hist-tab-btn active" id="btnHistTabP1" onclick="switchDeliveryHistoryView('Paanyaya 1')">
+                            Paanyaya 1 Delivery History (<span id="p1HistBadgeCount">0</span>/6)
+                        </button>
+                        <button type="button" class="hist-tab-btn" id="btnHistTabP2" onclick="switchDeliveryHistoryView('Paanyaya 2')">
+                            Paanyaya 2 Delivery History (<span id="p2HistBadgeCount">0</span>/6)
+                        </button>
                     </div>
                 </div>
-                <div style="padding: 16px 20px; font-size: 0.86rem; color: #475569; line-height: 1.6;">
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px;">
-                        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 14px;">
-                            <strong style="color: #15803d; display: block; margin-bottom: 4px;">1. Settled Amicably (LTIA Win)</strong>
-                            <span style="font-size: 0.82rem; color: #166534;">Parties reached informal agreement. Case is closed as resolved at Paanyaya without ever assigning a court docket number.</span>
-                        </div>
-                        <div style="background: #fefce8; border: 1px solid #fef08a; border-radius: 8px; padding: 12px 14px;">
-                            <strong style="color: #854d0e; display: block; margin-bottom: 4px;">2. Party Absent / No-Show</strong>
-                            <span style="font-size: 0.82rem; color: #713f12;">One or both parties failed to appear. Extends 2nd and final Paanyaya informal dialogue attempt.</span>
-                        </div>
-                        <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px 14px;">
-                            <strong style="color: #1d4ed8; display: block; margin-bottom: 4px;">3. Dialogue Incomplete</strong>
-                            <span style="font-size: 0.82rem; color: #1e40af;">Progress made and parties agreed to a second session to finalize amicable terms. Unlocks 2nd Paanyaya.</span>
-                        </div>
-                        <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 14px;">
-                            <strong style="color: #b91c1c; display: block; margin-bottom: 4px;">4. Refusal or Max Reached</strong>
-                            <span style="font-size: 0.82rem; color: #991b1b;">Parties refuse to compromise or Attempt #2 completed. Automatically escalates to formal case docketing and 1st Mediation.</span>
-                        </div>
+
+                <!-- History Table Container -->
+                <div style="overflow-x: auto; padding: 14px 20px 20px;">
+                    <table class="table" style="width: 100%; border-collapse: collapse; font-size: 0.85rem;" id="paanyayaDeliveryHistoryTable">
+                        <thead>
+                            <tr style="border-bottom: 2px solid #e2e8f0; background: #f8fafc; text-align: left;">
+                                <th style="padding: 10px 12px; font-weight: 700; color: #475569;">Attempt</th>
+                                <th style="padding: 10px 12px; font-weight: 700; color: #475569;">Date &amp; Time</th>
+                                <th style="padding: 10px 12px; font-weight: 700; color: #475569;">Serving Officer</th>
+                                <th style="padding: 10px 12px; font-weight: 700; color: #475569;">Address Visited</th>
+                                <th style="padding: 10px 12px; font-weight: 700; color: #475569;">Outcome</th>
+                                <th style="padding: 10px 12px; font-weight: 700; color: #475569;">Remarks</th>
+                                <th style="padding: 10px 12px; font-weight: 700; color: #475569; text-align: center;">Proof</th>
+                                <th style="padding: 10px 12px; font-weight: 700; color: #475569; text-align: center;">Officer's Return</th>
+                                <th style="padding: 10px 12px; font-weight: 700; color: #475569;">Recorded By</th>
+                                <th style="padding: 10px 12px; font-weight: 700; color: #475569; text-align: right;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="paanyayaDeliveryHistoryTbody">
+                            <!-- Populated dynamically by complaints.js -->
+                        </tbody>
+                    </table>
+
+                    <!-- Empty State -->
+                    <div id="paanyayaDeliveryHistoryEmpty" class="empty-detail-state" style="padding: 24px; text-align: center; color: #64748b;">
+                        <p style="margin: 0; font-size: 0.9rem;">No delivery attempts recorded yet for this Paanyaya stage.</p>
                     </div>
                 </div>
             </div>
@@ -1189,17 +1273,29 @@ include '../../layouts/header.php';
                 <button type="button" class="btn-sm btn-outline-sm" onclick="printPaanyayaIframe()" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px;">
                     🖨️ Print
                 </button>
-                <a id="btnModalDownloadPaanyaya" href="#" target="_blank" class="btn-sm btn-create" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px; text-decoration: none;">
+                <a id="btnModalDownloadPaanyaya" href="#" target="_blank" class="btn-sm btn-create" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px; text-decoration: none; background: #0f172a;">
                     ⬇ Download PDF
                 </a>
+                <button type="button" class="btn-sm btn-create" id="btnHeaderToOfficersReturn" onclick="proceedToOfficersReturnFromPreview()" style="background: #2563eb; border-color: #2563eb; display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 6px; text-decoration: none; font-weight: 700;">
+                    📝 Proceed to Officer's Return &rarr;
+                </button>
                 <button type="button" class="close-btn" onclick="closePaanyayaPreviewModal()">&times;</button>
             </div>
         </div>
         <div style="flex: 1 1 auto; background: #475569; position: relative;">
             <iframe id="paanyayaPreviewIframe" src="about:blank" style="width: 100%; height: 100%; border: none; background: #475569;"></iframe>
         </div>
-        <div class="modal-actions" style="padding: 10px 20px; border-top: 1px solid #e2e8f0; background: #f8fafc; margin-top: 0; display: flex; justify-content: flex-end;">
-            <button type="button" class="btn-secondary" onclick="closePaanyayaPreviewModal()">Close Preview</button>
+        <div class="modal-actions" style="padding: 12px 20px; border-top: 1px solid #e2e8f0; background: #f8fafc; margin-top: 0; display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-size: 0.83rem; color: #475569; display: flex; align-items: center; gap: 6px;">
+                <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #2563eb;"></span>
+                <span>Recipient for Delivery: <strong style="color: #0f172a;">Respondent Only</strong> (Up to 6 Attempts on Paanyaya)</span>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <button type="button" class="btn-create" id="btnFooterToOfficersReturn" onclick="proceedToOfficersReturnFromPreview()" style="background: #2563eb; border-color: #2563eb; padding: 8px 18px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(37,99,235,0.25);">
+                    📝 Proceed to Officer's Return &rarr;
+                </button>
+                <button type="button" class="btn-secondary" onclick="closePaanyayaPreviewModal()">Close Preview</button>
+            </div>
         </div>
     </div>
 </div>
@@ -1312,6 +1408,335 @@ include '../../layouts/header.php';
                 <button type="submit" class="btn-create" id="btnSubmitPaanyayaOutcome">Confirm Outcome</button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- ===================================================================
+     MODALS FOR PAANYAYA 1 & 2 WORKFLOW & OFFICER'S RETURN TRACKING
+     =================================================================== -->
+
+<!-- Modal 1: Issue Paanyaya Stage Modal (Paanyaya 1 or Paanyaya 2) -->
+<div id="issuePaanyayaStageModal" class="modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="issueStageModalHeading">
+    <div class="modal-content" style="max-width: 580px; padding: 24px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);">
+        <div class="modal-header" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 0;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 1.4rem;">✉️</span>
+                <div>
+                    <h2 id="issueStageModalHeading" style="font-size: 1.18rem; font-weight: 800; color: #0f172a; margin: 0;">Issue Paanyaya 1</h2>
+                    <span id="issueStageModalSub" style="font-size: 0.8rem; color: #64748b;">First Preliminary Invitation (Informal Dialogue)</span>
+                </div>
+            </div>
+            <button type="button" class="close-btn" onclick="closeIssuePaanyayaStageModal()">&times;</button>
+        </div>
+        <form id="issuePaanyayaStageForm" onsubmit="submitIssuePaanyayaStage(event)">
+            <input type="hidden" name="complaint_id" value="<?php echo $complaintId; ?>">
+            <input type="hidden" id="issueStageType" name="stage_type" value="Paanyaya 1">
+
+            <p style="font-size: 0.86rem; color: #475569; margin: 0 0 16px; line-height: 1.5;">
+                Prepare and issue an official preliminary invitation letter to invite the respondent to an informal dialogue before formal case docketing.
+            </p>
+
+            <div class="form-row-2" style="margin-bottom: 12px;">
+                <div class="form-group">
+                    <label for="issueStageDate" style="font-weight: 600; font-size: 0.84rem;">Dialogue Date <span class="required-mark">*</span></label>
+                    <input type="date" id="issueStageDate" name="invitation_date" required style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                </div>
+                <div class="form-group">
+                    <label for="issueStageTime" style="font-weight: 600; font-size: 0.84rem;">Dialogue Time <span class="required-mark">*</span></label>
+                    <input type="time" id="issueStageTime" name="invitation_time" value="14:00" required style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label for="issueStageOfficer" style="font-weight: 600; font-size: 0.84rem;">Assigned Serving Officer <span class="required-mark">*</span></label>
+                <select id="issueStageOfficer" name="assigned_officer_id" required style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                    <option value="">-- Select Serving Officer --</option>
+                </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label for="issueStageVenue" style="font-weight: 600; font-size: 0.84rem;">Venue</label>
+                <input type="text" id="issueStageVenue" name="venue" value="Tanggapan ng Barangay Tumana" style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label for="issueStageSalaysay" style="font-weight: 600; font-size: 0.84rem;">Salaysay / Purpose of Dialogue (Optional override)</label>
+                <textarea id="issueStageSalaysay" name="salaysay" rows="2" placeholder="Leave blank to use complaint narrative..." style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;"></textarea>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.86rem; color: #1e293b;">
+                    <input type="checkbox" id="issueStageHasSig" name="has_e_signature" value="1" checked style="width: 16px; height: 16px;">
+                    <span>Embed Punong Barangay (Hon. Akiko Lynne Centeno) calligraphic e-signature</span>
+                </label>
+            </div>
+
+            <div id="issueStageError" class="alert alert-danger" style="display:none; margin-bottom: 14px; font-size: 0.84rem; padding: 8px 12px;"></div>
+
+            <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 0;">
+                <button type="button" class="btn-secondary" onclick="closeIssuePaanyayaStageModal()">Cancel</button>
+                <button type="submit" class="btn-create" id="btnSubmitIssueStage" style="background: #16a34a; border-color: #16a34a;">Issue Invitation &amp; Generate Letter</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal 2: Record Officer's Return Modal (Attempts 1 to 6) -->
+<div id="recordOfficersReturnModal" class="modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="rorModalHeading">
+    <div class="modal-content" style="max-width: 620px; padding: 24px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15); max-height: calc(100vh - 40px); overflow-y: auto;">
+        <div class="modal-header" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 0;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 1.4rem;">📝</span>
+                <div>
+                    <h2 id="rorModalHeading" style="font-size: 1.18rem; font-weight: 800; color: #0f172a; margin: 0;">Record Officer's Return</h2>
+                    <div style="display: flex; gap: 6px; align-items: center; margin-top: 3px;">
+                        <span id="rorStageBadge" class="paanyaya-stage-tag">Paanyaya 1</span>
+                        <span id="rorAttemptBadge" style="font-size: 0.75rem; font-weight: 700; background: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 4px;">Attempt 1 of 6</span>
+                    </div>
+                </div>
+            </div>
+            <button type="button" class="close-btn" onclick="closeRecordOfficersReturnModal()">&times;</button>
+        </div>
+
+        <form id="recordOfficersReturnForm" onsubmit="submitRecordOfficersReturn(event)" enctype="multipart/form-data">
+            <input type="hidden" name="complaint_id" value="<?php echo $complaintId; ?>">
+            <input type="hidden" id="rorStageType" name="stage_type" value="Paanyaya 1">
+
+            <!-- 1. Date and Time of Service Attempt -->
+            <div class="form-row-2" style="margin-bottom: 12px;">
+                <div class="form-group">
+                    <label for="rorServiceDatetime" style="font-weight: 600; font-size: 0.84rem;">Date &amp; Time Visited <span class="required-mark">*</span></label>
+                    <input type="datetime-local" id="rorServiceDatetime" name="service_datetime" required style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                </div>
+                <div class="form-group">
+                    <label for="rorServingOfficer" style="font-weight: 600; font-size: 0.84rem;">Assigned Serving Officer <span class="required-mark">*</span></label>
+                    <select id="rorServingOfficer" name="serving_officer_id" required style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                        <option value="">-- Select Serving Officer --</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- 2. Respondent / Intended Recipient -->
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label for="rorRecipientName" style="font-weight: 600; font-size: 0.84rem;">Respondent / Intended Recipient Visited <span class="required-mark">*</span></label>
+                <input type="text" id="rorRecipientName" name="recipient_name" required placeholder="Name of respondent or authorized recipient..." style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+            </div>
+
+            <!-- 3. Address Visited -->
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label for="rorServiceAddress" style="font-weight: 600; font-size: 0.84rem;">Address Visited <span class="required-mark">*</span></label>
+                <input type="text" id="rorServiceAddress" name="service_address" required placeholder="Complete address visited in Barangay Tumana..." style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+            </div>
+
+            <!-- 4. Delivery Outcome -->
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label for="rorDeliveryOutcome" style="font-weight: 600; font-size: 0.84rem;">Delivery Outcome <span class="required-mark">*</span></label>
+                <select id="rorDeliveryOutcome" name="delivery_outcome" required onchange="handleRorOutcomeChange()" style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                    <option value="">-- Select Actual Delivery Outcome --</option>
+                    <option value="Successfully delivered">✓ Successfully delivered</option>
+                    <option value="Recipient unavailable">⚠️ Recipient unavailable</option>
+                    <option value="Recipient refused to receive">⛔ Recipient refused to receive</option>
+                    <option value="Respondent not found at the address">❓ Respondent not found at the address</option>
+                    <option value="Incorrect or incomplete address">📍 Incorrect or incomplete address</option>
+                    <option value="Other reason">📋 Other reason</option>
+                </select>
+            </div>
+
+            <!-- 5. Reason for Unsuccessful Delivery (Conditional) -->
+            <div class="form-group" id="rorUnsuccessfulReasonWrap" style="display: none; margin-bottom: 12px;">
+                <label for="rorUnsuccessfulReason" style="font-weight: 600; font-size: 0.84rem; color: #b91c1c;">Reason for Unsuccessful Delivery <span class="required-mark">*</span></label>
+                <input type="text" id="rorUnsuccessfulReason" name="unsuccessful_reason" placeholder="Explain why the invitation could not be served..." style="padding: 8px 10px; font-size: 0.88rem; border: 1.5px solid #fca5a5; border-radius: 6px; width: 100%;">
+            </div>
+
+            <!-- 6. Remarks or Explanation -->
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label for="rorRemarks" style="font-weight: 600; font-size: 0.84rem;">Remarks / Detailed Explanation</label>
+                <textarea id="rorRemarks" name="remarks" rows="2" placeholder="Describe interaction, who was present, verbal statements, or serving notes..." style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;"></textarea>
+            </div>
+
+            <!-- 7. Proof of Service (Attachment) -->
+            <div class="form-group" style="margin-bottom: 14px;">
+                <label for="rorProofFile" style="font-weight: 600; font-size: 0.84rem;">Proof of Service Attachment (Photo / Document)</label>
+                <input type="file" id="rorProofFile" name="proof_file" accept="image/jpeg,image/png,image/webp,application/pdf" style="padding: 6px; font-size: 0.82rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%; background: #f8fafc;">
+                <span style="font-size: 0.74rem; color: #64748b;">Accepted formats: JPG, PNG, WEBP, PDF (Max 10MB). Photos of the residence or received letter.</span>
+            </div>
+
+            <!-- 8. GPS Coordinates & Recorded Service Location -->
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-size: 0.8rem; font-weight: 700; color: #0f172a;">📍 GPS Location Coordinates</span>
+                    <button type="button" class="btn-sm btn-case-outline" onclick="captureReturnGpsLocation()" style="padding: 3px 10px; font-size: 0.76rem;">
+                        📍 Capture Current Location
+                    </button>
+                </div>
+                <div class="form-row-2">
+                    <div class="form-group" style="margin-bottom: 6px;">
+                        <input type="text" id="rorLatitude" name="latitude" placeholder="Latitude (e.g. 14.6521)" style="padding: 6px 8px; font-size: 0.82rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 6px;">
+                        <input type="text" id="rorLongitude" name="longitude" placeholder="Longitude (e.g. 121.0854)" style="padding: 6px 8px; font-size: 0.82rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                    </div>
+                </div>
+                <div id="rorGpsStatus" style="font-size: 0.74rem; color: #64748b; margin-top: 2px;"></div>
+            </div>
+
+            <!-- 9. Recorded By Display -->
+            <div style="font-size: 0.78rem; color: #64748b; margin-bottom: 16px; padding: 8px 12px; background: #f1f5f9; border-radius: 6px;">
+                <strong>Recorded by:</strong> <?php echo htmlspecialchars($_SESSION['username'] ?? 'Authorized User'); ?> &bull; 
+                <strong>Submission Time:</strong> <?php echo date('M j, Y g:i A'); ?>
+            </div>
+
+            <div id="rorErrorBox" class="alert alert-danger" style="display:none; margin-bottom: 14px; font-size: 0.84rem; padding: 8px 12px;"></div>
+
+            <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 0;">
+                <button type="button" class="btn-secondary" onclick="closeRecordOfficersReturnModal()">Cancel</button>
+                <button type="submit" class="btn-create" id="btnSubmitRecordReturn" style="background: #2563eb; border-color: #2563eb;">Save Officer's Return</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal 3: View Officer's Return Details Modal -->
+<div id="viewOfficersReturnModal" class="modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="vorModalHeading">
+    <div class="modal-content" style="max-width: 660px; padding: 24px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15); max-height: calc(100vh - 40px); overflow-y: auto;">
+        <div class="modal-header" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 0;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 1.4rem;">📄</span>
+                <div>
+                    <h2 id="vorModalHeading" style="font-size: 1.18rem; font-weight: 800; color: #0f172a; margin: 0;">Officer's Return Details</h2>
+                    <span id="vorModalSub" style="font-size: 0.8rem; color: #64748b;">Official Service Attempt Record</span>
+                </div>
+            </div>
+            <button type="button" class="close-btn" onclick="closeViewOfficersReturnModal()">&times;</button>
+        </div>
+
+        <div id="vorContentBody" style="display: flex; flex-direction: column; gap: 14px;">
+            <!-- Populated dynamically by complaints.js -->
+        </div>
+
+        <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; padding-top: 14px; border-top: 1px solid #e2e8f0;">
+            <button type="button" class="btn-case-outline" id="btnVorEditCorrection" style="display: none;" onclick="openEditFromViewReturn()">
+                ✏️ Edit Correction
+            </button>
+            <button type="button" class="btn-secondary" onclick="closeViewOfficersReturnModal()">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal 4: Edit Officer's Return Correction Modal -->
+<div id="editOfficersReturnModal" class="modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="eorModalHeading">
+    <div class="modal-content" style="max-width: 560px; padding: 24px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);">
+        <div class="modal-header" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 0;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 1.3rem;">✏️</span>
+                <h2 id="eorModalHeading" style="font-size: 1.15rem; font-weight: 700; color: #0f172a; margin: 0;">Edit Officer's Return (Permitted Correction)</h2>
+            </div>
+            <button type="button" class="close-btn" onclick="closeEditOfficersReturnModal()">&times;</button>
+        </div>
+        <form id="editOfficersReturnForm" onsubmit="submitEditOfficersReturn(event)">
+            <input type="hidden" id="eorReturnId" name="return_id" value="">
+
+            <p style="font-size: 0.84rem; color: #475569; margin: 0 0 14px; line-height: 1.45;">
+                Permitted correction to remarks, address, or explanation. The original record is preserved and all corrections are recorded in the audit trail.
+            </p>
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label for="eorServiceAddress" style="font-weight: 600; font-size: 0.84rem;">Service Address Visited</label>
+                <input type="text" id="eorServiceAddress" name="service_address" style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label for="eorUnsuccessfulReason" style="font-weight: 600; font-size: 0.84rem;">Reason for Unsuccessful Delivery</label>
+                <input type="text" id="eorUnsuccessfulReason" name="unsuccessful_reason" style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label for="eorRemarks" style="font-weight: 600; font-size: 0.84rem;">Remarks / Explanation</label>
+                <textarea id="eorRemarks" name="remarks" rows="2" style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;"></textarea>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label for="eorCorrectionNotes" style="font-weight: 600; font-size: 0.84rem; color: #b91c1c;">Correction Justification / Reason <span class="required-mark">*</span></label>
+                <input type="text" id="eorCorrectionNotes" name="correction_notes" required placeholder="State reason for this correction (required for audit trail)..." style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+            </div>
+
+            <div id="eorErrorBox" class="alert alert-danger" style="display:none; margin-bottom: 14px; font-size: 0.84rem; padding: 8px 12px;"></div>
+
+            <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 0;">
+                <button type="button" class="btn-secondary" onclick="closeEditOfficersReturnModal()">Cancel</button>
+                <button type="submit" class="btn-create" id="btnSubmitEditReturn">Save Correction</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal 5: Authorized Lupon Review Modal (Exhausted Attempts / Transition Override) -->
+<div id="reviewPaanyayaModal" class="modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="rpmModalHeading">
+    <div class="modal-content" style="max-width: 580px; padding: 24px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);">
+        <div class="modal-header" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 0;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 1.4rem;">⚖️</span>
+                <div>
+                    <h2 id="rpmModalHeading" style="font-size: 1.18rem; font-weight: 800; color: #0f172a; margin: 0;">Authorized Lupon Review Decision</h2>
+                    <span id="rpmModalSub" style="font-size: 0.8rem; color: #64748b;">Review for Paanyaya 1</span>
+                </div>
+            </div>
+            <button type="button" class="close-btn" onclick="closePaanyayaReviewModal()">&times;</button>
+        </div>
+
+        <form id="reviewPaanyayaForm" onsubmit="submitPaanyayaReview(event)">
+            <input type="hidden" name="complaint_id" value="<?php echo $complaintId; ?>">
+            <input type="hidden" id="rpmStageType" name="stage_type" value="Paanyaya 1">
+
+            <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; font-size: 0.86rem; color: #991b1b; line-height: 1.45;">
+                <strong>⚠️ Safeguard Notice:</strong> All six (6) delivery attempts have been exhausted without successful service. The system does not automatically advance or issue summons. An authorized Lupon officer must review and decide the next procedural action.
+            </div>
+
+            <div class="form-group" style="margin-bottom: 14px;">
+                <label for="rpmDecision" style="font-weight: 600; font-size: 0.84rem;">Authorized Review Determination <span class="required-mark">*</span></label>
+                <select id="rpmDecision" name="decision" required style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                    <option value="">-- Select Procedural Decision --</option>
+                    <option value="Approved for Paanyaya 2">Authorize Paanyaya 2 (Proceed to Second Preliminary Invitation)</option>
+                    <option value="Approved for Summons">Authorize Formal Summons (Escalate to 1st Mediation Summons)</option>
+                    <option value="Case Closed">Close Case (Administratively Dismissed / Dropped)</option>
+                </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label for="rpmReviewNotes" style="font-weight: 600; font-size: 0.84rem;">Review Notes &amp; Official Justification <span class="required-mark">*</span></label>
+                <textarea id="rpmReviewNotes" name="review_notes" rows="3" required placeholder="State official reasons, review findings, and Lupon instructions for this decision..." style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;"></textarea>
+            </div>
+
+            <div id="rpmErrorBox" class="alert alert-danger" style="display:none; margin-bottom: 14px; font-size: 0.84rem; padding: 8px 12px;"></div>
+
+            <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 0;">
+                <button type="button" class="btn-secondary" onclick="closePaanyayaReviewModal()">Cancel</button>
+                <button type="submit" class="btn-create" id="btnSubmitReview" style="background: #dc2626; border-color: #dc2626;">Confirm Decision</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal 6: Proof of Service Lightbox Viewer -->
+<div id="paanyayaProofLightboxModal" class="modal" style="display:none; z-index: 10000;" role="dialog" aria-modal="true" aria-labelledby="plbTitle">
+    <div class="modal-content" style="max-width: 800px; padding: 20px; border-radius: 12px; background: #ffffff;">
+        <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; padding-bottom: 0; border: none;">
+            <h3 id="plbTitle" style="margin: 0; font-size: 1.1rem; color: #0f172a; font-weight: 700;">Proof of Service Attachment</h3>
+            <button type="button" class="close-btn" onclick="closePaanyayaProofLightbox()">&times;</button>
+        </div>
+        <div style="text-align: center; max-height: calc(85vh - 120px); overflow: auto; background: #0f172a; border-radius: 8px; padding: 10px;">
+            <img id="plbImage" src="" alt="Proof of Service" style="max-width: 100%; max-height: 70vh; object-fit: contain; border-radius: 4px;">
+            <div id="plbPdfContainer" style="display: none; padding: 20px; color: #ffffff;">
+                <p>This proof is a PDF document.</p>
+                <a id="plbPdfLink" href="#" target="_blank" class="btn-create" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px;">
+                    📄 Open PDF in New Window
+                </a>
+            </div>
+        </div>
+        <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px;">
+            <a id="plbDownloadBtn" href="#" download class="btn-case-outline" style="text-decoration: none;">Download File</a>
+            <button type="button" class="btn-secondary" onclick="closePaanyayaProofLightbox()">Close</button>
+        </div>
     </div>
 </div>
 

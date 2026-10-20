@@ -197,7 +197,11 @@ class ComplaintLifecycleService
             return self::CLOSED;
         }
 
-        if ($complaintStatus === 'Pre-Docketed (Paanyaya)') {
+        if (
+            $complaintStatus === 'Pre-Docketed (Paanyaya)' ||
+            $complaintStatus === 'Paanyaya In Progress' ||
+            str_contains($complaintStatus, 'Paanyaya')
+        ) {
             return self::PAANYAYA;
         }
 

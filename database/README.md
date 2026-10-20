@@ -93,11 +93,17 @@ databases receive these fields and constraints directly from `schema.sql`.
 
 - Hearing schedules are tracked in `hearings` and associated deadlines in `case_deadlines`.
 - **Progression Sequence**:
-  - Up to 3 Mediation hearings (`1st Mediation`, `2nd Mediation`, `3rd Mediation`).
-  - Followed by up to 3 Conciliation hearings (`1st Conciliation`, `2nd Conciliation`, `3rd Conciliation`).
+  - **Preliminary Paanyaya Dialogue Stages**:
+    - `Paanyaya 1` (First Preliminary Invitation, up to 6 delivery attempts).
+    - `Paanyaya 2` (Second Preliminary Invitation, up to 6 delivery attempts, unlocked after Paanyaya 1 review/escalation).
+    - Cases in this stage hold the `Pre-Docketed (Paanyaya)` state; formal summons and mediation scheduling remain locked until service or administrative escalation.
+  - **Formal Mediation Sessions**:
+    - Up to 3 Mediation hearings (`1st Mediation`, `2nd Mediation`, `3rd Mediation`).
+  - **Pangkat Conciliation Proceedings**:
+    - Followed by up to 3 Conciliation hearings (`1st Conciliation`, `2nd Conciliation`, `3rd Conciliation`).
   - Scheduling halts permanently once the 3rd Conciliation hearing is reached.
 - **Automatic Docketing**:
-  - Scheduling the `1st Mediation` hearing automatically transitions `cases.case_status` to `'Docketed'`
+  - Completing Paanyaya delivery requirements unlocks formal summons issuance. Issuing `1st Mediation` summons automatically transitions `cases.case_status` to `'Docketed'`
     and synchronizes `complaints.status` to `'Docketed'` in the same database transaction.
 
 The schema keeps historical audit, log, document, and service records when a
@@ -171,5 +177,22 @@ For existing databases updating to the intake preliminary screening and enhanced
     - Stores statutory and declared non-working holidays to prevent invalid hearing bookings.
   - **`venue_unavailabilities` Table**:
     - Stores facility/venue blackout windows and maintenance schedules to avoid room booking conflicts.
+
+## Preliminary Paanyaya Stages & Officer's Return Tracking (October 2026)
+
+For existing databases updating to the mandatory preliminary Paanyaya process before mediation and summons issuance, apply:
+- `database/migrations/20261020_001_create_paanyaya_stages_and_returns.sql`:
+  - **`paanyaya_stages` Table**:
+    - Tracks stage metadata and status for `Paanyaya 1` and `Paanyaya 2` (`Not Started`, `In Progress`, `Successfully Delivered`, `Attempts Exhausted – For Review`, `Completed`, `Cancelled`).
+    - Stores invitation schedule details (`invitation_date`, `invitation_time`, `venue`), salaysay narrative, electronic signature flag, and generated PDF link.
+    - Captures administrative review decisions when attempts are exhausted (`review_status`, `review_notes`, `reviewed_by`, `reviewed_at`).
+    - Enforces uniqueness per complaint and stage via `uq_complaint_stage (complaint_id, stage_type)`.
+  - **`paanyaya_officer_returns` Table**:
+    - Dedicated audit repository for up to six (6) independent delivery attempts per Paanyaya stage.
+    - Records service attempt number (1 to 6), service timestamp (`service_datetime`), serving officer (`serving_officer_id`), respondent/intended recipient name, and service address visited.
+    - Stores granular delivery outcomes (`Successfully delivered`, `Recipient unavailable`, `Recipient refused to receive`, `Respondent not found at the address`, `Incorrect or incomplete address`, `Other reason`).
+    - Stores failure reason (`unsuccessful_reason`), serving notes/witness info (`remarks`), proof attachments (`proof_file_path`), GPS coordinates (`latitude`, `longitude`, `service_location`), and audit actors (`recorded_by`, `submitted_at`).
+    - Enforces sequential attempt numbering and duplicate prevention via unique constraint `uq_stage_attempt (paanyaya_stage_id, attempt_number)`.
+
 
 

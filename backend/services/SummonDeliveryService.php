@@ -1452,10 +1452,12 @@ class SummonDeliveryService
             $existing = $chk->fetch(PDO::FETCH_ASSOC);
 
             if ($existing && !empty($existing['delivery_status']) && $existing['delivery_status'] !== 'Pending') {
-                return [
-                    'success' => false,
-                    'message' => "Attempt #{$existing['attempt_number']} for {$existing['party_type']} has already been officially recorded as '{$existing['delivery_status']}' and cannot be modified."
-                ];
+                $this->audit->log(
+                    $actorUserId,
+                    "Edited Officer's Return for Attempt #{$existing['attempt_number']} ({$existing['party_type']}) from '{$existing['delivery_status']}' to '{$deliveryStatus}'",
+                    'Summons',
+                    $caseId
+                );
             }
 
             $upd = $this->conn->prepare("
@@ -1510,10 +1512,12 @@ class SummonDeliveryService
 
             if ($existing) {
                 if (!empty($existing['delivery_status']) && $existing['delivery_status'] !== 'Pending') {
-                    return [
-                        'success' => false,
-                        'message' => "Attempt #{$existing['attempt_number']} for {$existing['party_type']} has already been officially recorded as '{$existing['delivery_status']}' and cannot be modified."
-                    ];
+                    $this->audit->log(
+                        $actorUserId,
+                        "Edited Officer's Return for Attempt #{$existing['attempt_number']} ({$existing['party_type']}) from '{$existing['delivery_status']}' to '{$deliveryStatus}'",
+                        'Summons',
+                        $caseId
+                    );
                 }
                 $deliveryId = (int) $existing['delivery_id'];
                 $upd = $this->conn->prepare("

@@ -1814,6 +1814,23 @@ class PDFService
             }
         }
 
+        // Check if specific Paanyaya stage is requested
+        $stageType = $options['stage_type'] ?? null;
+        if ($stageType) {
+            $stStmt = $this->conn->prepare('SELECT * FROM paanyaya_stages WHERE complaint_id = ? AND stage_type = ? LIMIT 1');
+            $stStmt->execute([$complaintId, $stageType]);
+            $stageData = $stStmt->fetch(PDO::FETCH_ASSOC);
+            if ($stageData) {
+                $paanyaya = $stageData;
+                if (empty($options['invitation_date']) && !empty($stageData['invitation_date'])) $options['invitation_date'] = $stageData['invitation_date'];
+                if (empty($options['invitation_time']) && !empty($stageData['invitation_time'])) $options['invitation_time'] = $stageData['invitation_time'];
+                if (empty($options['venue']) && !empty($stageData['venue'])) $options['venue'] = $stageData['venue'];
+                if (empty($options['salaysay']) && !empty($stageData['salaysay'])) $options['salaysay'] = $stageData['salaysay'];
+                if (!isset($options['has_e_signature']) && isset($stageData['has_e_signature'])) $options['has_e_signature'] = (bool)$stageData['has_e_signature'];
+                if (empty($options['attempt_number'])) $options['attempt_number'] = ($stageType === 'Paanyaya 2') ? 2 : 1;
+            }
+        }
+
         // Fetch latest paanyaya session record if exists
         $sessionStmt = $this->conn->prepare('SELECT * FROM paanyaya_sessions WHERE complaint_id = ? ORDER BY attempt_number DESC, session_id DESC LIMIT 1');
         $sessionStmt->execute([$complaintId]);

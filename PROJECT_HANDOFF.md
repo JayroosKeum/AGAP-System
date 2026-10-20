@@ -1289,6 +1289,59 @@ The Complaint Details and Proof of Service modules provide an integrated, end-to
 
 ---
 
+## Preliminary Paanyaya Workflow & Officer's Return Tracking (October 2026)
+
+A dedicated informal preliminary invitation workflow (**Paanyaya**) was inserted between Complaint Details / Intake and formal Mediation, implementing the Barangay Tumana preliminary dispute resolution protocol. Before issuing formal court-annexed summonses (KP Forms 8 & 9), authorized personnel conduct informal preliminary dialogue attempts.
+
+### Key Implemented Components
+
+1. **Workflow Sequence & State Machine**:
+   - Canonical sequence: `Complaint Intake / Overview` $\rightarrow$ `Paanyaya 1` $\rightarrow$ `Paanyaya 2` $\rightarrow$ `Mediation` $\rightarrow$ `Conciliation` $\rightarrow$ `Arbitration / CFA`.
+   - Cases in this preliminary phase hold the `Pre-Docketed (Paanyaya)` state (`cases.case_status = 'Pre-Docketed (Paanyaya)'`).
+   - The formal summons action `Issue Summon 1st Attempt` is strictly gated and locked until preliminary requirements are satisfied.
+2. **Dedicated Paanyaya Tab (`complaint-details.php`)**:
+   - Positioned between Case Summary and Mediation in the complaint workspace navigation.
+   - Distinct sections for:
+     - **Paanyaya 1 – First Preliminary Invitation**: Supports up to six (6) independent delivery attempts.
+     - **Paanyaya 2 – Second Preliminary Invitation**: Supports up to six (6) independent delivery attempts, locked until Paanyaya 1 is completed or escalated via Lupon administrative review.
+   - Independent attempt counter (1 to 6) per stage enforced by database constraint `uq_stage_attempt (paanyaya_stage_id, attempt_number)` and `Paanyaya.php` model. Attempt counters never reset across sessions or overlap between stages.
+3. **Official Invitation Generation & Print Preview**:
+   - Custom invitation letter generation with official Barangay Tumana and City of Marikina seals, schedule (date, time, venue: *Tanggapan ng Barangay Tumana*), salaysay summary, and Punong Barangay / Lupon signature block.
+   - Post-filing modal preview (`#paanyayaPreviewModal`): Displays high-fidelity preview with zero-watermark printing, PDF downloading, and one-click transition to Officer's Return.
+   - Dedicated backend API endpoints:
+     - `backend/api/paanyaya/preview.php` (`format=html` or `format=pdf` / `download=1`)
+     - `backend/api/paanyaya/issue-stage.php`
+     - `backend/api/paanyaya/stages.php`
+     - `backend/api/paanyaya/record-return.php`
+     - `backend/api/paanyaya/update-return.php`
+     - `backend/api/paanyaya/return-details.php`
+     - `backend/api/paanyaya/review-stage.php`
+4. **Granular Officer's Return Tracking**:
+   - Records attempt number (1–6), service datetime, serving officer, recipient name, address visited, delivery outcome, failure reason, remarks/witness info, proof photo/attachment upload, and GPS coordinates.
+   - Granular outcomes: `Successfully delivered`, `Recipient unavailable`, `Recipient refused to receive`, `Respondent not found at the address`, `Incorrect or incomplete address`, and `Other reason`.
+   - Responsive delivery history tables per stage with outcome badges, serving officer details, proof links, and inline action buttons (`✏️ Edit Return`).
+5. **Administrative Review Workflow**:
+   - If all six (6) attempts are exhausted without delivery, the stage enters `Attempts Exhausted – For Review`.
+   - Authorized personnel record a formal Lupon decision: `Approved for Paanyaya 2`, `Approved for Summons`, or `Case Closed`.
+6. **Proof of Service Integration (`proof-service.php`)**:
+   - Unified workspace displays both formal summons cases and Paanyaya cases.
+   - Adaptive Paanyaya layout: displays a full-width Respondent delivery card (Complainant notice is hidden as preliminary invitations are delivered exclusively to the respondent).
+   - 6-attempt horizontal stepper showing attempt nodes (1st to 6th Attempt) with live status (`Served`, `Failed`, `Pending`, `Unissued`).
+   - **Fully Editable Returns & Correction Workflow**:
+     - All issued stepper attempt circles are clickable with pointer cursors and open the return drawer for that attempt.
+     - Row-level `✏️ Edit Return` buttons allow authorized personnel to edit and correct existing returns (delivery status, date/time, recipient name, relationship, failure reason, remarks).
+     - Drawer automatically switches between **Edit Mode** (`Edit Officer's Return`) and **Log Return Mode** (`Log Officer's Return`).
+     - Updates are routed through `GPSController::recordOfficerReturn` to `Paanyaya::updateOfficerReturn` and `SummonDeliveryService::recordDelivery` with comprehensive audit logging via `AuditService`, without triggering attempt counter limit errors.
+7. **Database Schema & Migrations**:
+   - `database/migrations/20261020_001_create_paanyaya_stages_and_returns.sql`:
+     - `paanyaya_stages`: Stage type, status, schedule details, review status, and audit foreign keys.
+     - `paanyaya_officer_returns`: Attempt number, delivery outcome, address, GPS, notes, proof path, and audit fields.
+8. **Automated Verification Suites**:
+   - `scratch/test_e2e_full_verification.php`: 48 passing assertions testing the complete lifecycle (intake, Stage 1 attempts 1–6, review decision, Stage 2 attempts, summons lock/unlock transitions).
+   - `scratch/test_proof_service_paanyaya_integration.php`: 17 passing assertions verifying API case listings, delivery fetching, and return recording via Proof of Service.
+
+---
+
 ## Present but Incomplete or Requiring Verification
 
 - Project-wide RBAC remains inconsistent, but broad RBAC hardening is not the immediate priority.

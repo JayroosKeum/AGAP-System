@@ -51,6 +51,7 @@ class ComplaintController
         $paaModel = new Paanyaya();
         $complaint['paanyaya'] = $paaModel->getByComplaintId($id);
         $complaint['paanyaya_workspace'] = $paaModel->getWorkspaceData($id);
+        $complaint['paanyaya_stages'] = $paaModel->getTwoStagesData($id);
         if (!empty($complaint['case_id'])) {
             // The case workspace is supplementary to the complaint record.  A
             // workspace/schema problem must never prevent the complaint itself,
@@ -178,8 +179,22 @@ class ComplaintController
                     $result['message'] .= ' (1st Paanyaya informal dialogue scheduled: Complaint placed in Pre-Docketing.)';
                     $result['paanyaya_session_id'] = $paaResult['session_id'] ?? null;
                     $result['pdf_path'] = $paaResult['pdf_path'] ?? null;
+
+                    // Automatically initialize Paanyaya 1 stage in paanyaya_stages table
+                    try {
+                        $paanyayaModel->issueStage($complaintId, 'Paanyaya 1', [
+                            'invitation_date' => $paaDate,
+                            'invitation_time' => $paaTime,
+                            'venue' => $paaVenue,
+                            'salaysay' => $paaSalaysay,
+                            'has_e_signature' => $paaSig,
+                            'assigned_officer_id' => (int) ($_SESSION['user_id'] ?? 1)
+                        ], (int) ($_SESSION['user_id'] ?? 1));
+                    } catch (Throwable $stageErr) {
+                        error_log('Paanyaya 1 stage auto-issue notice: ' . $stageErr->getMessage());
+                    }
                 }
-                $result['redirect_url'] = '../../frontend/pages/complaints/complaint-details.php?id=' . $complaintId . '&tab=paanyaya';
+                $result['redirect_url'] = '../../frontend/pages/complaints/complaint-details.php?id=' . $complaintId . '&tab=paanyaya&preview=1';
             }
 
             if ($isDraft) {
