@@ -158,7 +158,7 @@ CREATE TABLE complaints (
     additional_details LONGTEXT NULL,
     requested_resolution TEXT NULL,
     review_notes TEXT NULL,
-    status ENUM('Draft', 'Filed', 'Under Review', 'Needs Information', 'Accepted', 'Rejected', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Dismissed', 'CFA Issued', 'Archived', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT') NOT NULL DEFAULT 'Filed',
+    status VARCHAR(50) NOT NULL DEFAULT 'Filed',
     document_status ENUM('No Scan Uploaded', 'Scan Uploaded', 'Updated Scan Uploaded') NOT NULL DEFAULT 'No Scan Uploaded',
     is_draft TINYINT(1) NOT NULL DEFAULT 0,
     paanyaya_attempt_count TINYINT UNSIGNED DEFAULT 1,
@@ -327,6 +327,24 @@ CREATE TABLE IF NOT EXISTS paanyaya_officer_returns (
     CONSTRAINT fk_por_complaint FOREIGN KEY (complaint_id) REFERENCES complaints (complaint_id) ON DELETE CASCADE,
     CONSTRAINT fk_por_officer FOREIGN KEY (serving_officer_id) REFERENCES users (user_id) ON DELETE RESTRICT,
     CONSTRAINT fk_por_recorded_by FOREIGN KEY (recorded_by) REFERENCES users (user_id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Migration: 20261020_002_create_paanyaya_minutes_table.sql
+CREATE TABLE IF NOT EXISTS paanyaya_minutes (
+    minutes_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    complaint_id INT UNSIGNED NOT NULL,
+    stage_type ENUM('Paanyaya 1', 'Paanyaya 2') NOT NULL,
+    dialogue_date DATETIME NOT NULL,
+    complainant_attended ENUM('Present', 'Absent') DEFAULT 'Present',
+    respondent_attended ENUM('Present', 'Absent') DEFAULT 'Present',
+    discussion_summary TEXT NOT NULL,
+    agreed_terms TEXT NULL,
+    outcome ENUM('Settled', 'No_Agreement', 'Party_Absent') NOT NULL,
+    complainant_choice ENUM('Request_Paanyaya_2', 'Escalate_Mediation', 'None') DEFAULT 'None',
+    scanned_minutes_path VARCHAR(255) NULL,
+    recorded_by INT UNSIGNED NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_pm_complaint FOREIGN KEY (complaint_id) REFERENCES complaints (complaint_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 

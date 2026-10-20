@@ -407,8 +407,12 @@ async function loadComplaintDetails() {
         let displayStage = caseStage ? (caseStage + ' Stage') : (data.lifecycle_status || 'Under Review');
         if (data.status === 'Pre-Docketed (Paanyaya)') {
             displayStage = 'Pre-Docketed (Paanyaya)';
-        } else if (data.status === 'Resolved at Paanyaya / Closed') {
-            displayStage = 'Resolved at Paanyaya / Closed';
+        } else if (data.status === 'Settled' || data.status === 'Resolved at Paanyaya / Closed') {
+            displayStage = 'Settled';
+
+
+
+
         }
         if (statusEl) {
             if (data.status === 'Pre-Docketed (Paanyaya)') {
@@ -416,11 +420,16 @@ async function loadComplaintDetails() {
                 statusEl.style.background = '#dcfce7';
                 statusEl.style.color = '#15803d';
                 statusEl.style.border = '1px solid #86efac';
-            } else if (data.status === 'Resolved at Paanyaya / Closed') {
+            } else if (data.status === 'Settled' || data.status === 'Resolved at Paanyaya / Closed') {
+
+
+
                 statusEl.className = 'case-stage-pill';
-                statusEl.style.background = '#f1f5f9';
-                statusEl.style.color = '#334155';
-                statusEl.style.border = '1px solid #cbd5e1';
+                statusEl.style.background = '#dcfce7';
+                statusEl.style.color = '#15803d';
+                statusEl.style.border = '1px solid #86efac';
+
+
             } else {
                 const stSlug = (caseStage || data.lifecycle_status || 'pending').toLowerCase().replace(/[^a-z0-9]/g, '-');
                 statusEl.className = 'case-stage-pill status-' + stSlug;
@@ -431,11 +440,11 @@ async function loadComplaintDetails() {
         // Action Bar Status Tracker Button
         const statusBtnLabel = document.getElementById('statusTrackerButtonLabel');
         if (statusBtnLabel) {
-            statusBtnLabel.textContent = 'Status: ' + (caseStage ? 'In Progress' : (data.status === 'Pre-Docketed (Paanyaya)' ? 'Paanyaya' : (data.lifecycle_status || 'In Progress')));
+            statusBtnLabel.textContent = 'Status: ' + (caseStage ? 'In Progress' : (data.status === 'Pre-Docketed (Paanyaya)' ? 'Paanyaya' : (data.status === 'Settled' ? 'Settled' : (data.lifecycle_status || 'In Progress'))));
         }
         const statusDot = document.getElementById('statusDotIndicator');
         if (statusDot) {
-            const isClosed = ['Amicable Settlement', 'Arbitration Award', 'Settled', 'Closed', 'Resolved at Paanyaya / Closed'].includes(data.lifecycle_status) || data.status === 'Resolved at Paanyaya / Closed';
+            const isClosed = ['Amicable Settlement', 'Arbitration Award', 'Settled', 'Closed', 'Resolved at Paanyaya / Closed'].includes(data.lifecycle_status) || data.status === 'Resolved at Paanyaya / Closed' || data.status === 'Settled';
             statusDot.style.background = isClosed ? '#10b981' : (data.status === 'Pre-Docketed (Paanyaya)' ? '#16a34a' : '#f59e0b');
         }
 
@@ -1327,7 +1336,33 @@ function renderPaanyayaStageCard(stageNum, stageData, caseNum, compNames, respNa
         const partiesBox = document.getElementById('p2PartiesBox');
         const btnIssue = document.getElementById('btnIssueP2');
 
-        if (!stageData?.is_eligible) {
+        const stage1 = window.paanyayaStagesData?.stage_1 || {};
+        const isP1Solved = (window.complaintData?.status === 'Settled') ||
+                           (window.complaintData?.status === 'Resolved at Paanyaya / Closed') ||
+                           (window.complaintData?.paanyaya_1_outcome === 'Settled') ||
+                           (stage1.outcome === 'Settled') ||
+                           (stage1.minutes?.outcome === 'Settled') ||
+                           (stageData?.bypassed === true);
+
+        const p2WasIssued = !!(details.issued_at) || (count > 0);
+
+        // When the dispute is solved right from Paanyaya 1, hide Card 2 completely
+        const p2Card = document.getElementById('paanyaya2Card');
+        if (isP1Solved && !p2WasIssued) {
+            if (p2Card) p2Card.style.display = 'none';
+            return;
+        } else if (p2Card) {
+            p2Card.style.display = '';
+        }
+
+        const canIssueP2 = (stage1.minutes_recorded && 
+                            ['No_Agreement', 'Party_Absent'].includes(stage1.outcome) && 
+                            stage1.complainant_choice === 'Request_Paanyaya_2');
+
+        const isP2Active = (details.status && details.status !== 'Not Started' && details.status !== 'Locked') && p2WasIssued;
+        const isP2Unlocked = !isP1Solved && (stageData?.is_eligible || canIssueP2 || isP2Active);
+
+        if (!isP2Unlocked) {
             if (lockedNotice) lockedNotice.style.display = 'flex';
             if (metricGrid) metricGrid.style.display = 'none';
             if (stepperWrap) stepperWrap.style.display = 'none';
@@ -1338,10 +1373,8 @@ function renderPaanyayaStageCard(stageNum, stageData, caseNum, compNames, respNa
                 badge.className = 'paanyaya-status-badge status-locked';
             }
             if (btnIssue) {
-                btnIssue.style.display = 'inline-flex';
+                btnIssue.style.display = 'none'; // Strictly hidden per spec
                 btnIssue.disabled = true;
-                btnIssue.style.opacity = '0.55';
-                btnIssue.style.cursor = 'not-allowed';
             }
             const btnRecord = document.getElementById('btnRecordReturnP2');
             const btnPreview = document.getElementById('btnPreviewP2');
@@ -1349,6 +1382,11 @@ function renderPaanyayaStageCard(stageNum, stageData, caseNum, compNames, respNa
             if (btnRecord) btnRecord.style.display = 'none';
             if (btnPreview) btnPreview.style.display = 'none';
             if (btnReview) btnReview.style.display = 'none';
+            const btnRecMin = document.getElementById('btnRecordMinutesP2');
+            const btnViewMin = document.getElementById('btnViewMinutesP2');
+            if (btnRecMin) btnRecMin.style.display = 'none';
+            if (btnViewMin) btnViewMin.style.display = 'none';
+
             return;
         } else {
             if (lockedNotice) lockedNotice.style.display = 'none';
@@ -1454,7 +1492,6 @@ function renderPaanyayaStageCard(stageNum, stageData, caseNum, compNames, respNa
     const btnRecordId = isP2 ? 'btnRecordReturnP2' : 'btnRecordReturnP1';
     const btnPreviewId = isP2 ? 'btnPreviewP2' : 'btnPreviewP1';
     const btnReviewId = isP2 ? 'btnReviewP2' : 'btnReviewP1';
-
     const btnIssue = document.getElementById(btnIssueId);
     const btnRecord = document.getElementById(btnRecordId);
     const btnPreview = document.getElementById(btnPreviewId);
@@ -1475,6 +1512,59 @@ function renderPaanyayaStageCard(stageNum, stageData, caseNum, compNames, respNa
     if (btnReview) {
         btnReview.style.display = stageData?.needs_review ? 'inline-flex' : 'none';
     }
+
+    const isDelivered = !!stageData?.is_delivered || (details.status === 'Successfully Delivered');
+    const isClosedOrDocketed = ['Settled', 'Closed', 'Resolved at Paanyaya / Closed'].includes(window.complaintData?.status) || !!window.complaintData?.case_id;
+    const p2Started = isP2 ? false : (window.paanyayaStagesData?.stage_2?.details?.status && window.paanyayaStagesData?.stage_2?.details?.status !== 'Not Started');
+
+    // Dialogue Minutes Bindings
+    const btnRecordMinutesId = isP2 ? 'btnRecordMinutesP2' : 'btnRecordMinutesP1';
+    const btnViewMinutesId = isP2 ? 'btnViewMinutesP2' : 'btnViewMinutesP1';
+    const minutesRowId = isP2 ? 'p2MinutesRow' : 'p1MinutesRow';
+    const minutesBadgeId = isP2 ? 'p2MinutesBadge' : 'p1MinutesBadge';
+    const minutesSummaryId = isP2 ? 'p2MinutesSummary' : 'p1MinutesSummary';
+
+    const btnRecordMinutes = document.getElementById(btnRecordMinutesId);
+    const btnViewMinutes = document.getElementById(btnViewMinutesId);
+    const minutesRow = document.getElementById(minutesRowId);
+    const minutesBadge = document.getElementById(minutesBadgeId);
+    const minutesSummary = document.getElementById(minutesSummaryId);
+
+    const hasMinutes = !!stageData?.minutes_recorded;
+    const minutesData = stageData?.minutes || null;
+
+    if (minutesRow && minutesBadge && minutesSummary) {
+        if (hasMinutes && minutesData) {
+            minutesRow.style.display = 'block';
+            let bText = 'Minutes Recorded';
+            let bClass = 'outcome-delivered';
+            if (minutesData.outcome === 'Settled') {
+                bText = '✓ Settled Informally';
+                bClass = 'outcome-delivered';
+            } else if (minutesData.complainant_choice === 'Request_Paanyaya_2') {
+                bText = '⚡ 2nd Paanyaya Requested';
+                bClass = 'outcome-unavailable';
+            } else if (minutesData.complainant_choice === 'Escalate_Mediation') {
+                bText = '⚡ Escalated to Mediation';
+                bClass = 'outcome-refused';
+            }
+            minutesBadge.innerHTML = `<span class="outcome-badge ${bClass}">${bText}</span>`;
+            const notePreview = minutesData.agreed_terms || minutesData.discussion_summary || '';
+            minutesSummary.textContent = notePreview ? `“${notePreview.substring(0, 90)}${notePreview.length > 90 ? '...' : ''}”` : '';
+        } else {
+            minutesRow.style.display = 'none';
+        }
+    }
+
+    if (btnRecordMinutes) {
+        // Show prominent Record Minutes button once Delivered and not yet recorded
+        btnRecordMinutes.style.display = (isDelivered && !hasMinutes && !isClosedOrDocketed && !p2Started) ? 'inline-flex' : 'none';
+    }
+    if (btnViewMinutes) {
+        btnViewMinutes.style.display = hasMinutes ? 'inline-flex' : 'none';
+    }
+
+
 }
 
 function renderPaanyayaTab(data) {
@@ -1497,7 +1587,12 @@ function renderPaanyayaTab(data) {
     const stage0Badge = document.getElementById('stage0StatusText');
     const stage0Icon = document.getElementById('stage0Icon');
     if (stage0Badge) {
-        if (stage2.is_delivered || stage1.is_delivered) {
+        if (data.status === 'Settled' || data.status === 'Resolved at Paanyaya / Closed' || stage1.outcome === 'Settled' || stage1.minutes?.outcome === 'Settled') {
+            stage0Badge.textContent = 'Resolved at Paanyaya (Informal Settlement)';
+            stage0Badge.style.background = '#dcfce7';
+            stage0Badge.style.color = '#15803d';
+            if (stage0Icon) stage0Icon.textContent = '✓';
+        } else if (stage2.is_delivered || stage1.is_delivered) {
             stage0Badge.textContent = 'Successfully Delivered';
             stage0Badge.style.background = '#dcfce7';
             stage0Badge.style.color = '#15803d';
@@ -1558,11 +1653,32 @@ function renderPaanyayaTab(data) {
     const respNames = respondents.map(r => r.full_name || `${r.first_name || ''} ${r.last_name || ''}`.trim()).filter(Boolean).join(', ') || 'Respondent';
     const respAddr = respondents[0]?.address || respondents[0]?.purok || 'Barangay Tumana';
 
+    const isP1Solved = (data.status === 'Settled') ||
+                       (data.status === 'Resolved at Paanyaya / Closed') ||
+                       (data.paanyaya_1_outcome === 'Settled') ||
+                       (stage1.outcome === 'Settled') ||
+                       (stage1.minutes?.outcome === 'Settled') ||
+                       (stage2.bypassed === true);
+
+    const p2WasIssued = !!(stage2.details?.issued_at) || ((stage2.attempts_count || 0) > 0);
+
+    const p2Card = document.getElementById('paanyaya2Card');
+    if (p2Card) {
+        p2Card.style.display = (isP1Solved && !p2WasIssued) ? 'none' : '';
+    }
+
+    const tab2Btn = document.getElementById('btnHistTabP2');
+    if (tab2Btn) {
+        tab2Btn.style.display = (isP1Solved && !p2WasIssued) ? 'none' : '';
+    }
+
     // 3. Render CARD 1: PAANYAYA 1
     renderPaanyayaStageCard('1', stage1, data.complaint_number, compNames, respNames, respAddr);
 
-    // 4. Render CARD 2: PAANYAYA 2
-    renderPaanyayaStageCard('2', stage2, data.complaint_number, compNames, respNames, respAddr);
+    // 4. Render CARD 2: PAANYAYA 2 (only if not solved at Paanyaya 1)
+    if (!isP1Solved || p2WasIssued) {
+        renderPaanyayaStageCard('2', stage2, data.complaint_number, compNames, respNames, respAddr);
+    }
 
     // 5. Render DELIVERY HISTORY TABLE
     if (!window.activePaanyayaHistoryStage) {
@@ -2606,6 +2722,9 @@ function isWithinTumana(lat, lng) {
     }
     return inside;
 }
+window.tumanaBoundary = tumanaBoundary;
+window.isWithinTumana = isWithinTumana;
+
 
 function initialiseComplaintMaps() {
     if (!window.L) return;
@@ -4649,12 +4768,17 @@ window.openPaanyayaOutcomeModal = function(outcomeType) {
 
     const p = window.complaintData?.paanyaya || window.complaintData?.paanyaya_workspace?.latest_session;
     const paaId = p?.paanyaya_id || p?.session_id || p?.id;
-    if (!p || !paaId) {
-        window.agapNotify?.('No scheduled Paanyaya session found.', 'error');
+    const compId = window.complaintData?.complaint_id || (new URLSearchParams(window.location.search).get('id'));
+
+    if (!paaId && !compId) {
+        window.agapNotify?.('No scheduled Paanyaya session or complaint found.', 'error');
         return;
     }
 
-    document.getElementById('outcomePaanyayaId').value = paaId;
+    const paIdInput = document.getElementById('outcomePaanyayaId');
+    if (paIdInput) paIdInput.value = paaId || '';
+    const compIdInput = document.getElementById('outcomeComplaintId');
+    if (compIdInput) compIdInput.value = compId || '';
     document.getElementById('outcomeActionType').value = outcomeType;
 
     const modalTitle = document.getElementById('outcomeModalTitle');
@@ -4717,8 +4841,10 @@ window.submitPaanyayaOutcome = async function(event) {
     const errBox = document.getElementById('paanyayaOutcomeError');
 
     const formData = new FormData(form);
+    const compId = formData.get('complaint_id') || window.complaintData?.complaint_id || (new URLSearchParams(window.location.search).get('id'));
     const payload = {
         paanyaya_id: formData.get('paanyaya_id'),
+        complaint_id: compId,
         outcome: formData.get('outcome'),
         resolution_notes: formData.get('resolution_notes'),
         mediation_date: formData.get('mediation_date'),
@@ -5493,4 +5619,286 @@ window.proceedToOfficersReturnFromPreview = function() {
     const params = new URLSearchParams(window.location.search);
     const complaintId = params.get('id') || params.get('complaint_id') || window.complaintData?.complaint_id;
     window.location.href = `../gps/proof-service.php?complaint_id=${encodeURIComponent(complaintId)}&stage=Paanyaya+1&open_return=1`;
+};
+
+// ===================================================================
+// TEMPORARY MINUTES OF THE MEETING & COMPLAINANT DECISION HANDLERS
+// ===================================================================
+
+window.openPaanyayaMinutesModal = function(stageType = 'Paanyaya 1') {
+    const modal = document.getElementById('paanyayaMinutesModal');
+    if (!modal) return;
+
+    const compId = window.complaintData?.complaint_id || (new URLSearchParams(window.location.search).get('id'));
+    if (!compId) {
+        window.agapNotify?.('Complaint ID not found.', 'error');
+        return;
+    }
+
+    document.getElementById('minutesComplaintId').value = compId;
+    document.getElementById('minutesStageType').value = stageType;
+
+    const heading = document.getElementById('minutesModalHeading');
+    const sub = document.getElementById('minutesModalSub');
+    if (heading) heading.textContent = `Record Dialogue Minutes & Result (${stageType})`;
+    if (sub) sub.textContent = (stageType === 'Paanyaya 1') 
+        ? 'First Preliminary Invitation Dialogue Minutes' 
+        : 'Second Preliminary Invitation Dialogue Minutes';
+
+    // Set default dialogue date/time to now (local timezone)
+    const dtInput = document.getElementById('minutesDialogueDate');
+    if (dtInput) {
+        const now = new Date();
+        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+        dtInput.value = now.toISOString().slice(0, 16);
+    }
+
+    // Reset inputs
+    const form = document.getElementById('paanyayaMinutesForm');
+    if (form) {
+        const summary = document.getElementById('minutesDiscussionSummary');
+        const terms = document.getElementById('minutesAgreedTerms');
+        const file = document.getElementById('minutesScannedFile');
+        if (summary) summary.value = '';
+        if (terms) terms.value = '';
+        if (file) file.value = '';
+
+        // Reset radio buttons
+        const compRadio = form.querySelector('input[name="complainant_attended"][value="Present"]');
+        if (compRadio) compRadio.checked = true;
+        const respRadio = form.querySelector('input[name="respondent_attended"][value="Present"]');
+        if (respRadio) respRadio.checked = true;
+        const outcomeRadio = form.querySelector('input[name="outcome"][value="Settled"]');
+        if (outcomeRadio) outcomeRadio.checked = true;
+        const choiceRadio = form.querySelector('input[name="complainant_choice"][value="Request_Paanyaya_2"]');
+        if (choiceRadio) choiceRadio.checked = true;
+    }
+
+    // Configure next Tuesday date for mediation
+    const medDateInput = document.getElementById('minutesMedDate');
+    if (medDateInput) {
+        const d = new Date();
+        d.setDate(d.getDate() + 3);
+        while (d.getDay() !== 2) {
+            d.setDate(d.getDate() + 1);
+        }
+        medDateInput.value = d.toISOString().slice(0, 10);
+        medDateInput.min = new Date().toISOString().slice(0, 10);
+    }
+
+    // For Paanyaya 2, Choice A is not applicable ("Dalawang Beses Lang" rule)
+    const optChoiceP2Wrap = document.getElementById('optChoiceP2Wrap');
+    if (optChoiceP2Wrap) {
+        if (stageType === 'Paanyaya 2') {
+            optChoiceP2Wrap.style.display = 'none';
+            const escChoice = form.querySelector('input[name="complainant_choice"][value="Escalate_Mediation"]');
+            if (escChoice) escChoice.checked = true;
+        } else {
+            optChoiceP2Wrap.style.display = 'flex';
+        }
+    }
+
+    toggleMinutesOutcomeViews();
+    toggleComplainantChoiceViews();
+
+    const errBox = document.getElementById('paanyayaMinutesError');
+    if (errBox) errBox.style.display = 'none';
+
+    modal.style.display = 'flex';
+};
+
+window.closePaanyayaMinutesModal = function() {
+    const modal = document.getElementById('paanyayaMinutesModal');
+    if (modal) modal.style.display = 'none';
+};
+
+window.handleMinutesAttendanceChange = function() {
+    const form = document.getElementById('paanyayaMinutesForm');
+    if (!form) return;
+    const respAttended = form.querySelector('input[name="respondent_attended"]:checked')?.value;
+    const optSettledWrap = document.getElementById('optMinutesSettledWrap');
+    if (respAttended === 'Absent') {
+        const noAgreeRadio = form.querySelector('input[name="outcome"][value="No_Agreement"]');
+        if (noAgreeRadio) noAgreeRadio.checked = true;
+        if (optSettledWrap) {
+            optSettledWrap.style.opacity = '0.5';
+            optSettledWrap.style.pointerEvents = 'none';
+        }
+    } else {
+        if (optSettledWrap) {
+            optSettledWrap.style.opacity = '1';
+            optSettledWrap.style.pointerEvents = '';
+        }
+    }
+    toggleMinutesOutcomeViews();
+};
+
+window.toggleMinutesOutcomeViews = function() {
+    const form = document.getElementById('paanyayaMinutesForm');
+    if (!form) return;
+    const outcome = form.querySelector('input[name="outcome"]:checked')?.value || 'Settled';
+    const choiceSection = document.getElementById('minutesComplainantChoiceSection');
+    const submitBtn = document.getElementById('btnSubmitPaanyayaMinutes');
+
+    if (outcome === 'Settled') {
+        if (choiceSection) choiceSection.style.display = 'none';
+        const escSec = document.getElementById('minutesEscalationScheduleSection');
+        if (escSec) escSec.style.display = 'none';
+        if (submitBtn) {
+            submitBtn.textContent = 'Save Minutes & Close Complaint (Nagkasundo)';
+            submitBtn.style.background = '#16a34a';
+            submitBtn.style.borderColor = '#16a34a';
+        }
+    } else {
+        if (choiceSection) choiceSection.style.display = 'block';
+        toggleComplainantChoiceViews();
+    }
+};
+
+window.toggleComplainantChoiceViews = function() {
+    const form = document.getElementById('paanyayaMinutesForm');
+    if (!form) return;
+    const outcome = form.querySelector('input[name="outcome"]:checked')?.value;
+    const choice = form.querySelector('input[name="complainant_choice"]:checked')?.value || 'Request_Paanyaya_2';
+    const escSec = document.getElementById('minutesEscalationScheduleSection');
+    const submitBtn = document.getElementById('btnSubmitPaanyayaMinutes');
+
+    if (outcome !== 'Settled' && choice === 'Escalate_Mediation') {
+        if (escSec) escSec.style.display = 'block';
+        if (submitBtn) {
+            submitBtn.textContent = 'Save Minutes & Escalate to Mediation';
+            submitBtn.style.background = '#dc2626';
+            submitBtn.style.borderColor = '#dc2626';
+        }
+    } else {
+        if (escSec) escSec.style.display = 'none';
+        if (submitBtn) {
+            submitBtn.textContent = 'Save Minutes & Unlock Paanyaya 2';
+            submitBtn.style.background = '#2563eb';
+            submitBtn.style.borderColor = '#2563eb';
+        }
+    }
+};
+
+window.submitPaanyayaMinutes = async function(event) {
+    event.preventDefault();
+    const form = event.target;
+    const btn = document.getElementById('btnSubmitPaanyayaMinutes');
+    const errBox = document.getElementById('paanyayaMinutesError');
+
+    const formData = new FormData(form);
+
+    try {
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Saving dialogue minutes...';
+        }
+        if (errBox) errBox.style.display = 'none';
+
+        const res = await complaintApi('../../../backend/api/paanyaya/record-minutes.php', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (res.success) {
+            window.agapNotify?.(res.message || 'Dialogue minutes recorded successfully!', 'success');
+            closePaanyayaMinutesModal();
+            await loadComplaintDetails();
+            if (res.action === 'escalate_mediation' && res.case_id) {
+                if (typeof openSummonsPreviewModal === 'function') {
+                    openSummonsPreviewModal(res.case_id, null, null, true);
+                }
+            }
+        } else {
+            throw new Error(res.message || 'Failed to record dialogue minutes.');
+        }
+    } catch (err) {
+        if (errBox) {
+            errBox.textContent = err.message || 'Error recording dialogue minutes.';
+            errBox.style.display = 'block';
+        } else {
+            alert(err.message || 'Error recording dialogue minutes.');
+        }
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Save Minutes & Confirm Result';
+        }
+    }
+};
+
+window.viewPaanyayaMinutes = async function(stageType = 'Paanyaya 1') {
+    const modal = document.getElementById('paanyayaMinutesViewModal');
+    const body = document.getElementById('viewMinutesBody');
+    if (!modal || !body) return;
+
+    const compId = window.complaintData?.complaint_id || (new URLSearchParams(window.location.search).get('id'));
+    if (!compId) return;
+
+    body.innerHTML = '<p style="color: #64748b;">Loading dialogue minutes...</p>';
+    modal.style.display = 'flex';
+
+    try {
+        const res = await complaintApi(`../../../backend/api/paanyaya/get-minutes.php?complaint_id=${compId}&stage_type=${encodeURIComponent(stageType)}`);
+        const minutes = res.data;
+        if (!minutes) {
+            body.innerHTML = '<p style="color: #64748b;">No recorded minutes found for this stage.</p>';
+            return;
+        }
+
+        const esc = (s) => String(s ?? '').replace(/[&<>'"]/g, c => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+        }[c] || c));
+
+        let outcomeBadge = '<span class="outcome-badge outcome-other">None</span>';
+        if (minutes.outcome === 'Settled') {
+            outcomeBadge = '<span class="outcome-badge outcome-delivered">✓ Nagkasundo / Amicably Settled</span>';
+        } else if (minutes.complainant_choice === 'Request_Paanyaya_2') {
+            outcomeBadge = '<span class="outcome-badge outcome-unavailable">⚡ Walang Kasunduan – Humiling ng 2nd Paanyaya</span>';
+        } else if (minutes.complainant_choice === 'Escalate_Mediation') {
+            outcomeBadge = '<span class="outcome-badge outcome-refused">⚡ Inakyat sa Pormal na Mediation</span>';
+        }
+
+        let fileAttachmentHtml = '<span style="color: #94a3b8; font-style: italic;">Walang naka-attach na dokumento</span>';
+        if (minutes.scanned_minutes_path) {
+            fileAttachmentHtml = `<a href="../../../${esc(minutes.scanned_minutes_path)}" target="_blank" style="color: #2563eb; text-decoration: underline; font-weight: 600;">📎 Tingnan ang Naka-attach na Katitikan / Larawan</a>`;
+        }
+
+        body.innerHTML = `
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-size: 0.82rem; font-weight: 700; color: #1e293b;">${esc(minutes.stage_type)}</span>
+                    <span style="font-size: 0.78rem; color: #64748b;">Itinala noong: ${formatDateReadable(minutes.dialogue_date || minutes.created_at)}</span>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.83rem;">
+                    <div><strong>Nagpaanyaya:</strong> <span style="color: ${minutes.complainant_attended === 'Present' ? '#166534' : '#991b1b'};">${minutes.complainant_attended === 'Present' ? '✓ Dumalo' : '✗ Hindi Dumalo'}</span></div>
+                    <div><strong>Inanyayahan:</strong> <span style="color: ${minutes.respondent_attended === 'Present' ? '#166534' : '#991b1b'};">${minutes.respondent_attended === 'Present' ? '✓ Dumalo' : '✗ Hindi Dumalo'}</span></div>
+                    <div><strong>Nagtala:</strong> <span>${esc(minutes.recorded_by_name || 'Opisyal ng Barangay')}</span></div>
+                    <div><strong>Kinalabasan:</strong> ${outcomeBadge}</div>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 14px;">
+                <strong style="font-size: 0.85rem; color: #0f172a; display: block; margin-bottom: 4px;">Salaysay at Buod ng Napag-usapan:</strong>
+                <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 12px; font-size: 0.85rem; color: #334155; white-space: pre-wrap;">${esc(minutes.discussion_summary)}</div>
+            </div>
+
+            <div style="margin-bottom: 14px;">
+                <strong style="font-size: 0.85rem; color: #0f172a; display: block; margin-bottom: 4px;">Mga Mungkahi o Napagkasunduang Kondisyon:</strong>
+                <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 12px; font-size: 0.85rem; color: #334155; white-space: pre-wrap;">${esc(minutes.agreed_terms || 'Walang karagdagang kondisyon na itinala.')}</div>
+            </div>
+
+            <div style="margin-top: 10px;">
+                <strong style="font-size: 0.85rem; color: #0f172a; display: block; margin-bottom: 4px;">Kalakip na Dokumento (Scanned Copy):</strong>
+                ${fileAttachmentHtml}
+            </div>
+        `;
+    } catch (err) {
+        body.innerHTML = `<p style="color: #dc2626;">Error loading minutes: ${err.message || 'Unknown error'}</p>`;
+    }
+};
+
+window.closePaanyayaMinutesViewModal = function() {
+    const modal = document.getElementById('paanyayaMinutesViewModal');
+    if (modal) modal.style.display = 'none';
 };

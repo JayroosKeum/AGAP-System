@@ -1009,7 +1009,7 @@ include '../../layouts/header.php';
                         </div>
                     </div>
 
-                    <div class="party-fields-grid-3" style="margin-top: 10px;">
+                    <div class="party-fields-grid-2" style="margin-top: 10px;">
                         <div class="party-field-col">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
                                 <label for="modalContactNo" style="margin-bottom:0;">Contact Number</label>
@@ -1022,15 +1022,6 @@ include '../../layouts/header.php';
                         <div class="party-field-col">
                             <label for="modalEmail">Email Address</label>
                             <input type="email" id="modalEmail" placeholder="e.g. name@example.com" maxlength="150">
-                        </div>
-                        <div class="party-field-col">
-                            <label for="modalPreferredContact">Preferred Contact</label>
-                            <select id="modalPreferredContact">
-                                <option value="SMS">SMS</option>
-                                <option value="Call">Call</option>
-                                <option value="Email">Email</option>
-                                <option value="In-Person">In-Person</option>
-                            </select>
                         </div>
                     </div>
 
@@ -1068,8 +1059,32 @@ include '../../layouts/header.php';
                     </div>
 
                     <div class="party-field-col" style="margin-top: 10px;">
-                        <label for="modalAddress">Complete Street Address <span class="required-mark">*</span></label>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <label for="modalAddress" style="margin-bottom: 0;">Complete Street Address <span class="required-mark">*</span></label>
+                            <button type="button" class="btn-secondary btn-sm" id="btnPinPartyAddress" style="padding: 2px 8px; font-size: 0.72rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;" title="Find and drop pin on map">
+                                <span>📍 Pin on Map</span>
+                            </button>
+                        </div>
                         <input type="text" id="modalAddress" required placeholder="House #, Street name, Purok/Compound, Barangay Tumana">
+                    </div>
+
+                    <!-- Interactive Address Pinning Map -->
+                    <div class="party-map-pinbox" style="margin-top: 12px; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 12px; overflow: hidden;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <span style="font-size: 0.82rem; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 6px;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e11d48" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                                Pin Residence Location on Map
+                            </span>
+                            <div style="display: flex; gap: 6px;">
+                                <button type="button" class="btn-secondary btn-sm" id="btnRecenterPartyMap" style="padding: 3px 8px; font-size: 0.72rem; border-radius: 4px;">Recenter Tumana</button>
+                                <button type="button" class="btn-secondary btn-sm" id="btnClearPartyMap" style="padding: 3px 8px; font-size: 0.72rem; border-radius: 4px;">Clear Pin</button>
+                            </div>
+                        </div>
+                        <div id="modalPartyAddressMap" style="height: 200px; width: 100%; border-radius: 6px; border: 1px solid #cbd5e1; background: #e2e8f0; position: relative;"></div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-size: 0.75rem; color: #64748b;">
+                            <span id="modalPartyMapStatus">Click on map or drag pin to auto-fill complete street address with house number.</span>
+                            <span id="modalPartyMapCoords" style="font-family: monospace; font-size: 0.72rem; color: #0284c7;"></span>
+                        </div>
                     </div>
 
                     <!-- Minor & Legal Guardian Section -->
@@ -1868,7 +1883,16 @@ document.addEventListener('DOMContentLoaded', () => {
             modalEl.style.display = 'flex';
             setTimeout(() => {
                 document.getElementById('modalFirstName')?.focus();
-            }, 50);
+                initPartyAddressMap();
+                if (partyMapInstance) {
+                    partyMapInstance.invalidateSize();
+                    const curAddr = document.getElementById('modalAddress')?.value?.trim();
+                    const curPurok = document.getElementById('modalPurok')?.value?.trim();
+                    if (curAddr || curPurok) {
+                        window.geocodeAndPinPartyAddress?.(curAddr, curPurok);
+                    }
+                }
+            }, 150);
         }
     };
 
@@ -1895,6 +1919,18 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function resetModalFields() {
+        if (partyMapMarker && partyMapInstance) {
+            partyMapInstance.removeLayer(partyMapMarker);
+            partyMapMarker = null;
+        }
+        if (partyMapInstance) {
+            partyMapInstance.setView([14.6565, 121.0945], 16);
+            partyMapInstance.invalidateSize();
+        }
+        const pStatus = document.getElementById('modalPartyMapStatus');
+        if (pStatus) pStatus.textContent = 'Click on map or drag pin to auto-fill complete street address with house number.';
+        const pCoords = document.getElementById('modalPartyMapCoords');
+        if (pCoords) pCoords.textContent = '';
         const resIdEl = document.getElementById('modalResidentId');
         if (resIdEl) resIdEl.value = '';
         ['modalFirstName', 'modalMiddleName', 'modalLastName', 'modalSuffix',
@@ -1907,8 +1943,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const el = document.getElementById(id);
             if (el) el.value = '';
         });
-        const pref = document.getElementById('modalPreferredContact');
-        if (pref) pref.value = 'SMS';
+        // Preferred contact removed
         const tenant = document.getElementById('modalIsTenant');
         if (tenant) tenant.value = '0';
 
@@ -1943,7 +1978,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setV('modalCivilStatus', p.civil_status);
         setV('modalContactNo', p.contact_no);
         setV('modalEmail', p.email);
-        setV('modalPreferredContact', p.preferred_contact || 'SMS');
+        // Preferred contact removed
         setV('modalPurok', p.purok);
         setV('modalIsTenant', p.is_tenant ?? '0');
         setV('modalAddress', p.address);
@@ -2086,10 +2121,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (res.civil_status) setV('modalCivilStatus', res.civil_status);
                 if (res.contact_no) setV('modalContactNo', res.contact_no);
                 if (res.email) setV('modalEmail', res.email);
-                if (res.preferred_contact) setV('modalPreferredContact', res.preferred_contact);
+                // Preferred contact removed
                 if (res.purok) setV('modalPurok', res.purok);
                 if (res.is_tenant !== undefined) setV('modalIsTenant', String(res.is_tenant));
-                if (res.address) setV('modalAddress', res.address);
+                if (res.address) {
+                    setV('modalAddress', res.address);
+                    setTimeout(() => window.geocodeAndPinPartyAddress?.(res.address, res.purok), 100);
+                }
             }
             modalSearchDropdown.style.display = 'none';
         });
@@ -2182,6 +2220,393 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+
+    // Residency Status <-> Purok automatic synchronization
+    const modalIsTenantEl = document.getElementById('modalIsTenant');
+    const modalPurokEl = document.getElementById('modalPurok');
+    if (modalIsTenantEl && modalPurokEl) {
+        modalIsTenantEl.addEventListener('change', () => {
+            if (modalIsTenantEl.value === '2') {
+                // Non-Resident -> automatically Outside Tumana
+                modalPurokEl.value = 'Non-Resident';
+            } else if (modalPurokEl.value === 'Non-Resident') {
+                modalPurokEl.value = '';
+            }
+        });
+        modalPurokEl.addEventListener('change', () => {
+            if (modalPurokEl.value === 'Non-Resident') {
+                modalIsTenantEl.value = '2';
+            } else if (modalIsTenantEl.value === '2') {
+                modalIsTenantEl.value = '0'; // Reset to Permanent Resident when picking a Tumana purok
+            }
+        });
+    }
+
+    // Party Residence Address Map controller
+    let partyMapInstance = null;
+    let partyMapMarker = null;
+    let partyMapLookupVersion = 0;
+
+    function initPartyAddressMap() {
+        const container = document.getElementById('modalPartyAddressMap');
+        if (!container || !window.L) return;
+
+        if (!partyMapInstance) {
+            partyMapInstance = L.map(container).setView([14.6565, 121.0945], 16);
+            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors',
+                maxZoom: 19
+            }).addTo(partyMapInstance);
+
+            const boundary = window.tumanaBoundary || [[14.6554682,121.0857081],[14.6562612,121.0859908],[14.6557911,121.0865123],[14.6566853,121.0867891],[14.6573361,121.0874608],[14.6566672,121.0882081],[14.6596216,121.0912009],[14.6605249,121.0911456],[14.6609324,121.0914765],[14.6617729,121.0920319],[14.6634173,121.0935248],[14.6639892,121.0936321],[14.6643486,121.0936995],[14.6645004,121.0938826],[14.6649347,121.0948585],[14.6652695,121.0952371],[14.6652424,121.0956829],[14.6648805,121.0961861],[14.664908,121.0963356],[14.6645002,121.0966408],[14.6642299,121.0967374],[14.6637829,121.0977901],[14.6629907,121.0988145],[14.6625832,121.0991486],[14.6625136,121.0996819],[14.6625395,121.100022],[14.6623861,121.1006225],[14.6621551,121.1005299],[14.6614757,121.1023379],[14.6602368,121.1019108],[14.6595948,121.1016599],[14.6589154,121.1019614],[14.6581343,121.1022551],[14.6574788,121.102553],[14.6569962,121.1027094],[14.6566377,121.102703],[14.656158,121.1026733],[14.6559169,121.1026982],[14.6553478,121.1027577],[14.6550262,121.1027938],[14.6548318,121.1027249],[14.6541841,121.1025018],[14.6534713,121.1024013],[14.6532707,121.102373],[14.6510737,121.101336],[14.6508768,121.1007973],[14.6507211,121.0992879],[14.650753,121.0989571],[14.6509538,121.098811],[14.6514718,121.0983827],[14.6521496,121.0978851],[14.6527322,121.0972236],[14.6535364,121.0959443],[14.6539003,121.0955034],[14.654028,121.0953166],[14.6537619,121.0950108],[14.6533329,121.0942299],[14.6530062,121.0934184]];
+            L.polygon(boundary, {
+                color: '#2563eb',
+                weight: 2,
+                fillColor: '#60a5fa',
+                fillOpacity: 0.10,
+                interactive: false
+            }).addTo(partyMapInstance);
+
+            partyMapInstance.on('click', (e) => {
+                setPartyAddressMapPoint(e.latlng.lat, e.latlng.lng);
+            });
+
+            document.getElementById('btnRecenterPartyMap')?.addEventListener('click', (e) => {
+                e.preventDefault();
+                partyMapInstance.setView([14.6565, 121.0945], 16);
+                partyMapInstance.invalidateSize();
+            });
+
+            document.getElementById('btnClearPartyMap')?.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (partyMapMarker && partyMapInstance) {
+                    partyMapInstance.removeLayer(partyMapMarker);
+                    partyMapMarker = null;
+        }
+        if (partyMapInstance) {
+            partyMapInstance.setView([14.6565, 121.0945], 16);
+            partyMapInstance.invalidateSize();
+                }
+                const statusEl = document.getElementById('modalPartyMapStatus');
+                if (statusEl) statusEl.textContent = 'Pin cleared. Click on map to pin address.';
+                const coordsEl = document.getElementById('modalPartyMapCoords');
+                if (coordsEl) coordsEl.textContent = '';
+            });
+        }
+    }
+
+    async function setPartyAddressMapPoint(lat, lng) {
+        if (!partyMapInstance) return;
+
+        if (!partyMapMarker) {
+            partyMapMarker = L.marker([lat, lng], { draggable: true }).addTo(partyMapInstance);
+            partyMapMarker.on('dragend', (e) => {
+                const pos = e.target.getLatLng();
+                setPartyAddressMapPoint(pos.lat, pos.lng);
+            });
+        } else {
+            partyMapMarker.setLatLng([lat, lng]);
+        }
+
+        const coordsEl = document.getElementById('modalPartyMapCoords');
+        if (coordsEl) {
+            coordsEl.textContent = `${lat.toFixed(6)}° N, ${lng.toFixed(6)}° E`;
+        }
+
+        const statusEl = document.getElementById('modalPartyMapStatus');
+        if (statusEl) statusEl.textContent = 'Locating complete address including house number...';
+
+        const requestVersion = ++partyMapLookupVersion;
+
+        try {
+            const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&zoom=18&addressdetails=1`, {
+                headers: { 'Accept': 'application/json' }
+            });
+            const result = await response.json();
+            if (requestVersion !== partyMapLookupVersion) return;
+
+            const addr = result.address || {};
+
+            // 1. House Number or Building / Unit
+            let houseNo = addr.house_number || addr.building || '';
+            const existingAddress = document.getElementById('modalAddress')?.value?.trim() || '';
+            if (!houseNo && existingAddress) {
+                const houseMatch = existingAddress.match(/^(?:(?:#|no\.?|unit|lot|blk|block)\s*[^,]+|[0-9]+[A-Za-z]?(?:\s*-\s*[0-9]+)?)\b/i);
+                if (houseMatch) {
+                    houseNo = houseMatch[0].trim();
+                }
+            }
+
+            // 2. Road / Street
+            const road = addr.road || addr.pedestrian || addr.footway || addr.street || addr.path || '';
+
+            // 3. Street line with house number
+            let streetPart = '';
+            if (houseNo && road) {
+                streetPart = road.toLowerCase().includes(houseNo.toLowerCase()) ? road : `${houseNo} ${road}`;
+            } else {
+                streetPart = houseNo || road;
+            }
+
+            // 4. Neighbourhood / Suburb / Purok
+            const neighbourhood = addr.neighbourhood || addr.suburb || addr.quarter || addr.residential || addr.subdivision || '';
+
+            // 5. Check if inside Barangay Tumana
+            const checkTumana = window.isWithinTumana || isWithinTumana;
+            const inTumana = (typeof checkTumana === 'function') ? checkTumana(lat, lng) : true;
+
+            let barangay = '';
+            if (inTumana) {
+                barangay = 'Barangay Tumana';
+            } else {
+                barangay = addr.village || addr.city_district || '';
+                if (!barangay && addr.suburb && addr.suburb.toLowerCase().includes('barangay')) {
+                    barangay = addr.suburb;
+                }
+            }
+
+            // 6. City
+            const city = addr.city || addr.town || addr.municipality || 'Marikina City';
+
+            // Assemble the WHOLE ADDRESS (include house number, street, purok, barangay, city)
+            const addressParts = [];
+            if (streetPart) addressParts.push(streetPart);
+            if (neighbourhood && neighbourhood !== road && neighbourhood !== barangay) {
+                addressParts.push(neighbourhood);
+            }
+            if (barangay) addressParts.push(barangay);
+            if (city) addressParts.push(city);
+
+            let wholeAddress = addressParts.join(', ');
+            if (!wholeAddress && result.display_name) {
+                wholeAddress = result.display_name;
+            }
+
+            const addressInput = document.getElementById('modalAddress');
+            if (addressInput && wholeAddress) {
+                isReverseGeocodingPartyMap = true;
+                addressInput.value = wholeAddress;
+                setTimeout(() => { isReverseGeocodingPartyMap = false; }, 400);
+            }
+
+            // Auto-update Purok & Residency Status based on map location
+            const purokSelect = document.getElementById('modalPurok');
+            const residencySelect = document.getElementById('modalIsTenant');
+
+            if (inTumana) {
+                if (purokSelect) {
+                    const searchPool = (wholeAddress + ' ' + (result.display_name || '')).toLowerCase();
+                    let matchedPurok = '';
+                    for (const opt of purokSelect.options) {
+                        if (!opt.value || opt.value === 'Non-Resident') continue;
+                        const optLower = opt.value.toLowerCase();
+                        if (searchPool.includes(optLower)) {
+                            matchedPurok = opt.value;
+                            break;
+                        }
+                        const words = optLower.split(/\s+/).filter(w => w.length > 2);
+                        if (words.some(w => searchPool.includes(w))) {
+                            matchedPurok = opt.value;
+                            break;
+                        }
+                    }
+                    if (matchedPurok) {
+                        purokSelect.value = matchedPurok;
+                    }
+                }
+                if (residencySelect && residencySelect.value === '2') {
+                    residencySelect.value = '0'; // Reset Non-Resident to Permanent Resident
+                }
+            } else {
+                // Outside Tumana -> automatically Non-Resident / Outside Tumana!
+                if (purokSelect) purokSelect.value = 'Non-Resident';
+                if (residencySelect) residencySelect.value = '2';
+            }
+
+            if (statusEl) {
+                statusEl.textContent = `Address captured: ${wholeAddress}`;
+            }
+        } catch (err) {
+            if (statusEl) statusEl.textContent = `Point pinned (${lat.toFixed(5)}, ${lng.toFixed(5)}). Complete house number can be edited above.`;
+        }
+    }
+
+    let isReverseGeocodingPartyMap = false;
+    let partyGeocodeTimer = null;
+
+    const TUMANA_PUROK_COORDS = {
+        'dona petra': [14.6578, 121.0935],
+        'doña petra': [14.6578, 121.0935],
+        'bagong farmers': [14.6612, 121.0955],
+        'farmers': [14.6612, 121.0955],
+        'bukang liwayway': [14.6588, 121.0982],
+        'libis tumana': [14.6538, 121.0968],
+        'libis': [14.6538, 121.0968],
+        'bagong purok': [14.6598, 121.0942],
+        'palay': [14.6558, 121.0998],
+        'mais': [14.6572, 121.1008],
+        'singkamas': [14.6548, 121.1018]
+    };
+
+    async function geocodeAndPinPartyAddress(addressText, preferPurok = '', force = false) {
+        if (!partyMapInstance) initPartyAddressMap();
+        if (!partyMapInstance) return;
+
+        const addr = (addressText || document.getElementById('modalAddress')?.value || '').trim();
+        const purok = (preferPurok || document.getElementById('modalPurok')?.value || '').trim();
+
+        if (!addr && !purok) return;
+
+        const statusEl = document.getElementById('modalPartyMapStatus');
+        const coordsEl = document.getElementById('modalPartyMapCoords');
+        if (statusEl) statusEl.textContent = 'Searching location on map...';
+
+        const requestVersion = ++partyMapLookupVersion;
+
+        // Build candidate search queries
+        const queries = [];
+        const isNonResident = (purok === 'Non-Resident') || (document.getElementById('modalIsTenant')?.value === '2');
+
+        const clean = addr.replace(/\b(barangay|brgy\.?|bgy\.?|city)\b/gi, '').replace(/\s+/g, ' ').trim();
+        const strippedStreet = clean.replace(/^(?:(?:#|no\.?|unit|lot|blk|block)\s*[^,]+|[0-9]+[A-Za-z]?(?:\s*-\s*[0-9]+)?)\s*,?\s*/i, '').trim();
+
+        if (clean) {
+            if (/tumana/i.test(clean)) {
+                queries.push(`${clean}, Marikina`);
+            } else if (!isNonResident) {
+                queries.push(`${clean}, Tumana, Marikina`);
+                queries.push(`${clean}, Marikina`);
+            } else {
+                queries.push(clean);
+                queries.push(`${clean}, Metro Manila`);
+            }
+        }
+        if (strippedStreet && strippedStreet !== clean && strippedStreet.length >= 3) {
+            if (!isNonResident) {
+                queries.push(`${strippedStreet}, Tumana, Marikina`);
+                queries.push(`${strippedStreet}, Marikina`);
+            } else {
+                queries.push(`${strippedStreet}, Philippines`);
+            }
+        }
+        if (purok && purok !== 'Non-Resident') {
+            const cleanPurok = purok.replace(/\b(area|compound|sitio)\b/gi, '').trim();
+            queries.push(`${cleanPurok}, Tumana, Marikina`);
+            queries.push(`${cleanPurok}, Marikina`);
+        }
+
+
+
+
+        let foundLat = null;
+        let foundLng = null;
+        let matchedDisplay = '';
+
+        for (const q of queries) {
+            if (requestVersion !== partyMapLookupVersion) return;
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(q)}`, {
+                    headers: { 'Accept': 'application/json' }
+                });
+                const data = await res.json();
+                if (Array.isArray(data) && data.length > 0 && data[0].lat && data[0].lon) {
+                    foundLat = parseFloat(data[0].lat);
+                    foundLng = parseFloat(data[0].lon);
+                    matchedDisplay = data[0].display_name || q;
+                    break;
+                }
+            } catch (e) {
+                // Continue to next query
+            }
+        }
+
+        // Fallback to local Tumana Purok coordinates if Nominatim returned 0 or was unreachable
+        if (foundLat === null && !isNonResident) {
+            const searchPool = `${addr} ${purok}`.toLowerCase();
+            for (const [key, coords] of Object.entries(TUMANA_PUROK_COORDS)) {
+                if (searchPool.includes(key)) {
+                    foundLat = coords[0];
+                    foundLng = coords[1];
+                    matchedDisplay = `${purok || key}, Barangay Tumana`;
+                    break;
+                }
+            }
+            if (foundLat === null && /tumana/i.test(addr)) {
+                foundLat = 14.6565;
+                foundLng = 121.0945;
+                matchedDisplay = 'Barangay Tumana, Marikina City';
+            }
+        }
+
+        if (requestVersion !== partyMapLookupVersion) return;
+
+        if (foundLat !== null && foundLng !== null) {
+            if (!partyMapMarker) {
+                partyMapMarker = L.marker([foundLat, foundLng], { draggable: true }).addTo(partyMapInstance);
+                partyMapMarker.on('dragend', (e) => {
+                    const pos = e.target.getLatLng();
+                    setPartyAddressMapPoint(pos.lat, pos.lng);
+                });
+            } else {
+                partyMapMarker.setLatLng([foundLat, foundLng]);
+                if (!partyMapInstance.hasLayer(partyMapMarker)) {
+                    partyMapMarker.addTo(partyMapInstance);
+                }
+            }
+
+            partyMapInstance.setView([foundLat, foundLng], 17);
+            partyMapInstance.invalidateSize();
+
+            if (coordsEl) {
+                coordsEl.textContent = `${foundLat.toFixed(6)}° N, ${foundLng.toFixed(6)}° E`;
+            }
+            if (statusEl) {
+                statusEl.textContent = `📍 Address pinned on map: ${addr || matchedDisplay}`;
+            }
+        } else {
+            if (statusEl) {
+                statusEl.textContent = 'Could not pinpoint address automatically. Click on map to place pin.';
+            }
+        }
+    }
+    window.geocodeAndPinPartyAddress = geocodeAndPinPartyAddress;
+
+    // Address input events for auto-pinning
+    const modalAddrInput = document.getElementById('modalAddress');
+    if (modalAddrInput) {
+        modalAddrInput.addEventListener('input', () => {
+            if (isReverseGeocodingPartyMap) return;
+            clearTimeout(partyGeocodeTimer);
+            partyGeocodeTimer = setTimeout(() => {
+                geocodeAndPinPartyAddress(modalAddrInput.value);
+            }, 600);
+        });
+        modalAddrInput.addEventListener('change', () => {
+            if (isReverseGeocodingPartyMap) return;
+            clearTimeout(partyGeocodeTimer);
+            partyGeocodeTimer = setTimeout(() => {
+                geocodeAndPinPartyAddress(modalAddrInput.value);
+            }, 200);
+        });
+    }
+
+    document.getElementById('btnPinPartyAddress')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        geocodeAndPinPartyAddress(document.getElementById('modalAddress')?.value, '', true);
+    });
+
+    const modalPurokSelectEl = document.getElementById('modalPurok');
+    if (modalPurokSelectEl) {
+        modalPurokSelectEl.addEventListener('change', () => {
+            if (isReverseGeocodingPartyMap) return;
+            const currentAddr = document.getElementById('modalAddress')?.value?.trim() || '';
+            clearTimeout(partyGeocodeTimer);
+            partyGeocodeTimer = setTimeout(() => {
+                geocodeAndPinPartyAddress(currentAddr, modalPurokSelectEl.value);
+            }, 300);
+        });
+    }
+
     // Save Party from Modal
     document.getElementById('btnSavePartyModal')?.addEventListener('click', () => {
         const firstName = document.getElementById('modalFirstName')?.value?.trim() || '';
@@ -2246,7 +2671,7 @@ document.addEventListener('DOMContentLoaded', () => {
             occupation: '',
             contact_no: document.getElementById('modalContactNo')?.value?.trim() || '',
             email: document.getElementById('modalEmail')?.value?.trim() || '',
-            preferred_contact: document.getElementById('modalPreferredContact')?.value || 'SMS',
+            preferred_contact: 'SMS',
             purok: document.getElementById('modalPurok')?.value || '',
             is_tenant: document.getElementById('modalIsTenant')?.value || '0',
             address: document.getElementById('modalAddress')?.value?.trim() || '',

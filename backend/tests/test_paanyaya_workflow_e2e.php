@@ -200,7 +200,7 @@ $cCheckSettle = $db->query("SELECT status, resolved_without_docketing, ltia_cate
 echo "  ✓ Settled Complaint Status: {$cCheckSettle['status']}\n";
 echo "  ✓ Resolved Without Docketing: {$cCheckSettle['resolved_without_docketing']}\n";
 echo "  ✓ LTIA Category: {$cCheckSettle['ltia_category']}\n";
-assert($cCheckSettle['status'] === 'Resolved at Paanyaya / Closed');
+assert($cCheckSettle['status'] === 'Settled');
 assert((int)$cCheckSettle['resolved_without_docketing'] === 1);
 assert($cCheckSettle['ltia_category'] === 'Pre-Docket Resolution');
 

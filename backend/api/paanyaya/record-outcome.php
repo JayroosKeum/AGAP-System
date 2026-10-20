@@ -19,12 +19,28 @@ if (!is_array($input)) {
 }
 
 $sessionId = filter_var($input['session_id'] ?? $input['paanyaya_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+$paanyayaModel = new Paanyaya();
+if ($sessionId) {
+    $sessCheck = $paanyayaModel->getSessionById($sessionId);
+    if (!$sessCheck) {
+        $sessionId = null;
+    }
+}
 if (!$sessionId && !empty($input['complaint_id'])) {
     $cid = (int) $input['complaint_id'];
-    $paanyayaModel = new Paanyaya();
     $latest = $paanyayaModel->getByComplaintId($cid);
     if ($latest && !empty($latest['session_id'])) {
         $sessionId = (int) $latest['session_id'];
+    } else {
+        $newPaa = $paanyayaModel->schedule([
+            'complaint_id' => $cid,
+            'invitation_date' => date('Y-m-d'),
+            'invitation_time' => '14:00',
+            'venue' => 'Barangay Tumana',
+        ], (int) ($_SESSION['user_id'] ?? 1));
+        if (!empty($newPaa['session_id'])) {
+            $sessionId = (int) $newPaa['session_id'];
+        }
     }
 }
 

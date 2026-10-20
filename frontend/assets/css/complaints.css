@@ -2420,6 +2420,7 @@ input[data-ai-external-consent]:focus {
 .status-conciliation { background:#ede9fe; color:#5b21b6; border-color:#ddd6fe; }
 .badge-lifecycle-cfa,
 .status-cfa { background:#ffedd5; color:#9a3412; border-color:#fed7aa; }
+.badge-lifecycle-settled,
 .badge-lifecycle-resolved-at-paanyaya-closed,
 .status-resolved-at-paanyaya-closed,
 .badge-lifecycle-resolution-closed,

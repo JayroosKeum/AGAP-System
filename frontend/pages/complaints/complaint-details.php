@@ -623,6 +623,10 @@ include '../../layouts/header.php';
                                 <strong>Latest Outcome:</strong> <span id="p1LatestOutcomeBadge">None</span>
                                 <div id="p1LatestRemarks" style="font-size: 0.78rem; color: #64748b; margin-top: 2px;"></div>
                             </div>
+                            <div class="party-row" id="p1MinutesRow" style="display:none; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #e2e8f0;">
+                                <strong>Dialogue Minutes:</strong> <span id="p1MinutesBadge">None</span>
+                                <div id="p1MinutesSummary" style="font-size: 0.78rem; color: #64748b; margin-top: 2px;"></div>
+                            </div>
                         </div>
                     </div>
 
@@ -633,6 +637,12 @@ include '../../layouts/header.php';
                         </button>
                         <button type="button" class="btn-create" id="btnRecordReturnP1" onclick="openRecordReturnModal('Paanyaya 1')" style="background: #2563eb; border-color: #2563eb; display: none;">
                             📝 Record Officer's Return
+                        </button>
+                        <button type="button" class="btn-create" id="btnRecordMinutesP1" onclick="openPaanyayaMinutesModal('Paanyaya 1')" style="background: #2563eb; border-color: #2563eb; display: none;">
+                            📝 Record Dialogue Minutes
+                        </button>
+                        <button type="button" class="btn-sess-white" id="btnViewMinutesP1" onclick="viewPaanyayaMinutes('Paanyaya 1')" style="display: none;">
+                            📄 View Dialogue Minutes
                         </button>
                         <button type="button" class="btn-sess-indigo" id="btnPreviewP1" onclick="previewPaanyayaStageLetter('Paanyaya 1')" style="display: none;">
                             👁️ Preview Letter
@@ -660,7 +670,7 @@ include '../../layouts/header.php';
                         <!-- Locked State Alert Banner (when Paanyaya 1 is still incomplete) -->
                         <div id="p2LockedNotice" style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 14px; margin-bottom: 16px; font-size: 0.85rem; color: #64748b; display: flex; align-items: center; gap: 10px;">
                             <span style="font-size: 1.3rem;">🔒</span>
-                            <span>Paanyaya 2 is locked. It unlocks only after Paanyaya 1 reaches completion condition or authorized review.</span>
+                            <span>Paanyaya 2 is locked. It unlocks ONLY if Paanyaya 1 concludes with 'No Agreement' and the complainant requests a second invitation.</span>
                         </div>
 
                         <!-- 4 Metric KPI Box -->
@@ -709,6 +719,10 @@ include '../../layouts/header.php';
                                 <strong>Latest Outcome:</strong> <span id="p2LatestOutcomeBadge">None</span>
                                 <div id="p2LatestRemarks" style="font-size: 0.78rem; color: #64748b; margin-top: 2px;"></div>
                             </div>
+                            <div class="party-row" id="p2MinutesRow" style="display:none; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #e2e8f0;">
+                                <strong>Dialogue Minutes:</strong> <span id="p2MinutesBadge">None</span>
+                                <div id="p2MinutesSummary" style="font-size: 0.78rem; color: #64748b; margin-top: 2px;"></div>
+                            </div>
                         </div>
                     </div>
 
@@ -719,6 +733,12 @@ include '../../layouts/header.php';
                         </button>
                         <button type="button" class="btn-create" id="btnRecordReturnP2" onclick="openRecordReturnModal('Paanyaya 2')" style="background: #2563eb; border-color: #2563eb; display: none;">
                             📝 Record Officer's Return
+                        </button>
+                        <button type="button" class="btn-create" id="btnRecordMinutesP2" onclick="openPaanyayaMinutesModal('Paanyaya 2')" style="background: #2563eb; border-color: #2563eb; display: none;">
+                            📝 Record Dialogue Minutes
+                        </button>
+                        <button type="button" class="btn-sess-white" id="btnViewMinutesP2" onclick="viewPaanyayaMinutes('Paanyaya 2')" style="display: none;">
+                            📄 View Dialogue Minutes
                         </button>
                         <button type="button" class="btn-sess-indigo" id="btnPreviewP2" onclick="previewPaanyayaStageLetter('Paanyaya 2')" style="display: none;">
                             👁️ Preview Letter
@@ -1360,6 +1380,7 @@ include '../../layouts/header.php';
         </div>
         <form id="paanyayaOutcomeForm" onsubmit="submitPaanyayaOutcome(event)">
             <input type="hidden" id="outcomePaanyayaId" name="paanyaya_id" value="">
+            <input type="hidden" id="outcomeComplaintId" name="complaint_id" value="">
             <input type="hidden" id="outcomeActionType" name="outcome" value="Resolved">
 
             <div id="outcomeResolvedNotice" style="display:none; margin-bottom: 16px; background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 12px 14px; font-size: 0.88rem; color: #166534;">
@@ -1408,6 +1429,182 @@ include '../../layouts/header.php';
                 <button type="submit" class="btn-create" id="btnSubmitPaanyayaOutcome">Confirm Outcome</button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- Modal: Record Paanyaya Dialogue Minutes & Outcome -->
+<div id="paanyayaMinutesModal" class="modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="minutesModalHeading">
+    <div class="modal-content" style="max-width: 640px; padding: 24px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15); max-height: 90vh; overflow-y: auto;">
+        <div class="modal-header" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 0;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 1.4rem;">📝</span>
+                <div>
+                    <h2 id="minutesModalHeading" style="font-size: 1.18rem; font-weight: 800; color: #0f172a; margin: 0;">Record Paanyaya Dialogue Minutes</h2>
+                    <span id="minutesModalSub" style="font-size: 0.8rem; color: #64748b;">Salaysay at Napag-usapan sa Harapan ng Barangay</span>
+                </div>
+            </div>
+            <button type="button" class="close-btn" onclick="closePaanyayaMinutesModal()">&times;</button>
+        </div>
+        <form id="paanyayaMinutesForm" onsubmit="submitPaanyayaMinutes(event)" enctype="multipart/form-data">
+            <input type="hidden" id="minutesComplaintId" name="complaint_id" value="">
+            <input type="hidden" id="minutesStageType" name="stage_type" value="Paanyaya 1">
+
+            <!-- Dialogue Date & Time -->
+            <div class="form-group" style="margin-bottom: 14px;">
+                <label for="minutesDialogueDate" style="font-weight: 600; font-size: 0.84rem;">Petsa at Oras ng Pag-uusap (Dialogue Date & Time) <span class="required-mark">*</span></label>
+                <input type="datetime-local" id="minutesDialogueDate" name="dialogue_date" required style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+            </div>
+
+            <!-- Party Attendance -->
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px;">
+                <div style="font-weight: 700; font-size: 0.85rem; color: #0f172a; margin-bottom: 8px;">Pagdalo ng Magkabilang Panig (Party Attendance) <span class="required-mark">*</span></div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <span style="font-size: 0.8rem; color: #475569; font-weight: 600; display: block; margin-bottom: 4px;">Nagpaanyaya (Complainant):</span>
+                        <div style="display: flex; gap: 12px; font-size: 0.85rem;">
+                            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                <input type="radio" name="complainant_attended" value="Present" checked>
+                                <span style="color: #166534; font-weight: 600;">✓ Dumalo (Present)</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                <input type="radio" name="complainant_attended" value="Absent">
+                                <span style="color: #991b1b;">✗ Hindi Dumalo</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div>
+                        <span style="font-size: 0.8rem; color: #475569; font-weight: 600; display: block; margin-bottom: 4px;">Inanyayahan (Respondent):</span>
+                        <div style="display: flex; gap: 12px; font-size: 0.85rem;">
+                            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                <input type="radio" name="respondent_attended" value="Present" checked onchange="handleMinutesAttendanceChange()">
+                                <span style="color: #166534; font-weight: 600;">✓ Dumalo (Present)</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                <input type="radio" name="respondent_attended" value="Absent" onchange="handleMinutesAttendanceChange()">
+                                <span style="color: #991b1b;">✗ Hindi Dumalo</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Temporary Minutes: Discussion Summary -->
+            <div class="form-group" style="margin-bottom: 14px;">
+                <label for="minutesDiscussionSummary" style="font-weight: 600; font-size: 0.84rem;">Salaysay at Buod ng Napag-usapan (Summary of Statements & Discussion) <span class="required-mark">*</span></label>
+                <textarea id="minutesDiscussionSummary" name="discussion_summary" rows="3" required placeholder="Ibuod ang mga pahayag, sagot, at mga puntong napag-usapan ng magkabilang panig habang isinasagawa ang dialogue..." style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;"></textarea>
+            </div>
+
+            <!-- Agreed Terms / Compromise -->
+            <div class="form-group" style="margin-bottom: 14px;">
+                <label for="minutesAgreedTerms" style="font-weight: 600; font-size: 0.84rem;">Mga Mungkahi o Napagkasunduang Kondisyon (Proposals / Agreed Terms)</label>
+                <textarea id="minutesAgreedTerms" name="agreed_terms" rows="2" placeholder="Kondisyon ng bayaran, pagsasaayos, o pangako ng magkabilang panig (kung mayroon)..." style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;"></textarea>
+            </div>
+
+            <!-- Optional Scanned Minutes Upload -->
+            <div class="form-group" style="margin-bottom: 14px;">
+                <label for="minutesScannedFile" style="font-weight: 600; font-size: 0.84rem;">Kopya ng Sulat-Kamay na Katitikan / Minutes (Optional Photo or Scan)</label>
+                <input type="file" id="minutesScannedFile" name="scanned_minutes" accept=".jpg,.jpeg,.png,.pdf,.webp" style="padding: 6px 8px; font-size: 0.84rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                <span style="font-size: 0.75rem; color: #64748b; margin-top: 2px; display: block;">Maaaring mag-attach ng litrato ng sulat-kamay na katitikan na may lagda ng mga panig (JPG, PNG, PDF hanggang 10MB).</span>
+            </div>
+
+            <!-- Dialogue Determination (Procedural Result) -->
+            <div style="margin-bottom: 14px;">
+                <label style="font-weight: 700; font-size: 0.85rem; color: #0f172a; display: block; margin-bottom: 6px;">Kinalabasan ng Pag-uusap (Dialogue Procedural Result) <span class="required-mark">*</span></label>
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                    <label id="optMinutesSettledWrap" style="display: flex; align-items: flex-start; gap: 8px; background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 8px; padding: 10px 12px; cursor: pointer;">
+                        <input type="radio" name="outcome" value="Settled" checked onchange="toggleMinutesOutcomeViews()" style="margin-top: 3px;">
+                        <div>
+                            <strong style="color: #166534; font-size: 0.88rem;">✓ Nagkasundo / Amicably Settled (Informal Settlement)</strong>
+                            <p style="margin: 2px 0 0; font-size: 0.78rem; color: #166534;">Nalutas ang usapin sa impormal na pag-uusap. Isasara ang complaint nang hindi na kailangang i-docket sa pormal na korte (LTIA performance win).</p>
+                        </div>
+                    </label>
+
+                    <label id="optMinutesNoAgreementWrap" style="display: flex; align-items: flex-start; gap: 8px; background: #fef2f2; border: 1.5px solid #fecaca; border-radius: 8px; padding: 10px 12px; cursor: pointer;">
+                        <input type="radio" name="outcome" value="No_Agreement" onchange="toggleMinutesOutcomeViews()" style="margin-top: 3px;">
+                        <div>
+                            <strong style="color: #991b1b; font-size: 0.88rem;">⚡ Walang Kasunduan / No Agreement Reached (or Respondent No-Show)</strong>
+                            <p style="margin: 2px 0 0; font-size: 0.78rem; color: #991b1b;">Hindi nagkasundo ang mga panig, tumanggi ang inanyayahan, o hindi sumipot. Piliin ang desisyon ng nagrereklamo sa ibaba.</p>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Complainant Choice Selector (Visible ONLY on No_Agreement) -->
+            <div id="minutesComplainantChoiceSection" style="display: none; background: #fff7ed; border: 1.5px solid #fed7aa; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px;">
+                <label style="font-weight: 700; font-size: 0.85rem; color: #9a3412; display: block; margin-bottom: 6px;">
+                    Ano ang nais ng nagrereklamo? (Complainant's Decision) <span class="required-mark">*</span>
+                </label>
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                    <label id="optChoiceP2Wrap" style="display: flex; align-items: flex-start; gap: 8px; background: #ffffff; border: 1px solid #fdba74; border-radius: 6px; padding: 8px 10px; cursor: pointer;">
+                        <input type="radio" name="complainant_choice" value="Request_Paanyaya_2" checked onchange="toggleComplainantChoiceViews()" style="margin-top: 3px;">
+                        <div>
+                            <strong style="color: #c2410c; font-size: 0.84rem;">Choice A: Humiling ng Ikalawang Paanyaya (Give another chance / Request 2nd Paanyaya)</strong>
+                            <p style="margin: 2px 0 0; font-size: 0.77rem; color: #7c2d12;">I-unlock ang Paanyaya 2 card upang makapag-isyu ng pangalawang paanyaya sa inanyayahan.</p>
+                        </div>
+                    </label>
+                    <label id="optChoiceEscalateWrap" style="display: flex; align-items: flex-start; gap: 8px; background: #ffffff; border: 1px solid #fdba74; border-radius: 6px; padding: 8px 10px; cursor: pointer;">
+                        <input type="radio" name="complainant_choice" value="Escalate_Mediation" onchange="toggleComplainantChoiceViews()" style="margin-top: 3px;">
+                        <div>
+                            <strong style="color: #dc2626; font-size: 0.84rem;">Choice B: I-akyat na sa Pormal na Mediation / Punong Barangay (Escalate immediately)</strong>
+                            <p style="margin: 2px 0 0; font-size: 0.77rem; color: #991b1b;">Laktawan ang Paanyaya 2. Magtatalaga ng official Case Docket Number, KP Form 7 (Complaint), at KP Form 9 (Summons).</p>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Escalation 1st Mediation Hearing Schedule (Visible ONLY when Choice B is active) -->
+            <div id="minutesEscalationScheduleSection" style="display: none; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 14px; margin-bottom: 14px;">
+                <h4 style="margin: 0 0 10px; font-size: 0.92rem; color: #0f172a; font-weight: 700;">1st Formal Mediation Hearing Schedule (Tumana Rules)</h4>
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label for="minutesMedDate" style="font-weight: 600; font-size: 0.82rem;">Mediation Date (Tuesdays ONLY) <span class="required-mark">*</span></label>
+                        <input type="date" id="minutesMedDate" name="mediation_date" style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                    </div>
+                    <div class="form-group">
+                        <label for="minutesMedTime" style="font-weight: 600; font-size: 0.82rem;">Mediation Slot (1:00 PM - 5:00 PM) <span class="required-mark">*</span></label>
+                        <select id="minutesMedTime" name="mediation_time" style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                            <option value="13:00">1:00 PM - 2:00 PM</option>
+                            <option value="14:00">2:00 PM - 3:00 PM</option>
+                            <option value="15:00">3:00 PM - 4:00 PM</option>
+                            <option value="16:00">4:00 PM - 5:00 PM</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group" style="margin-top: 8px;">
+                    <label for="minutesMedVenue" style="font-weight: 600; font-size: 0.82rem;">Hearing Venue</label>
+                    <input type="text" id="minutesMedVenue" name="venue" value="Lupon Court Room" readonly style="padding: 8px 10px; font-size: 0.88rem; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                </div>
+            </div>
+
+            <div id="paanyayaMinutesError" class="alert alert-danger" style="display:none; margin-bottom: 14px; font-size: 0.84rem; padding: 8px 12px;"></div>
+
+            <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 0;">
+                <button type="button" class="btn-secondary" onclick="closePaanyayaMinutesModal()">Cancel</button>
+                <button type="submit" class="btn-create" id="btnSubmitPaanyayaMinutes" style="background: #2563eb; border-color: #2563eb;">Save Minutes &amp; Confirm Result</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: View Paanyaya Dialogue Minutes -->
+<div id="paanyayaMinutesViewModal" class="modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="viewMinutesModalHeading">
+    <div class="modal-content" style="max-width: 600px; padding: 24px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15); max-height: 90vh; overflow-y: auto;">
+        <div class="modal-header" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 0;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 1.4rem;">📄</span>
+                <div>
+                    <h2 id="viewMinutesModalHeading" style="font-size: 1.18rem; font-weight: 800; color: #0f172a; margin: 0;">Recorded Dialogue Minutes</h2>
+                    <span id="viewMinutesModalSub" style="font-size: 0.8rem; color: #64748b;">Katitikan ng Impormal na Pag-uusap</span>
+                </div>
+            </div>
+            <button type="button" class="close-btn" onclick="closePaanyayaMinutesViewModal()">&times;</button>
+        </div>
+        <div id="viewMinutesBody" style="font-size: 0.88rem; line-height: 1.5; color: #334155;">
+            <!-- Injected by JavaScript -->
+        </div>
+        <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;">
+            <button type="button" class="btn-secondary" onclick="closePaanyayaMinutesViewModal()">Close</button>
+        </div>
     </div>
 </div>
 

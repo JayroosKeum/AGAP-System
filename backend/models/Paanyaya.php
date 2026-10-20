@@ -51,7 +51,7 @@ class Paanyaya
             return ['success' => false, 'message' => 'Complaint not found.'];
         }
 
-        if (!empty($complaint['resolved_without_docketing']) || $complaint['status'] === 'Resolved at Paanyaya / Closed') {
+        if (!empty($complaint['resolved_without_docketing']) || $complaint['status'] === 'Settled' || $complaint['status'] === 'Resolved at Paanyaya / Closed') {
             return ['success' => false, 'message' => 'This dispute has already been resolved at the Paanyaya stage and is closed.'];
         }
 
@@ -374,6 +374,7 @@ class Paanyaya
             }
         }
 
+        $stageType = ($attemptNumber >= 2) ? self::STAGE_2 : self::STAGE_1;
         try {
             $this->conn->beginTransaction();
 
@@ -393,13 +394,32 @@ class Paanyaya
 
                 $updComplaint = $this->conn->prepare("
                     UPDATE complaints
-                    SET status = 'Resolved at Paanyaya / Closed',
+                    SET status = 'Settled',
                         resolved_without_docketing = 1,
                         ltia_category = 'Pre-Docket Resolution',
                         updated_at = CURRENT_TIMESTAMP
                     WHERE complaint_id = ?
                 ");
                 $updComplaint->execute([$complaintId]);
+
+                $updStages = $this->conn->prepare("
+                    UPDATE paanyaya_stages
+                    SET status = 'Completed',
+                        review_status = 'Case Closed',
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE complaint_id = ? AND stage_type = ?
+                ");
+                $updStages->execute([$complaintId, $stageType]);
+
+                if ($stageType === self::STAGE_1) {
+                    $this->conn->prepare("
+                        UPDATE paanyaya_stages
+                        SET status = 'Not Started',
+                            review_status = 'None',
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE complaint_id = ? AND stage_type = ? AND issued_at IS NULL
+                    ")->execute([$complaintId, self::STAGE_2]);
+                }
 
                 if ($userId) {
                     $this->audit->log($userId, 'Informally Resolved at Paanyaya / Closed (Pre-Docket Resolution)', 'Complaints', $complaintId);
@@ -410,7 +430,7 @@ class Paanyaya
                 return [
                     'success' => true,
                     'outcome' => 'Settled',
-                    'status' => 'Resolved at Paanyaya / Closed',
+                    'status' => 'Settled',
                     'resolved_without_docketing' => 1,
                     'ltia_category' => 'Pre-Docket Resolution',
                     'message' => 'Dispute successfully settled during Paanyaya informal dialogue! Resolved without formal court docketing (LTIA performance win).'
@@ -649,7 +669,8 @@ class Paanyaya
                 'mediation_date' => $medDate,
                 'mediation_time' => $medTime,
                 'venue' => $venue,
-                'remarks' => $notes ?: 'Escalated from Paanyaya (Informal Invitation) pre-docketing stage.'
+                'remarks' => $notes ?: 'Escalated from Paanyaya (Informal Invitation) pre-docketing stage.',
+                'override_paanyaya' => true
             ];
 
             // 3. Issue First Summons (Auto-generates KP Form 8 and KP Form 9)
@@ -755,6 +776,7 @@ class Paanyaya
 
             // 5. Update complaints status to Mediation
             $this->conn->prepare("UPDATE complaints SET status = 'Mediation', updated_at = CURRENT_TIMESTAMP WHERE complaint_id = ?")->execute([$complaintId]);
+            $this->conn->prepare("UPDATE paanyaya_stages SET status = 'Completed', review_status = 'Approved for Summons', updated_at = CURRENT_TIMESTAMP WHERE complaint_id = ?")->execute([$complaintId]);
 
             if ($userId) {
                 $this->audit->log($userId, "Escalated to Formal Case Docketing: Case #{$caseNumber} assigned with 1st Mediation Summons (KP Forms 7, 8, 9 generated)", 'Complaints', $complaintId);
@@ -832,8 +854,8 @@ class Paanyaya
         $caseStmt->execute([$complaintId]);
         $case = $caseStmt->fetch(PDO::FETCH_ASSOC) ?: null;
 
-        $isResolved = ($complaint['status'] === 'Resolved at Paanyaya / Closed') || !empty($complaint['resolved_without_docketing']);
-        $isEscalated = ($case !== null) || in_array($complaint['status'], ['Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled'], true);
+        $isResolved = ($complaint['status'] === 'Settled' && empty($case)) || ($complaint['status'] === 'Resolved at Paanyaya / Closed') || !empty($complaint['resolved_without_docketing']);
+        $isEscalated = ($case !== null) || in_array($complaint['status'], ['Docketed', 'Mediation', 'Conciliation', 'Arbitration'], true) || ($complaint['status'] === 'Settled' && $case !== null);
         $maxReached = !empty($complaint['max_paanyaya_reached']) || (count($sessions) >= self::MAX_ATTEMPTS);
         $canScheduleSecond = !$isResolved && !$isEscalated && (count($sessions) === 1) && in_array($latestSession['session_outcome'] ?? '', ['Absent_Retry', 'Continued_Dialogue'], true);
 
@@ -1066,11 +1088,29 @@ class Paanyaya
         $isExhausted1 = ($count1 >= self::MAX_STAGE_ATTEMPTS && !$isDelivered1);
         $isExhausted2 = ($count2 >= self::MAX_STAGE_ATTEMPTS && !$isDelivered2);
 
-        $isCompleted1 = $isDelivered1 ||
-                        $stage1['status'] === 'Completed' ||
-                        in_array($stage1['review_status'], ['Approved for Paanyaya 2', 'Approved for Summons', 'Case Closed'], true);
+        $minutes1 = $this->getStageMinutes($complaintId, self::STAGE_1);
+        $minutes2 = $this->getStageMinutes($complaintId, self::STAGE_2);
 
-        $isEligible2 = $isCompleted1;
+        $cStmt = $this->conn->prepare('SELECT status, paanyaya_1_outcome FROM complaints WHERE complaint_id = ? LIMIT 1');
+        $cStmt->execute([$complaintId]);
+        $compRow = $cStmt->fetch(PDO::FETCH_ASSOC);
+
+        $isP1Solved = (($compRow['status'] ?? '') === 'Settled') ||
+                      (($compRow['status'] ?? '') === 'Resolved at Paanyaya / Closed') ||
+                      (($compRow['paanyaya_1_outcome'] ?? '') === 'Settled') ||
+                      ($minutes1 && $minutes1['outcome'] === 'Settled');
+
+        $p2WasIssued = ($stage2['issued_at'] !== null) || ($count2 > 0);
+
+        $canUnlockP2FromMinutes = !$isP1Solved && ($minutes1 !== null) &&
+            in_array($minutes1['outcome'], ['No_Agreement', 'Party_Absent'], true) &&
+            ($minutes1['complainant_choice'] === 'Request_Paanyaya_2');
+
+        $isEligible2 = !$isP1Solved && ($p2WasIssued || $canUnlockP2FromMinutes || ($stage1['review_status'] === 'Approved for Paanyaya 2'));
+
+        $isCompleted1 = ($minutes1 !== null) ||
+                        ($stage1['status'] === 'Completed') ||
+                        in_array($stage1['review_status'], ['Approved for Paanyaya 2', 'Approved for Summons', 'Case Closed'], true);
 
         $canRecordAttempt1 = ($stage1['status'] === 'In Progress') && ($count1 < self::MAX_STAGE_ATTEMPTS) && !$isDelivered1;
         $canRecordAttempt2 = ($stage2['status'] === 'In Progress') && ($count2 < self::MAX_STAGE_ATTEMPTS) && !$isDelivered2;
@@ -1091,6 +1131,10 @@ class Paanyaya
                 'can_issue' => ($stage1['status'] === 'Not Started'),
                 'can_record_attempt' => $canRecordAttempt1,
                 'needs_review' => ($stage1['status'] === 'Attempts Exhausted – For Review' || ($isExhausted1 && $stage1['review_status'] === 'None')),
+                'minutes_recorded' => ($minutes1 !== null),
+                'minutes' => $minutes1,
+                'outcome' => $minutes1['outcome'] ?? null,
+                'complainant_choice' => $minutes1['complainant_choice'] ?? null,
             ],
             'stage_2' => [
                 'details' => $stage2,
@@ -1100,12 +1144,18 @@ class Paanyaya
                 'next_attempt_number' => min(self::MAX_STAGE_ATTEMPTS, $count2 + 1),
                 'latest_attempt' => $latest2,
                 'is_eligible' => $isEligible2,
+                'can_unlock_p2' => $canUnlockP2FromMinutes,
                 'is_delivered' => $isDelivered2,
                 'is_exhausted' => $isExhausted2,
-                'is_completed' => ($isDelivered2 || $stage2['status'] === 'Completed' || in_array($stage2['review_status'], ['Approved for Summons', 'Case Closed'], true)),
+                'is_completed' => ($p2WasIssued && ($minutes2 !== null || $stage2['status'] === 'Completed' || in_array($stage2['review_status'], ['Approved for Summons', 'Case Closed'], true))),
                 'can_issue' => ($isEligible2 && $stage2['status'] === 'Not Started'),
-                'can_record_attempt' => $canRecordAttempt2,
+                'can_record_attempt' => ($isEligible2 && $canRecordAttempt2),
                 'needs_review' => ($stage2['status'] === 'Attempts Exhausted – For Review' || ($isExhausted2 && $stage2['review_status'] === 'None')),
+                'minutes_recorded' => ($minutes2 !== null),
+                'minutes' => $minutes2,
+                'outcome' => $minutes2['outcome'] ?? null,
+                'complainant_choice' => $minutes2['complainant_choice'] ?? null,
+                'bypassed' => ($isP1Solved && !$p2WasIssued),
             ],
             'summons_prerequisite' => $prereq,
             'serving_officers' => $this->getServingOfficers()
@@ -1133,15 +1183,14 @@ class Paanyaya
 
         if ($stageType === self::STAGE_2) {
             $stage1 = $this->getOrCreateStage($complaintId, self::STAGE_1);
-            $stage1Attempts = $this->getStageAttempts((int)$stage1['id']);
-            $delivered1 = ($stage1['status'] === 'Successfully Delivered') ||
-                          (!empty($stage1Attempts) && end($stage1Attempts)['delivery_outcome'] === 'Successfully delivered');
+            $stage1Minutes = $this->getStageMinutes($complaintId, self::STAGE_1);
             $approved1 = in_array($stage1['review_status'], ['Approved for Paanyaya 2', 'Approved for Summons'], true);
+            $canIssueP2 = ($stage1Minutes && in_array($stage1Minutes['outcome'], ['No_Agreement', 'Party_Absent'], true) && $stage1Minutes['complainant_choice'] === 'Request_Paanyaya_2');
 
-            if (!$delivered1 && !$approved1 && $stage1['status'] !== 'Completed') {
+            if (!$approved1 && !$canIssueP2 && $stage['status'] === 'Not Started') {
                 return [
                     'success' => false,
-                    'message' => 'Paanyaya 2 cannot be issued until Paanyaya 1 is completed or authorized by review.'
+                    'message' => 'Paanyaya 2 is locked. It unlocks ONLY if Paanyaya 1 concludes with No Agreement and the complainant requests a second invitation.'
                 ];
             }
         }
@@ -1600,4 +1649,258 @@ class Paanyaya
             return ['success' => false, 'message' => 'Error recording review: ' . $e->getMessage()];
         }
     }
+    /**
+     * Gets dialogue minutes for a specific Paanyaya stage.
+     */
+    public function getStageMinutes(int $complaintId, string $stageType): ?array
+    {
+        $stmt = $this->conn->prepare("
+            SELECT pm.*,
+                   TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS recorded_by_name
+            FROM paanyaya_minutes pm
+            LEFT JOIN users u ON u.user_id = pm.recorded_by
+            WHERE pm.complaint_id = ? AND pm.stage_type = ?
+            ORDER BY pm.minutes_id DESC
+            LIMIT 1
+        ");
+        $stmt->execute([$complaintId, $stageType]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
+    /**
+     * Gets all recorded dialogue minutes for a complaint.
+     */
+    public function getAllMinutes(int $complaintId): array
+    {
+        $stmt = $this->conn->prepare("
+            SELECT pm.*,
+                   TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS recorded_by_name
+            FROM paanyaya_minutes pm
+            LEFT JOIN users u ON u.user_id = pm.recorded_by
+            WHERE pm.complaint_id = ?
+            ORDER BY pm.minutes_id ASC
+        ");
+        $stmt->execute([$complaintId]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Records the Temporary Minutes of the Meeting and Complainant Decision.
+     */
+    public function recordMinutes(int $complaintId, string $stageType, array $data, int $userId, ?array $proofFile = null): array
+    {
+        if (!in_array($stageType, [self::STAGE_1, self::STAGE_2], true)) {
+            return ['success' => false, 'message' => 'Invalid Paanyaya stage specified.'];
+        }
+
+        $cStmt = $this->conn->prepare('SELECT complaint_id, status FROM complaints WHERE complaint_id = ? LIMIT 1');
+        $cStmt->execute([$complaintId]);
+        $complaint = $cStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$complaint) {
+            return ['success' => false, 'message' => 'Complaint not found.'];
+        }
+
+        $dialogueDate = !empty($data['dialogue_date']) ? date('Y-m-d H:i:s', strtotime($data['dialogue_date'])) : date('Y-m-d H:i:s');
+        $compAttended = in_array(trim((string)($data['complainant_attended'] ?? '')), ['Present', 'Absent'], true)
+            ? trim((string)$data['complainant_attended']) : 'Present';
+        $respAttended = in_array(trim((string)($data['respondent_attended'] ?? '')), ['Present', 'Absent'], true)
+            ? trim((string)$data['respondent_attended']) : 'Present';
+
+        $discussionSummary = trim((string)($data['discussion_summary'] ?? ($data['summary'] ?? '')));
+        $agreedTerms = trim((string)($data['agreed_terms'] ?? ($data['terms'] ?? '')));
+
+        if ($discussionSummary === '') {
+            $discussionSummary = 'Informal dialogue conducted. Summary of discussion recorded.';
+        }
+
+        // Determine outcome
+        $rawOutcome = trim((string)($data['outcome'] ?? ''));
+        if (stripos($rawOutcome, 'settle') !== false || stripos($rawOutcome, 'nagkasundo') !== false) {
+            $outcome = 'Settled';
+        } elseif ($respAttended === 'Absent') {
+            $outcome = 'Party_Absent';
+        } else {
+            $outcome = 'No_Agreement';
+        }
+
+        // Complainant choice
+        if ($outcome === 'Settled') {
+            $complainantChoice = 'None';
+        } else {
+            $rawChoice = trim((string)($data['complainant_choice'] ?? ''));
+            if ($rawChoice === 'Escalate_Mediation' || stripos($rawChoice, 'escalate') !== false || stripos($rawChoice, 'akyat') !== false) {
+                $complainantChoice = 'Escalate_Mediation';
+            } else {
+                $complainantChoice = ($stageType === self::STAGE_2) ? 'Escalate_Mediation' : 'Request_Paanyaya_2';
+            }
+        }
+
+        // File upload handling for scanned minutes
+        $scannedMinutesPath = null;
+        if (!empty($proofFile) && !empty($proofFile['tmp_name']) && is_uploaded_file($proofFile['tmp_name'])) {
+            $ext = strtolower(pathinfo($proofFile['name'], PATHINFO_EXTENSION));
+            $allowedExts = ['jpg', 'jpeg', 'png', 'pdf', 'webp'];
+            if (!in_array($ext, $allowedExts, true)) {
+                return ['success' => false, 'message' => 'Invalid file format. Allowed formats: JPG, PNG, WEBP, PDF.'];
+            }
+            if ($proofFile['size'] > 10 * 1024 * 1024) {
+                return ['success' => false, 'message' => 'File size exceeds 10MB limit.'];
+            }
+
+            $storageDir = __DIR__ . '/../../storage/paanyaya/minutes';
+            if (!is_dir($storageDir)) {
+                @mkdir($storageDir, 0777, true);
+            }
+            $stageSlug = ($stageType === self::STAGE_1) ? 'p1' : 'p2';
+            $fileName = sprintf('minutes_%d_%s_%s.%s', $complaintId, $stageSlug, date('Ymd_His'), $ext);
+            $targetPath = $storageDir . '/' . $fileName;
+
+            if (move_uploaded_file($proofFile['tmp_name'], $targetPath)) {
+                $scannedMinutesPath = 'storage/paanyaya/minutes/' . $fileName;
+            }
+        } elseif (!empty($data['scanned_minutes_path'])) {
+            $scannedMinutesPath = trim((string)$data['scanned_minutes_path']);
+        }
+
+        try {
+            $this->conn->beginTransaction();
+
+            $insStmt = $this->conn->prepare("
+                INSERT INTO paanyaya_minutes (
+                    complaint_id, stage_type, dialogue_date,
+                    complainant_attended, respondent_attended,
+                    discussion_summary, agreed_terms,
+                    outcome, complainant_choice,
+                    scanned_minutes_path, recorded_by, created_at
+                ) VALUES (
+                    ?, ?, ?,
+                    ?, ?,
+                    ?, ?,
+                    ?, ?,
+                    ?, ?, CURRENT_TIMESTAMP
+                )
+            ");
+            $insStmt->execute([
+                $complaintId,
+                $stageType,
+                $dialogueDate,
+                $compAttended,
+                $respAttended,
+                $discussionSummary,
+                $agreedTerms ?: null,
+                $outcome,
+                $complainantChoice,
+                $scannedMinutesPath,
+                $userId
+            ]);
+            $minutesId = (int) $this->conn->lastInsertId();
+
+            if ($stageType === self::STAGE_1) {
+                $updCompCols = $this->conn->prepare("
+                    UPDATE complaints
+                    SET paanyaya_1_outcome = ?,
+                        paanyaya_complainant_choice = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE complaint_id = ?
+                ");
+                $updCompCols->execute([$outcome, $complainantChoice, $complaintId]);
+            }
+
+            // Also keep session updated if any exists
+            $sess = $this->getByComplaintId($complaintId);
+            if ($sess && !empty($sess['session_id'])) {
+                $sessOutcome = ($outcome === 'Settled') ? 'Settled' : (($complainantChoice === 'Request_Paanyaya_2') ? 'Continued_Dialogue' : 'Impasse_Escalate');
+                $updSess = $this->conn->prepare("
+                    UPDATE paanyaya_sessions
+                    SET session_outcome = ?,
+                        outcome_notes = ?,
+                        complainant_attended = ?,
+                        respondent_attended = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE session_id = ?
+                ");
+                $updSess->execute([$sessOutcome, $discussionSummary, $compAttended, $respAttended, (int)$sess['session_id']]);
+            }
+
+            // Case 1: Settled
+            if ($outcome === 'Settled') {
+                $updComp = $this->conn->prepare("
+                    UPDATE complaints
+                    SET status = 'Settled',
+                        resolved_without_docketing = 1,
+                        ltia_category = 'Pre-Docket Resolution',
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE complaint_id = ?
+                ");
+                $updComp->execute([$complaintId]);
+
+                $updStages = $this->conn->prepare("
+                    UPDATE paanyaya_stages
+                    SET status = 'Completed',
+                        review_status = 'Case Closed',
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE complaint_id = ?
+                ");
+                $updStages->execute([$complaintId]);
+
+                $this->audit->log($userId, "Recorded Minutes for {$stageType}: Amicably Settled (Pre-Docket Resolution)", 'Paanyaya', $complaintId);
+
+                $this->conn->commit();
+
+                return [
+                    'success' => true,
+                    'minutes_id' => $minutesId,
+                    'action' => 'settled',
+                    'outcome' => 'Settled',
+                    'complainant_choice' => 'None',
+                    'message' => 'Dispute amicably settled during informal Paanyaya dialogue! Closed without formal court docketing (LTIA performance win).'
+                ];
+            }
+
+            // Case 2: No Agreement - Choice A: Request 2nd Paanyaya
+            if ($stageType === self::STAGE_1 && $complainantChoice === 'Request_Paanyaya_2') {
+                $stage1 = $this->getOrCreateStage($complaintId, self::STAGE_1);
+                $this->conn->prepare("UPDATE paanyaya_stages SET status = 'Completed', updated_at = CURRENT_TIMESTAMP WHERE id = ?")->execute([(int)$stage1['id']]);
+
+                $this->audit->log($userId, "Recorded Minutes for {$stageType}: No Agreement. Complainant requested 2nd Paanyaya.", 'Paanyaya', $complaintId);
+
+                $this->conn->commit();
+
+                return [
+                    'success' => true,
+                    'minutes_id' => $minutesId,
+                    'action' => 'request_paanyaya_2',
+                    'outcome' => $outcome,
+                    'complainant_choice' => 'Request_Paanyaya_2',
+                    'message' => 'Dialogue minutes recorded: No agreement reached. Complainant requested 2nd Paanyaya. Paanyaya 2 card is now unlocked!'
+                ];
+            }
+
+            // Case 3: No Agreement - Choice B: Escalate to Formal Mediation (or Stage 2 failure)
+            $stage1 = $this->getOrCreateStage($complaintId, $stageType);
+            $this->conn->prepare("UPDATE paanyaya_stages SET status = 'Completed', updated_at = CURRENT_TIMESTAMP WHERE id = ?")->execute([(int)$stage1['id']]);
+
+            $this->audit->log($userId, "Recorded Minutes for {$stageType}: Escalating to Formal Mediation per complainant choice.", 'Paanyaya', $complaintId);
+
+            $this->conn->commit();
+
+            // Trigger formal docketing
+            $escResult = $this->escalateToFormalDocketing($complaintId, $userId, $discussionSummary, $data);
+            $escResult['minutes_id'] = $minutesId;
+            $escResult['action'] = 'escalate_mediation';
+            $escResult['outcome'] = $outcome;
+            $escResult['complainant_choice'] = 'Escalate_Mediation';
+            return $escResult;
+
+        } catch (Throwable $e) {
+            if ($this->conn->inTransaction()) {
+                $this->conn->rollBack();
+            }
+            error_log("Paanyaya recordMinutes error: " . $e->getMessage());
+            return ['success' => false, 'message' => 'Error recording dialogue minutes: ' . $e->getMessage()];
+        }
+    }
+
 }

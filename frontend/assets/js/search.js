@@ -752,6 +752,8 @@ document.addEventListener('DOMContentLoaded', () => {
             lifecycleStatus = 'Draft';
         } else if (row.status === 'Pre-Docketed (Paanyaya)' || row.lifecycle_status === 'Pre-Docketed (Paanyaya)') {
             lifecycleStatus = 'Pre-Docketed (Paanyaya)';
+        } else if (row.status === 'Settled' || row.lifecycle_status === 'Settled') {
+            lifecycleStatus = 'Settled';
         } else if (row.status === 'Resolved at Paanyaya / Closed' || row.lifecycle_status === 'Resolved at Paanyaya / Closed') {
             lifecycleStatus = 'Resolved at Paanyaya / Closed';
         } else if ([
