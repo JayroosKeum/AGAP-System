@@ -376,4 +376,107 @@ class Report
         $statement->execute([$reportId]);
         return $statement->fetch(PDO::FETCH_ASSOC) ?: null;
     }
+
+    /**
+     * getCaseRegister()
+     *
+     * Returns a 1-row-per-case dataset for the Excel Case Register export.
+     * Includes: docket info, parties, summons delivery date/server/result,
+     * SLA timeliness (served within 1 business day of issuance), hearing count,
+     * resolution/outcome, and case status.
+     */
+    public function getCaseRegister(?string $startDate = null, ?string $endDate = null): array
+    {
+        $where = '';
+        $params = [];
+
+        if ($startDate && $endDate) {
+            $where = 'WHERE c.docket_date BETWEEN ? AND ?';
+            $params = [$startDate, $endDate];
+        } elseif ($startDate) {
+            $where = 'WHERE c.docket_date >= ?';
+            $params = [$startDate];
+        } elseif ($endDate) {
+            $where = 'WHERE c.docket_date <= ?';
+            $params = [$endDate];
+        }
+
+        $sql = "
+            SELECT
+                c.case_id,
+                c.case_number,
+                c.case_type,
+                c.case_status,
+                c.docket_date,
+                co.complaint_number,
+                co.complaint_title,
+                co.incident_date,
+                cat.category_name,
+
+                /* Complainant (first) */
+                MAX(CASE WHEN cp.party_type = 'Complainant' THEN
+                    TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name))
+                END) AS complainant_name,
+
+                /* Respondent (first) */
+                MAX(CASE WHEN cp.party_type = 'Respondent' THEN
+                    TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name))
+                END) AS respondent_name,
+
+                /* Summons — 1st attempt from summon_deliveries.
+                   created_at ≈ issuance date; served_at = actual delivery datetime */
+                MIN(DATE(sd.created_at))           AS summons_issued_date,
+                MIN(DATE(sd.served_at))            AS summons_served_date,
+                MAX(CONCAT_WS(' ', su.first_name, su.last_name))
+                                                   AS serving_officer,
+                MAX(sd.delivery_status)            AS delivery_status,
+                /* SLA: served within 1 calendar day of issuance */
+                CASE
+                    WHEN MIN(sd.served_at) IS NOT NULL AND MIN(sd.created_at) IS NOT NULL
+                         AND DATEDIFF(MIN(DATE(sd.served_at)), MIN(DATE(sd.created_at))) <= 1
+                    THEN 'On Time'
+                    WHEN MIN(sd.served_at) IS NOT NULL
+                    THEN 'Delayed'
+                    ELSE 'Not Served'
+                END AS summons_timeliness,
+
+                /* Hearing counts */
+                COALESCE(SUM(CASE WHEN h.hearing_type IN ('Mediation','Initial Hearing')
+                                       AND h.status != 'Cancelled' THEN 1 ELSE 0 END), 0) AS mediation_sessions,
+                COALESCE(SUM(CASE WHEN h.hearing_type = 'Conciliation'
+                                       AND h.status != 'Cancelled' THEN 1 ELSE 0 END), 0) AS conciliation_sessions,
+
+                /* Settlement / CFA outcome */
+                st.settlement_date,
+                st.compliance_status,
+                cfa.issuance_date              AS cfa_issuance_date,
+                cfa.reason                     AS cfa_reason
+
+            FROM cases c
+            INNER JOIN complaints co ON co.complaint_id = c.complaint_id
+            LEFT JOIN categories cat ON cat.category_id = co.category_id
+            LEFT JOIN complaint_parties cp ON cp.complaint_id = co.complaint_id
+                AND cp.party_type IN ('Complainant','Respondent')
+            LEFT JOIN residents r ON r.resident_id = cp.resident_id
+            LEFT JOIN summon_deliveries sd ON sd.case_id = c.case_id
+                AND sd.attempt_number = 1
+                AND sd.form_type = 'Summon'
+            LEFT JOIN users su ON su.user_id = sd.served_by
+            LEFT JOIN hearings h ON h.case_id = c.case_id
+            LEFT JOIN settlements st ON st.case_id = c.case_id
+            LEFT JOIN cfa_records cfa ON cfa.case_id = c.case_id
+            $where
+            GROUP BY
+                c.case_id, c.case_number, c.case_type, c.case_status,
+                c.docket_date, co.complaint_number, co.complaint_title,
+                co.incident_date, cat.category_name,
+                st.settlement_date, st.compliance_status,
+                cfa.issuance_date, cfa.reason
+            ORDER BY c.docket_date ASC, c.case_id ASC
+        ";
+
+        $stmt = $this->conn->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 }

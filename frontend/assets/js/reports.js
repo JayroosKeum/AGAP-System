@@ -11,8 +11,18 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('reportType').addEventListener('change', updatePeriodFields);
     reportForm.addEventListener('submit', generateReport);
     document.getElementById('exportReport').addEventListener('click', exportReport);
+
+    // Case Register Excel export
+    const regBtn = document.getElementById('btnExportRegister');
+    if (regBtn) regBtn.addEventListener('click', exportCaseRegister);
+
+    // DILG / LTIA print report
+    const dilgBtn = document.getElementById('btnPrintDilg');
+    if (dilgBtn) dilgBtn.addEventListener('click', printDilgReport);
+
     updatePeriodFields();
 });
+
 
 function updatePeriodFields() {
     const type = document.getElementById('reportType').value;
@@ -101,4 +111,51 @@ function renderTotals(target, values, emptyMessage) {
 
 function setMessage(message, success = false) {
     const box = document.getElementById('reportMessage'); box.textContent = message; box.className = message ? `alert ${success ? 'success' : 'error'}` : '';
+}
+
+// ── Case Register Excel Export ───────────────────────────────────────────────
+async function exportCaseRegister() {
+    const btn = document.getElementById('btnExportRegister');
+    const startDate = document.getElementById('registerStartDate')?.value || '';
+    const endDate   = document.getElementById('registerEndDate')?.value || '';
+
+    const origText = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Generating…'; }
+    setMessage('');
+
+    try {
+        const payload = { format: 'register_excel' };
+        if (startDate) payload.start_date = startDate;
+        if (endDate)   payload.end_date   = endDate;
+
+        const result = await requestJson('../../../backend/api/reports/export.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        setMessage(`✓ ${result.message}`, true);
+        // Trigger download
+        window.location.assign(result.download_url);
+    } catch (error) {
+        setMessage(`Export failed: ${error.message}`, false);
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = origText; }
+    }
+}
+
+// ── DILG / LTIA Printable Report ─────────────────────────────────────────────
+async function printDilgReport() {
+    const type    = document.getElementById('reportType')?.value || 'Monthly';
+    const year    = document.getElementById('reportYear')?.value || new Date().getFullYear();
+    const month   = document.getElementById('reportMonth')?.value || (new Date().getMonth() + 1);
+    const quarter = document.getElementById('reportQuarter')?.value || 1;
+
+    const params = new URLSearchParams({ type, year });
+    if (type === 'Monthly')   params.set('month', month);
+    if (type === 'Quarterly') params.set('quarter', quarter);
+
+    const url = `../../../backend/api/reports/print.php?${params.toString()}`;
+    // Open in a new tab — the page has @media print CSS for 1-click printing
+    window.open(url, '_blank', 'width=900,height=700,noopener,noreferrer');
 }

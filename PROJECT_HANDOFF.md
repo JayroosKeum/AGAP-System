@@ -1404,3 +1404,95 @@ This order prioritizes missing Module Development features. It does not mean exi
 - Run `php -l` on changed PHP files in Laragon.
 - Run a JavaScript syntax check and `git diff --check` where available.
 - Report changed files, database steps, testing performed, and remaining limitations.
+
+---
+
+## October 2026 — Four High-Priority Changes (Interview-Driven)
+
+All four changes were implemented and syntax-verified (`php -l` passes, logic tests pass).
+
+### 1. Mediation 2-Session Ceiling (Barangay Tumana Policy)
+
+**Rationale:** PB conducts mediation on Tuesday afternoons only, strictly for a maximum of 2 hearings.
+
+**Files changed:**
+
+| File | Change |
+|------|--------|
+| `backend/models/CaseStage.php` | `completedMediationCount` threshold: 3 → 2; lock message updated; `next_permitted_action` after 2nd session = Elevate to Pangkat; `canBookNextMediation` gate: `< 3` → `< 2`; `referToPangkat` guard: 3 → 2 |
+| `backend/models/Hearing.php` | `activeMediationCount >= 3` guard → `>= 2`; updated error message |
+| `backend/services/MediationDeadlineService.php` | Advisory threshold: `>= 3` → `>= 2`; updated wording |
+| `frontend/assets/js/stage-workspace.js` | Session type label (removes "3rd Mediation"); progress counter "of 3" → "of 2"; banner text; lock reason message; `sessionIndex === 1 || 2` → only 1; error handler catches Two-attempt message |
+
+**No DB migration needed.** Existing hearings with 3 sessions retain their records; the Pangkat referral will already be unlocked (`completedMediationCount >= 2`).
+
+---
+
+### 2. Reopen Settled Cases for CFA (RA 7160 Sec. 417)
+
+**Rationale:** When the respondent fails to comply with Amicable Settlement terms, the case must be reopened and a CFA issued for court endorsement.
+
+**Files changed / created:**
+
+| File | Change |
+|------|--------|
+| `backend/api/cases/reopen.php` | **New.** POST endpoint. Validates Settled status, marks `settlements.compliance_status = 'Violated'`, logs `case_history`, returns CFA redirect URL |
+| `backend/models/CFA.php` | Added `$isReopenWorkflow` bypass — Settled cases are allowed through CFA issuance when `workflow = noncompliance_reopen` |
+| `frontend/pages/complaints/complaint-details.php` | Added `#btnReopenForCfa` button (hidden by default); added `#modalReopenForCfa` HTML modal at bottom |
+| `frontend/assets/js/complaints.js` | Button shown only when `case_status === 'Settled'`; `openReopenCfaModal()`, `closeReopenCfaModal()`, `submitReopenForCfa()` functions appended |
+
+**No DB migration needed.** Uses existing `settlements.compliance_status ENUM` which already includes `'Violated'`.
+
+---
+
+### 3. Exportable Excel Case Register
+
+**Rationale:** Staff need a 1-row-per-case spreadsheet for DILG submission and internal monitoring, with summons delivery timeliness metrics.
+
+**Files changed / created:**
+
+| File | Change |
+|------|--------|
+| `backend/models/Report.php` | Added `getCaseRegister($startDate, $endDate)` — SQL joins cases, complaints, parties, summons (attempt=1 only), hearings, settlements, cfa_records; computes `summons_timeliness` as `On Time / Delayed / Not Served` |
+| `backend/services/ReportService.php` | Added `createCaseRegisterExcel($rows, $label)` — writes UTF-8 BOM CSV; Row 1 = 21-column header; 1 data row per case |
+| `backend/controllers/ReportController.php` | Added `exportCaseRegister($filters, $userId)` method |
+| `backend/api/reports/export.php` | Rewrote to route by `format` param: `register_excel` → `exportCaseRegister()`, else → `export()` |
+| `frontend/pages/reports/report-list.php` | Added "Case Register Export (Excel)" section with date-range pickers and `#btnExportRegister` |
+| `frontend/assets/js/reports.js` | Added `exportCaseRegister()` async function; wired button event listener |
+
+**Excel columns (21 total):** Case No., Complaint No., Case Type, Category, Complaint Title, Complainant, Respondent, Incident Date, Date Docketed, Summons Issued Date, Summons Served Date, Serving Officer, Delivery Status, Summons SLA (1-day), Mediation Sessions, Conciliation Sessions, Settlement Date, Settlement Compliance, CFA Issuance Date, CFA Reason, Case Status.
+
+---
+
+### 4. DILG / LTIA 1-Click Printable Report
+
+**Rationale:** Staff need a printer-ready DILG/LTIA summary report without manual formatting.
+
+**Files changed / created:**
+
+| File | Change |
+|------|--------|
+| `backend/api/reports/print.php` | **New.** Self-contained HTML page with `@media print` CSS. Renders KPI summary, case status breakdown, category breakdown, summons SLA, full case list, and signature block. Supports Monthly, Quarterly, Annual, DILG types. |
+| `frontend/pages/reports/report-list.php` | Added "🖨️ Print DILG / LTIA Report" button (`#btnPrintDilg`) |
+| `frontend/assets/js/reports.js` | Added `printDilgReport()` — opens `print.php` in a new tab with form parameters; wired button event listener |
+
+**Signature lines** use placeholder text `[Punong Barangay Name]` / `[Barangay Secretary Name]` — these should be updated in `print.php` lines 49–50 once the actual officer names are confirmed.
+
+---
+
+### Testing Performed
+
+- `php -l` passed on all 11 modified/created PHP files (zero syntax errors).
+- Logic unit tests (`scratch/verify_logic.php`) verified:
+  - Mediation ceiling = 2 ✓
+  - canBookNext / canRefer state transitions ✓
+  - Settled CFA reopen bypass logic ✓
+  - Summons SLA (1-day) boundary conditions ✓
+  - Excel header column count = 21 ✓
+
+### Known Limitations / Follow-up Items
+
+1. **Officer names in print.php:** Hardcoded placeholder — update lines 49–50 in `backend/api/reports/print.php`.
+2. **Reopen URL path:** The JS `fetch` path in `complaints.js` assumes the page is at `frontend/pages/complaints/complaint-details.php`. If the page depth changes, update the relative URL.
+3. **Existing cases with 3 mediation sessions:** These are unaffected; their `completedMediationCount >= 2` so Pangkat referral is already unlocked.
+4. **`summons` table alias:** `getCaseRegister()` assumes a `summons` table with columns `case_id, issuance_date, delivery_date, serving_officer, delivery_status, attempt_number`. Verify column names match your live DB.

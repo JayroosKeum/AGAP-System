@@ -363,11 +363,11 @@ class Hearing
                 $nextAttempt = $activeMediationCount + 1;
                 $isAuthorizedException = !empty($data['authorized_exception']) || !empty($data['attempt_exception_reason']);
 
-                if ($activeMediationCount >= 3 && !$isAuthorizedException) {
+                if ($activeMediationCount >= 2 && !$isAuthorizedException) {
                     $this->conn->rollBack();
                     return [
                         'success' => false,
-                        'message' => 'Three mediation attempts (Mediation 1, 2, and 3) have already been conducted or scheduled for this case. Under Katarungang Pambarangay rules, additional mediation attempts are prohibited unless an authorized rule explicitly permits an exception. You may record the mediation outcome or refer the dispute to the Pangkat Tagapagkasundo.'
+                        'message' => 'Two mediation attempts (Mediation 1 and 2) have already been conducted or scheduled for this case. Under Barangay Tumana policy (RA 7160), the maximum is 2 mediation sessions before the Punong Barangay. You must now refer the dispute to the Pangkat Tagapagkasundo (KP Form 10).'
                     ];
                 }
 

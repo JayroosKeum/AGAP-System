@@ -69,6 +69,15 @@ include '../../layouts/header.php';
                     <span id="statusTrackerButtonLabel">Status: In Progress</span>
                     <span id="statusToggleArrow" class="dropdown-arrow">▼</span>
                 </button>
+                <!-- Reopen for CFA button: shown only when case is Settled (via JS class toggle) -->
+                <button type="button" class="btn-case-outline" id="btnReopenForCfa"
+                    onclick="openReopenCfaModal()"
+                    title="Reopen case for CFA issuance due to non-compliance (RA 7160 Sec. 417)"
+                    style="display:none; border-color:#dc2626; color:#dc2626;"
+                >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    <span>Reopen for CFA</span>
+                </button>
                 <a id="editComplaintBtn" href="complaint-edit.php?id=<?php echo $complaintId; ?>" class="btn-case-primary">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                     <span>Edit Case</span>
@@ -1938,6 +1947,45 @@ include '../../layouts/header.php';
 </div>
 
 <?php include __DIR__ . '/../../layouts/summons-preview-modal.php'; ?>
+
+<!-- =====================================================================
+     MODAL: Reopen Settled Case for CFA (RA 7160 Sec. 417 Non-Compliance)
+     ===================================================================== -->
+<div id="modalReopenForCfa" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(15,23,42,0.55); align-items:center; justify-content:center;">
+    <div style="background:#fff; border-radius:12px; max-width:520px; width:92%; padding:28px 28px 22px; box-shadow:0 20px 60px rgba(0,0,0,0.2);">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+            <span style="background:#fee2e2; color:#dc2626; border-radius:8px; padding:6px 9px; font-size:1.1rem;">⚠️</span>
+            <div>
+                <h3 style="margin:0; font-size:1rem; color:#0f172a; font-weight:800;">Reopen Case for CFA Issuance</h3>
+                <p style="margin:2px 0 0; font-size:0.78rem; color:#64748b;">RA 7160 Sec. 417 — Non-compliance with Amicable Settlement</p>
+            </div>
+        </div>
+        <p style="font-size:0.84rem; color:#475569; margin:0 0 14px; line-height:1.55;">
+            This action marks the Amicable Settlement as <strong>Violated</strong> and opens the case for
+            Certificate to File Action (KP Form 20) issuance. This is authorised only when the respondent
+            fails or refuses to comply with the terms of the settlement.
+        </p>
+        <div style="margin-bottom:16px;">
+            <label for="reopenCfaReason" style="display:block; font-size:0.84rem; font-weight:600; color:#334155; margin-bottom:6px;">
+                Non-Compliance Description <span style="color:#dc2626;">*</span>
+            </label>
+            <textarea id="reopenCfaReason" rows="4" placeholder="Describe specifically how the respondent failed to comply with the settlement terms (e.g., failed to pay agreed amount by due date, refused to vacate property, etc.)"
+                style="width:100%; box-sizing:border-box; padding:9px 12px; border:1px solid #e2e8f0; border-radius:7px; font-size:0.84rem; color:#0f172a; resize:vertical; font-family:inherit;"></textarea>
+        </div>
+        <p style="font-size:0.78rem; color:#94a3b8; margin:0 0 18px;">
+            ⚠️ This action is <strong>irreversible</strong>. Ensure all facts of non-compliance are accurately documented before proceeding.
+        </p>
+        <div style="display:flex; justify-content:flex-end; gap:10px;">
+            <button type="button" class="btn-secondary" onclick="closeReopenCfaModal()" id="btnReopenCfaCancel">Cancel</button>
+            <button type="button" class="btn-case-primary" id="btnReopenCfaConfirm"
+                onclick="submitReopenForCfa()"
+                style="background:#dc2626; border-color:#dc2626;"
+            >
+                ⚠️ Reopen &amp; Issue CFA
+            </button>
+        </div>
+    </div>
+</div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="../../assets/js/summons-preview.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/summons-preview.js'); ?>"></script>

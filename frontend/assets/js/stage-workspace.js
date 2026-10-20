@@ -1212,10 +1212,10 @@ function renderMinutesSection(data, stage) {
                                 <span style="background: #0284c7; color: #fff; width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.84rem; font-weight: 700; flex-shrink: 0;">ℹ️</span>
                                 <div>
                                     <strong style="color: #0c4a6e; font-size: 0.92rem; display: block;">
-                                        Mediation Phase Exhausted (3 of 3 Sessions Held)
+                                        Mediation Phase Exhausted (2 of 2 Sessions Held)
                                     </strong>
                                     <p style="color: #0369a1; font-size: 0.84rem; margin: 4px 0 0; line-height: 1.45;">
-                                        Under Katarungang Pambarangay rules (RA 7160 Sec. 410), a maximum of three mediation sessions may be held before the Punong Barangay. If no settlement is reached, this case must be elevated to the <strong>Pangkat ng Tagapagkasundo</strong> for formal conciliation (KP Form 10).
+                                        Under Katarungang Pambarangay rules (RA 7160 Sec. 410) and Barangay Tumana policy, a maximum of <strong>two mediation sessions</strong> may be held before the Punong Barangay. If no settlement is reached, this case must be elevated to the <strong>Pangkat ng Tagapagkasundo</strong> for formal conciliation (KP Form 10).
                                     </p>
                                 </div>
                             </div>
@@ -1367,9 +1367,9 @@ function handleMinutesOutcomeChange(outcomeVal) {
                     </div>
                 </div>
             `;
-        } else if (sessionIndex === 1 || sessionIndex === 2) {
-            const nextOrdinal = (sessionIndex === 1) ? '2nd' : '3rd';
-            const hasNextSession = stageWorkspaceState.sessions.some(s => Number(s.session_index) === sessionIndex + 1);
+        } else if (sessionIndex === 1) {
+            const nextOrdinal = '2nd';
+            const hasNextSession = stageWorkspaceState.sessions.some(s => Number(s.session_index) === 2);
             if (hasNextSession) {
                 bannerEl.innerHTML = `
                     <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 10px 14px; font-size: 0.84rem; color: #166534; display: flex; align-items: center; gap: 8px;">
@@ -1386,12 +1386,12 @@ function handleMinutesOutcomeChange(outcomeVal) {
                 `;
             }
         } else {
-            // Session 3 or higher
+            // Session 2 completed — show Pangkat referral prompt
             bannerEl.innerHTML = `
                 <div style="background: #f0f9ff; border: 1px solid #7dd3fc; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                     <div style="color: #0369a1; font-size: 0.85rem;">
-                        <strong style="font-size: 0.92rem; display: block; color: #0c4a6e;">👥 Mediation Concluded Unresolved (3 of 3 Sessions Completed)</strong>
-                        All 3 mediation sessions before the Punong Barangay have concluded without agreement. The case is now eligible to elevate to Pangkat Conciliation (KP Form 10) by explicit authorized action.
+                        <strong style="font-size: 0.92rem; display: block; color: #0c4a6e;">👥 Mediation Concluded Unresolved (2 of 2 Sessions Completed)</strong>
+                        Both mediation sessions before the Punong Barangay have concluded without agreement. The case is now eligible to elevate to Pangkat Conciliation (KP Form 10) by explicit authorized action.
                     </div>
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                         <button type="button" class="btn-create" onclick="openReferPangkatModal()" style="font-size: 0.82rem; padding: 7px 16px; background: #0369a1; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
@@ -1489,7 +1489,7 @@ async function saveHearingMinutes(status = 'Draft') {
 
     let sessionType = '1st Mediation';
     if (stageWorkspaceState.mode === 'Mediation') {
-        sessionType = session ? (session.session_index === 1 ? '1st Mediation' : (session.session_index === 2 ? '2nd Mediation' : '3rd Mediation')) : '1st Mediation';
+        sessionType = session ? (session.session_index === 1 ? '1st Mediation' : '2nd Mediation') : '1st Mediation';
     } else if (stageWorkspaceState.mode === 'Conciliation') {
         sessionType = 'Conciliation';
     } else if (stageWorkspaceState.mode === 'Arbitration') {
@@ -1676,7 +1676,7 @@ function renderOutcomeAndReferralSection(data, stage) {
             const completedCount = Number(stage.completed_mediation_count || 0);
             const canBookNext = Boolean(stage.documents_and_actions?.can_book_next_mediation);
             const nextSessionIndex = Math.min(3, completedCount + 1);
-            const pangkatLockReason = stage.documents_and_actions?.pangkat_lock_reason || 'Katarungang Pambarangay requires 3 mediation sessions before elevation.';
+            const pangkatLockReason = stage.documents_and_actions?.pangkat_lock_reason || 'Barangay Tumana policy requires 2 mediation sessions before elevation.';
 
             outcomeBox.innerHTML = `
                 <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px;">
@@ -1686,13 +1686,13 @@ function renderOutcomeAndReferralSection(data, stage) {
                                 Mediation Stage Actions &amp; Progression
                             </h4>
                             <p style="margin: 0; font-size: 0.82rem; color: #64748b;">
-                                Progress: <strong>${escapeHtml(completedCount)} of 3 Mediation Sessions Completed</strong> · Current Outcome: <strong>${escapeHtml(outcome)}</strong>
+                                Progress: <strong>${escapeHtml(completedCount)} of 2 Mediation Sessions Completed</strong> · Current Outcome: <strong>${escapeHtml(outcome)}</strong>
                             </p>
                         </div>
                         <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
                             ${canBookNext ? `
                                 <button type="button" class="btn-create" onclick="openScheduleModal()" style="font-size: 0.82rem; padding: 6px 14px; background: #2563eb; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
-                                    📅 Book ${nextSessionIndex === 2 ? '2nd' : '3rd'} Mediation Hearing &rarr;
+                                    📅 Book 2nd Mediation Hearing &rarr;
                                 </button>
                             ` : ''}
                             <button type="button" class="btn-secondary" onclick="openRecordOutcomeModal()" style="font-size: 0.82rem; padding: 6px 12px; cursor: pointer;">
@@ -2095,7 +2095,7 @@ async function submitSchedule(e) {
                 submitSchedule(e);
                 return;
             }
-        } else if (json.message && (json.message.includes('Maximum 3 mediation attempts') || json.message.includes('more than 3 mediation'))) {
+        } else if (json.message && (json.message.includes('Maximum 2 mediation attempts') || json.message.includes('Two mediation attempts') || json.message.includes('more than 2 mediation') || json.message.includes('Maximum 3 mediation attempts') || json.message.includes('more than 3 mediation'))) {
             const excReason = prompt(`${json.message}\n\nIf an authorized rule or exception explicitly permits an additional mediation session, please enter the exception justification:`);
             if (excReason && excReason.trim()) {
                 payload.append('authorized_exception', '1');

@@ -871,9 +871,9 @@ class MediationDeadlineService
         $sessStmt->execute([$caseId]);
         $sessionCount = (int) $sessStmt->fetchColumn();
 
-        if ($sessionCount >= 3) {
-            $advisories[] = "Three mediation sessions have been held (operational policy reached). "
-                . 'Review whether mediation has genuinely failed before referring — the session count is a guide, not the statutory test.';
+        if ($sessionCount >= 2) {
+            $advisories[] = "Two mediation sessions have been held (Barangay Tumana policy limit reached). "
+                . 'Review whether mediation has genuinely failed before referring to Pangkat — the session count is a guide, not the sole statutory test.';
         }
 
         // 2. Statutory period lapse

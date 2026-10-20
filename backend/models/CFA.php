@@ -66,6 +66,13 @@ class CFA
                 return ['success' => false, 'message' => 'Cannot issue CFA for an archived case.'];
             }
 
+            // Allow Settled cases to get a CFA when triggered by non-compliance (RA 7160 Sec. 417)
+            $isReopenWorkflow = !empty($data['workflow']) && in_array($data['workflow'], ['noncompliance_reopen', 'settled_noncompliance'], true);
+            if ($case['case_status'] === 'Settled' && !$isReopenWorkflow) {
+                if ($startedTrans && $this->conn->inTransaction()) $this->conn->rollBack();
+                return ['success' => false, 'message' => 'This case is already Settled. To issue a CFA for non-compliance, use the "Reopen for CFA" button on the Case Details page.'];
+            }
+
             $stmt = $this->conn->prepare("
                 INSERT INTO cfa_records (case_id, issuance_date, reason)
                 VALUES (?, CURDATE(), ?)

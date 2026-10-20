@@ -437,6 +437,17 @@ async function loadComplaintDetails() {
             statusEl.textContent = displayStage;
         }
 
+        // Reopen for CFA button: only show for Settled cases (RA 7160 Sec. 417)
+        const reopenBtn = document.getElementById('btnReopenForCfa');
+        if (reopenBtn) {
+            const isSettled = (data.status === 'Settled' || data.case_workspace?.case?.case_status === 'Settled');
+            reopenBtn.style.display = isSettled ? '' : 'none';
+            // Store case_id on window for the modal to use
+            if (isSettled && data.case_id) {
+                window._reopenCaseCaseId = data.case_id;
+            }
+        }
+
         // Action Bar Status Tracker Button
         const statusBtnLabel = document.getElementById('statusTrackerButtonLabel');
         if (statusBtnLabel) {
@@ -5901,4 +5912,70 @@ window.viewPaanyayaMinutes = async function(stageType = 'Paanyaya 1') {
 window.closePaanyayaMinutesViewModal = function() {
     const modal = document.getElementById('paanyayaMinutesViewModal');
     if (modal) modal.style.display = 'none';
+};
+
+// =========================================================
+// Reopen Settled Case for CFA — RA 7160 Sec. 417
+// =========================================================
+window.openReopenCfaModal = function() {
+    const modal = document.getElementById('modalReopenForCfa');
+    if (modal) {
+        modal.style.display = 'flex';
+        const ta = document.getElementById('reopenCfaReason');
+        if (ta) ta.value = '';
+    }
+};
+
+window.closeReopenCfaModal = function() {
+    const modal = document.getElementById('modalReopenForCfa');
+    if (modal) modal.style.display = 'none';
+};
+
+window.submitReopenForCfa = async function() {
+    const reason = (document.getElementById('reopenCfaReason')?.value || '').trim();
+    if (!reason) {
+        alert('Please describe the non-compliance reason before proceeding.');
+        return;
+    }
+
+    const caseId = window._reopenCaseCaseId;
+    if (!caseId) {
+        alert('Case ID not found. Please reload the page.');
+        return;
+    }
+
+    const confirmBtn = document.getElementById('btnReopenCfaConfirm');
+    const cancelBtn = document.getElementById('btnReopenCfaCancel');
+    if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Processing…'; }
+    if (cancelBtn) cancelBtn.disabled = true;
+
+    try {
+        const formData = new FormData();
+        formData.append('case_id', caseId);
+        formData.append('reason', reason);
+
+        const res = await fetch('../../../backend/api/cases/reopen.php', { method: 'POST', body: formData });
+        const json = await res.json();
+
+        if (json.success) {
+            window.closeReopenCfaModal();
+            if (window.agapNotify) window.agapNotify(json.message, 'success');
+            // Brief pause then redirect to CFA page
+            setTimeout(() => {
+                if (json.cfa_url) {
+                    window.location.href = json.cfa_url;
+                } else {
+                    window.location.reload();
+                }
+            }, 1200);
+        } else {
+            alert(json.message || 'Unable to reopen case. Please try again.');
+            if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.innerHTML = '⚠️ Reopen &amp; Issue CFA'; }
+            if (cancelBtn) cancelBtn.disabled = false;
+        }
+    } catch (err) {
+        alert('Network error. Please try again.');
+        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.innerHTML = '⚠️ Reopen &amp; Issue CFA'; }
+        if (cancelBtn) cancelBtn.disabled = false;
+    }
 };

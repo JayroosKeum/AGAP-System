@@ -143,6 +143,48 @@ class ReportController
         }
     }
 
+    /**
+     * exportCaseRegister()
+     *
+     * Generates a 1-row-per-case Excel Case Register with summons timeliness.
+     */
+    public function exportCaseRegister(array $filters, int $userId): array
+    {
+        $startDate = !empty($filters['start_date']) ? date('Y-m-d', strtotime($filters['start_date'])) : null;
+        $endDate   = !empty($filters['end_date'])   ? date('Y-m-d', strtotime($filters['end_date']))   : null;
+
+        if ($startDate === false) $startDate = null;
+        if ($endDate === false)   $endDate   = null;
+
+        $label = '';
+        if ($startDate && $endDate) {
+            $label = $startDate . '_to_' . $endDate;
+        } elseif ($startDate) {
+            $label = 'from_' . $startDate;
+        } elseif ($endDate) {
+            $label = 'to_' . $endDate;
+        } else {
+            $label = 'all_' . date('Y');
+        }
+
+        try {
+            $rows     = $this->getReportModel()->getCaseRegister($startDate, $endDate);
+            $filePath = $this->service->createCaseRegisterExcel($rows, $label);
+            $reportId = $this->getReportModel()->createGeneratedReport('Case Register', $userId, $filePath);
+            $this->getAuditService()->log($userId, 'Exported Case Register (Excel)', 'Reports', $reportId);
+            return [
+                'success'      => true,
+                'message'      => 'Case Register exported successfully (' . count($rows) . ' case(s)).',
+                'report_id'    => $reportId,
+                'row_count'    => count($rows),
+                'download_url' => '../../../backend/api/reports/download.php?id=' . $reportId,
+            ];
+        } catch (Throwable $e) {
+            error_log('[exportCaseRegister] ' . $e->getMessage());
+            return ['success' => false, 'message' => 'Unable to generate the Case Register. Please try again.'];
+        }
+    }
+
     public function getDownload(int $reportId): ?array
     {
         return $this->getReportModel()->getGeneratedReport($reportId);

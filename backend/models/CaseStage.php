@@ -209,8 +209,8 @@ class CaseStage
             } elseif ($case['case_status'] === 'Conciliation' || in_array($case['case_status'], ['CFA Issued', 'Dismissed'], true)) {
                 $stageStatus = 'Referred to Pangkat';
                 $outcome = 'Referred to Pangkat';
-            } elseif ($completedMediationCount >= 3 || $isLapsed) {
-                // Only ready for referral after 3 mediation sessions or statutory period expired
+            } elseif ($completedMediationCount >= 2 || $isLapsed) {
+                // Only ready for referral after 2 mediation sessions or statutory period expired
                 if ($hasFailedSession || in_array($outcome, ['Unsuccessful', 'Failed'], true)) {
                     $stageStatus = 'Ready for Referral';
                     $outcome = 'Unsuccessful';
@@ -238,29 +238,29 @@ class CaseStage
         $attendanceFinalized = ($sessionCount > 0 && ($complainantAtt['present'] + $complainantAtt['absent'] + $complainantAtt['excused']) > 0);
 
         // Actions prerequisites:
-        // Do NOT pass case to Conciliation after 1st or 2nd Mediation!
-        // Permit progression to Conciliation ONLY after 3rd Mediation has completed and issue remains unresolved.
+        // Permit progression to Conciliation after 2nd Mediation has completed and issue remains unresolved.
+        // (Barangay Tumana policy: max 2 mediation sessions before the Punong Barangay)
         if ($case['case_status'] === 'Settled' || $outcome === 'Settled' || $hasSettledSession) {
             $canProceedToPangkat = false;
             $pangkatLockReason = 'An amicable settlement was reached for this case.';
         } elseif ($case['case_status'] === 'Conciliation' || $stageStatus === 'Referred to Pangkat') {
             $canProceedToPangkat = false;
             $pangkatLockReason = 'Case has already been referred to Pangkat Conciliation.';
-        } elseif ($completedMediationCount < 3 && !$isLapsed) {
+        } elseif ($completedMediationCount < 2 && !$isLapsed) {
             $canProceedToPangkat = false;
             $pangkatLockReason = sprintf(
-                'Progression to Conciliation is locked: Completed %d of 3 required mediation sessions. Katarungang Pambarangay (RA 7160) requires 3 mediation sessions before elevating to Pangkat Conciliation.',
+                'Progression to Conciliation is locked: Completed %d of 2 required mediation sessions. Barangay Tumana policy (RA 7160) requires 2 mediation sessions before elevating to Pangkat Conciliation.',
                 $completedMediationCount
             );
         } else {
-            // Unlocked only when 3 sessions completed (or statutory 15 days lapsed) and dispute is unresolved
+            // Unlocked when 2 sessions completed (or statutory 15 days lapsed) and dispute is unresolved
             $canProceedToPangkat = ($stageStatus === 'Ready for Referral' || $outcome === 'Unsuccessful' || $hasFailedSession || $isLapsed);
             if (!$canProceedToPangkat) {
-                $pangkatLockReason = 'Complete 3rd mediation minutes and record unsuccessful outcome to elevate.';
+                $pangkatLockReason = 'Complete 2nd mediation minutes and record unsuccessful outcome to elevate.';
             }
         }
 
-        $canBookNextMediation = ($completedMediationCount >= 1 && $completedMediationCount < 3 && $outcome !== 'Settled' && $case['case_status'] !== 'Settled');
+        $canBookNextMediation = ($completedMediationCount >= 1 && $completedMediationCount < 2 && $outcome !== 'Settled' && $case['case_status'] !== 'Settled');
 
         // Determine next permitted canonical action for workspace
         $hasActiveScheduledHearing = false;
@@ -327,21 +327,14 @@ class CaseStage
         } elseif ($completedMediationCount === 1) {
             $nextPermittedAction = [
                 'action' => 'Schedule Mediation 2',
-                'description' => 'Mediation 1 concluded without settlement. Proceed to second mediation attempt.',
+                'description' => 'Mediation 1 concluded without settlement. Proceed to second (final) mediation attempt.',
                 'action_type' => 'schedule_hearing',
                 'badge' => 'badge-primary'
             ];
-        } elseif ($completedMediationCount === 2) {
-            $nextPermittedAction = [
-                'action' => 'Schedule Mediation 3',
-                'description' => 'Mediation 2 concluded without settlement. Proceed to third mediation attempt.',
-                'action_type' => 'schedule_hearing',
-                'badge' => 'badge-primary'
-            ];
-        } elseif ($completedMediationCount >= 3 || $isLapsed) {
+        } elseif ($completedMediationCount >= 2 || $isLapsed) {
             $nextPermittedAction = [
                 'action' => 'Elevate to Pangkat (KP Form 10)',
-                'description' => '3 mediation attempts completed without settlement. Refer dispute to Pangkat panel.',
+                'description' => '2 mediation attempts completed without settlement. Refer dispute to Pangkat panel for conciliation.',
                 'action_type' => 'elevate_pangkat',
                 'badge' => 'badge-warning'
             ];
@@ -356,7 +349,7 @@ class CaseStage
             'presiding_officer' => $pbName,
             'sessions_count' => $sessionCount,
             'completed_mediation_count' => $completedMediationCount,
-            'current_mediation_session' => min(3, max(1, $completedMediationCount + 1)),
+            'current_mediation_session' => min(2, max(1, $completedMediationCount + 1)),
             'next_hearing' => $nextHearing,
             'latest_hearing_date' => $latestHearingDate,
             'attendance_summary' => [
@@ -380,7 +373,7 @@ class CaseStage
                 'can_proceed_to_pangkat' => $canProceedToPangkat,
                 'pangkat_lock_reason' => $pangkatLockReason,
                 'can_book_next_mediation' => $canBookNextMediation,
-                'next_mediation_session_number' => min(3, $completedMediationCount + 1),
+                'next_mediation_session_number' => min(2, $completedMediationCount + 1),
                 'completed_mediation_count' => $completedMediationCount,
                 'next_permitted_action' => $nextPermittedAction,
             ],
@@ -1139,19 +1132,19 @@ class CaseStage
 
         $isLapsed = !empty($overview['case']['mediation_timer']['is_expired']);
 
-        // Strictly enforce 3 mediation sessions completed before elevation to Pangkat
-        if ($completedMediationCount < 3 && !$isLapsed) {
+        // Enforce Barangay Tumana policy: 2 mediation sessions before elevation to Pangkat
+        if ($completedMediationCount < 2 && !$isLapsed) {
             return [
                 'success' => false,
-                'message' => "Progression to Conciliation is locked: Completed {$completedMediationCount} of 3 required mediation sessions. Elevation to Pangkat ng Tagapagkasundo is only permitted after 3 mediation sessions have been completed and the dispute remains unresolved."
+                'message' => "Progression to Conciliation is locked: Completed {$completedMediationCount} of 2 required mediation sessions. Barangay Tumana policy (RA 7160) requires 2 mediation sessions before elevating to Pangkat ng Tagapagkasundo."
             ];
         }
 
-        $canRefer = $med['documents_and_actions']['can_proceed_to_pangkat'] || $completedMediationCount >= 3 || $isLapsed;
+        $canRefer = $med['documents_and_actions']['can_proceed_to_pangkat'] || $completedMediationCount >= 2 || $isLapsed;
         if (!$canRefer) {
             return [
                 'success' => false,
-                'message' => 'Mediation requirements not satisfied. Complete 3 mediation sessions or record an unsuccessful mediation outcome before referring to Pangkat.'
+                'message' => 'Mediation requirements not satisfied. Complete 2 mediation sessions or record an unsuccessful mediation outcome before referring to Pangkat.'
             ];
         }
 
