@@ -17,7 +17,16 @@ require_once __DIR__ . '/../../../backend/services/CsrfService.php';
 $categories = [];
 try {
     $db = (new Database())->connect();
-    $categories = $db->query('SELECT category_id, category_name FROM complaint_categories ORDER BY category_id ASC')->fetchAll(PDO::FETCH_ASSOC);
+    $categories = $db->query("
+        SELECT category_id, category_name 
+        FROM complaint_categories 
+        ORDER BY 
+            CASE 
+                WHEN category_name LIKE 'Others%' OR category_name LIKE 'Iba pa%' THEN 1 
+                ELSE 0 
+            END ASC, 
+            category_name ASC
+    ")->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     $categories = [];
 }
@@ -70,9 +79,6 @@ include '../../layouts/header.php';
         <div class="complaints-nav-tabs" role="tablist" aria-label="Complaint lifecycle status">
             <button type="button" class="nav-tab-btn active" data-tab-status="">
                 All <span class="tab-count-pill" id="tabCountAll">0</span>
-            </button>
-            <button type="button" class="nav-tab-btn" data-tab-status="Draft">
-                Drafts <span class="tab-count-pill" id="tabCountDraft">0</span>
             </button>
             <button type="button" class="nav-tab-btn" data-tab-status="Paanyaya">
                 Paanyaya <span class="tab-count-pill" id="tabCountPaanyaya">0</span>
@@ -150,7 +156,6 @@ include '../../layouts/header.php';
                             <label for="searchIntake">1. Intake Status</label>
                             <select id="searchIntake" name="intake_status">
                                 <option value="">All Intake States</option>
-                                <option value="Draft">Draft (Incomplete)</option>
                                 <option value="Under Review">Under Review</option>
                             </select>
                         </div>

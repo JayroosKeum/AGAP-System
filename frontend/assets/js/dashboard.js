@@ -483,7 +483,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 activeSub: 'Mediation or conciliation cases',
                 weekHearingsLabel: "This week's hearings",
                 weekHearingsSub: 'Next 7 calendar days',
-                draftsSub: 'Complaints not yet filed',
+                paanyayaSub: 'Undocketed complaints in Paanyaya',
                 settledSub: 'Resolved through settlement'
             },
             weekly: {
@@ -496,7 +496,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 activeSub: 'Active mediation in week',
                 weekHearingsLabel: 'Total week hearings',
                 weekHearingsSub: 'Active sessions this week',
-                draftsSub: 'Drafts created this week',
+                paanyayaSub: 'Paanyaya created this week',
                 settledSub: 'Settled within this week'
             },
             monthly: {
@@ -509,7 +509,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 activeSub: 'Active mediation in month',
                 weekHearingsLabel: 'Total month hearings',
                 weekHearingsSub: 'Active sessions this month',
-                draftsSub: 'Drafts created this month',
+                paanyayaSub: 'Paanyaya created this month',
                 settledSub: 'Settled within this month'
             },
             quarterly: {
@@ -522,7 +522,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 activeSub: 'Active mediation in quarter',
                 weekHearingsLabel: 'Total quarter hearings',
                 weekHearingsSub: 'Active sessions this quarter',
-                draftsSub: 'Drafts created this quarter',
+                paanyayaSub: 'Paanyaya created this quarter',
                 settledSub: 'Settled within this quarter'
             },
             annual: {
@@ -535,7 +535,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 activeSub: 'Active mediation in year',
                 weekHearingsLabel: 'Total year hearings',
                 weekHearingsSub: 'Active sessions this year',
-                draftsSub: 'Drafts created this year',
+                paanyayaSub: 'Paanyaya created this year',
                 settledSub: 'Settled within this year'
             }
         };
@@ -555,7 +555,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setEl('activeMediationsSub', config.activeSub);
         setEl('hearingsThisWeekLabel', config.weekHearingsLabel);
         setEl('hearingsThisWeekSub', config.weekHearingsSub);
-        setEl('draftComplaintsSub', config.draftsSub);
+        setEl('paanyayaComplaintsSub', config.paanyayaSub || config.draftsSub);
         setEl('settledCasesSub', config.settledSub);
     };
 
@@ -646,7 +646,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 setText('deadlinesDue', data.deadlines_due);
                 setText('activeMediations', data.active_mediations);
                 setText('hearingsThisWeek', data.hearings_this_week);
-                setText('draftComplaints', data.draft_complaints);
+                setText('paanyayaComplaints', data.paanyaya_complaints ?? data.draft_complaints ?? 0);
                 setText('settledCases', data.settled_cases);
 
                 updateCardSubtitles(state.period, periodLabel);

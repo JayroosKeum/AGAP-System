@@ -114,10 +114,9 @@ class Notification
     {
         $stmt = $this->conn->prepare('
             UPDATE notifications SET is_read = 1, read_at = COALESCE(read_at, NOW())
-            WHERE notification_id = ? AND user_id = ? AND is_read = 0
+            WHERE notification_id = ? AND user_id = ?
         ');
-        $stmt->execute([$notificationId, $userId]);
-        return $stmt->rowCount() === 1;
+        return $stmt->execute([$notificationId, $userId]);
     }
 
     public function markAllRead(int $userId): int
@@ -127,6 +126,60 @@ class Notification
             WHERE user_id = ? AND is_read = 0
         ');
         $stmt->execute([$userId]);
+        return $stmt->rowCount();
+    }
+
+    public function markUnread(int $notificationId, int $userId): bool
+    {
+        $stmt = $this->conn->prepare('
+            UPDATE notifications SET is_read = 0, read_at = NULL
+            WHERE notification_id = ? AND user_id = ?
+        ');
+        return $stmt->execute([$notificationId, $userId]);
+    }
+
+    public function delete(int $notificationId, int $userId): bool
+    {
+        $stmt = $this->conn->prepare('
+            DELETE FROM notifications
+            WHERE notification_id = ? AND user_id = ?
+        ');
+        $stmt->execute([$notificationId, $userId]);
+        return $stmt->rowCount() === 1;
+    }
+
+    public function deleteMultiple(array $notificationIds, int $userId): int
+    {
+        $ids = array_values(array_filter(array_map('intval', $notificationIds), fn($i) => $i > 0));
+        if (empty($ids)) {
+            return 0;
+        }
+
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $this->conn->prepare("
+            DELETE FROM notifications
+            WHERE notification_id IN ($placeholders) AND user_id = ?
+        ");
+        $params = array_merge($ids, [$userId]);
+        $stmt->execute($params);
+        return $stmt->rowCount();
+    }
+
+    public function markMultipleRead(array $notificationIds, int $userId): int
+    {
+        $ids = array_values(array_filter(array_map('intval', $notificationIds), fn($i) => $i > 0));
+        if (empty($ids)) {
+            return 0;
+        }
+
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $this->conn->prepare("
+            UPDATE notifications 
+            SET is_read = 1, read_at = COALESCE(read_at, NOW())
+            WHERE notification_id IN ($placeholders) AND user_id = ?
+        ");
+        $params = array_merge($ids, [$userId]);
+        $stmt->execute($params);
         return $stmt->rowCount();
     }
 

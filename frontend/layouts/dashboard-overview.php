@@ -70,9 +70,9 @@
             <span id="hearingsThisWeekSub">Next 7 calendar days</span>
         </article>
         <article class="stat-card">
-            <p id="draftComplaintsLabel">Saved drafts</p>
-            <h2 id="draftComplaints">—</h2>
-            <span id="draftComplaintsSub">Complaints not yet filed</span>
+            <p id="paanyayaComplaintsLabel">Paanyaya</p>
+            <h2 id="paanyayaComplaints">—</h2>
+            <span id="paanyayaComplaintsSub">Undocketed complaints</span>
         </article>
         <article class="stat-card">
             <p id="settledCasesLabel">Settled cases</p>

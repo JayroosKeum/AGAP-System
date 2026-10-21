@@ -107,7 +107,12 @@ class Setting
             FROM complaint_categories cc
             LEFT JOIN complaints c ON c.category_id = cc.category_id
             GROUP BY cc.category_id, cc.category_name, cc.tagalog_name, cc.ltia_code, cc.description, cc.is_active
-            ORDER BY cc.category_id ASC
+            ORDER BY 
+                CASE 
+                    WHEN cc.category_name LIKE 'Others%' OR cc.category_name LIKE 'Iba pa%' THEN 1 
+                    ELSE 0 
+                END ASC, 
+                cc.category_name ASC
         ");
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
