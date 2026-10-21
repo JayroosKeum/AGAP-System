@@ -527,12 +527,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isDefaultView || !cachedGlobalCounts) {
             const allCount = rows.length;
             const draftCount = rows.filter(r => r.lifecycle_status === 'Draft' || r.is_draft == 1 || r.intake_status === 'Draft').length;
-            const pendingCount = rows.filter(r => r.lifecycle_status === 'Pending').length;
-            const mediationCount = rows.filter(r => r.lifecycle_status === 'Mediation').length;
+                        const mediationCount = rows.filter(r => r.lifecycle_status === 'Mediation').length;
             const conciliationCount = rows.filter(r => r.lifecycle_status === 'Conciliation').length;
             const cfaCount = rows.filter(r => r.lifecycle_status === 'CFA').length;
             const closedCount = rows.filter(r => r.lifecycle_status === 'Resolution / Closed').length;
-            const paanyayaCount = rows.filter(r => (r.lifecycle_status && r.lifecycle_status.includes('Paanyaya')) || (r.status && r.status.includes('Paanyaya'))).length;
+            const paanyayaCount = rows.filter(r => r.lifecycle_status === 'Paanyaya' || (r.lifecycle_status && r.lifecycle_status.includes('Paanyaya')) || (r.status && r.status.includes('Paanyaya')) || (r.complaint_status && r.complaint_status.includes('Paanyaya'))).length;
+            const pendingCount = rows.filter(r => r.lifecycle_status === 'Pending' && !r.lifecycle_status.includes('Paanyaya') && !(r.status && r.status.includes('Paanyaya')) && !(r.complaint_status && r.complaint_status.includes('Paanyaya'))).length;
 
             cachedGlobalCounts = {
                 all: allCount,
@@ -690,16 +690,35 @@ document.addEventListener('DOMContentLoaded', () => {
         const caseType = String(row.case_type || 'Civil');
         const caseTypeClass = caseType.toLowerCase() === 'criminal' ? 'badge-type-criminal' : 'badge-type-civil';
 
-        const isDraft = Number(row.is_draft) === 1 || row.lifecycle_status === 'Draft' || row.intake_status === 'Draft';
+        const isPaanyaya = (row.status === 'Pre-Docketed (Paanyaya)' || row.lifecycle_status === 'Paanyaya' || (row.status_labels && row.status_labels.includes('Paanyaya')) || (!row.case_id && String(row.complaint_number || row.case_number).startsWith('P-')));
+        const isDraft = !isPaanyaya && (Number(row.is_draft) === 1 || row.lifecycle_status === 'Draft' || row.intake_status === 'Draft');
 
         // 1. Case No.
         let caseNumberHtml;
         if (isDraft) {
             caseNumberHtml = `<span class="badge-case-draft" style="background:#fef3c7; color:#92400e; border:1px solid #fde68a; font-weight:600; padding:2px 8px; border-radius:9999px; font-size:0.75rem;">Draft</span>`;
+        } else if (isPaanyaya) {
+            const formatPaanyayaDisplay = (cNum, compId, dt) => {
+                if (cNum && String(cNum).startsWith('P-')) return String(cNum);
+                const d = dt ? new Date(dt) : new Date();
+                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                const ss = String(compId || 1).padStart(2, '0');
+                const yy = d.getFullYear() || 2026;
+                return `P-${mm}-${ss}-${yy}`;
+            };
+            const displayCaseNum = formatPaanyayaDisplay(row.case_number || row.complaint_number, id, row.incident_date);
+            caseNumberHtml = `<span class="badge-case-paanyaya-no" style="background:#f0fdf4; color:#15803d; border:1px solid #86efac; font-weight:600; padding:2px 8px; border-radius:9999px; font-size:0.75rem;" title="Paanyaya Pre-Docket Number">${escapeHtml(displayCaseNum)}</span>`;
         } else {
-            caseNumberHtml = row.case_number
-                ? `<span class="badge-case-docket">${escapeHtml(row.case_number)}</span>`
-                : `<span class="badge-case-none">Undocketed</span>`;
+            const formatDocketDisplay = (cNum, compId, dt) => {
+                if (cNum && !String(cNum).startsWith('CMP-') && !String(cNum).startsWith('P-')) return String(cNum);
+                const d = dt ? new Date(dt) : new Date();
+                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                const ss = String(compId || 1).padStart(2, '0');
+                const yy = d.getFullYear() || 2026;
+                return `${mm}-${ss}-${yy}`;
+            };
+            const displayCaseNum = formatDocketDisplay(row.case_number || row.complaint_number, id, row.incident_date);
+            caseNumberHtml = `<span class="badge-case-docket">${escapeHtml(displayCaseNum)}</span>`;
         }
 
         // 2. Complaint (Title of complaint / short description)
@@ -748,10 +767,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 4. Standardized lifecycle status
         let lifecycleStatus = 'Pending';
-        if (isDraft) {
+        if (isPaanyaya) {
+            // Paanyaya complaints are not combined with other statuses
+            lifecycleStatus = 'Paanyaya';
+        } else if (isDraft) {
             lifecycleStatus = 'Draft';
-        } else if (row.status === 'Pre-Docketed (Paanyaya)' || row.lifecycle_status === 'Pre-Docketed (Paanyaya)') {
-            lifecycleStatus = 'Pre-Docketed (Paanyaya)';
         } else if (row.status === 'Settled' || row.lifecycle_status === 'Settled') {
             lifecycleStatus = 'Settled';
         } else if (row.status === 'Resolved at Paanyaya / Closed' || row.lifecycle_status === 'Resolved at Paanyaya / Closed') {
@@ -806,13 +826,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderSearchRow(row) {
+        const isPaanyaya = (row.status === 'Pre-Docketed (Paanyaya)' || row.lifecycle_status === 'Paanyaya' || (row.status_labels && row.status_labels.includes('Paanyaya')) || (!row.case_id && String(row.complaint_number || row.case_number).startsWith('P-')));
+        let caseDisplay = row.case_number || 'Not docketed';
+        if (isPaanyaya) {
+            const d = row.incident_date ? new Date(row.incident_date) : new Date();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const ss = String(row.complaint_id || 1).padStart(2, '0');
+            const yy = d.getFullYear() || 2026;
+            caseDisplay = (row.complaint_number && String(row.complaint_number).startsWith('P-')) ? row.complaint_number : `P-${mm}-${ss}-${yy}`;
+        }
         return `
             <tr>
-                <td>${escapeHtml(row.case_number || 'Not docketed')}<small>${escapeHtml(row.case_type || '')}</small></td>
+                <td>${escapeHtml(caseDisplay)}<small>${escapeHtml(row.case_type || '')}</small></td>
                 <td>${escapeHtml(row.complaint_number)}<small>${escapeHtml(row.complaint_title)}</small></td>
                 <td>${escapeHtml(row.category_name || 'Uncategorized')}</td>
                 <td>${escapeHtml(row.parties || 'No parties linked')}</td>
-                <td>${escapeHtml(row.record_status || row.case_status || '')}</td>
+                <td>${escapeHtml(isPaanyaya ? 'Paanyaya' : (row.record_status || row.case_status || ''))}</td>
                 <td>${escapeHtml(row.incident_date || '')}</td>
                 <td>${Number(row.repeat_party_count || 0) > 1 ? `<span class="repeat-flag">Repeat party (${Number(row.repeat_party_count)} records)</span>` : 'No repeat record'}</td>
             </tr>

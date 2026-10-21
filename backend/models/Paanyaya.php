@@ -775,7 +775,7 @@ class Paanyaya
             }
 
             // 5. Update complaints status to Mediation
-            $this->conn->prepare("UPDATE complaints SET status = 'Mediation', updated_at = CURRENT_TIMESTAMP WHERE complaint_id = ?")->execute([$complaintId]);
+            $this->conn->prepare("UPDATE complaints SET status = 'Mediation', complaint_number = ?, updated_at = CURRENT_TIMESTAMP WHERE complaint_id = ?")->execute([$caseNumber, $complaintId]);
             $this->conn->prepare("UPDATE paanyaya_stages SET status = 'Completed', review_status = 'Approved for Summons', updated_at = CURRENT_TIMESTAMP WHERE complaint_id = ?")->execute([$complaintId]);
 
             if ($userId) {

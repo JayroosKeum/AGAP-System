@@ -19,7 +19,7 @@ $rawTab = trim((string)($_GET['tab'] ?? 'tab-overview'));
 if (!str_starts_with($rawTab, 'tab-')) {
     $rawTab = 'tab-' . $rawTab;
 }
-$validTabs = ['tab-overview', 'tab-summary', 'tab-paanyaya', 'tab-mediation', 'tab-conciliation', 'tab-arbitration'];
+$validTabs = ['tab-overview', 'tab-paanyaya', 'tab-mediation', 'tab-conciliation', 'tab-arbitration'];
 $activeTab = in_array($rawTab, $validTabs, true) ? $rawTab : 'tab-overview';
 $complaintFlash = $_SESSION['complaint_flash'] ?? null;
 unset($_SESSION['complaint_flash']);
@@ -56,10 +56,6 @@ include '../../layouts/header.php';
             </div>
 
             <div class="case-bar-right">
-                <button type="button" class="btn-case-outline" id="btnCaseSummaryTab" onclick="switchCaseTab('tab-summary')" title="View summary of this case">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-                    <span>Case Summary</span>
-                </button>
                 <button type="button" class="btn-case-outline" id="issueSummonButton" onclick="handleIssueSummonClick()">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                     <span id="issueSummonButtonText">Issue Summon 1st Attempt</span>
@@ -101,10 +97,6 @@ include '../../layouts/header.php';
             <button type="button" class="case-tab-item <?php echo $activeTab === 'tab-overview' ? 'active' : ''; ?>" data-tab="tab-overview" onclick="switchCaseTab('tab-overview')">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
                 <span>Overview &amp; Workflow</span>
-            </button>
-            <button type="button" class="case-tab-item <?php echo $activeTab === 'tab-summary' ? 'active' : ''; ?>" data-tab="tab-summary" onclick="switchCaseTab('tab-summary')">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-                <span>Case Summary</span>
             </button>
             <button type="button" class="case-tab-item <?php echo $activeTab === 'tab-paanyaya' ? 'active' : ''; ?>" data-tab="tab-paanyaya" onclick="switchCaseTab('tab-paanyaya')">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
@@ -324,206 +316,7 @@ include '../../layouts/header.php';
             </div>
 
         </div>
-
-        <!-- ===================================================================
-             TAB PANE: CASE SUMMARY (Comprehensive Case Briefing)
-             =================================================================== -->
-        <div id="tab-summary" class="case-tab-pane <?php echo $activeTab === 'tab-summary' ? 'active' : ''; ?>">
-            <div class="case-summary-wrapper" style="margin: 0 30px 30px;">
-                <!-- Summary Actions / Control Strip -->
-                <div class="summary-control-strip">
-                    <div class="summary-strip-left">
-                        <span class="summary-badge-chip">CASE SUMMARY DOSSIER</span>
-                        <span id="summaryLastUpdated" class="summary-timestamp">Compiled in real-time</span>
-                    </div>
-                    <div class="summary-strip-right">
-                        <button type="button" class="btn-summary-action" onclick="copyCaseSummaryText()" title="Copy case summary to clipboard">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                            <span>Copy Summary</span>
-                        </button>
-                        <button type="button" class="btn-summary-action btn-summary-print" onclick="printCaseSummary()" title="Print official case briefing sheet">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
-                            <span>Print Brief</span>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Section 1: Executive Case Header -->
-                <div class="summary-hero-card">
-                    <div class="summary-hero-top">
-                        <div>
-                            <span class="summary-meta-sub">OFFICIAL BARANGAY DISPUTE RECORD</span>
-                            <h2 id="summaryCaseTitle" class="summary-hero-title">Loading case summary...</h2>
-                        </div>
-                        <div class="summary-hero-badges" id="summaryHeroBadges">
-                            <span id="summaryCaseTypeBadge" class="type-pill type-civil">Civil</span>
-                            <span id="summaryStatusBadge" class="status-badge status-mediation">Mediation</span>
-                        </div>
-                    </div>
-
-                    <!-- KPI Snapshot Grid -->
-                    <div class="summary-kpi-grid">
-                        <div class="summary-kpi-card">
-                            <span class="kpi-title">Case Number</span>
-                            <strong id="summaryCaseNumber">—</strong>
-                        </div>
-                        <div class="summary-kpi-card">
-                            <span class="kpi-title">Category</span>
-                            <strong id="summaryCategory">—</strong>
-                        </div>
-                        <div class="summary-kpi-card">
-                            <span class="kpi-title">Date Filed</span>
-                            <strong id="summaryDateFiled">—</strong>
-                        </div>
-                        <div class="summary-kpi-card">
-                            <span class="kpi-title">Incident Date</span>
-                            <strong id="summaryIncidentDate">—</strong>
-                        </div>
-                        <div class="summary-kpi-card">
-                            <span class="kpi-title">Statutory Deadline</span>
-                            <strong id="summaryDeadline">—</strong>
-                        </div>
-                        <div class="summary-kpi-card">
-                            <span class="kpi-title">Hearings Held</span>
-                            <strong id="summaryHearingsCount">0 sessions</strong>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Section 2: AI-Powered Executive Briefing Card -->
-                <div class="summary-ai-card">
-                    <div class="summary-card-header">
-                        <div style="display:flex; align-items:center; gap:8px;">
-                            <span class="ai-spark-icon">✨</span>
-                            <h3 style="margin:0; font-size:1.05rem;">AI Executive Case Brief</h3>
-                        </div>
-                        <button type="button" id="btnGenerateAiBrief" class="btn-ai-generate" onclick="generateAiCaseBrief()">
-                            <span id="aiBriefBtnSpinner" style="display:none;">⏳</span>
-                            <span id="aiBriefBtnText">Generate AI Brief</span>
-                        </button>
-                    </div>
-
-                    <div id="aiBriefConsentBox" class="ai-consent-box">
-                        <label class="ai-consent-label">
-                            <input type="checkbox" id="aiBriefConsentCheck" checked>
-                            <span>I understand this case data will be analyzed by Google Gemini to compile an executive briefing under Katarungang Pambarangay rules.</span>
-                        </label>
-                    </div>
-
-                    <div id="aiBriefOutputContainer" class="ai-brief-output">
-                        <p class="ai-brief-placeholder">
-                            Click <strong>"Generate AI Brief"</strong> to analyze all facts, statements, hearings, and proceedings into an executive briefing sheet.
-                        </p>
-                    </div>
-                </div>
-
-                <!-- Section 3: Two-Column Parties & Facts Summary -->
-                <div class="summary-two-col-grid">
-                    <!-- Column 1: Parties Summary -->
-                    <div class="summary-content-card">
-                        <div class="summary-card-header">
-                            <h3 style="margin:0; font-size:1rem;">Involved Parties</h3>
-                            <span id="summaryPartiesCount" class="panel-count-badge">0 parties</span>
-                        </div>
-                        <div class="summary-card-body">
-                            <div class="summary-parties-group">
-                                <h4 class="party-group-title complainant-title">Complainant(s)</h4>
-                                <div id="summaryComplainantsList" class="summary-parties-list">
-                                    <p class="empty-text">Loading complainants...</p>
-                                </div>
-                            </div>
-                            <div class="summary-parties-group" style="margin-top:16px;">
-                                <h4 class="party-group-title respondent-title">Respondent(s)</h4>
-                                <div id="summaryRespondentsList" class="summary-parties-list">
-                                    <p class="empty-text">Loading respondents...</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Column 2: Incident & Location Summary -->
-                    <div class="summary-content-card">
-                        <div class="summary-card-header">
-                            <h3 style="margin:0; font-size:1rem;">Incident &amp; Location</h3>
-                        </div>
-                        <div class="summary-card-body">
-                            <div class="summary-info-row">
-                                <span class="info-label">Incident Date &amp; Time:</span>
-                                <span id="summaryIncidentDateTime" class="info-val">—</span>
-                            </div>
-                            <div class="summary-info-row">
-                                <span class="info-label">Location Address:</span>
-                                <span id="summaryLocationAddress" class="info-val">—</span>
-                            </div>
-                            <div class="summary-info-row">
-                                <span class="info-label">Landmark:</span>
-                                <span id="summaryLocationLandmark" class="info-val">None</span>
-                            </div>
-                            <div class="summary-info-row">
-                                <span class="info-label">GPS Coordinates:</span>
-                                <span id="summaryCoordinates" class="info-val">—</span>
-                            </div>
-                            <div class="summary-info-row" style="margin-top:12px; border-top:1px dashed #e2e8f0; padding-top:10px;">
-                                <span class="info-label">Presiding Officer:</span>
-                                <span id="summaryPresidingOfficer" class="info-val">Punong Barangay</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Section 4: Narrative, Facts & Relief Sought -->
-                <div class="summary-content-card" style="margin-top:20px;">
-                    <div class="summary-card-header">
-                        <h3 style="margin:0; font-size:1rem;">Facts, Allegations &amp; Relief Demanded</h3>
-                    </div>
-                    <div class="summary-card-body">
-                        <div class="summary-fact-block">
-                            <strong>Statement of Complaint / Allegations:</strong>
-                            <div id="summaryNarrativeText" class="fact-text-box">Loading statement...</div>
-                        </div>
-                        <div id="summaryAdditionalWrap" class="summary-fact-block" style="display:none; margin-top:14px;">
-                            <strong>Prior Attempts / Additional Context:</strong>
-                            <div id="summaryAdditionalText" class="fact-text-box"></div>
-                        </div>
-                        <div id="summaryReliefWrap" class="summary-fact-block" style="margin-top:14px;">
-                            <strong>Relief Demanded / Settlement Remedy:</strong>
-                            <div id="summaryReliefText" class="fact-text-box fact-relief-box">None specified</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Section 5: Proceedings, Hearings & Document Log -->
-                <div class="summary-two-col-grid" style="margin-top:20px;">
-                    <!-- Hearings Log -->
-                    <div class="summary-content-card">
-                        <div class="summary-card-header">
-                            <h3 style="margin:0; font-size:1rem;">Hearings &amp; Session Records</h3>
-                            <span id="summaryHearingsBadge" class="panel-count-badge">0 recorded</span>
-                        </div>
-                        <div class="summary-card-body">
-                            <div id="summaryHearingsList" class="summary-log-list">
-                                <p class="empty-text">No hearings recorded yet.</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Issued KP Forms & Proofs -->
-                    <div class="summary-content-card">
-                        <div class="summary-card-header">
-                            <h3 style="margin:0; font-size:1rem;">Issued KP Forms &amp; Service</h3>
-                            <span id="summaryKpDocsBadge" class="panel-count-badge">0 documents</span>
-                        </div>
-                        <div class="summary-card-body">
-                            <div id="summaryKpDocsList" class="summary-log-list">
-                                <p class="empty-text">No KP forms issued yet.</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- ===================================================================
+<!-- ===================================================================
              TAB PANE: PAANYAYA (STAGE 0: PRE-DOCKETING)
              =================================================================== -->
         <div id="tab-paanyaya" class="case-tab-pane <?php echo $activeTab === 'tab-paanyaya' ? 'active' : ''; ?>">
@@ -659,9 +452,6 @@ include '../../layouts/header.php';
                         <button type="button" class="btn-create" id="btnReviewP1" onclick="openPaanyayaReviewModal('Paanyaya 1')" style="background: #dc2626; border-color: #dc2626; display: none;">
                             ⚖️ Review Case
                         </button>
-                        <button type="button" class="btn-sess-white" onclick="switchDeliveryHistoryView('Paanyaya 1')">
-                            📜 View Delivery History
-                        </button>
                     </div>
                 </div>
 
@@ -755,63 +545,11 @@ include '../../layouts/header.php';
                         <button type="button" class="btn-create" id="btnReviewP2" onclick="openPaanyayaReviewModal('Paanyaya 2')" style="background: #dc2626; border-color: #dc2626; display: none;">
                             ⚖️ Review Case
                         </button>
-                        <button type="button" class="btn-sess-white" onclick="switchDeliveryHistoryView('Paanyaya 2')">
-                            📜 View Delivery History
-                        </button>
                     </div>
                 </div>
             </div>
 
-            <!-- PAANYAYA DELIVERY HISTORY & OFFICER'S RETURN TABLE -->
-            <div class="hearings-schedule-card" id="paanyayaHistoryCard" style="margin: 0 30px 24px;">
-                <div class="operational-card-header" style="flex-wrap: wrap; gap: 12px;">
-                    <div>
-                        <h3 style="font-size: 1rem; font-weight: 800; color: #0f172a; margin: 0; display: flex; align-items: center; gap: 8px;">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-                            <span>Paanyaya Delivery History &amp; Officer's Return Records</span>
-                        </h3>
-                        <span class="card-subtitle">Chronological record of service attempts. Max 6 attempts tracked independently per stage.</span>
-                    </div>
 
-                    <!-- Stage Selector Pills -->
-                    <div class="paanyaya-history-tabs-row">
-                        <button type="button" class="hist-tab-btn active" id="btnHistTabP1" onclick="switchDeliveryHistoryView('Paanyaya 1')">
-                            Paanyaya 1 Delivery History (<span id="p1HistBadgeCount">0</span>/6)
-                        </button>
-                        <button type="button" class="hist-tab-btn" id="btnHistTabP2" onclick="switchDeliveryHistoryView('Paanyaya 2')">
-                            Paanyaya 2 Delivery History (<span id="p2HistBadgeCount">0</span>/6)
-                        </button>
-                    </div>
-                </div>
-
-                <!-- History Table Container -->
-                <div style="overflow-x: auto; padding: 14px 20px 20px;">
-                    <table class="table" style="width: 100%; border-collapse: collapse; font-size: 0.85rem;" id="paanyayaDeliveryHistoryTable">
-                        <thead>
-                            <tr style="border-bottom: 2px solid #e2e8f0; background: #f8fafc; text-align: left;">
-                                <th style="padding: 10px 12px; font-weight: 700; color: #475569;">Attempt</th>
-                                <th style="padding: 10px 12px; font-weight: 700; color: #475569;">Date &amp; Time</th>
-                                <th style="padding: 10px 12px; font-weight: 700; color: #475569;">Serving Officer</th>
-                                <th style="padding: 10px 12px; font-weight: 700; color: #475569;">Address Visited</th>
-                                <th style="padding: 10px 12px; font-weight: 700; color: #475569;">Outcome</th>
-                                <th style="padding: 10px 12px; font-weight: 700; color: #475569;">Remarks</th>
-                                <th style="padding: 10px 12px; font-weight: 700; color: #475569; text-align: center;">Proof</th>
-                                <th style="padding: 10px 12px; font-weight: 700; color: #475569; text-align: center;">Officer's Return</th>
-                                <th style="padding: 10px 12px; font-weight: 700; color: #475569;">Recorded By</th>
-                                <th style="padding: 10px 12px; font-weight: 700; color: #475569; text-align: right;">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="paanyayaDeliveryHistoryTbody">
-                            <!-- Populated dynamically by complaints.js -->
-                        </tbody>
-                    </table>
-
-                    <!-- Empty State -->
-                    <div id="paanyayaDeliveryHistoryEmpty" class="empty-detail-state" style="padding: 24px; text-align: center; color: #64748b;">
-                        <p style="margin: 0; font-size: 0.9rem;">No delivery attempts recorded yet for this Paanyaya stage.</p>
-                    </div>
-                </div>
-            </div>
         </div>
 
         <!-- ===================================================================
@@ -1295,18 +1033,12 @@ include '../../layouts/header.php';
                 <span style="font-size: 1.3rem;">✉️</span>
                 <div>
                     <h2 id="paanyayaModalTitle" style="font-size: 1.15rem; font-weight: 700; color: #0f172a; margin: 0;">Official Paanyaya (Invitation Letter) Preview</h2>
-                    <span style="font-size: 0.78rem; color: #64748b;">Barangay Tumana &bull; Lungsod ng Marikina &bull; Pre-Docketed Informal Dialogue</span>
+
                 </div>
             </div>
             <div style="display: flex; align-items: center; gap: 10px;">
                 <button type="button" class="btn-sm btn-outline-sm" onclick="printPaanyayaIframe()" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px;">
                     🖨️ Print
-                </button>
-                <a id="btnModalDownloadPaanyaya" href="#" target="_blank" class="btn-sm btn-create" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px; text-decoration: none; background: #0f172a;">
-                    ⬇ Download PDF
-                </a>
-                <button type="button" class="btn-sm btn-create" id="btnHeaderToOfficersReturn" onclick="proceedToOfficersReturnFromPreview()" style="background: #2563eb; border-color: #2563eb; display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 6px; text-decoration: none; font-weight: 700;">
-                    📝 Proceed to Officer's Return &rarr;
                 </button>
                 <button type="button" class="close-btn" onclick="closePaanyayaPreviewModal()">&times;</button>
             </div>
@@ -1314,17 +1046,11 @@ include '../../layouts/header.php';
         <div style="flex: 1 1 auto; background: #475569; position: relative;">
             <iframe id="paanyayaPreviewIframe" src="about:blank" style="width: 100%; height: 100%; border: none; background: #475569;"></iframe>
         </div>
-        <div class="modal-actions" style="padding: 12px 20px; border-top: 1px solid #e2e8f0; background: #f8fafc; margin-top: 0; display: flex; justify-content: space-between; align-items: center;">
-            <div style="font-size: 0.83rem; color: #475569; display: flex; align-items: center; gap: 6px;">
-                <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #2563eb;"></span>
-                <span>Recipient for Delivery: <strong style="color: #0f172a;">Respondent Only</strong> (Up to 6 Attempts on Paanyaya)</span>
-            </div>
-            <div style="display: flex; gap: 10px; align-items: center;">
+        <div class="modal-actions" style="padding: 12px 20px; border-top: 1px solid #e2e8f0; background: #f8fafc; margin-top: 0; display: flex; justify-content: flex-end; align-items: center; gap: 10px;">
                 <button type="button" class="btn-create" id="btnFooterToOfficersReturn" onclick="proceedToOfficersReturnFromPreview()" style="background: #2563eb; border-color: #2563eb; padding: 8px 18px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(37,99,235,0.25);">
                     📝 Proceed to Officer's Return &rarr;
                 </button>
                 <button type="button" class="btn-secondary" onclick="closePaanyayaPreviewModal()">Close Preview</button>
-            </div>
         </div>
     </div>
 </div>

@@ -28,7 +28,7 @@ class Search
         if ($filterStatus === 'Draft') {
             $where[] = "(co.is_draft = 1 OR co.status = 'Draft')";
         } elseif ($filterStatus === 'Paanyaya' || $filterStatus === 'Pre-Docketed (Paanyaya)') {
-            $where[] = "(co.status = 'Pre-Docketed (Paanyaya)' OR co.status = 'Resolved at Paanyaya / Closed')";
+            $where[] = "(co.status = 'Pre-Docketed (Paanyaya)' OR co.status = 'Resolved at Paanyaya / Closed' OR co.status LIKE '%Paanyaya%')";
         } elseif ($filterStatus === 'Pending') {
             $where[] = "(COALESCE(co.is_draft, 0) = 0 AND co.status != 'Draft'
                 AND NOT EXISTS (SELECT 1 FROM settlements s_std WHERE s_std.case_id = c.case_id)
@@ -117,7 +117,7 @@ class Search
             $params[':date_to'] = $filters['date_to'];
         }
 
-        $sql = "SELECT c.case_id, c.case_number, COALESCE(c.case_type, co.case_type) AS case_type, c.case_status, co.status AS complaint_status, COALESCE(c.case_status, co.status) AS raw_record_status, c.docket_date, co.complaint_id, co.complaint_number, co.complaint_title, co.incident_date, cc.category_name, co.document_status, co.is_draft,
+        $sql = "SELECT c.case_id, c.case_number, COALESCE(c.case_type, co.case_type) AS case_type, c.case_status, co.status, co.status AS complaint_status, COALESCE(c.case_status, co.status) AS raw_record_status, c.docket_date, co.complaint_id, co.complaint_number, co.complaint_title, co.incident_date, cc.category_name, co.document_status, co.is_draft,
         GROUP_CONCAT(DISTINCT CONCAT(cp.party_type, ': ', TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name))) ORDER BY cp.party_type SEPARATOR ' | ') AS parties,
         MAX(history.repeat_count) AS repeat_party_count,
         (SELECT COUNT(*) FROM hearings h_med WHERE h_med.case_id = c.case_id AND h_med.hearing_type = 'Mediation') AS mediation_count,
@@ -171,7 +171,7 @@ class Search
         $sortColumns = [
             'incident_date' => "co.incident_date {$sortOrder}, co.complaint_id {$sortOrder}",
             'complaint_number' => "co.complaint_number {$sortOrder}",
-            'case_number' => "c.case_number {$sortOrder}, co.complaint_id {$sortOrder}",
+            'case_number' => "COALESCE(c.case_number, co.complaint_number, co.complaint_id) {$sortOrder}, co.complaint_id {$sortOrder}",
             'category_name' => "cc.category_name {$sortOrder}",
             'complaint_title' => "co.complaint_title {$sortOrder}, co.complaint_id {$sortOrder}",
             'parties' => "parties {$sortOrder}",
@@ -189,6 +189,9 @@ class Search
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         foreach ($rows as &$row) {
+            if (empty($row['case_number']) && !empty($row['complaint_number'])) {
+                $row['case_number'] = $row['complaint_number'];
+            }
             $lifecycle = $this->resolveLifecycle($row);
             $row['intake_status'] = $lifecycle['intake_status'];
             $row['current_stage'] = $lifecycle['current_stage'];
@@ -234,6 +237,8 @@ class Search
                 $stage = 'Conciliation';
             } elseif ($medCount > 0 || ($row['case_status'] ?? '') === 'Mediation' || ($row['complaint_status'] ?? '') === 'Mediation') {
                 $stage = 'Mediation';
+            } elseif (str_contains((string)($row['complaint_status'] ?? ''), 'Paanyaya') || str_contains((string)($row['case_status'] ?? ''), 'Paanyaya')) {
+                $stage = 'Paanyaya';
             }
         }
 
@@ -247,14 +252,19 @@ class Search
 
         // Aggregate labels for tag/pill rendering (Docketed is excluded as complaints are already considered docketed)
         $labels = [];
-        if ($intake !== 'Docketed') {
-            $labels[] = $intake;
+        if ($stage === 'Paanyaya' || str_contains((string)($row['complaint_status'] ?? ''), 'Paanyaya') || str_contains((string)($row['case_status'] ?? ''), 'Paanyaya')) {
+            // Those with paanyaya status should NOT be combined with other status
+            $labels[] = 'Paanyaya';
+        } else {
+            if ($intake !== 'Docketed') {
+                $labels[] = $intake;
+            }
+            if ($stage !== 'None') {
+                $labels[] = $stage;
+            }
+            $dispLabel = ($disposition === 'Certificate to File Action (CFA)') ? 'CFA' : ($disposition === 'Dismissed / Dropped' ? 'Dismissed' : $disposition);
+            $labels[] = $dispLabel;
         }
-        if ($stage !== 'None') {
-            $labels[] = $stage;
-        }
-        $dispLabel = ($disposition === 'Certificate to File Action (CFA)') ? 'CFA' : ($disposition === 'Dismissed / Dropped' ? 'Dismissed' : $disposition);
-        $labels[] = $dispLabel;
 
         return [
             'intake_status' => $intake,
@@ -274,6 +284,11 @@ class Search
     {
         $caseStatus = (string) ($row['case_status'] ?? '');
         $complaintStatus = (string) ($row['complaint_status'] ?? '');
+
+        // Paanyaya status should not be combined with other status
+        if (str_contains($caseStatus, 'Paanyaya') || str_contains($complaintStatus, 'Paanyaya') || ($row['current_stage'] ?? '') === 'Paanyaya') {
+            return 'Paanyaya';
+        }
 
         if (!empty($row['is_draft']) || $complaintStatus === 'Draft') {
             return 'Draft';
@@ -295,6 +310,9 @@ class Search
         }
         if ((int) ($row['mediation_count'] ?? 0) > 0 || $caseStatus === 'Mediation' || $complaintStatus === 'Mediation') {
             return 'Mediation';
+        }
+        if (str_contains($complaintStatus, 'Paanyaya') || str_contains($caseStatus, 'Paanyaya')) {
+            return 'Paanyaya';
         }
         return 'Pending';
     }

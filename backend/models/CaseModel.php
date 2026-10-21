@@ -340,8 +340,8 @@ class CaseModel
                 'UPDATE cases SET case_number = ? WHERE case_id = ?'
             );
             $numberStatement->execute([$caseNumber, $caseId]);
-            $statusStatement = $this->conn->prepare("UPDATE complaints SET status = 'Docketed' WHERE complaint_id = ? AND status IN ('Accepted', 'Pre-Docketed (Paanyaya)')");
-            $statusStatement->execute([$data['complaint_id']]);
+            $statusStatement = $this->conn->prepare("UPDATE complaints SET status = 'Docketed', complaint_number = ? WHERE complaint_id = ? AND status IN ('Accepted', 'Pre-Docketed (Paanyaya)')");
+            $statusStatement->execute([$caseNumber, $data['complaint_id']]);
             if ($statusStatement->rowCount() !== 1) {
                 throw new RuntimeException('Complaint approval changed before docketing.');
             }
