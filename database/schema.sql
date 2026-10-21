@@ -46,6 +46,10 @@ CREATE TABLE users (
     password_hash VARCHAR(255) NOT NULL,
     role_id INT UNSIGNED NOT NULL,
     status ENUM('Active', 'Inactive') NOT NULL DEFAULT 'Active',
+    notification_audio TINYINT(1) NOT NULL DEFAULT 1,
+    notification_inbox TINYINT(1) NOT NULL DEFAULT 1,
+    preferred_language VARCHAR(10) NOT NULL DEFAULT 'fil',
+    avatar_path VARCHAR(255) NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_users_username (username),
@@ -130,7 +134,10 @@ CREATE TABLE residents (
 CREATE TABLE complaint_categories (
     category_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     category_name VARCHAR(150) NOT NULL,
+    tagalog_name VARCHAR(150) NULL,
+    ltia_code VARCHAR(50) NULL,
     description TEXT NULL,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_complaint_categories_name (category_name)
