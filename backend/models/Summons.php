@@ -181,22 +181,23 @@ class Summons
 
             if ($conflict) {
                 $this->conn->rollBack();
-                $cStart = date('g:i A', strtotime($conflict['hearing_date']));
-                $cEnd = date('g:i A', strtotime($conflict['hearing_date'] . ' +60 minutes'));
                 $cDate = date('M j, Y', strtotime($conflict['hearing_date']));
+                $cTime = date('g:i A', strtotime($conflict['hearing_date']));
                 $caseRef = !empty($conflict['case_number']) ? ' for Case ' . $conflict['case_number'] : '';
-                return [
-                    'success' => false,
-                    'conflict' => true,
-                    'message' => sprintf(
-                        'Schedule conflict: A %s is already scheduled%s on %s from %s to %s (%s). Mediation sessions cannot overlap on the same day. Please select a non-overlapping time slot.',
+                $msg = !empty($conflict['message'])
+                    ? $conflict['message']
+                    : sprintf(
+                        'Schedule conflict: A %s is already scheduled%s on %s at %s (%s). Please select a valid non-conflicting time slot.',
                         $conflict['hearing_type'] ?? 'Mediation',
                         $caseRef,
                         $cDate,
-                        $cStart,
-                        $cEnd,
+                        $cTime,
                         $conflict['venue'] ?? 'Barangay Hall'
-                    )
+                    );
+                return [
+                    'success' => false,
+                    'conflict' => true,
+                    'message' => $msg
                 ];
             }
 
@@ -667,47 +668,85 @@ class Summons
      * or conflicts with any hearing at the same venue.
      * Mediation sessions are treated as having a standard 60-minute duration.
      */
+    /**
+     * Checks if a proposed mediation schedule conflicts with the Lupon Court Room master operating schedule
+     * or conflicts with an unauthorized booking in the single shared Lupon Court Room.
+     * Elastic duration: mediation sessions are treated as having target call times on the Tuesday afternoon docket
+     * without rigid 60-minute duration locks.
+     */
     public function findMediationConflict(
         string $hearingDateTime,
         string $venue,
         ?int $excludeCaseId = null,
         ?int $excludeHearingId = null
     ): ?array {
-        $date = substr($hearingDateTime, 0, 10);
+        $ts = strtotime($hearingDateTime);
+        $date = date('Y-m-d', $ts);
+        $dow = (int) date('w', $ts);
+        $hour = (int) date('H', $ts);
 
-        $sql = "
-            SELECT h.hearing_id, h.case_id, h.hearing_date, h.venue, h.hearing_type,
-                   c.case_number, co.complaint_title
-            FROM hearings h
-            INNER JOIN cases c ON c.case_id = h.case_id
-            LEFT JOIN complaints co ON co.complaint_id = c.complaint_id
-            WHERE DATE(h.hearing_date) = ?
-              AND c.case_status NOT IN ('Dismissed', 'Settled')
-              AND (
-                  -- Another mediation on the same day overlapping in time (60-minute session)
-                  (h.hearing_type = 'Mediation' AND ABS(TIMESTAMPDIFF(MINUTE, h.hearing_date, ?)) < 60)
-                  OR
-                  -- Venue conflict at same date/time (60-minute session)
-                  (LOWER(TRIM(h.venue)) = LOWER(TRIM(?)) AND ABS(TIMESTAMPDIFF(MINUTE, h.hearing_date, ?)) < 60)
-              )
-        ";
-        $params = [$date, $hearingDateTime, $venue, $hearingDateTime];
-
-        if ($excludeHearingId !== null && $excludeHearingId > 0) {
-            $sql .= " AND h.hearing_id <> ?";
-            $params[] = $excludeHearingId;
-        } elseif ($excludeCaseId !== null && $excludeCaseId > 0) {
-            $sql .= " AND h.case_id <> ?";
-            $params[] = $excludeCaseId;
+        // Lupon Court Room Master Operating Schedule:
+        // Tuesdays 1:00 PM – 5:00 PM are exclusively reserved for Formal Mediation.
+        if ($dow !== 2 || $hour < 13 || $hour >= 17) {
+            return [
+                'hearing_type' => 'Mediation Operating Hours Violation',
+                'hearing_date' => $hearingDateTime,
+                'venue' => $venue,
+                'case_number' => '',
+                'message' => 'Formal Mediation before the Punong Barangay can only be scheduled on Tuesday afternoons (1:00 PM – 5:00 PM).'
+            ];
         }
 
-        $sql .= " ORDER BY h.hearing_date ASC LIMIT 1";
+        // Check if an unauthorized non-mediation hearing occupies the Lupon Court Room
+        $venueClean = strtolower(trim($venue));
+        if ($venueClean === 'lupon court room') {
+            $conflictStmt = $this->conn->prepare("
+                SELECT h.hearing_id, h.case_id, h.hearing_date, h.venue, h.hearing_type,
+                       c.case_number, co.complaint_title
+                FROM hearings h
+                INNER JOIN cases c ON c.case_id = h.case_id
+                LEFT JOIN complaints co ON co.complaint_id = c.complaint_id
+                WHERE DATE(h.hearing_date) = ?
+                  AND h.hearing_type <> 'Mediation'
+                  AND LOWER(TRIM(h.venue)) = 'lupon court room'
+                  AND h.status NOT IN ('Cancelled', 'Office Cancelled')
+                  AND HOUR(h.hearing_date) >= 13 AND HOUR(h.hearing_date) < 17
+                LIMIT 1
+            ");
+            $conflictStmt->execute([$date]);
+            $nonMedConflict = $conflictStmt->fetch(PDO::FETCH_ASSOC);
+            if ($nonMedConflict) {
+                return $nonMedConflict;
+            }
+        }
 
-        $stmt = $this->conn->prepare($sql);
-        $stmt->execute($params);
-        $conflict = $stmt->fetch(PDO::FETCH_ASSOC);
+        // Check if the EXACT same case already has another active mediation hearing scheduled
+        if ($excludeCaseId !== null && $excludeCaseId > 0) {
+            $sameCaseSql = "
+                SELECT h.hearing_id, h.case_id, h.hearing_date, h.venue, h.hearing_type,
+                       c.case_number, co.complaint_title
+                FROM hearings h
+                INNER JOIN cases c ON c.case_id = h.case_id
+                LEFT JOIN complaints co ON co.complaint_id = c.complaint_id
+                WHERE h.case_id = ?
+                  AND h.hearing_type = 'Mediation'
+                  AND h.status NOT IN ('Cancelled', 'Office Cancelled')
+            ";
+            $params = [$excludeCaseId];
+            if ($excludeHearingId !== null && $excludeHearingId > 0) {
+                $sameCaseSql .= " AND h.hearing_id <> ?";
+                $params[] = $excludeHearingId;
+            }
+            $sameCaseSql .= " LIMIT 1";
+            $stmt = $this->conn->prepare($sameCaseSql);
+            $stmt->execute($params);
+            $dupCase = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($dupCase) {
+                return $dupCase;
+            }
+        }
 
-        return $conflict ?: null;
+        return null;
     }
 
     /**

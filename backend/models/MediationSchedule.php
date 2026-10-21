@@ -120,34 +120,35 @@ class MediationSchedule
                 ];
             }
 
-            // Check for conflict with other scheduled mediations that day
+            // Check for conflict with other scheduled sessions in the Lupon Court Room
             require_once __DIR__ . '/Summons.php';
             $summons = new Summons();
             $conflict = $summons->findMediationConflict($hearingDate, $venue, $caseId);
             if ($conflict) {
                 $this->conn->rollBack();
-                $cStart = date('g:i A', strtotime($conflict['hearing_date']));
-                $cEnd = date('g:i A', strtotime($conflict['hearing_date'] . ' +60 minutes'));
                 $cDate = date('M j, Y', strtotime($conflict['hearing_date']));
+                $cTime = date('g:i A', strtotime($conflict['hearing_date']));
                 $caseRef = !empty($conflict['case_number']) ? ' for Case ' . $conflict['case_number'] : '';
-                return [
-                    'success' => false,
-                    'message' => sprintf(
-                        'Schedule conflict: A %s is already scheduled%s on %s from %s to %s (%s). Mediation sessions cannot overlap on the same day. Please select a non-overlapping time slot.',
+                $msg = !empty($conflict['message'])
+                    ? $conflict['message']
+                    : sprintf(
+                        'Schedule conflict: A %s is already scheduled%s on %s at %s (%s). Please select a valid non-conflicting time slot.',
                         $conflict['hearing_type'] ?? 'Mediation',
                         $caseRef,
                         $cDate,
-                        $cStart,
-                        $cEnd,
-                        $conflict['venue'] ?? 'Barangay Hall'
-                    )
+                        $cTime,
+                        $conflict['venue'] ?? 'Lupon Court Room'
+                    );
+                return [
+                    'success' => false,
+                    'message' => $msg
                 ];
             }
 
-            // Insert 1st Mediation hearing
+            // Insert 1st Mediation hearing with queue_status = 'Waiting'
             $hearing = $this->conn->prepare(
-                "INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, remarks)
-                 VALUES (?, 'Mediation', ?, ?, ?)"
+                "INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, remarks, queue_status)
+                 VALUES (?, 'Mediation', ?, ?, ?, 'Waiting')"
             );
             $hearing->execute([$caseId, $hearingDate, $venue, $remarks]);
             $hearingId = (int) $this->conn->lastInsertId();

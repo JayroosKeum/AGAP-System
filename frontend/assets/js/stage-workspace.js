@@ -549,6 +549,27 @@ function renderSessionsList(data, stage) {
         const hasMinutes = s.minutes_id && s.minutes_status !== 'Not Recorded';
         const isFinalized = s.minutes_status === 'Finalized';
 
+        const compIn = (s.complainant_attendance === 'Present' || s.complainant_attendance === 'Late');
+        const respIn = (s.respondent_attendance === 'Present' || s.respondent_attendance === 'Late');
+        const isReady = compIn && respIn;
+        const qStatus = s.queue_status || (isReady ? 'Ready' : 'Waiting');
+        const isInSession = (qStatus === 'In_Session');
+        const isStandby = (qStatus === 'Standby');
+        const isConcluded = (qStatus === 'Concluded' || isCompleted);
+
+        let queueBadgeHtml = '';
+        if (isInSession) {
+            queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe;">🔵 In Session (Started: ${formatTimeOnly(s.actual_start_time)})</span>`;
+        } else if (isReady) {
+            queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 800; padding: 2px 8px; border-radius: 4px; background: #dcfce7; color: #15803d; border: 1px solid #86efac;">🟢 Complete &amp; Ready</span>`;
+        } else if (isStandby) {
+            queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #fef3c7; color: #b45309; border: 1px solid #fde68a;">⏸️ On Standby</span>`;
+        } else if (isConcluded) {
+            queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;">✓ Concluded (${s.actual_duration_minutes || s.duration_minutes || 45} mins)</span>`;
+        } else {
+            queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0;">⏳ Waiting Room</span>`;
+        }
+
         let partyAttHtml = '';
         if (s.parties && s.parties.length) {
             partyAttHtml = s.parties.map(p => {
@@ -595,6 +616,7 @@ function renderSessionsList(data, stage) {
                             <h4 style="margin: 0; font-size: 1.05rem; color: #0f172a; font-weight: 700;">
                                 ${escapeHtml(s.attempt_label || s.session_number)}
                             </h4>
+                            ${queueBadgeHtml}
                             <span class="status-pill status-${escapeHtml(s.status.toLowerCase())}" style="font-size: 0.74rem; padding: 2px 8px; border-radius: 4px; font-weight: 700;">
                                 ${escapeHtml(s.status)}
                             </span>
@@ -610,23 +632,54 @@ function renderSessionsList(data, stage) {
                             ` : ''}
                         </div>
                         <div style="font-size: 0.84rem; color: #475569; display: flex; gap: 14px; flex-wrap: wrap;">
-                            <span>📅 <strong>${formatDateTimeReadable(s.hearing_date)}</strong></span>
-                            <span>📍 Venue: <strong>${escapeHtml(s.venue || 'Barangay Hall')}</strong></span>
+                            <span>📅 Call Time: <strong>${formatDateTimeReadable(s.hearing_date)}</strong></span>
+                            <span>📍 Venue: <strong>${escapeHtml(s.venue || 'Lupon Court Room')}</strong></span>
                             ${s.presiding_officer_name ? `<span>👤 Presider: <strong>${escapeHtml(s.presiding_officer_name)}</strong></span>` : ''}
+                            ${s.actual_start_time ? `<span>⏱️ Actual Start: <strong>${formatTimeOnly(s.actual_start_time)}</strong></span>` : ''}
+                            ${s.actual_duration_minutes ? `<span>⌛ Duration: <strong>${s.actual_duration_minutes} mins</strong></span>` : ''}
                         </div>
                     </div>
-                    <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                    <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
+                        ${!isConcluded && !isInSession ? `
+                            <button type="button" class="btn-create" onclick="handleDocketStartSession(${s.hearing_id})" style="font-size: 0.78rem; padding: 5px 12px; background: ${isReady ? '#16a34a' : '#2563eb'}; display: inline-flex; align-items: center; gap: 4px;" title="Out-of-order session activation: Call to session immediately if ready">
+                                ▶️ Call to Session / Start Hearing
+                            </button>
+                            <button type="button" class="btn-secondary" onclick="handleDocketStandby(${s.hearing_id}, ${isStandby ? 'false' : 'true'})" style="font-size: 0.78rem; padding: 5px 9px; display: inline-flex; align-items: center; gap: 4px;" title="Put on standby to keep room available for other ready cases">
+                                ${isStandby ? '▶️ Resume from Standby' : '⏸️ Put on Standby'}
+                            </button>
+                        ` : ''}
+                        ${isInSession ? `
+                            <button type="button" class="btn-create" onclick="handleDocketConcludeSession(${s.hearing_id})" style="font-size: 0.78rem; padding: 5px 12px; background: #b91c1c; display: inline-flex; align-items: center; gap: 4px;">
+                                ⏹️ Conclude Session
+                            </button>
+                        ` : ''}
                         ${Number(s.session_index || 1) === 1 ? `
-                            <button type="button" class="btn-secondary" onclick="openSummonsPreviewModal(${Number(stageWorkspaceState.caseId)}, null, ${Number(s.hearing_id)})" style="font-size: 0.78rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 4px; border-color: #0284c7; color: #0284c7; background: #f0f9ff;" title="Preview, print, or download KP Form No. 9 summons for 1st Mediation">
-                                📄 Preview Summons (KP 9)
+                            <button type="button" class="btn-secondary" onclick="openSummonsPreviewModal(${Number(stageWorkspaceState.caseId)}, null, ${Number(s.hearing_id)})" style="font-size: 0.78rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 4px; border-color: #0284c7; color: #0284c7; background: #f0f9ff;" title="Preview, print, or download KP Form No. 9 summons">
+                                📄 KP Form
                             </button>
                         ` : ''}
                         <button type="button" class="btn-secondary" onclick="openAttendanceModal(${s.hearing_id})" style="font-size: 0.78rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 4px;">
-                            👤 Record Attendance
+                            👤 Detailed Attendance
                         </button>
                         <button type="button" class="btn-secondary" onclick="selectInlineMinutesSession(${s.hearing_id})" style="font-size: 0.78rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 4px; ${isFinalized ? 'border-color: #86efac; background: #f0fdf4;' : ''}">
                             📝 ${isFinalized ? 'View Finalized Minutes' : (hasMinutes ? 'Edit Minutes Draft' : 'Add Minutes')}
                         </button>
+                    </div>
+                </div>
+
+                <!-- Daily Docket Live Arrival / Readiness Tracking Bar -->
+                <div style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span style="font-size: 0.76rem; font-weight: 700; color: #475569; text-transform: uppercase;">Party Arrival Check-In:</span>
+                        <button type="button" onclick="handleDocketCheckIn(${s.hearing_id}, 'Complainant', '${compIn ? 'Waiting' : 'Checked In'}')" style="font-size: 0.78rem; padding: 3px 10px; border-radius: 6px; border: 1px solid ${compIn ? '#86efac' : '#cbd5e1'}; background: ${compIn ? '#dcfce7' : '#fff'}; color: ${compIn ? '#15803d' : '#475569'}; font-weight: 600; cursor: pointer;">
+                            Complainant: [ ${compIn ? '✓ Checked In' : '⏳ Waiting / In Transit'} ]
+                        </button>
+                        <button type="button" onclick="handleDocketCheckIn(${s.hearing_id}, 'Respondent', '${respIn ? 'Waiting' : 'Checked In'}')" style="font-size: 0.78rem; padding: 3px 10px; border-radius: 6px; border: 1px solid ${respIn ? '#86efac' : '#cbd5e1'}; background: ${respIn ? '#dcfce7' : '#fff'}; color: ${respIn ? '#15803d' : '#475569'}; font-weight: 600; cursor: pointer;">
+                            Respondent: [ ${respIn ? '✓ Checked In' : '⏳ Waiting / In Transit'} ]
+                        </button>
+                    </div>
+                    <div style="font-size: 0.8rem; font-weight: 600;">
+                        ${isReady ? '<span style="color: #15803d;">🟢 Complete &amp; Ready for Hearing</span>' : '<span style="color: #64748b;">⏳ Waiting for parties to arrive</span>'}
                     </div>
                 </div>
 
@@ -661,6 +714,124 @@ function renderSessionsList(data, stage) {
 
     listContainer.innerHTML = cardsHtml;
 }
+
+function formatTimeOnly(dateStr) {
+    if (!dateStr) return '—';
+    try {
+        const d = new Date(dateStr.replace(' ', 'T'));
+        if (isNaN(d.getTime())) return dateStr;
+        return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+    } catch (e) {
+        return dateStr;
+    }
+}
+
+async function handleDocketCheckIn(hearingId, partyType, status) {
+    try {
+        const res = await fetch('../../backend/api/hearings/queue.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'check_in',
+                hearing_id: hearingId,
+                party_type: partyType,
+                status: status
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            window.agapNotify?.(data.message, 'success');
+            reloadWorkspace();
+        } else {
+            alert(data.message || 'Could not update party check-in.');
+        }
+    } catch (err) {
+        console.error('Docket check-in error:', err);
+        alert('Server error updating party check-in.');
+    }
+}
+
+async function handleDocketStandby(hearingId, standby) {
+    try {
+        const res = await fetch('../../backend/api/hearings/queue.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'standby',
+                hearing_id: hearingId,
+                standby: standby ? 1 : 0
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            window.agapNotify?.(data.message, 'info');
+            reloadWorkspace();
+        } else {
+            alert(data.message || 'Could not update standby status.');
+        }
+    } catch (err) {
+        console.error('Docket standby error:', err);
+        alert('Server error updating standby status.');
+    }
+}
+
+async function handleDocketStartSession(hearingId) {
+    if (!confirm('Call this hearing to session? Actual start time will be recorded now.')) {
+        return;
+    }
+    try {
+        const res = await fetch('../../backend/api/hearings/queue.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'start_session',
+                hearing_id: hearingId
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            window.agapNotify?.(data.message, 'success');
+            reloadWorkspace();
+        } else {
+            alert(data.message || 'Could not start session.');
+        }
+    } catch (err) {
+        console.error('Docket start session error:', err);
+        alert('Server error starting session.');
+    }
+}
+
+async function handleDocketConcludeSession(hearingId) {
+    if (!confirm('Conclude this session? Actual end time and duration will be recorded.')) {
+        return;
+    }
+    try {
+        const res = await fetch('../../backend/api/hearings/queue.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'conclude_session',
+                hearing_id: hearingId
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            window.agapNotify?.(data.message, 'success');
+            reloadWorkspace();
+        } else {
+            alert(data.message || 'Could not conclude session.');
+        }
+    } catch (err) {
+        console.error('Docket conclude session error:', err);
+        alert('Server error concluding session.');
+    }
+}
+
+window.handleDocketCheckIn = handleDocketCheckIn;
+window.handleDocketStandby = handleDocketStandby;
+window.handleDocketStartSession = handleDocketStartSession;
+window.handleDocketConcludeSession = handleDocketConcludeSession;
+window.formatTimeOnly = formatTimeOnly;
 
 /**
  * Render Hearing Session Minutes & Settlement Progress Section
@@ -1860,9 +2031,9 @@ function initWorkspaceScheduleModal() {
                 function(date) {
                     const day = date.getDay(); // 0 = Sun, 1 = Mon, 2 = Tue, 3 = Wed, 4 = Thu, 5 = Fri, 6 = Sat
                     if (isMediation) {
-                        return day !== 2; // Tuesday only
+                        return day !== 2; // Tuesday only for Mediation
                     } else {
-                        return day === 0 || day === 2 || day === 6; // Mon, Wed, Thu, Fri
+                        return day === 0 || day === 6; // Mon, Tue morning, Wed, Thu, Fri available for Conciliation
                     }
                 }
             ],
@@ -1889,14 +2060,12 @@ function initWorkspaceScheduleModal() {
             if (submitBtn) submitBtn.disabled = true;
             return;
         }
-        if (!isMediation && (day === 2 || day === 0 || day === 6)) {
+        if (!isMediation && (day === 0 || day === 6)) {
             if (errorEl) {
-                errorEl.textContent = (day === 2)
-                    ? 'Tuesdays are reserved exclusively for the Barangay Captain\'s mediation hearings.'
-                    : 'Conciliation hearings cannot be scheduled on weekends.';
+                errorEl.textContent = 'Conciliation hearings cannot be scheduled on weekends.';
                 errorEl.style.display = 'block';
             }
-            timeSelect.innerHTML = '<option value="">Invalid day selected</option>';
+            timeSelect.innerHTML = '<option value="">Invalid day selected (Weekends closed)</option>';
             if (submitBtn) submitBtn.disabled = true;
             return;
         }
@@ -1938,42 +2107,31 @@ async function loadStageSlots(dateStr, hearingType) {
         if (errorEl) errorEl.style.display = 'none';
         if (submitBtn) submitBtn.disabled = false;
 
-        const slots = data.slots || [];
-        let availableCount = 0;
+        const indicatorText = data.indicator_text || `${dateStr} (${data.scheduled_count || 0} cases scheduled)`;
+        const softIndicatorEl = document.getElementById('schedDateSoftIndicator');
+        if (softIndicatorEl) {
+            softIndicatorEl.textContent = `📅 ${indicatorText}`;
+            softIndicatorEl.style.display = 'block';
+        }
 
+        const slots = data.slots || [];
         const defaultOption = document.createElement('option');
         defaultOption.value = '';
-        defaultOption.textContent = '-- Select 1-Hour Time Slot --';
+        defaultOption.textContent = '-- Select Target Call Time --';
         timeSelect.appendChild(defaultOption);
 
         slots.forEach(slot => {
             const opt = document.createElement('option');
             opt.value = slot.time;
-            if (slot.booked) {
-                opt.disabled = true;
-                const conflictInfo = slot.conflict?.case_number ? ` (Booked: Case ${slot.conflict.case_number})` : ' (Booked)';
-                opt.textContent = `${slot.label}${conflictInfo}`;
-                opt.style.color = '#94a3b8';
-            } else {
-                opt.textContent = `${slot.label} (Available)`;
-                availableCount++;
-            }
+            opt.textContent = slot.label;
             timeSelect.appendChild(opt);
         });
 
-        if (availableCount === 0) {
-            if (feedbackEl) {
-                feedbackEl.textContent = 'All 1-hour slots on this date are fully booked. Please select another date.';
-                feedbackEl.style.color = '#b91c1c';
-            }
-            if (submitBtn) submitBtn.disabled = true;
-        } else {
-            if (feedbackEl) {
-                feedbackEl.textContent = `${availableCount} slot${availableCount === 1 ? '' : 's'} available on ${dateStr}. Sessions are 1 hour each.`;
-                feedbackEl.style.color = '#15803d';
-            }
-            if (submitBtn) submitBtn.disabled = false;
+        if (feedbackEl) {
+            feedbackEl.textContent = `${indicatorText}. Select target call time. Elastic session duration (actual start & end tracked).`;
+            feedbackEl.style.color = '#15803d';
         }
+        if (submitBtn) submitBtn.disabled = false;
     } catch (err) {
         console.error('Error checking availability:', err);
         timeSelect.disabled = false;
