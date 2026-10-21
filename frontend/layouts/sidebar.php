@@ -63,10 +63,22 @@ $dashboardLink = [1 => '../dashboard/admin-dashboard.php', 2 => '../dashboard/cl
             </details>
         <?php endif; ?>
 
-        <?php if ($roleId === 1): ?>
-            <details class="nav-group"<?php echo $isGroupActive(['user-list.php', 'roles.php']) ? ' open' : ''; ?> data-nav-group="administration">
+        <?php if (in_array($roleId, [1, 2], true)): ?>
+            <details class="nav-group"<?php echo $isGroupActive(['user-list.php', 'roles.php', 'index.php']) ? ' open' : ''; ?> data-nav-group="administration">
                 <summary>Administration</summary>
-                <div class="nav-group-links"><a href="../users/user-list.php"<?php echo $isActive(['user-list.php', 'roles.php']); ?>><span class="nav-icon" aria-hidden="true"><img src="../../assets/icons/users%20and%20roles.svg" alt=""></span><span class="nav-link-label">Users and roles</span></a></div>
+                <div class="nav-group-links">
+                    <?php if ($roleId === 1): ?>
+                        <a href="../users/user-list.php"<?php echo $isActive(['user-list.php', 'roles.php']); ?>><span class="nav-icon" aria-hidden="true"><img src="../../assets/icons/users%20and%20roles.svg" alt=""></span><span class="nav-link-label">Users and roles</span></a>
+                    <?php endif; ?>
+                    <a href="../settings/index.php"<?php echo $isActive(['index.php']); ?>><span class="nav-icon" aria-hidden="true">⚙️</span><span class="nav-link-label">Settings</span></a>
+                </div>
+            </details>
+        <?php else: ?>
+            <details class="nav-group" open data-nav-group="personal">
+                <summary>Personal</summary>
+                <div class="nav-group-links">
+                    <a href="../settings/index.php?tab=profile"<?php echo $isActive(['index.php']); ?>><span class="nav-icon" aria-hidden="true">👤</span><span class="nav-link-label">Account Settings</span></a>
+                </div>
             </details>
         <?php endif; ?>
     </nav>
