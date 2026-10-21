@@ -242,22 +242,67 @@ function renderTimeCell(item) {
         return '<span class="time-due-badge">Due Today</span>';
     }
     const dateObj = new Date(item.schedule_date.replace(' ', 'T'));
-    if (isNaN(dateObj.getTime())) {
-        return escapeHtml(item.schedule_date);
+    let timeStr = item.schedule_date;
+    if (!isNaN(dateObj.getTime())) {
+        timeStr = dateObj.toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        });
     }
-    const timeStr = dateObj.toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true
-    });
-    return `<span class="hearing-time-text">${escapeHtml(timeStr)}</span>`;
+
+    const compIn = (item.complainant_attendance === 'Present' || item.complainant_attendance === 'Late');
+    const respIn = (item.respondent_attendance === 'Present' || item.respondent_attendance === 'Late');
+    const isBothReady = compIn && respIn;
+    const qStatus = item.queue_status || (isBothReady ? 'Ready' : 'Waiting');
+
+    let badge = '';
+    if (qStatus === 'In_Session') {
+        badge = `<span style="display:block; font-size:0.7rem; font-weight:700; color:#1e40af; background:#dbeafe; padding:1px 5px; border-radius:3px; margin-top:2px;">🔵 In Session</span>`;
+    } else if (isBothReady || qStatus === 'Ready') {
+        badge = `<span style="display:block; font-size:0.7rem; font-weight:800; color:#15803d; background:#dcfce7; padding:1px 5px; border-radius:3px; margin-top:2px;">🟢 Complete &amp; Ready</span>`;
+    } else if (qStatus === 'Standby') {
+        badge = `<span style="display:block; font-size:0.7rem; font-weight:700; color:#b45309; background:#fef3c7; padding:1px 5px; border-radius:3px; margin-top:2px;">⏸️ Standby</span>`;
+    } else if (qStatus === 'Concluded' || item.status === 'Completed') {
+        badge = `<span style="display:block; font-size:0.7rem; font-weight:600; color:#475569; background:#f1f5f9; padding:1px 5px; border-radius:3px; margin-top:2px;">✓ Concluded (${item.actual_duration_minutes || item.duration_minutes || 45}m)</span>`;
+    } else {
+        badge = `<span style="display:block; font-size:0.7rem; font-weight:600; color:#64748b; margin-top:2px;">⏳ Waiting (${compIn ? '1/2' : (respIn ? '1/2' : '0/2')})</span>`;
+    }
+
+    return `<span class="hearing-time-text">${escapeHtml(timeStr)}</span>${badge}`;
 }
 
 function renderActionsCell(item) {
     if (item.record_type === 'hearing') {
         const id = Number(item.record_id);
+        const compIn = (item.complainant_attendance === 'Present' || item.complainant_attendance === 'Late');
+        const respIn = (item.respondent_attendance === 'Present' || item.respondent_attendance === 'Late');
+        const isBothReady = compIn && respIn;
+        const qStatus = item.queue_status || (isBothReady ? 'Ready' : 'Waiting');
+        const isInSession = (qStatus === 'In_Session');
+        const isStandby = (qStatus === 'Standby');
+        const isConcluded = (qStatus === 'Concluded' || item.status === 'Completed');
+
+        let docketBtns = '';
+        if (canManageHearings && !isConcluded) {
+            if (!isInSession) {
+                // Out-of-order session activation: Captain/Chairman can click call to session on ANY ready case
+                docketBtns += `
+                    <button type="button" onclick="startDocketHearingSession(${id})" style="font-size:0.72rem; padding:3px 7px; border-radius:4px; background:${isBothReady ? '#16a34a' : '#2563eb'}; color:#fff; border:none; cursor:pointer;" title="Call to Session / Start Hearing (Out-of-Order Activation)">▶️ Start</button>
+                    <button type="button" onclick="toggleDocketStandbyHearing(${id}, ${isStandby ? 'false' : 'true'})" style="font-size:0.72rem; padding:3px 7px; border-radius:4px; background:#fef3c7; color:#b45309; border:1px solid #fde68a; cursor:pointer;" title="${isStandby ? 'Resume from Standby' : 'Put on Standby'}">${isStandby ? '▶️ Resume' : '⏸️ Standby'}</button>
+                `;
+            } else {
+                docketBtns += `
+                    <button type="button" onclick="concludeDocketHearingSession(${id})" style="font-size:0.72rem; padding:3px 7px; border-radius:4px; background:#b91c1c; color:#fff; border:none; cursor:pointer;" title="Conclude Session">⏹️ End</button>
+                `;
+            }
+        }
+
         return `
-            <button type="button" class="btn-action-view" ${canManageHearings ? `data-edit="${id}" title="Update Hearing Session"` : `data-view="${id}" title="View Hearing Details"`}>${canManageHearings ? 'Update' : 'View'}</button>
+            <div style="display:flex; gap:4px; align-items:center; flex-wrap:wrap;">
+                ${docketBtns}
+                <button type="button" class="btn-action-view" ${canManageHearings ? `data-edit="${id}" title="Update Hearing Session"` : `data-view="${id}" title="View Hearing Details"`}>${canManageHearings ? 'Update' : 'View'}</button>
+            </div>
         `;
     }
     if (item.case_id) {
@@ -265,6 +310,73 @@ function renderActionsCell(item) {
     }
     return '<span class="empty-cell">—</span>';
 }
+
+async function checkInDocketHearing(hearingId, partyType, status) {
+    try {
+        const res = await api('../../../backend/api/hearings/queue.php', {
+            method: 'POST',
+            body: JSON.stringify({ action: 'check_in', hearing_id: hearingId, party_type: partyType, status: status })
+        });
+        if (res.success) {
+            setMessage(res.message, true);
+            loadCombinedRecords(currentPage, selectedCalendarDate);
+        }
+    } catch (e) {
+        setMessage(e.message || 'Error updating party check-in', false);
+    }
+}
+
+async function toggleDocketStandbyHearing(hearingId, standby) {
+    try {
+        const res = await api('../../../backend/api/hearings/queue.php', {
+            method: 'POST',
+            body: JSON.stringify({ action: 'standby', hearing_id: hearingId, standby: standby ? 1 : 0 })
+        });
+        if (res.success) {
+            setMessage(res.message, true);
+            loadCombinedRecords(currentPage, selectedCalendarDate);
+        }
+    } catch (e) {
+        setMessage(e.message || 'Error updating standby status', false);
+    }
+}
+
+async function startDocketHearingSession(hearingId) {
+    if (!confirm('Call this hearing to session? Actual start time will be recorded.')) return;
+    try {
+        const res = await api('../../../backend/api/hearings/queue.php', {
+            method: 'POST',
+            body: JSON.stringify({ action: 'start_session', hearing_id: hearingId })
+        });
+        if (res.success) {
+            setMessage(res.message, true);
+            loadCombinedRecords(currentPage, selectedCalendarDate);
+        }
+    } catch (e) {
+        setMessage(e.message || 'Error starting session', false);
+    }
+}
+
+async function concludeDocketHearingSession(hearingId) {
+    if (!confirm('Conclude this hearing session? Actual end time and duration will be recorded.')) return;
+    try {
+        const res = await api('../../../backend/api/hearings/queue.php', {
+            method: 'POST',
+            body: JSON.stringify({ action: 'conclude_session', hearing_id: hearingId })
+        });
+        if (res.success) {
+            setMessage(res.message, true);
+            loadCombinedRecords(currentPage, selectedCalendarDate);
+        }
+    } catch (e) {
+        setMessage(e.message || 'Error concluding session', false);
+    }
+}
+
+window.checkInDocketHearing = checkInDocketHearing;
+window.toggleDocketStandbyHearing = toggleDocketStandbyHearing;
+window.startDocketHearingSession = startDocketHearingSession;
+window.concludeDocketHearingSession = concludeDocketHearingSession;
 
 function renderPagination(pagination) {
     const container = document.getElementById('hearingPagination');
@@ -589,20 +701,23 @@ function validateHearingDateInput(dateInput) {
 
     if (hType === 'Mediation') {
         if (dayOfWeek !== 2) {
-            return markError('Mediation sessions for Barangay Tumana are conducted exclusively on Tuesdays.');
+            return markError('Formal Mediation sessions for Barangay Tumana are conducted exclusively on Tuesdays.');
         }
         if (hour < 13 || hour >= 17) {
-            return markError('Mediation sessions are conducted exclusively in the afternoon (1:00 PM – 5:00 PM).');
+            return markError('Formal Mediation sessions are conducted exclusively in the afternoon (1:00 PM – 5:00 PM).');
         }
     } else if (hType === 'Conciliation') {
-        if (dayOfWeek === 2) {
-            return markError('Tuesdays are reserved exclusively for the Barangay Captain\'s mediation hearings. Conciliation hearings are held on Mon, Wed, Thu, and Fri.');
-        }
         if (dayOfWeek === 0 || dayOfWeek === 6) {
             return markError('Conciliation hearings cannot be scheduled on weekends.');
         }
-        if ((hour < 8 || hour >= 17) || (hour >= 12 && hour < 13)) {
-            return markError('Conciliation hearings must be during regular office hours (excluding 12-1 PM lunch break).');
+        if (dayOfWeek === 2) {
+            if (hour < 8 || hour >= 12) {
+                return markError('Conciliation hearings on Tuesdays are permitted only in the morning (8:00 AM – 12:00 PM). Tuesday afternoons (1:00 PM – 5:00 PM) are exclusively reserved for Formal Mediation in the Lupon Court Room.');
+            }
+        } else {
+            if ((hour < 8 || hour >= 17) || (hour >= 12 && hour < 13)) {
+                return markError('Conciliation hearings must be during regular office hours (8:00 AM – 12:00 PM & 1:00 PM – 5:00 PM, excluding 12-1 PM lunch break).');
+            }
         }
     }
 
@@ -2282,18 +2397,18 @@ function handleHearingTypeChange(type) {
             afternoonBtn.textContent = 'Afternoon: 1:00 PM – 5:00 PM';
         }
     } else if (type === 'Conciliation') {
-        if (durationSelect) durationSelect.value = '60';
-        if (hintEl) hintEl.textContent = 'Conciliation hearings before the Pangkat are held on Mondays, Wednesdays, Thursdays, and Fridays (Tuesdays disabled).';
+        if (durationSelect) durationSelect.value = '45';
+        if (hintEl) hintEl.textContent = 'Conciliation hearings before the Pangkat are held on Mon, Wed, Thu, Fri (8:00 AM – 12:00 PM & 1:00 PM – 5:00 PM) and Tuesday Mornings (8:00 AM – 12:00 PM).';
         if (morningBtn) {
             morningBtn.disabled = false;
             morningBtn.style.opacity = '1';
-            morningBtn.textContent = 'Morning: 9:00 AM – 11:00 AM';
-            morningBtn.title = '';
+            morningBtn.textContent = 'Morning: 8:00 AM – 12:00 PM';
+            morningBtn.title = 'Available on Mon, Tue morning, Wed, Thu, Fri';
         }
         if (afternoonBtn) {
             afternoonBtn.disabled = false;
             afternoonBtn.style.opacity = '1';
-            afternoonBtn.textContent = 'Afternoon: 1:00 PM – 4:00 PM';
+            afternoonBtn.textContent = 'Afternoon: 1:00 PM – 5:00 PM';
         }
     }
     if (venueInput) {
@@ -2330,7 +2445,8 @@ function setApprovedBlock(block) {
                 tomorrow.setDate(tomorrow.getDate() + 1);
             }
         } else {
-            while (tomorrow.getDay() === 0 || tomorrow.getDay() === 2 || tomorrow.getDay() === 6) {
+            // Conciliation can be on Mon, Tue morning, Wed, Thu, Fri (only skip weekends, or Tue afternoon if block === 'afternoon')
+            while (tomorrow.getDay() === 0 || tomorrow.getDay() === 6 || (tomorrow.getDay() === 2 && block === 'afternoon')) {
                 tomorrow.setDate(tomorrow.getDate() + 1);
             }
         }

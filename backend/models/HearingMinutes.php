@@ -213,11 +213,20 @@ class HearingMinutes
                 $remarks ?: null, $actualEndTime, $userId
             ]);
 
-            // If actual end time was specified, also update hearings table
-            if ($actualEndTime) {
-                $updH = $this->conn->prepare("UPDATE hearings SET actual_end_time = ? WHERE hearing_id = ?");
-                $updH->execute([$actualEndTime, $hearingId]);
-            }
+            // When minutes/outcome are submitted, conclude hearing session and track actual duration
+            $endTimestamp = $actualEndTime ?: date('Y-m-d H:i:s');
+            $updH = $this->conn->prepare("
+                UPDATE hearings 
+                SET actual_end_time = ?,
+                    actual_duration_minutes = CASE 
+                        WHEN actual_start_time IS NOT NULL THEN TIMESTAMPDIFF(MINUTE, actual_start_time, ?)
+                        ELSE COALESCE(actual_duration_minutes, duration_minutes, 45)
+                    END,
+                    queue_status = 'Concluded',
+                    status = IF(status IN ('Cancelled', 'Office Cancelled'), status, 'Completed')
+                WHERE hearing_id = ?
+            ");
+            $updH->execute([$endTimestamp, $endTimestamp, $hearingId]);
 
             // Outcome workflow triggers
             if ($outcome === 'Settled') {

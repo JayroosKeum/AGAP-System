@@ -258,25 +258,26 @@ include '../../layouts/header.php';
             <div id="schedStageRuleHint" style="padding: 10px 14px; border-radius: 6px; font-size: 0.82rem; margin-bottom: 14px; background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; display: flex; align-items: flex-start; gap: 8px;">
                 <span style="font-size: 1rem; line-height: 1;">📅</span>
                 <div>
-                    <strong>Barangay Tumana Rule:</strong> Conciliation hearings before the Pangkat are held on Mondays, Wednesdays, Thursdays, and Fridays. (Tuesdays are reserved for mediation hearings).
+                    <strong>Barangay Tumana Rule:</strong> Conciliation hearings before the Pangkat are held on Mondays, Wednesdays, Thursdays, and Fridays (8:00 AM – 12:00 PM &amp; 1:00 PM – 5:00 PM) and Tuesday Mornings (8:00 AM – 12:00 PM). (Tuesday afternoons are exclusively reserved for Formal Mediation).
                 </div>
             </div>
             <div class="form-group">
-                <label for="schedDate">Hearing Date (Mon, Wed, Thu, Fri) <span class="required-mark">*</span></label>
-                <input type="text" id="schedDate" placeholder="Select Mon, Wed, Thu, or Fri..." required style="background: #fff; cursor: pointer;">
+                <label for="schedDate">Hearing Date (Mon, Tue Morning, Wed, Thu, Fri) <span class="required-mark">*</span></label>
+                <input type="text" id="schedDate" placeholder="Select hearing date..." required style="background: #fff; cursor: pointer;">
+                <small id="schedDateSoftIndicator" style="color: #0369a1; font-size: 0.76rem; display: block; margin-top: 4px; font-weight: 600;"></small>
                 <small id="schedDateError" style="color: #b91c1c; font-size: 0.75rem; display: none; margin-top: 4px;"></small>
             </div>
             <div class="form-group">
-                <label for="schedTime">Hearing Time Slot (1-Hour Session) <span class="required-mark">*</span></label>
+                <label for="schedTime">Call Time / Target Start Time <span class="required-mark">*</span></label>
                 <select id="schedTime" required style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem; background: #fff;">
                     <option value="">Select a date first</option>
                 </select>
-                <small id="schedSlotFeedback" style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Available slots: 8:00 AM – 11:00 AM, 1:00 PM – 4:00 PM (1 hour each, excluding lunch).</small>
+                <small id="schedSlotFeedback" style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Target call times on the conciliation docket. Elastic session duration (actual start &amp; end tracked).</small>
             </div>
             <div class="form-group">
                 <label for="schedVenue">Venue <span class="required-mark">*</span></label>
                 <input type="text" id="schedVenue" value="Lupon Court Room" readonly required maxlength="255" style="background: #f8fafc; cursor: not-allowed;">
-                <small style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Conciliation sessions are conducted exclusively in the Lupon Court Room.</small>
+                <small style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Conciliation sessions share the Lupon Court Room during operating windows.</small>
             </div>
             <div class="form-group">
                 <label for="schedRemarks">Session Instructions / Remarks <span class="optional-label">Optional</span></label>

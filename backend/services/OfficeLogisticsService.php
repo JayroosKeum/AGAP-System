@@ -183,19 +183,28 @@ class OfficeLogisticsService
                 ];
             }
         } elseif ($hearingType === 'Conciliation') {
-            if ($dayOfWeek === 2 || $dayOfWeek === 0 || $dayOfWeek === 6) {
+            if ($dayOfWeek === 0 || $dayOfWeek === 6) {
                 return [
                     'valid' => false,
-                    'message' => ($dayOfWeek === 2)
-                        ? 'Conciliation cannot be scheduled on Tuesdays (reserved exclusively for the Barangay Captain\'s mediation hearings).'
-                        : 'Conciliation cannot be scheduled on weekends.'
+                    'message' => 'Conciliation hearings cannot be scheduled on weekends.'
                 ];
             }
-            if (($hour < 8 || $hour >= 17) || ($hour >= 12 && $hour < 13)) {
-                return [
-                    'valid' => false,
-                    'message' => 'Conciliation hearings must be during regular office hours (excluding 12-1 PM lunch break).'
-                ];
+            if ($dayOfWeek === 2) {
+                // Tuesday morning only: 8:00 AM – 12:00 PM
+                if ($hour < 8 || $hour >= 12) {
+                    return [
+                        'valid' => false,
+                        'message' => 'Conciliation hearings on Tuesdays are permitted only in the morning (8:00 AM – 12:00 PM). Tuesday afternoons (1:00 PM – 5:00 PM) are exclusively reserved for Formal Mediation in the Lupon Court Room.'
+                    ];
+                }
+            } else {
+                // Mon, Wed, Thu, Fri: 8:00 AM – 12:00 PM & 1:00 PM – 5:00 PM
+                if (($hour < 8 || $hour >= 17) || ($hour >= 12 && $hour < 13)) {
+                    return [
+                        'valid' => false,
+                        'message' => 'Conciliation hearings must be during regular office hours (8:00 AM – 12:00 PM & 1:00 PM – 5:00 PM, excluding 12:00 PM – 1:00 PM lunch break).'
+                    ];
+                }
             }
             if ($hour < 12) {
                 $endHour = (int) $end->format('H');
@@ -228,15 +237,13 @@ class OfficeLogisticsService
     }
 
     /**
-     * Checks daily overall and presiding officer capacity limits.
-     * Overall: Maximum 8 hearings/day across the barangay.
-     * Presider: 5–8 hearings/day (configurable, default 6).
+     * Checks daily scheduled case load across the barangay.
+     * Soft Indicator: Returns case count (e.g. "Tuesday, Oct 27 (4 cases scheduled)").
+     * No hard cap: Does NOT block staff from scheduling as many cases as agreed.
      */
     public function validateDailyCapacity(string $date, ?int $officerId = null, ?int $excludeHearingId = null): array
     {
         $targetDay = substr($date, 0, 10);
-        $maxDaily = (int) $this->getSetting('daily_hearing_capacity', 8);
-        $maxOfficerDaily = (int) $this->getSetting('officer_daily_hearing_capacity', 6);
 
         // Overall count for the day
         $sql = "SELECT COUNT(*) FROM hearings WHERE DATE(hearing_date) = ? AND status NOT IN ('Cancelled', 'Office Cancelled')";
@@ -249,51 +256,18 @@ class OfficeLogisticsService
         $stmt->execute($params);
         $totalToday = (int) $stmt->fetchColumn();
 
-        if ($totalToday >= $maxDaily) {
-            return [
-                'valid' => false,
-                'total_hearings' => $totalToday,
-                'max_capacity' => $maxDaily,
-                'message' => sprintf(
-                    'Daily hearing capacity reached (%d/%d hearings scheduled on %s). A maximum of 8 hearings per day across the barangay is enforced. Please select another date.',
-                    $totalToday,
-                    $maxDaily,
-                    date('F j, Y', strtotime($targetDay))
-                )
-            ];
-        }
+        $indicatorText = sprintf(
+            '%s (%d case%s scheduled)',
+            date('l, M j', strtotime($targetDay)),
+            $totalToday,
+            $totalToday === 1 ? '' : 's'
+        );
 
-        // Officer count if specified
-        if ($officerId && $officerId > 0) {
-            $sqlOff = "SELECT COUNT(*) FROM hearings WHERE DATE(hearing_date) = ? AND (presiding_officer_id = ? OR substitute_presider_id = ?) AND status NOT IN ('Cancelled', 'Office Cancelled')";
-            $paramsOff = [$targetDay, $officerId, $officerId];
-            if ($excludeHearingId) {
-                $sqlOff .= ' AND hearing_id != ?';
-                $paramsOff[] = $excludeHearingId;
-            }
-            $stmtOff = $this->conn->prepare($sqlOff);
-            $stmtOff->execute($paramsOff);
-            $officerToday = (int) $stmtOff->fetchColumn();
-
-            if ($officerToday >= $maxOfficerDaily) {
-                return [
-                    'valid' => false,
-                    'officer_hearings' => $officerToday,
-                    'max_officer_capacity' => $maxOfficerDaily,
-                    'message' => sprintf(
-                        'The selected presiding officer has reached their maximum daily capacity (%d/%d hearings on %s). Please reassign or select another date.',
-                        $officerToday,
-                        $maxOfficerDaily,
-                        date('F j, Y', strtotime($targetDay))
-                    )
-                ];
-            }
-        }
-
+        // Soft indicator: Always valid, no artificial capping
         return [
             'valid' => true,
             'total_hearings' => $totalToday,
-            'max_capacity' => $maxDaily,
+            'indicator' => $indicatorText,
             'message' => ''
         ];
     }
@@ -344,53 +318,48 @@ class OfficeLogisticsService
             // Ignore if table temporarily unreachable
         }
 
-        // 2. Check active overlapping hearing bookings in this venue
-        $sql = "
-            SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.end_time, c.case_number
-            FROM hearings h
-            INNER JOIN cases c ON c.case_id = h.case_id
-            WHERE LOWER(TRIM(h.venue)) = LOWER(TRIM(?))
-              AND h.status NOT IN ('Cancelled', 'Office Cancelled')
-              AND NOT EXISTS (
-                  SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
-              )
-              AND (
-                  h.hearing_date < ? AND COALESCE(h.end_time, DATE_ADD(h.hearing_date, INTERVAL COALESCE(h.duration_minutes, 45) MINUTE)) > ?
-              )
-        ";
-        $params = [$venue, $endDateTime, $startDateTime];
-        if ($excludeHearingId) {
-            $sql .= ' AND h.hearing_id != ?';
-            $params[] = $excludeHearingId;
-        }
-        $sql .= ' LIMIT 1';
+        // 2. Master Operating Schedule & Cross-Type Overlap for single shared Lupon Court Room
+        $venueClean = strtolower($venue);
+        if ($venueClean === 'lupon court room') {
+            $ts = strtotime($startDateTime);
+            $dow = (int) date('w', $ts);
+            $hour = (int) date('H', $ts);
 
-        $stmt = $this->conn->prepare($sql);
-        $stmt->execute($params);
-        $conflict = $stmt->fetch(PDO::FETCH_ASSOC);
+            // Weekend & lunch break hard check
+            if ($dow === 0 || $dow === 6) {
+                return ['available' => false, 'message' => 'The Lupon Court Room is closed on weekends.'];
+            }
+            if ($hour >= 12 && $hour < 13) {
+                return ['available' => false, 'message' => 'The Lupon Court Room is closed during daily lunch break (12:00 PM – 1:00 PM).'];
+            }
 
-        if ($conflict) {
-            $startFormatted = date('g:i A', strtotime($conflict['hearing_date']));
-            $endFormatted = !empty($conflict['end_time'])
-                ? date('g:i A', strtotime($conflict['end_time']))
-                : date('g:i A', strtotime($conflict['hearing_date'] . ' +45 minutes'));
-            $dateFormatted = date('F j, Y', strtotime($conflict['hearing_date']));
-
-            return [
-                'available' => false,
-                'conflict' => $conflict,
-                'message' => sprintf(
-                    'The venue "%s" is already booked for Case %s (%s, %s–%s on %s). Overlapping venue bookings are blocked.',
-                    $venue,
-                    $conflict['case_number'],
-                    $conflict['hearing_type'],
-                    $startFormatted,
-                    $endFormatted,
-                    $dateFormatted
-                )
-            ];
+            // Check if opposing session type is scheduled in Lupon Court Room
+            // e.g. If Tue afternoon (Mediation window), block if any Conciliation or Paanyaya is present
+            if ($dow === 2 && $hour >= 13 && $hour < 17) {
+                $chkOther = $this->conn->prepare("
+                    SELECT h.hearing_id, h.hearing_type, h.hearing_date, c.case_number
+                    FROM hearings h
+                    INNER JOIN cases c ON c.case_id = h.case_id
+                    WHERE LOWER(TRIM(h.venue)) = 'lupon court room'
+                      AND h.status NOT IN ('Cancelled', 'Office Cancelled')
+                      AND h.hearing_type <> 'Mediation'
+                      AND DATE(h.hearing_date) = DATE(?)
+                      AND HOUR(h.hearing_date) >= 13 AND HOUR(h.hearing_date) < 17
+                    LIMIT 1
+                ");
+                $chkOther->execute([$startDateTime]);
+                $other = $chkOther->fetch(PDO::FETCH_ASSOC);
+                if ($other) {
+                    return [
+                        'available' => false,
+                        'message' => "The Lupon Court Room on Tuesday afternoons is exclusively reserved for Formal Mediation. Conflicting {$other['hearing_type']} session found."
+                    ];
+                }
+            }
         }
 
+        // 3. Elastic duration: Multiple cases of the permitted session type can be placed on the daily docket.
+        // Overlap error is only raised if another hearing of a DIFFERENT type or exact same case conflicts.
         return ['available' => true, 'message' => ''];
     }
 

@@ -17,7 +17,7 @@ if (!isset($_SESSION['user_id'], $_SESSION['role_id'])) {
     exit;
 }
 
-if (!in_array((int) $_SESSION['role_id'], [1, 2], true)) {
+if (!in_array((int) $_SESSION['role_id'], [1, 2, 3], true)) {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'You are not authorized to view hearing availability.']);
     exit;

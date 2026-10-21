@@ -68,7 +68,7 @@ class Hearing
     public function findConflict(
         string $hearingDate,
         string $venue,
-        int $caseId,
+        ?int $caseId = null,
         ?int $excludeHearingId = null,
         ?int $presidingOfficerId = null,
         int $durationMinutes = 45,
@@ -125,23 +125,25 @@ class Hearing
         }
 
         // 5. Check required case officers availability
-        $offCheck = $logistics->validateCaseRequiredOfficersAvailability($caseId, $startDateTime, $endDateTime, $excludeHearingId);
-        if (!$offCheck['available']) {
-            return [
-                'conflict' => true,
-                'message' => $offCheck['message'],
-                'alternative_slots' => $logistics->findAlternativeSlots($caseId, $hearingDate, $durationMinutes, $venue, $presidingOfficerId)
-            ];
-        }
+        if ($caseId && $caseId > 0) {
+            $offCheck = $logistics->validateCaseRequiredOfficersAvailability($caseId, $startDateTime, $endDateTime, $excludeHearingId);
+            if (!$offCheck['available']) {
+                return [
+                    'conflict' => true,
+                    'message' => $offCheck['message'],
+                    'alternative_slots' => $logistics->findAlternativeSlots($caseId, $hearingDate, $durationMinutes, $venue, $presidingOfficerId)
+                ];
+            }
 
-        // 6. Check duplicate active hearings for this case
-        $dupCheck = $logistics->validateDuplicateHearing($caseId, $startDateTime, $endDateTime, $hearingType, $mediationAttempt, $excludeHearingId);
-        if (!$dupCheck['valid']) {
-            return [
-                'conflict' => true,
-                'message' => $dupCheck['message'],
-                'alternative_slots' => $logistics->findAlternativeSlots($caseId, $hearingDate, $durationMinutes, $venue, $presidingOfficerId)
-            ];
+            // 6. Check duplicate active hearings for this case
+            $dupCheck = $logistics->validateDuplicateHearing($caseId, $startDateTime, $endDateTime, $hearingType, $mediationAttempt, $excludeHearingId);
+            if (!$dupCheck['valid']) {
+                return [
+                    'conflict' => true,
+                    'message' => $dupCheck['message'],
+                    'alternative_slots' => $logistics->findAlternativeSlots($caseId, $hearingDate, $durationMinutes, $venue, $presidingOfficerId)
+                ];
+            }
         }
 
         return false;
@@ -950,7 +952,12 @@ class Hearing
             h.hearing_date AS schedule_date,
             h.end_time,
             h.duration_minutes,
+            h.actual_start_time,
             h.actual_end_time,
+            h.actual_duration_minutes,
+            h.queue_status,
+            h.complainant_attendance,
+            h.respondent_attendance,
             h.duration_exceed_reason,
             h.venue,
             h.presiding_officer_id,
@@ -1006,7 +1013,12 @@ class Hearing
                 h_sub.hearing_date,
                 h_sub.end_time,
                 h_sub.duration_minutes,
+                h_sub.actual_start_time,
                 h_sub.actual_end_time,
+                h_sub.actual_duration_minutes,
+                h_sub.queue_status,
+                h_sub.complainant_attendance,
+                h_sub.respondent_attendance,
                 h_sub.duration_exceed_reason,
                 h_sub.venue,
                 h_sub.remarks,
@@ -1044,7 +1056,12 @@ class Hearing
             CAST(CONCAT(d.due_date, ' 00:00:00') AS DATETIME) AS schedule_date,
             NULL AS end_time,
             NULL AS duration_minutes,
+            NULL AS actual_start_time,
             NULL AS actual_end_time,
+            NULL AS actual_duration_minutes,
+            NULL AS queue_status,
+            NULL AS complainant_attendance,
+            NULL AS respondent_attendance,
             NULL AS duration_exceed_reason,
             NULL AS venue,
             NULL AS presiding_officer_id,

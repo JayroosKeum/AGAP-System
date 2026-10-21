@@ -183,24 +183,24 @@ include '../../layouts/header.php';
                 <small id="hearingProgressionHelp">Select a case to see its next permitted schedule.</small>
             </div>
             
-            <!-- Approved Hearing Blocks (Section A.2 - Barangay Tumana Rules) -->
+            <!-- Approved Hearing Windows (Barangay Tumana Master Operating Schedule) -->
             <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px; margin-bottom: 14px;">
-                <span style="font-size: 0.78rem; font-weight: 700; color: #475569; text-transform: uppercase;">Barangay Tumana Hearing Windows:</span>
+                <span style="font-size: 0.78rem; font-weight: 700; color: #475569; text-transform: uppercase;">Lupon Court Room Operating Windows:</span>
                 <div style="display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap;">
-                    <button type="button" id="btnApprovedMorning" class="btn-secondary" style="padding: 4px 10px; font-size: 0.78rem;" onclick="setApprovedBlock('morning')">Morning: 9:00 AM – 11:30 AM</button>
+                    <button type="button" id="btnApprovedMorning" class="btn-secondary" style="padding: 4px 10px; font-size: 0.78rem;" onclick="setApprovedBlock('morning')">Morning: 8:00 AM – 12:00 PM</button>
                     <button type="button" id="btnApprovedAfternoon" class="btn-secondary" style="padding: 4px 10px; font-size: 0.78rem;" onclick="setApprovedBlock('afternoon')">Afternoon: 1:00 PM – 5:00 PM</button>
                 </div>
-                <small style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Mediation: Tuesdays only (1:00 PM – 5:00 PM). Conciliation: Mon, Wed, Thu, Fri (8:00 AM – 12:00 PM &amp; 1:00 PM – 5:00 PM).</small>
+                <small style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Mediation: Tuesdays only (1:00 PM – 5:00 PM). Conciliation &amp; Paanyaya: Mon, Wed, Thu, Fri (8:00 AM – 12:00 PM &amp; 1:00 PM – 5:00 PM) and Tuesday Mornings (8:00 AM – 12:00 PM). Closed 12–1 PM lunch and weekends.</small>
             </div>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                 <div class="form-group">
-                    <label for="hearingDate">Start Date &amp; Time <span class="required-mark" aria-hidden="true">*</span></label>
+                    <label for="hearingDate">Call Time / Target Start Time <span class="required-mark" aria-hidden="true">*</span></label>
                     <div id="hearing15DayStatutoryBadge" style="display: none; margin-bottom: 6px; padding: 6px 10px; border-radius: 6px; font-size: 0.78rem; font-weight: 600; background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; line-height: 1.4;">
                         ⚖️ <span>15-Working-Day Window (RA 7160 Sec. 410): Must be on or before <strong id="hearing15DayDeadlineDate">—</strong></span>
                     </div>
                     <input type="datetime-local" id="hearingDate" name="hearing_date" required onchange="handleHearingDateOrDurationChange()">
-                    <small id="hearingDateStaticHint" style="color: #64748b; font-size: 0.8rem; display: block; margin-top: 4px;">Office hours: Monday to Friday, 8:00 AM – 5:00 PM.</small>
+                    <small id="hearingDateStaticHint" style="color: #64748b; font-size: 0.8rem; display: block; margin-top: 4px;">Office hours: Monday to Friday, 8:00 AM – 5:00 PM (12–1 PM lunch closed).</small>
                     <div class="date-validation-hint" data-for="hearingDate" role="alert" aria-live="polite">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                         <span class="hint-msg"></span>
@@ -214,7 +214,7 @@ include '../../layouts/header.php';
                 </div>
                 <?php endif; ?>
                 <div class="form-group">
-                    <label for="hearingDuration">Duration (Minutes) <span class="required-mark">*</span></label>
+                    <label for="hearingDuration">Planned Duration (Elastic) <span class="required-mark">*</span></label>
                     <select id="hearingDuration" name="duration_minutes" onchange="handleHearingDateOrDurationChange()">
                         <option value="30">30 minutes</option>
                         <option value="45" selected>45 minutes (Default)</option>
@@ -222,7 +222,7 @@ include '../../layouts/header.php';
                         <option value="75">75 minutes</option>
                         <option value="90">90 minutes</option>
                     </select>
-                    <small id="calculatedEndTimeText" style="color: #1e3a8a; font-size: 0.8rem; display: block; margin-top: 4px;">End: —</small>
+                    <small id="calculatedEndTimeText" style="color: #1e3a8a; font-size: 0.8rem; display: block; margin-top: 4px;">Target End: —</small>
                 </div>
             </div>
 

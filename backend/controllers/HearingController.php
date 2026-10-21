@@ -255,36 +255,67 @@ class HearingController
         $holidayName = $logistics->isPhilippineHoliday($targetObj);
         $isHoliday = ($holidayName !== null);
 
-        // Stage rules for Barangay Tumana
+        // Stage rules for Barangay Tumana Master Operating Schedule:
+        // 1. Tuesdays (1:00 PM – 5:00 PM): Exclusively reserved for Formal Mediation.
+        // 2. Mon, Wed, Thu, Fri (8:00 AM – 12:00 PM & 1:00 PM – 5:00 PM): Available for Conciliation & Paanyaya.
+        // 3. Tuesday Mornings (8:00 AM – 12:00 PM): Available for Conciliation & Paanyaya.
+        // 4. 12:00 PM – 1:00 PM (Lunch Break) & Weekends/Holidays: Closed for all session types.
         $isValidDay = true;
         $ruleHint = '';
         $defaultSlots = [];
 
         if ($hearingType === 'Mediation') {
-            $ruleHint = 'Mediation sessions for Barangay Tumana are conducted exclusively on Tuesday afternoons (1:00 PM – 5:00 PM).';
+            $ruleHint = 'Mediation sessions for Barangay Tumana are conducted exclusively on Tuesday afternoons (1:00 PM – 5:00 PM) before the Punong Barangay.';
             $defaultSlots = [
-                ['time' => '13:00', 'label' => '1:00 PM – 2:00 PM'],
-                ['time' => '14:00', 'label' => '2:00 PM – 3:00 PM'],
-                ['time' => '15:00', 'label' => '3:00 PM – 4:00 PM'],
-                ['time' => '16:00', 'label' => '4:00 PM – 5:00 PM'],
+                ['time' => '13:00', 'label' => '1:00 PM (Target Call Time)'],
+                ['time' => '13:30', 'label' => '1:30 PM (Target Call Time)'],
+                ['time' => '14:00', 'label' => '2:00 PM (Target Call Time)'],
+                ['time' => '14:30', 'label' => '2:30 PM (Target Call Time)'],
+                ['time' => '15:00', 'label' => '3:00 PM (Target Call Time)'],
+                ['time' => '15:30', 'label' => '3:30 PM (Target Call Time)'],
+                ['time' => '16:00', 'label' => '4:00 PM (Target Call Time)'],
+                ['time' => '16:30', 'label' => '4:30 PM (Target Call Time)'],
             ];
             if ($dayOfWeek !== 2) {
                 $isValidDay = false;
             }
         } else {
-            // Conciliation
-            $ruleHint = 'Conciliation hearings before the Pangkat are held on Mondays, Wednesdays, Thursdays, and Fridays.';
-            $defaultSlots = [
-                ['time' => '08:00', 'label' => '8:00 AM – 9:00 AM'],
-                ['time' => '09:00', 'label' => '9:00 AM – 10:00 AM'],
-                ['time' => '10:00', 'label' => '10:00 AM – 11:00 AM'],
-                ['time' => '11:00', 'label' => '11:00 AM – 12:00 PM'],
-                ['time' => '13:00', 'label' => '1:00 PM – 2:00 PM'],
-                ['time' => '14:00', 'label' => '2:00 PM – 3:00 PM'],
-                ['time' => '15:00', 'label' => '3:00 PM – 4:00 PM'],
-                ['time' => '16:00', 'label' => '4:00 PM – 5:00 PM'],
-            ];
-            if ($dayOfWeek === 2 || $dayOfWeek === 0 || $dayOfWeek === 6) {
+            // Conciliation (Pangkat)
+            if ($dayOfWeek === 2) {
+                // Tuesday morning only: 8:00 AM – 12:00 PM
+                $ruleHint = 'Tuesday morning conciliation hearings are held from 8:00 AM to 12:00 PM. (Tuesday afternoons are reserved exclusively for Formal Mediation).';
+                $defaultSlots = [
+                    ['time' => '08:00', 'label' => '8:00 AM (Target Call Time)'],
+                    ['time' => '08:30', 'label' => '8:30 AM (Target Call Time)'],
+                    ['time' => '09:00', 'label' => '9:00 AM (Target Call Time)'],
+                    ['time' => '09:30', 'label' => '9:30 AM (Target Call Time)'],
+                    ['time' => '10:00', 'label' => '10:00 AM (Target Call Time)'],
+                    ['time' => '10:30', 'label' => '10:30 AM (Target Call Time)'],
+                    ['time' => '11:00', 'label' => '11:00 AM (Target Call Time)'],
+                    ['time' => '11:30', 'label' => '11:30 AM (Target Call Time)'],
+                ];
+            } else {
+                $ruleHint = 'Conciliation hearings before the Pangkat are held on Mondays, Wednesdays, Thursdays, and Fridays (8:00 AM – 12:00 PM & 1:00 PM – 5:00 PM).';
+                $defaultSlots = [
+                    ['time' => '08:00', 'label' => '8:00 AM (Target Call Time)'],
+                    ['time' => '08:30', 'label' => '8:30 AM (Target Call Time)'],
+                    ['time' => '09:00', 'label' => '9:00 AM (Target Call Time)'],
+                    ['time' => '09:30', 'label' => '9:30 AM (Target Call Time)'],
+                    ['time' => '10:00', 'label' => '10:00 AM (Target Call Time)'],
+                    ['time' => '10:30', 'label' => '10:30 AM (Target Call Time)'],
+                    ['time' => '11:00', 'label' => '11:00 AM (Target Call Time)'],
+                    ['time' => '11:30', 'label' => '11:30 AM (Target Call Time)'],
+                    ['time' => '13:00', 'label' => '1:00 PM (Target Call Time)'],
+                    ['time' => '13:30', 'label' => '1:30 PM (Target Call Time)'],
+                    ['time' => '14:00', 'label' => '2:00 PM (Target Call Time)'],
+                    ['time' => '14:30', 'label' => '2:30 PM (Target Call Time)'],
+                    ['time' => '15:00', 'label' => '3:00 PM (Target Call Time)'],
+                    ['time' => '15:30', 'label' => '3:30 PM (Target Call Time)'],
+                    ['time' => '16:00', 'label' => '4:00 PM (Target Call Time)'],
+                    ['time' => '16:30', 'label' => '4:30 PM (Target Call Time)'],
+                ];
+            }
+            if ($dayOfWeek === 0 || $dayOfWeek === 6) {
                 $isValidDay = false;
             }
         }
@@ -307,37 +338,45 @@ class HearingController
         $hStmt->execute([$targetDate]);
         $existingHearings = $hStmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Compute booked status for each 1-hour slot
+        // Soft indicator: Total cases scheduled on target date
+        $scheduledCount = count($existingHearings);
+        $indicatorText = sprintf(
+            '%s (%d case%s scheduled)',
+            $targetObj->format('l, M j'),
+            $scheduledCount,
+            $scheduledCount === 1 ? '' : 's'
+        );
+
+        // Elastic Call Time Slots (No Artificial 60-Minute Locks)
+        // Allow staff to schedule as many cases as agreed, showing call times and soft indicators
         $slots = [];
         foreach ($defaultSlots as $slot) {
             $slotTime = $slot['time'];
             $slotStartTs = strtotime("{$targetDate} {$slotTime}:00");
-            $slotEndTs = $slotStartTs + 3600; // 1-hour session
 
-            $isBooked = false;
-            $conflictDetails = null;
+            $casesAtSlot = 0;
+            $slotCases = [];
 
             foreach ($existingHearings as $eh) {
                 $ehStartTs = strtotime($eh['hearing_date']);
-                $ehDuration = !empty($eh['duration_minutes']) ? (int) $eh['duration_minutes'] : 60;
-                $ehEndTs = !empty($eh['end_time']) ? strtotime($eh['end_time']) : ($ehStartTs + ($ehDuration * 60));
-
-                if ($slotStartTs < $ehEndTs && $slotEndTs > $ehStartTs) {
-                    $isBooked = true;
-                    $conflictDetails = [
-                        'case_number' => $eh['case_number'] ?? '',
-                        'hearing_type' => $eh['hearing_type'] ?? '',
-                        'time_range' => date('g:i A', $ehStartTs) . ' – ' . date('g:i A', $ehEndTs),
-                    ];
-                    break;
+                if (date('H:i', $ehStartTs) === $slotTime) {
+                    $casesAtSlot++;
+                    $slotCases[] = $eh['case_number'] ?? '';
                 }
             }
 
+            $slotLabel = $slot['label'];
+            if ($casesAtSlot > 0) {
+                $slotLabel .= " — {$casesAtSlot} case" . ($casesAtSlot === 1 ? '' : 's') . " queued";
+            }
+
+            // Booked is false because duration is elastic and staff can schedule cases on the docket
             $slots[] = [
                 'time' => $slotTime,
-                'label' => $slot['label'],
-                'booked' => $isBooked,
-                'conflict' => $conflictDetails
+                'label' => $slotLabel,
+                'booked' => false,
+                'cases_at_slot' => $casesAtSlot,
+                'conflict' => null
             ];
         }
 
@@ -350,6 +389,8 @@ class HearingController
             'holiday_name' => $holidayName,
             'hearing_type' => $hearingType,
             'hint' => $ruleHint,
+            'scheduled_count' => $scheduledCount,
+            'indicator_text' => $indicatorText,
             'slots' => $slots
         ];
 
@@ -367,12 +408,29 @@ class HearingController
                 if ($isHoliday) {
                     $response['message'] = "Scheduling is blocked on {$targetDate}: Official Philippine holiday ({$holidayName}).";
                 } elseif ($hearingType === 'Mediation') {
-                    $response['message'] = 'Mediation hearings can only be scheduled on Tuesdays.';
+                    $response['message'] = 'Mediation hearings can only be scheduled on Tuesdays (1:00 PM – 5:00 PM).';
                 } else {
                     $response['message'] = ($dayOfWeek === 2)
-                        ? 'Conciliation cannot be scheduled on Tuesdays (reserved exclusively for the Barangay Captain\'s mediation hearings).'
+                        ? 'Conciliation hearings on Tuesdays are permitted only in the morning (8:00 AM – 12:00 PM). Tuesday afternoons are exclusively reserved for Formal Mediation.'
                         : 'Conciliation cannot be scheduled on weekends.';
                 }
+                return $response;
+            }
+
+            // Check lunch break
+            $reqHour = (int) substr($timePart, 0, 2);
+            if ($reqHour >= 12 && $reqHour < 13) {
+                $response['valid'] = false;
+                $response['conflict'] = true;
+                $response['message'] = 'Hearings cannot be scheduled during the 12:00 PM – 1:00 PM daily lunch break.';
+                return $response;
+            }
+
+            // Check Tuesday afternoon conciliation block
+            if ($hearingType === 'Conciliation' && $dayOfWeek === 2 && $reqHour >= 12) {
+                $response['valid'] = false;
+                $response['conflict'] = true;
+                $response['message'] = 'Conciliation hearings cannot be scheduled on Tuesday afternoons (1:00 PM – 5:00 PM), which are exclusively reserved for Formal Mediation in the Lupon Court Room.';
                 return $response;
             }
 
@@ -394,7 +452,7 @@ class HearingController
             } else {
                 $response['valid'] = true;
                 $response['conflict'] = false;
-                $response['message'] = 'The selected date, time, venue, and officers are available.';
+                $response['message'] = "Selected call time is available on the {$indicatorText} docket.";
             }
         } else {
             $response['valid'] = $isValidDay;
@@ -403,14 +461,14 @@ class HearingController
                 if ($isHoliday) {
                     $response['message'] = "Scheduling is blocked on {$targetDate}: Official Philippine holiday ({$holidayName}).";
                 } elseif ($hearingType === 'Mediation') {
-                    $response['message'] = 'Mediation hearings can only be scheduled on Tuesdays.';
+                    $response['message'] = 'Mediation hearings can only be scheduled on Tuesdays (1:00 PM – 5:00 PM).';
                 } else {
                     $response['message'] = ($dayOfWeek === 2)
-                        ? 'Conciliation cannot be scheduled on Tuesdays (reserved exclusively for the Barangay Captain\'s mediation hearings).'
+                        ? 'Conciliation hearings on Tuesdays are permitted only in the morning (8:00 AM – 12:00 PM).'
                         : 'Conciliation cannot be scheduled on weekends.';
                 }
             } else {
-                $response['message'] = 'Date is valid. Select an available time slot.';
+                $response['message'] = "{$indicatorText}. Select target call time.";
             }
         }
 
@@ -602,25 +660,37 @@ class HearingController
             $recordRemarks = trim($recordRemarks . ($recordRemarks === '' ? '' : "\n\n") . $exceptionNote);
         }
 
-        // Strict Stage-Specific Day & Time Rules (Barangay Tumana)
+        // Strict Master Operating Schedule (Barangay Tumana)
+        // 1. Tuesdays (1:00 PM – 5:00 PM): Exclusively reserved for Formal Mediation.
+        // 2. Mon, Wed, Thu, Fri (8:00 AM – 12:00 PM & 1:00 PM – 5:00 PM): Conciliation & Paanyaya.
+        // 3. Tuesday Mornings (8:00 AM – 12:00 PM): Conciliation & Paanyaya.
+        // 4. 12:00 PM – 1:00 PM Lunch Break & Weekends/Holidays: Closed for all session types.
         $dayOfWeek = (int) date('w', strtotime($date->format('Y-m-d H:i:s'))); // 0 = Sun, 2 = Tue, etc.
         $hour = (int) date('H', strtotime($date->format('Y-m-d H:i:s')));
 
         if ($type === 'Mediation') {
             if ($dayOfWeek !== 2) {
-                return ['success' => false, 'message' => 'Mediation hearings can only be scheduled on Tuesdays.'];
+                return ['success' => false, 'message' => 'Formal Mediation hearings can only be scheduled on Tuesdays.'];
             }
             if ($hour < 13 || $hour >= 17) {
-                return ['success' => false, 'message' => 'Mediation hearings must be between 1:00 PM and 5:00 PM.'];
+                return ['success' => false, 'message' => 'Formal Mediation hearings must be between 1:00 PM and 5:00 PM (Lupon Court Room is exclusively reserved for Mediation during this afternoon window).'];
             }
         }
 
         if ($type === 'Conciliation') {
-            if ($dayOfWeek === 2 || $dayOfWeek === 0 || $dayOfWeek === 6) {
-                return ['success' => false, 'message' => 'Conciliation cannot be scheduled on Tuesdays or weekends.'];
+            if ($dayOfWeek === 0 || $dayOfWeek === 6) {
+                return ['success' => false, 'message' => 'Conciliation hearings cannot be scheduled on weekends.'];
             }
-            if (($hour < 8 || $hour >= 17) || ($hour >= 12 && $hour < 13)) {
-                return ['success' => false, 'message' => 'Conciliation hearings must be during regular office hours (excluding 12-1 PM lunch break).'];
+            if ($dayOfWeek === 2) {
+                // Tuesday morning only: 8:00 AM – 12:00 PM
+                if ($hour < 8 || $hour >= 12) {
+                    return ['success' => false, 'message' => 'Conciliation hearings on Tuesdays are permitted only in the morning (8:00 AM – 12:00 PM). Tuesday afternoons (1:00 PM – 5:00 PM) are exclusively reserved for Formal Mediation in the Lupon Court Room.'];
+                }
+            } else {
+                // Mon, Wed, Thu, Fri
+                if (($hour < 8 || $hour >= 17) || ($hour >= 12 && $hour < 13)) {
+                    return ['success' => false, 'message' => 'Conciliation hearings must be during operating hours (8:00 AM – 12:00 PM & 1:00 PM – 5:00 PM, excluding 12:00 PM – 1:00 PM lunch break).'];
+                }
             }
         }
 
@@ -694,6 +764,497 @@ class HearingController
                 'authorized_exception' => !empty($data['authorized_exception']) ? 1 : 0,
                 'attempt_exception_reason' => !empty($data['attempt_exception_reason']) ? trim((string) $data['attempt_exception_reason']) : null,
             ],
+        ];
+    }
+
+    /**
+     * Retrieves the Live Daily Docket Queue for a given date.
+     * Implements the waiting room model: tracks party arrival, ready state, standby,
+     * and in-session status for out-of-order calling.
+     */
+    public function getDailyDocket(array $params): array
+    {
+        $date = trim((string) ($params['date'] ?? ''));
+        if ($date === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            $date = date('Y-m-d');
+        }
+        $hearingTypeFilter = trim((string) ($params['hearing_type'] ?? ''));
+
+        $db = (new Database())->connect();
+
+        // 1. Fetch Hearings for target date
+        $sql = "
+            SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.venue, h.status,
+                   h.queue_status, h.actual_start_time, h.actual_end_time, h.actual_duration_minutes,
+                   h.complainant_attendance, h.respondent_attendance,
+                   c.case_number, c.complaint_id, c.case_status,
+                   comp.complaint_title, comp.complaint_number,
+                   (
+                       SELECT TRIM(CONCAT_WS(' ', r1.first_name, r1.last_name))
+                       FROM complaint_parties cp1
+                       INNER JOIN residents r1 ON r1.resident_id = cp1.resident_id
+                       WHERE cp1.complaint_id = c.complaint_id AND cp1.party_type = 'Complainant'
+                       ORDER BY cp1.party_id ASC
+                       LIMIT 1
+                   ) AS complainant_name,
+                   (
+                       SELECT TRIM(CONCAT_WS(' ', r2.first_name, r2.last_name))
+                       FROM complaint_parties cp2
+                       INNER JOIN residents r2 ON r2.resident_id = cp2.resident_id
+                       WHERE cp2.complaint_id = c.complaint_id AND cp2.party_type = 'Respondent'
+                       ORDER BY cp2.party_id ASC
+                       LIMIT 1
+                   ) AS respondent_name,
+                   TRIM(CONCAT_WS(' ', u.first_name, u.last_name)) AS presiding_officer_name,
+                   'hearing' AS session_source
+            FROM hearings h
+            INNER JOIN cases c ON c.case_id = h.case_id
+            LEFT JOIN complaints comp ON comp.complaint_id = c.complaint_id
+            LEFT JOIN users u ON u.user_id = h.presiding_officer_id
+            WHERE DATE(h.hearing_date) = ?
+              AND h.status NOT IN ('Cancelled', 'Office Cancelled')
+        ";
+        $queryParams = [$date];
+        if ($hearingTypeFilter !== '') {
+            $sql .= " AND h.hearing_type = ?";
+            $queryParams[] = $hearingTypeFilter;
+        }
+        $sql .= "
+            ORDER BY 
+              CASE COALESCE(h.queue_status, 'Waiting')
+                WHEN 'In_Session' THEN 1
+                WHEN 'Ready' THEN 2
+                WHEN 'Waiting' THEN 3
+                WHEN 'Standby' THEN 4
+                WHEN 'Concluded' THEN 5
+                ELSE 6
+              END,
+              h.hearing_date ASC
+        ";
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute($queryParams);
+        $hearings = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // 2. Fetch Paanyaya sessions for target date if applicable
+        $paanyayaItems = [];
+        if ($hearingTypeFilter === '' || $hearingTypeFilter === 'Paanyaya') {
+            try {
+                $pStmt = $db->prepare("
+                    SELECT ps.session_id AS hearing_id, NULL AS case_id, 'Paanyaya' AS hearing_type,
+                           CONCAT(ps.scheduled_date, ' ', ps.scheduled_time) AS hearing_date,
+                           ps.venue, 'Scheduled' AS status,
+                           ps.queue_status, ps.actual_start_time, ps.actual_end_time, NULL AS actual_duration_minutes,
+                           IF(ps.complainant_attended = 'Present', 'Present', 'Pending') AS complainant_attendance,
+                           IF(ps.respondent_attended = 'Present', 'Present', 'Pending') AS respondent_attendance,
+                           co.complaint_number AS case_number, ps.complaint_id, 'Pre-Docketed (Paanyaya)' AS case_status,
+                           co.complaint_title, co.complaint_number,
+                           (
+                               SELECT TRIM(CONCAT_WS(' ', r1.first_name, r1.last_name))
+                               FROM complaint_parties cp1
+                               INNER JOIN residents r1 ON r1.resident_id = cp1.resident_id
+                               WHERE cp1.complaint_id = ps.complaint_id AND cp1.party_type = 'Complainant'
+                               ORDER BY cp1.party_id ASC
+                               LIMIT 1
+                           ) AS complainant_name,
+                           (
+                               SELECT TRIM(CONCAT_WS(' ', r2.first_name, r2.last_name))
+                               FROM complaint_parties cp2
+                               INNER JOIN residents r2 ON r2.resident_id = cp2.resident_id
+                               WHERE cp2.complaint_id = ps.complaint_id AND cp2.party_type = 'Respondent'
+                               ORDER BY cp2.party_id ASC
+                               LIMIT 1
+                           ) AS respondent_name,
+                           'Barangay Officer' AS presiding_officer_name,
+                           'paanyaya' AS session_source
+                    FROM paanyaya_sessions ps
+                    LEFT JOIN complaints co ON co.complaint_id = ps.complaint_id
+                    WHERE ps.scheduled_date = ?
+                    ORDER BY ps.scheduled_time ASC
+                ");
+                $pStmt->execute([$date]);
+                $paanyayaItems = $pStmt->fetchAll(PDO::FETCH_ASSOC);
+            } catch (Throwable) {}
+        }
+
+        $allSessions = array_merge($hearings, $paanyayaItems);
+
+        // Normalize and compute readiness flags for waiting room docket
+        $normalized = [];
+        $readyCount = 0;
+        $inSessionCount = 0;
+        $standbyCount = 0;
+        $concludedCount = 0;
+        $waitingCount = 0;
+
+        foreach ($allSessions as $s) {
+            $compIn = in_array($s['complainant_attendance'] ?? '', ['Present', 'Late'], true);
+            $respIn = in_array($s['respondent_attendance'] ?? '', ['Present', 'Late'], true);
+            $isCompleteAndReady = $compIn && $respIn;
+
+            $qStatus = $s['queue_status'] ?? 'Waiting';
+            if ($qStatus === 'Waiting' && $isCompleteAndReady) {
+                $qStatus = 'Ready';
+            }
+
+            if ($qStatus === 'In_Session') $inSessionCount++;
+            elseif ($qStatus === 'Ready') $readyCount++;
+            elseif ($qStatus === 'Standby') $standbyCount++;
+            elseif ($qStatus === 'Concluded') $concludedCount++;
+            else $waitingCount++;
+
+            $s['complainant_checked_in'] = $compIn;
+            $s['respondent_checked_in'] = $respIn;
+            $s['is_complete_and_ready'] = $isCompleteAndReady;
+            $s['queue_status'] = $qStatus;
+            $s['call_time_formatted'] = date('g:i A', strtotime($s['hearing_date']));
+
+            $normalized[] = $s;
+        }
+
+        $totalCases = count($normalized);
+        $targetObj = new DateTimeImmutable($date);
+        $indicatorText = sprintf(
+            '%s (%d case%s scheduled)',
+            $targetObj->format('l, M j'),
+            $totalCases,
+            $totalCases === 1 ? '' : 's'
+        );
+
+        return [
+            'success' => true,
+            'date' => $date,
+            'indicator' => $indicatorText,
+            'summary' => [
+                'total_cases' => $totalCases,
+                'ready_count' => $readyCount,
+                'in_session_count' => $inSessionCount,
+                'standby_count' => $standbyCount,
+                'waiting_count' => $waitingCount,
+                'concluded_count' => $concludedCount,
+            ],
+            'docket' => $normalized
+        ];
+    }
+
+    /**
+     * Checks in a party (Complainant or Respondent) as they arrive at the barangay hall.
+     * When both parties are checked in for a case, flag it with status: Complete & Ready.
+     */
+    public function checkInParty(array $data, int $userId): array
+    {
+        $hearingId = filter_var($data['hearing_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $partyType = trim((string) ($data['party_type'] ?? '')); // 'Complainant' or 'Respondent'
+        $status = trim((string) ($data['status'] ?? 'Checked In')); // 'Checked In' or 'Waiting'
+        $sessionSource = trim((string) ($data['session_source'] ?? 'hearing'));
+
+        if (!$hearingId || !in_array($partyType, ['Complainant', 'Respondent'], true)) {
+            return ['success' => false, 'message' => 'Provide a valid hearing ID and party type (Complainant/Respondent).'];
+        }
+
+        $db = (new Database())->connect();
+
+        if ($sessionSource === 'paanyaya') {
+            $pStmt = $db->prepare('SELECT session_id, complainant_attended, respondent_attended, queue_status FROM paanyaya_sessions WHERE session_id = ?');
+            $pStmt->execute([$hearingId]);
+            $session = $pStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$session) {
+                return ['success' => false, 'message' => 'Paanyaya session not found.'];
+            }
+
+            $newVal = ($status === 'Checked In') ? 'Present' : 'Absent';
+            $col = ($partyType === 'Complainant') ? 'complainant_attended' : 'respondent_attended';
+            $compIn = ($partyType === 'Complainant') ? ($newVal === 'Present') : ($session['complainant_attended'] === 'Present');
+            $respIn = ($partyType === 'Respondent') ? ($newVal === 'Present') : ($session['respondent_attended'] === 'Present');
+
+            $isBoth = ($compIn && $respIn);
+            $newQueue = $isBoth ? 'Ready' : ($session['queue_status'] === 'Standby' ? 'Standby' : 'Waiting');
+
+            $upd = $db->prepare("UPDATE paanyaya_sessions SET {$col} = ?, queue_status = ? WHERE session_id = ?");
+            $upd->execute([$newVal, $newQueue, $hearingId]);
+
+            return [
+                'success' => true,
+                'hearing_id' => $hearingId,
+                'party_type' => $partyType,
+                'status' => $status,
+                'queue_status' => $newQueue,
+                'is_complete_and_ready' => $isBoth,
+                'message' => sprintf('%s checked in (%s). Case is %s.', $partyType, $status, $isBoth ? 'Complete & Ready' : 'Waiting')
+            ];
+        }
+
+        $hStmt = $db->prepare('SELECT hearing_id, case_id, complainant_attendance, respondent_attendance, queue_status, status FROM hearings WHERE hearing_id = ?');
+        $hStmt->execute([$hearingId]);
+        $hearing = $hStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$hearing) {
+            return ['success' => false, 'message' => 'Hearing not found.'];
+        }
+
+        $newVal = ($status === 'Checked In') ? 'Present' : 'Pending';
+        $col = ($partyType === 'Complainant') ? 'complainant_attendance' : 'respondent_attendance';
+        $compIn = ($partyType === 'Complainant') ? true : in_array($hearing['complainant_attendance'], ['Present', 'Late'], true);
+        if ($partyType === 'Complainant' && $newVal === 'Pending') $compIn = false;
+
+        $respIn = ($partyType === 'Respondent') ? true : in_array($hearing['respondent_attendance'], ['Present', 'Late'], true);
+        if ($partyType === 'Respondent' && $newVal === 'Pending') $respIn = false;
+
+        $isBoth = ($compIn && $respIn);
+        $curQ = $hearing['queue_status'] ?? 'Waiting';
+
+        if ($isBoth) {
+            $newQueue = 'Ready';
+        } elseif ($curQ === 'Standby') {
+            $newQueue = 'Standby';
+        } elseif ($curQ === 'In_Session') {
+            $newQueue = 'In_Session';
+        } elseif ($curQ === 'Concluded') {
+            $newQueue = 'Concluded';
+        } else {
+            $newQueue = 'Waiting';
+        }
+
+        $upd = $db->prepare("
+            UPDATE hearings 
+            SET {$col} = ?,
+                queue_status = ?,
+                attendance_recorded_at = NOW()
+            WHERE hearing_id = ?
+        ");
+        $upd->execute([$newVal, $newQueue, $hearingId]);
+
+        $this->audit->log(
+            $userId,
+            sprintf('Party check-in: %s set to %s for hearing #%d (Queue: %s)', $partyType, $status, $hearingId, $newQueue),
+            'Hearings',
+            $hearingId
+        );
+
+        return [
+            'success' => true,
+            'hearing_id' => $hearingId,
+            'party_type' => $partyType,
+            'status' => $status,
+            'queue_status' => $newQueue,
+            'is_complete_and_ready' => $isBoth,
+            'complainant_checked_in' => $compIn,
+            'respondent_checked_in' => $respIn,
+            'message' => sprintf('%s marked as %s. Case queue status: %s.', $partyType, $status, $isBoth ? 'Complete & Ready' : $newQueue)
+        ];
+    }
+
+    /**
+     * Put on Standby (Incomplete Cases):
+     * If an earlier case is incomplete, puts it on standby to keep it active
+     * without penalizing the parties immediately and keeps the Lupon Court Room available.
+     */
+    public function putOnStandby(array $data, int $userId): array
+    {
+        $hearingId = filter_var($data['hearing_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $standby = isset($data['standby']) ? (bool) $data['standby'] : true;
+        $sessionSource = trim((string) ($data['session_source'] ?? 'hearing'));
+
+        if (!$hearingId) {
+            return ['success' => false, 'message' => 'Provide a valid hearing ID.'];
+        }
+
+        $db = (new Database())->connect();
+
+        if ($sessionSource === 'paanyaya') {
+            $pStmt = $db->prepare('SELECT session_id, complainant_attended, respondent_attended FROM paanyaya_sessions WHERE session_id = ?');
+            $pStmt->execute([$hearingId]);
+            $session = $pStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$session) return ['success' => false, 'message' => 'Paanyaya session not found.'];
+
+            $isBoth = ($session['complainant_attended'] === 'Present' && $session['respondent_attended'] === 'Present');
+            $newQueue = $standby ? 'Standby' : ($isBoth ? 'Ready' : 'Waiting');
+
+            $db->prepare('UPDATE paanyaya_sessions SET queue_status = ? WHERE session_id = ?')
+               ->execute([$newQueue, $hearingId]);
+
+            return [
+                'success' => true,
+                'hearing_id' => $hearingId,
+                'queue_status' => $newQueue,
+                'message' => $standby ? 'Session placed on standby.' : 'Session resumed from standby.'
+            ];
+        }
+
+        $hStmt = $db->prepare('SELECT hearing_id, case_id, complainant_attendance, respondent_attendance, queue_status FROM hearings WHERE hearing_id = ?');
+        $hStmt->execute([$hearingId]);
+        $hearing = $hStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$hearing) {
+            return ['success' => false, 'message' => 'Hearing not found.'];
+        }
+
+        $compIn = in_array($hearing['complainant_attendance'], ['Present', 'Late'], true);
+        $respIn = in_array($hearing['respondent_attendance'], ['Present', 'Late'], true);
+        $isBoth = ($compIn && $respIn);
+
+        $newQueue = $standby ? 'Standby' : ($isBoth ? 'Ready' : 'Waiting');
+
+        $upd = $db->prepare('UPDATE hearings SET queue_status = ? WHERE hearing_id = ?');
+        $upd->execute([$newQueue, $hearingId]);
+
+        $this->audit->log(
+            $userId,
+            sprintf('%s hearing #%d in docket queue. Status: %s', $standby ? 'Put on Standby' : 'Resumed from Standby', $hearingId, $newQueue),
+            'Hearings',
+            $hearingId
+        );
+
+        return [
+            'success' => true,
+            'hearing_id' => $hearingId,
+            'queue_status' => $newQueue,
+            'message' => $standby
+                ? 'Hearing put on standby. Lupon Court Room remains open for other ready cases.'
+                : 'Hearing resumed from standby.'
+        ];
+    }
+
+    /**
+     * Out-of-Order Session Activation (Waiting Room Model):
+     * The Captain or Pangkat Chairman can click "Call to Session / Start Hearing"
+     * on ANY case that is marked Complete & Ready, even if its scheduled slot was later
+     * in the afternoon. Adapts without throwing time-slot conflict errors.
+     * Records: actual_start_time = NOW().
+     */
+    public function startSession(array $data, int $userId): array
+    {
+        $hearingId = filter_var($data['hearing_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $sessionSource = trim((string) ($data['session_source'] ?? 'hearing'));
+
+        if (!$hearingId) {
+            return ['success' => false, 'message' => 'Provide a valid hearing ID.'];
+        }
+
+        $db = (new Database())->connect();
+        $now = date('Y-m-d H:i:s');
+
+        if ($sessionSource === 'paanyaya') {
+            $upd = $db->prepare("
+                UPDATE paanyaya_sessions 
+                SET actual_start_time = COALESCE(actual_start_time, ?),
+                    queue_status = 'In_Session'
+                WHERE session_id = ?
+            ");
+            $upd->execute([$now, $hearingId]);
+
+            return [
+                'success' => true,
+                'hearing_id' => $hearingId,
+                'actual_start_time' => $now,
+                'queue_status' => 'In_Session',
+                'message' => 'Paanyaya session called to session and started successfully.'
+            ];
+        }
+
+        $hStmt = $db->prepare('SELECT hearing_id, case_id, queue_status, actual_start_time FROM hearings WHERE hearing_id = ?');
+        $hStmt->execute([$hearingId]);
+        $hearing = $hStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$hearing) {
+            return ['success' => false, 'message' => 'Hearing not found.'];
+        }
+
+        $startTime = $hearing['actual_start_time'] ?: $now;
+
+        $upd = $db->prepare("
+            UPDATE hearings 
+            SET actual_start_time = COALESCE(actual_start_time, ?),
+                queue_status = 'In_Session'
+            WHERE hearing_id = ?
+        ");
+        $upd->execute([$startTime, $hearingId]);
+
+        $this->audit->log(
+            $userId,
+            sprintf('Called hearing #%d to session (Out-of-Order Docket Activation). Actual start time: %s', $hearingId, $startTime),
+            'Hearings',
+            $hearingId
+        );
+
+        return [
+            'success' => true,
+            'hearing_id' => $hearingId,
+            'actual_start_time' => $startTime,
+            'actual_start_time_formatted' => date('g:i A', strtotime($startTime)),
+            'queue_status' => 'In_Session',
+            'message' => 'Hearing called to session and started. Lupon Court Room is now In Session.'
+        ];
+    }
+
+    /**
+     * Concludes session and saves elastic duration tracking:
+     * actual_end_time = NOW()
+     * actual_duration_minutes = TIMESTAMPDIFF(MINUTE, actual_start_time, actual_end_time)
+     */
+    public function concludeSession(array $data, int $userId): array
+    {
+        $hearingId = filter_var($data['hearing_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $sessionSource = trim((string) ($data['session_source'] ?? 'hearing'));
+
+        if (!$hearingId) {
+            return ['success' => false, 'message' => 'Provide a valid hearing ID.'];
+        }
+
+        $db = (new Database())->connect();
+        $now = date('Y-m-d H:i:s');
+
+        if ($sessionSource === 'paanyaya') {
+            $upd = $db->prepare("
+                UPDATE paanyaya_sessions 
+                SET actual_end_time = ?,
+                    queue_status = 'Concluded'
+                WHERE session_id = ?
+            ");
+            $upd->execute([$now, $hearingId]);
+
+            return [
+                'success' => true,
+                'hearing_id' => $hearingId,
+                'actual_end_time' => $now,
+                'queue_status' => 'Concluded',
+                'message' => 'Paanyaya session concluded successfully.'
+            ];
+        }
+
+        $hStmt = $db->prepare('SELECT hearing_id, case_id, actual_start_time, duration_minutes FROM hearings WHERE hearing_id = ?');
+        $hStmt->execute([$hearingId]);
+        $hearing = $hStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$hearing) {
+            return ['success' => false, 'message' => 'Hearing not found.'];
+        }
+
+        $startTime = $hearing['actual_start_time'] ?: $now;
+        $durationMin = max(1, (int) round((strtotime($now) - strtotime($startTime)) / 60));
+
+        $upd = $db->prepare("
+            UPDATE hearings 
+            SET actual_start_time = COALESCE(actual_start_time, ?),
+                actual_end_time = ?,
+                actual_duration_minutes = ?,
+                queue_status = 'Concluded',
+                status = IF(status IN ('Cancelled', 'Office Cancelled'), status, 'Completed')
+            WHERE hearing_id = ?
+        ");
+        $upd->execute([$startTime, $now, $durationMin, $hearingId]);
+
+        $this->audit->log(
+            $userId,
+            sprintf('Concluded hearing #%d session. Actual duration: %d minutes (%s to %s).', $hearingId, $durationMin, date('g:i A', strtotime($startTime)), date('g:i A', strtotime($now))),
+            'Hearings',
+            $hearingId
+        );
+
+        return [
+            'success' => true,
+            'hearing_id' => $hearingId,
+            'actual_start_time' => $startTime,
+            'actual_end_time' => $now,
+            'actual_duration_minutes' => $durationMin,
+            'queue_status' => 'Concluded',
+            'message' => sprintf('Session concluded. Actual duration: %d minutes.', $durationMin)
         ];
     }
 
