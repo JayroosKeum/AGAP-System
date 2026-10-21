@@ -34,15 +34,15 @@
     }
 
     const defaultIcons = {
-        success: '✓',
-        error: '✗',
-        warning: '⚠️',
-        info: 'ℹ️'
+        success: `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
+        error: `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>`,
+        warning: `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`,
+        info: `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`
     };
 
     const defaultTitles = {
         success: 'Success',
-        error: 'Error / Attention Needed',
+        error: 'Attention Needed',
         warning: 'Warning',
         info: 'Notice'
     };
@@ -64,7 +64,7 @@
         const toastIcon = defaultIcons[toastType];
 
         const toast = document.createElement('div');
-        toast.className = `agap-toast toast-${toastType}`;
+        toast.className = `agap-toast toast-${toastType} ${toastType}`;
         toast.setAttribute('role', 'alert');
         toast.setAttribute('aria-live', 'polite');
         toast.innerHTML = `
@@ -74,6 +74,7 @@
                 <div class="agap-toast-message">${escapeToastText(message).replace(/\n/g, '<br>')}</div>
             </div>
             <button type="button" class="agap-toast-close" aria-label="Close">&times;</button>
+            <div class="agap-toast-progress-track"></div>
             <div class="agap-toast-progress"></div>
         `;
 
@@ -93,8 +94,9 @@
         const closeBtn = toast.querySelector('.agap-toast-close');
         const progressBar = toast.querySelector('.agap-toast-progress');
 
+        const totalDuration = duration;
+        let remainingAtStart = duration;
         let startTime = Date.now();
-        let remaining = duration;
         let timer = null;
         let progressAnim = null;
         let isClosed = false;
@@ -105,18 +107,19 @@
             clearTimeout(timer);
             if (progressAnim) cancelAnimationFrame(progressAnim);
             toast.style.opacity = '0';
-            toast.style.transform = 'translateX(50px)';
+            toast.style.transform = 'translateX(40px)';
             setTimeout(() => {
                 try { toast.remove(); } catch (_) {}
-            }, 200);
+            }, 220);
         }
 
         function updateProgress() {
             if (isClosed) return;
             const elapsed = Date.now() - startTime;
-            const pct = Math.max(0, 1 - (elapsed / duration));
+            const currentRemaining = Math.max(0, remainingAtStart - elapsed);
+            const pct = Math.max(0, currentRemaining / totalDuration);
             if (progressBar) progressBar.style.transform = `scaleX(${pct})`;
-            if (pct > 0 && !isClosed) {
+            if (currentRemaining > 0 && !isClosed) {
                 progressAnim = requestAnimationFrame(updateProgress);
             }
         }
@@ -124,7 +127,7 @@
         function startTimer() {
             if (isClosed) return;
             startTime = Date.now();
-            timer = setTimeout(closeToast, remaining);
+            timer = setTimeout(closeToast, remainingAtStart);
             progressAnim = requestAnimationFrame(updateProgress);
         }
 
@@ -132,8 +135,8 @@
             if (isClosed) return;
             clearTimeout(timer);
             if (progressAnim) cancelAnimationFrame(progressAnim);
-            remaining -= (Date.now() - startTime);
-            if (remaining < 0) remaining = 0;
+            const elapsed = Date.now() - startTime;
+            remainingAtStart = Math.max(0, remainingAtStart - elapsed);
         }
 
         closeBtn.addEventListener('click', (e) => {
@@ -143,7 +146,7 @@
 
         toast.addEventListener('mouseenter', pauseTimer);
         toast.addEventListener('mouseleave', () => {
-            if (remaining > 0 && !isClosed) startTimer();
+            if (remainingAtStart > 0 && !isClosed) startTimer();
         });
 
         startTimer();
