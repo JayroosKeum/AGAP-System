@@ -59,7 +59,7 @@ function formatDateTimeReadable(str) {
 
 function openKPFormPreview(caseId, formCode, hearingId = null) {
     if (!caseId) {
-        alert('Case ID is required to preview document.');
+        notifyUser('Case ID is required to preview document.', 'warning');
         return;
     }
     let url = getStageApiUrl(`documents/kp-form.php?case_id=${encodeURIComponent(caseId)}&form_code=${encodeURIComponent(formCode)}&preview=1`);
@@ -69,6 +69,15 @@ function openKPFormPreview(caseId, formCode, hearingId = null) {
     window.open(url, '_blank');
 }
 window.openKPFormPreview = openKPFormPreview;
+
+function notifyUser(message, type = 'info', title = null, duration = 4000) {
+    if (window.agapNotify) {
+        window.agapNotify(message, type, title, duration);
+    } else {
+        alert(message);
+    }
+}
+window.notifyUser = notifyUser;
 
 /**
  * Initialize Stage Workspace
@@ -743,11 +752,11 @@ async function handleDocketCheckIn(hearingId, partyType, status) {
             window.agapNotify?.(data.message, 'success');
             reloadWorkspace();
         } else {
-            alert(data.message || 'Could not update party check-in.');
+            notifyUser(data.message || 'Could not update party check-in.', 'error');
         }
     } catch (err) {
         console.error('Docket check-in error:', err);
-        alert('Server error updating party check-in.');
+        notifyUser('Server error updating party check-in.', 'error');
     }
 }
 
@@ -767,11 +776,11 @@ async function handleDocketStandby(hearingId, standby) {
             window.agapNotify?.(data.message, 'info');
             reloadWorkspace();
         } else {
-            alert(data.message || 'Could not update standby status.');
+            notifyUser(data.message || 'Could not update standby status.', 'error');
         }
     } catch (err) {
         console.error('Docket standby error:', err);
-        alert('Server error updating standby status.');
+        notifyUser('Server error updating standby status.', 'error');
     }
 }
 
@@ -793,11 +802,11 @@ async function handleDocketStartSession(hearingId) {
             window.agapNotify?.(data.message, 'success');
             reloadWorkspace();
         } else {
-            alert(data.message || 'Could not start session.');
+            notifyUser(data.message || 'Could not start session.', 'error');
         }
     } catch (err) {
         console.error('Docket start session error:', err);
-        alert('Server error starting session.');
+        notifyUser('Server error starting session.', 'error');
     }
 }
 
@@ -819,11 +828,11 @@ async function handleDocketConcludeSession(hearingId) {
             window.agapNotify?.(data.message, 'success');
             reloadWorkspace();
         } else {
-            alert(data.message || 'Could not conclude session.');
+            notifyUser(data.message || 'Could not conclude session.', 'error');
         }
     } catch (err) {
         console.error('Docket conclude session error:', err);
-        alert('Server error concluding session.');
+        notifyUser('Server error concluding session.', 'error');
     }
 }
 
@@ -1628,19 +1637,19 @@ window.closeMinutesModal = function() {};
 async function saveHearingMinutes(status = 'Draft') {
     const hearingId = document.getElementById('minHearingId')?.value || stageWorkspaceState.activeSessionHearingId;
     if (!hearingId) {
-        alert('No hearing session selected.');
+        notifyUser('No hearing session selected.', 'warning');
         return;
     }
 
     const session = stageWorkspaceState.sessions.find(s => Number(s.hearing_id) === Number(hearingId));
     if (!session) {
-        alert('Session record not found.');
+        notifyUser('Session record not found.', 'warning');
         return;
     }
 
     const outcomeVal = document.getElementById('minOutcome')?.value;
     if (!outcomeVal) {
-        alert('Please select a session outcome.');
+        notifyUser('Please select a session outcome.', 'warning');
         document.getElementById('minOutcome')?.focus();
         return;
     }
@@ -1730,22 +1739,22 @@ async function saveHearingMinutes(status = 'Draft') {
             if (json.next_hearing_booked && json.next_hearing) {
                 const seqLabel = json.next_hearing?.sequence === 2 ? '2nd' : (json.next_hearing?.sequence === 3 ? '3rd' : 'Next');
                 if (json.next_hearing?.already_existed) {
-                    alert(`Session minutes ${status === 'Finalized' ? 'finalized' : 'saved'} successfully.\n(${seqLabel} Mediation was already scheduled).`);
+                    notifyUser(`Session minutes ${status === 'Finalized' ? 'finalized' : 'saved'} successfully. (${seqLabel} Mediation was already scheduled).`, 'success');
                 } else {
-                    alert(`✓ Session minutes ${status === 'Finalized' ? 'finalized and locked' : 'saved'} successfully!\n\n📅 ${seqLabel} Mediation hearing booked for ${json.next_hearing.hearing_date} at ${json.next_hearing.venue || 'Barangay Hall'}.\n\nNotice: Summons (KP Form 9) was bypassed because both parties were personally notified during the session and signed the minutes.`);
+                    notifyUser(`Session minutes ${status === 'Finalized' ? 'finalized and locked' : 'saved'} successfully!\n${seqLabel} Mediation hearing booked for ${json.next_hearing.hearing_date} at ${json.next_hearing.venue || 'Barangay Hall'}.\n(Summons bypassed - parties notified in person).`, 'success', 'Session Minutes Saved', 6000);
                 }
             } else if (json.next_hearing_error) {
-                alert(`Session minutes ${status === 'Finalized' ? 'finalized' : 'saved'}.\n\n⚠️ Warning: Next mediation session could not be scheduled: ${json.next_hearing_error}\n\nPlease check for schedule conflicts or business hours.`);
+                notifyUser(`Session minutes ${status === 'Finalized' ? 'finalized' : 'saved'}.\nNext mediation session could not be scheduled: ${json.next_hearing_error}`, 'warning', 'Scheduling Warning', 6000);
             } else {
                 if (status === 'Finalized') showCloseoutFollowUp();
-                else alert('Session minutes draft saved successfully.');
+                else notifyUser('Session minutes draft saved successfully.', 'success');
             }
         } else {
-            alert(json.message || 'Unable to save session minutes.');
+            notifyUser(json.message || 'Unable to save session minutes.', 'error');
         }
     } catch (err) {
         console.error('saveHearingMinutes error:', err);
-        alert('A network error occurred while saving minutes.');
+        notifyUser('A network error occurred while saving minutes.', 'error');
     } finally {
         if (draftBtn) draftBtn.disabled = false;
         if (finalizeBtn) finalizeBtn.disabled = false;
@@ -2153,7 +2162,7 @@ async function submitSchedule(e) {
     const typeVal = document.getElementById('schedHearingType').value || (stageWorkspaceState.mode === 'Mediation' ? 'Mediation' : 'Conciliation');
 
     if (!dateVal || !timeVal) {
-        alert('Please specify the hearing date and select an available time slot.');
+        notifyUser('Please specify the hearing date and select an available time slot.', 'warning');
         if (btn) btn.disabled = false;
         return;
     }
@@ -2164,23 +2173,23 @@ async function submitSchedule(e) {
 
     if (typeVal === 'Mediation') {
         if (day !== 2) {
-            alert('Mediation hearings can only be scheduled on Tuesdays.');
+            notifyUser('Mediation hearings can only be scheduled on Tuesdays.', 'warning');
             if (btn) btn.disabled = false;
             return;
         }
         if (hour < 13 || hour >= 17) {
-            alert('Mediation hearings must be between 1:00 PM and 5:00 PM.');
+            notifyUser('Mediation hearings must be between 1:00 PM and 5:00 PM.', 'warning');
             if (btn) btn.disabled = false;
             return;
         }
     } else if (typeVal === 'Conciliation') {
         if (day === 2 || day === 0 || day === 6) {
-            alert('Conciliation cannot be scheduled on Tuesdays or weekends.');
+            notifyUser('Conciliation cannot be scheduled on Tuesdays or weekends.', 'warning');
             if (btn) btn.disabled = false;
             return;
         }
         if ((hour < 8 || hour >= 17) || (hour >= 12 && hour < 13)) {
-            alert('Conciliation hearings must be during regular office hours (excluding 12-1 PM lunch break).');
+            notifyUser('Conciliation hearings must be during regular office hours (excluding 12-1 PM lunch break).', 'warning');
             if (btn) btn.disabled = false;
             return;
         }
@@ -2211,7 +2220,7 @@ async function submitSchedule(e) {
             if (typeof openSummonsPreviewModal === 'function' && stageWorkspaceState.mode === 'Mediation' && schedSeq <= 1) {
                 openSummonsPreviewModal(stageWorkspaceState.caseId, null, json.hearing_id, true);
             } else {
-                alert(json.message || 'Hearing scheduled successfully! Subsequent mediation booked without re-issuing summons.');
+                notifyUser(json.message || 'Hearing scheduled successfully! Subsequent mediation booked without re-issuing summons.', 'success');
             }
         } else if (json.requires_convening_justification) {
             const justification = prompt(
@@ -2232,11 +2241,11 @@ async function submitSchedule(e) {
                     if (typeof openSummonsPreviewModal === 'function' && stageWorkspaceState.mode === 'Mediation' && retrySeq <= 1) {
                         openSummonsPreviewModal(stageWorkspaceState.caseId, null, retryJson.hearing_id, true);
                     } else {
-                        alert(retryJson.message || 'Hearing scheduled successfully with recorded administrative justification.');
+                        notifyUser(retryJson.message || 'Hearing scheduled successfully with recorded administrative justification.', 'success');
                     }
                     return;
                 } else {
-                    alert(retryJson.message || 'Unable to schedule hearing.');
+                    notifyUser(retryJson.message || 'Unable to schedule hearing.', 'error');
                 }
             }
         } else if (json.alternative_slots && json.alternative_slots.length) {
@@ -2266,18 +2275,18 @@ async function submitSchedule(e) {
                 if (retryJson.success) {
                     closeScheduleModal();
                     await loadStageData();
-                    alert(retryJson.message || 'Hearing scheduled successfully with recorded exception.');
+                    notifyUser(retryJson.message || 'Hearing scheduled successfully with recorded exception.', 'success');
                     return;
                 } else {
-                    alert(retryJson.message || 'Unable to schedule hearing.');
+                    notifyUser(retryJson.message || 'Unable to schedule hearing.', 'error');
                 }
             }
         } else {
-            alert(json.message || 'Unable to schedule hearing session.');
+            notifyUser(json.message || 'Unable to schedule hearing session.', 'error');
         }
     } catch (err) {
         console.error('submitSchedule error:', err);
-        alert('A network error occurred while scheduling hearing.');
+        notifyUser('A network error occurred while scheduling hearing.', 'error');
     } finally {
         if (btn) btn.disabled = false;
     }
@@ -2920,15 +2929,15 @@ async function submitAttendance(e) {
         });
         const json = await res.json();
         if (json.success) {
-            alert('Attendance records saved successfully.');
+            notifyUser('Attendance records saved successfully.', 'success');
             closeAttendanceModal();
             await loadStageData();
         } else {
-            alert(json.message || 'Unable to save attendance.');
+            notifyUser(json.message || 'Unable to save attendance.', 'error');
         }
     } catch (err) {
         console.error('submitAttendance error:', err);
-        alert('Network error saving attendance.');
+        notifyUser('Network error saving attendance.', 'error');
     } finally {
         if (btn) btn.disabled = false;
     }
@@ -3483,15 +3492,17 @@ async function submitReferPangkat(e) {
         });
         const json = await res.json();
         if (json.success) {
-            alert('Case successfully referred to Pangkat ng Tagapagkasundo! KP Form 10 generated.');
+            notifyUser('Case successfully referred to Pangkat ng Tagapagkasundo! KP Form 10 generated.', 'success');
             closeReferPangkatModal();
-            window.location.href = `pangkat-workspace.php?case_id=${encodeURIComponent(stageWorkspaceState.caseId)}`;
+            setTimeout(() => {
+                window.location.href = `pangkat-workspace.php?case_id=${encodeURIComponent(stageWorkspaceState.caseId)}`;
+            }, 600);
         } else {
-            alert(json.message || 'Unable to refer case to Pangkat.');
+            notifyUser(json.message || 'Unable to refer case to Pangkat.', 'error');
         }
     } catch (err) {
         console.error('submitReferPangkat error:', err);
-        alert('Network error during referral.');
+        notifyUser('Network error during referral.', 'error');
     } finally {
         if (btn) btn.disabled = false;
     }
@@ -4340,7 +4351,7 @@ async function handleRecordTransmittalSubmit(event) {
             throw new Error(json.message || 'Failed to record transmittal.');
         }
 
-        alert('✓ ' + (json.message || 'Court & DILG transmittal recorded successfully!'));
+        notifyUser(json.message || 'Court & DILG transmittal recorded successfully!', 'success');
         closeRecordTransmittalModal();
         if (stageWorkspaceState.caseId) {
             loadTransmittalCard(stageWorkspaceState.caseId);

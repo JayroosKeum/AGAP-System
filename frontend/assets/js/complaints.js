@@ -433,7 +433,7 @@ async function loadComplaintDetails() {
 
 
             } else {
-                const stSlug = (caseStage || data.lifecycle_status || 'pending').toLowerCase().replace(/[^a-z0-9]/g, '-');
+                const stSlug = (caseStage || data.lifecycle_status || 'paanyaya').toLowerCase().replace(/[^a-z0-9]/g, '-');
                 statusEl.className = 'case-stage-pill status-' + stSlug;
             }
             statusEl.textContent = displayStage;
@@ -1791,7 +1791,11 @@ function renderConciliationCard(stages, caseId, complaint) {
             linkEl.href = '#';
             linkEl.onclick = (e) => {
                 e.preventDefault();
-                alert('Pangkat Conciliation is locked. Complete the mediation stage and record an authorized referral to unlock this workspace.');
+                if (window.agapNotify) {
+                    window.agapNotify('Pangkat Conciliation is locked. Complete the mediation stage and record an authorized referral to unlock this workspace.', 'warning', 'Conciliation Locked');
+                } else {
+                    alert('Pangkat Conciliation is locked. Complete the mediation stage and record an authorized referral to unlock this workspace.');
+                }
             };
             linkEl.style.opacity = '0.6';
             linkEl.style.cursor = 'not-allowed';
@@ -2548,10 +2552,16 @@ function renderStatusTracker(progress) {
     const historyTimelineEl = document.getElementById('caseHistoryTimeline');
     if (!track) return;
 
-    const statuses = ['Pending', 'Mediation', 'Conciliation', 'CFA', 'Resolution / Closed'];
-    const currentStatus = statuses.includes(progress.lifecycle_status)
-        ? progress.lifecycle_status
-        : 'Pending';
+    const statuses = ['Paanyaya', 'Mediation', 'Conciliation', 'CFA', 'Resolution / Closed'];
+    let currentStatus = progress.lifecycle_status;
+    if (!currentStatus || currentStatus === 'Pre-Docketed (Paanyaya)' || currentStatus === 'Pending') {
+        currentStatus = 'Paanyaya';
+    } else if (currentStatus === 'Settled' || currentStatus === 'Resolved at Paanyaya / Closed') {
+        currentStatus = 'Resolution / Closed';
+    }
+    if (!statuses.includes(currentStatus)) {
+        currentStatus = 'Paanyaya';
+    }
     const currentIndex = statuses.indexOf(currentStatus);
 
     if (badge) {
@@ -2622,9 +2632,13 @@ function handleAddParty(e) {
         .then(() => {
             closeAddPartyModal();
             document.getElementById('addPartyForm').reset();
+            if (window.agapNotify) window.agapNotify('Party added successfully.', 'success');
             loadComplaintDetails();
         })
-        .catch(error => alert(error.message));
+        .catch(error => {
+            if (window.agapNotify) window.agapNotify(error.message, 'error');
+            else alert(error.message);
+        });
 }
 
 function deleteParty(partyId) {
@@ -2633,7 +2647,13 @@ function deleteParty(partyId) {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: 'party_id=' + encodeURIComponent(partyId)
-    }).then(loadComplaintDetails).catch(error => alert(error.message));
+    }).then(() => {
+        if (window.agapNotify) window.agapNotify('Party removed.', 'info');
+        loadComplaintDetails();
+    }).catch(error => {
+        if (window.agapNotify) window.agapNotify(error.message, 'error');
+        else alert(error.message);
+    });
 }
 function handleAddAttachment(e) {
     e.preventDefault();
@@ -2648,9 +2668,13 @@ function handleAddAttachment(e) {
         .then(() => {
             closeAddAttachmentModal();
             document.getElementById('addAttachmentForm').reset();
+            if (window.agapNotify) window.agapNotify('Attachment uploaded successfully.', 'success');
             loadComplaintDetails();
         })
-        .catch(error => alert(error.message));
+        .catch(error => {
+            if (window.agapNotify) window.agapNotify(error.message, 'error');
+            else alert(error.message);
+        });
 }
 function deleteAttachment(attachmentId) {
     if (!confirm('Are you sure you want to delete this attachment?')) return;
@@ -2658,7 +2682,13 @@ function deleteAttachment(attachmentId) {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: 'attachment_id=' + encodeURIComponent(attachmentId)
-    }).then(loadComplaintDetails).catch(error => alert(error.message));
+    }).then(() => {
+        if (window.agapNotify) window.agapNotify('Attachment deleted.', 'info');
+        loadComplaintDetails();
+    }).catch(error => {
+        if (window.agapNotify) window.agapNotify(error.message, 'error');
+        else alert(error.message);
+    });
 }
 
 // Keep existing functions for backward compatibility
@@ -4768,7 +4798,8 @@ window.submitSchedulePaanyaya = async function(event) {
             errBox.textContent = err.message || 'Error scheduling Paanyaya.';
             errBox.style.display = 'block';
         } else {
-            alert(err.message || 'Error scheduling Paanyaya.');
+            if (window.agapNotify) window.agapNotify(err.message || 'Error scheduling Paanyaya.', 'error');
+            else alert(err.message || 'Error scheduling Paanyaya.');
         }
     } finally {
         if (btn) {
@@ -4898,7 +4929,8 @@ window.submitPaanyayaOutcome = async function(event) {
             errBox.textContent = err.message || 'Error recording outcome.';
             errBox.style.display = 'block';
         } else {
-            alert(err.message || 'Error recording outcome.');
+            if (window.agapNotify) window.agapNotify(err.message || 'Error recording outcome.', 'error');
+            else alert(err.message || 'Error recording outcome.');
         }
     } finally {
         if (btn) {
@@ -5106,7 +5138,8 @@ window.submitIssuePaanyayaStage = async function(event) {
             errBox.textContent = err.message || 'Error issuing invitation.';
             errBox.style.display = 'block';
         } else {
-            alert(err.message || 'Error issuing invitation.');
+            if (window.agapNotify) window.agapNotify(err.message || 'Error issuing invitation.', 'error');
+            else alert(err.message || 'Error issuing invitation.');
         }
     } finally {
         if (btn) {
@@ -5279,7 +5312,8 @@ window.submitRecordOfficersReturn = async function(event) {
             errBox.textContent = err.message || 'Error recording return.';
             errBox.style.display = 'block';
         } else {
-            alert(err.message || 'Error recording return.');
+            if (window.agapNotify) window.agapNotify(err.message || 'Error recording return.', 'error');
+            else alert(err.message || 'Error recording return.');
         }
     } finally {
         if (btn) {
@@ -5493,7 +5527,8 @@ window.submitEditOfficersReturn = async function(event) {
             errBox.textContent = err.message || 'Error saving correction.';
             errBox.style.display = 'block';
         } else {
-            alert(err.message || 'Error saving correction.');
+            if (window.agapNotify) window.agapNotify(err.message || 'Error saving correction.', 'error');
+            else alert(err.message || 'Error saving correction.');
         }
     } finally {
         if (btn) {
@@ -5566,7 +5601,8 @@ window.submitPaanyayaReview = async function(event) {
             errBox.textContent = err.message || 'Error recording review decision.';
             errBox.style.display = 'block';
         } else {
-            alert(err.message || 'Error recording review decision.');
+            if (window.agapNotify) window.agapNotify(err.message || 'Error recording review decision.', 'error');
+            else alert(err.message || 'Error recording review decision.');
         }
     } finally {
         if (btn) {
@@ -5833,7 +5869,8 @@ window.submitPaanyayaMinutes = async function(event) {
             errBox.textContent = err.message || 'Error recording dialogue minutes.';
             errBox.style.display = 'block';
         } else {
-            alert(err.message || 'Error recording dialogue minutes.');
+            if (window.agapNotify) window.agapNotify(err.message || 'Error recording dialogue minutes.', 'error');
+            else alert(err.message || 'Error recording dialogue minutes.');
         }
     } finally {
         if (btn) {
@@ -5939,13 +5976,15 @@ window.closeReopenCfaModal = function() {
 window.submitReopenForCfa = async function() {
     const reason = (document.getElementById('reopenCfaReason')?.value || '').trim();
     if (!reason) {
-        alert('Please describe the non-compliance reason before proceeding.');
+        if (window.agapNotify) window.agapNotify('Please describe the non-compliance reason before proceeding.', 'warning');
+        else alert('Please describe the non-compliance reason before proceeding.');
         return;
     }
 
     const caseId = window._reopenCaseCaseId;
     if (!caseId) {
-        alert('Case ID not found. Please reload the page.');
+        if (window.agapNotify) window.agapNotify('Case ID not found. Please reload the page.', 'error');
+        else alert('Case ID not found. Please reload the page.');
         return;
     }
 
@@ -5974,12 +6013,14 @@ window.submitReopenForCfa = async function() {
                 }
             }, 1200);
         } else {
-            alert(json.message || 'Unable to reopen case. Please try again.');
+            if (window.agapNotify) window.agapNotify(json.message || 'Unable to reopen case. Please try again.', 'error');
+            else alert(json.message || 'Unable to reopen case. Please try again.');
             if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.innerHTML = '⚠️ Reopen &amp; Issue CFA'; }
             if (cancelBtn) cancelBtn.disabled = false;
         }
     } catch (err) {
-        alert('Network error. Please try again.');
+        if (window.agapNotify) window.agapNotify('Network error. Please try again.', 'error');
+        else alert('Network error. Please try again.');
         if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.innerHTML = '⚠️ Reopen &amp; Issue CFA'; }
         if (cancelBtn) cancelBtn.disabled = false;
     }

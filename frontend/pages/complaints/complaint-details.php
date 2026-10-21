@@ -1050,7 +1050,6 @@ include '../../layouts/header.php';
                 <button type="button" class="btn-create" id="btnFooterToOfficersReturn" onclick="proceedToOfficersReturnFromPreview()" style="background: #2563eb; border-color: #2563eb; padding: 8px 18px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(37,99,235,0.25);">
                     📝 Proceed to Officer's Return &rarr;
                 </button>
-                <button type="button" class="btn-secondary" onclick="closePaanyayaPreviewModal()">Close Preview</button>
         </div>
     </div>
 </div>

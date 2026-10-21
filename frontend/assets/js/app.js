@@ -254,12 +254,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const recentlyDisplayed = new Set();
     const showMessagePopup = (element) => {
-        if (!(element instanceof Element) || element.classList.contains('field-validation-message')) return;
+        if (!(element instanceof Element) || element.classList.contains('field-validation-message') || element.closest('.agap-toast') || element.closest('#agapToastContainer')) return;
         const message = element.textContent.trim();
         if (!message || recentlyDisplayed.has(`${element.id}:${message}`)) return;
+        const targetEl = element.closest('[role="alert"], [role="status"]') || element;
+        // Hide the original static banner to prevent layout shift
+        if (targetEl.id && !targetEl.classList.contains('modal-alert') && !targetEl.classList.contains('auth-message')) {
+            targetEl.style.display = 'none';
+        }
         recentlyDisplayed.add(`${element.id}:${message}`);
-        const type = element.classList.contains('error') ? 'error' : (element.classList.contains('success') ? 'success' : 'info');
-        window.agapNotify(message, type, type === 'error' ? 'Action needed' : 'AGAP update');
+        const type = element.classList.contains('error') || element.classList.contains('alert-danger') ? 'error' : ((element.classList.contains('success') || element.classList.contains('alert-success')) ? 'success' : 'info');
+        if (window.agapNotify) {
+            window.agapNotify(message, type, type === 'error' ? 'Attention Needed' : 'Notification');
+        }
     };
     new MutationObserver((mutations) => {
         mutations.forEach((mutation) => {

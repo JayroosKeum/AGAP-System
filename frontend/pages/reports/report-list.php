@@ -16,7 +16,7 @@ include '../../layouts/header.php';
             <p>Generate record-based monthly, quarterly, annual, and DILG reports.</p>
         </div>
         <main class="reports-content">
-            <div id="reportMessage" role="alert"></div>
+            <div id="reportMessage" role="alert" style="display: none;"></div>
 
             <!-- ── Standard Summary Report ─────────────────────────────── -->
             <section class="report-card">

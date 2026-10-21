@@ -77,9 +77,6 @@ include '../../layouts/header.php';
             <button type="button" class="nav-tab-btn" data-tab-status="Paanyaya">
                 Paanyaya <span class="tab-count-pill" id="tabCountPaanyaya">0</span>
             </button>
-            <button type="button" class="nav-tab-btn" data-tab-status="Pending">
-                Pending <span class="tab-count-pill" id="tabCountPending">0</span>
-            </button>
             <button type="button" class="nav-tab-btn" data-tab-status="Mediation">
                 Mediation <span class="tab-count-pill" id="tabCountMediation">0</span>
             </button>

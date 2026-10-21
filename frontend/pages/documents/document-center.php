@@ -18,7 +18,7 @@ include '../../layouts/header.php';
         <div class="page-header">
             <div><h1>KP Documents</h1><p>Generate and retrieve official Katarungang Pambarangay forms.</p></div>
         </div>
-        <div id="documentMessage" role="alert"></div>
+        <div id="documentMessage" role="alert" style="display: none;"></div>
 
         <?php if ($canManageDocuments): ?>
         <section class="document-card">

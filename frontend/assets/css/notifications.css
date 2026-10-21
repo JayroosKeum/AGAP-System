@@ -1,1 +1,512 @@
-.notifications-content { max-width: 960px; padding: 0 24px 32px; }.notification-summary { color:#475569; margin:0 0 14px; }.notification-list { display:grid; gap:12px; }.notification-item { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:18px; }.notification-item.unread { border-left:4px solid #166534; }.notification-item h2 { font-size:1rem; margin:0 0 8px; }.notification-item p { margin:0 0 10px; white-space:pre-wrap; }.notification-item time { color:#64748b; display:block; font-size:.875rem; margin-bottom:12px; }.btn-create { border:0; border-radius:6px; background:#166534; color:#fff; cursor:pointer; padding:8px 12px; }.alert { margin:0 0 16px; padding:12px 14px; border-radius:8px; }.alert.success { background:#e8f7ee; color:#176b3a; }.alert.error { background:#fdecec; color:#9d2525; }
+/* ==========================================================================
+   Modern Floating Toast Notification System (Global)
+   Zero layout-shift, fixed top-right, animated countdown, pause-on-hover
+   ========================================================================== */
+
+/* Toast Container */
+#agapToastContainer {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    z-index: 999999;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+    max-width: 420px;
+    width: calc(100% - 48px);
+}
+
+/* Individual Toast */
+.agap-toast {
+    pointer-events: auto;
+    background: #ffffff;
+    border-radius: 10px;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+    border: 1px solid #e2e8f0;
+    border-left: 5px solid #16a34a; /* Default Success */
+    padding: 14px 16px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    position: relative;
+    overflow: hidden;
+    animation: agapSlideInRight 0.25s ease-out;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    box-sizing: border-box;
+}
+
+.agap-toast.toast-error   { border-left-color: #ef4444; }
+.agap-toast.toast-warning { border-left-color: #f59e0b; }
+.agap-toast.toast-info    { border-left-color: #2563eb; }
+
+.agap-toast-icon {
+    font-size: 1.25rem;
+    line-height: 1;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.agap-toast-content {
+    flex-grow: 1;
+    min-width: 0;
+    word-break: break-word;
+}
+
+.agap-toast-title {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0 0 2px 0;
+}
+
+.agap-toast-message {
+    font-size: 0.84rem;
+    color: #475569;
+    margin: 0;
+    line-height: 1.4;
+}
+
+.agap-toast-close {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-size: 1.2rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    margin-left: 8px;
+    flex-shrink: 0;
+    transition: color 0.15s ease;
+}
+.agap-toast-close:hover { color: #0f172a; }
+
+/* Progress bar timer */
+.agap-toast-progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 3px;
+    background: rgba(0, 0, 0, 0.12);
+    width: 100%;
+    transform-origin: left;
+}
+
+@keyframes agapSlideInRight {
+    from { transform: translateX(110%); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+}
+
+/* ==========================================================================
+   Redesigned Notifications Inbox (Modern Compact Activity Stream)
+   ========================================================================== */
+
+.notifications-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+}
+
+.btn-mark-all-read {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    color: #1e293b;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.btn-mark-all-read:hover:not(:disabled) {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+    color: #0f172a;
+}
+
+.btn-mark-all-read:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn-mark-all-read .btn-icon {
+    color: #16a34a;
+    font-weight: bold;
+}
+
+.notifications-content {
+    max-width: 980px;
+    padding: 0 24px 32px;
+}
+
+/* Filter Pills Bar */
+.notif-filters-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.notif-filter-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 9999px;
+    color: #475569;
+    font-size: 0.84rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.notif-filter-pill:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+    border-color: #cbd5e1;
+}
+
+.notif-filter-pill.active {
+    background: #0f172a;
+    color: #ffffff;
+    border-color: #0f172a;
+    font-weight: 600;
+}
+
+.notif-filter-pill.filter-urgent.active {
+    background: #dc2626;
+    border-color: #dc2626;
+    color: #ffffff;
+}
+
+.notif-filter-pill.filter-warning.active {
+    background: #d97706;
+    border-color: #d97706;
+    color: #ffffff;
+}
+
+.notif-filter-pill.filter-info.active {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #ffffff;
+}
+
+.filter-count-badge {
+    display: inline-block;
+    padding: 1px 7px;
+    font-size: 0.74rem;
+    font-weight: 700;
+    border-radius: 9999px;
+    background: rgba(0, 0, 0, 0.08);
+}
+
+.notif-filter-pill.active .filter-count-badge {
+    background: rgba(255, 255, 255, 0.25);
+    color: #ffffff;
+}
+
+/* Status & Refresh Bar */
+.inbox-status-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.notification-summary {
+    color: #64748b;
+    font-size: 0.84rem;
+    margin: 0;
+}
+
+.btn-refresh-inbox {
+    background: transparent;
+    border: none;
+    color: #0284c7;
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: background 0.15s ease;
+}
+
+.btn-refresh-inbox:hover {
+    background: #f0f9ff;
+}
+
+/* Notification Activity Stream */
+.notification-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Compact Modern Activity Card */
+.notification-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+    transition: all 0.15s ease;
+    border-left: 5px solid #94a3b8; /* Default */
+    position: relative;
+}
+
+.notification-card:hover {
+    box-shadow: 0 4px 10px -2px rgba(0, 0, 0, 0.05);
+    border-color: #cbd5e1;
+}
+
+/* Urgency Color Coding */
+.notification-card.severity-urgent {
+    border-left-color: #ef4444;
+}
+.notification-card.severity-urgent.unread {
+    background: #fff8f8;
+    border-color: #fee2e2;
+    border-left-color: #ef4444;
+}
+
+.notification-card.severity-warning {
+    border-left-color: #f59e0b;
+}
+.notification-card.severity-warning.unread {
+    background: #fffdf5;
+    border-color: #fef3c7;
+    border-left-color: #f59e0b;
+}
+
+.notification-card.severity-info {
+    border-left-color: #2563eb;
+}
+.notification-card.severity-info.unread {
+    background: #f8fbff;
+    border-color: #e0f2fe;
+    border-left-color: #2563eb;
+}
+
+.notification-card.severity-success {
+    border-left-color: #16a34a;
+}
+.notification-card.severity-success.unread {
+    background: #f6fdf8;
+    border-color: #dcfce7;
+    border-left-color: #16a34a;
+}
+
+/* Card Read vs Unread State */
+.notification-card:not(.unread) {
+    opacity: 0.88;
+}
+.notification-card:not(.unread) .notif-title {
+    font-weight: 600;
+    color: #334155;
+}
+
+/* Card Internal Layout */
+.notif-card-indicator {
+    font-size: 1.15rem;
+    line-height: 1;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.notif-card-main {
+    flex-grow: 1;
+    min-width: 0;
+}
+
+.notif-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+}
+
+.notif-title-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.notif-severity-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    border-radius: 4px;
+}
+
+.badge-urgent {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.badge-warning {
+    background: #fef3c7;
+    color: #b45309;
+}
+
+.badge-info {
+    background: #e0f2fe;
+    color: #0369a1;
+}
+
+.badge-success {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.notif-title {
+    font-size: 0.94rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0;
+    line-height: 1.35;
+}
+
+.notif-time {
+    color: #64748b;
+    font-size: 0.78rem;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: default;
+}
+
+.notif-message {
+    color: #334155;
+    font-size: 0.85rem;
+    line-height: 1.45;
+    margin: 0 0 10px 0;
+    word-break: break-word;
+}
+
+/* Action Buttons Row */
+.notif-actions-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.btn-notif-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 12px;
+    font-size: 0.8rem;
+    border-radius: 6px;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border: 1px solid transparent;
+}
+
+/* Direct Primary Action: [ 🚀 Open Case ] */
+.btn-open-case {
+    background: #0284c7;
+    color: #ffffff !important;
+    border-color: #0284c7;
+    box-shadow: 0 1px 2px rgba(2, 132, 199, 0.2);
+}
+
+.btn-open-case:hover {
+    background: #0369a1;
+    border-color: #0369a1;
+}
+
+.notification-card.severity-urgent .btn-open-case {
+    background: #dc2626;
+    border-color: #dc2626;
+    box-shadow: 0 1px 2px rgba(220, 38, 38, 0.2);
+}
+.notification-card.severity-urgent .btn-open-case:hover {
+    background: #b91c1c;
+    border-color: #b91c1c;
+}
+
+.notification-card.severity-warning .btn-open-case {
+    background: #d97706;
+    border-color: #d97706;
+    box-shadow: 0 1px 2px rgba(217, 119, 6, 0.2);
+}
+.notification-card.severity-warning .btn-open-case:hover {
+    background: #b45309;
+    border-color: #b45309;
+}
+
+/* Secondary Action: [ Mark Read ] */
+.btn-mark-read {
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    color: #475569;
+}
+
+.btn-mark-read:hover {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+    color: #0f172a;
+}
+
+.badge-read-status {
+    color: #94a3b8;
+    font-size: 0.76rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px;
+}
+
+/* Empty State */
+.notif-empty-state {
+    background: #ffffff;
+    border: 1px dashed #cbd5e1;
+    border-radius: 10px;
+    padding: 40px 24px;
+    text-align: center;
+    color: #64748b;
+}
+
+.notif-empty-icon {
+    font-size: 2.5rem;
+    margin-bottom: 12px;
+    display: block;
+}
+
+.notif-empty-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 0 0 6px 0;
+}
+
+.notif-empty-desc {
+    font-size: 0.85rem;
+    color: #64748b;
+    margin: 0;
+}

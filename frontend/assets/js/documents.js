@@ -89,8 +89,15 @@ async function deleteDocument(id) {
 }
 
 function setMessage(message, success = false) {
+    if (window.agapNotify && message) {
+        window.agapNotify(message, success ? 'success' : 'error', 'KP Documents');
+    }
     const box = document.getElementById('documentMessage');
-    box.textContent = message; box.className = message ? (success ? 'alert success' : 'alert error') : '';
+    if (box) {
+        box.textContent = '';
+        box.className = '';
+        box.style.display = 'none';
+    }
 }
 function escapeHtml(value) { const node = document.createElement('div'); node.textContent = value ?? ''; return node.innerHTML; }
 function formatDateTime(value) { return value ? new Date(value.replace(' ', 'T')).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : ''; }
