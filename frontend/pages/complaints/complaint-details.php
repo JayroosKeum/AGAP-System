@@ -973,6 +973,45 @@ include '../../layouts/header.php';
     </div>
 </div>
 
+<!-- Modal: Official KP Form Document Preview & Print -->
+<div id="kpDocumentPreviewModal" class="modal" style="display:none; padding: 12px; box-sizing: border-box; align-items: center; justify-content: center; z-index: 9999;" role="dialog" aria-modal="true" aria-labelledby="kpDocModalHeading">
+    <div class="modal-content" style="max-width: 1350px; width: 96vw; height: calc(100vh - 24px); max-height: calc(100vh - 24px); display: flex; flex-direction: column; padding: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 25px 35px -5px rgba(0, 0, 0, 0.35); background: #ffffff;">
+        <div class="modal-header" style="padding: 14px 24px; margin-bottom: 0; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #ffffff; flex-shrink: 0;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span id="kpDocModalIcon" style="font-size: 1.3rem;">📄</span>
+                <div>
+                    <h2 id="kpDocModalHeading" style="font-size: 1.15rem; margin: 0; color: #0f172a; font-weight: 700;">KP Form Document Preview</h2>
+                    <p id="kpDocModalSub" style="margin: 2px 0 0; font-size: 0.78rem; color: #64748b;">Barangay Tumana Lupong Tagapamayapa Official Katarungang Pambarangay Form</p>
+                </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <button type="button" class="btn-create" onclick="printKpDocIframe()" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; font-weight: 600; font-size: 0.85rem;">
+                    🖨️ Print Form
+                </button>
+                <a id="btnDownloadKpDocPdf" href="#" class="btn-pdf-chip" download style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; text-decoration: none; font-size: 0.85rem;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    <span>PDF</span>
+                </a>
+                <button type="button" class="close-btn" onclick="closeKpDocumentPreviewModal()" aria-label="Close modal">&times;</button>
+            </div>
+        </div>
+        <div style="flex: 1 1 auto; overflow: hidden; background: #334155; min-height: 0; height: 100%; display: flex; position: relative;">
+            <iframe id="kpDocPreviewIframe" src="" style="width: 100%; height: 100%; border: none; background: #334155;"></iframe>
+        </div>
+        <div class="modal-actions" style="padding: 12px 24px; border-top: 1px solid #e2e8f0; background: #f8fafc; margin-top: 0; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-shrink: 0;">
+            <div id="kpDocModalFooterInfo" style="font-size: 0.82rem; color: #64748b;">
+                Official Katarungang Pambarangay Legal Document
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <button type="button" class="btn-create" onclick="printKpDocIframe()" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; font-weight: 600;">
+                    🖨️ Print Form
+                </button>
+                <button type="button" class="btn-secondary" onclick="closeKpDocumentPreviewModal()">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Modal: Upload / Replace Handwritten KP Form 7 Scan -->
 <div id="kp7UploadScanModal" class="modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="uploadScanModalTitle">
     <div class="modal-content" style="max-width: 520px; padding: 24px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);">

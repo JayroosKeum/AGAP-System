@@ -71,6 +71,9 @@ class Resident
 
     public function create($data)
     {
+        $homeLat = (isset($data['home_latitude']) && $data['home_latitude'] !== '') ? (float)$data['home_latitude'] : null;
+        $homeLng = (isset($data['home_longitude']) && $data['home_longitude'] !== '') ? (float)$data['home_longitude'] : null;
+
         $sql = "
             INSERT INTO residents
             (
@@ -83,29 +86,33 @@ class Resident
                 contact_no,
                 email,
                 address,
+                home_latitude,
+                home_longitude,
                 purok,
                 is_tenant
             )
             VALUES
             (
-                ?,?,?,?,?,?,?,?,?,?,?
+                ?,?,?,?,?,?,?,?,?,?,?,?,?
             )
         ";
 
         $stmt = $this->conn->prepare($sql);
 
         $success = $stmt->execute([
-            $data['first_name'],
-            $data['middle_name'],
-            $data['last_name'],
-            $data['birth_date'],
-            $data['gender'],
-            $data['civil_status'],
-            $data['contact_no'],
-            $data['email'],
-            $data['address'],
-            $data['purok'],
-            $data['is_tenant']
+            $data['first_name'] ?? '',
+            $data['middle_name'] ?? null,
+            $data['last_name'] ?? '',
+            $data['birth_date'] ?? null,
+            $data['gender'] ?? null,
+            $data['civil_status'] ?? null,
+            $data['contact_no'] ?? null,
+            $data['email'] ?? null,
+            $data['address'] ?? null,
+            $homeLat,
+            $homeLng,
+            $data['purok'] ?? null,
+            $data['is_tenant'] ?? 0
         ]);
 
         if (!$success) {
@@ -397,6 +404,9 @@ class Resident
 
     public function update($id, $data)
     {
+        $homeLat = (isset($data['home_latitude']) && $data['home_latitude'] !== '') ? (float)$data['home_latitude'] : (isset($data['latitude']) && $data['latitude'] !== '' ? (float)$data['latitude'] : null);
+        $homeLng = (isset($data['home_longitude']) && $data['home_longitude'] !== '') ? (float)$data['home_longitude'] : (isset($data['longitude']) && $data['longitude'] !== '' ? (float)$data['longitude'] : null);
+
         $sql = "
             UPDATE residents
             SET
@@ -409,6 +419,8 @@ class Resident
                 contact_no=?,
                 email=?,
                 address=?,
+                home_latitude=COALESCE(?, home_latitude),
+                home_longitude=COALESCE(?, home_longitude),
                 purok=?,
                 is_tenant=?
             WHERE resident_id=?
@@ -417,17 +429,19 @@ class Resident
         $stmt = $this->conn->prepare($sql);
 
         return $stmt->execute([
-            $data['first_name'],
-            $data['middle_name'],
-            $data['last_name'],
-            $data['birth_date'],
-            $data['gender'],
-            $data['civil_status'],
-            $data['contact_no'],
-            $data['email'],
-            $data['address'],
-            $data['purok'],
-            $data['is_tenant'],
+            $data['first_name'] ?? '',
+            $data['middle_name'] ?? null,
+            $data['last_name'] ?? '',
+            $data['birth_date'] ?? null,
+            $data['gender'] ?? null,
+            $data['civil_status'] ?? null,
+            $data['contact_no'] ?? null,
+            $data['email'] ?? null,
+            $data['address'] ?? null,
+            $homeLat,
+            $homeLng,
+            $data['purok'] ?? null,
+            $data['is_tenant'] ?? 0,
             $id
         ]);
     }

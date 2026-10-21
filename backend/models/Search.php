@@ -22,12 +22,10 @@ class Search
             $params[':term'] = '%' . $term . '%';
         }
 
-        $statuses = ['Filed', 'Under Review', 'Needs Information', 'Accepted', 'Rejected', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Dismissed', 'CFA Issued', 'Archived', 'Draft', 'Pre-Docketed (Paanyaya)', 'Resolved at Paanyaya / Closed'];
+        $statuses = ['Filed', 'Under Review', 'Needs Information', 'Accepted', 'Rejected', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Dismissed', 'CFA Issued', 'Archived', 'Pre-Docketed (Paanyaya)', 'Resolved at Paanyaya / Closed'];
         $filterStatus = $filters['status'] ?? '';
 
-        if ($filterStatus === 'Draft') {
-            $where[] = "(co.is_draft = 1 OR co.status = 'Draft')";
-        } elseif ($filterStatus === 'Paanyaya' || $filterStatus === 'Pre-Docketed (Paanyaya)' || $filterStatus === 'Pending') {
+        if ($filterStatus === 'Paanyaya' || $filterStatus === 'Pre-Docketed (Paanyaya)' || $filterStatus === 'Pending') {
             $where[] = "(c.case_id IS NULL AND (co.status = 'Pre-Docketed (Paanyaya)' OR co.status = 'Resolved at Paanyaya / Closed' OR co.status LIKE '%Paanyaya%' OR co.status NOT IN ('Mediation','Conciliation','CFA Issued','Settled','Dismissed','Archived','Arbitration','Rejected')))";
         } elseif ($filterStatus === 'Resolution / Closed') {
             $where[] = "(EXISTS (SELECT 1 FROM settlements s_closed WHERE s_closed.case_id = c.case_id)
@@ -236,10 +234,8 @@ class Search
         }
 
         // 3. Intake / Administrative Status (Current administrative state)
-        $intake = 'Under Review';
-        if (!empty($row['is_draft']) || ($row['complaint_status'] ?? '') === 'Draft') {
-            $intake = 'Draft';
-        } elseif (!empty($row['case_id']) || ($row['case_status'] ?? '') === 'Docketed' || ($row['complaint_status'] ?? '') === 'Docketed' || $stage !== 'None' || $isStageExhausted) {
+        $intake = 'Paanyaya';
+        if (!empty($row['case_id']) || ($row['case_status'] ?? '') === 'Docketed' || ($row['complaint_status'] ?? '') === 'Docketed' || $stage !== 'None' || $isStageExhausted) {
             $intake = 'Docketed';
         }
 
@@ -281,10 +277,6 @@ class Search
         // Paanyaya status should not be combined with other status
         if (str_contains($caseStatus, 'Paanyaya') || str_contains($complaintStatus, 'Paanyaya') || ($row['current_stage'] ?? '') === 'Paanyaya') {
             return 'Paanyaya';
-        }
-
-        if (!empty($row['is_draft']) || $complaintStatus === 'Draft') {
-            return 'Draft';
         }
 
         $closedStatuses = ['Settled', 'Dismissed', 'Archived', 'Rejected', 'Arbitration', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT'];

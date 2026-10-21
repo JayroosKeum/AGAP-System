@@ -286,10 +286,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch('../../../backend/api/notifications/list.php');
             const result = await response.json();
             if (!response.ok || result.success === false) return;
+            if (typeof window.updateNavNotificationBadge === 'function') {
+                window.updateNavNotificationBadge(Number(result.unread_count || 0));
+            }
             const unseen = (result.data || []).filter((item) => !Number(item.is_read) && !seen.has(String(item.notification_id)));
             unseen.slice(0, 3).forEach((item) => {
                 seen.add(String(item.notification_id));
-                window.agapNotify(item.message, 'info', item.title || 'New notification');
+                window.agapNotify(item.message, item.severity || 'info', item.title || 'New notification');
             });
             sessionStorage.setItem(seenKey, JSON.stringify([...seen].slice(-100)));
         } catch (_) { /* Notification polling must not interrupt page work. */ }

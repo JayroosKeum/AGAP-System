@@ -31,12 +31,21 @@ if (!$complaint) {
 }
 
 // Fetch categories
-$categoriesStmt = $db->query('SELECT category_id, category_name FROM complaint_categories ORDER BY category_id ASC');
+$categoriesStmt = $db->query("
+    SELECT category_id, category_name 
+    FROM complaint_categories 
+    ORDER BY 
+        CASE 
+            WHEN category_name LIKE 'Others%' OR category_name LIKE 'Iba pa%' THEN 1 
+            ELSE 0 
+        END ASC, 
+        category_name ASC
+");
 $categories = $categoriesStmt ? $categoriesStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
 // Fetch residents for selection / directory quickfill
 $residentsStmt = $db->query("
-    SELECT resident_id, first_name, middle_name, last_name, suffix, birth_date, gender, civil_status, occupation, contact_no, email, preferred_contact, purok, address, is_tenant, residency_verified
+    SELECT resident_id, first_name, middle_name, last_name, suffix, birth_date, gender, civil_status, occupation, contact_no, email, preferred_contact, purok, address, home_latitude, home_longitude, is_tenant, residency_verified
     FROM residents 
     ORDER BY last_name ASC, first_name ASC
 ");
@@ -80,6 +89,8 @@ foreach ($residents as $res) {
         'address_text' => $addressText,
         'contact_no' => $res['contact_no'] ?? '',
         'email' => $res['email'] ?? '',
+        'home_latitude' => isset($res['home_latitude']) && $res['home_latitude'] !== '' && $res['home_latitude'] !== null ? (float)$res['home_latitude'] : null,
+        'home_longitude' => isset($res['home_longitude']) && $res['home_longitude'] !== '' && $res['home_longitude'] !== null ? (float)$res['home_longitude'] : null,
         'is_tenant' => $isTenantInt,
         'residency_label' => $resLabel,
         'residency_verified' => (int)($res['residency_verified'] ?? 1),
@@ -136,6 +147,8 @@ $location = $locStmt->fetch(PDO::FETCH_ASSOC) ?: [];
 // Fetch parties with full demographic and guardian columns
 $partyStmt = $db->prepare("
     SELECT cp.party_id, cp.party_type, cp.resident_id,
+           COALESCE(cp.home_latitude, r.home_latitude) AS home_latitude,
+           COALESCE(cp.home_longitude, r.home_longitude) AS home_longitude,
            cp.is_minor, cp.guardian_name, cp.guardian_relationship, cp.guardian_contact, cp.guardian_address,
            cp.preferred_contact, cp.suffix, cp.occupation, cp.age, cp.birth_date, cp.gender, cp.civil_status,
            cp.contact_unknown, cp.middle_name_unknown, cp.birthdate_unknown, cp.address_requires_verification, cp.residency_verified,
@@ -171,6 +184,8 @@ foreach ($parties as $p) {
         'purok' => $p['purok'] ?? '',
         'is_tenant' => (string)($p['is_tenant'] ?? '0'),
         'address' => $p['address'] ?? '',
+        'home_latitude' => isset($p['home_latitude']) && $p['home_latitude'] !== '' && $p['home_latitude'] !== null ? (float)$p['home_latitude'] : null,
+        'home_longitude' => isset($p['home_longitude']) && $p['home_longitude'] !== '' && $p['home_longitude'] !== null ? (float)$p['home_longitude'] : null,
         'is_minor' => !empty($p['is_minor']),
         'guardian_name' => $p['guardian_name'] ?? '',
         'guardian_relationship' => $p['guardian_relationship'] ?? '',
@@ -220,6 +235,7 @@ unset($_SESSION['complaint_flash']);
 
 // Determine effective values (Old input > Database record)
 $effCategoryId = $old['category_id'] ?? $complaint['category_id'];
+$effOtherCategorySpec = $old['other_category_specification'] ?? ($complaint['other_category_specification'] ?? '');
 $effCaseType = $old['case_type'] ?? ($complaint['case_type'] ?? 'Civil');
 $effTitle = $old['complaint_title'] ?? $complaint['complaint_title'];
 
@@ -291,7 +307,7 @@ include __DIR__ . '/../../layouts/header.php';
                     <a href="complaint-details.php?id=<?php echo $complaintId; ?>" class="btn-secondary" style="text-decoration:none; display:inline-flex; align-items:center;">Cancel</a>
                     <button type="submit" form="editComplaintForm" class="btn-create" id="btnSubmitComplaint" style="display:inline-flex; align-items:center; gap:6px;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-                        <?php echo (($complaint['status'] ?? '') === 'Draft') ? 'Submit &amp; File Officially' : 'Save Changes'; ?>
+                        Save Changes
                     </button>
                 </div>
             </div>
@@ -307,7 +323,6 @@ include __DIR__ . '/../../layouts/header.php';
             <form id="editComplaintForm" action="../../../backend/api/complaints/update.php" method="POST" enctype="multipart/form-data" class="complaint-intake-form">
                 <input type="hidden" name="complaint_id" value="<?php echo $complaintId; ?>">
                 <input type="hidden" name="bypass_office_hours" value="1">
-                <input type="hidden" name="is_draft" id="isDraftInput" value="<?php echo !empty($complaint['is_draft']) ? '1' : '0'; ?>">
 
                 <div class="intake-layout-container">
 
@@ -508,6 +523,16 @@ include __DIR__ . '/../../layouts/header.php';
                                 </div>
                             </div>
 
+                            <!-- "Others Please Specify" Input (Dynamically shown when Others is selected) -->
+                            <div class="form-group" id="otherCategoryWrapper" style="display: none; margin-top: 8px; margin-bottom: 12px;">
+                                <label for="otherCategorySpecification" style="font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 6px;">
+                                    <span>📝 Specify Complaint Category / Pakitukoy ang Kategorya</span>
+                                    <span class="required-mark">*</span>
+                                </label>
+                                <input type="text" id="otherCategorySpecification" name="other_category_specification" maxlength="255" placeholder="Pakitukoy ang partikular na alitan o kategorya (e.g. Alitan sa bintana, ingay ng aircon)..." value="<?php echo htmlspecialchars($effOtherCategorySpec); ?>" style="border: 1.5px solid #3b82f6; background: #f8fafc; border-radius: 6px; padding: 9px 12px; font-size: 0.9rem;">
+                                <small style="color: #64748b; font-size: 0.8rem; display: block; margin-top: 4px;">Specify the dispute details covered under Katarungang Pambarangay jurisdiction.</small>
+                            </div>
+
                             <div class="form-row-2">
                                 <div class="form-group">
                                     <label for="complaintTitle">Complaint Title / Specific Nature <span class="required-mark">*</span></label>
@@ -639,6 +664,8 @@ include __DIR__ . '/../../layouts/header.php';
                             <input type="hidden" id="complainantPurok" name="complainant_purok" value="">
                             <input type="hidden" id="complainantIsTenant" name="complainant_is_tenant" value="0">
                             <input type="hidden" id="complainantAddress" name="complainant_address" value="">
+                            <input type="hidden" id="complainantLatitude" name="complainant_latitude" value="">
+                            <input type="hidden" id="complainantLongitude" name="complainant_longitude" value="">
                             <input type="hidden" id="complainantIsMinor" name="complainant_is_minor" value="0">
                             <input type="hidden" id="complainantGuardianName" name="complainant_guardian_name" value="">
                             <input type="hidden" id="complainantGuardianRelationship" name="complainant_guardian_relationship" value="">
@@ -662,6 +689,8 @@ include __DIR__ . '/../../layouts/header.php';
                             <input type="hidden" id="respondentPurok" name="respondent_purok" value="">
                             <input type="hidden" id="respondentIsTenant" name="respondent_is_tenant" value="0">
                             <input type="hidden" id="respondentAddress" name="respondent_address" value="">
+                            <input type="hidden" id="respondentLatitude" name="respondent_latitude" value="">
+                            <input type="hidden" id="respondentLongitude" name="respondent_longitude" value="">
                             <input type="hidden" id="respondentIsMinor" name="respondent_is_minor" value="0">
                             <input type="hidden" id="respondentGuardianName" name="respondent_guardian_name" value="">
                             <input type="hidden" id="respondentGuardianRelationship" name="respondent_guardian_relationship" value="">
@@ -1096,6 +1125,8 @@ include __DIR__ . '/../../layouts/header.php';
                             </button>
                         </div>
                         <input type="text" id="modalAddress" required placeholder="House #, Street name, Purok/Compound, Barangay Tumana">
+                        <input type="hidden" id="modalLatitude" value="">
+                        <input type="hidden" id="modalLongitude" value="">
                     </div>
 
                     <!-- Interactive Address Pinning Map -->
@@ -1178,6 +1209,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Expose registered residents data for combobox components
     window.AGAP_RESIDENTS = <?php echo json_encode($residentsJsonData, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
+
+    // Dynamic "Others (Please Specify)" Category Handler
+    const categorySelectEl = document.getElementById('categoryId');
+    const otherCategoryWrapperEl = document.getElementById('otherCategoryWrapper');
+    const otherCategoryInputEl = document.getElementById('otherCategorySpecification');
+
+    function syncOtherCategoryVisibility() {
+        if (!categorySelectEl || !otherCategoryWrapperEl || !otherCategoryInputEl) return;
+        const selectedOption = categorySelectEl.options[categorySelectEl.selectedIndex];
+        const selectedText = selectedOption ? selectedOption.text : '';
+        const isOthers = selectedText.includes('Others') || selectedText.includes('Iba pa');
+
+        if (isOthers) {
+            otherCategoryWrapperEl.style.display = 'block';
+            otherCategoryInputEl.required = true;
+        } else {
+            otherCategoryWrapperEl.style.display = 'none';
+            otherCategoryInputEl.required = false;
+        }
+    }
+
+    categorySelectEl?.addEventListener('change', () => {
+        syncOtherCategoryVisibility();
+        if (otherCategoryWrapperEl?.style.display === 'block') {
+            otherCategoryInputEl?.focus();
+        }
+    });
+    syncOtherCategoryVisibility();
 
     // Distinct parties validation
     window.validateDistinctParties = function() {
@@ -1291,13 +1350,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const editForm = document.getElementById('editComplaintForm');
     if (editForm) {
         editForm.addEventListener('submit', (e) => {
-            const isDraft = document.getElementById('isDraftInput')?.value === '1';
-            if (isDraft) {
-                const submitBtn = document.getElementById('btnSubmitComplaint');
-                if (submitBtn) submitBtn.disabled = true;
-                return;
-            }
-
             const compFirst = document.getElementById('complainantFirstName')?.value?.trim();
             const compLast  = document.getElementById('complainantLastName')?.value?.trim();
             const compId    = document.getElementById('complainantResidentId')?.value?.trim();
@@ -1482,10 +1534,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 initPartyAddressMap();
                 if (partyMapInstance) {
                     partyMapInstance.invalidateSize();
-                    const curAddr = document.getElementById('modalAddress')?.value?.trim();
-                    const curPurok = document.getElementById('modalPurok')?.value?.trim();
-                    if (curAddr || curPurok) {
-                        window.geocodeAndPinPartyAddress?.(curAddr, curPurok);
+                    const latVal = parseFloat(document.getElementById('modalLatitude')?.value);
+                    const lngVal = parseFloat(document.getElementById('modalLongitude')?.value);
+                    if (!isNaN(latVal) && !isNaN(lngVal) && latVal !== 0 && lngVal !== 0) {
+                        setPartyAddressMapPoint(latVal, lngVal, false);
+                    } else {
+                        const curAddr = document.getElementById('modalAddress')?.value?.trim();
+                        const curPurok = document.getElementById('modalPurok')?.value?.trim();
+                        if (curAddr || curPurok) {
+                            window.geocodeAndPinPartyAddress?.(curAddr, curPurok);
+                        }
                     }
                 }
             }, 150);
@@ -1529,6 +1587,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (pCoords) pCoords.textContent = '';
         const resIdEl = document.getElementById('modalResidentId');
         if (resIdEl) resIdEl.value = '';
+        const latEl = document.getElementById('modalLatitude');
+        if (latEl) latEl.value = '';
+        const lngEl = document.getElementById('modalLongitude');
+        if (lngEl) lngEl.value = '';
         ['modalFirstName', 'modalMiddleName', 'modalLastName', 'modalSuffix',
          'modalBirthdate', 'modalAge', 'modalContactNo', 'modalEmail', 'modalAddress',
          'modalGuardianName', 'modalGuardianRelationship', 'modalGuardianContact', 'modalGuardianAddress'].forEach(id => {
@@ -1578,6 +1640,8 @@ document.addEventListener('DOMContentLoaded', () => {
         setV('modalPurok', p.purok);
         setV('modalIsTenant', p.is_tenant ?? '0');
         setV('modalAddress', p.address);
+        setV('modalLatitude', p.home_latitude ?? p.latitude ?? '');
+        setV('modalLongitude', p.home_longitude ?? p.longitude ?? '');
 
         let isMinorVal = false;
         if (p.age !== undefined && p.age !== null && p.age !== '' && !isNaN(p.age)) {
@@ -1722,6 +1786,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (res.is_tenant !== undefined) setV('modalIsTenant', String(res.is_tenant));
                 if (res.address) {
                     setV('modalAddress', res.address);
+                }
+                const hasLat = res.home_latitude !== undefined && res.home_latitude !== null && res.home_latitude !== '';
+                const hasLng = res.home_longitude !== undefined && res.home_longitude !== null && res.home_longitude !== '';
+                if (hasLat && hasLng) {
+                    setV('modalLatitude', res.home_latitude);
+                    setV('modalLongitude', res.home_longitude);
+                    setTimeout(() => {
+                        if (!partyMapInstance) initPartyAddressMap();
+                        if (partyMapInstance) {
+                            setPartyAddressMapPoint(parseFloat(res.home_latitude), parseFloat(res.home_longitude), false);
+                        }
+                    }, 100);
+                } else if (res.address) {
+                    setV('modalLatitude', '');
+                    setV('modalLongitude', '');
                     setTimeout(() => window.geocodeAndPinPartyAddress?.(res.address, res.purok), 100);
                 }
             }
@@ -1878,10 +1957,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (partyMapMarker && partyMapInstance) {
                     partyMapInstance.removeLayer(partyMapMarker);
                     partyMapMarker = null;
-        }
-        if (partyMapInstance) {
-            partyMapInstance.setView([14.6565, 121.0945], 16);
-            partyMapInstance.invalidateSize();
+                }
+                const latEl = document.getElementById('modalLatitude');
+                if (latEl) latEl.value = '';
+                const lngEl = document.getElementById('modalLongitude');
+                if (lngEl) lngEl.value = '';
+                if (partyMapInstance) {
+                    partyMapInstance.setView([14.6565, 121.0945], 16);
+                    partyMapInstance.invalidateSize();
                 }
                 const statusEl = document.getElementById('modalPartyMapStatus');
                 if (statusEl) statusEl.textContent = 'Pin cleared. Click on map to pin address.';
@@ -1891,22 +1974,38 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function setPartyAddressMapPoint(lat, lng) {
+    async function setPartyAddressMapPoint(lat, lng, doReverseGeocode = true) {
         if (!partyMapInstance) return;
 
         if (!partyMapMarker) {
             partyMapMarker = L.marker([lat, lng], { draggable: true }).addTo(partyMapInstance);
             partyMapMarker.on('dragend', (e) => {
                 const pos = e.target.getLatLng();
-                setPartyAddressMapPoint(pos.lat, pos.lng);
+                setPartyAddressMapPoint(pos.lat, pos.lng, true);
             });
         } else {
             partyMapMarker.setLatLng([lat, lng]);
+            if (!partyMapInstance.hasLayer(partyMapMarker)) {
+                partyMapMarker.addTo(partyMapInstance);
+            }
         }
+
+        const latInput = document.getElementById('modalLatitude');
+        const lngInput = document.getElementById('modalLongitude');
+        if (latInput) latInput.value = lat;
+        if (lngInput) lngInput.value = lng;
 
         const coordsEl = document.getElementById('modalPartyMapCoords');
         if (coordsEl) {
             coordsEl.textContent = `${lat.toFixed(6)}° N, ${lng.toFixed(6)}° E`;
+        }
+
+        if (!doReverseGeocode) {
+            partyMapInstance.setView([lat, lng], 17);
+            partyMapInstance.invalidateSize();
+            const statusEl = document.getElementById('modalPartyMapStatus');
+            if (statusEl) statusEl.textContent = '📍 Address pinned from saved profile coordinates.';
+            return;
         }
 
         const statusEl = document.getElementById('modalPartyMapStatus');
@@ -2134,6 +2233,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (requestVersion !== partyMapLookupVersion) return;
 
         if (foundLat !== null && foundLng !== null) {
+            const latInput = document.getElementById('modalLatitude');
+            const lngInput = document.getElementById('modalLongitude');
+            if (latInput) latInput.value = foundLat;
+            if (lngInput) lngInput.value = foundLng;
+
             if (!partyMapMarker) {
                 partyMapMarker = L.marker([foundLat, foundLng], { draggable: true }).addTo(partyMapInstance);
                 partyMapMarker.on('dragend', (e) => {
@@ -2268,6 +2372,8 @@ document.addEventListener('DOMContentLoaded', () => {
             purok: document.getElementById('modalPurok')?.value || '',
             is_tenant: document.getElementById('modalIsTenant')?.value || '0',
             address: document.getElementById('modalAddress')?.value?.trim() || '',
+            home_latitude: document.getElementById('modalLatitude')?.value || null,
+            home_longitude: document.getElementById('modalLongitude')?.value || null,
             is_minor: !!isMinor,
             guardian_name: isMinor ? (document.getElementById('modalGuardianName')?.value?.trim() || '') : '',
             guardian_relationship: isMinor ? (document.getElementById('modalGuardianRelationship')?.value?.trim() || '') : '',
@@ -2348,6 +2454,8 @@ document.addEventListener('DOMContentLoaded', () => {
             setComp('complainantPurok', comp.purok);
             setComp('complainantIsTenant', comp.is_tenant);
             setComp('complainantAddress', comp.address);
+            setComp('complainantLatitude', comp.home_latitude ?? comp.latitude ?? '');
+            setComp('complainantLongitude', comp.home_longitude ?? comp.longitude ?? '');
             setComp('complainantIsMinor', comp.is_minor ? '1' : '0');
             setComp('complainantGuardianName', comp.guardian_name);
             setComp('complainantGuardianRelationship', comp.guardian_relationship);
@@ -2357,7 +2465,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ['complainantResidentId', 'complainantName', 'complainantFirstName', 'complainantMiddleName',
              'complainantLastName', 'complainantSuffix', 'complainantBirthdate', 'complainantAge',
              'complainantGender', 'complainantCivilStatus', 'complainantOccupation', 'complainantContactNo',
-             'complainantEmail', 'complainantPurok', 'complainantAddress', 'complainantGuardianName',
+             'complainantEmail', 'complainantPurok', 'complainantAddress', 'complainantLatitude', 'complainantLongitude', 'complainantGuardianName',
              'complainantGuardianRelationship', 'complainantGuardianContact', 'complainantGuardianAddress'].forEach(id => setComp(id, ''));
             setComp('complainantPreferredContact', 'SMS');
             setComp('complainantIsTenant', '0');
@@ -2389,6 +2497,8 @@ document.addEventListener('DOMContentLoaded', () => {
             setResp('respondentPurok', resp.purok);
             setResp('respondentIsTenant', resp.is_tenant);
             setResp('respondentAddress', resp.address);
+            setResp('respondentLatitude', resp.home_latitude ?? resp.latitude ?? '');
+            setResp('respondentLongitude', resp.home_longitude ?? resp.longitude ?? '');
             setResp('respondentIsMinor', resp.is_minor ? '1' : '0');
             setResp('respondentGuardianName', resp.guardian_name);
             setResp('respondentGuardianRelationship', resp.guardian_relationship);
@@ -2401,7 +2511,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ['respondentResidentId', 'respondentName', 'respondentFirstName', 'respondentMiddleName',
              'respondentLastName', 'respondentSuffix', 'respondentBirthdate', 'respondentAge',
              'respondentGender', 'respondentCivilStatus', 'respondentOccupation', 'respondentContactNo',
-             'respondentEmail', 'respondentPurok', 'respondentAddress', 'respondentGuardianName',
+             'respondentEmail', 'respondentPurok', 'respondentAddress', 'respondentLatitude', 'respondentLongitude', 'respondentGuardianName',
              'respondentGuardianRelationship', 'respondentGuardianContact', 'respondentGuardianAddress',
              'respContactUnknown', 'respMiddleUnknown', 'respBirthUnknown'].forEach(id => setResp(id, ''));
             setResp('respondentIsTenant', '0');
@@ -2427,6 +2537,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     <input type="hidden" name="party_contacts[]" value="${escapeHtml(p.contact_no || '')}">
                     <input type="hidden" name="party_addresses[]" value="${escapeHtml(p.address || '')}">
                     <input type="hidden" name="party_puroks[]" value="${escapeHtml(p.purok || '')}">
+                    <input type="hidden" name="party_latitudes[]" value="${escapeHtml(p.home_latitude ?? p.latitude ?? '')}">
+                    <input type="hidden" name="party_longitudes[]" value="${escapeHtml(p.home_longitude ?? p.longitude ?? '')}">
                 `;
             }
             // Additional respondents (index 1+)
@@ -2444,6 +2556,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     <input type="hidden" name="party_contacts[]" value="${escapeHtml(p.contact_no || '')}">
                     <input type="hidden" name="party_addresses[]" value="${escapeHtml(p.address || '')}">
                     <input type="hidden" name="party_puroks[]" value="${escapeHtml(p.purok || '')}">
+                    <input type="hidden" name="party_latitudes[]" value="${escapeHtml(p.home_latitude ?? p.latitude ?? '')}">
+                    <input type="hidden" name="party_longitudes[]" value="${escapeHtml(p.home_longitude ?? p.longitude ?? '')}">
                 `;
             }
             addContainer.innerHTML = html;
@@ -2961,31 +3075,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (e.target === kp7Modal) kp7Modal.style.display = 'none';
         });
     }
-
-    // ── Save as Draft Handler ──
-    function handleSaveDraft(triggerBtn) {
-        const isDraftInput = document.getElementById('isDraftInput');
-        if (isDraftInput) isDraftInput.value = '1';
-        if (triggerBtn) {
-            triggerBtn.disabled = true;
-            triggerBtn.textContent = 'Saving Draft...';
-        }
-
-        const form = document.getElementById('editComplaintForm');
-        if (form) {
-            form.querySelectorAll('[required]').forEach(el => {
-                el.dataset.wasRequired = 'true';
-                el.removeAttribute('required');
-            });
-            form.submit();
-        }
-    }
-
-    ['btnHeaderSaveDraft', 'btnBottomSaveDraft'].forEach(id => {
-        document.getElementById(id)?.addEventListener('click', function() {
-            handleSaveDraft(this);
-        });
-    });
 
     // ── Quick-Nav ScrollSpy & Smooth Scrolling ──
     const quickNavLinks = document.querySelectorAll('#intakeQuickNav .quicknav-link');

@@ -9,32 +9,34 @@ require_once __DIR__ . '/../../backend/services/PDFService.php';
 echo "Testing Paanyaya flow...\n";
 $db = (new Database())->connect();
 
-// 1. Create a dummy complaint
+// Ensure we have 2 residents
+$res = $db->query("SELECT resident_id FROM residents LIMIT 2")->fetchAll(PDO::FETCH_COLUMN);
+$c_res = (int) ($res[0] ?? 1);
+$r_res = (int) ($res[1] ?? 2);
+
+// 1. Create a complaint
 $complaintModel = new Complaint();
 $createRes = $complaintModel->create([
     'complaint_title' => 'Test Paanyaya Boundary Dispute',
     'category_id' => 1,
+    'case_type' => 'Civil',
     'incident_date' => '2026-10-15',
-    'incident_time' => '10:00:00',
-    'incident_place' => 'Block 4 Lot 2, Barangay Tumana',
+    'incident_time' => '10:00',
+    'incident_street' => 'Block 4 Lot 2, Barangay Tumana',
+    'incident_barangay' => 'Tumana',
+    'incident_city' => 'Marikina City',
     'narrative' => 'Nagkaroon ng hindi pagkakaunawaan tungkol sa bakod sa pagitan ng magkapitbahay.',
-    'relief_sought' => 'Maayos na pag-uusap at pagtatakda ng tamang boundary.',
-    'is_draft' => 1,
+    'requested_resolution' => 'Maayos na pag-uusap at pagtatakda ng tamang boundary.',
+    'complainant_resident_id' => $c_res,
+    'respondent_resident_id' => $r_res,
+    'latitude' => 14.6521,
+    'longitude' => 121.0854,
+    'duplicate_acknowledged' => 1,
+    'jurisdiction_screened' => 1,
     'created_by' => 1
 ]);
 $cid = (int)($createRes['complaint_id'] ?? 0);
 echo "Complaint created: ID {$cid}\n";
-
-// Ensure we have 2 residents
-$res = $db->query("SELECT resident_id FROM residents LIMIT 2")->fetchAll(PDO::FETCH_COLUMN);
-$c_res = $res[0] ?? 1;
-$r_res = $res[1] ?? 2;
-
-// Link a complainant and respondent
-$stmt = $db->prepare("INSERT INTO complaint_parties (complaint_id, resident_id, party_type) VALUES (?, ?, 'Complainant')");
-$stmt->execute([$cid, $c_res]);
-$stmt = $db->prepare("INSERT INTO complaint_parties (complaint_id, resident_id, party_type) VALUES (?, ?, 'Respondent')");
-$stmt->execute([$cid, $r_res]);
 
 // 2. Schedule Paanyaya
 $paanyayaModel = new Paanyaya();

@@ -64,7 +64,7 @@ $trackingNumber = $createResult['complaint_number'];
 
 echo "  ✓ Complaint created with ID: {$complaintId}\n";
 echo "  ✓ Tracking Number: {$trackingNumber}\n";
-assert(str_starts_with($trackingNumber, 'CMP-'), "Tracking number must start with CMP- (not a court docket number)");
+assert(str_starts_with($trackingNumber, 'CMP-') || str_starts_with($trackingNumber, 'P-'), "Tracking number must start with CMP- or P- (not a court docket number)");
 
 // Verify status in DB
 $cCheck = $db->query("SELECT status, complaint_number, paanyaya_attempt_count, resolved_without_docketing FROM complaints WHERE complaint_id = {$complaintId}")->fetch(PDO::FETCH_ASSOC);

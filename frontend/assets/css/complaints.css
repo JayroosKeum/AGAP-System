@@ -2978,9 +2978,10 @@ input[data-ai-external-consent]:focus {
    Single-Page Long-Form Layout & Quick-Nav Wireframe (Prototype Alignment)
    ========================================================================== */
 .intake-main-wrapper {
-    max-width: 1300px;
+    width: 100%;
+    max-width: 1680px;
     margin: 0 auto;
-    padding: 24px 30px 40px;
+    padding: 24px clamp(16px, 2.5vw, 40px) 40px;
     box-sizing: border-box;
 }
 
@@ -3073,7 +3074,7 @@ input[data-ai-external-consent]:focus {
     font-size: 0.88rem;
     color: #64748b;
     margin: 0;
-    max-width: 780px;
+    max-width: 1000px;
     line-height: 1.45;
 }
 
@@ -3116,13 +3117,20 @@ input[data-ai-external-consent]:focus {
 /* 2-Column Wireframe Grid */
 .intake-layout-container {
     display: grid;
-    grid-template-columns: 240px minmax(0, 1fr);
-    gap: 28px;
+    grid-template-columns: 260px minmax(0, 1fr);
+    gap: 32px;
     align-items: start;
+}
+@media (min-width: 1600px) {
+    .intake-layout-container {
+        grid-template-columns: 280px minmax(0, 1fr);
+        gap: 36px;
+    }
 }
 @media (max-width: 1024px) {
     .intake-layout-container {
         grid-template-columns: 1fr;
+        gap: 20px;
     }
 }
 
@@ -3417,7 +3425,7 @@ input[data-ai-external-consent]:focus {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    max-width: 1300px;
+    max-width: 1680px;
     margin: 0 auto;
     width: 100%;
     flex-wrap: wrap;

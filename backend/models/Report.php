@@ -112,7 +112,8 @@ class Report
                 'cfa_cases' => (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status = 'CFA Issued'")->fetchColumn(),
                 'archived_cases' => (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status = 'Archived'")->fetchColumn(),
                 'pending_review' => (int) $this->conn->query("SELECT COUNT(*) FROM complaints WHERE status IN ('Under Review', 'Needs Information')")->fetchColumn(),
-                'draft_complaints' => (int) $this->conn->query("SELECT COUNT(*) FROM complaints WHERE status = 'Draft' OR is_draft = 1")->fetchColumn(),
+                'paanyaya_complaints' => (int) $this->conn->query("SELECT COUNT(*) FROM complaints WHERE status = 'Pre-Docketed (Paanyaya)'")->fetchColumn(),
+                'draft_complaints' => 0,
                 'hearings_today' => (int) $hearingCountToday->fetchColumn(),
                 'hearings_this_week' => (int) $hearingCountWeek->fetchColumn(),
                 'active_mediations' => (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status IN ('Mediation', 'Conciliation')")->fetchColumn(),
@@ -197,12 +198,12 @@ class Report
         );
         $pendingReviewStmt->execute($params);
 
-        $draftStmt = $this->conn->prepare(
+        $paanyayaStmt = $this->conn->prepare(
             "SELECT COUNT(*) FROM complaints
-             WHERE (status = 'Draft' OR is_draft = 1)
+             WHERE status = 'Pre-Docketed (Paanyaya)'
                AND DATE(created_at) BETWEEN ? AND ?"
         );
-        $draftStmt->execute($params);
+        $paanyayaStmt->execute($params);
 
         $hearingCountStmt = $this->conn->prepare(
             "SELECT COUNT(*) FROM hearings
@@ -269,7 +270,8 @@ class Report
             'cfa_cases' => (int) $cfaStmt->fetchColumn(),
             'archived_cases' => (int) $archivedStmt->fetchColumn(),
             'pending_review' => (int) $pendingReviewStmt->fetchColumn(),
-            'draft_complaints' => (int) $draftStmt->fetchColumn(),
+            'paanyaya_complaints' => (int) $paanyayaStmt->fetchColumn(),
+            'draft_complaints' => 0,
             'hearings_today' => count($periodHearings),
             'hearings_this_week' => (int) $hearingCountStmt->fetchColumn(),
             'active_mediations' => (int) $activeMediationStmt->fetchColumn(),

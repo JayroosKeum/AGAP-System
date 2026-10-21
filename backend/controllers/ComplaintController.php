@@ -116,12 +116,11 @@ class ComplaintController
         $result = $this->complaint->create($data);
 
         if ($result['success']) {
-            $isDraft = !empty($data['is_draft']) || (($data['submit_action'] ?? '') === 'draft');
             $complaintId = (int) ($result['complaint_id'] ?? 0);
 
             $this->audit->log(
                 $_SESSION['user_id'] ?? 1,
-                $isDraft ? 'Saved Complaint Draft' : 'Created Complaint',
+                'Created Complaint',
                 'Complaints',
                 $complaintId ?: null
             );
@@ -196,10 +195,6 @@ class ComplaintController
                 }
                 $result['redirect_url'] = '../../frontend/pages/complaints/complaint-details.php?id=' . $complaintId . '&tab=paanyaya&preview=1';
             }
-
-            if ($isDraft) {
-                $result['message'] = 'Complaint draft saved successfully. You can complete and submit it whenever ready.';
-            }
         }
 
         return $result;
@@ -247,7 +242,6 @@ class ComplaintController
 
         if ($result['success']) {
             $complaintId = (int) $id;
-            $isDraft = !empty($data['is_draft']) || (($data['submit_action'] ?? '') === 'draft');
 
             if (!empty($evidenceFiles) && $complaintId > 0) {
                 $uploadedCount = 0;
@@ -278,13 +272,9 @@ class ComplaintController
                 }
             }
 
-            if ($isDraft) {
-                $result['message'] = 'Complaint draft updated successfully.';
-            }
-
             $this->audit->log(
                 $_SESSION['user_id'] ?? 1,
-                $isDraft ? 'Updated Complaint Draft' : 'Updated Complaint',
+                'Updated Complaint',
                 'Complaints',
                 $id
             );

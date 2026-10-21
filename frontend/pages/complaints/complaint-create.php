@@ -13,11 +13,20 @@ if (
 require_once __DIR__ . '/../../../backend/config/database.php';
 
 $db = (new Database())->connect();
-$categoriesStmt = $db->query('SELECT category_id, category_name FROM complaint_categories ORDER BY category_id ASC');
+$categoriesStmt = $db->query("
+    SELECT category_id, category_name 
+    FROM complaint_categories 
+    ORDER BY 
+        CASE 
+            WHEN category_name LIKE 'Others%' OR category_name LIKE 'Iba pa%' THEN 1 
+            ELSE 0 
+        END ASC, 
+        category_name ASC
+");
 $categories = $categoriesStmt ? $categoriesStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
 $residentsStmt = $db->query("
-    SELECT resident_id, first_name, middle_name, last_name, suffix, birth_date, gender, civil_status, occupation, contact_no, email, preferred_contact, purok, address, is_tenant, residency_verified
+    SELECT resident_id, first_name, middle_name, last_name, suffix, birth_date, gender, civil_status, occupation, contact_no, email, preferred_contact, purok, address, home_latitude, home_longitude, is_tenant, residency_verified
     FROM residents 
     ORDER BY last_name ASC, first_name ASC
 ");
@@ -106,6 +115,8 @@ foreach ($residents as $res) {
         'address_text' => $addressText,
         'contact_no' => $res['contact_no'] ?? '',
         'email' => $res['email'] ?? '',
+        'home_latitude' => isset($res['home_latitude']) && $res['home_latitude'] !== '' && $res['home_latitude'] !== null ? (float)$res['home_latitude'] : null,
+        'home_longitude' => isset($res['home_longitude']) && $res['home_longitude'] !== '' && $res['home_longitude'] !== null ? (float)$res['home_longitude'] : null,
         'is_tenant' => $isTenantInt,
         'residency_label' => $resLabel,
         'residency_verified' => (int)($res['residency_verified'] ?? 1),
@@ -143,22 +154,6 @@ include '../../layouts/header.php';
                 </div>
             </div>
 
-            <!-- Auto-Save Draft Restored Banner -->
-            <div id="draftRestoredBanner" style="display: none; margin: 0 0 18px; padding: 12px 18px; background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 10px; color: #166534; font-size: 0.88rem; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.03);">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <span style="font-size: 1.25rem;">📝</span>
-                    <div>
-                        <strong style="color: #14532d;">Draft restored from your previous session.</strong>
-                        <span id="draftSavedTimestamp" style="color: #15803d; font-size: 0.82rem; margin-left: 6px;">(Auto-saved)</span>
-                    </div>
-                </div>
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <button type="button" id="btnDiscardDraft" style="background: #ffffff; border: 1px solid #fca5a5; color: #be123c; font-weight: 600; padding: 6px 14px; font-size: 0.82rem; border-radius: 6px; cursor: pointer; transition: all 0.15s ease;">
-                        ✕ Discard Draft / Clear
-                    </button>
-                </div>
-            </div>
-
             <?php if ($complaintFlash && !empty($complaintFlash['message'])): ?>
                 <script>
                 document.addEventListener('DOMContentLoaded', function() {
@@ -169,7 +164,6 @@ include '../../layouts/header.php';
 
             <form id="createComplaintForm" action="../../../backend/api/complaints/create.php" method="POST" enctype="multipart/form-data" class="complaint-intake-form">
                 <input type="hidden" name="bypass_office_hours" value="1">
-                <input type="hidden" name="is_draft" id="isDraftInput" value="0">
 
                 <div class="intake-layout-container" id="intakeLayoutContainer">
 
@@ -436,6 +430,16 @@ include '../../layouts/header.php';
                                 </div>
                             </div>
 
+                            <!-- "Others Please Specify" Input (Dynamically shown when Others is selected) -->
+                            <div class="form-group" id="otherCategoryWrapper" style="display: none; margin-top: 8px; margin-bottom: 12px;">
+                                <label for="otherCategorySpecification" style="font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 6px;">
+                                    <span>📝 Specify Complaint Category / Pakitukoy ang Kategorya</span>
+                                    <span class="required-mark">*</span>
+                                </label>
+                                <input type="text" id="otherCategorySpecification" name="other_category_specification" maxlength="255" placeholder="Pakitukoy ang partikular na alitan o kategorya (e.g. Alitan sa bintana, ingay ng aircon)..." value="<?php echo htmlspecialchars($old['other_category_specification'] ?? ''); ?>" style="border: 1.5px solid #3b82f6; background: #f8fafc; border-radius: 6px; padding: 9px 12px; font-size: 0.9rem;">
+                                <small style="color: #64748b; font-size: 0.8rem; display: block; margin-top: 4px;">Specify the dispute details covered under Katarungang Pambarangay jurisdiction.</small>
+                            </div>
+
                             <div class="form-row-2">
                                 <div class="form-group">
                                     <label for="complaintTitle">Complaint Title / Specific Nature <span class="required-mark">*</span></label>
@@ -586,6 +590,8 @@ include '../../layouts/header.php';
                             <input type="hidden" id="complainantPurok" name="complainant_purok" value="<?php echo htmlspecialchars($old['complainant_purok'] ?? ''); ?>">
                             <input type="hidden" id="complainantIsTenant" name="complainant_is_tenant" value="<?php echo htmlspecialchars((string)($old['complainant_is_tenant'] ?? '0')); ?>">
                             <input type="hidden" id="complainantAddress" name="complainant_address" value="<?php echo htmlspecialchars($old['complainant_address'] ?? ''); ?>">
+                            <input type="hidden" id="complainantLatitude" name="complainant_latitude" value="<?php echo htmlspecialchars((string)($old['complainant_latitude'] ?? '')); ?>">
+                            <input type="hidden" id="complainantLongitude" name="complainant_longitude" value="<?php echo htmlspecialchars((string)($old['complainant_longitude'] ?? '')); ?>">
                             <input type="hidden" id="complainantIsMinor" name="complainant_is_minor" value="<?php echo !empty($old['complainant_is_minor']) ? '1' : '0'; ?>">
                             <input type="hidden" id="complainantGuardianName" name="complainant_guardian_name" value="<?php echo htmlspecialchars($old['complainant_guardian_name'] ?? ''); ?>">
                             <input type="hidden" id="complainantGuardianRelationship" name="complainant_guardian_relationship" value="<?php echo htmlspecialchars($old['complainant_guardian_relationship'] ?? ''); ?>">
@@ -609,6 +615,8 @@ include '../../layouts/header.php';
                             <input type="hidden" id="respondentPurok" name="respondent_purok" value="<?php echo htmlspecialchars($old['respondent_purok'] ?? ''); ?>">
                             <input type="hidden" id="respondentIsTenant" name="respondent_is_tenant" value="<?php echo htmlspecialchars((string)($old['respondent_is_tenant'] ?? '0')); ?>">
                             <input type="hidden" id="respondentAddress" name="respondent_address" value="<?php echo htmlspecialchars($old['respondent_address'] ?? ''); ?>">
+                            <input type="hidden" id="respondentLatitude" name="respondent_latitude" value="<?php echo htmlspecialchars((string)($old['respondent_latitude'] ?? '')); ?>">
+                            <input type="hidden" id="respondentLongitude" name="respondent_longitude" value="<?php echo htmlspecialchars((string)($old['respondent_longitude'] ?? '')); ?>">
                             <input type="hidden" id="respondentIsMinor" name="respondent_is_minor" value="<?php echo !empty($old['respondent_is_minor']) ? '1' : '0'; ?>">
                             <input type="hidden" id="respondentGuardianName" name="respondent_guardian_name" value="<?php echo htmlspecialchars($old['respondent_guardian_name'] ?? ''); ?>">
                             <input type="hidden" id="respondentGuardianRelationship" name="respondent_guardian_relationship" value="<?php echo htmlspecialchars($old['respondent_guardian_relationship'] ?? ''); ?>">
@@ -1066,6 +1074,8 @@ include '../../layouts/header.php';
                             </button>
                         </div>
                         <input type="text" id="modalAddress" required placeholder="House #, Street name, Purok/Compound, Barangay Tumana">
+                        <input type="hidden" id="modalLatitude" value="">
+                        <input type="hidden" id="modalLongitude" value="">
                     </div>
 
                     <!-- Interactive Address Pinning Map -->
@@ -1410,6 +1420,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const catSelect = document.getElementById('categoryId');
         const categoryName = (catSelect && catSelect.selectedIndex > 0) ? catSelect.options[catSelect.selectedIndex].text : '';
+        const otherCategorySpecVal = document.getElementById('otherCategorySpecification')?.value?.trim();
+        const effectiveCategoryDisplay = (otherCategorySpecVal && (categoryName.includes('Others') || categoryName.includes('Iba pa')))
+            ? `Iba pa: ${otherCategorySpecVal}`
+            : categoryName;
         const titleVal = document.getElementById('title')?.value?.trim() || 'Dispute';
 
         let incidentDateStr = '';
@@ -1458,7 +1472,7 @@ document.addEventListener('DOMContentLoaded', () => {
             signatureCompName: escapeHtml(partySignatureList(complainantsList, compFirst, compLast)),
             caseNumber: docketNum,
             title: escapeHtml(titleVal),
-            category: escapeHtml(categoryName),
+            category: escapeHtml(effectiveCategoryDisplay),
             narrative: narrativeVal,
             additional: additionalVal,
             relief: reliefVal,
@@ -1506,12 +1520,35 @@ document.addEventListener('DOMContentLoaded', () => {
         this.disabled = true;
         this.textContent = 'Submitting Complaint...';
         window.isKp7Confirmed = true;
-        window.cleanupDraftOnSubmit?.();
         const form = document.getElementById('createComplaintForm');
         if (form) {
             form.submit();
         }
     });
+
+    // Dynamic "Others (Please Specify)" Category Handler
+    const categorySelectEl = document.getElementById('categoryId');
+    const otherCategoryWrapperEl = document.getElementById('otherCategoryWrapper');
+    const otherCategoryInputEl = document.getElementById('otherCategorySpecification');
+
+    function syncOtherCategoryVisibility() {
+        if (!categorySelectEl || !otherCategoryWrapperEl || !otherCategoryInputEl) return;
+        const selectedOption = categorySelectEl.options[categorySelectEl.selectedIndex];
+        const selectedText = selectedOption ? selectedOption.text : '';
+        const isOthers = selectedText.includes('Others') || selectedText.includes('Iba pa');
+
+        if (isOthers) {
+            otherCategoryWrapperEl.style.display = 'block';
+            otherCategoryInputEl.required = true;
+            otherCategoryInputEl.focus();
+        } else {
+            otherCategoryWrapperEl.style.display = 'none';
+            otherCategoryInputEl.required = false;
+        }
+    }
+
+    categorySelectEl?.addEventListener('change', syncOtherCategoryVisibility);
+    syncOtherCategoryVisibility();
 
     // Distinct parties validation
     window.validateDistinctParties = function() {
@@ -1614,14 +1651,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const createForm = document.getElementById('createComplaintForm');
     if (createForm) {
         createForm.addEventListener('submit', (e) => {
-            const isDraft = document.getElementById('isDraftInput')?.value === '1';
-            if (isDraft) {
-                window.cleanupDraftOnSubmit?.();
-                const submitBtn = document.getElementById('btnSubmitComplaint');
-                if (submitBtn) submitBtn.disabled = true;
-                return;
-            }
-
             if (potentialDuplicatesDetected && !document.getElementById('duplicateAcknowledged')?.checked) {
                 e.preventDefault();
                 window.agapNotify?.('Review the potential duplicate record(s) and confirm whether this filing should proceed.', 'error');
@@ -1748,7 +1777,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 submitBtn.disabled = true;
                 submitBtn.textContent = 'Saving & Issuing 1st Paanyaya...';
             }
-            window.cleanupDraftOnSubmit?.();
         });
     }
 
@@ -1792,6 +1820,8 @@ document.addEventListener('DOMContentLoaded', () => {
             purok: document.getElementById('complainantPurok')?.value || '',
             is_tenant: document.getElementById('complainantIsTenant')?.value || '0',
             address: document.getElementById('complainantAddress')?.value?.trim() || '',
+            home_latitude: document.getElementById('complainantLatitude')?.value || null,
+            home_longitude: document.getElementById('complainantLongitude')?.value || null,
             is_minor: document.getElementById('complainantIsMinor')?.value === '1',
             guardian_name: document.getElementById('complainantGuardianName')?.value?.trim() || '',
             guardian_relationship: document.getElementById('complainantGuardianRelationship')?.value?.trim() || '',
@@ -1820,6 +1850,8 @@ document.addEventListener('DOMContentLoaded', () => {
             purok: document.getElementById('respondentPurok')?.value || '',
             is_tenant: document.getElementById('respondentIsTenant')?.value || '0',
             address: document.getElementById('respondentAddress')?.value?.trim() || '',
+            home_latitude: document.getElementById('respondentLatitude')?.value || null,
+            home_longitude: document.getElementById('respondentLongitude')?.value || null,
             is_minor: document.getElementById('respondentIsMinor')?.value === '1',
             guardian_name: document.getElementById('respondentGuardianName')?.value?.trim() || '',
             guardian_relationship: document.getElementById('respondentGuardianRelationship')?.value?.trim() || '',
@@ -1886,10 +1918,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 initPartyAddressMap();
                 if (partyMapInstance) {
                     partyMapInstance.invalidateSize();
-                    const curAddr = document.getElementById('modalAddress')?.value?.trim();
-                    const curPurok = document.getElementById('modalPurok')?.value?.trim();
-                    if (curAddr || curPurok) {
-                        window.geocodeAndPinPartyAddress?.(curAddr, curPurok);
+                    const latVal = parseFloat(document.getElementById('modalLatitude')?.value);
+                    const lngVal = parseFloat(document.getElementById('modalLongitude')?.value);
+                    if (!isNaN(latVal) && !isNaN(lngVal) && latVal !== 0 && lngVal !== 0) {
+                        setPartyAddressMapPoint(latVal, lngVal, false);
+                    } else {
+                        const curAddr = document.getElementById('modalAddress')?.value?.trim();
+                        const curPurok = document.getElementById('modalPurok')?.value?.trim();
+                        if (curAddr || curPurok) {
+                            window.geocodeAndPinPartyAddress?.(curAddr, curPurok);
+                        }
                     }
                 }
             }, 150);
@@ -1933,6 +1971,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (pCoords) pCoords.textContent = '';
         const resIdEl = document.getElementById('modalResidentId');
         if (resIdEl) resIdEl.value = '';
+        const latEl = document.getElementById('modalLatitude');
+        if (latEl) latEl.value = '';
+        const lngEl = document.getElementById('modalLongitude');
+        if (lngEl) lngEl.value = '';
         ['modalFirstName', 'modalMiddleName', 'modalLastName', 'modalSuffix',
          'modalBirthdate', 'modalAge', 'modalContactNo', 'modalEmail', 'modalAddress',
          'modalGuardianName', 'modalGuardianRelationship', 'modalGuardianContact', 'modalGuardianAddress'].forEach(id => {
@@ -1982,6 +2024,8 @@ document.addEventListener('DOMContentLoaded', () => {
         setV('modalPurok', p.purok);
         setV('modalIsTenant', p.is_tenant ?? '0');
         setV('modalAddress', p.address);
+        setV('modalLatitude', p.home_latitude ?? p.latitude ?? '');
+        setV('modalLongitude', p.home_longitude ?? p.longitude ?? '');
 
         let isMinorVal = false;
         if (p.age !== undefined && p.age !== null && p.age !== '' && !isNaN(p.age)) {
@@ -2126,6 +2170,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (res.is_tenant !== undefined) setV('modalIsTenant', String(res.is_tenant));
                 if (res.address) {
                     setV('modalAddress', res.address);
+                }
+                const hasLat = res.home_latitude !== undefined && res.home_latitude !== null && res.home_latitude !== '';
+                const hasLng = res.home_longitude !== undefined && res.home_longitude !== null && res.home_longitude !== '';
+                if (hasLat && hasLng) {
+                    setV('modalLatitude', res.home_latitude);
+                    setV('modalLongitude', res.home_longitude);
+                    setTimeout(() => {
+                        if (!partyMapInstance) initPartyAddressMap();
+                        if (partyMapInstance) {
+                            setPartyAddressMapPoint(parseFloat(res.home_latitude), parseFloat(res.home_longitude), false);
+                        }
+                    }, 100);
+                } else if (res.address) {
+                    setV('modalLatitude', '');
+                    setV('modalLongitude', '');
                     setTimeout(() => window.geocodeAndPinPartyAddress?.(res.address, res.purok), 100);
                 }
             }
@@ -2282,10 +2341,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (partyMapMarker && partyMapInstance) {
                     partyMapInstance.removeLayer(partyMapMarker);
                     partyMapMarker = null;
-        }
-        if (partyMapInstance) {
-            partyMapInstance.setView([14.6565, 121.0945], 16);
-            partyMapInstance.invalidateSize();
+                }
+                const latEl = document.getElementById('modalLatitude');
+                if (latEl) latEl.value = '';
+                const lngEl = document.getElementById('modalLongitude');
+                if (lngEl) lngEl.value = '';
+                if (partyMapInstance) {
+                    partyMapInstance.setView([14.6565, 121.0945], 16);
+                    partyMapInstance.invalidateSize();
                 }
                 const statusEl = document.getElementById('modalPartyMapStatus');
                 if (statusEl) statusEl.textContent = 'Pin cleared. Click on map to pin address.';
@@ -2295,22 +2358,38 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function setPartyAddressMapPoint(lat, lng) {
+    async function setPartyAddressMapPoint(lat, lng, doReverseGeocode = true) {
         if (!partyMapInstance) return;
 
         if (!partyMapMarker) {
             partyMapMarker = L.marker([lat, lng], { draggable: true }).addTo(partyMapInstance);
             partyMapMarker.on('dragend', (e) => {
                 const pos = e.target.getLatLng();
-                setPartyAddressMapPoint(pos.lat, pos.lng);
+                setPartyAddressMapPoint(pos.lat, pos.lng, true);
             });
         } else {
             partyMapMarker.setLatLng([lat, lng]);
+            if (!partyMapInstance.hasLayer(partyMapMarker)) {
+                partyMapMarker.addTo(partyMapInstance);
+            }
         }
+
+        const latInput = document.getElementById('modalLatitude');
+        const lngInput = document.getElementById('modalLongitude');
+        if (latInput) latInput.value = lat;
+        if (lngInput) lngInput.value = lng;
 
         const coordsEl = document.getElementById('modalPartyMapCoords');
         if (coordsEl) {
             coordsEl.textContent = `${lat.toFixed(6)}° N, ${lng.toFixed(6)}° E`;
+        }
+
+        if (!doReverseGeocode) {
+            partyMapInstance.setView([lat, lng], 17);
+            partyMapInstance.invalidateSize();
+            const statusEl = document.getElementById('modalPartyMapStatus');
+            if (statusEl) statusEl.textContent = '📍 Address pinned from saved profile coordinates.';
+            return;
         }
 
         const statusEl = document.getElementById('modalPartyMapStatus');
@@ -2541,6 +2620,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (requestVersion !== partyMapLookupVersion) return;
 
         if (foundLat !== null && foundLng !== null) {
+            const latInput = document.getElementById('modalLatitude');
+            const lngInput = document.getElementById('modalLongitude');
+            if (latInput) latInput.value = foundLat;
+            if (lngInput) lngInput.value = foundLng;
+
             if (!partyMapMarker) {
                 partyMapMarker = L.marker([foundLat, foundLng], { draggable: true }).addTo(partyMapInstance);
                 partyMapMarker.on('dragend', (e) => {
@@ -2675,6 +2759,8 @@ document.addEventListener('DOMContentLoaded', () => {
             purok: document.getElementById('modalPurok')?.value || '',
             is_tenant: document.getElementById('modalIsTenant')?.value || '0',
             address: document.getElementById('modalAddress')?.value?.trim() || '',
+            home_latitude: document.getElementById('modalLatitude')?.value || null,
+            home_longitude: document.getElementById('modalLongitude')?.value || null,
             is_minor: !!isMinor,
             guardian_name: isMinor ? (document.getElementById('modalGuardianName')?.value?.trim() || '') : '',
             guardian_relationship: isMinor ? (document.getElementById('modalGuardianRelationship')?.value?.trim() || '') : '',
@@ -2704,7 +2790,6 @@ document.addEventListener('DOMContentLoaded', () => {
         renderParties();
         window.validateDistinctParties?.();
         triggerDuplicateCheck();
-        triggerDraftAutoSave();
     });
 
     window.removeParty = function(role, index) {
@@ -2727,7 +2812,6 @@ document.addEventListener('DOMContentLoaded', () => {
         renderParties();
         window.validateDistinctParties?.();
         triggerDuplicateCheck();
-        triggerDraftAutoSave();
     };
 
     function syncHiddenPartyInputs() {
@@ -2757,6 +2841,8 @@ document.addEventListener('DOMContentLoaded', () => {
             setComp('complainantPurok', comp.purok);
             setComp('complainantIsTenant', comp.is_tenant);
             setComp('complainantAddress', comp.address);
+            setComp('complainantLatitude', comp.home_latitude ?? comp.latitude ?? '');
+            setComp('complainantLongitude', comp.home_longitude ?? comp.longitude ?? '');
             setComp('complainantIsMinor', comp.is_minor ? '1' : '0');
             setComp('complainantGuardianName', comp.guardian_name);
             setComp('complainantGuardianRelationship', comp.guardian_relationship);
@@ -2766,7 +2852,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ['complainantResidentId', 'complainantName', 'complainantFirstName', 'complainantMiddleName',
              'complainantLastName', 'complainantSuffix', 'complainantBirthdate', 'complainantAge',
              'complainantGender', 'complainantCivilStatus', 'complainantOccupation', 'complainantContactNo',
-             'complainantEmail', 'complainantPurok', 'complainantAddress', 'complainantGuardianName',
+             'complainantEmail', 'complainantPurok', 'complainantAddress', 'complainantLatitude', 'complainantLongitude', 'complainantGuardianName',
              'complainantGuardianRelationship', 'complainantGuardianContact', 'complainantGuardianAddress'].forEach(id => setComp(id, ''));
             setComp('complainantPreferredContact', 'SMS');
             setComp('complainantIsTenant', '0');
@@ -2798,6 +2884,8 @@ document.addEventListener('DOMContentLoaded', () => {
             setResp('respondentPurok', resp.purok);
             setResp('respondentIsTenant', resp.is_tenant);
             setResp('respondentAddress', resp.address);
+            setResp('respondentLatitude', resp.home_latitude ?? resp.latitude ?? '');
+            setResp('respondentLongitude', resp.home_longitude ?? resp.longitude ?? '');
             setResp('respondentIsMinor', resp.is_minor ? '1' : '0');
             setResp('respondentGuardianName', resp.guardian_name);
             setResp('respondentGuardianRelationship', resp.guardian_relationship);
@@ -2810,7 +2898,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ['respondentResidentId', 'respondentName', 'respondentFirstName', 'respondentMiddleName',
              'respondentLastName', 'respondentSuffix', 'respondentBirthdate', 'respondentAge',
              'respondentGender', 'respondentCivilStatus', 'respondentOccupation', 'respondentContactNo',
-             'respondentEmail', 'respondentPurok', 'respondentAddress', 'respondentGuardianName',
+             'respondentEmail', 'respondentPurok', 'respondentAddress', 'respondentLatitude', 'respondentLongitude', 'respondentGuardianName',
              'respondentGuardianRelationship', 'respondentGuardianContact', 'respondentGuardianAddress',
              'respContactUnknown', 'respMiddleUnknown', 'respBirthUnknown'].forEach(id => setResp(id, ''));
             setResp('respondentIsTenant', '0');
@@ -2836,6 +2924,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     <input type="hidden" name="party_contacts[]" value="${escapeHtml(p.contact_no || '')}">
                     <input type="hidden" name="party_addresses[]" value="${escapeHtml(p.address || '')}">
                     <input type="hidden" name="party_puroks[]" value="${escapeHtml(p.purok || '')}">
+                    <input type="hidden" name="party_latitudes[]" value="${escapeHtml(p.home_latitude ?? p.latitude ?? '')}">
+                    <input type="hidden" name="party_longitudes[]" value="${escapeHtml(p.home_longitude ?? p.longitude ?? '')}">
                 `;
             }
             // Additional respondents (index 1+)
@@ -2853,6 +2943,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     <input type="hidden" name="party_contacts[]" value="${escapeHtml(p.contact_no || '')}">
                     <input type="hidden" name="party_addresses[]" value="${escapeHtml(p.address || '')}">
                     <input type="hidden" name="party_puroks[]" value="${escapeHtml(p.purok || '')}">
+                    <input type="hidden" name="party_latitudes[]" value="${escapeHtml(p.home_latitude ?? p.latitude ?? '')}">
+                    <input type="hidden" name="party_longitudes[]" value="${escapeHtml(p.home_longitude ?? p.longitude ?? '')}">
                 `;
             }
             addContainer.innerHTML = html;
@@ -3459,41 +3551,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ── Save as Draft Handler ──
-    function handleSaveDraft(triggerBtn) {
-        const compFirst = document.getElementById('complainantFirstName')?.value?.trim();
-        const compLast = document.getElementById('complainantLastName')?.value?.trim();
-        const compId = document.getElementById('complainantResidentId')?.value?.trim();
-        const title = document.getElementById('complaintTitle')?.value?.trim();
-        if (!compId && (!compFirst || !compLast) && !title) {
-            window.agapNotify?.('Please provide at least a Complainant or a Complaint Title to save a draft.', 'error');
-            return;
-        }
-
-        const isDraftInput = document.getElementById('isDraftInput');
-        if (isDraftInput) isDraftInput.value = '1';
-        if (triggerBtn) {
-            triggerBtn.disabled = true;
-            triggerBtn.textContent = 'Saving Draft...';
-        }
-
-        const form = document.getElementById('createComplaintForm');
-        if (form) {
-            form.querySelectorAll('[required]').forEach(el => {
-                el.dataset.wasRequired = 'true';
-                el.removeAttribute('required');
-            });
-            window.cleanupDraftOnSubmit?.();
-            form.submit();
-        }
-    }
-
-    ['btnHeaderSaveDraft', 'btnBottomSaveDraft', 'btnSaveDraft'].forEach(id => {
-        document.getElementById(id)?.addEventListener('click', function() {
-            handleSaveDraft(this);
-        });
-    });
-
     // ── Quick-Nav ScrollSpy & Smooth Scrolling ──
     const quickNavLinks = document.querySelectorAll('#intakeQuickNav .quicknav-link');
     const navSectionIds = ['section-ingestion', 'section-parties', 'section-narrative', 'section-location', 'section-evidence'];
@@ -3991,338 +4048,25 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ═════════════════════════════════════════════════════════════════════════
-    // AUTO-SAVE FORM DRAFT & ACCIDENTAL REFRESH PROTECTION
+    // ACCIDENTAL REFRESH / NAVIGATION PROTECTION
     // ═════════════════════════════════════════════════════════════════════════
-    const DRAFT_STORAGE_KEY = 'agap_complaint_create_draft';
     let isFormDirty = false;
     let isSubmitting = false;
-    let isRestoringDraft = false;
-    let draftDebounceTimer = null;
 
-    function hasMeaningfulContent() {
-        const title = document.getElementById('complaintTitle')?.value?.trim() || '';
-        const narrative = document.getElementById('narrative')?.value?.trim() || '';
-        const salaysay = document.getElementById('paanyayaSalaysay')?.value?.trim() || '';
-        const resolution = document.getElementById('requestedResolution')?.value?.trim() || '';
-        const street = document.getElementById('incidentStreet')?.value?.trim() || '';
-        const categoryId = document.getElementById('categoryId')?.value || '';
-        const hasParties = (complainantsList && complainantsList.length > 0) || (respondentsList && respondentsList.length > 0);
-        return !!(title || narrative || salaysay || resolution || street || categoryId || hasParties);
-    }
+    createForm?.addEventListener('input', () => { isFormDirty = true; });
+    createForm?.addEventListener('change', () => { isFormDirty = true; });
 
-    function saveDraftToLocalStorage() {
-        if (isSubmitting || isRestoringDraft) return;
-        if (!hasMeaningfulContent()) {
-            return;
-        }
-
-        const now = new Date();
-        const draft = {
-            incident_datetime: document.getElementById('incidentDateTime')?.value || '',
-            is_time_approximate: !!document.getElementById('isTimeApproximate')?.checked,
-            is_time_unknown: !!document.getElementById('isTimeUnknown')?.checked,
-            category_id: document.getElementById('categoryId')?.value || '',
-            case_type: document.getElementById('caseType')?.value || 'Civil',
-            complaint_title: document.getElementById('complaintTitle')?.value || '',
-            narrative: document.getElementById('narrative')?.value || '',
-            paanyaya_salaysay: document.getElementById('paanyayaSalaysay')?.value || '',
-            requested_resolution: document.getElementById('requestedResolution')?.value || '',
-            incident_street: document.getElementById('incidentStreet')?.value || '',
-            incident_purok: document.getElementById('incidentPurok')?.value || '',
-            incident_barangay: document.getElementById('incidentBarangay')?.value || 'Tumana',
-            incident_city: document.getElementById('incidentCity')?.value || 'Marikina City',
-            incident_location_details: document.getElementById('incidentLocationDetails')?.value || '',
-            map_latitude: document.querySelector('[data-map-latitude]')?.value || '',
-            map_longitude: document.querySelector('[data-map-longitude]')?.value || '',
-            map_location_state: document.querySelector('[data-map-state]')?.value || 'none',
-            filing_method: document.querySelector('input[name="filing_method"]:checked')?.value || 'digital',
-            paanyaya_date: document.getElementById('paanyayaDate')?.value || '',
-            paanyaya_time: document.getElementById('paanyayaTime')?.value || '',
-            paanyaya_venue: document.getElementById('paanyayaVenue')?.value || '',
-            paanyaya_has_e_signature: !!document.querySelector('input[name="paanyaya_has_e_signature"]')?.checked,
-            chk_multiple_complainants: !!document.getElementById('chkMultipleComplainants')?.checked,
-            chk_multiple_respondents: !!document.getElementById('chkMultipleRespondents')?.checked,
-            complainant_resident_id: document.getElementById('complainantResidentId')?.value || '',
-            respondent_resident_id: document.getElementById('respondentResidentId')?.value || '',
-            complainantsList: (complainantsList || []).map(p => ({ ...p })),
-            respondentsList: (respondentsList || []).map(p => ({ ...p })),
-            saved_at: now.toISOString(),
-            saved_at_formatted: now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-        };
-
-        try {
-            localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
-            isFormDirty = true;
-        } catch (err) {
-            console.warn('Auto-save draft error:', err);
-        }
-    }
-
-    function triggerDraftAutoSave() {
-        if (isSubmitting || isRestoringDraft) return;
-        isFormDirty = true;
-        clearTimeout(draftDebounceTimer);
-        draftDebounceTimer = setTimeout(saveDraftToLocalStorage, 500);
-    }
-
-    function restoreDraftOnPageLoad() {
-        let rawDraft = null;
-        try {
-            rawDraft = localStorage.getItem(DRAFT_STORAGE_KEY);
-        } catch (_) {}
-
-        if (!rawDraft) return;
-
-        let draft = null;
-        try {
-            draft = JSON.parse(rawDraft);
-        } catch (e) {
-            console.warn('Failed to parse draft from localStorage:', e);
-            return;
-        }
-
-        if (!draft || typeof draft !== 'object') return;
-
-        isRestoringDraft = true;
-
-        // 1. Repopulate form inputs and dropdowns
-        const setFieldVal = (id, val) => {
-            if (val === undefined || val === null) return;
-            const el = document.getElementById(id);
-            if (el) el.value = val;
-        };
-
-        if (draft.category_id) setFieldVal('categoryId', draft.category_id);
-        if (draft.case_type) setFieldVal('caseType', draft.case_type);
-        if (draft.complaint_title) setFieldVal('complaintTitle', draft.complaint_title);
-        if (draft.narrative) setFieldVal('narrative', draft.narrative);
-        if (draft.paanyaya_salaysay) setFieldVal('paanyayaSalaysay', draft.paanyaya_salaysay);
-        if (draft.requested_resolution) setFieldVal('requestedResolution', draft.requested_resolution);
-        if (draft.incident_street) setFieldVal('incidentStreet', draft.incident_street);
-        if (draft.incident_purok) setFieldVal('incidentPurok', draft.incident_purok);
-        if (draft.incident_location_details) setFieldVal('incidentLocationDetails', draft.incident_location_details);
-
-        if (draft.paanyaya_date) setFieldVal('paanyayaDate', draft.paanyaya_date);
-        if (draft.paanyaya_time) setFieldVal('paanyayaTime', draft.paanyaya_time);
-        if (draft.paanyaya_venue) setFieldVal('paanyayaVenue', draft.paanyaya_venue);
-        if (draft.paanyaya_has_e_signature !== undefined) {
-            const eSigInput = document.querySelector('input[name="paanyaya_has_e_signature"]');
-            if (eSigInput) eSigInput.checked = !!draft.paanyaya_has_e_signature;
-        }
-
-        if (draft.is_time_unknown !== undefined) {
-            const timeUnknown = document.getElementById('isTimeUnknown');
-            if (timeUnknown) {
-                timeUnknown.checked = !!draft.is_time_unknown;
-                syncDateTimeInputs();
-            }
-        }
-        if (draft.incident_datetime) {
-            setFieldVal('incidentDateTime', draft.incident_datetime);
-            checkFutureDate();
-        }
-        if (draft.is_time_approximate !== undefined) {
-            const timeApprox = document.getElementById('isTimeApproximate');
-            if (timeApprox) timeApprox.checked = !!draft.is_time_approximate;
-        }
-
-        // Filing method
-        if (draft.filing_method) {
-            const radio = document.querySelector(`input[name="filing_method"][value="${draft.filing_method}"]`);
-            if (radio && !radio.checked) {
-                radio.checked = true;
-                syncFilingMethod();
-            }
-        }
-
-        // Map pin coordinates
-        if (draft.map_latitude && draft.map_longitude && draft.map_location_state === 'selected') {
-            const latInp = document.querySelector('[data-map-latitude]');
-            const lngInp = document.querySelector('[data-map-longitude]');
-            const stateInp = document.querySelector('[data-map-state]');
-            if (latInp) latInp.value = draft.map_latitude;
-            if (lngInp) lngInp.value = draft.map_longitude;
-            if (stateInp) stateInp.value = 'selected';
-            const coordsDisplay = document.getElementById('mapCoordsDisplay');
-            if (coordsDisplay) {
-                coordsDisplay.textContent = `${parseFloat(draft.map_latitude).toFixed(4)}° N, ${parseFloat(draft.map_longitude).toFixed(4)}° E`;
-            }
-            const statusDisplay = document.querySelector('[data-map-status]');
-            if (statusDisplay) {
-                statusDisplay.textContent = 'Pin placed on map.';
-            }
-        }
-
-        // 2. Repopulate involved parties
-        let partiesRestored = false;
-        if (Array.isArray(draft.complainantsList) && draft.complainantsList.length > 0) {
-            complainantsList = draft.complainantsList;
-            partiesRestored = true;
-        } else if (draft.complainant_resident_id && window.AGAP_RESIDENTS) {
-            const res = window.AGAP_RESIDENTS.find(r => String(r.resident_id) === String(draft.complainant_resident_id));
-            if (res) {
-                complainantsList = [{
-                    resident_id: res.resident_id,
-                    first_name: res.first_name || '',
-                    middle_name: res.middle_name || '',
-                    last_name: (res.last_name && res.last_name !== '-') ? res.last_name : '',
-                    suffix: res.suffix || '',
-                    birthdate: res.birth_date || '',
-                    age: res.age || '',
-                    gender: res.gender || '',
-                    civil_status: res.civil_status || '',
-                    occupation: res.occupation || '',
-                    contact_no: res.contact_no || '',
-                    email: res.email || '',
-                    preferred_contact: res.preferred_contact || 'SMS',
-                    purok: res.purok || '',
-                    is_tenant: String(res.is_tenant ?? 0),
-                    address: res.address || '',
-                    is_minor: (res.birth_date && calculateAge(res.birth_date) < 18)
-                }];
-                partiesRestored = true;
-            }
-        }
-
-        if (Array.isArray(draft.respondentsList) && draft.respondentsList.length > 0) {
-            respondentsList = draft.respondentsList;
-            partiesRestored = true;
-        } else if (draft.respondent_resident_id && window.AGAP_RESIDENTS) {
-            const res = window.AGAP_RESIDENTS.find(r => String(r.resident_id) === String(draft.respondent_resident_id));
-            if (res) {
-                respondentsList = [{
-                    resident_id: res.resident_id,
-                    first_name: res.first_name || '',
-                    middle_name: res.middle_name || '',
-                    last_name: (res.last_name && res.last_name !== '-') ? res.last_name : '',
-                    suffix: res.suffix || '',
-                    birthdate: res.birth_date || '',
-                    age: res.age || '',
-                    gender: res.gender || '',
-                    civil_status: res.civil_status || '',
-                    occupation: res.occupation || '',
-                    contact_no: res.contact_no || '',
-                    email: res.email || '',
-                    purok: res.purok || '',
-                    is_tenant: String(res.is_tenant ?? 0),
-                    address: res.address || '',
-                    is_minor: (res.birth_date && calculateAge(res.birth_date) < 18)
-                }];
-                partiesRestored = true;
-            }
-        }
-
-        if (draft.chk_multiple_complainants && complainantsList.length > 1) {
-            const chk = document.getElementById('chkMultipleComplainants');
-            if (chk) chk.checked = true;
-        }
-        if (draft.chk_multiple_respondents && respondentsList.length > 1) {
-            const chk = document.getElementById('chkMultipleRespondents');
-            if (chk) chk.checked = true;
-        }
-
-        if (partiesRestored) {
-            syncHiddenPartyInputs();
-            renderParties();
-            window.validateDistinctParties?.();
-            triggerDuplicateCheck();
-        }
-
-        isRestoringDraft = false;
-        isFormDirty = true;
-
-        // 3. Show Draft Restored Banner & Toast
-        const banner = document.getElementById('draftRestoredBanner');
-        if (banner) {
-            const tsSpan = document.getElementById('draftSavedTimestamp');
-            if (tsSpan) {
-                tsSpan.textContent = draft.saved_at_formatted ? `(Saved at ${draft.saved_at_formatted})` : '(Auto-saved)';
-            }
-            banner.style.display = 'flex';
-        }
-
-        window.agapNotify?.('Draft restored from your previous session.', 'info', 'Auto-Save');
-    }
-
-    function discardAndClearDraft() {
-        if (!confirm('Are you sure you want to discard this draft? All restored unsubmitted form data will be permanently cleared.')) {
-            return;
-        }
-
-        try {
-            localStorage.removeItem(DRAFT_STORAGE_KEY);
-        } catch (_) {}
-
-        isFormDirty = false;
-
-        const form = document.getElementById('createComplaintForm');
-        if (form) {
-            form.reset();
-        }
-
-        // Clear party lists and inputs
-        complainantsList = [];
-        respondentsList = [];
-        syncHiddenPartyInputs();
-        renderParties();
-
-        // Reset filing method UI
-        const digitalRadio = document.querySelector('input[name="filing_method"][value="digital"]');
-        if (digitalRadio) {
-            digitalRadio.checked = true;
-            syncFilingMethod();
-        }
-
-        // Hide restored banner
-        const banner = document.getElementById('draftRestoredBanner');
-        if (banner) {
-            banner.style.display = 'none';
-        }
-
-        // Reset Paanyaya defaults
-        const today = new Date();
-        const pDate = document.getElementById('paanyayaDate');
-        if (pDate) {
-            const next3 = new Date(today);
-            next3.setDate(next3.getDate() + 3);
-            pDate.value = next3.toISOString().slice(0, 10);
-        }
-        const pTime = document.getElementById('paanyayaTime');
-        if (pTime) pTime.value = '14:00';
-        const pVenue = document.getElementById('paanyayaVenue');
-        if (pVenue) pVenue.value = 'Tanggapan ng Barangay Tumana';
-
-        syncDateTimeInputs();
-        checkFutureDate();
-
-        window.agapNotify?.('Draft discarded and form cleared.', 'info', 'Draft Cleared');
-    }
-
-    document.getElementById('btnDiscardDraft')?.addEventListener('click', discardAndClearDraft);
-
-    // Auto-save listeners on form controls
-    createForm?.addEventListener('input', triggerDraftAutoSave);
-    createForm?.addEventListener('change', triggerDraftAutoSave);
-
-    // Accidental Navigation / Refresh Protection
     window.addEventListener('beforeunload', (e) => {
         if (isFormDirty && !isSubmitting) {
             e.preventDefault();
-            e.returnValue = ''; // Standard browser confirmation prompt
+            e.returnValue = '';
         }
     });
 
-    // Cleanup on submission
-    window.cleanupDraftOnSubmit = function() {
+    createForm?.addEventListener('submit', () => {
         isSubmitting = true;
         isFormDirty = false;
-        try {
-            localStorage.removeItem(DRAFT_STORAGE_KEY);
-        } catch (_) {}
-    };
-
-    // Restore draft on load
-    restoreDraftOnPageLoad();
+    });
 });
 </script>
 

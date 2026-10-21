@@ -513,7 +513,11 @@ async function loadComplaintDetails() {
 
         // Hero Meta Columns
         setText('infoComplaintTitle', data.complaint_title);
-        setText('infoCategory', data.category_name || (data.category_id ? 'Category #' + data.category_id : 'Threats'));
+        let catDisplay = data.category_name_display || data.category_name || (data.category_id ? 'Category #' + data.category_id : 'General');
+        if (data.other_category_specification && (catDisplay.includes('Others') || catDisplay.includes('Iba pa'))) {
+            catDisplay = `Others: ${data.other_category_specification}`;
+        }
+        setText('infoCategory', catDisplay);
         setText('infoCaseType', data.case_type || 'Civil');
         const incTime = data.incident_time ? formatTime12(data.incident_time) : '';
         const incDate = data.incident_date ? formatDateReadable(data.incident_date) : 'N/A';
@@ -1273,6 +1277,13 @@ function renderOfficialKpForms(workspace, complaint) {
 
         const isSummonOrKp9 = doc.template_name?.includes('KP Form 9') || doc.template_name?.includes('Summon');
         const caseId = activeComplaint?.case_id || workspace?.case?.case_id || 0;
+        const caseNumber = activeComplaint?.complaint_number || workspace?.case?.case_number || '';
+        const docId = Number(doc.document_id);
+        const tplNameEscaped = String(doc.template_name || 'KP Form').replace(/'/g, "\\'");
+
+        const previewOnClick = (isSummonOrKp9 && typeof openSummonsPreviewModal === 'function')
+            ? `openSummonsPreviewModal(${Number(caseId)}, ${docId})`
+            : `openKpDocumentPreviewModal(${docId}, '${tplNameEscaped}', '${caseNumber}')`;
 
         rowsHtml += `
             <div class="kp-form-item-row">
@@ -1291,11 +1302,9 @@ function renderOfficialKpForms(workspace, complaint) {
                     </div>
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                    ${isSummonOrKp9 ? `
-                        <button type="button" class="btn-small-link" onclick="openSummonsPreviewModal(${Number(caseId)}, ${Number(doc.document_id)})" style="color: #4f46e5; border-color: #c7d2fe; font-weight: 600;">
-                            Preview / Print
-                        </button>
-                    ` : ''}
+                    <button type="button" class="btn-small-link" onclick="${previewOnClick}" style="color: #4f46e5; border-color: #c7d2fe; font-weight: 600;" title="Preview and Print ${escapeHtml(doc.template_name || 'KP Form')}">
+                        Preview / Print
+                    </button>
                     ${doc.file_path ? `
                         <a href="../../../backend/api/documents/download.php?id=${encodeURIComponent(doc.document_id)}&download=1" class="btn-pdf-chip" download title="Download official PDF">
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
@@ -4219,6 +4228,46 @@ function printKp7Iframe() {
     }
 }
 window.printKp7Iframe = printKp7Iframe;
+
+function openKpDocumentPreviewModal(documentId, templateName, caseNumber) {
+    const modal = document.getElementById('kpDocumentPreviewModal');
+    const iframe = document.getElementById('kpDocPreviewIframe');
+    const heading = document.getElementById('kpDocModalHeading');
+    const sub = document.getElementById('kpDocModalSub');
+    const dlBtn = document.getElementById('btnDownloadKpDocPdf');
+    if (!modal || !iframe) return;
+
+    if (heading) {
+        heading.textContent = templateName ? `${templateName} Preview` : 'Official KP Form Preview';
+    }
+    if (sub && caseNumber) {
+        sub.textContent = `Barangay Tumana Lupong Tagapamayapa · Case #${caseNumber}`;
+    }
+    const pdfUrl = `../../../backend/api/documents/download.php?id=${encodeURIComponent(documentId)}&_t=${Date.now()}`;
+    const dlUrl = `../../../backend/api/documents/download.php?id=${encodeURIComponent(documentId)}&download=1`;
+
+    iframe.src = pdfUrl;
+    if (dlBtn) dlBtn.href = dlUrl;
+    modal.style.display = 'flex';
+}
+window.openKpDocumentPreviewModal = openKpDocumentPreviewModal;
+
+function closeKpDocumentPreviewModal() {
+    const modal = document.getElementById('kpDocumentPreviewModal');
+    const iframe = document.getElementById('kpDocPreviewIframe');
+    if (iframe) iframe.src = 'about:blank';
+    if (modal) modal.style.display = 'none';
+}
+window.closeKpDocumentPreviewModal = closeKpDocumentPreviewModal;
+
+function printKpDocIframe() {
+    const iframe = document.getElementById('kpDocPreviewIframe');
+    if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+    }
+}
+window.printKpDocIframe = printKpDocIframe;
 
 function openUploadScanModal() {
     const modal = document.getElementById('kp7UploadScanModal');

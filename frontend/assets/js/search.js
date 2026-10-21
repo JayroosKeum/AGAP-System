@@ -526,8 +526,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (isDefaultView || !cachedGlobalCounts) {
             const allCount = rows.length;
-            const draftCount = rows.filter(r => r.lifecycle_status === 'Draft' || r.is_draft == 1 || r.intake_status === 'Draft').length;
-                        const mediationCount = rows.filter(r => r.lifecycle_status === 'Mediation').length;
+            const mediationCount = rows.filter(r => r.lifecycle_status === 'Mediation').length;
             const conciliationCount = rows.filter(r => r.lifecycle_status === 'Conciliation').length;
             const cfaCount = rows.filter(r => r.lifecycle_status === 'CFA').length;
             const closedCount = rows.filter(r => r.lifecycle_status === 'Resolution / Closed').length;
@@ -535,7 +534,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             cachedGlobalCounts = {
                 all: allCount,
-                draft: draftCount,
                 paanyaya: paanyayaCount,
                 mediation: mediationCount,
                 conciliation: conciliationCount,
@@ -551,7 +549,6 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         setEl('tabCountAll', counts.all);
-        setEl('tabCountDraft', counts.draft);
         setEl('tabCountPaanyaya', counts.paanyaya || 0);
         setEl('tabCountMediation', counts.mediation);
         setEl('tabCountConciliation', counts.conciliation);
@@ -688,13 +685,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const caseTypeClass = caseType.toLowerCase() === 'criminal' ? 'badge-type-criminal' : 'badge-type-civil';
 
         const isPaanyaya = (row.status === 'Pre-Docketed (Paanyaya)' || row.lifecycle_status === 'Paanyaya' || (row.status_labels && row.status_labels.includes('Paanyaya')) || (!row.case_id && String(row.complaint_number || row.case_number).startsWith('P-')));
-        const isDraft = !isPaanyaya && (Number(row.is_draft) === 1 || row.lifecycle_status === 'Draft' || row.intake_status === 'Draft');
 
         // 1. Case No.
         let caseNumberHtml;
-        if (isDraft) {
-            caseNumberHtml = `<span class="badge-case-draft" style="background:#fef3c7; color:#92400e; border:1px solid #fde68a; font-weight:600; padding:2px 8px; border-radius:9999px; font-size:0.75rem;">Draft</span>`;
-        } else if (isPaanyaya) {
+        if (isPaanyaya) {
             const formatPaanyayaDisplay = (cNum, compId, dt) => {
                 if (cNum && String(cNum).startsWith('P-')) return String(cNum);
                 const d = dt ? new Date(dt) : new Date();
@@ -766,8 +760,6 @@ document.addEventListener('DOMContentLoaded', () => {
         let lifecycleStatus = 'Paanyaya';
         if (isPaanyaya || !row.case_id) {
             lifecycleStatus = 'Paanyaya';
-        } else if (isDraft) {
-            lifecycleStatus = 'Draft';
         } else if (row.status === 'Settled' || row.lifecycle_status === 'Settled' || row.status === 'Resolved at Paanyaya / Closed' || row.lifecycle_status === 'Resolved at Paanyaya / Closed') {
             lifecycleStatus = 'Resolution / Closed';
         } else if ([

@@ -8,7 +8,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     http_response_code(405);
     exit('Method not allowed.');
 }
-if (!isset($_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2, 3, 4], true)) {
+if (!isset($_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2, 3, 4, 5, 6], true)) {
     http_response_code(403);
     exit('Unauthorized.');
 }
