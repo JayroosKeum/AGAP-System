@@ -110,7 +110,15 @@ function renderTotals(target, values, emptyMessage) {
 }
 
 function setMessage(message, success = false) {
-    const box = document.getElementById('reportMessage'); box.textContent = message; box.className = message ? `alert ${success ? 'success' : 'error'}` : '';
+    if (window.agapNotify && message) {
+        window.agapNotify(message, success ? 'success' : 'error', success ? 'Reports' : 'Report Error');
+    }
+    const box = document.getElementById('reportMessage');
+    if (box) {
+        box.textContent = '';
+        box.className = '';
+        box.style.display = 'none';
+    }
 }
 
 // ── Case Register Excel Export ───────────────────────────────────────────────

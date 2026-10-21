@@ -531,14 +531,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const conciliationCount = rows.filter(r => r.lifecycle_status === 'Conciliation').length;
             const cfaCount = rows.filter(r => r.lifecycle_status === 'CFA').length;
             const closedCount = rows.filter(r => r.lifecycle_status === 'Resolution / Closed').length;
-            const paanyayaCount = rows.filter(r => r.lifecycle_status === 'Paanyaya' || (r.lifecycle_status && r.lifecycle_status.includes('Paanyaya')) || (r.status && r.status.includes('Paanyaya')) || (r.complaint_status && r.complaint_status.includes('Paanyaya'))).length;
-            const pendingCount = rows.filter(r => r.lifecycle_status === 'Pending' && !r.lifecycle_status.includes('Paanyaya') && !(r.status && r.status.includes('Paanyaya')) && !(r.complaint_status && r.complaint_status.includes('Paanyaya'))).length;
+            const paanyayaCount = rows.filter(r => r.lifecycle_status === 'Paanyaya' || (r.lifecycle_status && r.lifecycle_status.includes('Paanyaya')) || (r.status && r.status.includes('Paanyaya')) || (r.complaint_status && r.complaint_status.includes('Paanyaya')) || (!r.case_id && String(r.complaint_number || r.case_number || '').startsWith('P-'))).length;
 
             cachedGlobalCounts = {
                 all: allCount,
                 draft: draftCount,
                 paanyaya: paanyayaCount,
-                pending: pendingCount,
                 mediation: mediationCount,
                 conciliation: conciliationCount,
                 cfa: cfaCount,
@@ -555,7 +553,6 @@ document.addEventListener('DOMContentLoaded', () => {
         setEl('tabCountAll', counts.all);
         setEl('tabCountDraft', counts.draft);
         setEl('tabCountPaanyaya', counts.paanyaya || 0);
-        setEl('tabCountPending', counts.pending);
         setEl('tabCountMediation', counts.mediation);
         setEl('tabCountConciliation', counts.conciliation);
         setEl('tabCountCfa', counts.cfa);
@@ -765,23 +762,20 @@ document.addEventListener('DOMContentLoaded', () => {
             partiesHtml = `<div class="parties-stack">${renderedParties}${extraCount}${repeatFlag}</div>`;
         }
 
-        // 4. Standardized lifecycle status
-        let lifecycleStatus = 'Pending';
-        if (isPaanyaya) {
-            // Paanyaya complaints are not combined with other statuses
+        // 4. Standardized lifecycle status (Paanyaya is undocketed, Mediation is docketed)
+        let lifecycleStatus = 'Paanyaya';
+        if (isPaanyaya || !row.case_id) {
             lifecycleStatus = 'Paanyaya';
         } else if (isDraft) {
             lifecycleStatus = 'Draft';
-        } else if (row.status === 'Settled' || row.lifecycle_status === 'Settled') {
-            lifecycleStatus = 'Settled';
-        } else if (row.status === 'Resolved at Paanyaya / Closed' || row.lifecycle_status === 'Resolved at Paanyaya / Closed') {
-            lifecycleStatus = 'Resolved at Paanyaya / Closed';
+        } else if (row.status === 'Settled' || row.lifecycle_status === 'Settled' || row.status === 'Resolved at Paanyaya / Closed' || row.lifecycle_status === 'Resolved at Paanyaya / Closed') {
+            lifecycleStatus = 'Resolution / Closed';
         } else if ([
-            'Pending',
             'Mediation',
             'Conciliation',
             'CFA',
-            'Resolution / Closed'
+            'Resolution / Closed',
+            'Paanyaya'
         ].includes(row.lifecycle_status)) {
             lifecycleStatus = row.lifecycle_status;
         }

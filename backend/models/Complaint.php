@@ -241,6 +241,18 @@ class Complaint
             $this->applyParties($complaintId, $data);
             if (!$isDraft) {
                 $this->saveIntakeScreening($complaintId, $data);
+                try {
+                    require_once __DIR__ . '/../services/NotificationService.php';
+                    $notifService = new NotificationService();
+                    $cNum = $this->conn->query("SELECT complaint_number FROM complaints WHERE complaint_id = {$complaintId}")->fetchColumn() ?: "CMP-#{$complaintId}";
+                    $notifService->notifyRoles(
+                        ['Administrator', 'Lupon Clerk'],
+                        'New Complaint Filed',
+                        "New complaint {$cNum} (" . ($data['complaint_title'] ?? 'General Dispute') . ") has been filed and initiated into Pre-Docketing (Paanyaya)."
+                    );
+                } catch (Throwable $ne) {
+                    error_log('Failed to dispatch new complaint notification: ' . $ne->getMessage());
+                }
             }
 
             $this->conn->commit();
@@ -404,6 +416,18 @@ class Complaint
             }
             if (!$isDraft && array_key_exists('jurisdiction_screened', $data)) {
                 $this->saveIntakeScreening($complaintId, $data);
+                try {
+                    require_once __DIR__ . '/../services/NotificationService.php';
+                    $notifService = new NotificationService();
+                    $cNum = $this->conn->query("SELECT complaint_number FROM complaints WHERE complaint_id = {$complaintId}")->fetchColumn() ?: "CMP-#{$complaintId}";
+                    $notifService->notifyRoles(
+                        ['Administrator', 'Lupon Clerk'],
+                        'New Complaint Filed',
+                        "New complaint {$cNum} (" . ($data['complaint_title'] ?? 'General Dispute') . ") has been filed and initiated into Pre-Docketing (Paanyaya)."
+                    );
+                } catch (Throwable $ne) {
+                    error_log('Failed to dispatch new complaint notification: ' . $ne->getMessage());
+                }
             }
 
             $this->conn->commit();
@@ -668,13 +692,65 @@ class Complaint
             if ($stmt->fetchColumn()) {
                 $updFields = [];
                 $updParams = [];
-                foreach (['contact_no', 'email', 'address', 'purok'] as $f) {
-                    $val = trim((string)($data[$prefix . '_' . $f] ?? ''));
-                    if ($val !== '') {
-                        $updFields[] = "$f = COALESCE(NULLIF($f, ''), ?)";
-                        $updParams[] = $val;
-                    }
+
+                $addressVal = trim((string)($data[$prefix . '_address'] ?? ''));
+                $purokVal = trim((string)($data[$prefix . '_purok'] ?? ''));
+                $isTenantVal = isset($data[$prefix . '_is_tenant']) && in_array((int)$data[$prefix . '_is_tenant'], [0, 1, 2], true)
+                    ? (int)$data[$prefix . '_is_tenant']
+                    : null;
+                if ($isTenantVal === null && $purokVal === 'Non-Resident') {
+                    $isTenantVal = 2;
                 }
+
+                if ($addressVal !== '') {
+                    $updFields[] = "address = ?";
+                    $updParams[] = $addressVal;
+                    $updFields[] = "house_street = ?";
+                    $updParams[] = $addressVal;
+
+                    $isNonTumana = ($isTenantVal === 2 || strcasecmp($purokVal, 'Non-Resident') === 0 || (stripos($addressVal, 'tumana') === false && (stripos($addressVal, 'marikina') !== false || stripos($addressVal, 'quezon') !== false || stripos($addressVal, 'pasig') !== false || stripos($addressVal, 'cainta') !== false || stripos($addressVal, 'san mateo') !== false)));
+                    $updFields[] = "barangay = ?";
+                    $updParams[] = $isNonTumana ? 'Outside Tumana' : 'Tumana';
+                    $updFields[] = "city_municipality = ?";
+                    $updParams[] = 'Marikina City';
+                }
+
+                if ($purokVal !== '') {
+                    $updFields[] = "purok = ?";
+                    $updParams[] = $purokVal;
+                }
+
+                if ($isTenantVal !== null) {
+                    $updFields[] = "is_tenant = ?";
+                    $updParams[] = $isTenantVal;
+                }
+
+                $contactVal = trim((string)($data[$prefix . '_contact_no'] ?? $data[$prefix . '_contact'] ?? ''));
+                if ($contactVal !== '') {
+                    $updFields[] = "contact_no = ?";
+                    $updParams[] = $contactVal;
+                }
+
+                $emailVal = trim((string)($data[$prefix . '_email'] ?? ''));
+                if ($emailVal !== '') {
+                    $updFields[] = "email = ?";
+                    $updParams[] = $emailVal;
+                }
+
+                $civilStatusVal = in_array(trim((string)($data[$prefix . '_civil_status'] ?? '')), ['Single', 'Married', 'Widowed', 'Separated'], true)
+                    ? trim((string)$data[$prefix . '_civil_status'])
+                    : null;
+                if ($civilStatusVal !== null) {
+                    $updFields[] = "civil_status = ?";
+                    $updParams[] = $civilStatusVal;
+                }
+
+                $occupationVal = trim((string)($data[$prefix . '_occupation'] ?? ''));
+                if ($occupationVal !== '') {
+                    $updFields[] = "occupation = ?";
+                    $updParams[] = $occupationVal;
+                }
+
                 if (!empty($updFields)) {
                     $updParams[] = $resId;
                     $updStmt = $this->conn->prepare("UPDATE residents SET " . implode(', ', $updFields) . " WHERE resident_id = ?");
@@ -728,17 +804,63 @@ class Complaint
         $findStmt->execute([$firstName, $lastName]);
         $existingId = $findStmt->fetchColumn();
         if ($existingId) {
-            return (int)$existingId;
+            $existingId = (int)$existingId;
+            $updFields = [];
+            $updParams = [];
+            if ($address !== null && $address !== '') {
+                $updFields[] = "address = ?";
+                $updParams[] = $address;
+                $updFields[] = "house_street = ?";
+                $updParams[] = $address;
+                $isNonTumana = ($isTenant === 2 || strcasecmp((string)$purok, 'Non-Resident') === 0 || (stripos($address, 'tumana') === false && (stripos($address, 'marikina') !== false || stripos($address, 'quezon') !== false)));
+                $updFields[] = "barangay = ?";
+                $updParams[] = $isNonTumana ? 'Outside Tumana' : 'Tumana';
+                $updFields[] = "city_municipality = ?";
+                $updParams[] = 'Marikina City';
+            }
+            if ($purok !== null && $purok !== '') {
+                $updFields[] = "purok = ?";
+                $updParams[] = $purok;
+            }
+            if ($isTenant !== null) {
+                $updFields[] = "is_tenant = ?";
+                $updParams[] = $isTenant;
+            }
+            if ($contactNo !== null && $contactNo !== '') {
+                $updFields[] = "contact_no = ?";
+                $updParams[] = $contactNo;
+            }
+            if ($email !== null && $email !== '') {
+                $updFields[] = "email = ?";
+                $updParams[] = $email;
+            }
+            if ($civilStatus !== null) {
+                $updFields[] = "civil_status = ?";
+                $updParams[] = $civilStatus;
+            }
+            if ($occupation !== null && $occupation !== '') {
+                $updFields[] = "occupation = ?";
+                $updParams[] = $occupation;
+            }
+            if (!empty($updFields)) {
+                $updParams[] = $existingId;
+                $updStmt = $this->conn->prepare("UPDATE residents SET " . implode(', ', $updFields) . " WHERE resident_id = ?");
+                $updStmt->execute($updParams);
+            }
+            return $existingId;
         }
 
         // Insert new resident record automatically
+        $isNonTumana = ($isTenant === 2 || strcasecmp((string)$purok, 'Non-Resident') === 0 || ($address && stripos($address, 'tumana') === false && stripos($address, 'marikina') !== false));
+        $calcBarangay = $isNonTumana ? 'Outside Tumana' : 'Tumana';
         $ins = $this->conn->prepare("
             INSERT INTO residents (
                 first_name, middle_name, last_name, suffix,
                 birth_date, gender, civil_status, occupation,
                 contact_no, email, preferred_contact,
-                address, purok, is_tenant, residency_verified
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                address, house_street, barangay, city_municipality,
+                purok, is_tenant, residency_verified
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $ins->execute([
             $firstName,
@@ -753,6 +875,9 @@ class Complaint
             $email,
             $preferredContact,
             $address,
+            $address,
+            $calcBarangay,
+            'Marikina City',
             $purok,
             $isTenant,
             $residencyVerified
@@ -903,14 +1028,44 @@ class Complaint
                         if ($foundId) {
                             $pId = (int)$foundId;
                         } else {
-                            $ins = $this->conn->prepare('INSERT INTO residents (first_name, middle_name, last_name, suffix, contact_no, address, purok, residency_verified) VALUES (?, ?, ?, ?, ?, ?, ?, 1)');
-                            $ins->execute([$pFirst, $pMiddle ?: null, $pLast, $pSuffix ?: null, $pContact ?: null, $pAddress ?: null, $pPurok ?: null]);
+                            $pBarangay = ($pPurok === 'Non-Resident' || ($pAddress && stripos($pAddress, 'tumana') === false)) ? 'Outside Tumana' : 'Tumana';
+                            $ins = $this->conn->prepare('INSERT INTO residents (first_name, middle_name, last_name, suffix, contact_no, address, house_street, purok, barangay, city_municipality, residency_verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)');
+                            $ins->execute([$pFirst, $pMiddle ?: null, $pLast, $pSuffix ?: null, $pContact ?: null, $pAddress ?: null, $pAddress ?: null, $pPurok ?: null, $pBarangay, 'Marikina City']);
                             $pId = (int)$this->conn->lastInsertId();
                         }
                     }
                 }
 
                 if ($pId && $pId > 0) {
+                    $pAddressVal = trim((string)($data['party_addresses'][$index] ?? ''));
+                    $pPurokVal   = trim((string)($data['party_puroks'][$index] ?? ''));
+                    $pContactVal = trim((string)($data['party_contacts'][$index] ?? ''));
+                    $pUpd = [];
+                    $pParams = [];
+                    if ($pAddressVal !== '') {
+                        $pUpd[] = "address = ?";
+                        $pParams[] = $pAddressVal;
+                        $pUpd[] = "house_street = ?";
+                        $pParams[] = $pAddressVal;
+                        $isNonTum = ($pPurokVal === 'Non-Resident' || (stripos($pAddressVal, 'tumana') === false && (stripos($pAddressVal, 'marikina') !== false || stripos($pAddressVal, 'quezon') !== false)));
+                        $pUpd[] = "barangay = ?";
+                        $pParams[] = $isNonTum ? 'Outside Tumana' : 'Tumana';
+                        $pUpd[] = "city_municipality = ?";
+                        $pParams[] = 'Marikina City';
+                    }
+                    if ($pPurokVal !== '') {
+                        $pUpd[] = "purok = ?";
+                        $pParams[] = $pPurokVal;
+                    }
+                    if ($pContactVal !== '') {
+                        $pUpd[] = "contact_no = ?";
+                        $pParams[] = $pContactVal;
+                    }
+                    if (!empty($pUpd)) {
+                        $pParams[] = $pId;
+                        $this->conn->prepare("UPDATE residents SET " . implode(', ', $pUpd) . " WHERE resident_id = ?")->execute($pParams);
+                    }
+
                     $residentLookup->execute([$pId]);
                     $pRes = $residentLookup->fetch(PDO::FETCH_ASSOC) ?: [];
                     $pBirth = trim((string)($pRes['birth_date'] ?? '')) ?: null;

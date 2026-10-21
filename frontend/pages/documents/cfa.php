@@ -37,7 +37,7 @@ include '../../layouts/header.php';
             </div>
         </div>
 
-        <div id="cfaMessage" role="alert"></div>
+        <div id="cfaMessage" role="alert" style="display: none;"></div>
 
         <?php if ($canIssueCfa): ?>
         <section class="document-card">

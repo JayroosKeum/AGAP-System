@@ -197,6 +197,21 @@ class Paanyaya
                 $this->audit->log($userId, "Issued {$ordinal} Paanyaya (Informal Invitation)", 'Complaints', $complaintId);
             }
 
+            try {
+                require_once __DIR__ . '/../services/NotificationService.php';
+                $notifService = new NotificationService();
+                $cNum = $complaint['complaint_number'] ?? "CMP-{$complaintId}";
+                $notifService->notifyRoles(
+                    ['Administrator', 'Lupon Clerk', 'Summons Server'],
+                    "Paanyaya {$attemptNumber} Scheduled",
+                    "Paanyaya {$attemptNumber} dialogue for {$cNum} is scheduled on " . date('M j, Y', strtotime($invitationDate)) . " at " . date('g:i A', strtotime($invitationTime)) . " ({$venue}).",
+                    $userId
+                );
+            } catch (Throwable $ne) {
+                error_log('Failed to dispatch Paanyaya notification: ' . $ne->getMessage());
+
+            }
+
             $this->conn->commit();
 
             return [
@@ -781,6 +796,20 @@ class Paanyaya
             if ($userId) {
                 $this->audit->log($userId, "Escalated to Formal Case Docketing: Case #{$caseNumber} assigned with 1st Mediation Summons (KP Forms 7, 8, 9 generated)", 'Complaints', $complaintId);
             }
+
+            try {
+                require_once __DIR__ . '/../services/NotificationService.php';
+                $notifService = new NotificationService();
+                $notifService->notifyRoles(
+                    ['Administrator', 'Lupon Clerk'],
+                    "Dispute Escalated to Formal Mediation",
+                    "Dispute was escalated to Formal Mediation. Case #{$caseNumber} officially docketed with 1st Mediation hearing on {$medDate} at {$medTime}.",
+                    $userId
+                );
+            } catch (Throwable $ne) {
+                error_log('Failed to dispatch escalation notification: ' . $ne->getMessage());
+            }
+
 
             return [
                 'success' => true,
@@ -1846,6 +1875,20 @@ class Paanyaya
                 $updStages->execute([$complaintId]);
 
                 $this->audit->log($userId, "Recorded Minutes for {$stageType}: Amicably Settled (Pre-Docket Resolution)", 'Paanyaya', $complaintId);
+
+                try {
+                    require_once __DIR__ . '/../services/NotificationService.php';
+                    $notifService = new NotificationService();
+                    $cNum = $complaint['complaint_number'] ?? "CMP-#{$complaintId}";
+                    $notifService->notifyRoles(
+                        ['Administrator', 'Lupon Clerk'],
+                        'Dispute Settled at Paanyaya Stage',
+                        "Complaint {$cNum} was amicably settled during {$stageType} informal dialogue (LTIA Pre-Docket Resolution win).",
+                        $userId
+                    );
+                } catch (Throwable $ne) {
+                    error_log('Failed to dispatch Paanyaya settled notification: ' . $ne->getMessage());
+                }
 
                 $this->conn->commit();
 

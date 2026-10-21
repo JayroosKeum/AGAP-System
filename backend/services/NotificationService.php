@@ -11,18 +11,18 @@ class NotificationService
         $this->notification = new Notification();
     }
 
-    public function notifyUser(int $userId, string $title, string $message, ?int $excludeUserId = null): void
+    public function notifyUser(int $userId, string $title, string $message, ?int $excludeUserId = null, ?string $severity = null, ?string $actionUrl = null, ?int $caseId = null): void
     {
         try {
             if ($userId > 0 && $userId !== $excludeUserId) {
-                $this->notification->create($userId, $title, $message);
+                $this->notification->create($userId, $title, $message, $severity ?? 'info', $actionUrl, $caseId);
             }
         } catch (Throwable $exception) {
             error_log('Notification delivery failed: ' . $exception->getMessage());
         }
     }
 
-    public function notifyCaseMembers(int $caseId, string $title, string $message, ?int $excludeUserId = null): void
+    public function notifyCaseMembers(int $caseId, string $title, string $message, ?int $excludeUserId = null, ?string $severity = null, ?string $actionUrl = null): void
     {
         try {
             foreach ($this->notification->getCaseRecipients($caseId) as $userId) {
@@ -33,7 +33,7 @@ class NotificationService
         }
     }
 
-    public function notifyRoles(array $roles, string $title, string $message, ?int $excludeUserId = null): void
+    public function notifyRoles(array $roles, string $title, string $message, ?int $excludeUserId = null, ?string $severity = null, ?string $actionUrl = null, ?int $caseId = null): void
     {
         try {
             foreach ($this->notification->getRoleRecipients($roles) as $userId) {

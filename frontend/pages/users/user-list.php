@@ -48,7 +48,7 @@ include '../../layouts/header.php';
         
         <form id="userForm" method="POST" action="../../../backend/api/users/create.php">
             <input type="hidden" id="userId" name="user_id">
-            <div id="userMessage" role="alert"></div>
+            <div id="userMessage" role="alert" style="display: none;"></div>
             
             <div class="grid">
                 <div class="form-group">

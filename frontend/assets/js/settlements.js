@@ -17,6 +17,10 @@ async function api(url, options = {}) {
 }
 
 function showAlert(msg, isSuccess = false) {
+    if (window.agapNotify && msg) {
+        window.agapNotify(msg, isSuccess ? 'success' : 'error', isSuccess ? 'Settlement' : 'Attention');
+        return;
+    }
     const el = document.getElementById('settlementAlert');
     if (!el) return;
     el.textContent = msg;

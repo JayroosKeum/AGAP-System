@@ -4,8 +4,7 @@ require_once __DIR__ . '/../config/database.php';
 
 class ComplaintLifecycleService
 {
-    public const PENDING = 'Pending';
-    public const PAANYAYA = 'Pre-Docketed (Paanyaya)';
+    public const PAANYAYA = 'Paanyaya';
     public const MEDIATION = 'Mediation';
     public const CONCILIATION = 'Conciliation';
     public const CFA = 'CFA';
@@ -24,7 +23,6 @@ class ComplaintLifecycleService
     public static function allowedStatuses(): array
     {
         return [
-            self::PENDING,
             self::PAANYAYA,
             self::MEDIATION,
             self::CONCILIATION,
@@ -38,10 +36,10 @@ class ComplaintLifecycleService
     ): string {
         return match ($status) {
             self::PAANYAYA =>
-                'Pre-docketed informal Paanyaya dialogue session.',
+                'Undocketed informal Paanyaya dialogue session.',
 
             self::MEDIATION =>
-                'Active mediation with the Lupon Head.',
+                'Active mediation with the Punong Barangay (Docketed).',
 
             self::CONCILIATION =>
                 'Active conciliation with the Lupon panel.',
@@ -53,7 +51,7 @@ class ComplaintLifecycleService
                 'Case resolved or officially closed.',
 
             default =>
-                'Summon is currently being served.'
+                'Undocketed informal Paanyaya dialogue session.'
         };
     }
 
@@ -61,7 +59,7 @@ class ComplaintLifecycleService
         int $complaintId
     ): string {
         if ($complaintId < 1) {
-            return self::PENDING;
+            return self::PAANYAYA;
         }
 
         $statement = $this->conn->prepare(
@@ -122,7 +120,7 @@ class ComplaintLifecycleService
         );
 
         if (!$record) {
-            return self::PENDING;
+            return self::PAANYAYA;
         }
 
         return self::resolveFromValues(
@@ -197,14 +195,6 @@ class ComplaintLifecycleService
             return self::CLOSED;
         }
 
-        if (
-            $complaintStatus === 'Pre-Docketed (Paanyaya)' ||
-            $complaintStatus === 'Paanyaya In Progress' ||
-            str_contains($complaintStatus, 'Paanyaya')
-        ) {
-            return self::PAANYAYA;
-        }
-
         /*
          * CFA overrides active mediation and conciliation.
          */
@@ -222,9 +212,6 @@ class ComplaintLifecycleService
          * 1. The case status is Conciliation;
          * 2. The complaint status is Conciliation; or
          * 3. A Conciliation hearing exists.
-         *
-         * Creating or assigning a Pangkat group alone must not
-         * automatically change the displayed status.
          */
         if (
             $caseStatus === 'Conciliation' ||
@@ -240,6 +227,8 @@ class ComplaintLifecycleService
          * 1. The case status is Mediation;
          * 2. The complaint status is Mediation; or
          * 3. A Mediation hearing exists.
+         *
+         * When mediation starts, the dispute is formally docketed.
          */
         if (
             $caseStatus === 'Mediation' ||
@@ -249,6 +238,9 @@ class ComplaintLifecycleService
             return self::MEDIATION;
         }
 
-        return self::PENDING;
+        /*
+         * Undocketed complaints are in the Paanyaya stage.
+         */
+        return self::PAANYAYA;
     }
 }

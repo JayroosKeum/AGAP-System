@@ -16,7 +16,11 @@ class NotificationController
 
     public function inbox(int $userId): array
     {
-        return ['success' => true, 'data' => $this->notification->getByUser($userId), 'unread_count' => $this->notification->unreadCount($userId)];
+        return [
+            'success' => true,
+            'data' => $this->notification->getByUser($userId),
+            'unread_count' => $this->notification->unreadCount($userId)
+        ];
     }
 
     public function read(int $notificationId, int $userId): array
@@ -27,5 +31,18 @@ class NotificationController
         }
         $this->audit->log($userId, 'Read Notification', 'Notifications', $notificationId);
         return ['success' => true, 'message' => 'Notification marked as read.'];
+    }
+
+    public function markAllRead(int $userId): array
+    {
+        $count = $this->notification->markAllRead($userId);
+        if ($count > 0) {
+            $this->audit->log($userId, 'Marked all notifications as read', 'Notifications', $userId);
+        }
+        return [
+            'success' => true,
+            'message' => "Marked {$count} notification(s) as read.",
+            'affected_count' => $count
+        ];
     }
 }

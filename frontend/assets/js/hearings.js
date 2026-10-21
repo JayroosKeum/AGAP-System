@@ -1335,10 +1335,14 @@ function clearAttendanceModalAlert() {
 }
 
 function setMessage(message, success = false) {
+    if (window.agapNotify && message) {
+        window.agapNotify(message, success ? 'success' : 'error', success ? 'Hearing Updated' : 'Hearing Notice');
+    }
     const box = document.getElementById('hearingMessage');
     if (box) {
-        box.textContent = message;
-        box.className = message ? (success ? 'alert success' : 'alert error') : '';
+        box.textContent = '';
+        box.className = '';
+        box.style.display = 'none';
     }
     const modal = document.getElementById('editHearingModal');
     if (modal && modal.style.display !== 'none') {
@@ -2432,7 +2436,11 @@ function setApprovedBlock(block) {
     if (!dateInput) return;
 
     if (hType === 'Mediation' && block === 'morning') {
-        alert('Mediation sessions for Barangay Tumana are conducted exclusively on Tuesday afternoons (1:00 PM – 5:00 PM). Morning slots are not permitted for Mediation.');
+        if (window.agapNotify) {
+            window.agapNotify('Mediation sessions for Barangay Tumana are conducted exclusively on Tuesday afternoons (1:00 PM – 5:00 PM). Morning slots are not permitted for Mediation.', 'warning', 'Mediation Scheduling');
+        } else {
+            alert('Mediation sessions for Barangay Tumana are conducted exclusively on Tuesday afternoons (1:00 PM – 5:00 PM). Morning slots are not permitted for Mediation.');
+        }
         return;
     }
 

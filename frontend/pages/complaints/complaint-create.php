@@ -3116,7 +3116,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <li>
                         <strong>${escapeHtml(d.complaint_number || 'No Case #')}</strong>:
                         ${escapeHtml(d.complaint_title)}
-                        <span class="badge-lifecycle-pending" style="font-size:0.75rem;padding:1px 6px;margin-left:4px;">${escapeHtml(d.status)}</span>
+                        <span class="badge-lifecycle-paanyaya" style="font-size:0.75rem;padding:1px 6px;margin-left:4px;">${escapeHtml(d.status)}</span>
                         <span style="color:#64748b;font-size:0.75rem;">(Incident: ${escapeHtml(d.incident_date || 'N/A')})</span>
                         <a href="complaint-details.php?id=${d.complaint_id}" target="_blank" class="duplicate-warning-link" style="margin-left:6px;">View Record &rarr;</a>
                     </li>

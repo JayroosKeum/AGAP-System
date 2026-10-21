@@ -7,9 +7,15 @@ const esc = (value) => {
 };
 
 const showMessage = (message, success = false) => {
+    if (window.agapNotify && message) {
+        window.agapNotify(message, success ? 'success' : 'error', 'User Management');
+    }
     const node = document.getElementById('userMessage');
-    node.textContent = message;
-    node.className = message ? `user-message ${success ? 'success' : 'error'}` : '';
+    if (node) {
+        node.textContent = '';
+        node.className = '';
+        node.style.display = 'none';
+    }
 };
 
 const request = async (url, options = {}) => {
@@ -137,6 +143,5 @@ async function deleteUser(id) {
         await loadUsers();
     } catch (error) {
         window.agapNotify?.(error.message, 'error', 'User Management');
-        alert(error.message);
     }
 }

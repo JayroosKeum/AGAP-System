@@ -256,6 +256,10 @@ async function loadCfaRecords() {
 }
 
 function setMessage(msg, isSuccess = false) {
+    if (window.agapNotify && msg) {
+        window.agapNotify(msg, isSuccess ? 'success' : 'error', isSuccess ? 'CFA Document' : 'CFA Warning');
+        return;
+    }
     const el = document.getElementById('cfaMessage');
     if (!el) return;
     el.textContent = msg;
