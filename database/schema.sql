@@ -164,6 +164,8 @@ CREATE TABLE complaints (
     paanyaya_attempt_count TINYINT UNSIGNED DEFAULT 1,
     max_paanyaya_reached TINYINT(1) DEFAULT 0,
     resolved_without_docketing TINYINT(1) DEFAULT 0,
+    paanyaya_1_outcome VARCHAR(50) NULL DEFAULT NULL,
+    paanyaya_complainant_choice VARCHAR(50) NULL DEFAULT NULL,
     ltia_category VARCHAR(100) NULL,
     encoded_by INT UNSIGNED NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

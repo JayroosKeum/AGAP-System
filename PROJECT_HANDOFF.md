@@ -1496,3 +1496,73 @@ All four changes were implemented and syntax-verified (`php -l` passes, logic te
 2. **Reopen URL path:** The JS `fetch` path in `complaints.js` assumes the page is at `frontend/pages/complaints/complaint-details.php`. If the page depth changes, update the relative URL.
 3. **Existing cases with 3 mediation sessions:** These are unaffected; their `completedMediationCount >= 2` so Pangkat referral is already unlocked.
 4. **`summons` table alias:** `getCaseRegister()` assumes a `summons` table with columns `case_id, issuance_date, delivery_date, serving_officer, delivery_status, attempt_number`. Verify column names match your live DB.
+
+---
+
+## October 2026 — Paanyaya Pre-Docket Workflow, Case Numbering Standard, and UI Streamlining
+
+A series of key refinements were implemented to conform strictly to Barangay Tumana's informal dialogue procedure, decouple informal pre-docketed disputes from formal court docketing, separate Paanyaya status presentation, and streamline the complaint details interface.
+
+### 1. Distinct Paanyaya Pre-Docket Case Numbering (`P-month-number-year`)
+
+- **Rationale:** Disputes in the preliminary invitation stage (Paanyaya) are informal and not yet formally docketed into the KP court system. They must not appear with formal docket numbers or generic `CMP-` prefixes.
+- **Format:** `P-month-number-year` (e.g., `P-10-86-2026` for Complaint #86 filed in October 2026).
+- **Implementation:**
+  - Added `Complaint::generatePaanyayaCaseNumber(int $complaintId, ?string $dateStr = null): string` in `backend/models/Complaint.php`.
+  - Created and executed migration `database/migrations/20261021_002_update_paanyaya_case_numbers.sql` to standardize all existing Paanyaya records (`P-10-86-2026`, `P-10-85-2026`, etc.).
+  - Added dedicated styling `.badge-case-paanyaya-no` in `frontend/assets/css/complaints.css` (clean green badge).
+  - Updated `frontend/assets/js/complaints.js` and `frontend/assets/js/search.js` so table cells and details headers display `Paanyaya Case #P-10-86-2026`.
+
+### 2. Transition to Official Docketed Case Number Upon Escalation to Mediation (`month-number-year`)
+
+- **Rationale:** When an informal Paanyaya dispute fails to resolve and is escalated to formal Mediation, it officially enters the court docket. At this point, it must receive the official docketed case number.
+- **Format:** `month-number-year` (e.g., `10-21-2026`).
+- **Implementation:**
+  - In `backend/models/CaseModel.php` (`create()`) and `backend/models/Paanyaya.php` (`escalateToFormalDocketing()`), the official case record is created in `cases` with `case_number` generated via `CaseModel::generateCaseNumber()`.
+  - The complaint's tracking number in `complaints.complaint_number` is synchronized to the assigned docketed case number, and its status is updated to `Mediation`.
+
+### 3. Paanyaya Status Isolation (Not Combined with Other Statuses)
+
+- **Rationale:** Previously, Paanyaya disputes could display multiple badges (e.g., `Paanyaya` alongside `Pending`, `Under Review`, or `Draft`). Paanyaya is a distinct pre-docket phase and should not be combined with other statuses.
+- **Implementation:**
+  - Updated `Search::resolveLifecycle()` and `Search::resolveStandardStatus()` in `backend/models/Search.php`.
+  - Updated `renderComplaintRow()` and `renderSearchRow()` in `frontend/assets/js/search.js`.
+  - Complaints in Paanyaya now show strictly the single badge `Paanyaya`.
+  - Paanyaya complaints are included under the "All" tab and have a dedicated "Paanyaya" filter tab with live count pills.
+
+### 4. Official Paanyaya Preview Modal Layout & Cleanup
+
+- **Rationale:** The preview modal had redundant headers, duplicate action buttons, and confusing recipient indicators.
+- **Files changed:** `frontend/pages/complaints/complaint-details.php`.
+- **Modifications:**
+  - Removed top duplicate button ("Proceed to Officer's Return"), retaining only the bottom primary action button.
+  - Removed redundant subtitle (*"Barangay Tumana • Lungsod ng Marikina • Pre-Docketed Informal Dialogue"*).
+  - Removed the *"Download PDF"* button to prioritize direct high-fidelity printing via the top *"🖨️ Print"* button.
+  - Removed the bottom indicator text (*"Recipient for Delivery: Respondent Only (Up to 6 Attempts on Paanyaya)"*).
+
+### 5. Removal of Case Summary Tab
+
+- **Rationale:** The Case Summary tab was redundant with the comprehensive Overview & Workflow tab.
+- **Files changed:**
+  - `frontend/pages/complaints/complaint-details.php`: Removed action bar button, secondary tab button, and the `#tab-summary` HTML pane. Removed `'tab-summary'` from `$validTabs` fallback routing in PHP.
+  - `frontend/assets/js/complaints.js`: Added element-existence guards in `renderCaseSummary()`.
+
+### 6. Removal of Paanyaya Delivery History & Officer's Return Records
+
+- **Rationale:** The separate delivery history table was extraneous and simplified out of the active Paanyaya interface.
+- **Files changed:**
+  - `frontend/pages/complaints/complaint-details.php`: Removed the `#paanyayaHistoryCard` table section (*"Paanyaya Delivery History & Officer's Return Records"*).
+  - Removed the *"📜 View Delivery History"* buttons from both the Paanyaya 1 and Paanyaya 2 stage cards.
+
+### 7. Database Migrations Added
+
+| Migration File | Description |
+|----------------|-------------|
+| `database/migrations/20261020_002_create_paanyaya_minutes_table.sql` | Creates `paanyaya_minutes` table for recording dialogue discussion notes, outcome, and agreed terms. |
+| `database/migrations/20261021_001_add_paanyaya_outcome_columns_to_complaints.sql` | Adds `paanyaya_1_outcome` and `paanyaya_complainant_choice` columns to `complaints` table (also reflected in `database/schema.sql`). |
+| `database/migrations/20261021_002_update_paanyaya_case_numbers.sql` | Standardizes all pre-docket Paanyaya complaint numbers to the `P-month-number-year` format. |
+
+### 8. Cleanup of Automated Test Records
+
+- Purged 26 automated E2E test disputes (such as `"E2E Paanyaya Test Dispute"`, `"Proof of Service Paanyaya Test"`, and `"Edit Test"`) and 33 orphaned test PDFs from `storage/paanyaya/`.
+- Verified that legitimate records, specifically Complaint **#86** (`test 22`), were preserved intact.

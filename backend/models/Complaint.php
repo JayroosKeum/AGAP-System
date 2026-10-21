@@ -232,7 +232,7 @@ class Complaint
             ]);
 
             $complaintId = (int) $this->conn->lastInsertId();
-            $complaintNumber = sprintf('CMP-%s-%05d', date('Y'), $complaintId);
+            $complaintNumber = self::generatePaanyayaCaseNumber($complaintId);
             $numberStatement = $this->conn->prepare(
                 'UPDATE complaints SET complaint_number = ?, paanyaya_attempt_count = 1, max_paanyaya_reached = 0, resolved_without_docketing = 0 WHERE complaint_id = ?'
             );
@@ -1308,5 +1308,17 @@ class Complaint
         $createStmt->execute([$firstName, $middleName ?: null, $lastName]);
         return (int) $this->conn->lastInsertId();
     }
-}
 
+    /**
+     * Generates a Paanyaya case number in the format P-month-number-year
+     * e.g. P-10-86-2026
+     */
+    public static function generatePaanyayaCaseNumber(int $complaintId, ?string $dateStr = null): string
+    {
+        $ts = $dateStr ? (strtotime($dateStr) ?: time()) : time();
+        $month = (int) date('m', $ts);
+        $year = (int) date('Y', $ts);
+        return sprintf('P-%02d-%02d-%04d', $month, $complaintId, $year);
+    }
+
+}

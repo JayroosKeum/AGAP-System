@@ -380,14 +380,16 @@ async function loadComplaintDetails() {
             } catch (_) {}
         }
 
-        // Format Docket Number (e.g. 10-17-2026) - never show CMP- prefix
+        // Format Docket Number (e.g. 10-17-2026) or Paanyaya Case Number (e.g. P-10-86-2026)
+        const isPaanyayaRecord = data.status === 'Pre-Docketed (Paanyaya)' || (!data.case_id && !data.case_workspace?.case?.case_id);
         const formatDocketDisplay = (num, id, dt) => {
+            if (num && String(num).startsWith('P-')) return String(num);
             if (num && !String(num).startsWith('CMP-')) return String(num);
             const d = dt ? new Date(dt) : new Date();
             const mm = String(d.getMonth() + 1).padStart(2, '0');
             const ss = String(id || 1).padStart(2, '0');
             const yy = d.getFullYear() || 2026;
-            return `${mm}-${ss}-${yy}`;
+            return isPaanyayaRecord ? `P-${mm}-${ss}-${yy}` : `${mm}-${ss}-${yy}`;
         };
         const docketNum = formatDocketDisplay(data.case_number || data.complaint_number, data.complaint_id, data.created_at);
         const compNum = docketNum;
@@ -395,7 +397,7 @@ async function loadComplaintDetails() {
         // Header Case Number
         const compNumEl = document.getElementById('complaintNumber');
         if (compNumEl) {
-            compNumEl.textContent = 'Case #' + docketNum;
+            compNumEl.textContent = (isPaanyayaRecord ? 'Paanyaya Case #' : 'Case #') + docketNum;
         }
 
         const compTitleEl = document.getElementById('complaintTitle');
@@ -405,8 +407,8 @@ async function loadComplaintDetails() {
         const statusEl = document.getElementById('complaintStatusBadge');
         const caseStage = data.case_workspace?.case?.case_status;
         let displayStage = caseStage ? (caseStage + ' Stage') : (data.lifecycle_status || 'Under Review');
-        if (data.status === 'Pre-Docketed (Paanyaya)') {
-            displayStage = 'Pre-Docketed (Paanyaya)';
+        if (isPaanyayaRecord || data.status === 'Pre-Docketed (Paanyaya)') {
+            displayStage = 'Paanyaya';
         } else if (data.status === 'Settled' || data.status === 'Resolved at Paanyaya / Closed') {
             displayStage = 'Settled';
 
@@ -4359,6 +4361,7 @@ function getStatusBadgeClass(status) {
 
 function renderCaseSummary(data) {
     if (!data) return;
+    if (!document.getElementById('tab-summary')) return;
     const caseWorkspace = data.case_workspace || {};
     const caseItem = caseWorkspace.case || {};
     const hearings = caseWorkspace.hearings || [];
@@ -4366,13 +4369,15 @@ function renderCaseSummary(data) {
     const parties = data.parties || [];
 
     // Title & Header
+    const isPaanyayaCase = data.status === 'Pre-Docketed (Paanyaya)' || (!caseItem.case_id && !data.case_id);
     const formatDocketDisplay = (num, id, dt) => {
+        if (num && String(num).startsWith('P-')) return String(num);
         if (num && !String(num).startsWith('CMP-')) return String(num);
         const d = dt ? new Date(dt) : new Date();
         const mm = String(d.getMonth() + 1).padStart(2, '0');
         const ss = String(id || 1).padStart(2, '0');
         const yy = d.getFullYear() || 2026;
-        return `${mm}-${ss}-${yy}`;
+        return isPaanyayaCase ? `P-${mm}-${ss}-${yy}` : `${mm}-${ss}-${yy}`;
     };
     const docketNum = formatDocketDisplay(caseItem.case_number || data.case_number || data.complaint_number, data.complaint_id, data.created_at);
     setText('summaryCaseTitle', data.complaint_title || 'Untitled Case');

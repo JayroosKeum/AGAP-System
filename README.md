@@ -51,7 +51,7 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
   - Atomic server updates: synchronizes `complaints`, propagates `case_type` to linked `cases`, updates/inserts `complaint_parties`, and persists or clears coordinates in `incident_locations`.
 - **Modern, Compact Complaints List (`complaint-list.php`)**:
   - **4 Top KPI Metric Cards**: "Total Complaints", "Under Review", "In Progress", and "Settled" with one-click filtering.
-  - **8 Process-Based Status Navigation Tabs**: Horizontal quick-access tabs with live count pills for each stage and disposition: `All`, `Under Review`, `Docketed`, `Mediation`, `Conciliation`, `Arbitration`, `Settled`, `Dismissed`, and `CFA`.
+  - **8 Process-Based Status Navigation Tabs**: Horizontal quick-access tabs with live count pills for each stage and disposition: `All`, `Paanyaya`, `Pending`, `Under Review`, `Docketed`, `Mediation`, `Conciliation`, `CFA`, and `Resolution / Closed`.
   - **3-Dimensional Lifecycle Tracking**: Conforms to RA 7160 (Katarungang Pambarangay) by decoupling orthogonal attributes:
     1. **Intake Status**: `Under Review` (screening/pre-docketing) vs `Docketed` (assigned case number).
     2. **Progression / Dispute Stage**: `None / Pre-docketing`, `Mediation` (PB phase), `Conciliation` (Pangkat phase), or `Arbitration` (voluntary binding phase).
@@ -72,25 +72,29 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
   - Secure evidence upload vault supporting images (JPG, PNG), videos (MP4, WebM), and PDF documents up to 25 MB with MIME verification.
   - **Official KP Forms Table**: Houses **KP Form 7 (Reklamo)** alongside other KP forms, supporting high-fidelity Legal-size modal preview, zero-watermark printing, and versioned scan replacements.
 
-### 2. Preliminary Paanyaya Process & Officer's Return Tracking
+### 2. Preliminary Paanyaya Process & Pre-Docket Tracking
 
 - **Mandatory Preliminary Workflow Insertion**:
   - Seamlessly positioned between Complaint Details and formal Mediation:
     `Complaint Intake / Overview` $\rightarrow$ `Paanyaya 1` $\rightarrow$ `Paanyaya 2` $\rightarrow$ `Mediation` $\rightarrow$ `Conciliation` $\rightarrow$ `Arbitration / CFA`.
-  - Cases in this preliminary phase hold the `Pre-Docketed (Paanyaya)` state until preliminary service requirements or administrative review escalations are satisfied.
+  - Cases in this preliminary phase hold the dedicated `Paanyaya` (`Pre-Docketed (Paanyaya)`) state until preliminary service requirements or administrative review escalations are satisfied.
+  - **Status Isolation**: Records in Paanyaya display strictly the `Paanyaya` status badge and are never combined with other statuses (such as "Pending", "Draft", or "Under Review").
+- **Distinct Pre-Docket Case Numbering (`P-month-number-year`)**:
+  - While in the informal Paanyaya stage, disputes are **not docketed automatically** into the court cases table.
+  - Assigned a distinct pre-docket tracking number format: `P-month-number-year` (e.g. `P-10-86-2026`).
+  - Upon escalation to formal Mediation, the dispute is docketed into `cases` and the case number transitions to the official docketed format: `month-number-year` (e.g. `10-21-2026`).
 - **Dedicated Paanyaya Tab (`complaint-details.php`)**:
-  - Positioned between Case Summary and Mediation tabs, matching existing AGAP design guidelines.
+  - Positioned directly after Overview & Workflow and before the Mediation tab.
   - Two distinct sections:
     - **Paanyaya 1 – First Preliminary Invitation**: Up to 6 recorded delivery attempts.
     - **Paanyaya 2 – Second Preliminary Invitation**: Up to 6 delivery attempts, unlocked only when Paanyaya 1 completes with Lupon administrative review or escalation approval.
   - Independent attempt counter (1 to 6) per stage enforced by database constraints and server-side model logic; attempt counters never reset on navigation or overlap between stages.
 - **Official Paanyaya Invitation Letter Generation & Print Preview**:
   - Generates official Paanyaya invitation letters featuring Barangay Tumana and City of Marikina seals, hearing schedule (date, time, venue), salaysay facts excerpt, and Punong Barangay / Lupon signature block.
-  - Interactive post-filing modal preview (`#paanyayaPreviewModal`) displaying Legal-size print previews with one-click PDF downloading and direct handover to Officer's Return recording.
+  - Streamlined post-filing modal preview (`#paanyayaPreviewModal`) displaying Legal-size print previews with direct zero-watermark printing and handover to Officer's Return recording.
 - **Granular Officer's Return Delivery Tracking**:
   - Tracks detailed delivery data per attempt: attempt number (1–6), date/time visited, serving officer, recipient visited, address visited, delivery outcome, failure reason, remarks/witness notes, proof photo/document attachment, and GPS coordinates.
   - Non-equivalent outcome options: `Successfully delivered`, `Recipient unavailable`, `Recipient refused to receive`, `Respondent not found at the address`, `Incorrect or incomplete address`, and `Other reason`.
-  - Responsive delivery history table with outcome badges, serving officer info, proof links, and row-level edit actions (`✏️ Edit Return`).
 - **Lupon Administrative Review Workflow**:
   - When all 6 attempts are exhausted without successful delivery, the stage transitions to `Attempts Exhausted – For Review`.
   - Authorized Lupon officers review the history and record decisions: `Approved for Paanyaya 2`, `Approved for Summons`, or `Case Closed`.
