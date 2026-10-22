@@ -123,6 +123,9 @@ CREATE TABLE residents (
     email VARCHAR(150) NULL,
     preferred_contact ENUM('SMS', 'Call', 'Email', 'In-Person') NULL DEFAULT 'SMS',
     address TEXT NULL,
+    house_street VARCHAR(255) NULL,
+    barangay VARCHAR(100) NOT NULL DEFAULT 'Tumana',
+    city_municipality VARCHAR(100) NOT NULL DEFAULT 'Marikina City',
     home_latitude DECIMAL(10, 8) NULL,
     home_longitude DECIMAL(11, 8) NULL,
     purok VARCHAR(100) NULL,
@@ -130,7 +133,8 @@ CREATE TABLE residents (
     residency_verified TINYINT(1) NOT NULL DEFAULT 1,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    KEY idx_residents_name (last_name, first_name)
+    KEY idx_residents_name (last_name, first_name),
+    KEY idx_residents_jurisdiction (barangay, is_tenant)
 ) ENGINE=InnoDB;
 
 CREATE TABLE complaint_categories (
@@ -265,12 +269,38 @@ CREATE TABLE paanyaya_sessions (
     scheduled_by INT UNSIGNED NULL,
     resolved_at DATETIME NULL,
     escalated_at DATETIME NULL,
+    actual_start_time DATETIME NULL,
+    actual_end_time DATETIME NULL,
+    queue_status ENUM('Waiting', 'Ready', 'In_Session', 'Standby', 'Concluded') NOT NULL DEFAULT 'Waiting',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     KEY idx_paanyaya_sessions_complaint (complaint_id),
     KEY idx_paanyaya_sessions_attempt (attempt_number),
     CONSTRAINT fk_paanyaya_sessions_complaint FOREIGN KEY (complaint_id) REFERENCES complaints (complaint_id) ON DELETE CASCADE,
     CONSTRAINT fk_paanyaya_sessions_user FOREIGN KEY (scheduled_by) REFERENCES users (user_id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- Legacy compatibility record used alongside the newer paanyaya_stages flow.
+CREATE TABLE complaint_paanyaya (
+    paanyaya_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    complaint_id INT UNSIGNED NOT NULL,
+    invitation_date DATE NOT NULL,
+    invitation_time TIME NOT NULL,
+    venue VARCHAR(255) NOT NULL DEFAULT 'Tanggapan ng Barangay Tumana',
+    hearing_day VARCHAR(50) NULL,
+    salaysay TEXT NULL,
+    status ENUM('Scheduled', 'Resolved', 'Failed', 'Escalated') NOT NULL DEFAULT 'Scheduled',
+    resolution_notes TEXT NULL,
+    pdf_path VARCHAR(255) NULL,
+    has_e_signature TINYINT(1) NOT NULL DEFAULT 1,
+    scheduled_by INT UNSIGNED NULL,
+    resolved_at DATETIME NULL,
+    escalated_at DATETIME NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_paanyaya_complaint (complaint_id),
+    KEY idx_paanyaya_status (status),
+    CONSTRAINT fk_paanyaya_complaint FOREIGN KEY (complaint_id) REFERENCES complaints (complaint_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- Migration: 20261020_001_create_paanyaya_stages_and_returns.sql
@@ -337,6 +367,7 @@ CREATE TABLE IF NOT EXISTS paanyaya_officer_returns (
     KEY idx_por_complaint_stage (complaint_id, stage_type),
     KEY idx_por_officer (serving_officer_id),
     KEY idx_por_outcome (delivery_outcome),
+    KEY idx_paanyaya_return_coords (latitude, longitude),
     CONSTRAINT fk_por_stage FOREIGN KEY (paanyaya_stage_id) REFERENCES paanyaya_stages (id) ON DELETE CASCADE,
     CONSTRAINT fk_por_complaint FOREIGN KEY (complaint_id) REFERENCES complaints (complaint_id) ON DELETE CASCADE,
     CONSTRAINT fk_por_officer FOREIGN KEY (serving_officer_id) REFERENCES users (user_id) ON DELETE RESTRICT,
@@ -400,9 +431,11 @@ CREATE TABLE incident_locations (
     latitude DECIMAL(10, 8) NULL,
     longitude DECIMAL(11, 8) NULL,
     address TEXT NULL,
+    landmark VARCHAR(255) NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_incident_locations_complaint_id (complaint_id),
+    KEY idx_incident_lat_lng (latitude, longitude),
     CONSTRAINT fk_incident_locations_complaint
         FOREIGN KEY (complaint_id) REFERENCES complaints (complaint_id) ON DELETE CASCADE,
     CONSTRAINT chk_incident_locations_latitude CHECK (latitude IS NULL OR latitude BETWEEN -90 AND 90),
@@ -437,6 +470,28 @@ CREATE TABLE cases (
     KEY idx_cases_mediation_deadline (mediation_deadline_date),
     CONSTRAINT fk_cases_complaint
         FOREIGN KEY (complaint_id) REFERENCES complaints (complaint_id) ON DELETE RESTRICT
+) ENGINE=InnoDB;
+
+CREATE TABLE case_transmittals (
+    transmittal_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    case_id INT UNSIGNED NOT NULL,
+    transmittal_number VARCHAR(50) NOT NULL UNIQUE,
+    settlement_date DATE NOT NULL,
+    ten_day_expiry_date DATE NOT NULL,
+    target_agency ENUM('MTC', 'DILG', 'Both') NOT NULL DEFAULT 'Both',
+    transmittal_date DATE NULL,
+    transmitting_officer_id INT UNSIGNED NULL,
+    attesting_officer_id INT UNSIGNED NULL,
+    status ENUM('Pending', 'Generated', 'Transmitted', 'Acknowledged') NOT NULL DEFAULT 'Pending',
+    mtc_received_date DATE NULL,
+    mtc_receiver_name VARCHAR(150) NULL,
+    dilg_received_date DATE NULL,
+    dilg_receiver_name VARCHAR(150) NULL,
+    receiving_copy_path VARCHAR(255) NULL,
+    remarks TEXT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_case_transmittals_case FOREIGN KEY (case_id) REFERENCES cases(case_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 CREATE TABLE case_history (
@@ -531,8 +586,17 @@ CREATE TABLE pangkat_groups (
     pangkat_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     case_id INT UNSIGNED NOT NULL,
     formation_date DATE NOT NULL,
+    convening_deadline DATE NULL,
+    convened_date DATE NULL,
+    conciliation_deadline DATE NULL,
+    is_extended TINYINT(1) NOT NULL DEFAULT 0,
+    extended_days INT UNSIGNED NOT NULL DEFAULT 0,
+    extension_type ENUM('None', 'Discretionary', 'Clearly Meritorious') NOT NULL DEFAULT 'None',
     selection_method ENUM('Party Agreement', 'PB Assignment', 'Raffle Draw') NOT NULL DEFAULT 'Party Agreement',
     selection_notes TEXT NULL,
+    selection_stage ENUM('Party Choice', 'Failed Agreement - PB Lots', 'Failed Agreement - PB Appointment', 'Constituted') NOT NULL DEFAULT 'Constituted',
+    party_agreement_failed TINYINT(1) NOT NULL DEFAULT 0,
+    party_agreement_failure_reason TEXT NULL,
     quorum_size TINYINT UNSIGNED NOT NULL DEFAULT 3,
     quorum_exception_reason TEXT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -547,6 +611,10 @@ CREATE TABLE pangkat_members (
     pangkat_id INT UNSIGNED NOT NULL,
     member_id INT UNSIGNED NOT NULL,
     position ENUM('Chairman', 'Secretary', 'Member') NOT NULL DEFAULT 'Member',
+    status ENUM('Active', 'Challenged', 'Disqualified', 'Replaced') NOT NULL DEFAULT 'Active',
+    disqualified_at DATETIME NULL,
+    disqualification_reason TEXT NULL,
+    replacement_for_member_id INT UNSIGNED NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_pangkat_members_member (pangkat_id, member_id),
     KEY idx_pangkat_members_member_id (member_id),
@@ -554,6 +622,48 @@ CREATE TABLE pangkat_members (
         FOREIGN KEY (pangkat_id) REFERENCES pangkat_groups (pangkat_id) ON DELETE CASCADE,
     CONSTRAINT fk_pangkat_members_user
         FOREIGN KEY (member_id) REFERENCES users (user_id) ON DELETE RESTRICT
+) ENGINE=InnoDB;
+
+CREATE TABLE pangkat_extensions (
+    extension_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    pangkat_id INT UNSIGNED NOT NULL,
+    case_id INT UNSIGNED NOT NULL,
+    extension_type ENUM('Discretionary', 'Clearly Meritorious') NOT NULL DEFAULT 'Discretionary',
+    days_extended INT UNSIGNED NOT NULL DEFAULT 15,
+    previous_deadline DATE NOT NULL,
+    new_deadline DATE NOT NULL,
+    justification TEXT NOT NULL,
+    meritorious_basis TEXT NULL,
+    approved_by INT UNSIGNED NOT NULL,
+    granted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_pe_pangkat (pangkat_id),
+    KEY idx_pe_case (case_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE pangkat_challenges (
+    challenge_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    pangkat_id INT UNSIGNED NOT NULL,
+    case_id INT UNSIGNED NOT NULL,
+    challenged_member_id INT UNSIGNED NOT NULL,
+    challenger_party ENUM('Complainant', 'Respondent') NOT NULL,
+    challenger_name VARCHAR(255) NULL,
+    grounds ENUM('Relationship within 4th degree', 'Financial or Personal Interest', 'Bias or Partiality', 'Other') NOT NULL,
+    ground_details TEXT NOT NULL,
+    challenge_date DATE NOT NULL,
+    status ENUM('Pending', 'Sustained', 'Dismissed') NOT NULL DEFAULT 'Pending',
+    resolution_date DATE NULL,
+    majority_decision ENUM('Pending', 'Disqualify and Replace', 'Dismiss Challenge') NOT NULL DEFAULT 'Pending',
+    majority_decision_notes TEXT NULL,
+    voting_record TEXT NULL,
+    replacement_member_id INT UNSIGNED NULL,
+    replacement_method ENUM('Party Agreement', 'Drawing of Lots', 'PB Appointment') NULL,
+    replacement_date DATE NULL,
+    resolved_by_user_id INT UNSIGNED NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_pc_pangkat (pangkat_id),
+    KEY idx_pc_case (case_id)
 ) ENGINE=InnoDB;
 
 CREATE TABLE hearings (
@@ -566,6 +676,9 @@ CREATE TABLE hearings (
     end_time DATETIME NULL,
     duration_minutes INT UNSIGNED NULL DEFAULT 45,
     actual_end_time DATETIME NULL,
+    actual_start_time DATETIME NULL,
+    actual_duration_minutes INT UNSIGNED NULL,
+    queue_status ENUM('Waiting', 'Ready', 'In_Session', 'Standby', 'Concluded') NOT NULL DEFAULT 'Waiting',
     duration_exceed_reason TEXT NULL,
     venue VARCHAR(255) NOT NULL,
     remarks TEXT NULL,
@@ -601,6 +714,22 @@ CREATE TABLE hearings (
     CONSTRAINT fk_hearings_cancelled_by FOREIGN KEY (cancelled_by) REFERENCES users (user_id) ON DELETE SET NULL,
     CONSTRAINT fk_hearings_reschedule_approved_by FOREIGN KEY (reschedule_approved_by) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
+
+CREATE TABLE mediation_commencements (
+    commencement_id INT NOT NULL AUTO_INCREMENT,
+    case_id INT NOT NULL,
+    hearing_id INT NOT NULL,
+    first_actual_meeting_at DATETIME NOT NULL,
+    mediation_deadline_at DATETIME NOT NULL,
+    source VARCHAR(50) NOT NULL DEFAULT 'Attendance',
+    created_by INT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (commencement_id),
+    UNIQUE KEY uq_mediation_commencement_case (case_id),
+    UNIQUE KEY uq_mediation_commencement_hearing (hearing_id),
+    KEY idx_mediation_commencement_deadline (mediation_deadline_at),
+    KEY idx_mediation_commencement_created_by (created_by)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE hearing_minutes (
     minute_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -1148,6 +1277,7 @@ INSERT INTO document_templates (template_name, description) VALUES
 ON DUPLICATE KEY UPDATE description = VALUES(description);
 
 INSERT INTO system_settings (setting_key, setting_value, description) VALUES
+    ('captain_name', 'HON. AKIKO LYNNE CENTENO', 'Official Name of Punong Barangay'),
     ('daily_hearing_capacity', '8', 'Maximum total hearings allowed per day across the barangay (max 8)'),
     ('officer_daily_hearing_capacity', '6', 'Maximum hearings per presiding officer per day (5-8)'),
     ('mediation_default_duration_min', '45', 'Default duration for mediation session in minutes (30-60)'),

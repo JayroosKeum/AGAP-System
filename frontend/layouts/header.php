@@ -1,3 +1,41 @@
+<?php
+require_once __DIR__ . '/../../backend/services/CsrfService.php';
+
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+$headerCsrfToken = CsrfService::token();
+$headerFlashMessages = [];
+if (!empty($_SESSION['complaint_flash']) && is_array($_SESSION['complaint_flash']) && !empty($_SESSION['complaint_flash']['message'])) {
+    $headerFlashMessages[] = [
+        'message' => (string) $_SESSION['complaint_flash']['message'],
+        'type' => (string) ($_SESSION['complaint_flash']['type'] ?? 'success'),
+        'title' => isset($_SESSION['complaint_flash']['title']) ? (string) $_SESSION['complaint_flash']['title'] : null,
+    ];
+    if (isset($_SESSION['complaint_flash']['old'])) {
+        $_SESSION['complaint_flash'] = ['old' => $_SESSION['complaint_flash']['old']];
+    } else {
+        unset($_SESSION['complaint_flash']);
+    }
+}
+if (!empty($_SESSION['resident_flash']) && is_array($_SESSION['resident_flash']) && !empty($_SESSION['resident_flash']['message'])) {
+    $headerFlashMessages[] = [
+        'message' => (string) $_SESSION['resident_flash']['message'],
+        'type' => (string) ($_SESSION['resident_flash']['type'] ?? 'success'),
+        'title' => isset($_SESSION['resident_flash']['title']) ? (string) $_SESSION['resident_flash']['title'] : null,
+    ];
+    unset($_SESSION['resident_flash']);
+}
+if (!empty($_SESSION['flash']) && is_array($_SESSION['flash']) && !empty($_SESSION['flash']['message'])) {
+    $headerFlashMessages[] = [
+        'message' => (string) $_SESSION['flash']['message'],
+        'type' => (string) ($_SESSION['flash']['type'] ?? 'success'),
+        'title' => isset($_SESSION['flash']['title']) ? (string) $_SESSION['flash']['title'] : null,
+    ];
+    unset($_SESSION['flash']);
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10,8 +48,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="../../assets/js/notifications.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/notifications.js'); ?>"></script>
-    <?php require_once __DIR__ . '/../../backend/services/CsrfService.php'; ?>
-    <meta name="agap-csrf-token" content="<?php echo htmlspecialchars(CsrfService::token(), ENT_QUOTES, 'UTF-8'); ?>">
+    <meta name="agap-csrf-token" content="<?php echo htmlspecialchars($headerCsrfToken, ENT_QUOTES, 'UTF-8'); ?>">
 </head>
 <body>
 <script>
@@ -45,40 +82,6 @@
     }, true);
 })();
 </script>
-<?php
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-$headerFlashMessages = [];
-if (!empty($_SESSION['complaint_flash']) && is_array($_SESSION['complaint_flash']) && !empty($_SESSION['complaint_flash']['message'])) {
-    $headerFlashMessages[] = [
-        'message' => (string) $_SESSION['complaint_flash']['message'],
-        'type' => (string) ($_SESSION['complaint_flash']['type'] ?? 'success'),
-        'title' => isset($_SESSION['complaint_flash']['title']) ? (string) $_SESSION['complaint_flash']['title'] : null,
-    ];
-    if (isset($_SESSION['complaint_flash']['old'])) {
-        $_SESSION['complaint_flash'] = ['old' => $_SESSION['complaint_flash']['old']];
-    } else {
-        unset($_SESSION['complaint_flash']);
-    }
-}
-if (!empty($_SESSION['resident_flash']) && is_array($_SESSION['resident_flash']) && !empty($_SESSION['resident_flash']['message'])) {
-    $headerFlashMessages[] = [
-        'message' => (string) $_SESSION['resident_flash']['message'],
-        'type' => (string) ($_SESSION['resident_flash']['type'] ?? 'success'),
-        'title' => isset($_SESSION['resident_flash']['title']) ? (string) $_SESSION['resident_flash']['title'] : null,
-    ];
-    unset($_SESSION['resident_flash']);
-}
-if (!empty($_SESSION['flash']) && is_array($_SESSION['flash']) && !empty($_SESSION['flash']['message'])) {
-    $headerFlashMessages[] = [
-        'message' => (string) $_SESSION['flash']['message'],
-        'type' => (string) ($_SESSION['flash']['type'] ?? 'success'),
-        'title' => isset($_SESSION['flash']['title']) ? (string) $_SESSION['flash']['title'] : null,
-    ];
-    unset($_SESSION['flash']);
-}
-?>
 <?php if (!empty($headerFlashMessages)): ?>
 <script>
 document.addEventListener('DOMContentLoaded', function() {

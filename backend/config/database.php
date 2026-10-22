@@ -15,23 +15,53 @@ if (PHP_SAPI !== 'cli' && str_contains($agapScriptPath, '/backend/api/')) {
 
 class Database {
 
+    // Environment settings make the application portable between Laragon and
+    // managed MySQL services such as Azure Database for MySQL. The defaults
+    // preserve the existing local-development experience.
+    private $host;
+    private $port;
+    private $dbname;
+    private $username;
+    private $password;
+    private $sslCa;
 
-    private $host = "localhost";
-    private $dbname = "agap_db";
-    private $username = "root";
-    private $password = "";
+    public function __construct()
+    {
+        $this->host = $this->environment('DB_HOST', 'localhost');
+        $this->port = $this->environment('DB_PORT', '3306');
+        $this->dbname = $this->environment('DB_NAME', 'agap_db');
+        $this->username = $this->environment('DB_USER', 'root');
+        $this->password = $this->environment('DB_PASS', '');
+        $this->sslCa = $this->environment('DB_SSL_CA', '');
+    }
 
     public function connect()
     {
         try {
 
-            $pdo = new PDO(
-                "mysql:host={$this->host};dbname={$this->dbname};charset=utf8mb4",
-                $this->username,
-                $this->password
-            );
+            $port = filter_var($this->port, FILTER_VALIDATE_INT, [
+                'options' => ['min_range' => 1, 'max_range' => 65535],
+            ]);
+            if ($port === false) {
+                throw new PDOException('Database port must be between 1 and 65535.');
+            }
 
-            $pdo->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION);
+            $options = [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION];
+            if ($this->sslCa !== '') {
+                if (!is_readable($this->sslCa)) {
+                    throw new PDOException('The configured database SSL CA file is not readable.');
+                }
+                if (defined('PDO::MYSQL_ATTR_SSL_CA')) {
+                    $options[PDO::MYSQL_ATTR_SSL_CA] = $this->sslCa;
+                }
+            }
+
+            $pdo = new PDO(
+                "mysql:host={$this->host};port={$port};dbname={$this->dbname};charset=utf8mb4",
+                $this->username,
+                $this->password,
+                $options
+            );
 
             return $pdo;
 
@@ -40,5 +70,11 @@ class Database {
             die("Database Error: " . $e->getMessage());
 
         }
+    }
+
+    private function environment(string $name, string $default): string
+    {
+        $value = getenv($name);
+        return is_string($value) && $value !== '' ? $value : $default;
     }
 }
