@@ -3,8 +3,8 @@
 session_start();
 header('Content-Type: application/json; charset=utf-8');
 
-require_once '../../models/Summons.php';
-require_once '../../services/MediationDeadlineService.php';
+require_once __DIR__ . '/../../models/Summons.php';
+require_once __DIR__ . '/../../services/MediationDeadlineService.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'GET' && $_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -31,18 +31,24 @@ $summons = new Summons();
 $db = null;
 
 if (!$caseId && $complaintId) {
-    require_once '../../config/database.php';
+    require_once __DIR__ . '/../../config/Database.php';
     $db = (new Database())->connect();
     $stmt = $db->prepare('SELECT case_id FROM cases WHERE complaint_id = ?');
     $stmt->execute([$complaintId]);
     $caseId = (int) $stmt->fetchColumn() ?: null;
+} elseif ($caseId && !$complaintId) {
+    require_once __DIR__ . '/../../config/Database.php';
+    $db = (new Database())->connect();
+    $stmt = $db->prepare('SELECT complaint_id FROM cases WHERE case_id = ?');
+    $stmt->execute([$caseId]);
+    $complaintId = (int) $stmt->fetchColumn() ?: null;
 }
 
 // 1. Build 15-working-day statutory window metadata if complaint_id or get_window is present
 $windowMeta = null;
 if ($complaintId || $getWindow) {
     if (!$db) {
-        require_once '../../config/database.php';
+        require_once __DIR__ . '/../../config/Database.php';
         $db = (new Database())->connect();
     }
     $compCreatedAt = null;
@@ -162,9 +168,9 @@ if ($time !== '' && preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', $time))
             'hearing_date' => $conflict['hearing_date'],
             'start_time' => $cStart,
             'end_time' => $cEnd,
-            'venue' => $conflict['venue'],
-            'message' => sprintf(
-                'A %s is already scheduled%s from %s to %s on %s (%s). Mediation sessions cannot overlap on the same day.',
+            'venue' => $conflict['venue'] ?? $venue,
+            'message' => !empty($conflict['message']) ? $conflict['message'] : sprintf(
+                'A %s is already scheduled%s from %s to %s on %s (%s). Mediation sessions cannot overlap on the same time.',
                 $conflict['hearing_type'] ?? 'Mediation',
                 $caseRef,
                 $cStart,

@@ -2332,6 +2332,14 @@ function openIssueSummonModal() {
         }
     }
 
+    const timeInput = document.getElementById('summonMediationTime');
+    if (timeInput) {
+        timeInput.setCustomValidity('');
+        if (!timeInput.value || timeInput.value < '08:00' || timeInput.value > '17:00') {
+            timeInput.value = '09:00';
+        }
+    }
+
     modal.style.display = 'flex';
     checkMediationScheduleConflict();
 }

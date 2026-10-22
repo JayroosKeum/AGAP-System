@@ -162,16 +162,16 @@ class OfficeLogisticsService
         $minute = (int) $start->format('i');
 
         if ($hearingType === 'Mediation') {
-            if ($dayOfWeek !== 2) {
+            if ($dayOfWeek === 0 || $dayOfWeek === 6) {
                 return [
                     'valid' => false,
-                    'message' => 'Mediation hearings can only be scheduled on Tuesdays.'
+                    'message' => 'Mediation hearings can only be scheduled on working days (Monday to Friday).'
                 ];
             }
-            if ($hour < 13 || $hour >= 17) {
+            if (($hour < 8 || $hour >= 17) || ($hour >= 12 && $hour < 13)) {
                 return [
                     'valid' => false,
-                    'message' => 'Mediation hearings must be between 1:00 PM and 5:00 PM.'
+                    'message' => 'Mediation hearings must be during regular office hours (8:00 AM – 5:00 PM, excluding 12:00 PM – 1:00 PM lunch break).'
                 ];
             }
             $endHour = (int) $end->format('H');

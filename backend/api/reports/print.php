@@ -85,7 +85,7 @@ $printedAt = date('F j, Y \a\t h:i A');
         /* ── Base ── */
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            font-family: 'Times New Roman', Times, serif;
+            font-family: Arial, Helvetica, sans-serif;
             font-size: 11pt;
             color: #111;
             background: #f8f9fa;

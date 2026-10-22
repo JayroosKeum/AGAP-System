@@ -16,7 +16,7 @@
             <h1 id="landing-title">Better coordination.<br><span>Stronger communities.</span></h1>
             <p class="hero-description">A clear, connected workspace for managing barangay complaints, mediation, hearings, and case outcomes—with accountability at every step.</p>
             <div class="hero-actions">
-                <a href="../auth/login.php" class="landing-cta">Open the staff workspace</a>
+                <a href="../auth/login.php" class="landing-cta">Sign In</a>
                 <span class="hero-note">For authorized barangay personnel</span>
             </div>
         </div>

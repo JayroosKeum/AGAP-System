@@ -1566,3 +1566,65 @@ A series of key refinements were implemented to conform strictly to Barangay Tum
 
 - Purged 26 automated E2E test disputes (such as `"E2E Paanyaya Test Dispute"`, `"Proof of Service Paanyaya Test"`, and `"Edit Test"`) and 33 orphaned test PDFs from `storage/paanyaya/`.
 - Verified that legitimate records, specifically Complaint **#86** (`test 22`), were preserved intact.
+
+---
+
+## Late October 2026 — Master Document Center (DOCX Upload & Print Layout Fidelity), Mediation Booking Fix, and Navigation Streamlining
+
+### 1. DOCX Master Template Upload & Rendering Engine
+- **Dedicated Parser Service (`backend/services/DocxTemplateService.php`)**:
+  - Implemented OpenXML `.docx` parsing using PHP `ZipArchive` and `DOMDocument` to convert uploaded Word templates into clean, semantic HTML.
+  - Retains character formatting (bold, italic, underline), paragraph alignments (left, center, right, justify), line spacing, and table layouts without third-party external dependencies.
+  - Sanitizes and embeds dynamic template variables while keeping the uploaded document body and typography intact.
+- **Master Document Center (`document-center.php`) & Upload Template Modal**:
+  - Renamed modal to **"Upload template"** and removed the noisy OpenXML inspection block.
+  - KP forms list displays explicit KP numbers (`KP FORM 7`, `KP FORM 8`, `KP FORM 9`, `KP FORM 16`, `KP FORM 20`, etc.) across all cards and modal pickers.
+  - Modal preview title standardized to strictly `KP FORM [NUMBER]` (e.g. `KP FORM 20`), removing verbose and redundant headers.
+  - Removed "Open full window" button in favor of a clean, responsive in-modal preview with direct print access.
+
+### 2. High-Fidelity Print Styling & Layout Alignment
+- **Zero Browser Header/Footer Print Rules**:
+  - Applied print-specific CSS with `@page { margin: 10mm; size: auto; }` and body margin overrides in `frontend/assets/css/documents.css` to prevent browsers from printing default header/footer timestamps, page URLs, and document paths.
+  - Standardized font family across all KP document bodies and previews to clean **Arial** (`font-family: Arial, Helvetica, sans-serif;`).
+  - Added responsive print media scaling (`@media print`) so documents automatically fit and scale cleanly to standard bond paper sizes (A4 and Legal) without text overflow or misaligned columns.
+- **Letterhead & Logo Customization**:
+  - Removed the redundant "Office Name Banner" from preview headers.
+  - Barangay Tumana and City of Marikina seals are configurable and uploadable, preserving official branding with consistent aspect ratios.
+
+### 3. Mediation Scheduling & Operating Hours Booking Fix
+- **Removal of Hardcoded Tuesday-Only Lock**:
+  - Replaced legacy restriction in `backend/models/Summons.php` (`findMediationConflict()`) that previously restricted mediation sessions exclusively to Tuesday afternoons (1:00 PM – 5:00 PM).
+  - Punong Barangay mediation sessions can now be scheduled on any regular working day (**Monday through Friday, 8:00 AM to 5:00 PM**) within the 15-working-day statutory window (up to 8 daily sessions).
+- **Clear Conflict Diagnostic Messages**:
+  - Updated `backend/api/summons/check-schedule.php` to prioritize model violation messages directly, eliminating misleading notices like *"A Mediation Operating Hours Violation is already scheduled from 7:02 PM to 8:02 PM"*.
+- **Time Picker Safeguards**:
+  - In `frontend/pages/complaints/complaint-details.php`, added `min="08:00"`, `max="17:00"`, `step="1800"`, and defaulted `#summonMediationTime` to `09:00 AM`.
+  - In `frontend/assets/js/complaints.js`, opening `issueSummonModal` resets any prior HTML5 validity errors (`setCustomValidity('')`) and ensures safe operating-hours defaults.
+
+### 4. Navigation Streamlining — Removal of Standalone Hearings & Deadlines Page
+- Removed the standalone **"Hearings and Deadlines"** item from the sidebar navigation (`frontend/layouts/sidebar.php`).
+- Retired `frontend/pages/hearings/schedules.php` and consolidated hearing scheduling and timeline management directly within the Case/Complaint Mediation & Conciliation workspaces and calendar views.
+
+### 5. 2nd Mediation Session Scheduling & Minutes Save Fix
+- **Hearing Minutes Save Error (SQL 1054) Resolution**:
+  - Resolved `Unknown column 'actual_duration_minutes' in 'field list'` error by applying migration `database/migrations/20261021_001_elastic_hearing_duration_and_docket_queue.sql` compatible with standard MySQL 8.0/8.4+.
+  - Added `actual_start_time`, `actual_duration_minutes`, and `queue_status` columns to `hearings` and `paanyaya_sessions`.
+  - In `backend/models/HearingMinutes.php`, added defensive `try/catch` fallback to safeguard minutes saving from missing column exceptions.
+- **Removed Inline Next Steps Section**:
+  - Removed the inline *"Next Steps: Book 2nd Mediation Hearing"* block from `mediation-workspace.php` and `stage-workspace.js`.
+  - Updated `saveHearingMinutes` in `stage-workspace.js` so saving or finalizing minutes no longer blocks or alerts for missing inline date/time inputs.
+- **Dedicated 2nd Mediation Visual Scheduling Modal**:
+  - Selecting *"No Settlement → Set Another Meeting"* (`Continue Mediation`) automatically launches the dedicated 2nd Mediation Scheduling modal with the visual 15-working-day calendar.
+  - Interactive day cards display daily session capacity (`X open`, `8/8 FULL`, `>15 Days`, `Past`, `Holiday/Weekend`), alongside existing scheduled mediation timelines and time slot conflicts.
+  - Explicitly highlights the statutory notice exemption under **RA 7160 Sec. 410**: because parties are present in person and notified during the session, prior notice is legally served and redundant summons (KP Form 9) generation is bypassed.
+- **Full Monday–Friday Working Hours Booking Alignment**:
+  - Removed legacy Tuesday restrictions across `HearingController.php`, `OfficeLogisticsService.php`, `Summons.php`, `MediationScheduleController.php`, and `MediationSchedule.php`.
+  - Mediation sessions can now be scheduled across all regular working days (**Monday to Friday, 8:00 AM – 5:00 PM**, excluding 12:00 PM – 1:00 PM lunch break) up to the 8-session daily maximum.
+
+### 6. Officer's Return for Mediation Summons Fix (Proof of Service)
+- **Resolved "Officer's Return record not found" Error**:
+  - **Root Cause**: In `backend/controllers/GPSController.php` (`recordOfficerReturn()`), incoming requests were checking `paanyaya_stages WHERE id = ?` using the hearing ID. For cases with formal hearings (such as Case 42 with `hearing_id = 61`), an unrelated Paanyaya preliminary stage row that happened to have primary key `id = 61` caused the controller to misidentify the mediation summons return as a Paanyaya return. It then routed `delivery_id = 103` (which is in `summon_deliveries`) to `Paanyaya->updateOfficerReturn(103)`, which looked in `paanyaya_officer_returns`, failed to find record 103, and threw `"Officer's Return record not found"`.
+  - **Controller Fix**: Updated `GPSController.php` to strictly check `summon_deliveries` and `hearings` first. If `delivery_id` exists in `summon_deliveries` or `hearing_id` exists in `hearings`, the request is guaranteed to be a formal summons return (`$isFormal = true`), completely bypassing the Paanyaya branch and cleanly invoking `SummonDeliveryService->recordDelivery()`.
+  - **Photo Upload Field Name Fix**: In `GPSController.php`, fixed the column update from `attachment_path` (non-existent) to `proof_file_path` in `summon_deliveries`.
+  - **Frontend State Isolation**: In `frontend/assets/js/gps.js` (`openOfficerReturnModal()`), ensured `isPaanyaya` strictly checks `caseItem.is_paanyaya` rather than inheriting stale global state from `window.activeExpandedHearingData`, ensuring formal mediation cases display KP Form No. 9 / KP Form No. 8 headers and badges accurately.
+

@@ -130,10 +130,11 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
     - **KP Form 21 (Certificate to Bar Action)** is strictly locked until a show-cause evaluation ruling complainant non-appearance as unjustified (`is_justified = 0`) is recorded.
     - **KP Form 22 (Certificate to Bar Counterclaim)** is strictly locked until a show-cause evaluation ruling respondent non-appearance as unjustified (`is_justified = 0`) is recorded.
   - **KP Form 16 (Amicable Settlement)**: Generates Kasunduang Pag-aayos upon dispute resolution with automatic integration of agreed terms.
-- **Office Logistics & Strict Scheduling Constraints**:
-  - Enforces weekday-only scheduling (Monday to Friday, 8:00 AM to 5:00 PM).
-  - Rejects hearings scheduled on the same date as an existing hearing for the case or on any prior date.
-  - Room collision and presider conflict detection powered by `OfficeLogisticsService`.
+- **Office Logistics & Flexible Scheduling Constraints**:
+  - Enforces working-day scheduling (**Monday to Friday, 8:00 AM to 5:00 PM**) within the statutory 15-working-day mediation limit.
+  - Daily room capacity management (up to 8 mediation hearings per day) with Lupon Court Room overlap collision protection.
+  - Rejects hearings scheduled on the same date/time as an existing hearing for the case or on any prior date.
+  - Room collision and presider conflict detection powered by `OfficeLogisticsService` and `Summons::findMediationConflict()`.
 
 ### 4. Case Management & Unified Case Teams
 
@@ -157,8 +158,15 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
   - Mediation stages assign the active `Administrator` as Punong Barangay/Head.
   - Conciliation stages require a three-member team (Head, Secretary, Member) selected from active users with the `Lupon Member` role, atomically validated and stored in `case_assignments`.
 
-### 5. KP Document Generation & Proof of Service
+### 5. KP Document Generation & Master Document Center
 
+- **Master Document Center & DOCX Template Engine (`document-center.php`)**:
+  - **DOCX Master Template Upload (`DocxTemplateService.php`)**: Parses uploaded Microsoft Word (`.docx`) template files using OpenXML DOM parsing, preserving character formatting, tables, line heights, and paragraph alignment.
+  - **Standardized Arial Typography**: Standardized font across all KP document bodies and previews to clean **Arial** (`font-family: Arial, Helvetica, sans-serif;`).
+  - **Zero Browser Header/Footer Print Rules**: Print media styles (`@page { margin: 10mm; }`) suppress default browser print headers and footers (timestamps, page URLs, file paths).
+  - **Automatic Paper Size Scaling**: Automatically adjusts and scales template layouts cleanly for Legal (`8.5in x 14in`) and A4 bond paper sizes.
+  - **Customizable Official Letterheads**: Dynamic logo replacement for Barangay and City seals, with the obsolete Office Name Banner removed for a cleaner presentation.
+  - **Standardized Modal Previews**: Clean modal titles displaying strictly the canonical form number (e.g. `KP FORM 7`, `KP FORM 8`, `KP FORM 20`) without clutter.
 - **Official Katarungang Pambarangay (KP) Forms**:
   - **KP Form 7**: Pormularyo ng KP Blg. 7 (Reklamo / Formal Complaint) — formatted strictly for standard **Legal Size Bondpaper** (`8.5in x 14in`) with Barangay Tumana Seal (Left) and City of Marikina Seal (Right), generous signature clearances (`48px`), zero-watermark browser printing, and interactive modal preview.
   - **KP Form 8**: Notice of Hearing (Complainant).

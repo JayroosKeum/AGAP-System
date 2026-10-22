@@ -68,13 +68,13 @@ class Summons
 
             $dayOfWeek = (int) date('w', strtotime($medDate));
             $hour = (int) date('H', strtotime($medTime));
-            if ($dayOfWeek !== 2) {
+            if ($dayOfWeek === 0 || $dayOfWeek === 6) {
                 $this->conn->rollBack();
-                return ['success' => false, 'message' => 'Mediation hearings can only be scheduled on Tuesdays.'];
+                return ['success' => false, 'message' => 'Mediation hearings can only be scheduled on working days (Monday to Friday).'];
             }
-            if ($hour < 13 || $hour >= 17) {
+            if (($hour < 8 || $hour >= 17) || ($hour >= 12 && $hour < 13)) {
                 $this->conn->rollBack();
-                return ['success' => false, 'message' => 'Mediation hearings must be between 1:00 PM and 5:00 PM.'];
+                return ['success' => false, 'message' => 'Mediation hearings must be during regular office hours (8:00 AM – 5:00 PM, excluding 12:00 PM – 1:00 PM lunch break).'];
             }
             if (MediationDeadlineService::isNonWorkingDay(new \DateTimeImmutable($medDate))) {
                 $this->conn->rollBack();
@@ -682,42 +682,87 @@ class Summons
     ): ?array {
         $ts = strtotime($hearingDateTime);
         $date = date('Y-m-d', $ts);
-        $dow = (int) date('w', $ts);
+        $dow = (int) date('w', $ts); // 0 = Sun, 6 = Sat
         $hour = (int) date('H', $ts);
+        $minute = (int) date('i', $ts);
+        $timeMinutes = $hour * 60 + $minute;
 
-        // Lupon Court Room Master Operating Schedule:
-        // Tuesdays 1:00 PM – 5:00 PM are exclusively reserved for Formal Mediation.
-        if ($dow !== 2 || $hour < 13 || $hour >= 17) {
+        // Working day check: Monday (1) to Friday (5)
+        if ($dow === 0 || $dow === 6) {
             return [
-                'hearing_type' => 'Mediation Operating Hours Violation',
+                'hearing_type' => 'Weekend Restriction',
                 'hearing_date' => $hearingDateTime,
                 'venue' => $venue,
                 'case_number' => '',
-                'message' => 'Formal Mediation before the Punong Barangay can only be scheduled on Tuesday afternoons (1:00 PM – 5:00 PM).'
+                'message' => 'Mediation hearings can only be scheduled on working days (Monday to Friday).'
             ];
         }
 
-        // Check if an unauthorized non-mediation hearing occupies the Lupon Court Room
-        $venueClean = strtolower(trim($venue));
-        if ($venueClean === 'lupon court room') {
-            $conflictStmt = $this->conn->prepare("
-                SELECT h.hearing_id, h.case_id, h.hearing_date, h.venue, h.hearing_type,
-                       c.case_number, co.complaint_title
-                FROM hearings h
-                INNER JOIN cases c ON c.case_id = h.case_id
-                LEFT JOIN complaints co ON co.complaint_id = c.complaint_id
-                WHERE DATE(h.hearing_date) = ?
-                  AND h.hearing_type <> 'Mediation'
-                  AND LOWER(TRIM(h.venue)) = 'lupon court room'
-                  AND h.status NOT IN ('Cancelled', 'Office Cancelled')
-                  AND HOUR(h.hearing_date) >= 13 AND HOUR(h.hearing_date) < 17
-                LIMIT 1
-            ");
-            $conflictStmt->execute([$date]);
-            $nonMedConflict = $conflictStmt->fetch(PDO::FETCH_ASSOC);
-            if ($nonMedConflict) {
-                return $nonMedConflict;
-            }
+        // Operating hours check: 8:00 AM (08:00 = 480 mins) to 5:00 PM (17:00 = 1020 mins)
+        if ($timeMinutes < 480 || $timeMinutes > 1020) {
+            return [
+                'hearing_type' => 'Operating Hours Restriction',
+                'hearing_date' => $hearingDateTime,
+                'venue' => $venue,
+                'case_number' => '',
+                'message' => 'Mediation hearings must be scheduled during regular Barangay working hours (8:00 AM to 5:00 PM, Monday to Friday).'
+            ];
+        }
+
+        // Check for time overlap with any active hearing at the same venue on this date (60-minute duration)
+        $proposedStart = $hearingDateTime;
+        $proposedEnd = date('Y-m-d H:i:s', strtotime($hearingDateTime . ' +60 minutes'));
+
+        $overlapSql = "
+            SELECT h.hearing_id, h.case_id, h.hearing_date, h.venue, h.hearing_type,
+                   c.case_number, co.complaint_title
+            FROM hearings h
+            INNER JOIN cases c ON c.case_id = h.case_id
+            LEFT JOIN complaints co ON co.complaint_id = c.complaint_id
+            WHERE DATE(h.hearing_date) = ?
+              AND LOWER(TRIM(h.venue)) = LOWER(TRIM(?))
+              AND h.status NOT IN ('Cancelled', 'Office Cancelled')
+              AND h.hearing_date < ?
+              AND DATE_ADD(h.hearing_date, INTERVAL 60 MINUTE) > ?
+        ";
+        $overlapParams = [$date, $venue, $proposedEnd, $proposedStart];
+
+        if ($excludeHearingId !== null && $excludeHearingId > 0) {
+            $overlapSql .= " AND h.hearing_id <> ?";
+            $overlapParams[] = $excludeHearingId;
+        }
+        if ($excludeCaseId !== null && $excludeCaseId > 0) {
+            $overlapSql .= " AND h.case_id <> ?";
+            $overlapParams[] = $excludeCaseId;
+        }
+
+        $overlapSql .= " LIMIT 1";
+        $overlapStmt = $this->conn->prepare($overlapSql);
+        $overlapStmt->execute($overlapParams);
+        $overlapConflict = $overlapStmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($overlapConflict) {
+            $cStart = date('g:i A', strtotime($overlapConflict['hearing_date']));
+            $cEnd = date('g:i A', strtotime($overlapConflict['hearing_date'] . ' +60 minutes'));
+            $cDate = date('M j, Y', strtotime($overlapConflict['hearing_date']));
+            $caseRef = !empty($overlapConflict['case_number']) ? ' for Case ' . $overlapConflict['case_number'] : '';
+            return [
+                'hearing_id' => $overlapConflict['hearing_id'],
+                'case_id' => $overlapConflict['case_id'],
+                'hearing_date' => $overlapConflict['hearing_date'],
+                'venue' => $overlapConflict['venue'],
+                'hearing_type' => $overlapConflict['hearing_type'] ?? 'Mediation',
+                'case_number' => $overlapConflict['case_number'] ?? '',
+                'message' => sprintf(
+                    'Schedule conflict: A %s is already scheduled%s from %s to %s on %s (%s).',
+                    $overlapConflict['hearing_type'] ?? 'Hearing',
+                    $caseRef,
+                    $cStart,
+                    $cEnd,
+                    $cDate,
+                    $overlapConflict['venue'] ?? $venue
+                )
+            ];
         }
 
         // Check if the EXACT same case already has another active mediation hearing scheduled
@@ -742,7 +787,17 @@ class Summons
             $stmt->execute($params);
             $dupCase = $stmt->fetch(PDO::FETCH_ASSOC);
             if ($dupCase) {
-                return $dupCase;
+                $cDate = date('M j, Y', strtotime($dupCase['hearing_date']));
+                $cTime = date('g:i A', strtotime($dupCase['hearing_date']));
+                return [
+                    'hearing_id' => $dupCase['hearing_id'],
+                    'case_id' => $dupCase['case_id'],
+                    'hearing_date' => $dupCase['hearing_date'],
+                    'venue' => $dupCase['venue'],
+                    'hearing_type' => 'Mediation',
+                    'case_number' => $dupCase['case_number'] ?? '',
+                    'message' => "This case already has an active Mediation hearing scheduled on {$cDate} at {$cTime}."
+                ];
             }
         }
 

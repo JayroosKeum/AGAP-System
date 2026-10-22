@@ -265,8 +265,16 @@ class HearingController
         $defaultSlots = [];
 
         if ($hearingType === 'Mediation') {
-            $ruleHint = 'Mediation sessions for Barangay Tumana are conducted exclusively on Tuesday afternoons (1:00 PM – 5:00 PM) before the Punong Barangay.';
+            $ruleHint = 'Mediation sessions are held on working days (Monday to Friday, 8:00 AM – 12:00 PM & 1:00 PM – 5:00 PM) before the Punong Barangay.';
             $defaultSlots = [
+                ['time' => '08:00', 'label' => '8:00 AM (Target Call Time)'],
+                ['time' => '08:30', 'label' => '8:30 AM (Target Call Time)'],
+                ['time' => '09:00', 'label' => '9:00 AM (Target Call Time)'],
+                ['time' => '09:30', 'label' => '9:30 AM (Target Call Time)'],
+                ['time' => '10:00', 'label' => '10:00 AM (Target Call Time)'],
+                ['time' => '10:30', 'label' => '10:30 AM (Target Call Time)'],
+                ['time' => '11:00', 'label' => '11:00 AM (Target Call Time)'],
+                ['time' => '11:30', 'label' => '11:30 AM (Target Call Time)'],
                 ['time' => '13:00', 'label' => '1:00 PM (Target Call Time)'],
                 ['time' => '13:30', 'label' => '1:30 PM (Target Call Time)'],
                 ['time' => '14:00', 'label' => '2:00 PM (Target Call Time)'],
@@ -276,7 +284,7 @@ class HearingController
                 ['time' => '16:00', 'label' => '4:00 PM (Target Call Time)'],
                 ['time' => '16:30', 'label' => '4:30 PM (Target Call Time)'],
             ];
-            if ($dayOfWeek !== 2) {
+            if ($dayOfWeek === 0 || $dayOfWeek === 6) {
                 $isValidDay = false;
             }
         } else {
@@ -408,7 +416,7 @@ class HearingController
                 if ($isHoliday) {
                     $response['message'] = "Scheduling is blocked on {$targetDate}: Official Philippine holiday ({$holidayName}).";
                 } elseif ($hearingType === 'Mediation') {
-                    $response['message'] = 'Mediation hearings can only be scheduled on Tuesdays (1:00 PM – 5:00 PM).';
+                    $response['message'] = 'Mediation hearings can only be scheduled on working days (Monday to Friday, 8:00 AM – 5:00 PM).';
                 } else {
                     $response['message'] = ($dayOfWeek === 2)
                         ? 'Conciliation hearings on Tuesdays are permitted only in the morning (8:00 AM – 12:00 PM). Tuesday afternoons are exclusively reserved for Formal Mediation.'
@@ -461,7 +469,7 @@ class HearingController
                 if ($isHoliday) {
                     $response['message'] = "Scheduling is blocked on {$targetDate}: Official Philippine holiday ({$holidayName}).";
                 } elseif ($hearingType === 'Mediation') {
-                    $response['message'] = 'Mediation hearings can only be scheduled on Tuesdays (1:00 PM – 5:00 PM).';
+                    $response['message'] = 'Mediation hearings can only be scheduled on working days (Monday to Friday, 8:00 AM – 5:00 PM).';
                 } else {
                     $response['message'] = ($dayOfWeek === 2)
                         ? 'Conciliation hearings on Tuesdays are permitted only in the morning (8:00 AM – 12:00 PM).'
@@ -669,11 +677,11 @@ class HearingController
         $hour = (int) date('H', strtotime($date->format('Y-m-d H:i:s')));
 
         if ($type === 'Mediation') {
-            if ($dayOfWeek !== 2) {
-                return ['success' => false, 'message' => 'Formal Mediation hearings can only be scheduled on Tuesdays.'];
+            if ($dayOfWeek === 0 || $dayOfWeek === 6) {
+                return ['success' => false, 'message' => 'Mediation hearings can only be scheduled on working days (Monday to Friday).'];
             }
-            if ($hour < 13 || $hour >= 17) {
-                return ['success' => false, 'message' => 'Formal Mediation hearings must be between 1:00 PM and 5:00 PM (Lupon Court Room is exclusively reserved for Mediation during this afternoon window).'];
+            if (($hour < 8 || $hour >= 17) || ($hour >= 12 && $hour < 13)) {
+                return ['success' => false, 'message' => 'Mediation hearings must be during regular office hours (8:00 AM – 5:00 PM, excluding 12:00 PM – 1:00 PM lunch break).'];
             }
         }
 

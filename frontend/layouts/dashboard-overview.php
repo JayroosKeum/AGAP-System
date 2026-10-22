@@ -45,11 +45,6 @@
             <span id="totalCasesSub">All recorded cases</span>
         </article>
         <article class="stat-card">
-            <p id="pendingReviewLabel">For review</p>
-            <h2 id="pendingReview">—</h2>
-            <span id="pendingReviewSub">Needs review or information</span>
-        </article>
-        <article class="stat-card">
             <p id="hearingsTodayLabel">Hearings</p>
             <h2 id="hearingsToday">—</h2>
             <span id="hearingsTodaySub">Scheduled sessions</span>
@@ -93,7 +88,6 @@
                 </div>
                 <div class="panel-heading-actions">
                     <span id="periodHearingCountBadge" class="panel-count-badge" style="display:none;">0 hearings</span>
-                    <a href="../hearings/schedules.php">View schedule</a>
                 </div>
             </div>
             <div id="todayHearings" class="dashboard-list" aria-live="polite"></div>
@@ -122,7 +116,6 @@
                         <button type="button" id="dashCalNextBtn" class="btn-cal-nav" title="Next Month" aria-label="Next Month">&#8250;</button>
                         <button type="button" id="dashCalTodayBtn" class="btn-cal-today" title="Go to Current Month">Today</button>
                     </div>
-                    <a href="../hearings/schedules.php" class="panel-link">Full schedule</a>
                 </div>
             </div>
             <div class="dashboard-calendar-wrap">
@@ -174,19 +167,6 @@
             </div>
         </div>
     </section>
-
-    <!-- Case Status Overview -->
-    <div class="dashboard-panels dashboard-panels-bottom">
-        <section class="dashboard-panel dashboard-panel-wide">
-            <div class="panel-heading">
-                <div>
-                    <h2>Case status overview (<span id="statusPeriodTitle">All Time</span>)</h2>
-                    <p>Distribution of cases recorded for this timeframe.</p>
-                </div>
-            </div>
-            <div id="statusTotals" class="status-summary" aria-live="polite"></div>
-        </section>
-    </div>
 
     <span id="cfaCases" style="display:none;" aria-hidden="true"></span>
     <span id="deadlinesDue" style="display:none;" aria-hidden="true"></span>

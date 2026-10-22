@@ -170,9 +170,6 @@ include '../../layouts/header.php';
                     <a href="../cases/case-list.php?assign_case_id=<?php echo $caseId; ?>#caseAssignments" class="btn-secondary" style="font-size: 0.82rem; padding: 7px 12px; display: inline-flex; align-items: center; gap: 5px; text-decoration: none;" title="Manage Lupon Team">
                         👥 Cases &amp; Assignments &rarr;
                     </a>
-                    <a id="wsSchedulesBackLink" href="../hearings/schedules.php" class="btn-secondary" style="font-size: 0.82rem; padding: 7px 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
-                        📅 Central Schedule &rarr;
-                    </a>
                 </div>
             </div>
 

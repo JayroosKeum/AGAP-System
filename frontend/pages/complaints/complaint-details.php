@@ -291,7 +291,7 @@ include '../../layouts/header.php';
                             <h3>Hearings &amp; Deadlines Schedule</h3>
                             <span class="card-subtitle">Mediation, conciliation, and session records</span>
                         </div>
-                        <a id="cwOpenHearingsLink" href="../hearings/schedules.php" class="btn-small-link">
+                        <a id="cwOpenHearingsLink" href="#" class="btn-small-link" style="display: none;">
                             Open Schedule &rarr;
                         </a>
                     </div>
@@ -578,7 +578,7 @@ include '../../layouts/header.php';
                         <h4 id="sessionTitleHeading">Session #1 Schedule &amp; Attendance</h4>
                         <p id="sessionSubtitleHeading" class="session-lead-text">Next Session: Oct 19, 2026 at 10:00 AM (Barangay Hall)</p>
                     </div>
-                    <a id="cwManageScheduleLink" href="../hearings/schedules.php" class="btn-manage-sched">
+                    <a id="cwManageScheduleLink" href="#" class="btn-manage-sched" style="display: none;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
                         <span>Manage Schedule</span>
                     </a>
@@ -887,8 +887,8 @@ include '../../layouts/header.php';
 
                 <div class="form-group">
                     <label for="summonMediationTime">1st Mediation Time <span class="required-mark" aria-hidden="true">*</span></label>
-                    <input type="time" id="summonMediationTime" name="mediation_time" value="09:00" required>
-                    <small class="field-hint">Standard mediation session is 1 hour (60 minutes). Scheduled times cannot overlap.</small>
+                    <input type="time" id="summonMediationTime" name="mediation_time" value="09:00" min="08:00" max="17:00" step="1800" required>
+                    <small class="field-hint">Regular Lupon hearing hours are 8:00 AM to 5:00 PM (Monday to Friday). Standard duration is 1 hour.</small>
                 </div>
 
                 <!-- Conflict Alert Box -->

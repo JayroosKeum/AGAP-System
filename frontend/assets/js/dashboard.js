@@ -12,7 +12,8 @@ document.addEventListener('DOMContentLoaded', () => {
         hearingsPeriodLabel: '',
         currentPeriodLabel: 'All Time',
         calendarCursor: new Date(),
-        calendarHearings: []
+        calendarHearings: [],
+        selectedDate: null
     };
 
     // Check URL search params for initial tab selection
@@ -104,6 +105,91 @@ document.addEventListener('DOMContentLoaded', () => {
         container.appendChild(item);
     };
 
+    const getTodayDateStr = () => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+
+    const addHearingItem = (container, hearing) => {
+        const item = document.createElement('article');
+        item.className = 'dashboard-list-item';
+
+        const content = document.createElement('div');
+        content.className = 'dashboard-list-content';
+
+        const heading = document.createElement('h3');
+        heading.textContent = `${hearing.case_number || 'Case'} · ${hearing.hearing_type || 'Hearing'}`;
+
+        const description = document.createElement('p');
+        description.textContent = `${formatDateTime(hearing.hearing_date)} · ${hearing.venue || 'Lupon Court Room'}${hearing.complaint_title ? ` · ${hearing.complaint_title}` : ''}`;
+
+        content.append(heading, description);
+        item.appendChild(content);
+
+        const openCaseBtn = document.createElement('a');
+        openCaseBtn.className = 'btn-open-case';
+        openCaseBtn.textContent = 'Open Case';
+        if (hearing.complaint_id) {
+            openCaseBtn.href = `../complaints/complaint-details.php?id=${encodeURIComponent(hearing.complaint_id)}`;
+        } else if (hearing.case_id) {
+            openCaseBtn.href = `../cases/case-details.php?id=${encodeURIComponent(hearing.case_id)}`;
+        } else {
+            openCaseBtn.href = '#';
+        }
+        openCaseBtn.title = 'View complaint details';
+
+        item.appendChild(openCaseBtn);
+        container.appendChild(item);
+    };
+
+    const selectCalendarDate = (dateStr) => {
+        state.selectedDate = dateStr;
+
+        const todayStr = getTodayDateStr();
+        const isToday = (dateStr === todayStr);
+
+        // Filter hearings from state.calendarHearings for this date
+        const matchingHearings = (state.calendarHearings || []).filter(h => {
+            if (!h.hearing_date) return false;
+            const d = h.hearing_date.split(' ')[0] || h.hearing_date.split('T')[0];
+            return d === dateStr;
+        });
+
+        const formattedDate = formatDateOnly(dateStr);
+        const heading = document.getElementById('hearingsPanelHeading');
+        const sub = document.getElementById('hearingsPanelSub');
+        const countBadge = document.getElementById('periodHearingCountBadge');
+
+        if (isToday) {
+            if (heading) heading.textContent = "Today's hearings";
+            if (sub) sub.textContent = 'Sessions scheduled for today.';
+        } else {
+            if (heading) heading.textContent = `Hearings (${formattedDate})`;
+            if (sub) sub.textContent = `Sessions scheduled for ${formattedDate}.`;
+        }
+
+        if (countBadge) {
+            const count = matchingHearings.length;
+            if (count > 0) {
+                countBadge.textContent = `${count} hearing${count === 1 ? '' : 's'}`;
+                countBadge.style.display = 'inline-block';
+            } else {
+                countBadge.style.display = 'none';
+            }
+        }
+
+        state.hearings = matchingHearings;
+        state.hearingsPage = 1;
+        state.hearingsPeriodLabel = isToday ? 'today' : formattedDate;
+        renderHearingsPage();
+
+        // Update selected state in calendar grid
+        const allDays = document.querySelectorAll('.dash-cal-day');
+        allDays.forEach(cell => {
+            cell.classList.toggle('is-selected', cell.dataset.date === dateStr);
+        });
+    };
+
     const renderHearings = (hearings, periodLabel) => {
         state.hearings = hearings || [];
         state.hearingsPage = 1;
@@ -114,9 +200,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const countBadge = document.getElementById('periodHearingCountBadge');
 
         if (state.period === 'all') {
+            state.selectedDate = getTodayDateStr();
             if (heading) heading.textContent = "Today's hearings";
             if (sub) sub.textContent = 'Sessions scheduled for today.';
         } else {
+            state.selectedDate = null;
             if (heading) heading.textContent = `Hearings (${periodLabel})`;
             if (sub) sub.textContent = `Sessions scheduled within this timeframe.`;
         }
@@ -148,11 +236,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const totalHearings = (state.hearings || []).length;
         if (!totalHearings) {
             if (paginationWrap) paginationWrap.style.display = 'none';
-            return container.appendChild(emptyState(
-                state.period === 'all'
-                    ? 'No active hearings are scheduled for today.'
-                    : `No active hearings are scheduled for ${state.hearingsPeriodLabel || 'this timeframe'}.`
-            ));
+            const todayStr = getTodayDateStr();
+            const emptyLabel = state.selectedDate
+                ? (state.selectedDate === todayStr ? 'today' : (formatDateOnly(state.selectedDate) || 'this date'))
+                : (state.period === 'all' ? 'today' : (state.hearingsPeriodLabel || 'this timeframe'));
+            return container.appendChild(emptyState(`No active hearings are scheduled for ${emptyLabel}.`));
         }
 
         const totalPages = Math.max(1, Math.ceil(totalHearings / state.hearingsPerPage));
@@ -163,13 +251,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const endIndex = Math.min(startIndex + state.hearingsPerPage, totalHearings);
         const pageItems = state.hearings.slice(startIndex, endIndex);
 
-        pageItems.forEach((hearing) => addListItem(
-            container,
-            `${hearing.case_number || 'Case'} · ${hearing.hearing_type || 'Hearing'}`,
-            `${formatDateTime(hearing.hearing_date)} · ${hearing.venue || 'Lupon Court Room'}${hearing.complaint_title ? ` · ${hearing.complaint_title}` : ''}`,
-            hearing.status,
-            hearing.case_id ? `../cases/case-details.php?id=${hearing.case_id}` : null
-        ));
+        pageItems.forEach((hearing) => addHearingItem(container, hearing));
 
         // Pagination UI: Only show 10 at a time
         if (paginationWrap) {
@@ -401,8 +483,7 @@ document.addEventListener('DOMContentLoaded', () => {
             grid.appendChild(header);
         });
 
-        const todayObj = new Date();
-        const todayStr = `${todayObj.getFullYear()}-${String(todayObj.getMonth() + 1).padStart(2, '0')}-${String(todayObj.getDate()).padStart(2, '0')}`;
+        const todayStr = getTodayDateStr();
 
         const firstDayIdx = new Date(year, month, 1).getDay();
         const totalDays = new Date(year, month + 1, 0).getDate();
@@ -420,9 +501,18 @@ document.addEventListener('DOMContentLoaded', () => {
         // Previous month filler days
         for (let i = firstDayIdx - 1; i >= 0; i--) {
             const prevDayNum = prevMonthTotalDays - i;
+            const prevMonthDate = new Date(year, month - 1, prevDayNum);
+            const prevDateStr = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}-${String(prevMonthDate.getDate()).padStart(2, '0')}`;
             const cell = document.createElement('div');
             cell.className = 'dash-cal-day is-other-month';
+            cell.dataset.date = prevDateStr;
             cell.textContent = prevDayNum;
+            cell.title = `Go to ${formatDateOnly(prevDateStr)}`;
+            cell.addEventListener('click', () => {
+                state.calendarCursor = new Date(year, month - 1, 1);
+                renderDashboardCalendar();
+                selectCalendarDate(prevDateStr);
+            });
             grid.appendChild(cell);
         }
 
@@ -441,6 +531,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 cell.classList.add('is-today');
             }
 
+            if (dateStr === state.selectedDate) {
+                cell.classList.add('is-selected');
+            }
+
             const dayHearings = hearingsByDate[dateStr] || [];
             if (dayHearings.length > 0) {
                 cell.classList.add('has-hearing');
@@ -450,11 +544,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const countText = `${dayHearings.length} hearing session${dayHearings.length > 1 ? 's' : ''}`;
                 const details = dayHearings.map(h => `${h.case_number || 'Case'}: ${h.hearing_type || 'Session'}`).join(' | ');
-                cell.title = `${countText}: ${details}`;
+                cell.title = `${countText}: ${details} (Click to view hearings)`;
+            } else {
+                cell.title = `Click to view hearings for ${formatDateOnly(dateStr)}`;
             }
 
             cell.addEventListener('click', () => {
-                window.location.href = `../hearings/schedules.php?date=${encodeURIComponent(dateStr)}`;
+                selectCalendarDate(dateStr);
             });
 
             grid.appendChild(cell);
@@ -464,9 +560,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const totalCells = firstDayIdx + totalDays;
         const remaining = (7 - (totalCells % 7)) % 7;
         for (let nextDay = 1; nextDay <= remaining; nextDay++) {
+            const nextMonthDate = new Date(year, month + 1, nextDay);
+            const nextDateStr = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, '0')}-${String(nextMonthDate.getDate()).padStart(2, '0')}`;
             const cell = document.createElement('div');
             cell.className = 'dash-cal-day is-other-month';
+            cell.dataset.date = nextDateStr;
             cell.textContent = nextDay;
+            cell.title = `Go to ${formatDateOnly(nextDateStr)}`;
+            cell.addEventListener('click', () => {
+                state.calendarCursor = new Date(year, month + 1, 1);
+                renderDashboardCalendar();
+                selectCalendarDate(nextDateStr);
+            });
             grid.appendChild(cell);
         }
     };
@@ -652,12 +757,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateCardSubtitles(state.period, periodLabel);
                 updateControls(state.period, data);
 
+                state.calendarHearings = data.calendar_hearings || [];
                 renderHearings(data.today_hearings || [], periodLabel);
                 renderDeadlines(data.mediation_deadlines || [], periodLabel);
                 renderStatuses(data.status_totals || [], periodLabel);
                 renderCasesTable(data.cases || [], periodLabel);
-
-                state.calendarHearings = data.calendar_hearings || [];
                 renderDashboardCalendar();
 
                 updateUrl();
@@ -790,6 +894,7 @@ document.addEventListener('DOMContentLoaded', () => {
         calTodayBtn.addEventListener('click', () => {
             state.calendarCursor = new Date();
             renderDashboardCalendar();
+            selectCalendarDate(getTodayDateStr());
         });
     }
 

@@ -80,16 +80,17 @@ flowchart TD
 ---
 
 ### Phase 3: Mediation Engine (Punong Barangay Phase)
-- [ ] `[High]` **Tuesday Mediation Lock (Barangay Tumana Specific)**
-  - Restrict Punong Barangay mediation scheduling to Tuesdays only, 1:00 PM to 5:00 PM.
-  - Parameterize this restriction in Barangay Settings so other barangays (*e.g., Barangay Fortune*) can set custom or daily mediation days.
+- [x] `[High]` **Working-Day Mediation Scheduling (8:00 AM – 5:00 PM)**
+  - Enable Punong Barangay mediation scheduling across all regular working days (Monday through Friday, 8:00 AM to 5:00 PM) within the statutory 15-working-day window.
+  - Hard cap daily sessions at 8 mediation hearings per day with Lupon Court Room collision detection.
+  - Parameterize working days and daily capacity in Barangay Settings so Lupon administrators can tailor hearing slots.
 - [ ] `[High]` **Maximum 2 Mediation Sessions Limit**
   - Hard cap mediation at exactly 2 sessions (1st and 2nd Mediation). Remove any 3rd mediation stage; case must automatically transition to Pangkat formation if unresolved after the 2nd session.
 - [ ] `[High]` **Dynamic / Flexible Queue Management**
-  - Allow reordering and calling waiting cases ahead of schedule if both parties are marked present, preventing idle courtroom time when scheduled 1:00 PM parties are late.
+  - Allow reordering and calling waiting cases ahead of schedule if both parties are marked present, preventing idle courtroom time when scheduled morning parties are delayed.
   - Provide an *Arrived / In Attendance* toggle per party.
 - [ ] `[Medium]` **Emergency Session Postponement**
-  - In case of unexpected Captain seminars/official travel, add a 1-click `"Reset / Postpone Session"` button that moves hearings to the next available Tuesday and prompts staff to log telephone notice confirmations.
+  - In case of unexpected Captain seminars/official travel, add a 1-click `"Reset / Postpone Session"` button that moves hearings to the next available working day and prompts staff to log telephone notice confirmations.
 
 ---
 
@@ -137,6 +138,19 @@ flowchart TD
     - Title / Nature of Dispute (Civil vs. Criminal)
     - Filing Date & First Hearing Date
     - Case Status (Mediated, Conciliated, Dismissed, Repudiated, For CFA)
+- [x] `[High]` **Master Document Center & DOCX Template Engine**
+  - Native `.docx` master template parsing (`DocxTemplateService.php`) preserving character formatting, tables, and alignment.
+  - Standardized Arial typography (`font-family: Arial, Helvetica, sans-serif;`) across all official KP documents.
+  - Zero browser header/footer print rules (`@page { margin: 10mm; }`) to suppress automatic URLs and timestamps.
+  - Responsive print media scaling for standard Legal (`8.5in x 14in`) and A4 bond paper.
+  - Customizable Barangay and City seals, with obsolete Office Name Banner removed.
+  - Canonical modal preview titles displaying strictly the KP Form number (e.g. `KP FORM 7`, `KP FORM 20`).
+- [x] `[High]` **2nd Mediation Scheduling Modal & Hearing Minutes Save Fix**
+  - Fixed database column missing error (`actual_duration_minutes`, `actual_start_time`, `queue_status`) for MySQL 8.0/8.4+.
+  - Removed obsolete inline Next Steps section in mediation workspace; minutes saving now succeeds cleanly without validation blocking.
+  - Selecting "No Settlement → Set Another Meeting" (`Continue Mediation`) automatically launches the high-fidelity 2nd Mediation Scheduling modal with the interactive 15-working-day calendar.
+  - Universal operating hours: Mediation sessions can be booked on all working days (Monday to Friday, 8:00 AM – 5:00 PM), fully lifting old Tuesday-only locks.
+  - Displays statutory notice exemption under RA 7160 Sec. 410 (bypassing KP Form 9 summons since parties sign minutes in person).
 - [ ] `[Medium]` **Blank KP Forms Repository**
   - Add a dedicated repository tab containing clean, printable blank PDF templates of standard DILG KP Forms (Forms 7, 8, 9, 10, 11, 16, etc.) for manual standby use.
 - [ ] `[Medium]` **KP Form 7 Layout Correction**

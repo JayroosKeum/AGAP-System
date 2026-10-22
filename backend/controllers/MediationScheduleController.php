@@ -46,11 +46,11 @@ class MediationScheduleController
 
         $dayOfWeek = (int) $hearingDate->format('w');
         $hour = (int) $hearingDate->format('H');
-        if ($dayOfWeek !== 2) {
-            return ['success' => false, 'message' => 'Mediation hearings can only be scheduled on Tuesdays.'];
+        if ($dayOfWeek === 0 || $dayOfWeek === 6) {
+            return ['success' => false, 'message' => 'Mediation hearings can only be scheduled on working days (Monday to Friday).'];
         }
-        if ($hour < 13 || $hour >= 17) {
-            return ['success' => false, 'message' => 'Mediation hearings must be between 1:00 PM and 5:00 PM.'];
+        if (($hour < 8 || $hour >= 17) || ($hour >= 12 && $hour < 13)) {
+            return ['success' => false, 'message' => 'Mediation hearings must be between 8:00 AM and 5:00 PM (excluding 12:00 PM – 1:00 PM lunch break).'];
         }
         require_once __DIR__ . '/../services/MediationDeadlineService.php';
         if (MediationDeadlineService::isNonWorkingDay($hearingDate)) {

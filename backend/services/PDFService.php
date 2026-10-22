@@ -501,7 +501,7 @@ class PDFService
     <style>
         @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
         * { box-sizing: border-box; }
-        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        body { font-family: Arial, "DejaVu Sans", Helvetica, sans-serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
         .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
         .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
         .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
@@ -651,7 +651,7 @@ class PDFService
     <style>
         @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
         * { box-sizing: border-box; }
-        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        body { font-family: Arial, "DejaVu Sans", Helvetica, sans-serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
         .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
         .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
         .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
@@ -803,7 +803,7 @@ class PDFService
     <style>
         @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
         * { box-sizing: border-box; }
-        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        body { font-family: Arial, "DejaVu Sans", Helvetica, sans-serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
         .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
         .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
         .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
@@ -960,7 +960,7 @@ class PDFService
     <style>
         @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
         * { box-sizing: border-box; }
-        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        body { font-family: Arial, "DejaVu Sans", Helvetica, sans-serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
         .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
         .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
         .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
@@ -1135,7 +1135,7 @@ class PDFService
     <style>
         @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
         * { box-sizing: border-box; }
-        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        body { font-family: Arial, "DejaVu Sans", Helvetica, sans-serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
         .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
         .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
         .header-table td { vertical-align: top; }
@@ -1303,7 +1303,7 @@ class PDFService
     <style>
         @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
         * { box-sizing: border-box; }
-        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        body { font-family: Arial, "DejaVu Sans", Helvetica, sans-serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
         .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
         .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
         .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
@@ -1436,7 +1436,7 @@ class PDFService
     <style>
         @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
         * { box-sizing: border-box; }
-        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        body { font-family: Arial, "DejaVu Sans", Helvetica, sans-serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
         .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
         .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
         .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
@@ -1588,7 +1588,7 @@ class PDFService
     <style>
         @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
         * { box-sizing: border-box; }
-        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        body { font-family: Arial, "DejaVu Sans", Helvetica, sans-serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
         .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
         .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
         .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
@@ -1732,7 +1732,7 @@ class PDFService
     <style>
         @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
         * { box-sizing: border-box; }
-        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        body { font-family: Arial, "DejaVu Sans", Helvetica, sans-serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
         .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
         .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
         .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
@@ -1900,7 +1900,7 @@ class PDFService
     <style>
         @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
         * { box-sizing: border-box; }
-        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        body { font-family: Arial, "DejaVu Sans", Helvetica, sans-serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
         .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
         .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
         .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
@@ -2077,7 +2077,7 @@ class PDFService
     <style>
         @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
         * { box-sizing: border-box; }
-        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        body { font-family: Arial, "DejaVu Sans", Helvetica, sans-serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
         .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
         .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
         .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
@@ -2226,7 +2226,7 @@ class PDFService
     <style>
         @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
         * { box-sizing: border-box; }
-        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        body { font-family: Arial, "DejaVu Sans", Helvetica, sans-serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
         .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
         .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
         .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
@@ -2370,7 +2370,7 @@ class PDFService
     <style>
         @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
         * { box-sizing: border-box; }
-        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        body { font-family: Arial, "DejaVu Sans", Helvetica, sans-serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
         .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
         .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
         .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
@@ -2501,7 +2501,7 @@ class PDFService
     <style>
         @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
         * { box-sizing: border-box; }
-        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        body { font-family: Arial, "DejaVu Sans", Helvetica, sans-serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
         .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
         .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
         .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
@@ -2632,7 +2632,7 @@ class PDFService
     <style>
         @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
         * { box-sizing: border-box; }
-        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        body { font-family: Arial, "DejaVu Sans", Helvetica, sans-serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
         .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
         .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
         .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
@@ -2768,7 +2768,7 @@ class PDFService
     <style>
         @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
         * { box-sizing: border-box; }
-        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        body { font-family: Arial, "DejaVu Sans", Helvetica, sans-serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
         .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
         .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
         .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
@@ -2907,7 +2907,7 @@ class PDFService
     <style>
         @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
         * { box-sizing: border-box; }
-        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        body { font-family: Arial, "DejaVu Sans", Helvetica, sans-serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
         .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
         .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
         .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
@@ -3054,7 +3054,7 @@ class PDFService
     <style>
         @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
         * { box-sizing: border-box; }
-        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        body { font-family: Arial, "DejaVu Sans", Helvetica, sans-serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
         .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
         .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
         .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
@@ -3213,7 +3213,7 @@ class PDFService
     <style>
         @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
         * { box-sizing: border-box; }
-        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        body { font-family: Arial, "DejaVu Sans", Helvetica, sans-serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
         .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
         .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
         .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
@@ -4302,7 +4302,7 @@ class PDFService
         $cssStyles = $forPdf ? '
         @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
         * { box-sizing: border-box; }
-        body { font-family: "Times New Roman", Times, "DejaVu Serif", Georgia, serif; font-size: 10pt; color: #111111; line-height: 1.45; background: #ffffff; margin: 0; padding: 0; }
+        body { font-family: Arial, "DejaVu Sans", Helvetica, sans-serif; font-size: 10pt; color: #111111; line-height: 1.45; background: #ffffff; margin: 0; padding: 0; }
         .page-sheet { width: 100%; margin: 0; padding: 0; background: #ffffff; }
         ' : '
         @page { size: A4 portrait; margin: 0; }
@@ -4311,7 +4311,7 @@ class PDFService
             margin: 0;
             padding: 0;
             background: #475569;
-            font-family: "Times New Roman", Times, "DejaVu Serif", Georgia, serif;
+            font-family: Arial, "DejaVu Sans", Helvetica, sans-serif;
             color: #111111;
             line-height: 1.45;
             -webkit-print-color-adjust: exact;

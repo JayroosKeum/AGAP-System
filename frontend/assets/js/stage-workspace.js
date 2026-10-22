@@ -737,7 +737,7 @@ function formatTimeOnly(dateStr) {
 
 async function handleDocketCheckIn(hearingId, partyType, status) {
     try {
-        const res = await fetch('../../backend/api/hearings/queue.php', {
+        const res = await fetch(getStageApiUrl('hearings/queue.php'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -762,7 +762,7 @@ async function handleDocketCheckIn(hearingId, partyType, status) {
 
 async function handleDocketStandby(hearingId, standby) {
     try {
-        const res = await fetch('../../backend/api/hearings/queue.php', {
+        const res = await fetch(getStageApiUrl('hearings/queue.php'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -789,7 +789,7 @@ async function handleDocketStartSession(hearingId) {
         return;
     }
     try {
-        const res = await fetch('../../backend/api/hearings/queue.php', {
+        const res = await fetch(getStageApiUrl('hearings/queue.php'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -815,7 +815,7 @@ async function handleDocketConcludeSession(hearingId) {
         return;
     }
     try {
-        const res = await fetch('../../backend/api/hearings/queue.php', {
+        const res = await fetch(getStageApiUrl('hearings/queue.php'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1350,7 +1350,7 @@ function renderMinutesSection(data, stage) {
                             <label for="minOutcome" style="font-weight: 700; font-size: 0.82rem; color: #0f172a; margin-bottom: 4px; display: block;">
                                 Session Outcome Determination <span style="color: #dc2626;">*</span>
                             </label>
-                            <select id="minOutcome" onchange="handleMinutesOutcomeChange(this.value)" ${readonlyAttr} required style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.84rem; box-sizing: border-box; background: #fff; font-weight: 600; color: #1e293b;">
+                            <select id="minOutcome" onchange="handleMinutesOutcomeChange(this.value, true)" ${readonlyAttr} required style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.84rem; box-sizing: border-box; background: #fff; font-weight: 600; color: #1e293b;">
                                 ${outcomeOptions}
                             </select>
                         </div>
@@ -1370,84 +1370,6 @@ function renderMinutesSection(data, stage) {
 
                     <!-- Row 3: Dynamic Next-Step Action Banner -->
                     <div id="minStageActionBanner" style="margin-bottom: 12px;"></div>
-
-                    <!-- Row 4: Integrated Direct Next Hearing Booking Section -->
-                    <div id="minNextStepsSection" style="${curOutcome === 'Continue Mediation' && mode === 'Mediation' ? 'display: block;' : 'display: none;'} margin-top: 14px; margin-bottom: 14px; background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 16px;">
-                        ${nextSession ? `
-                            <div style="display: flex; align-items: flex-start; gap: 12px;">
-                                <span style="background: #16a34a; color: #fff; width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.84rem; font-weight: 700; flex-shrink: 0;">✓</span>
-                                <div>
-                                    <strong style="color: #14532d; font-size: 0.92rem; display: block;">
-                                        ${nextSessionIndex === 2 ? '2nd' : (nextSessionIndex === 3 ? '3rd' : 'Next')} Mediation Hearing is Already Booked
-                                    </strong>
-                                    <p style="color: #166534; font-size: 0.84rem; margin: 4px 0 0; line-height: 1.45;">
-                                        Scheduled on <strong>${formatDateTime ? formatDateTime(nextSession.hearing_date) : nextSession.hearing_date}</strong> at <strong>${escapeHtml(nextSession.venue || 'Barangay Hall')}</strong>.
-                                        <br>
-                                        <span style="color: #475569; font-size: 0.78rem;">✓ Redundant summons (KP Form 9) was bypassed; both parties were personally notified during this session.</span>
-                                    </p>
-                                </div>
-                            </div>
-                        ` : (sessionIndex >= 3 ? `
-                            <div style="display: flex; align-items: flex-start; gap: 12px;">
-                                <span style="background: #0284c7; color: #fff; width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.84rem; font-weight: 700; flex-shrink: 0;">ℹ️</span>
-                                <div>
-                                    <strong style="color: #0c4a6e; font-size: 0.92rem; display: block;">
-                                        Mediation Phase Exhausted (2 of 2 Sessions Held)
-                                    </strong>
-                                    <p style="color: #0369a1; font-size: 0.84rem; margin: 4px 0 0; line-height: 1.45;">
-                                        Under Katarungang Pambarangay rules (RA 7160 Sec. 410) and Barangay Tumana policy, a maximum of <strong>two mediation sessions</strong> may be held before the Punong Barangay. If no settlement is reached, this case must be elevated to the <strong>Pangkat ng Tagapagkasundo</strong> for formal conciliation (KP Form 10).
-                                    </p>
-                                </div>
-                            </div>
-                        ` : `
-                            <div>
-                                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #bbf7d0;">
-                                    <div style="display: flex; align-items: center; gap: 8px;">
-                                        <span style="background: #16a34a; color: #fff; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.78rem; font-weight: 700;">📅</span>
-                                        <div>
-                                            <strong style="color: #14532d; font-size: 0.92rem;">
-                                                Next Steps: Book ${nextSessionIndex === 2 ? '2nd' : '3rd'} Mediation Hearing
-                                            </strong>
-                                            <span style="display: block; font-size: 0.76rem; color: #166534;">
-                                                Enter the date and time to automatically schedule the ${nextSessionIndex === 2 ? '2nd' : '3rd'} mediation session immediately upon saving these minutes.
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <span style="font-size: 0.74rem; background: #dcfce7; color: #15803d; font-weight: 700; padding: 4px 10px; border-radius: 6px; border: 1px solid #86efac; display: inline-flex; align-items: center; gap: 4px;">
-                                        ✓ NO SUMMONS (KP-9) NEEDED
-                                    </span>
-                                </div>
-
-                                <div style="background: #ffffff; border: 1px solid #bbf7d0; border-radius: 6px; padding: 9px 12px; margin-bottom: 12px; font-size: 0.8rem; color: #166534; display: flex; align-items: flex-start; gap: 8px; line-height: 1.45;">
-                                    <span style="font-size: 1rem; line-height: 1;">ℹ️</span>
-                                    <div>
-                                        <strong>RA 7160 Sec. 410 Notice Exemption:</strong> Because both parties are present in this session and sign the minutes, prior personal notice is legally recognized. <strong>No redundant summons (KP Form 9)</strong> will be generated for the ${nextSessionIndex === 2 ? '2nd' : '3rd'} mediation session.
-                                    </div>
-                                </div>
-
-                                <div style="display: grid; grid-template-columns: 1.2fr 1fr 1.2fr; gap: 12px;">
-                                    <div class="form-group" style="margin-bottom: 0;">
-                                        <label for="minNextHearingDate" style="font-weight: 600; font-size: 0.82rem; color: #14532d; margin-bottom: 4px; display: block;">
-                                            Next Hearing Date <span style="color: #dc2626;">*</span>
-                                        </label>
-                                        <input type="date" id="minNextHearingDate" min="${minNextDate}" value="${defaultNextDate}" ${readonlyAttr} style="width: 100%; border: 1px solid #86efac; border-radius: 6px; padding: 8px 10px; font-size: 0.84rem; box-sizing: border-box; background: #fff;">
-                                    </div>
-                                    <div class="form-group" style="margin-bottom: 0;">
-                                        <label for="minNextHearingTime" style="font-weight: 600; font-size: 0.82rem; color: #14532d; margin-bottom: 4px; display: block;">
-                                            Next Hearing Time <span style="color: #dc2626;">*</span>
-                                        </label>
-                                        <input type="time" id="minNextHearingTime" value="09:00" ${readonlyAttr} style="width: 100%; border: 1px solid #86efac; border-radius: 6px; padding: 8px 10px; font-size: 0.84rem; box-sizing: border-box; background: #fff;">
-                                    </div>
-                                    <div class="form-group" style="margin-bottom: 0;">
-                                        <label for="minNextHearingVenue" style="font-weight: 600; font-size: 0.82rem; color: #14532d; margin-bottom: 4px; display: block;">
-                                            Venue
-                                        </label>
-                                        <input type="text" id="minNextHearingVenue" value="${escapeHtml(activeSession.venue || 'Lupon Court Room')}" ${readonlyAttr} style="width: 100%; border: 1px solid #86efac; border-radius: 6px; padding: 8px 10px; font-size: 0.84rem; box-sizing: border-box; background: #fff;">
-                                    </div>
-                                </div>
-                            </div>
-                        `)}
-                    </div>
                 </div>
 
                 <!-- Actions Footer -->
@@ -1487,13 +1409,13 @@ function renderMinutesSection(data, stage) {
     minContainer.innerHTML = formHtml;
 
     // Trigger dynamic next-step action banner for active session's outcome
-    handleMinutesOutcomeChange(curOutcome);
+    handleMinutesOutcomeChange(curOutcome, false);
 }
 
 /**
  * Dynamic Next-Step Action Banner based on Session Outcome Determination
  */
-function handleMinutesOutcomeChange(outcomeVal) {
+function handleMinutesOutcomeChange(outcomeVal, isUserChange = false) {
     const bannerEl = document.getElementById('minStageActionBanner');
     if (!bannerEl) return;
     const mode = stageWorkspaceState.mode;
@@ -1502,7 +1424,7 @@ function handleMinutesOutcomeChange(outcomeVal) {
     const activeSession = stageWorkspaceState.sessions.find(s => Number(s.hearing_id) === Number(activeHearingId)) || {};
     const sessionIndex = Number(activeSession.session_index || 1);
 
-    // Toggle integrated Next Steps direct booking section
+    // Toggle integrated Next Steps direct booking section (if exists)
     const nextStepsEl = document.getElementById('minNextStepsSection');
     if (nextStepsEl) {
         nextStepsEl.style.display = (outcomeVal === 'Continue Mediation' && mode === 'Mediation') ? 'block' : 'none';
@@ -1559,11 +1481,21 @@ function handleMinutesOutcomeChange(outcomeVal) {
                 `;
             } else {
                 bannerEl.innerHTML = `
-                    <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 10px 14px; font-size: 0.84rem; color: #166534; display: flex; align-items: center; gap: 8px;">
-                        <span>📅</span>
-                        <span><strong>Direct Booking Active:</strong> Enter Date &amp; Time in the <strong>Next Steps</strong> section below. The ${nextOrdinal} Mediation session will be booked automatically upon saving these minutes (no summons required).</span>
+                    <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <div style="color: #166534; font-size: 0.85rem;">
+                            <strong style="font-size: 0.92rem; display: block; color: #14532d;">📅 2nd Mediation Session Required</strong>
+                            No settlement reached in 1st Mediation. Schedule the 2nd mediation session under RA 7160 Sec. 410 (Summons bypassed as parties are notified in person).
+                        </div>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <button type="button" class="btn-create" onclick="openScheduleModal()" style="font-size: 0.82rem; padding: 7px 16px; background: #16a34a; border: none; border-radius: 6px; color: #fff; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+                                📅 Schedule 2nd Mediation &rarr;
+                            </button>
+                        </div>
                     </div>
                 `;
+                if (isUserChange && outcomeVal === 'Continue Mediation') {
+                    openScheduleModal();
+                }
             }
         } else {
             // Session 2 completed — show Pangkat referral prompt
@@ -1709,22 +1641,13 @@ async function saveHearingMinutes(status = 'Draft') {
         const nextDate = document.getElementById('minNextHearingDate')?.value?.trim();
         const nextTime = document.getElementById('minNextHearingTime')?.value?.trim();
         const nextVenue = document.getElementById('minNextHearingVenue')?.value?.trim() || 'Lupon Court Room';
-        if (!nextDate || !nextTime) {
-            alert('Please specify the Date and Time for the next mediation session in the Next Steps section.');
-            const dateInput = document.getElementById('minNextHearingDate');
-            if (dateInput) {
-                dateInput.focus();
-                dateInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-            if (draftBtn) draftBtn.disabled = false;
-            if (finalizeBtn) finalizeBtn.disabled = false;
-            return;
+        if (nextDate && nextTime) {
+            payload.book_next_hearing = 1;
+            payload.next_hearing_date = nextDate;
+            payload.next_hearing_time = nextTime;
+            payload.next_hearing_venue = nextVenue;
+            payload.next_hearing_presider_id = session.presiding_officer_id || null;
         }
-        payload.book_next_hearing = 1;
-        payload.next_hearing_date = nextDate;
-        payload.next_hearing_time = nextTime;
-        payload.next_hearing_venue = nextVenue;
-        payload.next_hearing_presider_id = session.presiding_officer_id || null;
     }
 
     try {
@@ -1952,202 +1875,364 @@ function renderOutcomeAndReferralSection(data, stage) {
  * MODAL: Schedule Session Modal
  * -----------------------------------------------------------------------------
  */
-let wsFlatpickrInstance = null;
+let currentWsWindowMeta = null;
+let wsConflictCheckDebounceTimer = null;
 
-function openScheduleModal(hearingId = null) {
+async function openScheduleModal(hearingId = null) {
     const modal = document.getElementById('wsScheduleModal');
-    if (modal) {
-        modal.style.display = 'flex';
-        initWorkspaceScheduleModal();
+    if (!modal) {
+        const urlParams = new URLSearchParams(window.location.search);
+        const caseId = stageWorkspaceState.caseId || urlParams.get('case_id');
+        const hId = hearingId || stageWorkspaceState.activeSessionHearingId || urlParams.get('hearing_id');
+        let url = `../hearings/schedules.php?case_id=${encodeURIComponent(caseId || '')}`;
+        if (hId) url += `&hearing_id=${encodeURIComponent(hId)}`;
+        window.location.href = url;
         return;
     }
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const caseId = stageWorkspaceState.caseId || urlParams.get('case_id');
-    const hId = hearingId || stageWorkspaceState.activeSessionHearingId || urlParams.get('hearing_id');
+    modal.style.display = 'flex';
 
-    let url = `../hearings/schedules.php?case_id=${encodeURIComponent(caseId || '')}`;
-    if (hId) {
-        url += `&hearing_id=${encodeURIComponent(hId)}`;
+    // Title / Subtitle customization
+    const titleEl = document.getElementById('wsSchedModalTitle');
+    const subtitleEl = document.getElementById('wsSchedModalSubtitle');
+    const dateLabelEl = document.getElementById('schedDateLabel');
+    const timeLabelEl = document.getElementById('schedTimeLabel');
+    const conflictAlert = document.getElementById('schedScheduleConflictAlert');
+    const submitBtn = document.getElementById('submitSchedBtn');
+    const dateInput = document.getElementById('schedDate');
+    const timeInput = document.getElementById('schedTime');
+
+    if (conflictAlert) {
+        conflictAlert.textContent = '';
+        conflictAlert.style.display = 'none';
     }
-    window.location.href = url;
+    if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.title = '';
+    }
+
+    if (stageWorkspaceState.mode === 'Mediation') {
+        const activeHearingId = stageWorkspaceState.activeSessionHearingId;
+        const activeSession = stageWorkspaceState.sessions.find(s => Number(s.hearing_id) === Number(activeHearingId)) || {};
+        const curSeq = Number(activeSession.session_index || 1);
+        const nextSeq = curSeq + 1;
+        const nextSeqOrdinal = nextSeq === 2 ? '2nd' : (nextSeq === 3 ? '3rd' : `${nextSeq}th`);
+
+        if (titleEl) titleEl.textContent = `Schedule ${nextSeqOrdinal} Mediation Session`;
+        if (dateLabelEl) dateLabelEl.textContent = `${nextSeqOrdinal} Mediation Date`;
+        if (timeLabelEl) timeLabelEl.textContent = `${nextSeqOrdinal} Mediation Time`;
+        if (subtitleEl) {
+            subtitleEl.innerHTML = `Enter the date and time to schedule the ${nextSeqOrdinal} mediation session immediately. <strong>RA 7160 Sec. 410 Notice Exemption:</strong> Because both parties are present in this session and notified, prior personal notice is legally recognized and no redundant summons (KP Form 9) is generated.`;
+        }
+    }
+
+    // Set up listeners for date/time
+    if (dateInput) {
+        dateInput.onchange = () => {
+            if (currentWsWindowMeta) {
+                renderWorkspaceVisualDatePicker(currentWsWindowMeta, dateInput.value);
+            }
+            checkWorkspaceScheduleConflict();
+        };
+    }
+    if (timeInput) {
+        timeInput.oninput = debouncedCheckWorkspaceScheduleConflict;
+        timeInput.onchange = checkWorkspaceScheduleConflict;
+    }
+
+    // Load statutory window and available slots
+    const caseId = stageWorkspaceState.caseId;
+    const complaintId = document.getElementById('schedComplaintId')?.value || '';
+    try {
+        const res = await fetch(getStageApiUrl(`summons/check-schedule.php?case_id=${encodeURIComponent(caseId)}&complaint_id=${encodeURIComponent(complaintId)}&get_window=1`));
+        const json = await res.json();
+        if (json.window) {
+            currentWsWindowMeta = json.window;
+            let targetDate = dateInput ? dateInput.value : '';
+            if (!targetDate && json.window.daily_slots) {
+                // Pick first valid open working day
+                const firstOpen = Object.values(json.window.daily_slots).find(d => !d.is_past && !d.is_outside_window && !d.is_fully_booked && !d.is_weekend && !d.is_non_working_day);
+                if (firstOpen) {
+                    targetDate = firstOpen.date;
+                    if (dateInput) dateInput.value = targetDate;
+                }
+            }
+            renderWorkspaceVisualDatePicker(json.window, targetDate);
+            if (targetDate) {
+                checkWorkspaceScheduleConflict();
+            }
+        } else {
+            const gridEl = document.getElementById('schedVisualDayGrid');
+            if (gridEl) {
+                gridEl.innerHTML = `<div style="color: #dc2626; font-size: 0.78rem; grid-column: 1 / -1; text-align: center; padding: 10px;">⚠️ ${escapeHtml(json.message || 'Unable to load scheduling window.')}</div>`;
+            }
+        }
+    } catch (e) {
+        console.warn('Failed to load window metadata for workspace scheduler:', e);
+        const gridEl = document.getElementById('schedVisualDayGrid');
+        if (gridEl) {
+            gridEl.innerHTML = `<div style="color: #dc2626; font-size: 0.78rem; grid-column: 1 / -1; text-align: center; padding: 10px;">⚠️ Could not connect to schedule server. Please check connection.</div>`;
+        }
+    }
 }
+window.openScheduleModal = openScheduleModal;
 
 function closeScheduleModal() {
     const modal = document.getElementById('wsScheduleModal');
     if (modal) modal.style.display = 'none';
 }
+window.closeScheduleModal = closeScheduleModal;
 
-function initWorkspaceScheduleModal() {
-    const typeVal = document.getElementById('schedHearingType')?.value || (stageWorkspaceState.mode === 'Mediation' ? 'Mediation' : 'Conciliation');
-    const isMediation = (typeVal === 'Mediation');
-    const dateInput = document.getElementById('schedDate');
-    const timeSelect = document.getElementById('schedTime');
-    const hintEl = document.getElementById('schedStageRuleHint');
-    const errorEl = document.getElementById('schedDateError');
-    const feedbackEl = document.getElementById('schedSlotFeedback');
-    const submitBtn = document.getElementById('submitSchedBtn');
+function renderWorkspaceVisualDatePicker(windowMeta, selectedDate) {
+    const gridEl = document.getElementById('schedVisualDayGrid');
+    const noticeEl = document.getElementById('schedVisualDateStatusNotice');
+    const badgeEl = document.getElementById('schedWindowStatutoryBadge');
+    if (!gridEl || !windowMeta || !windowMeta.daily_slots) return;
 
-    if (!dateInput || !timeSelect) return;
-
-    dateInput.value = '';
-    timeSelect.innerHTML = '<option value="">Select a date first</option>';
-    if (errorEl) errorEl.style.display = 'none';
-    if (feedbackEl) {
-        feedbackEl.textContent = isMediation
-            ? 'Available slots: 1:00 PM, 2:00 PM, 3:00 PM, 4:00 PM (1 hour each).'
-            : 'Available slots: 8:00 AM – 11:00 AM, 1:00 PM – 4:00 PM (1 hour each, excluding lunch).';
-        feedbackEl.style.color = '#64748b';
+    if (badgeEl && windowMeta.deadline_date) {
+        const dObj = new Date(windowMeta.deadline_date + 'T00:00:00');
+        const formatted = isNaN(dObj.getTime()) ? windowMeta.deadline_date : dObj.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+        badgeEl.textContent = `15-Working-Day Window (Deadline: ${formatted})`;
     }
-    if (submitBtn) submitBtn.disabled = false;
 
-    // Hint text update
-    if (hintEl) {
-        if (isMediation) {
-            hintEl.style.background = '#fefce8';
-            hintEl.style.borderColor = '#fef08a';
-            hintEl.style.color = '#854d0e';
-            hintEl.innerHTML = `
-                <span style="font-size: 1rem; line-height: 1;">📅</span>
-                <div>
-                    <strong>Barangay Tumana Rule:</strong> Mediation sessions for Barangay Tumana are conducted exclusively on Tuesday afternoons (1:00 PM – 5:00 PM).
+    const days = Object.values(windowMeta.daily_slots);
+    if (!days.length) {
+        gridEl.innerHTML = '<div style="color: #64748b; font-size: 0.78rem; grid-column: 1 / -1; text-align: center;">No date slots available in window.</div>';
+        return;
+    }
+
+    gridEl.innerHTML = days.map(d => {
+        const isSelected = (d.date === selectedDate);
+        let badgeText = `${d.available} open`;
+        let badgeBg = '#dcfce7';
+        let badgeColor = '#15803d';
+        let cardStyle = 'border: 1px solid #cbd5e1; background: #ffffff; color: #1e293b; cursor: pointer;';
+        let disabledAttr = '';
+        let tooltip = `${d.date}: ${d.available} of ${d.max} slots available.`;
+
+        if (d.is_past) {
+            badgeText = 'Past';
+            badgeBg = '#f1f5f9';
+            badgeColor = '#94a3b8';
+            cardStyle = 'border: 1px solid #e2e8f0; background: #f8fafc; color: #94a3b8; cursor: not-allowed; opacity: 0.5;';
+            disabledAttr = 'disabled';
+            tooltip = `${d.date}: Past date cannot be scheduled.`;
+        } else if (d.is_outside_window) {
+            badgeText = '>15 Days';
+            badgeBg = '#fee2e2';
+            badgeColor = '#991b1b';
+            cardStyle = 'border: 1px dashed #fca5a5; background: #fff5f5; color: #991b1b; cursor: not-allowed; opacity: 0.55;';
+            disabledAttr = 'disabled';
+            tooltip = `${d.date}: Exceeds 15-working-day statutory window under RA 7160 Sec. 410.`;
+        } else if (d.is_fully_booked) {
+            badgeText = '8/8 FULL';
+            badgeBg = '#fee2e2';
+            badgeColor = '#b91c1c';
+            cardStyle = 'border: 1px solid #fecaca; background: #fff1f2; color: #881337; cursor: not-allowed; opacity: 0.65;';
+            disabledAttr = 'disabled';
+            tooltip = `${d.date}: Fully booked! Maximum 8 mediation sessions reached for this date.`;
+        } else if (d.is_weekend || d.is_non_working_day) {
+            badgeText = d.is_non_working_day ? 'Holiday' : 'Weekend';
+            badgeBg = '#f1f5f9';
+            badgeColor = '#64748b';
+            cardStyle = 'border: 1px dashed #cbd5e1; background: #f8fafc; color: #64748b; cursor: not-allowed; opacity: 0.55;';
+            disabledAttr = 'disabled';
+            tooltip = `${d.date}: ${d.is_non_working_day ? 'Official holiday' : 'Weekend'}. Closed for sessions.`;
+        }
+
+        if (isSelected) {
+            cardStyle = 'border: 2px solid #2563eb; background: #eff6ff; color: #1e3a8a; box-shadow: 0 0 0 2px rgba(37,99,235,0.25); font-weight: 700; cursor: pointer;';
+            badgeBg = '#2563eb';
+            badgeColor = '#ffffff';
+        }
+
+        return `
+            <div class="ws-day-card ${isSelected ? 'active' : ''}"
+                 onclick="${disabledAttr ? '' : `selectWorkspaceVisualDate('${d.date}')`}"
+                 title="${escapeHtml(tooltip)}"
+                 style="border-radius: 6px; padding: 6px 4px; text-align: center; transition: all 0.15s; user-select: none; ${cardStyle}">
+                <div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em;">
+                    ${escapeHtml(d.day_name)}
                 </div>
-            `;
+                <div style="font-size: 0.85rem; font-weight: 800; margin: 2px 0;">
+                    ${d.day_num} ${escapeHtml(d.month_name)}
+                </div>
+                <div style="font-size: 0.65rem; font-weight: 700; padding: 1px 4px; border-radius: 4px; background: ${badgeBg}; color: ${badgeColor}; display: inline-block;">
+                    ${badgeText}
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    if (noticeEl) {
+        if (selectedDate && windowMeta.daily_slots[selectedDate]) {
+            const selectedDayData = windowMeta.daily_slots[selectedDate];
+            if (selectedDayData.is_outside_window) {
+                noticeEl.innerHTML = `<span style="color: #dc2626; font-weight: 600;">⚠️ Selected date exceeds the 15-working-day statutory limit (Deadline: ${windowMeta.deadline_date}).</span>`;
+            } else if (selectedDayData.is_fully_booked) {
+                noticeEl.innerHTML = `<span style="color: #dc2626; font-weight: 600;">⚠️ Selected date is fully booked (8 of 8 daily mediation sessions).</span>`;
+            } else {
+                noticeEl.innerHTML = `<span style="color: #15803d; font-weight: 600;">✓ Valid statutory mediation date selected: ${selectedDayData.available} slots remaining.</span>`;
+            }
         } else {
-            hintEl.style.background = '#eff6ff';
-            hintEl.style.borderColor = '#bfdbfe';
-            hintEl.style.color = '#1e40af';
-            hintEl.innerHTML = `
-                <span style="font-size: 1rem; line-height: 1;">📅</span>
-                <div>
-                    <strong>Barangay Tumana Rule:</strong> Conciliation hearings before the Pangkat are held on Mondays, Wednesdays, Thursdays, and Fridays. (Tuesdays are reserved for mediation hearings).
-                </div>
-            `;
+            noticeEl.textContent = 'Click any available day card above to select. Days exceeding 8 hearings or past 15 working days are disabled.';
         }
     }
-
-    // Configure Flatpickr if present
-    if (typeof flatpickr === 'function') {
-        if (wsFlatpickrInstance) {
-            wsFlatpickrInstance.destroy();
-            wsFlatpickrInstance = null;
-        }
-
-        wsFlatpickrInstance = flatpickr(dateInput, {
-            dateFormat: "Y-m-d",
-            minDate: "today",
-            disable: [
-                function(date) {
-                    const day = date.getDay(); // 0 = Sun, 1 = Mon, 2 = Tue, 3 = Wed, 4 = Thu, 5 = Fri, 6 = Sat
-                    if (isMediation) {
-                        return day !== 2; // Tuesday only for Mediation
-                    } else {
-                        return day === 0 || day === 6; // Mon, Tue morning, Wed, Thu, Fri available for Conciliation
-                    }
-                }
-            ],
-            onChange: function(selectedDates, dateStr) {
-                if (dateStr) {
-                    loadStageSlots(dateStr, typeVal);
-                }
-            }
-        });
-    }
-
-    // Native listener fallback
-    dateInput.onchange = function() {
-        const val = this.value;
-        if (!val) return;
-        const d = new Date(val + 'T00:00:00');
-        const day = d.getDay();
-        if (isMediation && day !== 2) {
-            if (errorEl) {
-                errorEl.textContent = 'Mediation sessions for Barangay Tumana are conducted exclusively on Tuesdays.';
-                errorEl.style.display = 'block';
-            }
-            timeSelect.innerHTML = '<option value="">Invalid day selected (Tuesdays only)</option>';
-            if (submitBtn) submitBtn.disabled = true;
-            return;
-        }
-        if (!isMediation && (day === 0 || day === 6)) {
-            if (errorEl) {
-                errorEl.textContent = 'Conciliation hearings cannot be scheduled on weekends.';
-                errorEl.style.display = 'block';
-            }
-            timeSelect.innerHTML = '<option value="">Invalid day selected (Weekends closed)</option>';
-            if (submitBtn) submitBtn.disabled = true;
-            return;
-        }
-        if (errorEl) errorEl.style.display = 'none';
-        loadStageSlots(val, typeVal);
-    };
 }
+window.renderWorkspaceVisualDatePicker = renderWorkspaceVisualDatePicker;
 
-async function loadStageSlots(dateStr, hearingType) {
-    const timeSelect = document.getElementById('schedTime');
-    const feedbackEl = document.getElementById('schedSlotFeedback');
-    const errorEl = document.getElementById('schedDateError');
+function selectWorkspaceVisualDate(dateStr) {
+    const dateInput = document.getElementById('schedDate');
+    if (!dateInput) return;
+    dateInput.value = dateStr;
+    if (currentWsWindowMeta) {
+        renderWorkspaceVisualDatePicker(currentWsWindowMeta, dateStr);
+    }
+    checkWorkspaceScheduleConflict();
+}
+window.selectWorkspaceVisualDate = selectWorkspaceVisualDate;
+
+async function checkWorkspaceScheduleConflict() {
+    const dateInput = document.getElementById('schedDate');
+    const timeInput = document.getElementById('schedTime');
+    const venueInput = document.getElementById('schedVenue');
+    const caseIdInput = document.getElementById('schedCaseId');
+    const conflictAlert = document.getElementById('schedScheduleConflictAlert');
     const submitBtn = document.getElementById('submitSchedBtn');
-    if (!timeSelect) return;
+    const schedulesWrap = document.getElementById('schedDaySchedulesWrap');
+    const slotsCount = document.getElementById('schedDaySlotsCount');
+    const slotsList = document.getElementById('schedDaySlotsList');
 
-    timeSelect.innerHTML = '<option value="">Checking slot availability...</option>';
-    timeSelect.disabled = true;
-    if (feedbackEl) feedbackEl.textContent = 'Checking slot availability for ' + dateStr + '...';
+    if (!dateInput) return;
+
+    const dateVal = dateInput.value;
+    const timeVal = timeInput ? timeInput.value : '';
+    const venueVal = venueInput ? venueInput.value : 'Lupon Court Room';
+    const caseIdVal = caseIdInput ? caseIdInput.value : (stageWorkspaceState.caseId || '');
+
+    if (!dateVal) {
+        if (schedulesWrap) schedulesWrap.style.display = 'none';
+        return;
+    }
+
+    const params = new URLSearchParams();
+    params.set('date', dateVal);
+    if (timeVal) params.set('time', timeVal);
+    if (venueVal) params.set('venue', venueVal);
+    if (caseIdVal) params.set('case_id', caseIdVal);
+    params.set('get_window', '1');
 
     try {
-        const res = await fetch(`../../backend/api/hearings/check-availability.php?date=${encodeURIComponent(dateStr)}&hearing_type=${encodeURIComponent(hearingType)}&case_id=${encodeURIComponent(stageWorkspaceState.caseId || '')}&venue=Lupon Court Room`);
-        const data = await res.json();
+        const response = await fetch(getStageApiUrl(`summons/check-schedule.php?${params.toString()}`));
+        const result = await response.json();
 
-        timeSelect.disabled = false;
-        timeSelect.innerHTML = '';
+        if (result.window) {
+            currentWsWindowMeta = result.window;
+            renderWorkspaceVisualDatePicker(result.window, dateVal);
+        }
 
-        if (!data.success || !data.is_valid_day) {
-            const msg = data.message || (data.is_holiday ? `Blocked: Official holiday (${data.holiday_name})` : 'Invalid day selected.');
-            if (errorEl) {
-                errorEl.textContent = msg;
-                errorEl.style.display = 'block';
+        if (!response.ok || !result.success) {
+            if (conflictAlert && result.message) {
+                conflictAlert.textContent = `⚠️ Notice: ${result.message}`;
+                conflictAlert.style.display = 'block';
+                if (submitBtn) submitBtn.disabled = true;
             }
-            timeSelect.innerHTML = `<option value="">⚠️ ${msg}</option>`;
-            if (feedbackEl) feedbackEl.textContent = msg;
-            if (submitBtn) submitBtn.disabled = true;
             return;
         }
 
-        if (errorEl) errorEl.style.display = 'none';
-        if (submitBtn) submitBtn.disabled = false;
-
-        const indicatorText = data.indicator_text || `${dateStr} (${data.scheduled_count || 0} cases scheduled)`;
-        const softIndicatorEl = document.getElementById('schedDateSoftIndicator');
-        if (softIndicatorEl) {
-            softIndicatorEl.textContent = `📅 ${indicatorText}`;
-            softIndicatorEl.style.display = 'block';
+        // 1. Statutory 15-working-day window validation check
+        if (result.is_outside_window) {
+            if (conflictAlert) {
+                conflictAlert.textContent = `⚠️ Statutory Limit Exceeded: ${result.deadline_message || 'The selected date exceeds the 15-working-day mediation statutory limit.'}`;
+                conflictAlert.style.display = 'block';
+            }
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.title = 'Cannot submit: Selected mediation date falls outside the 15-working-day statutory window.';
+            }
+            return;
         }
 
-        const slots = data.slots || [];
-        const defaultOption = document.createElement('option');
-        defaultOption.value = '';
-        defaultOption.textContent = '-- Select Target Call Time --';
-        timeSelect.appendChild(defaultOption);
+        // 2. Capacity limit check: Max 8 sessions per day
+        const bookedCount = result.total_booked ?? (result.scheduled_mediations ? result.scheduled_mediations.length : 0);
+        const maxSlots = result.max_slots || 8;
+        const availSlots = result.available_slots ?? Math.max(0, maxSlots - bookedCount);
 
-        slots.forEach(slot => {
-            const opt = document.createElement('option');
-            opt.value = slot.time;
-            opt.textContent = slot.label;
-            timeSelect.appendChild(opt);
-        });
-
-        if (feedbackEl) {
-            feedbackEl.textContent = `${indicatorText}. Select target call time. Elastic session duration (actual start & end tracked).`;
-            feedbackEl.style.color = '#15803d';
+        if (result.is_fully_booked || bookedCount >= maxSlots) {
+            if (conflictAlert) {
+                conflictAlert.textContent = `⚠️ Date Fully Booked: All ${maxSlots} daily mediation slots on this date are occupied. Please select another date.`;
+                conflictAlert.style.display = 'block';
+            }
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.title = 'Cannot submit: Maximum daily capacity of 8 mediation sessions reached for this date.';
+            }
+            return;
         }
-        if (submitBtn) submitBtn.disabled = false;
+
+        // 3. Render day's capacity & scheduled mediations breakdown
+        if (schedulesWrap && slotsList && slotsCount) {
+            schedulesWrap.style.display = 'block';
+            slotsCount.textContent = `${availSlots} of ${maxSlots} slots available`;
+            slotsCount.style.background = availSlots > 2 ? '#dcfce7' : (availSlots > 0 ? '#fef3c7' : '#fee2e2');
+            slotsCount.style.color = availSlots > 2 ? '#15803d' : (availSlots > 0 ? '#92400e' : '#b91c1c');
+
+            const scheduled = result.scheduled_mediations || [];
+            if (scheduled.length === 0) {
+                slotsList.innerHTML = `<span style="color: #166534; font-weight: 500;">✓ All 8 session slots available on this date (${dateVal}).</span>`;
+            } else {
+                slotsList.innerHTML = `
+                    <div style="margin-bottom: 6px; font-weight: 600; color: #475569;">${availSlots} of ${maxSlots} slots available for this date:</div>
+                ` + scheduled.map(s => `
+                    <div style="margin-top: 4px; padding: 4px 8px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                        <div>
+                            <strong style="color: #1e293b;">${escapeHtml(s.start_time || '')} – ${escapeHtml(s.end_time || '')}</strong>
+                            <span style="color: #64748b; font-size: 0.8rem; margin-left: 6px;">Case ${escapeHtml(s.case_number || 'N/A')}</span>
+                        </div>
+                        <span style="font-size: 0.72rem; color: #475569; background: #f1f5f9; padding: 1px 6px; border-radius: 4px;">${escapeHtml(s.venue || 'Barangay Hall')}</span>
+                    </div>
+                `).join('');
+            }
+        }
+
+        // 4. Time conflict check
+        if (result.has_conflict && result.conflict) {
+            const conflictMsg = result.conflict.message || 'The selected time overlaps with an existing scheduled mediation.';
+            if (conflictAlert) {
+                conflictAlert.textContent = `⚠️ Schedule Conflict: ${conflictMsg}`;
+                conflictAlert.style.display = 'block';
+            }
+            if (timeInput) {
+                timeInput.setCustomValidity('Selected time overlaps with another scheduled mediation on this day.');
+            }
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.title = 'Cannot submit: Schedule conflict with an existing mediation on this day.';
+            }
+        } else {
+            if (conflictAlert) {
+                conflictAlert.textContent = '';
+                conflictAlert.style.display = 'none';
+            }
+            if (timeInput) {
+                timeInput.setCustomValidity('');
+            }
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.title = '';
+            }
+        }
     } catch (err) {
-        console.error('Error checking availability:', err);
-        timeSelect.disabled = false;
-        timeSelect.innerHTML = '<option value="">Error loading slots. Please retry.</option>';
-        if (feedbackEl) feedbackEl.textContent = 'Could not load slots from server.';
+        console.warn('Failed to check workspace mediation schedule:', err);
     }
 }
+window.checkWorkspaceScheduleConflict = checkWorkspaceScheduleConflict;
+
+function debouncedCheckWorkspaceScheduleConflict() {
+    clearTimeout(wsConflictCheckDebounceTimer);
+    wsConflictCheckDebounceTimer = setTimeout(checkWorkspaceScheduleConflict, 200);
+}
+window.debouncedCheckWorkspaceScheduleConflict = debouncedCheckWorkspaceScheduleConflict;
 
 async function submitSchedule(e) {
     e.preventDefault();
@@ -2172,13 +2257,13 @@ async function submitSchedule(e) {
     const hour = d.getHours();
 
     if (typeVal === 'Mediation') {
-        if (day !== 2) {
-            notifyUser('Mediation hearings can only be scheduled on Tuesdays.', 'warning');
+        if (day === 0 || day === 6) {
+            notifyUser('Mediation hearings can only be scheduled on working days (Monday to Friday).', 'warning');
             if (btn) btn.disabled = false;
             return;
         }
-        if (hour < 13 || hour >= 17) {
-            notifyUser('Mediation hearings must be between 1:00 PM and 5:00 PM.', 'warning');
+        if ((hour < 8 || hour >= 17) || (hour >= 12 && hour < 13)) {
+            notifyUser('Mediation hearings must be during regular office hours (8:00 AM – 5:00 PM, excluding 12–1 PM lunch break).', 'warning');
             if (btn) btn.disabled = false;
             return;
         }

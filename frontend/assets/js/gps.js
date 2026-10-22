@@ -1208,13 +1208,13 @@ function openOfficerReturnModal(partyType, residentId, hearingId, caseId, curren
     // Header Badges & Titles
     const caseItem = allLoadedSummonCases.find(c => Number(c.case_id) === Number(caseId)) || {};
     const kpNum = caseItem.case_number || (caseId ? `Case #${caseId}` : 'Case');
-    const isPaanyaya = Boolean(caseItem.is_paanyaya || window.activeExpandedHearingData?.is_paanyaya);
+    const isPaanyaya = Boolean(caseItem.is_paanyaya);
     const paaFlagEl = document.getElementById('returnIsPaanyaya');
     if (paaFlagEl) paaFlagEl.value = isPaanyaya ? '1' : '0';
     const paaStageEl = document.getElementById('returnStageType');
-    if (paaStageEl) paaStageEl.value = caseItem.paanyaya_stage_type || window.activeExpandedHearingData?.hearing_type || 'Paanyaya 1';
+    if (paaStageEl) paaStageEl.value = isPaanyaya ? (caseItem.paanyaya_stage_type || 'Paanyaya 1') : '';
     const paaCompIdEl = document.getElementById('returnComplaintId');
-    if (paaCompIdEl) paaCompIdEl.value = caseItem.complaint_id || caseId;
+    if (paaCompIdEl) paaCompIdEl.value = isPaanyaya ? (caseItem.complaint_id || caseId) : '';
 
     const caseBadge = document.getElementById('drawerCaseBadge');
     if (caseBadge) caseBadge.textContent = kpNum;
@@ -1233,7 +1233,7 @@ function openOfficerReturnModal(partyType, residentId, hearingId, caseId, curren
     }
     if (docBadge) {
         docBadge.textContent = isPaanyaya 
-            ? `${caseItem.paanyaya_stage_type || window.activeExpandedHearingData?.hearing_type || 'Paanyaya'} Invitation` 
+            ? `${caseItem.paanyaya_stage_type || 'Paanyaya'} Invitation` 
             : (partyType === 'Respondent' ? 'KP Form No. 9 – Summons' : 'KP Form No. 8 – Notice');
     }
     if (titleEl) {
