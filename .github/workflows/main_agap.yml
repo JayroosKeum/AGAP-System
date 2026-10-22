@@ -1,7 +1,7 @@
 # Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
 # More GitHub Actions for Azure: https://github.com/Azure/actions
 
-name: Build and deploy PHP app to Azure Web App - AGAP
+name: Deploy AGAP to Azure App Service
 
 on:
   push:
@@ -10,49 +10,45 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
     permissions:
-      contents: read #This is required for actions/checkout
+      contents: read
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup PHP
+      - name: Set up PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.4'
+          php-version: '8.3'
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_mysql, bcmath, gd, zip
+          coverage: none
 
-      - name: Check if composer.json exists
-        id: check_files
-        uses: andstor/file-existence-action@v1
-        with:
-          files: 'composer.json'
+      - name: Verify PHP entry points
+        run: |
+          php -l index.php
+          php -l frontend/pages/landing/index.php
 
-      - name: Run composer install if composer.json exists
-        if: steps.check_files.outputs.files_exists == 'true'
-        run: composer validate --no-check-publish && composer install --prefer-dist --no-progress
+      # Deploy only application code. Runtime files are kept on the mounted
+      # Azure Files share at /home/site/wwwroot/storage and must survive releases.
+      - name: Assemble release package
+        run: |
+          mkdir -p release
+          rsync -a --delete \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='storage/' \
+            --exclude='logs/' \
+            --exclude='output/' \
+            --exclude='scratch/' \
+            --exclude='*.md' \
+            --exclude='*.pdf' \
+            --exclude='*.xlsx' \
+            --exclude='default' \
+            ./ release/
 
-
-      - name: Upload artifact for deployment job
-        uses: actions/upload-artifact@v4
-        with:
-          name: php-app
-          path: .
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build
-    permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
-
-    steps:
-      - name: Download artifact from build job
-        uses: actions/download-artifact@v4
-        with:
-          name: php-app
-      
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -60,11 +56,9 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_DFC2C15D65784E45A8ED28731128DA80 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_BFA18332F3314BB2B3975BC75386ABD2 }}
 
-      - name: 'Deploy to Azure Web App'
+      - name: Deploy release package to Azure Web App
         uses: azure/webapps-deploy@v3
-        id: deploy-to-webapp
         with:
           app-name: 'AGAP'
           slot-name: 'Production'
-          package: .
-          
+          package: release

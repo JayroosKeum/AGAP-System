@@ -1,7 +1,7 @@
 # Azure deployment
 
-This repository deploys to a **Linux Azure App Service running PHP 8.2+** with
-the GitHub Actions workflow in `.github/workflows/azure-webapp.yml`.
+This repository deploys to a **Linux Azure App Service running PHP 8.3** with
+the GitHub Actions workflow in `.github/workflows/main_agap.yml`.
 
 ## 1. Create Azure resources
 
@@ -38,15 +38,17 @@ They are server-side App Service settings.
 
 ## 3. Configure GitHub Actions
 
-In the GitHub repository, create:
-
-| Type | Name | Value |
-| --- | --- | --- |
-| Actions variable | `AZURE_WEBAPP_NAME` | The App Service name only |
-| Actions secret | `AZURE_WEBAPP_PUBLISH_PROFILE` | Downloaded publish profile XML from the App Service |
-
 The workflow runs on pushes to `main` and can also be run manually from the
-Actions tab. `GITHUB_TOKEN` is supplied automatically by GitHub Actions.
+Actions tab. It deploys to the `AGAP` App Service using Azure OIDC credentials
+stored as GitHub Actions secrets:
+`AZUREAPPSERVICE_CLIENTID_49F63E697029412686408871AA88CF9E`,
+`AZUREAPPSERVICE_TENANTID_DFC2C15D65784E45A8ED28731128DA80`, and
+`AZUREAPPSERVICE_SUBSCRIPTIONID_BFA18332F3314BB2B3975BC75386ABD2`.
+
+The release package deliberately excludes `storage/`, logs, debugging output,
+and local scratch files. This keeps releases small and prevents a deployment
+from overwriting the mounted Azure Files share that contains user uploads and
+generated documents.
 
 ## 4. Production checks
 
