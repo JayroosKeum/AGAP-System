@@ -321,7 +321,7 @@ try {
         <?php elseif ($formCode === 'KP Form 16'): ?>
             <div style="font-weight: bold; margin-top: 4px;">KASUNDUANG PAG-AAYOS (Amicable Settlement)</div>
         <?php elseif ($formCode === 'KP Form 8'): ?>
-            <div style="font-weight: bold; margin-top: 4px;">PAUNAWA SA PAGDINIG (Notice of Hearing - May-sumbong)</div>
+            <div style="font-weight: bold; margin-top: 4px;">PAABISO NG PAGDINIG (Mediation Proceedings)</div>
         <?php elseif ($formCode === 'KP Form 9'): ?>
             <div style="font-weight: bold; margin-top: 4px;">PATAWAG (Summons - Ipinagsusumbong)</div>
         <?php endif; ?>
@@ -378,9 +378,10 @@ try {
             PINATUTUNAYAN KO na ang kasunduang ito ay pinagtibay sa aking harapan nang malaya at kusang-loob ng mga panig matapos kong maipaliwanag sa kanila ang mga kahihinatnan nito.
         </p>
     <?php elseif ($formCode === 'KP Form 8'): ?>
-        <p>KAY: <strong><?= htmlspecialchars($parties['complainant']['full_name'] ?? $targetPartyName) ?></strong> (May-sumbong)</p>
+        <p style="font-weight: bold; font-size: 11pt;">Para kay/Kina: <?= htmlspecialchars($parties['complainant']['full_name'] ?? $targetPartyName) ?></p>
+        <div style="text-align: center; font-size: 10pt; margin-bottom: 15px;">(Mga) Nagrereklamo</div>
         <p class="content">
-            Kayo ay tinatawagan at inaatasan na humarap sa akin sa <?= htmlspecialchars($hearing['venue'] ?? 'Lupon Court Room') ?> sa darating na <strong><?= !empty($hearing['hearing_date']) ? date('F j, Y \s\a \g\a\n\a\p \n\g g:i A', strtotime($hearing['hearing_date'])) : 'itinakdang araw' ?></strong>, para sa pagdinig ng inyong sumbong kaugnay ng usaping ito.
+            Ikaw ay hinihilingang humarap sa akin sa <strong><?= htmlspecialchars($hearing['venue'] ?? 'Tanggapan ng Punong Barangay') ?></strong> sa darating na <strong><?= !empty($hearing['hearing_date']) ? date('F j, Y', strtotime($hearing['hearing_date'])) : 'itinakdang araw' ?></strong> sa ganap na ika-<strong><?= !empty($hearing['hearing_date']) ? date('g:i A', strtotime($hearing['hearing_date'])) : 'itinakdang oras' ?></strong> para sa pagdinig ng iyong reklamo.
         </p>
         <p class="content" style="font-size: 10pt; color: #444; font-style: italic;">
             PAUNAWA: Ang pagdinig na ito ay itinakda/muling itinakda (rescheduled) alinsunod sa mga alituntunin ng Katarungang Pambarangay (Batas Republika Blg. 7160).

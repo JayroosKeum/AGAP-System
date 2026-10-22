@@ -662,7 +662,8 @@ class Paanyaya
 
                 for ($week = 0; $week < 4; $week++) {
                     $dateCandidate = $checkTue->format('Y-m-d');
-                    if (!MediationDeadlineService::isNonWorkingDay(new DateTimeImmutable($dateCandidate))) {
+                    $candCnt = (int) $this->conn->query("SELECT COUNT(*) FROM hearings WHERE DATE(hearing_date) = '{$dateCandidate}' AND hearing_type = 'Mediation'")->fetchColumn();
+                    if ($candCnt < 8 && !MediationDeadlineService::isNonWorkingDay(new DateTimeImmutable($dateCandidate))) {
                         foreach ($allowedSlots as $slot) {
                             $candDateTime = $dateCandidate . ' ' . $slot . ':00';
                             $conflict = $summonsModel->findMediationConflict($candDateTime, $venue, null, $caseId);
@@ -692,7 +693,7 @@ class Paanyaya
             $summonsResult = $summonsModel->issueFirstSummon($complaintId, $userId ?? 1, $hearingPayload);
 
             // If selected slot had unexpected conflict, retry other afternoon slots
-            if (empty($summonsResult['success']) && !empty($summonsResult['conflict'])) {
+            if (empty($summonsResult['success'])) {
                 $allowedSlots = ['13:00', '14:00', '15:00', '16:00'];
                 foreach ($allowedSlots as $slot) {
                     if ($slot === $medTime) {

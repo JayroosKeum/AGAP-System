@@ -134,6 +134,9 @@ async function loadKPForms() {
         const countBadge = document.getElementById('formsCountBadge');
         if (countBadge) countBadge.textContent = `${totalCount} Forms Available`;
         
+        const allPill = document.querySelector('#catalogCategoryPills .filter-pill[data-category="ALL"]');
+        if (allPill) allPill.textContent = `All Forms (${totalCount})`;
+        
         const uploadedBadge = document.getElementById('uploadedCountBadge');
         if (uploadedBadge) {
             uploadedBadge.textContent = `${uploadedCount} Custom Uploaded`;

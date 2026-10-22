@@ -75,10 +75,48 @@ class PDFService
 
         $dompdf = new Dompdf($options);
         $dompdf->setPaper('A4', 'portrait');
-        $dompdf->loadHtml(
-            $this->noticeHtml($formCode, $data),
-            'UTF-8'
-        );
+                if ($formCode === 'KP Form 8') {
+            $htmlToLoad = $this->kp8Html($data, true);
+        } elseif ($formCode === 'KP Form 9') {
+            $htmlToLoad = $this->kp9Html($data, true);
+        } elseif ($formCode === 'KP Form 10') {
+            $htmlToLoad = $this->kp10Html($data, true);
+        } elseif ($formCode === 'KP Form 11') {
+            $htmlToLoad = $this->kp11Html($data, true);
+        } elseif ($formCode === 'KP Form 12') {
+            $htmlToLoad = $this->kp12Html($data, true);
+        } elseif ($formCode === 'KP Form 13') {
+            $htmlToLoad = $this->kp13Html($data, true);
+        } elseif ($formCode === 'KP Form 14') {
+            $htmlToLoad = $this->kp14Html($data, true);
+        } elseif ($formCode === 'KP Form 15') {
+            $htmlToLoad = $this->kp15Html($data, true);
+        } elseif ($formCode === 'KP Form 16') {
+            $htmlToLoad = $this->kp16Html($data, true);
+        } elseif ($formCode === 'KP Form 17') {
+            $htmlToLoad = $this->kp17Html($data, true);
+        } elseif ($formCode === 'KP Form 18') {
+            $htmlToLoad = $this->kp18Html($data, true);
+        } elseif ($formCode === 'KP Form 19' || $formCode === 'Pormularyo ng KP Blg. 19') {
+            $htmlToLoad = $this->kp19Html($data, true);
+        } elseif ($formCode === 'KP Form 20' || $formCode === 'Pormularyo ng KP Blg. 20') {
+            $htmlToLoad = $this->kp20Html($data, true);
+        } elseif ($formCode === 'KP Form 20-A' || $formCode === 'Pormularyo ng KP Blg. 20-A') {
+            $htmlToLoad = $this->kp20AHtml($data, true);
+        } elseif ($formCode === 'KP Form 20-B' || $formCode === 'Pormularyo ng KP Blg. 20-B') {
+            $htmlToLoad = $this->kp20BHtml($data, true);
+        } elseif ($formCode === 'KP Form 21' || $formCode === 'Pormularyo ng KP Blg. 21') {
+            $htmlToLoad = $this->kp21Html($data, true);
+        } elseif ($formCode === 'KP Form 22' || $formCode === 'Pormularyo ng KP Blg. 22') {
+            $htmlToLoad = $this->kp22Html($data, true);
+        } elseif ($formCode === 'KP Form 23' || $formCode === 'Pormularyo ng KP Blg. 23') {
+            $htmlToLoad = $this->kp23Html($data, true);
+        } elseif ($formCode === 'KP Form 25' || $formCode === 'Pormularyo ng KP Blg. 25') {
+            $htmlToLoad = $this->kp25Html($data, true);
+        } else {
+            $htmlToLoad = $this->noticeHtml($formCode, $data);
+        }
+        $dompdf->loadHtml($htmlToLoad, 'UTF-8');
         $dompdf->render();
 
         $pdf = $dompdf->output();
@@ -243,391 +281,25 @@ class PDFService
     }
 
 
-    private function kp12Html(array $data): string
+    
+    private function escape(string $value): string
     {
-        $complainants = $this->partyLines(
-            $data['complainants'] ?? []
-        );
-
-        $respondents = $this->partyLines(
-            $data['respondents'] ?? []
-        );
-
-        $caseNumber = $this->escape(
-            (string) ($data['case_number'] ?? '')
-        );
-
-        $subject = $this->escape(
-            (string) ($data['complaint_title'] ?? '')
-        );
-
-        $chairman = $this->escape(
-            (string) ($data['chairman_name'] ?? '')
-        );
-
-        $venue = $this->escape(
-            (string) (
-                $data['venue']
-                ?? 'Tanggapan ng Lupong Tagapamayapa'
-            )
-        );
-
-        $hearing = !empty($data['hearing_date'])
-            ? new DateTimeImmutable($data['hearing_date'])
-            : null;
-
-        $hearingDay = $hearing
-            ? $hearing->format('j')
-            : '';
-
-        $hearingMonth = $hearing
-            ? $this->filipinoMonth(
-                (int) $hearing->format('n')
-            )
-            : '';
-
-        $hearingYear = $hearing
-            ? $hearing->format('Y')
-            : '';
-
-        $hearingTime = $hearing
-            ? $hearing->format('g:i A')
-            : '';
-
-        $issued = new DateTimeImmutable(
-            $data['notice_date'] ?? 'now'
-        );
-
-        $issuedDay = $issued->format('j');
-
-        $issuedMonth = $this->filipinoMonth(
-            (int) $issued->format('n')
-        );
-
-        $issuedYear = $issued->format('Y');
-
-        return '<!doctype html>
-<html lang="fil">
-<head>
-    <meta charset="UTF-8">
-
-    <style>
-        @page {
-            margin: 19mm 18mm 17mm;
-        }
-
-        body {
-            font-family: "DejaVu Sans", sans-serif;
-            color: #111111;
-            font-size: 11.5pt;
-            line-height: 1.45;
-        }
-
-        .form-number {
-            margin-bottom: 7mm;
-            font-size: 10.5pt;
-            font-weight: bold;
-        }
-
-        .header {
-            text-align: center;
-            line-height: 1.32;
-        }
-
-        .office-name {
-            margin-top: 7mm;
-            font-size: 12pt;
-            font-weight: bold;
-        }
-
-        .case-grid {
-            width: 100%;
-            margin-top: 13mm;
-            border-collapse: collapse;
-        }
-
-        .case-grid td {
-            vertical-align: top;
-        }
-
-        .parties {
-            width: 47%;
-        }
-
-        .case-information {
-            width: 53%;
-            padding-left: 14mm;
-        }
-
-        .party-lines {
-            min-height: 25mm;
-        }
-
-        .party-line {
-            min-height: 7mm;
-            padding: 0 2mm 1mm;
-            border-bottom: 1px solid #111111;
-        }
-
-        .party-label {
-            margin-top: 2mm;
-            text-align: center;
-        }
-
-        .versus {
-            margin: 7mm 0;
-            text-align: center;
-        }
-
-        .document-title {
-            margin-top: 13mm;
-            text-align: center;
-            font-weight: bold;
-        }
-
-        .document-subtitle {
-            text-align: center;
-            font-weight: bold;
-        }
-
-        .document-body {
-            margin-top: 9mm;
-            text-align: justify;
-            text-indent: 12mm;
-        }
-
-        .chairman-signature {
-            width: 46%;
-            margin-top: 18mm;
-            margin-left: 54%;
-            text-align: center;
-        }
-
-        .signature-line {
-            padding-top: 1mm;
-            border-top: 1px solid #111111;
-        }
-
-        .notice-date {
-            margin-top: 18mm;
-            text-indent: 12mm;
-        }
-
-        .acknowledgment {
-            width: 100%;
-            margin-top: 23mm;
-            border-collapse: collapse;
-        }
-
-        .acknowledgment td {
-            width: 50%;
-            padding: 0 9mm;
-            text-align: center;
-            vertical-align: top;
-        }
-
-        .acknowledgment-line {
-            margin-top: 11mm;
-            padding-top: 1mm;
-            border-top: 1px solid #111111;
-        }
-    </style>
-</head>
-
-<body>
-    <div class="form-number">
-        Pormularyo ng KP Blg. 12
-    </div>
-
-    <div class="header">
-        <div>Republika ng Pilipinas</div>
-        <div>Kalakhang Maynila</div>
-        <div>Lungsod ng Marikina</div>
-        <div>Barangay Tumana</div>
-        <div>Telephone Nos. 8-238-4208</div>
-
-        <div>
-            EMAIL ADDRESS:
-            barangaytumana2023@gmail.com
-        </div>
-
-        <div class="office-name">
-            TANGGAPAN NG LUPONG TAGAPAMAYAPA
-        </div>
-    </div>
-
-    <table class="case-grid">
-        <tr>
-            <td class="parties">
-                <div class="party-lines">'
-                    . $complainants .
-                '</div>
-
-                <div class="party-label">
-                    (Mga) Nagrereklamo
-                </div>
-
-                <div class="versus">
-                    -laban kay/kina-
-                </div>
-
-                <div class="party-lines">'
-                    . $respondents .
-                '</div>
-
-                <div class="party-label">
-                    (Mga) Inirereklamo
-                </div>
-            </td>
-
-            <td class="case-information">
-                <div>
-                    Usapin ng Barangay Blg.
-                    <strong>'
-                        . $caseNumber .
-                    '</strong>
-                </div>
-
-                <div>
-                    Para sa:
-                    <strong>'
-                        . $subject .
-                    '</strong>
-                </div>
-            </td>
-        </tr>
-    </table>
-
-    <div class="document-title">
-        PAABISO NG PAGDINIG
-    </div>
-
-    <div class="document-subtitle">
-        (Conciliation Proceedings)
-    </div>
-
-    <div class="document-body">
-        Ikaw ay hinihilingang humarap sa Pangkat sa
-        <strong>'
-            . $venue .
-        '</strong>
-        sa ika-<strong>'
-            . $hearingDay .
-        '</strong>
-        araw ng
-        <strong>'
-            . $hearingMonth . ' ' . $hearingYear .
-        '</strong>,
-        sa ganap na ika-<strong>'
-            . $hearingTime .
-        '</strong>
-        para sa pagdinig ng usaping nakasaad sa itaas.
-    </div>
-
-    <div class="chairman-signature">
-        <div class="signature-line">
-            <strong>'
-                . (
-                    $chairman !== ''
-                        ? $chairman
-                        : '&nbsp;'
-                ) .
-            '</strong>
-
-            <br>
-
-            Tagapangulo ng Pangkat
-        </div>
-    </div>
-
-    <div class="notice-date">
-        Ipinagbibigay-alam ngayong
-        <strong>'
-            . $issuedDay .
-        '</strong>
-        ng
-        <strong>'
-            . $issuedMonth .
-        '</strong>,
-        <strong>'
-            . $issuedYear .
-        '</strong>.
-    </div>
-
-    <table class="acknowledgment">
-        <tr>
-            <td>
-                <strong>
-                    (Mga) Nagrereklamo
-                </strong>
-
-                <div class="acknowledgment-line">
-                    Lagda at petsa ng pagtanggap
-                </div>
-            </td>
-
-            <td>
-                <strong>
-                    (Mga) Inirereklamo
-                </strong>
-
-                <div class="acknowledgment-line">
-                    Lagda at petsa ng pagtanggap
-                </div>
-            </td>
-        </tr>
-    </table>
-</body>
-</html>';
+        return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
     }
 
     private function partyLines(array $parties): string
     {
-        if ($parties === []) {
-            return
-                '<div class="party-line">&nbsp;</div>'
-                . '<div class="party-line">&nbsp;</div>'
-                . '<div class="party-line">&nbsp;</div>';
+        if (empty($parties)) {
+            return '___________________________';
         }
-
-        $html = '';
-
-        $displayedParties = array_slice(
-            $parties,
-            0,
-            3
-        );
-
-        foreach ($displayedParties as $party) {
-            $html .=
-                '<div class="party-line">'
-                . $this->escape(
-                    (string) (
-                        $party['full_name'] ?? ''
-                    )
-                )
-                . '</div>';
+        $lines = [];
+        foreach ($parties as $p) {
+            $name = is_array($p) ? ($p['full_name'] ?? '') : (string) $p;
+            if (trim($name) !== '') {
+                $lines[] = htmlspecialchars(trim($name), ENT_QUOTES, 'UTF-8');
+            }
         }
-
-        for (
-            $index = count($displayedParties);
-            $index < 3;
-            $index++
-        ) {
-            $html .=
-                '<div class="party-line">&nbsp;</div>';
-        }
-
-        return $html;
-    }
-
-    private function escape(string $value): string
-    {
-        return htmlspecialchars(
-            $value,
-            ENT_QUOTES | ENT_SUBSTITUTE,
-            'UTF-8'
-        );
+        return !empty($lines) ? implode('<br>', $lines) : '___________________________';
     }
 
     private function filipinoMonth(int $month): string
@@ -646,7 +318,6 @@ class PDFService
             11 => 'Nobyembre',
             12 => 'Disyembre',
         ];
-
         return $months[$month] ?? '';
     }
 
@@ -661,30 +332,14 @@ class PDFService
             5 => 'Biyernes',
             6 => 'Sabado',
         ];
-
         return $days[$dow] ?? '';
     }
 
     private function filipinoTime(string $timeStr): string
     {
         $ts = strtotime($timeStr);
-        if (!$ts) {
-            return $timeStr;
-        }
-        $hour24 = (int) date('G', $ts);
-        $formattedTime = date('g:i', $ts);
-
-        if ($hour24 < 12) {
-            $period = 'ng umaga';
-        } elseif ($hour24 === 12) {
-            $period = 'ng tanghali';
-        } elseif ($hour24 < 18) {
-            $period = 'ng hapon';
-        } else {
-            $period = 'ng gabi';
-        }
-
-        return $formattedTime . ' ' . $period;
+        if (!$ts) return $timeStr;
+        return date('g:i A', $ts);
     }
 
     public function renderNoticeHtml(string $formCode, array $data): string
@@ -694,246 +349,2956 @@ class PDFService
 
     private function noticeHtml(string $formCode, array $data): string
     {
+        if ($formCode === 'KP Form 7') {
+            return $this->kp7Html($data);
+        } elseif ($formCode === 'KP Form 8') {
+            return $this->kp8Html($data);
+        } elseif ($formCode === 'KP Form 9') {
+            return $this->kp9Html($data);
+        } elseif ($formCode === 'KP Form 10') {
+            return $this->kp10Html($data);
+        } elseif ($formCode === 'KP Form 11') {
+            return $this->kp11Html($data);
+        } elseif ($formCode === 'KP Form 12') {
+            return $this->kp12Html($data);
+        } elseif ($formCode === 'KP Form 13') {
+            return $this->kp13Html($data);
+        } elseif ($formCode === 'KP Form 14') {
+            return $this->kp14Html($data);
+        } elseif ($formCode === 'KP Form 15') {
+            return $this->kp15Html($data);
+        } elseif ($formCode === 'KP Form 16') {
+            return $this->kp16Html($data);
+        } elseif ($formCode === 'KP Form 17') {
+            return $this->kp17Html($data);
+        } elseif ($formCode === 'KP Form 18') {
+            return $this->kp18Html($data);
+        } elseif ($formCode === 'KP Form 19' || $formCode === 'Pormularyo ng KP Blg. 19') {
+            return $this->kp19Html($data);
+        } elseif ($formCode === 'KP Form 20' || $formCode === 'Pormularyo ng KP Blg. 20') {
+            return $this->kp20Html($data);
+        } elseif ($formCode === 'KP Form 20-A' || $formCode === 'Pormularyo ng KP Blg. 20-A') {
+            return $this->kp20AHtml($data);
+        } elseif ($formCode === 'KP Form 20-B' || $formCode === 'Pormularyo ng KP Blg. 20-B') {
+            return $this->kp20BHtml($data);
+        } elseif ($formCode === 'KP Form 21' || $formCode === 'Pormularyo ng KP Blg. 21') {
+            return $this->kp21Html($data);
+        } elseif ($formCode === 'KP Form 22' || $formCode === 'Pormularyo ng KP Blg. 22') {
+            return $this->kp22Html($data);
+        } elseif ($formCode === 'KP Form 23' || $formCode === 'Pormularyo ng KP Blg. 23') {
+            return $this->kp23Html($data);
+        } elseif ($formCode === 'KP Form 25' || $formCode === 'Pormularyo ng KP Blg. 25') {
+            return $this->kp25Html($data);
+        }
+
         $complainants = $this->partyLines($data['complainants'] ?? []);
         $respondents = $this->partyLines($data['respondents'] ?? []);
         $caseNumber = $this->escape((string) ($data['case_number'] ?? ''));
         $title = $this->escape((string) ($data['complaint_title'] ?? ''));
-        $targetParty = $this->escape((string) ($data['target_party_name'] ?? ''));
-        $venue = $this->escape((string) ($data['venue'] ?? 'Lupon Court Room'));
-        $officialName = $this->escape((string) ($data['official_name'] ?? $data['chairman_name'] ?? 'Punong Barangay / Lupon Tagapamayapa'));
+        $officialName = $this->escape((string) ($data['official_name'] ?? $data['chairman_name'] ?? 'HON. AKIKO LYNNE CENTENO'));
 
-        $hearingDate = !empty($data['hearing_date']) ? date('F j, Y g:i A', strtotime($data['hearing_date'])) : 'itinakdang pagdinig';
-        $hearingTimestamp = !empty($data['hearing_date']) ? strtotime($data['hearing_date']) : null;
-        $hearingDateFormatted = $hearingTimestamp
-            ? 'ika-' . date('j', $hearingTimestamp) . ' ng ' . $this->filipinoMonth((int) date('n', $hearingTimestamp)) . ', ' . date('Y', $hearingTimestamp) . ' sa ganap na ika-' . date('g:i A', $hearingTimestamp)
-            : 'itinakdang pagdinig';
-        $explanationDate = !empty($data['explanation_date']) ? date('F j, Y g:i A', strtotime($data['explanation_date'])) : date('F j, Y g:i A', strtotime('+3 days 09:00:00'));
-        $noticeDate = !empty($data['notice_date']) ? date('F j, Y', strtotime($data['notice_date'])) : date('F j, Y');
-
-        $formTitle = 'Pormularyo ng KP Blg. 9';
-        $subTitle = 'PATAWAG (Para sa Ipinagsusumbong)';
-        $body = '';
-
-        if ($formCode === 'KP Form 8') {
-            $formTitle = 'Pormularyo ng KP Blg. 8';
-            $subTitle = 'PATALASTAS NG PAGDINIG (Para sa May-sumbong)';
-            $targetPartyDisplay = $targetParty !== '' ? $targetParty : '(May-sumbong)';
-            $body = '
-                <p>KAY: <strong>' . $targetPartyDisplay . '</strong> (May-sumbong)</p>
-                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
-                    Kayo ay tinatawagan at inaatasan na humarap sa akin sa <strong>' . $venue . '</strong> sa darating na <strong>' . $hearingDateFormatted . '</strong>,
-                    para sa unang pagdinig at pamamagitan (1st Mediation) ng inyong inihain na sumbong.
-                </p>
-                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
-                    Pinapaalalahanan kayo na ang inyong kabiguang humarap nang walang makatwirang dahilan ay maaaring maging sanhi ng pagpapawalang-saysay
-                    sa inyong sumbong at paghadlang sa inyong karapatang maghain ng nasabing aksyon sa hukuman alinsunod sa Seksiyon 415 ng Batas Republika Blg. 7160.
-                </p>
-            ';
-        } elseif ($formCode === 'KP Form 9') {
-            $formTitle = 'Pormularyo ng KP Blg. 9';
-            $subTitle = 'PATAWAG (Para sa Ipinagsusumbong)';
-            $targetPartyDisplay = $targetParty !== '' ? $targetParty : '(Ipinagsusumbong)';
-            $body = '
-                <p>KAY: <strong>' . $targetPartyDisplay . '</strong> (Ipinagsusumbong)</p>
-                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
-                    Kayo ay tinatawagan at inaatasan na humarap sa akin nang personal sa <strong>' . $venue . '</strong> sa darating na <strong>' . $hearingDateFormatted . '</strong>,
-                    upang sagutin ang sumbong na inihain laban sa inyo (na ang kalakip na sipi ay ibinibigay sa inyo), at upang makilahok sa pag-aayos at pamamagitan (1st Mediation) ng inyong alitan.
-                </p>
-                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
-                    Kayo ay binabalaan na ang inyong pagtanggi o kabiguang humarap bilang pagtalima sa patawag na ito nang walang makatwirang dahilan ay magbubunga ng
-                    paghadlang sa inyong karapatang magharap ng anumang ganting-sakdal (counterclaim) na nagmumula sa nasabing sumbong, at maaari kayong isuplong sa hukuman para sa
-                    hindi tuwirang paglapastangan (indirect contempt) alinsunod sa Seksiyon 410 at 415 ng Batas Republika Blg. 7160.
-                </p>
-            ';
-        } elseif ($formCode === 'KP Form 18') {
-            $formTitle = 'Pormularyo ng KP Blg. 18';
-            $subTitle = 'PAUNAWA SA PAGDINIG (Para sa May-sumbong)';
-            $body = '
-                <p>KAY: <strong>' . $targetParty . '</strong> (May-sumbong)</p>
-                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
-                    Kayo ay tinatawagan at inaatasan na humarap sa akin sa ' . $venue . ' sa darating na <strong>' . $explanationDate . '</strong>,
-                    upang ipaliwanag kung bakit hindi dapat ipag-utos ang pagwawalang-bisa sa inyong reklamo o hadlangan ang inyong karapatang maghain
-                    ng nasabing aksyon sa hukuman dahil sa inyong kabiguang humarap sa itinakdang pagdinig noong <strong>' . $hearingDate . '</strong>
-                    nang walang makatwirang dahilan, matapos kayong maabisuhan nang buong husay alinsunod sa Seksiyon 415 ng Batas Republika Blg. 7160.
-                </p>
-            ';
-        } elseif ($formCode === 'KP Form 19') {
-            $formTitle = 'Pormularyo ng KP Blg. 19';
-            $subTitle = 'PAUNAWA SA PAGDINIG (Para sa Ipinagsusumbong)';
-            $body = '
-                <p>KAY: <strong>' . $targetParty . '</strong> (Ipinagsusumbong)</p>
-                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
-                    Kayo ay tinatawagan at inaatasan na humarap sa akin sa ' . $venue . ' sa darating na <strong>' . $explanationDate . '</strong>,
-                    upang ipaliwanag kung bakit hindi dapat ipag-utos ang paghadlang sa inyong karapatang maghain ng ganting-sakdal (counterclaim)
-                    kaugnay ng usaping ito dahil sa inyong kabiguang humarap sa itinakdang pagdinig noong <strong>' . $hearingDate . '</strong>
-                    nang walang makatwirang dahilan, matapos mapatunayang kayo ay maayos na napagsilbihan ng patawag alinsunod sa batas.
-                </p>
-            ';
-        } elseif ($formCode === 'KP Form 10') {
-            $formTitle = 'Pormularyo ng KP Blg. 10';
-            $subTitle = 'PAUNAWA PARA SA PAGBUBUO NG PANGKAT TAGAPAGKASUNDO';
-            $constitutionDate = !empty($data['constitution_date']) ? date('F j, Y g:i A', strtotime($data['constitution_date'])) : date('F j, Y g:i A', strtotime('+3 days'));
-            $body = '
-                <p>SA MGA KINAUUKULAN:</p>
-                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
-                    Yamang ang pamamagitan (mediation) sa harap ng Punong Barangay para sa usaping ito ay hindi nagbunga ng mapayapang pagkakasundo,
-                    kayo ay tinatawagan at inaatasan na humarap sa ' . $venue . ' sa darating na <strong>' . $constitutionDate . '</strong>,
-                    upang bumuo at pumili ng tatlong (3) kasapi ng <strong>Pangkat Tagapagkasundo</strong> na mamamagitan sa inyong alitan,
-                    alinsunod sa Seksiyon 410(b) ng Batas Republika Blg. 7160 (Katarungang Pambarangay).
-                </p>
-                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
-                    Sakaling kayo ay hindi magkasundo sa pagpili ng mga kasapi ng Pangkat, ang Punong Barangay ang magpapasya sa pamamagitan
-                    ng pagtatalaga o palabunutan alinsunod sa umiiral na mga panuntunan.
-                </p>
-            ';
-        } elseif ($formCode === 'KP Form 21') {
-            $formTitle = 'Pormularyo ng KP Blg. 21';
-            $subTitle = 'KATIBAYAN UPANG HADLANGAN ANG PAGHAHAIN NG AKSYON';
-            $body = '
-                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
-                    Ito ay nagpapatunay na ang may-sumbong na si <strong>' . $targetParty . '</strong> ay nabigong humarap sa itinakdang pagdinig
-                    noong <strong>' . $hearingDate . '</strong> at walang maibigay na makatwiran at sapat na dahilan para sa kanyang hindi pagharap.
-                </p>
-                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
-                    Dahil dito, alinsunod sa itinatakda ng Seksiyon 415 ng Kodigo ng Pamahalaang Lokal ng 1991 (Batas Republika Blg. 7160),
-                    ang may-sumbong ay <strong>HINAHADLANGAN</strong> sa paghahain ng nasabing usapin o aksyon sa hukuman o tanggapan ng pamahalaan.
-                </p>
-            ';
-        } elseif ($formCode === 'KP Form 22') {
-            $formTitle = 'Pormularyo ng KP Blg. 22';
-            $subTitle = 'KATIBAYAN UPANG HADLANGAN ANG GANTING-SAKDAL';
-            $body = '
-                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
-                    Ito ay nagpapatunay na ang ipinagsusumbong na si <strong>' . $targetParty . '</strong> ay nabigong humarap sa itinakdang pagdinig
-                    noong <strong>' . $hearingDate . '</strong> at walang maibigay na makatwiran at sapat na dahilan para sa kanyang hindi pagharap
-                    matapos mapatunayang maayos na napagsilbihan ng patawag.
-                </p>
-                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
-                    Dahil dito, alinsunod sa itinatakda ng Seksiyon 415 ng Kodigo ng Pamahalaang Lokal ng 1991 (Batas Republika Blg. 7160),
-                    ang ipinagsusumbong ay <strong>HINAHADLANGAN</strong> sa paghahain ng ganting-sakdal (counterclaim) na nagmumula sa nasabing sumbong.
-                </p>
-            ';
-        } elseif ($formCode === 'KP Form 20') {
-            $formTitle = 'Pormularyo ng KP Blg. 20';
-            $subTitle = 'KATIBAYAN UPANG MAKADULOG SA HUKUMAN (Certificate to File Action)';
-            $cfaReason = !empty($data['reason']) ? $this->escape((string) $data['reason']) : 'Tatlong (3) beses na nabigo ang paghahatid ng patawag sa ipinagsusumbong nang walang mapayapang pagkakasundo.';
-            $body = '
-                <p>SA MGA KINAUUKULAN:</p>
-                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
-                    Ito ay nagpapatunay na para sa usaping may kinalaman sa sumbong na may pamagat na <em>"' . $title . '"</em> (Usapin Blg. <strong>' . $caseNumber . '</strong>):
-                </p>
-                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
-                    <strong>Dahilan ng Pagpapalabas ng Katibayan:</strong><br>
-                    ' . nl2br($cfaReason) . '
-                </p>
-                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
-                    Dahil dito, alinsunod sa itinatakda ng Seksiyon 412 ng Batas Republika Blg. 7160 (Katarungang Pambarangay), ang kaukulang reklamo para sa nasabing usapin ay maaari nang <strong>IHAIN SA HUKUMAN O TANGGAPAN NG PAMAHALAAN</strong>.
-                </p>
-            ';
-        } elseif ($formCode === 'KP Form 16') {
-            $formTitle = 'Pormularyo ng KP Blg. 16';
-            $subTitle = 'KASUNDUANG PAG-AAYOS (Amicable Settlement)';
-            $agreements = !empty($data['agreement_details']) ? $this->escape((string) $data['agreement_details']) : 'Ang mga panig ay nagkasundo na tapusin at ayusin ang lahat ng usapin at alitan kaugnay ng sumbong na ito sa mapayapang paraan.';
-            $body = '
-                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
-                    Kami, ang (mga) may-sumbong at (mga) ipinagsusumbong sa usaping ito, ay nagkasundo nang buong laya at kusang-loob na ayusin ang aming alitan sa ilalim ng mga sumusunod na kasunduan:
-                </p>
-                <div style="margin: 10px 0; padding: 10px 14px; border: 1px solid #999; background: #fafafa; font-size: 10pt; line-height: 1.6;">
-                    ' . nl2br($agreements) . '
-                </div>
-                <p style="text-indent: 12mm; text-align: justify; line-height: 1.6;">
-                    Kami ay nangangako na tutupad nang buong katapatan sa mga nakasaad sa kasunduang ito alinsunod sa Seksiyon 416 at 417 ng Batas Republika Blg. 7160.
-                </p>
-                <p style="margin-top: 15mm; font-size: 9.5pt; font-style: italic;">
-                    Pinatutunayan ko na ang kasunduang pag-aayos na ito ay pinagtibay sa aking harapan nang malaya at kusang-loob ng mga panig matapos maipaliwanag ang mga nilalaman nito.
-                </p>
-            ';
-        }
+        $formTitle = 'Pormularyo ng ' . $formCode;
 
         return '<!DOCTYPE html>
-<html lang="tl">
+<html lang="fil">
 <head>
     <meta charset="UTF-8">
     <title>' . $formTitle . '</title>
     <style>
-        @page { size: A4 portrait; margin: 18mm 16mm 18mm 16mm; }
+        @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
         body { font-family: "DejaVu Sans", sans-serif; font-size: 11pt; color: #111; line-height: 1.4; }
-        .header { text-align: center; font-size: 10pt; line-height: 1.25; margin-bottom: 8mm; }
-        .office-name { font-weight: bold; font-size: 12pt; margin-top: 3mm; letter-spacing: 0.5px; }
-        .form-number { font-size: 9.5pt; font-weight: bold; margin-bottom: 4mm; text-align: right; }
-        .case-grid { width: 100%; border-collapse: collapse; margin-bottom: 8mm; }
-        .case-grid td { vertical-align: top; font-size: 10pt; }
-        .party-box { width: 50%; }
-        .case-meta-box { width: 50%; padding-left: 8mm; }
-        .party-line { font-weight: bold; border-bottom: 1px solid #222; min-height: 5mm; padding-top: 1mm; margin-bottom: 1.5mm; }
-        .party-label { font-size: 9pt; font-style: italic; color: #444; margin-bottom: 2mm; }
-        .versus { font-weight: bold; text-align: center; margin: 3mm 0; }
-        .form-title-box { text-align: center; margin: 6mm 0 6mm; }
-        .form-title-box h2 { font-size: 12pt; margin: 0; text-transform: uppercase; letter-spacing: 0.5px; }
-        .form-body { margin-bottom: 10mm; }
-        .signature-block { width: 45%; margin-left: auto; text-align: center; margin-top: 10mm; }
-        .signature-line { border-top: 1px solid #111; padding-top: 2mm; font-weight: bold; }
-        .officers-return { margin-top: 14mm; border-top: 1px dashed #666; padding-top: 4mm; font-size: 9.5pt; }
-        .officers-return h3 { font-size: 10pt; margin: 0 0 2mm; text-transform: uppercase; }
+        .header { text-align: center; font-size: 10pt; line-height: 1.25; margin-bottom: 6mm; }
+        .office-name { font-weight: bold; font-size: 11pt; margin-top: 2mm; }
+        .form-number { font-size: 10pt; font-weight: bold; margin-bottom: 4mm; }
     </style>
 </head>
 <body>
     <div class="form-number">' . $formTitle . '</div>
     <div class="header">
         <div>Republika ng Pilipinas</div>
-        <div>Kalakhang Maynila — Lungsod ng Marikina</div>
+        <div>Lalawigan ng NCR — Lungsod ng Marikina</div>
         <div>Barangay Tumana</div>
         <div class="office-name">TANGGAPAN NG LUPONG TAGAPAMAYAPA</div>
     </div>
+    <div style="margin-top: 10mm;"><p>Opisyal na dokumento ng Katarungang Pambarangay para sa usapin Blg. <strong>' . $caseNumber . '</strong>.</p></div>
+    <div style="margin-top: 20mm; text-align: right;">
+        <div style="display: inline-block; text-align: center; min-width: 250px;">
+            <div style="border-top: 1px solid #111; padding-top: 2mm; font-weight: bold;">' . $officialName . '</div>
+            <div style="font-size: 9.5pt;">Punong Barangay / Tagapangulo ng Lupon</div>
+        </div>
+    </div>
+</body>
+</html>';
+    }
 
-    <table class="case-grid">
+    public function renderKp9Html(array $data, bool $forPdf = false): string
+    {
+        return $this->kp9Html($data, $forPdf);
+    }
+
+    private function kp9Html(array $data, bool $forPdf = false): string
+    {
+        $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
+        $marikinaPath = __DIR__ . '/../../frontend/assets/images/marikina_logo.jpg';
+        $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
+        $marikinaLogo = file_exists($marikinaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($marikinaPath)) : '';
+
+        $caseNumber = !empty($data['case_number']) ? $this->escape((string) $data['case_number']) : '__________';
+        $title = !empty($data['complaint_title']) ? $this->escape((string) $data['complaint_title']) : '__________';
+        $venue = !empty($data['venue']) ? $this->escape((string) $data['venue']) : 'Tanggapan ng Punong Barangay';
+
+        $compList = [];
+        if (!empty($data['complainants']) && is_array($data['complainants'])) {
+            foreach ($data['complainants'] as $c) {
+                $cName = is_array($c) ? ($c['full_name'] ?? '') : (string)$c;
+                if (trim($cName) !== '') $compList[] = trim($cName);
+            }
+        }
+        $respList = [];
+        if (!empty($data['respondents']) && is_array($data['respondents'])) {
+            foreach ($data['respondents'] as $r) {
+                $rName = is_array($r) ? ($r['full_name'] ?? '') : (string)$r;
+                if (trim($rName) !== '') $respList[] = trim($rName);
+            }
+        }
+        if (empty($respList) && !empty($data['target_party_name'])) {
+            $respList[] = trim((string)$data['target_party_name']);
+        }
+
+        $compLines = '';
+        foreach ($compList as $c) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($c) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($compList)); $i++) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $respLines = '';
+        foreach ($respList as $r) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($r) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($respList)); $i++) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $hearingTs = !empty($data['hearing_date']) ? strtotime($data['hearing_date']) : null;
+        if ($hearingTs) {
+            $hearingDay = date('j', $hearingTs);
+            $hearingMonth = $this->filipinoMonth((int) date('n', $hearingTs));
+            $hearingYear = date('Y', $hearingTs);
+            $hearingTime = date('g:i A', $hearingTs);
+        } else {
+            $hearingDay = '___'; $hearingMonth = '________'; $hearingYear = '____'; $hearingTime = '_____';
+        }
+
+        $noticeTs = !empty($data['notice_date']) ? strtotime($data['notice_date']) : time();
+        $noticeDay = date('j', $noticeTs);
+        $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
+        $noticeYear = date('Y', $noticeTs);
+
+        $officialName = !empty($data['official_name']) ? $this->escape((string) $data['official_name']) : 'HON. AKIKO LYNNE CENTENO';
+
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperEnd = $forPdf ? '' : '</div></div>';
+
+        return '<!DOCTYPE html>
+<html lang="fil">
+<head>
+    <meta charset="UTF-8">
+    <title>Pormularyo ng KP Blg. 9 - PATAWAG</title>
+    <style>
+        @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
+        * { box-sizing: border-box; }
+        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
+        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+        .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
+        .offices { text-align: center; font-weight: bold; font-size: 11pt; margin-top: 10px; margin-bottom: 16px; letter-spacing: 0.3px; line-height: 1.35; }
+    </style>
+</head>
+<body>
+' . $wrapperStart . '
+    <div class="form-code">Pormularyo ng KP Blg. 9</div>
+
+    <table class="header-table">
         <tr>
-            <td class="party-box">
-                <div class="party-line">' . $complainants . '</div>
-                <div class="party-label">(Mga) Nagrereklamo</div>
-                <div class="versus">- laban kay / kina -</div>
-                <div class="party-line">' . $respondents . '</div>
-                <div class="party-label">(Mga) Ipinagsusumbong</div>
+            <td style="width: 80px; text-align: left; vertical-align: top;">
+                ' . (!empty($tumanaLogo) ? '<img src="' . $tumanaLogo . '" alt="Barangay Tumana" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
             </td>
-            <td class="case-meta-box">
-                <div style="margin-bottom: 4mm;">
-                    <strong>Usaping Barangay Blg.:</strong><br>' . $caseNumber . '
+            <td class="header-center" style="vertical-align: top;">
+                <div>Republika ng Pilipinas</div>
+                <div>Lalawigan ng NCR</div>
+                <div>Lungsod ng Marikina</div>
+                <div style="font-weight: bold;">Barangay Tumana</div>
+                <div style="font-size: 9.5pt;">Telephone Nos. 8-238-4208</div>
+                <div style="font-size: 9.5pt;">EMAILADDRESS:barangaytumana2023@gmail.com</div>
+            </td>
+            <td style="width: 80px; text-align: right; vertical-align: top;">
+                ' . (!empty($marikinaLogo) ? '<img src="' . $marikinaLogo . '" alt="Lungsod ng Marikina" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+        </tr>
+    </table>
+
+    <div class="offices">
+        <div>TANGGAPAN NG PUNONG BARANGAY</div>
+        <div style="margin-top: 2px;">TANGGAPAN NG LUPONG TAGAPAMAYAPA</div>
+    </div>
+
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10.5pt;">
+        <tr>
+            <td style="width: 50%; vertical-align: top;">
+                ' . $compLines . '
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">(Mga) nagrereklamo</div>
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">-laban kay/kina-</div>
+                ' . $respLines . '
+                <div style="text-align: center; font-size: 10pt;">(Mga) Inirereklamo</div>
+            </td>
+            <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 20px;">
+                <div>Usapin ng Barangay Blg: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 130px; font-weight: bold; text-align: center;">' . $caseNumber . '</span></div>
+                <div style="margin-top: 6px;">Para sa: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 160px; font-weight: bold; text-align: center;">' . $title . '</span></div>
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; margin: 16px 0;">
+        <div style="font-size: 13.5pt; font-weight: bold; letter-spacing: 0.5px;">PATAWAG</div>
+        <div style="font-size: 11.5pt; font-weight: bold;">(Summons)</div>
+    </div>
+
+    <div style="margin-bottom: 16px; font-size: 11pt;">
+        <div>Para kay: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 250px; font-weight: bold;">' . (!empty($respList) ? implode(' / ', $respList) : '&nbsp;') . '</span></div>
+        <div style="text-align: center; font-size: 10.5pt; margin-top: 4px;">(Mga) inerereklamo</div>
+    </div>
+
+    <div style="font-size: 11pt; line-height: 2; text-align: justify; margin-bottom: 22px;">
+        <p style="text-indent: 40px; margin: 0 0 16px 0;">
+            Ikaw ay ipinatawag upang humarap sa akin nang personal kasama ang iyong mga testigo, sa <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 160px; font-weight: bold;">' . $venue . '</span> ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 50px; font-weight: bold; text-align: center;">' . $hearingDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 100px; font-weight: bold; text-align: center;">' . $hearingMonth . '</span>, <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 50px; font-weight: bold; text-align: center;">' . $hearingYear . '</span> sa ganap na ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 80px; font-weight: bold; text-align: center;">' . $hearingTime . '</span> upang sagutin ang reklamo laban sa iyo na idinulog sa harap ko, kakabit nito ang kopya, para sa pamamagitan/pag-aayos ng inyong mga sigalot ng nagrereklamo/mga nagrereklamo.
+        </p>
+        <p style="text-indent: 40px; margin: 0 0 16px 0;">
+            Binabalaan ka na ang iyong pagtanggi o sadyang di-pagharap upang sundin ang patawag na ito ay maghahadlang sa iyo na makapaghain ng ganting-sumbong na magmumula sa reklamong ito.
+        </p>
+        <p style="text-indent: 40px; margin: 0 0 16px 0;">
+            Kung sakali at mabigo ka, mahaharap ka sa kaparusahang paglapastangan sa hukuman.
+        </p>
+        <p style="text-indent: 40px; margin: 0;">
+            Ngayong Ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 100px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, ' . $noticeYear . '.
+        </p>
+    </div>
+
+    <div style="margin-top: 35px; display: flex; justify-content: flex-end;">
+        <div style="text-align: center; min-width: 290px;">
+            <div style="border-top: 1px solid #111; padding-top: 4px; font-weight: bold; font-size: 11pt;">' . $officialName . '</div>
+            <div style="font-size: 10pt;">Punong Barangay/ Tagapangulo ng Lupon</div>
+        </div>
+    </div>
+' . $wrapperEnd . '
+</body>
+</html>';
+    }
+
+    public function renderKp10Html(array $data, bool $forPdf = false): string
+    {
+        return $this->kp10Html($data, $forPdf);
+    }
+
+    private function kp10Html(array $data, bool $forPdf = false): string
+    {
+        $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
+        $marikinaPath = __DIR__ . '/../../frontend/assets/images/marikina_logo.jpg';
+        $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
+        $marikinaLogo = file_exists($marikinaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($marikinaPath)) : '';
+
+        $compList = [];
+        if (!empty($data['complainants']) && is_array($data['complainants'])) {
+            foreach ($data['complainants'] as $c) {
+                $cName = is_array($c) ? ($c['full_name'] ?? '') : (string)$c;
+                if (trim($cName) !== '') $compList[] = trim($cName);
+            }
+        }
+        $respList = [];
+        if (!empty($data['respondents']) && is_array($data['respondents'])) {
+            foreach ($data['respondents'] as $r) {
+                $rName = is_array($r) ? ($r['full_name'] ?? '') : (string)$r;
+                if (trim($rName) !== '') $respList[] = trim($rName);
+            }
+        }
+
+        $compLines = '';
+        foreach ($compList as $c) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($c) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($compList)); $i++) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $respLines = '';
+        foreach ($respList as $r) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($r) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($respList)); $i++) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $constTs = !empty($data['constitution_date']) ? strtotime($data['constitution_date']) : (!empty($data['hearing_date']) ? strtotime($data['hearing_date']) : null);
+        if ($constTs) {
+            $constDay = date('j', $constTs);
+            $constMonth = $this->filipinoMonth((int) date('n', $constTs));
+            $constYear = date('Y', $constTs);
+            $constTime = date('g:i A', $constTs);
+        } else {
+            $constDay = '___'; $constMonth = '________'; $constYear = '2026'; $constTime = '_____';
+        }
+
+        $noticeTs = !empty($data['notice_date']) ? strtotime($data['notice_date']) : time();
+        $noticeDay = date('j', $noticeTs);
+        $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
+        $noticeYear = date('Y', $noticeTs);
+
+        $officialName = !empty($data['official_name']) ? $this->escape((string) $data['official_name']) : 'AKIKO LYNNE CENTENO';
+
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperEnd = $forPdf ? '' : '</div></div>';
+
+        return '<!DOCTYPE html>
+<html lang="fil">
+<head>
+    <meta charset="UTF-8">
+    <title>Pormularyo ng KP Blg. 10 - PAABISO SA PAGBUBUO NG PANGKAT</title>
+    <style>
+        @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
+        * { box-sizing: border-box; }
+        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
+        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+        .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
+    </style>
+</head>
+<body>
+' . $wrapperStart . '
+    <div class="form-code">Pormularyo ng KP Blg. 10</div>
+
+    <table class="header-table">
+        <tr>
+            <td style="width: 80px; text-align: left; vertical-align: top;">
+                ' . (!empty($tumanaLogo) ? '<img src="' . $tumanaLogo . '" alt="Barangay Tumana" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+            <td class="header-center" style="vertical-align: top;">
+                <div>Republika ng Pilipinas</div>
+                <div>Lalawigan ng NCR</div>
+                <div>Lungsod ng Marikina</div>
+                <div style="font-weight: bold;">Barangay Tumana</div>
+                <div style="font-size: 9.5pt;">Telephone Nos. 8-238-4208</div>
+                <div style="font-size: 9.5pt;">EMAILADDRESS:barangaytumana2023@gmail.com</div>
+            </td>
+            <td style="width: 80px; text-align: right; vertical-align: top;">
+                ' . (!empty($marikinaLogo) ? '<img src="' . $marikinaLogo . '" alt="Lungsod ng Marikina" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; font-weight: bold; font-size: 11pt; margin-top: 10px; margin-bottom: 16px;">TANGGAPAN NG PUNONG BARANGAY</div>
+
+    <div style="text-align: center; margin: 16px 0;">
+        <div style="font-size: 13.5pt; font-weight: bold; letter-spacing: 0.5px;">PAABISO SA PAGBUBUO NG PANGKAT</div>
+        <div style="font-size: 11.5pt; font-weight: bold;">(Notice for the Constitution of Pangkat)</div>
+    </div>
+
+    <div style="font-size: 11pt; margin-bottom: 18px;">
+        <div style="margin-bottom: 8px;">Para kay/kina:</div>
+        <table style="width: 100%; border-collapse: collapse; font-size: 10.5pt;">
+            <tr>
+                <td style="width: 48%; vertical-align: top;">
+                    ' . $compLines . '
+                    <div style="text-align: center; font-size: 10pt;">(Mga) Nagrereklamo</div>
+                </td>
+                <td style="width: 4%;"></td>
+                <td style="width: 48%; vertical-align: top;">
+                    ' . $respLines . '
+                    <div style="text-align: center; font-size: 10pt;">Mga) Inirereklamo</div>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <div style="font-size: 11pt; line-height: 2.1; text-align: justify; margin-bottom: 22px;">
+        <p style="text-indent: 40px; margin: 0 0 16px 0;">
+            Kayo ay hinihilingang humarap sa akin nang personal sa ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 70px; font-weight: bold; text-align: center;">' . $constDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 130px; font-weight: bold; text-align: center;">' . $constMonth . '</span> ' . $constYear . ', sa ganap na ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 80px; font-weight: bold; text-align: center;">' . $constTime . '</span> ng umaga/hapon/gabi para sa pagbubuo ng Pangkat ng Tagapagkasundo na siyang mag-aayos ng inyong mga sigalot. Kung sakali at mabigo kayong magkasundo sa kasapian ng Pangkat o humarap sa nasabing petsa para magbuo ng Pangkat, pagpapasyahan ko ito sa pamamagitan ng palabunutan.
+        </p>
+        <p style="text-indent: 40px; margin: 0;">
+            Ngayong ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> araw ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 110px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, ' . $noticeYear . '.
+        </p>
+    </div>
+
+    <div style="margin-top: 35px; display: flex; justify-content: flex-end;">
+        <div style="text-align: center; min-width: 280px;">
+            <div style="border-top: 1px solid #111; padding-top: 4px; font-weight: bold; font-size: 11pt;">' . $officialName . '</div>
+            <div style="font-size: 10pt;">Punong Barangay</div>
+        </div>
+    </div>
+
+    <div style="margin-top: 25px; font-size: 10.5pt;">
+        <div style="margin-bottom: 16px;">
+            Ipinagbibigay-alam ngayong ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 100px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, ' . $noticeYear . '.
+        </div>
+        <div>Kay/Kina:</div>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 22px;">
+            <tr>
+                <td style="width: 45%; text-align: center;">
+                    <div style="border-top: 1px solid #111; min-height: 2px; margin-bottom: 4px;"></div>
+                    <div>(Mga) Nagrereklamo</div>
+                </td>
+                <td style="width: 10%;"></td>
+                <td style="width: 45%; text-align: center;">
+                    <div style="border-top: 1px solid #111; min-height: 2px; margin-bottom: 4px;"></div>
+                    <div>(Mga) Inirereklamo</div>
+                </td>
+            </tr>
+        </table>
+    </div>
+' . $wrapperEnd . '
+</body>
+</html>';
+    }
+
+    public function renderKp11Html(array $data, bool $forPdf = false): string
+    {
+        return $this->kp11Html($data, $forPdf);
+    }
+
+    private function kp11Html(array $data, bool $forPdf = false): string
+    {
+        $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
+        $marikinaPath = __DIR__ . '/../../frontend/assets/images/marikina_logo.jpg';
+        $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
+        $marikinaLogo = file_exists($marikinaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($marikinaPath)) : '';
+
+        $caseNumber = !empty($data['case_number']) ? $this->escape((string) $data['case_number']) : '__________';
+        $title = !empty($data['complaint_title']) ? $this->escape((string) $data['complaint_title']) : '__________';
+        $chosenMember = !empty($data['chosen_member']) ? $this->escape((string) $data['chosen_member']) : (!empty($data['target_party_name']) ? $this->escape((string) $data['target_party_name']) : '________________________');
+
+        $compList = [];
+        if (!empty($data['complainants']) && is_array($data['complainants'])) {
+            foreach ($data['complainants'] as $c) {
+                $cName = is_array($c) ? ($c['full_name'] ?? '') : (string)$c;
+                if (trim($cName) !== '') $compList[] = trim($cName);
+            }
+        }
+        $respList = [];
+        if (!empty($data['respondents']) && is_array($data['respondents'])) {
+            foreach ($data['respondents'] as $r) {
+                $rName = is_array($r) ? ($r['full_name'] ?? '') : (string)$r;
+                if (trim($rName) !== '') $respList[] = trim($rName);
+            }
+        }
+
+        $compLines = '';
+        foreach ($compList as $c) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($c) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($compList)); $i++) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $respLines = '';
+        foreach ($respList as $r) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($r) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($respList)); $i++) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $noticeTs = !empty($data['notice_date']) ? strtotime($data['notice_date']) : time();
+        $noticeDay = date('j', $noticeTs);
+        $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
+        $noticeYear = date('Y', $noticeTs);
+        $dateStr = 'ika-' . $noticeDay . ' ng ' . $noticeMonth . ', ' . $noticeYear;
+
+        $officialName = !empty($data['official_name']) ? $this->escape((string) $data['official_name']) : 'HON. AKIKO LYNNE CENTENO';
+        $secretaryName = !empty($data['secretary_name']) ? $this->escape((string) $data['secretary_name']) : 'PAMELA D. CONSULTA';
+
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperEnd = $forPdf ? '' : '</div></div>';
+
+        return '<!DOCTYPE html>
+<html lang="fil">
+<head>
+    <meta charset="UTF-8">
+    <title>Pormularyo ng KP Blg. 11 - PAABISO SA PINILING KASAPI NG PANGKAT</title>
+    <style>
+        @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
+        * { box-sizing: border-box; }
+        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
+        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+        .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
+    </style>
+</head>
+<body>
+' . $wrapperStart . '
+    <div class="form-code">Pormularyo ng KP Blg. 11</div>
+
+    <table class="header-table">
+        <tr>
+            <td style="width: 80px; text-align: left; vertical-align: top;">
+                ' . (!empty($tumanaLogo) ? '<img src="' . $tumanaLogo . '" alt="Barangay Tumana" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+            <td class="header-center" style="vertical-align: top;">
+                <div>Republika ng Pilipinas</div>
+                <div>Lalawigan ng NCR</div>
+                <div>Lungsod ng Marikina</div>
+                <div style="font-weight: bold;">Barangay Tumana</div>
+                <div style="font-size: 9.5pt;">Telephone Nos. 8-238-4208</div>
+                <div style="font-size: 9.5pt;">EMAILADDRESS:barangaytumana2023@gmail.com</div>
+            </td>
+            <td style="width: 80px; text-align: right; vertical-align: top;">
+                ' . (!empty($marikinaLogo) ? '<img src="' . $marikinaLogo . '" alt="Lungsod ng Marikina" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; font-weight: bold; font-size: 11pt; margin-top: 10px; margin-bottom: 16px;">TANGGAPAN NG LUPONG TAGAPAMAYAPA</div>
+
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10.5pt;">
+        <tr>
+            <td style="width: 50%; vertical-align: top;">
+                ' . $compLines . '
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">(Mga) Nagrereklamo</div>
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">-laban kay/kina-</div>
+                ' . $respLines . '
+                <div style="text-align: center; font-size: 10pt;">(Mga) Inirereklamo</div>
+            </td>
+            <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 20px;">
+                <div>Usapin ng Barangay Blg. <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 130px; font-weight: bold; text-align: center;">' . $caseNumber . '</span></div>
+                <div style="margin-top: 6px;">Para sa: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 160px; font-weight: bold; text-align: center;">' . $title . '</span></div>
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; margin: 16px 0;">
+        <div style="font-size: 13pt; font-weight: bold; letter-spacing: 0.5px;">PAABISO SA PINILING KASAPI NG PANGKAT</div>
+        <div style="font-size: 11pt; font-weight: bold;">(Notice to Chosen Pangkat Member)</div>
+    </div>
+
+    <div style="text-align: right; margin-bottom: 12px; font-size: 10.5pt;">
+        <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 140px; font-weight: bold; text-align: center;">' . $dateStr . '</span> Petsa
+    </div>
+
+    <div style="margin-bottom: 18px; font-size: 11pt;">
+        Para kay: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 260px; font-weight: bold;">' . $chosenMember . '</span>
+    </div>
+
+    <div style="font-size: 11pt; line-height: 2.1; text-align: justify; margin-bottom: 25px;">
+        <p style="text-indent: 40px; margin: 0;">
+            Isang paabiso ang ibinibigay sa iyo na ikaw ay napiling kasapi ng Pangkat ng Tagapagkasundo upang mapayapang ayusin ang sigalot sa pagitan ng mga panig sa nakasaad sa usapin sa itaas.
+        </p>
+    </div>
+
+    <div style="margin-top: 25px; display: flex; justify-content: flex-end;">
+        <div style="text-align: center; min-width: 280px;">
+            <div style="border-top: 1px solid #111; padding-top: 4px; font-weight: bold; font-size: 11pt;">' . $secretaryName . '</div>
+            <div style="font-size: 10pt; margin-bottom: 22px;">Kalihim ng Lupon</div>
+
+            <div style="border-top: 1px solid #111; padding-top: 4px; font-weight: bold; font-size: 11pt;">' . $officialName . '</div>
+            <div style="font-size: 10pt;">Punong Barangay</div>
+        </div>
+    </div>
+
+    <div style="margin-top: 22px; font-size: 10.5pt;">
+        <div>Tinanggap ngayong ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 110px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, 20<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 40px; font-weight: bold; text-align: center;">' . substr($noticeYear, -2) . '</span>.</div>
+        <div style="margin-top: 25px; text-align: right;">
+            <div style="display: inline-block; text-align: center; min-width: 200px;">
+                <div style="border-top: 1px solid #111; min-height: 2px; margin-bottom: 4px;"></div>
+                <div>Kasapi</div>
+            </div>
+        </div>
+    </div>
+' . $wrapperEnd . '
+</body>
+</html>';
+    }
+
+    public function renderKp12Html(array $data, bool $forPdf = false): string
+    {
+        return $this->kp12Html($data, $forPdf);
+    }
+
+    private function kp12Html(array $data, bool $forPdf = false): string
+    {
+        $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
+        $marikinaPath = __DIR__ . '/../../frontend/assets/images/marikina_logo.jpg';
+        $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
+        $marikinaLogo = file_exists($marikinaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($marikinaPath)) : '';
+
+        $caseNumber = !empty($data['case_number']) ? $this->escape((string) $data['case_number']) : '__________';
+        $title = !empty($data['complaint_title']) ? $this->escape((string) $data['complaint_title']) : '__________';
+        $venue = !empty($data['venue']) ? $this->escape((string) $data['venue']) : 'Tanggapan ng Lupong Tagapamayapa';
+
+        $compList = [];
+        if (!empty($data['complainants']) && is_array($data['complainants'])) {
+            foreach ($data['complainants'] as $c) {
+                $cName = is_array($c) ? ($c['full_name'] ?? '') : (string)$c;
+                if (trim($cName) !== '') $compList[] = trim($cName);
+            }
+        }
+        $respList = [];
+        if (!empty($data['respondents']) && is_array($data['respondents'])) {
+            foreach ($data['respondents'] as $r) {
+                $rName = is_array($r) ? ($r['full_name'] ?? '') : (string)$r;
+                if (trim($rName) !== '') $respList[] = trim($rName);
+            }
+        }
+
+        $compLines = '';
+        foreach ($compList as $c) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($c) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($compList)); $i++) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $respLines = '';
+        foreach ($respList as $r) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($r) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($respList)); $i++) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $hearingTs = !empty($data['hearing_date']) ? strtotime($data['hearing_date']) : null;
+        if ($hearingTs) {
+            $hearingDay = date('j', $hearingTs);
+            $hearingMonth = $this->filipinoMonth((int) date('n', $hearingTs));
+            $hearingYear = date('Y', $hearingTs);
+            $hearingTime = date('g:i A', $hearingTs);
+        } else {
+            $hearingDay = '___'; $hearingMonth = '________'; $hearingYear = '____'; $hearingTime = '_____';
+        }
+
+        $noticeTs = !empty($data['notice_date']) ? strtotime($data['notice_date']) : time();
+        $noticeDay = date('j', $noticeTs);
+        $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
+        $noticeYear = date('Y', $noticeTs);
+
+        $chairmanPangkat = !empty($data['chairman_name']) ? $this->escape((string) $data['chairman_name']) : (!empty($data['pangkat_chairman']) ? $this->escape((string) $data['pangkat_chairman']) : '&nbsp;');
+
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperEnd = $forPdf ? '' : '</div></div>';
+
+        return '<!DOCTYPE html>
+<html lang="fil">
+<head>
+    <meta charset="UTF-8">
+    <title>Pormularyo ng KP Blg. 12 - PAABISO NG PAGDINIG</title>
+    <style>
+        @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
+        * { box-sizing: border-box; }
+        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
+        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+        .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
+    </style>
+</head>
+<body>
+' . $wrapperStart . '
+    <div class="form-code">Pormularyo ng KP Blg. 12</div>
+
+    <table class="header-table">
+        <tr>
+            <td style="width: 80px; text-align: left; vertical-align: top;">
+                ' . (!empty($tumanaLogo) ? '<img src="' . $tumanaLogo . '" alt="Barangay Tumana" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+            <td class="header-center" style="vertical-align: top;">
+                <div>Republika ng Pilipinas</div>
+                <div>Lalawigan ng NCR</div>
+                <div>Lungsod ng Marikina</div>
+                <div style="font-weight: bold;">Barangay Tumana</div>
+                <div style="font-size: 9.5pt;">Telephone Nos. 8-238-4208</div>
+                <div style="font-size: 9.5pt;">EMAILADDRESS:barangaytumana2023@gmail.com</div>
+            </td>
+            <td style="width: 80px; text-align: right; vertical-align: top;">
+                ' . (!empty($marikinaLogo) ? '<img src="' . $marikinaLogo . '" alt="Lungsod ng Marikina" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; font-weight: bold; font-size: 11pt; margin-top: 10px; margin-bottom: 16px;">TANGGAPAN NG LUPONG TAGAPAMAYAPA</div>
+
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10.5pt;">
+        <tr>
+            <td style="width: 50%; vertical-align: top;">
+                ' . $compLines . '
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">(Mga) Nagrereklamo</div>
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">-laban kay/kina-</div>
+                ' . $respLines . '
+                <div style="text-align: center; font-size: 10pt;">(Mga) Inirereklamo</div>
+            </td>
+            <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 20px;">
+                <div>Usapin ng Barangay Blg. <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 130px; font-weight: bold; text-align: center;">' . $caseNumber . '</span></div>
+                <div style="margin-top: 6px;">Para sa: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 160px; font-weight: bold; text-align: center;">' . $title . '</span></div>
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; margin: 16px 0;">
+        <div style="font-size: 13.5pt; font-weight: bold; letter-spacing: 0.5px;">PAABISO NG PAGDINIG</div>
+        <div style="font-size: 11.5pt; font-weight: bold;">(Conciliation Proceedings)</div>
+    </div>
+
+    <div style="font-size: 11pt; line-height: 2.1; text-align: justify; margin-bottom: 25px;">
+        <p style="text-indent: 40px; margin: 0;">
+            Ikaw ay hinihilingang humarap sa Pangkat sa <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 150px; font-weight: bold;">' . $venue . '</span> araw ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 90px; font-weight: bold; text-align: center;">' . $hearingDay . ' ng ' . $hearingMonth . '</span>, <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 50px; font-weight: bold; text-align: center;">' . $hearingYear . '</span> sa ganap na ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 70px; font-weight: bold; text-align: center;">' . $hearingTime . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 80px; font-weight: bold; text-align: center;">' . $hearingMonth . '</span> para sa pagdinig ng usaping nakasaad sa itaas.
+        </p>
+    </div>
+
+    <div style="margin-top: 35px; display: flex; justify-content: flex-end;">
+        <div style="text-align: center; min-width: 280px;">
+            <div style="border-top: 1px solid #111; padding-top: 4px; font-weight: bold; font-size: 11pt;">' . $chairmanPangkat . '</div>
+            <div style="font-size: 10pt;">Tagapangulo ng Pangkat</div>
+        </div>
+    </div>
+
+    <div style="margin-top: 25px; font-size: 10.5pt;">
+        <div style="margin-bottom: 20px;">
+            Ipinagbibigay-alam ngayong <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 80px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 100px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 50px; font-weight: bold; text-align: center;">' . $noticeYear . '</span>.
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+                <td style="width: 45%; text-align: center;">
+                    <div style="border-top: 1px solid #111; min-height: 2px; margin-bottom: 4px;"></div>
+                    <div>(Mga) Nagrereklamo</div>
+                </td>
+                <td style="width: 10%;"></td>
+                <td style="width: 45%; text-align: center;">
+                    <div style="border-top: 1px solid #111; min-height: 2px; margin-bottom: 4px;"></div>
+                    <div>(Mga) Inirereklamo</div>
+                </td>
+            </tr>
+        </table>
+    </div>
+' . $wrapperEnd . '
+</body>
+</html>';
+    }
+
+
+    public function renderKp8Html(array $data, bool $forPdf = false): string
+    {
+        return $this->kp8Html($data, $forPdf);
+    }
+
+    private function kp8Html(array $data, bool $forPdf = false): string
+    {
+        $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
+        $marikinaPath = __DIR__ . '/../../frontend/assets/images/marikina_logo.jpg';
+        $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
+        $marikinaLogo = file_exists($marikinaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($marikinaPath)) : '';
+
+        $caseNumber = !empty($data['case_number']) ? $this->escape((string) $data['case_number']) : '__________';
+        $title = !empty($data['complaint_title']) ? $this->escape((string) $data['complaint_title']) : '__________';
+        $venue = !empty($data['venue']) ? $this->escape((string) $data['venue']) : 'Tanggapan ng Punong Barangay';
+
+        // Complainants list
+        $compList = [];
+        if (!empty($data['complainants']) && is_array($data['complainants'])) {
+            foreach ($data['complainants'] as $c) {
+                $cName = is_array($c) ? ($c['full_name'] ?? '') : (string)$c;
+                if (trim($cName) !== '') {
+                    $compList[] = trim($cName);
+                }
+            }
+        }
+        if (empty($compList) && !empty($data['target_party_name'])) {
+            $compList[] = trim((string)$data['target_party_name']);
+        }
+
+        $compLinesHtml = '';
+        if (empty($compList)) {
+            $compLinesHtml = '
+                <div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 8px;">&nbsp;</div>
+                <div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 8px;">&nbsp;</div>
+                <div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 6px;">&nbsp;</div>
+            ';
+        } else {
+            foreach ($compList as $idx => $cName) {
+                $compLinesHtml .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 8px; font-weight: bold; font-size: 11pt;">' . $this->escape($cName) . '</div>';
+            }
+            $remaining = max(0, 3 - count($compList));
+            for ($i = 0; $i < $remaining; $i++) {
+                $compLinesHtml .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 8px;">&nbsp;</div>';
+            }
+        }
+
+        $hearingTs = !empty($data['hearing_date']) ? strtotime($data['hearing_date']) : null;
+        if ($hearingTs) {
+            $hearingDateFormatted = 'ika-' . date('j', $hearingTs) . ' ng ' . $this->filipinoMonth((int) date('n', $hearingTs)) . ', ' . date('Y', $hearingTs);
+            $hearingTimeFormatted = date('g:i A', $hearingTs);
+            $hearingMonthFormatted = $this->filipinoMonth((int) date('n', $hearingTs));
+        } else {
+            $hearingDateFormatted = '________________________';
+            $hearingTimeFormatted = '_________';
+            $hearingMonthFormatted = '_________';
+        }
+
+        $noticeTs = !empty($data['notice_date']) ? strtotime($data['notice_date']) : time();
+        $noticeDay = date('j', $noticeTs);
+        $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
+        $noticeYear = date('Y', $noticeTs);
+
+        $officialName = !empty($data['official_name']) ? $this->escape((string) $data['official_name']) : 'HON.AKIKO LYNNE CENTENO';
+
+        $bodyContent = '
+            <p style="text-indent: 40px; margin: 0 0 25px 0; text-align: justify; line-height: 2.1;">
+                Ikaw ay hinihilingang humarap sa akin sa <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 180px; font-weight: bold;">' . $venue . '</span>, <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 140px; font-weight: bold;">' . $hearingDateFormatted . '</span>, sa ganap na ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 90px; font-weight: bold; text-align: center;">' . $hearingTimeFormatted . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 100px; font-weight: bold; text-align: center;">' . $hearingMonthFormatted . '</span> para sa pagdinig ng iyong reklamo.
+            </p>
+            <p style="text-indent: 40px; margin: 0; text-align: justify; line-height: 2.1;">
+                Ngayong Ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 70px; text-align: center; font-weight: bold;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 110px; text-align: center; font-weight: bold;">' . $noticeMonth . '</span>, ' . $noticeYear . '.
+            </p>
+        ';
+
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperEnd = $forPdf ? '' : '</div></div>';
+
+        return '<!DOCTYPE html>
+<html lang="fil">
+<head>
+    <meta charset="UTF-8">
+    <title>Pormularyo ng KP Blg. 8 - PAABISO NG PAGDINIG</title>
+    <style>
+        @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
+        * { box-sizing: border-box; }
+        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
+        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+        .header-table td { vertical-align: top; }
+        .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
+        .offices { text-align: center; font-weight: bold; font-size: 11pt; margin-top: 12px; margin-bottom: 18px; letter-spacing: 0.3px; line-height: 1.35; }
+        .case-meta { text-align: right; font-size: 10.5pt; line-height: 1.6; margin-bottom: 22px; }
+        .form-title-block { text-align: center; margin-bottom: 24px; }
+        .form-title { font-size: 13.5pt; font-weight: bold; letter-spacing: 0.5px; }
+        .form-sub { font-size: 11.5pt; font-weight: bold; }
+        .addressee-block { margin-bottom: 20px; }
+        .addressee-row { display: table; width: 100%; }
+        .addressee-label { display: table-cell; width: 110px; font-size: 11pt; white-space: nowrap; vertical-align: bottom; }
+        .addressee-lines { display: table-cell; vertical-align: bottom; }
+        .body-section { font-size: 11pt; line-height: 2.1; margin-top: 25px; margin-bottom: 25px; }
+        .sig-block { margin-top: 35px; margin-bottom: 40px; text-align: right; }
+        .sig-box { display: inline-block; text-align: center; min-width: 280px; }
+        .sig-line { border-top: 1px solid #111; padding-top: 4px; font-weight: bold; font-size: 11pt; }
+        .sig-title { font-size: 10pt; margin-top: 2px; }
+        .ack-section { margin-top: 30px; font-size: 11pt; }
+        .ack-box { display: inline-block; text-align: center; min-width: 250px; }
+    </style>
+</head>
+<body>
+' . $wrapperStart . '
+    <div class="form-code">Pormularyo ng KP Blg. 8</div>
+
+    <table class="header-table">
+        <tr>
+            <td style="width: 80px; text-align: left;">
+                ' . (!empty($tumanaLogo) ? '<img src="' . $tumanaLogo . '" alt="Barangay Tumana" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+            <td class="header-center">
+                <div>Republika ng Pilipinas</div>
+                <div>Lalawigan ng NCR</div>
+                <div>Lungsod ng Marikina</div>
+                <div style="font-weight: bold;">Barangay Tumana</div>
+                <div style="font-size: 9.5pt;">Telephone Nos. 8-238-4208</div>
+                <div style="font-size: 9.5pt;">EMAILADDRESS:barangaytumana2023@gmail.com</div>
+            </td>
+            <td style="width: 80px; text-align: right;">
+                ' . (!empty($marikinaLogo) ? '<img src="' . $marikinaLogo . '" alt="Lungsod ng Marikina" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+        </tr>
+    </table>
+
+    <div class="offices">
+        <div>TANGGAPAN NG PUNONG BARANGAY</div>
+        <div style="margin-top: 3px;">TANGGAPAN NG LUPONG TAGAPAMAYAPA</div>
+    </div>
+
+    <div class="case-meta">
+        <div>Usapin ng Barangay Blg: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 140px; text-align: center; font-weight: bold;">' . $caseNumber . '</span></div>
+        <div style="margin-top: 4px;">Para sa: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 140px; text-align: center; font-weight: bold;">' . $title . '</span></div>
+    </div>
+
+    <div class="form-title-block">
+        <div class="form-title">PAABISO NG PAGDINIG</div>
+        <div class="form-sub">(Mediation Proceedings)</div>
+    </div>
+
+    <div class="addressee-block">
+        <div class="addressee-row">
+            <div class="addressee-label">Para kay/Kina:</div>
+            <div class="addressee-lines">
+                ' . $compLinesHtml . '
+            </div>
+        </div>
+        <div style="text-align: center; font-size: 10.5pt; margin-top: 4px;">
+            (Mga) Nagrereklamo
+        </div>
+    </div>
+
+    <div class="body-section">
+        ' . $bodyContent . '
+    </div>
+
+    <div class="sig-block">
+        <div class="sig-box">
+            <div class="sig-line">' . $officialName . '</div>
+            <div class="sig-title">Tagapangulo ng Lupon</div>
+        </div>
+    </div>
+
+    <div class="ack-section">
+        <div style="margin-bottom: 25px;">
+            Ipinagbigay-alam ngayong ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 70px; text-align: center; font-weight: bold;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 110px; text-align: center; font-weight: bold;">' . $noticeMonth . '</span>, ' . $noticeYear . '.
+        </div>
+
+        <div style="text-align: right;">
+            <div class="ack-box">
+                <div style="border-top: 1px solid #111; min-height: 2px; margin-bottom: 4px;"></div>
+                <div style="font-size: 10.5pt;">(Mga) Nagrereklamo</div>
+            </div>
+        </div>
+    </div>
+' . $wrapperEnd . '
+</body>
+</html>';
+    }
+
+
+    public function renderKp13Html(array $data, bool $forPdf = false): string
+    {
+        return $this->kp13Html($data, $forPdf);
+    }
+
+    private function kp13Html(array $data, bool $forPdf = false): string
+    {
+        $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
+        $marikinaPath = __DIR__ . '/../../frontend/assets/images/marikina_logo.jpg';
+        $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
+        $marikinaLogo = file_exists($marikinaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($marikinaPath)) : '';
+
+        $caseNumber = !empty($data['case_number']) ? $this->escape((string) $data['case_number']) : '__________';
+        $title = !empty($data['complaint_title']) ? $this->escape((string) $data['complaint_title']) : '__________';
+        $witnessNames = !empty($data['witness_names']) ? $this->escape((string) $data['witness_names']) : (!empty($data['target_party_name']) ? $this->escape((string) $data['target_party_name']) : '________________________');
+
+        $compList = [];
+        if (!empty($data['complainants']) && is_array($data['complainants'])) {
+            foreach ($data['complainants'] as $c) {
+                $cName = is_array($c) ? ($c['full_name'] ?? '') : (string)$c;
+                if (trim($cName) !== '') $compList[] = trim($cName);
+            }
+        }
+        $respList = [];
+        if (!empty($data['respondents']) && is_array($data['respondents'])) {
+            foreach ($data['respondents'] as $r) {
+                $rName = is_array($r) ? ($r['full_name'] ?? '') : (string)$r;
+                if (trim($rName) !== '') $respList[] = trim($rName);
+            }
+        }
+
+        $compLines = '';
+        foreach ($compList as $c) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($c) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($compList)); $i++) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $respLines = '';
+        foreach ($respList as $r) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($r) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($respList)); $i++) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $hearingTs = !empty($data['hearing_date']) ? strtotime($data['hearing_date']) : null;
+        if ($hearingTs) {
+            $hDay = date('j', $hearingTs);
+            $hMonth = $this->filipinoMonth((int) date('n', $hearingTs));
+            $hTime = date('g:i A', $hearingTs);
+        } else {
+            $hDay = '___'; $hMonth = '________'; $hTime = '_____';
+        }
+
+        $noticeTs = !empty($data['notice_date']) ? strtotime($data['notice_date']) : time();
+        $noticeDay = date('j', $noticeTs);
+        $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
+        $noticeYear = date('Y', $noticeTs);
+
+        $officialName = !empty($data['official_name']) ? $this->escape((string) $data['official_name']) : 'HON. AKIKO LYNNE CENTENO';
+
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperEnd = $forPdf ? '' : '</div></div>';
+
+        return '<!DOCTYPE html>
+<html lang="fil">
+<head>
+    <meta charset="UTF-8">
+    <title>Pormularyo ng KP Blg. 13 - UTOS UPANG HUMARAP</title>
+    <style>
+        @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
+        * { box-sizing: border-box; }
+        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
+        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+        .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
+    </style>
+</head>
+<body>
+' . $wrapperStart . '
+    <div class="form-code">Pormularyo ng KP Blg. 13</div>
+
+    <table class="header-table">
+        <tr>
+            <td style="width: 80px; text-align: left; vertical-align: top;">
+                ' . (!empty($tumanaLogo) ? '<img src="' . $tumanaLogo . '" alt="Barangay Tumana" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+            <td class="header-center" style="vertical-align: top;">
+                <div>Republika ng Pilipinas</div>
+                <div>Lalawigan ng NCR</div>
+                <div>Lungsod ng Marikina</div>
+                <div style="font-weight: bold;">Barangay Tumana</div>
+                <div style="font-size: 9.5pt;">Telephone Nos. 8-238-4208</div>
+                <div style="font-size: 9.5pt;">EMAILADDRESS:barangaytumana2023@gmail.com</div>
+            </td>
+            <td style="width: 80px; text-align: right; vertical-align: top;">
+                ' . (!empty($marikinaLogo) ? '<img src="' . $marikinaLogo . '" alt="Lungsod ng Marikina" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; font-weight: bold; font-size: 11pt; margin-top: 10px; margin-bottom: 16px;">TANGGAPAN NG LUPONG TAGAPAMAYAPA</div>
+
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10.5pt;">
+        <tr>
+            <td style="width: 50%; vertical-align: top;">
+                ' . $compLines . '
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">(Mga) Nagrereklamo</div>
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">-laban kay/kina-</div>
+                ' . $respLines . '
+                <div style="text-align: center; font-size: 10pt;">(Mga) Inirereklamo</div>
+            </td>
+            <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 20px;">
+                <div>Usapin ng Barangay Blg. <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 130px; font-weight: bold; text-align: center;">' . $caseNumber . '</span></div>
+                <div style="margin-top: 6px;">Para sa: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 160px; font-weight: bold; text-align: center;">' . $title . '</span></div>
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; margin: 16px 0;">
+        <div style="font-size: 13.5pt; font-weight: bold; letter-spacing: 0.5px;">UTOS UPANG HUMARAP</div>
+        <div style="font-size: 11.5pt; font-weight: bold;">(Subpoena)</div>
+    </div>
+
+    <div style="margin-bottom: 16px; font-size: 11pt;">
+        <div>Para kay/kina: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 250px; font-weight: bold;">' . $witnessNames . '</span></div>
+        <div style="text-align: center; font-size: 10.5pt; margin-top: 4px; font-weight: bold;">Mga Testigo</div>
+    </div>
+
+    <div style="font-size: 11pt; line-height: 2.1; text-align: justify; margin-bottom: 25px;">
+        <p style="text-indent: 40px; margin: 0 0 16px 0;">
+            Ikaw ay inuutusan na humarap sa akin sa ika - <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $hDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 140px; font-weight: bold; text-align: center;">' . $hMonth . '</span> sa ganap na ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 80px; font-weight: bold; text-align: center;">' . $hTime . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 100px; font-weight: bold; text-align: center;">' . $hMonth . '</span> upang tumestigo sa pagdinig sa usaping nakasaad sa itaas.
+        </p>
+        <p style="text-indent: 40px; margin: 0;">
+            Ngayong ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> araw ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 110px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 50px; font-weight: bold; text-align: center;">' . $noticeYear . '</span>.
+        </p>
+    </div>
+
+    <div style="margin-top: 35px; display: flex; justify-content: flex-end;">
+        <div style="text-align: center; min-width: 310px;">
+            <div style="border-top: 1px solid #111; padding-top: 4px; font-weight: bold; font-size: 11pt;">' . $officialName . '</div>
+            <div style="font-size: 10pt;">Punong Barangay/Tagapangulo ng Pangkat</div>
+        </div>
+    </div>
+' . $wrapperEnd . '
+</body>
+</html>';
+    }
+
+    public function renderKp14Html(array $data, bool $forPdf = false): string
+    {
+        return $this->kp14Html($data, $forPdf);
+    }
+
+    private function kp14Html(array $data, bool $forPdf = false): string
+    {
+        $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
+        $marikinaPath = __DIR__ . '/../../frontend/assets/images/marikina_logo.jpg';
+        $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
+        $marikinaLogo = file_exists($marikinaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($marikinaPath)) : '';
+
+        $caseNumber = !empty($data['case_number']) ? $this->escape((string) $data['case_number']) : '__________';
+        $title = !empty($data['complaint_title']) ? $this->escape((string) $data['complaint_title']) : '__________';
+
+        $compList = [];
+        if (!empty($data['complainants']) && is_array($data['complainants'])) {
+            foreach ($data['complainants'] as $c) {
+                $cName = is_array($c) ? ($c['full_name'] ?? '') : (string)$c;
+                if (trim($cName) !== '') $compList[] = trim($cName);
+            }
+        }
+        $respList = [];
+        if (!empty($data['respondents']) && is_array($data['respondents'])) {
+            foreach ($data['respondents'] as $r) {
+                $rName = is_array($r) ? ($r['full_name'] ?? '') : (string)$r;
+                if (trim($rName) !== '') $respList[] = trim($rName);
+            }
+        }
+
+        $compLines = '';
+        foreach ($compList as $c) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($c) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($compList)); $i++) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $respLines = '';
+        foreach ($respList as $r) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($r) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($respList)); $i++) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $noticeTs = !empty($data['notice_date']) ? strtotime($data['notice_date']) : time();
+        $noticeDay = date('j', $noticeTs);
+        $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
+        $noticeYear = date('Y', $noticeTs);
+
+        $officialName = !empty($data['official_name']) ? $this->escape((string) $data['official_name']) : 'HON. AKIKO LYNNE CENTENO';
+
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperEnd = $forPdf ? '' : '</div></div>';
+
+        return '<!DOCTYPE html>
+<html lang="fil">
+<head>
+    <meta charset="UTF-8">
+    <title>Pormularyo ng KP Blg. 14 - KASUNDUAN PARA SA PAGHAHATOL</title>
+    <style>
+        @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
+        * { box-sizing: border-box; }
+        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
+        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+        .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
+    </style>
+</head>
+<body>
+' . $wrapperStart . '
+    <div class="form-code">Pormularyo ng KP Blg. 14</div>
+
+    <table class="header-table">
+        <tr>
+            <td style="width: 80px; text-align: left; vertical-align: top;">
+                ' . (!empty($tumanaLogo) ? '<img src="' . $tumanaLogo . '" alt="Barangay Tumana" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+            <td class="header-center" style="vertical-align: top;">
+                <div>Republika ng Pilipinas</div>
+                <div>Lalawigan ng NCR</div>
+                <div>Lungsod ng Marikina</div>
+                <div style="font-weight: bold;">Barangay Tumana</div>
+                <div style="font-size: 9.5pt;">Telephone Nos. 8-238-4208</div>
+                <div style="font-size: 9.5pt;">EMAILADDRESS:barangaytumana2023@gmail.com</div>
+            </td>
+            <td style="width: 80px; text-align: right; vertical-align: top;">
+                ' . (!empty($marikinaLogo) ? '<img src="' . $marikinaLogo . '" alt="Lungsod ng Marikina" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; font-weight: bold; font-size: 11pt; margin-top: 10px; margin-bottom: 16px;">TANGGAPAN NG LUPONG TAGAPAMAYAPA</div>
+
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10.5pt;">
+        <tr>
+            <td style="width: 50%; vertical-align: top;">
+                ' . $compLines . '
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">(Mga) Nagrereklamo</div>
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">-laban kay/kina-</div>
+                ' . $respLines . '
+                <div style="text-align: center; font-size: 10pt;">(Mga) Inirereklamo</div>
+            </td>
+            <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 20px;">
+                <div>Usapin ng Barangay Blg. <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 130px; font-weight: bold; text-align: center;">' . $caseNumber . '</span></div>
+                <div style="margin-top: 6px;">Para sa: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 160px; font-weight: bold; text-align: center;">' . $title . '</span></div>
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; margin: 16px 0;">
+        <div style="font-size: 13.5pt; font-weight: bold; letter-spacing: 0.5px;">KASUNDUAN PARA SA PAGHAHATOL</div>
+        <div style="font-size: 11.5pt; font-weight: bold;">(Agreement for Arbitration)</div>
+    </div>
+
+    <div style="font-size: 11pt; line-height: 2; text-align: justify; margin-bottom: 20px;">
+        <p style="text-indent: 40px; margin: 0 0 16px 0;">
+            Kami ay nagkasundo na idulog ang aming sigalot sa paghahatol sa Punong Barangay/Pangkat ng Tagapagkasundo (Alisin ang di-angkop) at pagkakaisahan namin na aming susundin ang hatol na maaaring igawad dito. Ginawa namin ang kasunduang ito nang malaya at kusang-loob na mayroong ganap na pang-unawa sa anumang uri at magiging bunga nito.
+        </p>
+        <p style="text-indent: 40px; margin: 0;">
+            Itinala ngayong ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 120px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, 20<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 40px; font-weight: bold; text-align: center;">' . substr($noticeYear, -2) . '</span>.
+        </p>
+    </div>
+
+    <table style="width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px;">
+        <tr>
+            <td style="width: 45%; text-align: center;">
+                <div style="border-top: 1px solid #111; min-height: 2px; margin-bottom: 4px;"></div>
+                <div>(Mga) Nagrereklamo</div>
+            </td>
+            <td style="width: 10%;"></td>
+            <td style="width: 45%; text-align: center;">
+                <div style="border-top: 1px solid #111; min-height: 2px; margin-bottom: 4px;"></div>
+                <div>(Mga) Inirereklamo</div>
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; font-weight: bold; font-size: 11pt; margin: 18px 0 8px;">PAGPAPATOTOO</div>
+    <div style="font-size: 10.5pt; line-height: 1.8; text-align: justify; margin-bottom: 22px;">
+        Pinapatunayan ko na ang sinusundang Kasunduan ng Paghahatol ay malaya at kusang-loob na ginawa ng mga panig, matapos na aking maipaliwanag sa kanila ang uri at ang magiging bunga nito ng gayong kasunduan.
+    </div>
+
+    <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+        <tr>
+            <td style="width: 45%; vertical-align: top;">
+                <div style="font-weight: bold; font-size: 11pt;">' . $officialName . '</div>
+                <div style="font-size: 10pt;">Punong Barangay</div>
+            </td>
+            <td style="width: 10%;"></td>
+            <td style="width: 45%; vertical-align: top; text-align: center;">
+                <div style="border-top: 1px solid #111; padding-top: 4px; font-size: 10pt;">Tagapangulo ng Pangkat</div>
+            </td>
+        </tr>
+    </table>
+' . $wrapperEnd . '
+</body>
+</html>';
+    }
+
+    public function renderKp15Html(array $data, bool $forPdf = false): string
+    {
+        return $this->kp15Html($data, $forPdf);
+    }
+
+    private function kp15Html(array $data, bool $forPdf = false): string
+    {
+        $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
+        $marikinaPath = __DIR__ . '/../../frontend/assets/images/marikina_logo.jpg';
+        $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
+        $marikinaLogo = file_exists($marikinaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($marikinaPath)) : '';
+
+        $caseNumber = !empty($data['case_number']) ? $this->escape((string) $data['case_number']) : '__________';
+        $title = !empty($data['complaint_title']) ? $this->escape((string) $data['complaint_title']) : '__________';
+        $awardDetails = !empty($data['award_details']) ? $this->escape((string) $data['award_details']) : (!empty($data['agreement_details']) ? $this->escape((string) $data['agreement_details']) : '');
+
+        $compList = [];
+        if (!empty($data['complainants']) && is_array($data['complainants'])) {
+            foreach ($data['complainants'] as $c) {
+                $cName = is_array($c) ? ($c['full_name'] ?? '') : (string)$c;
+                if (trim($cName) !== '') $compList[] = trim($cName);
+            }
+        }
+        $respList = [];
+        if (!empty($data['respondents']) && is_array($data['respondents'])) {
+            foreach ($data['respondents'] as $r) {
+                $rName = is_array($r) ? ($r['full_name'] ?? '') : (string)$r;
+                if (trim($rName) !== '') $respList[] = trim($rName);
+            }
+        }
+
+        $compLines = '';
+        foreach ($compList as $c) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($c) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($compList)); $i++) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $respLines = '';
+        foreach ($respList as $r) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($r) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($respList)); $i++) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $noticeTs = !empty($data['notice_date']) ? strtotime($data['notice_date']) : time();
+        $noticeDay = date('j', $noticeTs);
+        $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
+        $noticeYear = date('Y', $noticeTs);
+
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperEnd = $forPdf ? '' : '</div></div>';
+
+        return '<!DOCTYPE html>
+<html lang="fil">
+<head>
+    <meta charset="UTF-8">
+    <title>Pormularyo ng KP Blg. 15 - GAWAD NG PAGHAHATOL</title>
+    <style>
+        @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
+        * { box-sizing: border-box; }
+        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
+        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+        .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
+    </style>
+</head>
+<body>
+' . $wrapperStart . '
+    <div class="form-code">Pormularyo ng KP Blg. 15</div>
+
+    <table class="header-table">
+        <tr>
+            <td style="width: 80px; text-align: left; vertical-align: top;">
+                ' . (!empty($tumanaLogo) ? '<img src="' . $tumanaLogo . '" alt="Barangay Tumana" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+            <td class="header-center" style="vertical-align: top;">
+                <div>Republika ng Pilipinas</div>
+                <div>Lalawigan ng NCR</div>
+                <div>Lungsod ng Marikina</div>
+                <div style="font-weight: bold;">Barangay Tumana</div>
+                <div style="font-size: 9.5pt;">Telephone Nos. 8-238-4208</div>
+                <div style="font-size: 9.5pt;">EMAILADDRESS:barangaytumana2023@gmail.com</div>
+            </td>
+            <td style="width: 80px; text-align: right; vertical-align: top;">
+                ' . (!empty($marikinaLogo) ? '<img src="' . $marikinaLogo . '" alt="Lungsod ng Marikina" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; font-weight: bold; font-size: 11pt; margin-top: 10px; margin-bottom: 16px;">TANGGAPAN NG LUPONG TAGAPAMAYAPA</div>
+
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10.5pt;">
+        <tr>
+            <td style="width: 50%; vertical-align: top;">
+                ' . $compLines . '
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">(Mga) Nagrereklamo</div>
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">-laban kay/kina-</div>
+                ' . $respLines . '
+                <div style="text-align: center; font-size: 10pt;">(Mga) Inirereklamo</div>
+            </td>
+            <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 20px;">
+                <div>Usapin ng Barangay Blg. <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 130px; font-weight: bold; text-align: center;">' . $caseNumber . '</span></div>
+                <div style="margin-top: 6px;">Para sa: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 160px; font-weight: bold; text-align: center;">' . $title . '</span></div>
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; margin: 16px 0;">
+        <div style="font-size: 13.5pt; font-weight: bold; letter-spacing: 0.5px;">GAWAD NG PAGHAHATOL</div>
+        <div style="font-size: 11.5pt; font-weight: bold;">(Arbitration Award)</div>
+    </div>
+
+    <div style="font-size: 11pt; line-height: 2; text-align: justify; margin-bottom: 20px;">
+        <p style="text-indent: 40px; margin: 0 0 14px 0;">
+            Matapos na marinig ang mga salaysay na ipinahayag at sa maingat na pagsusuri ng ebidensya na iniharap sa usaping ito, ang hatol ay ginawa tulad ng sumusunod:
+        </p>
+        <div style="border-bottom: 1px solid #111; min-height: 22px; margin-bottom: 10px; font-weight: bold;">' . ($awardDetails ?: '&nbsp;') . '</div>
+        <div style="border-bottom: 1px solid #111; min-height: 22px; margin-bottom: 14px;">&nbsp;</div>
+        <p style="margin: 0;">
+            Ginawa ngayong ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 110px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, 20<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 40px; font-weight: bold; text-align: center;">' . substr($noticeYear, -2) . '</span> sa Barangay Tumana, Marikina City.
+        </p>
+    </div>
+
+    <div style="margin-top: 25px; display: flex; justify-content: flex-end;">
+        <div style="text-align: center; min-width: 260px;">
+            <div style="border-top: 1px solid #111; padding-top: 4px; font-size: 10pt; margin-bottom: 20px;">Tagapangulo ng Pangkat</div>
+            <div style="border-top: 1px solid #111; padding-top: 4px; font-size: 10pt; margin-bottom: 20px;">Kasapi</div>
+            <div style="border-top: 1px solid #111; padding-top: 4px; font-size: 10pt;">Kasapi</div>
+        </div>
+    </div>
+
+    <div style="margin-top: 22px; font-size: 10pt;">
+        <div style="font-weight: bold; margin-bottom: 18px;">Pinatotohanan:</div>
+        <div style="width: 250px; border-top: 1px solid #111; padding-top: 4px; font-weight: bold;">
+            Punong Barangay/Kalihim ng Lupon**
+        </div>
+        <div style="margin-top: 22px; font-size: 8.5pt; color: #475569; line-height: 1.4;">
+            <div>*Lalagdaan ng sinumang gumawa ng gawad ng paghahatol.</div>
+            <div>**Lalagdaan ng Punong Barangay kung ang gawad ay ginawa ng Tagapangulo ng Pangkat, at ng Kalihim ng Lupon, kung ginawa ng Punong Barangay.</div>
+        </div>
+    </div>
+' . $wrapperEnd . '
+</body>
+</html>';
+    }
+
+
+    public function renderKp16Html(array $data, bool $forPdf = false): string
+    {
+        return $this->kp16Html($data, $forPdf);
+    }
+
+    private function kp16Html(array $data, bool $forPdf = false): string
+    {
+        $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
+        $marikinaPath = __DIR__ . '/../../frontend/assets/images/marikina_logo.jpg';
+        $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
+        $marikinaLogo = file_exists($marikinaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($marikinaPath)) : '';
+
+        $caseNumber = !empty($data['case_number']) ? $this->escape((string) $data['case_number']) : '__________';
+        $title = !empty($data['complaint_title']) ? $this->escape((string) $data['complaint_title']) : '__________';
+        $agreementDetails = !empty($data['agreement_details']) ? $this->escape((string) $data['agreement_details']) : '';
+
+        $compList = [];
+        if (!empty($data['complainants']) && is_array($data['complainants'])) {
+            foreach ($data['complainants'] as $c) {
+                $cName = is_array($c) ? ($c['full_name'] ?? '') : (string)$c;
+                if (trim($cName) !== '') $compList[] = trim($cName);
+            }
+        }
+        $respList = [];
+        if (!empty($data['respondents']) && is_array($data['respondents'])) {
+            foreach ($data['respondents'] as $r) {
+                $rName = is_array($r) ? ($r['full_name'] ?? '') : (string)$r;
+                if (trim($rName) !== '') $respList[] = trim($rName);
+            }
+        }
+
+        $compLines = '';
+        foreach ($compList as $c) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($c) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($compList)); $i++) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $respLines = '';
+        foreach ($respList as $r) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($r) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($respList)); $i++) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $noticeTs = !empty($data['settlement_date']) ? strtotime($data['settlement_date']) : (!empty($data['notice_date']) ? strtotime($data['notice_date']) : time());
+        $noticeDay = date('j', $noticeTs);
+        $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
+        $noticeYear = date('Y', $noticeTs);
+
+        $officialName = !empty($data['official_name']) ? $this->escape((string) $data['official_name']) : 'HON. AKIKO LYNNE CENTENO';
+
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperEnd = $forPdf ? '' : '</div></div>';
+
+        return '<!DOCTYPE html>
+<html lang="fil">
+<head>
+    <meta charset="UTF-8">
+    <title>Pormularyo ng KP Blg. 16 - MATIWASAY NA PAG-AAYOS</title>
+    <style>
+        @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
+        * { box-sizing: border-box; }
+        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
+        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+        .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
+    </style>
+</head>
+<body>
+' . $wrapperStart . '
+    <div class="form-code">Pormularyo ng KP Blg. 16</div>
+
+    <table class="header-table">
+        <tr>
+            <td style="width: 80px; text-align: left; vertical-align: top;">
+                ' . (!empty($tumanaLogo) ? '<img src="' . $tumanaLogo . '" alt="Barangay Tumana" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+            <td class="header-center" style="vertical-align: top;">
+                <div>Republika ng Pilipinas</div>
+                <div>Lalawigan ng NCR</div>
+                <div>Lungsod ng Marikina</div>
+                <div style="font-weight: bold;">Barangay Tumana</div>
+                <div style="font-size: 9.5pt;">Telephone Nos. 8-238-4208</div>
+                <div style="font-size: 9.5pt;">EMAILADDRESS:barangaytumana2023@gmail.com</div>
+            </td>
+            <td style="width: 80px; text-align: right; vertical-align: top;">
+                ' . (!empty($marikinaLogo) ? '<img src="' . $marikinaLogo . '" alt="Lungsod ng Marikina" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; font-weight: bold; font-size: 11pt; margin-top: 10px; margin-bottom: 16px;">TANGGAPAN NG LUPONG TAGAPAMAYAPA</div>
+
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10.5pt;">
+        <tr>
+            <td style="width: 50%; vertical-align: top;">
+                ' . $compLines . '
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">(Mga) Nagrereklamo</div>
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">-laban kay/kina-</div>
+                ' . $respLines . '
+                <div style="text-align: center; font-size: 10pt;">(Mga) Inirereklamo</div>
+            </td>
+            <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 20px;">
+                <div>Usapin ng Barangay Blg. <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 130px; font-weight: bold; text-align: center;">' . $caseNumber . '</span></div>
+                <div style="margin-top: 6px;">Para sa: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 160px; font-weight: bold; text-align: center;">' . $title . '</span></div>
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; margin: 16px 0;">
+        <div style="font-size: 13.5pt; font-weight: bold; letter-spacing: 0.5px;">MATIWASAY NA PAG-AAYOS</div>
+        <div style="font-size: 11.5pt; font-weight: bold;">(Amicable Settlement)</div>
+    </div>
+
+    <div style="font-size: 11pt; line-height: 1.8; margin-bottom: 14px;">
+        KAMI, mga nagrereklamo/at inirereklamo sa usaping nakasaad sa itaas, ay nagkasundo na aayusin ang aming sigalot sa mga sumusunod:
+    </div>
+
+    <div style="margin-bottom: 16px; font-size: 10.5pt; line-height: 1.7;">
+        ' . ($agreementDetails ? '<div style="border: 1px solid #999; padding: 10px 14px; background: #fafafa; margin-bottom: 10px;">' . nl2br($agreementDetails) . '</div>' : '
+            <div style="border-bottom: 1px solid #111; min-height: 20px; margin-bottom: 6px;">&nbsp;</div>
+            <div style="border-bottom: 1px solid #111; min-height: 20px; margin-bottom: 6px;">&nbsp;</div>
+            <div style="border-bottom: 1px solid #111; min-height: 20px; margin-bottom: 6px;">&nbsp;</div>
+            <div style="border-bottom: 1px solid #111; min-height: 20px; margin-bottom: 6px;">&nbsp;</div>
+        ') . '
+    </div>
+
+    <div style="font-size: 10.5pt; line-height: 1.8; margin-bottom: 14px;">
+        At magkakaisa na tapat naming susundin ang mga kondisyon sa pag-aayos na nakasaad sa itaas.
+    </div>
+
+    <div style="font-size: 10.5pt; margin-bottom: 18px;">
+        Itinala ngayong <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 120px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, 20<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 40px; font-weight: bold; text-align: center;">' . substr($noticeYear, -2) . '</span>.
+    </div>
+
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+        <tr>
+            <td style="width: 45%; text-align: center;">
+                <div style="border-top: 1px solid #111; min-height: 2px; margin-bottom: 4px;"></div>
+                <div>(Mga) Nagrereklamo</div>
+            </td>
+            <td style="width: 10%;"></td>
+            <td style="width: 45%; text-align: center;">
+                <div style="border-top: 1px solid #111; min-height: 2px; margin-bottom: 4px;"></div>
+                <div>(Mga) Inirereklamo</div>
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; font-weight: bold; font-size: 11pt; margin-bottom: 6px;">PAGPAPATOTOO</div>
+    <div style="font-size: 10pt; line-height: 1.7; text-align: justify; margin-bottom: 22px;">
+        PINATUTUNAYAN ko ang sinusundang Matiwasay na Pag-aayos na ginawa ng mga panig ay malaya at kusang-loob, matapos na aking maipaliwanag sa kanila ang uri at magiging bunga ng gayong pag-aayos.
+    </div>
+
+    <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td style="width: 45%; vertical-align: top;">
+                <div style="border-top: 1px solid #111; width: 220px; margin-bottom: 4px;"></div>
+                <div style="font-weight: bold; font-size: 10.5pt;">' . $officialName . '</div>
+                <div style="font-size: 9.5pt;">Punong Barangay</div>
+            </td>
+            <td style="width: 10%;"></td>
+            <td style="width: 45%; vertical-align: top; text-align: center;">
+                <div style="border-top: 1px solid #111; width: 220px; margin: 0 auto 4px;"></div>
+                <div style="font-size: 10pt;">Tagapangulo ng Pangkat</div>
+            </td>
+        </tr>
+    </table>
+' . $wrapperEnd . '
+</body>
+</html>';
+    }
+
+    public function renderKp17Html(array $data, bool $forPdf = false): string
+    {
+        return $this->kp17Html($data, $forPdf);
+    }
+
+    private function kp17Html(array $data, bool $forPdf = false): string
+    {
+        $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
+        $marikinaPath = __DIR__ . '/../../frontend/assets/images/marikina_logo.jpg';
+        $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
+        $marikinaLogo = file_exists($marikinaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($marikinaPath)) : '';
+
+        $caseNumber = !empty($data['case_number']) ? $this->escape((string) $data['case_number']) : '__________';
+        $title = !empty($data['complaint_title']) ? $this->escape((string) $data['complaint_title']) : '__________';
+        $reason = !empty($data['repudiation_reason']) ? $this->escape((string) $data['repudiation_reason']) : '';
+
+        $compList = [];
+        if (!empty($data['complainants']) && is_array($data['complainants'])) {
+            foreach ($data['complainants'] as $c) {
+                $cName = is_array($c) ? ($c['full_name'] ?? '') : (string)$c;
+                if (trim($cName) !== '') $compList[] = trim($cName);
+            }
+        }
+        $respList = [];
+        if (!empty($data['respondents']) && is_array($data['respondents'])) {
+            foreach ($data['respondents'] as $r) {
+                $rName = is_array($r) ? ($r['full_name'] ?? '') : (string)$r;
+                if (trim($rName) !== '') $respList[] = trim($rName);
+            }
+        }
+
+        $compLines = '';
+        foreach ($compList as $c) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($c) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($compList)); $i++) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $respLines = '';
+        foreach ($respList as $r) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($r) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($respList)); $i++) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $noticeTs = !empty($data['repudiation_date']) ? strtotime($data['repudiation_date']) : (!empty($data['notice_date']) ? strtotime($data['notice_date']) : time());
+        $noticeDay = date('j', $noticeTs);
+        $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
+        $noticeYear = date('Y', $noticeTs);
+
+        $officialName = !empty($data['official_name']) ? $this->escape((string) $data['official_name']) : 'HON. AKIKO LYNNE CENTENO';
+
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperEnd = $forPdf ? '' : '</div></div>';
+
+        return '<!DOCTYPE html>
+<html lang="fil">
+<head>
+    <meta charset="UTF-8">
+    <title>Pormularyo ng KP Blg. 17 - PAGTANGGI</title>
+    <style>
+        @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
+        * { box-sizing: border-box; }
+        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
+        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+        .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
+    </style>
+</head>
+<body>
+' . $wrapperStart . '
+    <div class="form-code">Pormularyo ng KP Blg. 17</div>
+
+    <table class="header-table">
+        <tr>
+            <td style="width: 80px; text-align: left; vertical-align: top;">
+                ' . (!empty($tumanaLogo) ? '<img src="' . $tumanaLogo . '" alt="Barangay Tumana" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+            <td class="header-center" style="vertical-align: top;">
+                <div>Republika ng Pilipinas</div>
+                <div>Lalawigan ng NCR</div>
+                <div>Lungsod ng Marikina</div>
+                <div style="font-weight: bold;">Barangay Tumana</div>
+                <div style="font-size: 9.5pt;">Telephone Nos. 8-238-4208</div>
+                <div style="font-size: 9.5pt;">EMAILADDRESS:barangaytumana2023@gmail.com</div>
+            </td>
+            <td style="width: 80px; text-align: right; vertical-align: top;">
+                ' . (!empty($marikinaLogo) ? '<img src="' . $marikinaLogo . '" alt="Lungsod ng Marikina" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; font-weight: bold; font-size: 11pt; margin-top: 10px; margin-bottom: 16px;">TANGGAPAN NG LUPONG TAGAPAMAYAPA</div>
+
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10.5pt;">
+        <tr>
+            <td style="width: 50%; vertical-align: top;">
+                ' . $compLines . '
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">(Mga) Nagrereklamo</div>
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">-laban kay/kina-</div>
+                ' . $respLines . '
+                <div style="text-align: center; font-size: 10pt;">(Mga) Inirereklamo</div>
+            </td>
+            <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 20px;">
+                <div>Usapin ng Barangay Blg. <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 130px; font-weight: bold; text-align: center;">' . $caseNumber . '</span></div>
+                <div style="margin-top: 6px;">Para sa: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 160px; font-weight: bold; text-align: center;">' . $title . '</span></div>
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; margin: 16px 0;">
+        <div style="font-size: 13.5pt; font-weight: bold; letter-spacing: 0.5px;">PAGTANGGI</div>
+        <div style="font-size: 11.5pt; font-weight: bold;">(Repudiation)</div>
+    </div>
+
+    <div style="font-size: 11pt; line-height: 2; text-align: justify; margin-bottom: 14px;">
+        Aking/Aming tinatanggihan ang pag-aayos/kasunduan para sa paghahatol sa dahilan na ang aking pagpayag ay pinawalang-bisa ng:
+    </div>
+
+    <div style="font-size: 10.5pt; line-height: 1.8; margin-bottom: 16px;">
+        <div style="margin-bottom: 6px;">(Lagyan ng tsek kung alin ang angkop)</div>
+        <div style="margin-bottom: 8px;">
+            ( &nbsp; ) Pandaraya (Isaad ang detalye)<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 450px;">&nbsp;</span>
+        </div>
+        <div style="margin-bottom: 8px;">
+            ( &nbsp; ) Karahasan (Isaad ang detalye)<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 450px;">&nbsp;</span>
+        </div>
+        <div style="margin-bottom: 8px;">
+            ( &nbsp; ) Pananakot (Isaad ang detalye)<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 450px;">&nbsp;</span>
+        </div>
+    </div>
+
+    <div style="font-size: 10.5pt; margin-bottom: 18px;">
+        Ngayong <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> araw ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 120px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, 20<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 40px; font-weight: bold; text-align: center;">' . substr($noticeYear, -2) . '</span>.
+    </div>
+
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+        <tr>
+            <td style="width: 45%; text-align: center;">
+                <div style="border-top: 1px solid #111; min-height: 2px; margin-bottom: 4px;"></div>
+                <div>(Mga) Nagrereklamo</div>
+            </td>
+            <td style="width: 10%;"></td>
+            <td style="width: 45%; text-align: center;">
+                <div style="border-top: 1px solid #111; min-height: 2px; margin-bottom: 4px;"></div>
+                <div>(Mga) Inirereklamo</div>
+            </td>
+        </tr>
+    </table>
+
+    <div style="font-size: 10pt; line-height: 1.7; margin-bottom: 22px;">
+        Tinanggap at pinanumpaan sa harap ko ngayong ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 50px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 100px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, 20<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 40px; font-weight: bold; text-align: center;">' . substr($noticeYear, -2) . '</span> sa Barangay Tumana, Marikina City.
+    </div>
+
+    <div style="text-align: right; margin-bottom: 20px;">
+        <div style="display: inline-block; text-align: center; min-width: 280px;">
+            <div style="border-top: 1px solid #111; padding-top: 4px; font-size: 10pt; margin-bottom: 18px;">Tagapangulo ng Pangkat/Kasapi</div>
+            <div style="border-top: 1px solid #111; padding-top: 4px; font-weight: bold; font-size: 10.5pt;">' . $officialName . '</div>
+            <div style="font-size: 9.5pt;">Punong Barangay</div>
+        </div>
+    </div>
+
+    <div style="font-size: 8pt; color: #475569; line-height: 1.35; border-top: 1px dashed #cbd5e1; padding-top: 8px;">
+        *Ang pagkabigong tanggihan ang pag-aayos o kasunduan ng paghahatol na nalolooban sa itinakdang sampung (10) araw mula sa petsa ng pag-aayos at limang (5) araw mula sa petsa ng kasunduan ng paghahatol ayon sa pag-kakasunud-sunod ay ipapalagay na tinalikdan na niya ang karapatang tumutol sa nasabing mga dahilan.
+    </div>
+' . $wrapperEnd . '
+</body>
+</html>';
+    }
+
+    public function renderKp18Html(array $data, bool $forPdf = false): string
+    {
+        return $this->kp18Html($data, $forPdf);
+    }
+
+    private function kp18Html(array $data, bool $forPdf = false): string
+    {
+        $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
+        $marikinaPath = __DIR__ . '/../../frontend/assets/images/marikina_logo.jpg';
+        $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
+        $marikinaLogo = file_exists($marikinaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($marikinaPath)) : '';
+
+        $caseNumber = !empty($data['case_number']) ? $this->escape((string) $data['case_number']) : '__________';
+        $title = !empty($data['complaint_title']) ? $this->escape((string) $data['complaint_title']) : '__________';
+
+        $compList = [];
+        if (!empty($data['complainants']) && is_array($data['complainants'])) {
+            foreach ($data['complainants'] as $c) {
+                $cName = is_array($c) ? ($c['full_name'] ?? '') : (string)$c;
+                if (trim($cName) !== '') $compList[] = trim($cName);
+            }
+        }
+        $respList = [];
+        if (!empty($data['respondents']) && is_array($data['respondents'])) {
+            foreach ($data['respondents'] as $r) {
+                $rName = is_array($r) ? ($r['full_name'] ?? '') : (string)$r;
+                if (trim($rName) !== '') $respList[] = trim($rName);
+            }
+        }
+        $targetParty = !empty($data['target_party_name']) ? $this->escape((string) $data['target_party_name']) : (!empty($compList) ? implode(' / ', $compList) : '________________________');
+
+        $compLines = '';
+        foreach ($compList as $c) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($c) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($compList)); $i++) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $respLines = '';
+        foreach ($respList as $r) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($r) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($respList)); $i++) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $hearingTs = !empty($data['hearing_date']) ? strtotime($data['hearing_date']) : null;
+        if ($hearingTs) {
+            $hDay = date('j', $hearingTs);
+            $hMonth = $this->filipinoMonth((int) date('n', $hearingTs));
+            $hYear = date('Y', $hearingTs);
+            $hTime = date('g:i A', $hearingTs);
+        } else {
+            $hDay = '___'; $hMonth = '________'; $hYear = '2026'; $hTime = '_____';
+        }
+
+        $missedTs = !empty($data['missed_hearing_date']) ? strtotime($data['missed_hearing_date']) : null;
+        $missedDateStr = $missedTs ? 'ika-' . date('j', $missedTs) . ' ng ' . $this->filipinoMonth((int) date('n', $missedTs)) . ', ' . date('Y', $missedTs) : '___________, 2026';
+
+        $noticeTs = !empty($data['notice_date']) ? strtotime($data['notice_date']) : time();
+        $noticeDay = date('j', $noticeTs);
+        $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
+        $noticeYear = date('Y', $noticeTs);
+
+        $officialName = !empty($data['official_name']) ? $this->escape((string) $data['official_name']) : 'HON. AKIKO LYNNE CENTENO';
+
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperEnd = $forPdf ? '' : '</div></div>';
+
+        return '<!DOCTYPE html>
+<html lang="fil">
+<head>
+    <meta charset="UTF-8">
+    <title>Pormularyo ng KP Blg. 18 - PAABISO NG PAGDINIG</title>
+    <style>
+        @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
+        * { box-sizing: border-box; }
+        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
+        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+        .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
+    </style>
+</head>
+<body>
+' . $wrapperStart . '
+    <div class="form-code">Pormularyo ng KP Blg. 18</div>
+
+    <table class="header-table">
+        <tr>
+            <td style="width: 80px; text-align: left; vertical-align: top;">
+                ' . (!empty($tumanaLogo) ? '<img src="' . $tumanaLogo . '" alt="Barangay Tumana" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+            <td class="header-center" style="vertical-align: top;">
+                <div>Republika ng Pilipinas</div>
+                <div>Lalawigan ng NCR</div>
+                <div>Lungsod ng Marikina</div>
+                <div style="font-weight: bold;">Barangay Tumana</div>
+                <div style="font-size: 9.5pt;">Telephone Nos. 8-238-4208</div>
+                <div style="font-size: 9.5pt;">EMAILADDRESS:barangaytumana2023@gmail.com</div>
+            </td>
+            <td style="width: 80px; text-align: right; vertical-align: top;">
+                ' . (!empty($marikinaLogo) ? '<img src="' . $marikinaLogo . '" alt="Lungsod ng Marikina" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; font-weight: bold; font-size: 11pt; margin-top: 10px; margin-bottom: 16px;">TANGGAPAN NG LUPONG TAGAPAMAYAPA</div>
+
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10.5pt;">
+        <tr>
+            <td style="width: 50%; vertical-align: top;">
+                ' . $compLines . '
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">(Mga) Nagrereklamo</div>
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">-laban kay/kina-</div>
+                ' . $respLines . '
+                <div style="text-align: center; font-size: 10pt;">(Mga) Inirereklamo</div>
+            </td>
+            <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 20px;">
+                <div>Usapin ng Barangay Blg.: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 130px; font-weight: bold; text-align: center;">' . $caseNumber . '</span></div>
+                <div style="margin-top: 6px;">Para sa: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 160px; font-weight: bold; text-align: center;">' . $title . '</span></div>
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; margin: 16px 0;">
+        <div style="font-size: 13.5pt; font-weight: bold; letter-spacing: 0.5px;">PAABISO NG PAGDINIG</div>
+        <div style="font-size: 11.5pt; font-weight: bold;">(Re: Failure to Appear)</div>
+    </div>
+
+    <div style="margin-bottom: 16px; font-size: 11pt;">
+        <div>Para kay/kina: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 250px; font-weight: bold;">' . $targetParty . '</span></div>
+        <div style="text-align: center; font-size: 10.5pt; margin-top: 4px;">(Mga) nagrereklamo</div>
+    </div>
+
+    <div style="font-size: 11pt; line-height: 2; text-align: justify; margin-bottom: 25px;">
+        <p style="text-indent: 40px; margin: 0 0 16px 0;">
+            Ikaw ay hinihilingan na humarap sa akin/Pangkat <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 140px; font-weight: bold; text-align: center;">' . ($data['venue'] ?? 'Tanggapan ng Punong Barangay') . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 140px; font-weight: bold; text-align: center;">ika-' . $hDay . ' ng ' . $hMonth . ', ' . $hYear . '</span> sa ganap na ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 80px; font-weight: bold; text-align: center;">' . $hTime . '</span> upang ipaliwanag kung bakit nabigo kang humarap para sa pamamagitan/pagkakasundo na itinakda noong <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 110px; font-weight: bold; text-align: center;">' . $missedDateStr . '</span> at kung bakit ang iyong reklamo ay hindi dapat ipawalang-saysay, ang katibayan upang humadlang sa paghahain ng sakdal sa hukuman/tanggapan ng pamahalaan ay di-dapat ipalabas, at ang paglilitis ng paglapastangan sa hukuman ay di-dapat ihain sa hukuman dahil sa pagkabigo o pagtangging humarap sa Punong Barangay/Pangkat ng Tagapagkasundo.
+        </p>
+        <p style="text-indent: 40px; margin: 0;">
+            Ipinagbibigay-alam ngayong ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 110px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, ' . $noticeYear . '.
+        </p>
+    </div>
+
+    <div style="margin-top: 35px;">
+        <div style="border-top: 1px solid #111; width: 260px; margin-bottom: 4px;"></div>
+        <div style="font-weight: bold; font-size: 11pt;">' . $officialName . '</div>
+        <div style="font-size: 10pt;">Punong Barangay/Tagapangulo ng Pangkat</div>
+    </div>
+' . $wrapperEnd . '
+</body>
+</html>';
+    }
+
+
+    public function renderKp19Html(array $data, bool $forPdf = false): string
+    {
+        return $this->kp19Html($data, $forPdf);
+    }
+
+    private function kp19Html(array $data, bool $forPdf = false): string
+    {
+        $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
+        $marikinaPath = __DIR__ . '/../../frontend/assets/images/marikina_logo.jpg';
+        $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
+        $marikinaLogo = file_exists($marikinaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($marikinaPath)) : '';
+
+        $caseNumber = !empty($data['case_number']) ? $this->escape((string) $data['case_number']) : '__________';
+        $title = !empty($data['complaint_title']) ? $this->escape((string) $data['complaint_title']) : '__________';
+
+        $compList = [];
+        if (!empty($data['complainants']) && is_array($data['complainants'])) {
+            foreach ($data['complainants'] as $c) {
+                $cName = is_array($c) ? ($c['full_name'] ?? '') : (string)$c;
+                if (trim($cName) !== '') $compList[] = trim($cName);
+            }
+        }
+        $respList = [];
+        if (!empty($data['respondents']) && is_array($data['respondents'])) {
+            foreach ($data['respondents'] as $r) {
+                $rName = is_array($r) ? ($r['full_name'] ?? '') : (string)$r;
+                if (trim($rName) !== '') $respList[] = trim($rName);
+            }
+        }
+        $targetParty = !empty($data['target_party_name']) ? $this->escape((string) $data['target_party_name']) : (!empty($respList) ? implode(' / ', $respList) : '________________________');
+
+        $compLines = '';
+        foreach ($compList as $c) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($c) . '</div>'; }
+        for ($i = 0; $i < max(0, 2 - count($compList)); $i++) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $respLines = '';
+        foreach ($respList as $r) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($r) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($respList)); $i++) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $hearingTs = !empty($data['hearing_date']) ? strtotime($data['hearing_date']) : null;
+        if ($hearingTs) {
+            $hDayOfWeek = $this->filipinoDayOfWeek((int) date('w', $hearingTs));
+            $hDay = date('j', $hearingTs);
+            $hMonth = $this->filipinoMonth((int) date('n', $hearingTs));
+            $hYear = date('Y', $hearingTs);
+            $hTime = date('g:i', $hearingTs);
+            $hAmPm = $this->filipinoTime((int) date('H', $hearingTs));
+        } else {
+            $hDayOfWeek = '________'; $hDay = '___'; $hMonth = '________'; $hYear = '2026'; $hTime = '_____'; $hAmPm = 'umaga/hapon';
+        }
+
+        $missedTs = !empty($data['missed_hearing_date']) ? strtotime($data['missed_hearing_date']) : null;
+        $missedDateStr = $missedTs ? 'ika-' . date('j', $missedTs) . ' ng ' . $this->filipinoMonth((int) date('n', $missedTs)) . ', ' . date('Y', $missedTs) : '___________, 2025';
+
+        $noticeTs = !empty($data['notice_date']) ? strtotime($data['notice_date']) : time();
+        $noticeDay = date('j', $noticeTs);
+        $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
+        $noticeYear = date('Y', $noticeTs);
+
+        $officialName = !empty($data['official_name']) ? $this->escape((string) $data['official_name']) : 'HON. AKIKO LYNNE CENTENO';
+
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperEnd = $forPdf ? '' : '</div></div>';
+
+        return '<!DOCTYPE html>
+<html lang="fil">
+<head>
+    <meta charset="UTF-8">
+    <title>Pormularyo ng KP Blg. 19 - PAABISO NG PAGDINIG</title>
+    <style>
+        @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
+        * { box-sizing: border-box; }
+        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
+        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+        .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
+    </style>
+</head>
+<body>
+' . $wrapperStart . '
+    <div class="form-code">Pormularyo ng KP Blg. 19</div>
+
+    <table class="header-table">
+        <tr>
+            <td style="width: 80px; text-align: left; vertical-align: top;">
+                ' . (!empty($tumanaLogo) ? '<img src="' . $tumanaLogo . '" alt="Barangay Tumana" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+            <td class="header-center" style="vertical-align: top;">
+                <div>Republika ng Pilipinas</div>
+                <div>Lalawigan ng NCR</div>
+                <div>Lungsod ng Marikina</div>
+                <div style="font-weight: bold;">Barangay Tumana</div>
+                <div style="font-size: 9.5pt;">Telephone Nos. 8-238-4208</div>
+                <div style="font-size: 9.5pt;">EMAILADDRESS:barangaytumana2023@gmail.com</div>
+            </td>
+            <td style="width: 80px; text-align: right; vertical-align: top;">
+                ' . (!empty($marikinaLogo) ? '<img src="' . $marikinaLogo . '" alt="Lungsod ng Marikina" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; font-weight: bold; font-size: 11pt; margin-top: 6px; margin-bottom: 2px;">TANGAPAN NG PUNONG BARANGAY</div>
+    <div style="text-align: center; font-weight: bold; font-size: 11pt; margin-bottom: 16px;">TANGGAPAN NG LUPON TAGAPAMAYAPA</div>
+
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10.5pt;">
+        <tr>
+            <td style="width: 50%; vertical-align: top;">
+                ' . $compLines . '
+                <div style="font-size: 10pt; margin-bottom: 4px;">Barangay Tumana, Marikina City</div>
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">(Mga) Nagrereklamo</div>
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">-laban kay/kina-</div>
+                ' . $respLines . '
+                <div style="text-align: center; font-size: 10pt;">(Mga) Inirereklamo</div>
+            </td>
+            <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 20px;">
+                <div>Usapin ng Barangay Blg.: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 130px; font-weight: bold; text-align: center;">' . $caseNumber . '</span></div>
+                <div style="margin-top: 6px;">Para sa: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 160px; font-weight: bold; text-align: center;">' . $title . '</span></div>
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; margin: 16px 0;">
+        <div style="font-size: 13.5pt; font-weight: bold; letter-spacing: 0.5px;">PAABISO NG PAGDINIG</div>
+        <div style="font-size: 11.5pt; font-weight: bold;">(Re: Failure to Appear)</div>
+    </div>
+
+    <div style="margin-bottom: 16px; font-size: 11pt;">
+        <div>Para kay: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 250px; font-weight: bold;">' . $targetParty . '</span></div>
+        <div style="text-align: center; font-size: 10.5pt; margin-top: 4px;">(Mga) Inerereklamo</div>
+    </div>
+
+    <div style="font-size: 11pt; line-height: 2; text-align: justify; margin-bottom: 25px;">
+        <p style="text-indent: 40px; margin: 0 0 16px 0;">
+            Ikaw ay hinihilingan na humarap sa akin/Pangkat sa <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 100px; font-weight: bold; text-align: center;">' . $hDayOfWeek . '</span> ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $hDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 110px; font-weight: bold; text-align: center;">' . $hMonth . '</span>, <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 70px; font-weight: bold; text-align: center;">' . $hYear . '</span> sa ganap na ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 70px; font-weight: bold; text-align: center;">' . $hTime . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 90px; font-weight: bold; text-align: center;">' . $hAmPm . '</span> upang ipaliwanag kung bakit nabigo kang humarap para sa pamamagitan/pagkakasundo na itinakda noong, 2025 at kung bakit ang iyong reklamo ay hindi dapat ipawalang-saysay, ang katibayan upang humadlang sa paghahain ng sakdal sa hukuman/tanggapan ng pamahalaan ay di-dapat ipalabas, at ang paglilitis ng paglapastangan sa hukuman ay di-dapat ihain sa hukuman dahil sa pagkabigo o pagtangging humarap sa Punong Barangay/Pangkat ng Tagapagkasundo.
+        </p>
+        <p style="text-indent: 40px; margin: 0;">
+            Ipinagbibigay-alam ngayong ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 110px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, ' . $noticeYear . '.
+        </p>
+    </div>
+
+    <table style="width: 100%; border-collapse: collapse; margin-top: 35px;">
+        <tr>
+            <td style="width: 50%; vertical-align: top;">
+                <div style="border-top: 1px solid #111; width: 220px; margin-bottom: 4px;"></div>
+                <div style="font-size: 10pt;">Inerereklamo</div>
+            </td>
+            <td style="width: 50%; vertical-align: top; text-align: right;">
+                <div style="display: inline-block; text-align: center;">
+                    <div style="border-top: 1px solid #111; width: 260px; margin-bottom: 4px;"></div>
+                    <div style="font-weight: bold; font-size: 11pt;">' . $officialName . '</div>
+                    <div style="font-size: 10pt;">Punong Barangay</div>
                 </div>
-                <div>
-                    <strong>Ukol sa:</strong><br>' . $title . '
+            </td>
+        </tr>
+    </table>
+' . $wrapperEnd . '
+</body>
+</html>';
+    }
+
+    public function renderKp20Html(array $data, bool $forPdf = false): string
+    {
+        return $this->kp20Html($data, $forPdf);
+    }
+
+    private function kp20Html(array $data, bool $forPdf = false): string
+    {
+        $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
+        $marikinaPath = __DIR__ . '/../../frontend/assets/images/marikina_logo.jpg';
+        $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
+        $marikinaLogo = file_exists($marikinaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($marikinaPath)) : '';
+
+        $caseNumber = !empty($data['case_number']) ? $this->escape((string) $data['case_number']) : '__________';
+        $title = !empty($data['complaint_title']) ? $this->escape((string) $data['complaint_title']) : '__________';
+        $repudiatingParty = !empty($data['repudiating_party']) ? $this->escape((string) $data['repudiating_party']) : (!empty($data['target_party_name']) ? $this->escape((string) $data['target_party_name']) : '______________________________');
+        $grounds = !empty($data['repudiation_grounds']) ? $this->escape((string) $data['repudiation_grounds']) : (!empty($data['grounds']) ? $this->escape((string) $data['grounds']) : '');
+
+        $compList = [];
+        if (!empty($data['complainants']) && is_array($data['complainants'])) {
+            foreach ($data['complainants'] as $c) {
+                $cName = is_array($c) ? ($c['full_name'] ?? '') : (string)$c;
+                if (trim($cName) !== '') $compList[] = trim($cName);
+            }
+        }
+        $respList = [];
+        if (!empty($data['respondents']) && is_array($data['respondents'])) {
+            foreach ($data['respondents'] as $r) {
+                $rName = is_array($r) ? ($r['full_name'] ?? '') : (string)$r;
+                if (trim($rName) !== '') $respList[] = trim($rName);
+            }
+        }
+
+        $compLines = '';
+        foreach ($compList as $c) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($c) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($compList)); $i++) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $respLines = '';
+        foreach ($respList as $r) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($r) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($respList)); $i++) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $noticeTs = !empty($data['notice_date']) ? strtotime($data['notice_date']) : (!empty($data['hearing_date']) ? strtotime($data['hearing_date']) : time());
+        $noticeDay = date('j', $noticeTs);
+        $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
+        $noticeYear = date('Y', $noticeTs);
+
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperEnd = $forPdf ? '' : '</div></div>';
+
+        return '<!DOCTYPE html>
+<html lang="fil">
+<head>
+    <meta charset="UTF-8">
+    <title>Pormularyo ng KP Blg. 20 - KATIBAYAN NA MAKAPAGHAIN NG SAKDAL</title>
+    <style>
+        @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
+        * { box-sizing: border-box; }
+        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
+        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+        .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
+    </style>
+</head>
+<body>
+' . $wrapperStart . '
+    <div class="form-code">Pormularyo ng KP Blg. 20</div>
+
+    <table class="header-table">
+        <tr>
+            <td style="width: 80px; text-align: left; vertical-align: top;">
+                ' . (!empty($tumanaLogo) ? '<img src="' . $tumanaLogo . '" alt="Barangay Tumana" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+            <td class="header-center" style="vertical-align: top;">
+                <div>Republika ng Pilipinas</div>
+                <div>Lalawigan ng NCR</div>
+                <div>Lungsod ng Marikina</div>
+                <div style="font-weight: bold;">Barangay Tumana</div>
+                <div style="font-size: 9.5pt;">Telephone Nos. 8-238-4208</div>
+                <div style="font-size: 9.5pt;">EMAILADDRESS:barangaytumana2023@gmail.com</div>
+            </td>
+            <td style="width: 80px; text-align: right; vertical-align: top;">
+                ' . (!empty($marikinaLogo) ? '<img src="' . $marikinaLogo . '" alt="Lungsod ng Marikina" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; font-weight: bold; font-size: 11pt; margin-top: 10px; margin-bottom: 16px;">TANGGAPAN NG LUPONG TAGAPAMAYAPA</div>
+
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10.5pt;">
+        <tr>
+            <td style="width: 50%; vertical-align: top;">
+                ' . $compLines . '
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">(Mga) Nagrereklamo</div>
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">-laban kay/kina-</div>
+                ' . $respLines . '
+                <div style="text-align: center; font-size: 10pt;">(Mga) Inirereklamo</div>
+            </td>
+            <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 20px;">
+                <div>Usapin ng Barangay Blg.: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 130px; font-weight: bold; text-align: center;">' . $caseNumber . '</span></div>
+                <div style="margin-top: 6px;">Para sa: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 160px; font-weight: bold; text-align: center;">' . $title . '</span></div>
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; margin: 18px 0;">
+        <div style="font-size: 13.5pt; font-weight: bold; letter-spacing: 0.5px;">KATIBAYAN NA MAKAPAGHAIN NG SAKDAL</div>
+        <div style="font-size: 11pt; font-weight: bold;">(Certification to File Action)</div>
+    </div>
+
+    <div style="font-size: 11pt; line-height: 1.8; margin-bottom: 20px;">
+        <div style="font-weight: bold; margin-bottom: 8px;">ITO AY NAGPAPATUNAY NA:</div>
+        <ol style="margin: 0; padding-left: 24px; text-align: justify;">
+            <li style="margin-bottom: 10px;">Nagkaroon ng personal na paghaharap sa pagitan ng mga panig sa harap ng Punong Barangay/Pangkat ng Tagapagkasundo;</li>
+            <li style="margin-bottom: 10px;">Na nagkaroon ng pag-aayos;</li>
+            <li style="margin-bottom: 10px;">Na ang pag-aayos ay tinanggihan sa isang sinumpaang salaysay sa harap ng Punong Barangay sa pamamagitan ni <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 250px; font-weight: bold; text-align: center;">' . $repudiatingParty . '</span> sa dahilan ng ' . ($grounds !== '' ? '<span style="border-bottom: 1px solid #111; font-weight: bold;">' . $grounds . '</span>' : '<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 250px;">&nbsp;</span><div style="border-bottom: 1px solid #111; min-height: 18px; margin-top: 8px;">&nbsp;</div><div style="border-bottom: 1px solid #111; min-height: 18px; margin-top: 8px;">&nbsp;</div>') . ';</li>
+            <li style="margin-bottom: 10px;">Dahil dito, ang nasabing sigalot ay maaari nang ihain sa hukuman/tanggapan ng pamahalaan.</li>
+        </ol>
+    </div>
+
+    <div style="font-size: 11pt; margin-top: 25px; margin-bottom: 35px; text-indent: 40px;">
+        Ngayong ika- <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 120px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, ' . $noticeYear . '.
+    </div>
+
+    <div style="text-align: right; margin-top: 40px;">
+        <div style="display: inline-block; text-align: center;">
+            <div style="border-top: 1px solid #111; width: 240px; margin-bottom: 4px;"></div>
+            <div style="font-size: 10.5pt;">Tagapangulo ng Pangkat</div>
+        </div>
+    </div>
+' . $wrapperEnd . '
+</body>
+</html>';
+    }
+
+    public function renderKp20AHtml(array $data, bool $forPdf = false): string
+    {
+        return $this->kp20AHtml($data, $forPdf);
+    }
+
+    private function kp20AHtml(array $data, bool $forPdf = false): string
+    {
+        $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
+        $marikinaPath = __DIR__ . '/../../frontend/assets/images/marikina_logo.jpg';
+        $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
+        $marikinaLogo = file_exists($marikinaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($marikinaPath)) : '';
+
+        $caseNumber = !empty($data['case_number']) ? $this->escape((string) $data['case_number']) : '__________';
+        $title = !empty($data['complaint_title']) ? $this->escape((string) $data['complaint_title']) : '__________';
+
+        $compList = [];
+        if (!empty($data['complainants']) && is_array($data['complainants'])) {
+            foreach ($data['complainants'] as $c) {
+                $cName = is_array($c) ? ($c['full_name'] ?? '') : (string)$c;
+                if (trim($cName) !== '') $compList[] = trim($cName);
+            }
+        }
+        $respList = [];
+        if (!empty($data['respondents']) && is_array($data['respondents'])) {
+            foreach ($data['respondents'] as $r) {
+                $rName = is_array($r) ? ($r['full_name'] ?? '') : (string)$r;
+                if (trim($rName) !== '') $respList[] = trim($rName);
+            }
+        }
+
+        $compLines = '';
+        foreach ($compList as $c) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($c) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($compList)); $i++) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $respLines = '';
+        foreach ($respList as $r) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($r) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($respList)); $i++) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $noticeTs = !empty($data['notice_date']) ? strtotime($data['notice_date']) : (!empty($data['hearing_date']) ? strtotime($data['hearing_date']) : time());
+        $noticeDay = date('j', $noticeTs);
+        $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
+        $noticeYear = date('Y', $noticeTs);
+
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperEnd = $forPdf ? '' : '</div></div>';
+
+        return '<!DOCTYPE html>
+<html lang="fil">
+<head>
+    <meta charset="UTF-8">
+    <title>Pormularyo ng KP Blg. 20-A - KATIBAYAN NA MAKAPAGHAIN NG SAKDAL</title>
+    <style>
+        @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
+        * { box-sizing: border-box; }
+        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
+        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+        .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
+    </style>
+</head>
+<body>
+' . $wrapperStart . '
+    <div class="form-code">Pormularyo ng KP Blg. 20-A</div>
+
+    <table class="header-table">
+        <tr>
+            <td style="width: 80px; text-align: left; vertical-align: top;">
+                ' . (!empty($tumanaLogo) ? '<img src="' . $tumanaLogo . '" alt="Barangay Tumana" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+            <td class="header-center" style="vertical-align: top;">
+                <div>Republika ng Pilipinas</div>
+                <div>Lalawigan ng NCR</div>
+                <div>Lungsod ng Marikina</div>
+                <div style="font-weight: bold;">Barangay Tumana</div>
+                <div style="font-size: 9.5pt;">Telephone Nos. 8-238-4208</div>
+                <div style="font-size: 9.5pt;">EMAILADDRESS:barangaytumana2023@gmail.com</div>
+            </td>
+            <td style="width: 80px; text-align: right; vertical-align: top;">
+                ' . (!empty($marikinaLogo) ? '<img src="' . $marikinaLogo . '" alt="Lungsod ng Marikina" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; font-weight: bold; font-size: 11pt; margin-top: 10px; margin-bottom: 16px;">TANGGAPAN NG LUPONG TAGAPAMAYAPA</div>
+
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10.5pt;">
+        <tr>
+            <td style="width: 50%; vertical-align: top;">
+                ' . $compLines . '
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">(Mga) Nagrereklamo</div>
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">-laban kay/kina-</div>
+                ' . $respLines . '
+                <div style="text-align: center; font-size: 10pt;">(Mga) Inirereklamo</div>
+            </td>
+            <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 20px;">
+                <div>Usapin ng Barangay Blg.: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 130px; font-weight: bold; text-align: center;">' . $caseNumber . '</span></div>
+                <div style="margin-top: 6px;">Para sa: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 160px; font-weight: bold; text-align: center;">' . $title . '</span></div>
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; margin: 18px 0;">
+        <div style="font-size: 13.5pt; font-weight: bold; letter-spacing: 0.5px;">KATIBAYAN NA MAKAPAGHAIN NG SAKDAL</div>
+        <div style="font-size: 11pt; font-weight: bold;">(Certification to File Action)</div>
+    </div>
+
+    <div style="font-size: 11pt; line-height: 1.8; margin-bottom: 20px;">
+        <div style="font-weight: bold; margin-bottom: 8px;">ITO AY NAGPAPATUNAY NA:</div>
+        <ol style="margin: 0; padding-left: 24px; text-align: justify;">
+            <li style="margin-bottom: 10px;">Nagkaroon ng personal na paghaharap sa pagitan ng mga panig sa harap ng Punong Barangay subalit ang pamamagitan ay nabigo;</li>
+            <li style="margin-bottom: 10px;">Ang Pangkat ng Tagapagkasundo ay binuo subalit ang personal na pag-uusap sa harap ng Pangkat ay di nagbunga ng pag-aayos;</li>
+            <li style="margin-bottom: 10px;">Dahil dito, ang nasabing reklamo para sa sigalot ay maaari nang idulog sa hukuman/tanggapan ng pamahalaan.</li>
+        </ol>
+    </div>
+
+    <div style="font-size: 11pt; margin-top: 25px; margin-bottom: 35px; text-indent: 40px;">
+        Ngayong ika- <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 120px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, ' . $noticeYear . '.
+    </div>
+
+    <div style="text-align: right; margin-top: 40px;">
+        <div style="display: inline-block; text-align: center;">
+            <div style="border-top: 1px solid #111; width: 240px; margin-bottom: 4px;"></div>
+            <div style="font-size: 10.5pt;">Tagapangulo ng Pangkat</div>
+        </div>
+    </div>
+' . $wrapperEnd . '
+</body>
+</html>';
+    }
+
+
+    public function renderKp20BHtml(array $data, bool $forPdf = false): string
+    {
+        return $this->kp20BHtml($data, $forPdf);
+    }
+
+    private function kp20BHtml(array $data, bool $forPdf = false): string
+    {
+        $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
+        $marikinaPath = __DIR__ . '/../../frontend/assets/images/marikina_logo.jpg';
+        $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
+        $marikinaLogo = file_exists($marikinaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($marikinaPath)) : '';
+
+        $caseNumber = !empty($data['case_number']) ? $this->escape((string) $data['case_number']) : '__________';
+        $title = !empty($data['complaint_title']) ? $this->escape((string) $data['complaint_title']) : '__________';
+
+        $compList = [];
+        if (!empty($data['complainants']) && is_array($data['complainants'])) {
+            foreach ($data['complainants'] as $c) {
+                $cName = is_array($c) ? ($c['full_name'] ?? '') : (string)$c;
+                if (trim($cName) !== '') $compList[] = trim($cName);
+            }
+        }
+        $respList = [];
+        if (!empty($data['respondents']) && is_array($data['respondents'])) {
+            foreach ($data['respondents'] as $r) {
+                $rName = is_array($r) ? ($r['full_name'] ?? '') : (string)$r;
+                if (trim($rName) !== '') $respList[] = trim($rName);
+            }
+        }
+
+        $compLines = '';
+        foreach ($compList as $c) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($c) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($compList)); $i++) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $respLines = '';
+        foreach ($respList as $r) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($r) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($respList)); $i++) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $noticeTs = !empty($data['notice_date']) ? strtotime($data['notice_date']) : (!empty($data['hearing_date']) ? strtotime($data['hearing_date']) : time());
+        $noticeDay = date('j', $noticeTs);
+        $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
+        $noticeYear = date('Y', $noticeTs);
+
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperEnd = $forPdf ? '' : '</div></div>';
+
+        return '<!DOCTYPE html>
+<html lang="fil">
+<head>
+    <meta charset="UTF-8">
+    <title>Pormularyo ng KP Blg. 20-B - KATIBAYAN NA MAKAPAGHAIN NG SAKDAL</title>
+    <style>
+        @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
+        * { box-sizing: border-box; }
+        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
+        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+        .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
+    </style>
+</head>
+<body>
+' . $wrapperStart . '
+    <div class="form-code">Pormularyo ng KP Blg. 20-B</div>
+
+    <table class="header-table">
+        <tr>
+            <td style="width: 80px; text-align: left; vertical-align: top;">
+                ' . (!empty($tumanaLogo) ? '<img src="' . $tumanaLogo . '" alt="Barangay Tumana" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+            <td class="header-center" style="vertical-align: top;">
+                <div>Republika ng Pilipinas</div>
+                <div>Lalawigan ng NCR</div>
+                <div>Lungsod ng Marikina</div>
+                <div style="font-weight: bold;">Barangay Tumana</div>
+                <div style="font-size: 9.5pt;">Telephone Nos. 8-238-4208</div>
+                <div style="font-size: 9.5pt;">EMAILADDRESS:barangaytumana2023@gmail.com</div>
+            </td>
+            <td style="width: 80px; text-align: right; vertical-align: top;">
+                ' . (!empty($marikinaLogo) ? '<img src="' . $marikinaLogo . '" alt="Lungsod ng Marikina" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; font-weight: bold; font-size: 11pt; margin-top: 10px; margin-bottom: 16px;">TANGGAPAN NG LUPONG TAGAPAMAYAPA</div>
+
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10.5pt;">
+        <tr>
+            <td style="width: 50%; vertical-align: top;">
+                ' . $compLines . '
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">(Mga) Nagrereklamo</div>
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">-laban kay/kina-</div>
+                ' . $respLines . '
+                <div style="text-align: center; font-size: 10pt;">(Mga) Inirereklamo</div>
+            </td>
+            <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 20px;">
+                <div>Usapin ng Barangay Blg.: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 130px; font-weight: bold; text-align: center;">' . $caseNumber . '</span></div>
+                <div style="margin-top: 6px;">Para sa: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 160px; font-weight: bold; text-align: center;">' . $title . '</span></div>
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; margin: 18px 0;">
+        <div style="font-size: 13.5pt; font-weight: bold; letter-spacing: 0.5px;">KATIBAYAN NA MAKAPAGHAIN NG SAKDAL</div>
+        <div style="font-size: 11pt; font-weight: bold;">(Certification to File Action)</div>
+    </div>
+
+    <div style="font-size: 11pt; line-height: 1.8; margin-bottom: 20px;">
+        <div style="font-weight: bold; margin-bottom: 8px;">ITO AY NAGPAPATUNAY NA:</div>
+        <ol style="margin: 0; padding-left: 24px; text-align: justify;">
+            <li style="margin-bottom: 10px;">Nagkaroon ng personal na paghaharap sa pagitan ng mga panig sa harap ng Punong Barangay, subalit ang pamamagitan ay nabigo;</li>
+            <li style="margin-bottom: 10px;">Ang Punong Barangay ay nagtakda ng pulong ng mga panig para magbuo ng Pangkat;</li>
+            <li style="margin-bottom: 10px;">Sinadya ng inirereklamo o tumangging humarap sa Pangkat para sa hakbang ng pagkakasundo ng walang makatwirang dahilan; at</li>
+            <li style="margin-bottom: 10px;">Dahil dito, ang nasabing reklamo para sa sigalot ay maaari nang idulog sa hukuman/tanggapan ng pamahalaan.</li>
+        </ol>
+    </div>
+
+    <div style="font-size: 11pt; margin-top: 25px; margin-bottom: 35px; text-indent: 40px;">
+        Ngayong ika- <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 120px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, ' . $noticeYear . '.
+    </div>
+
+    <div style="text-align: right; margin-top: 40px;">
+        <div style="display: inline-block; text-align: center;">
+            <div style="border-top: 1px solid #111; width: 240px; margin-bottom: 4px;"></div>
+            <div style="font-size: 10.5pt;">Tagapangulo ng Pangkat</div>
+        </div>
+    </div>
+' . $wrapperEnd . '
+</body>
+</html>';
+    }
+
+    public function renderKp21Html(array $data, bool $forPdf = false): string
+    {
+        return $this->kp21Html($data, $forPdf);
+    }
+
+    private function kp21Html(array $data, bool $forPdf = false): string
+    {
+        $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
+        $marikinaPath = __DIR__ . '/../../frontend/assets/images/marikina_logo.jpg';
+        $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
+        $marikinaLogo = file_exists($marikinaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($marikinaPath)) : '';
+
+        $caseNumber = !empty($data['case_number']) ? $this->escape((string) $data['case_number']) : '__________';
+        $title = !empty($data['complaint_title']) ? $this->escape((string) $data['complaint_title']) : '__________';
+
+        $compList = [];
+        if (!empty($data['complainants']) && is_array($data['complainants'])) {
+            foreach ($data['complainants'] as $c) {
+                $cName = is_array($c) ? ($c['full_name'] ?? '') : (string)$c;
+                if (trim($cName) !== '') $compList[] = trim($cName);
+            }
+        }
+        $respList = [];
+        if (!empty($data['respondents']) && is_array($data['respondents'])) {
+            foreach ($data['respondents'] as $r) {
+                $rName = is_array($r) ? ($r['full_name'] ?? '') : (string)$r;
+                if (trim($rName) !== '') $respList[] = trim($rName);
+            }
+        }
+        $complainantNames = !empty($compList) ? implode(' at ', array_map([$this, 'escape'], $compList)) : '______________________________';
+
+        $compLines = '';
+        foreach ($compList as $c) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($c) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($compList)); $i++) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $respLines = '';
+        foreach ($respList as $r) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($r) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($respList)); $i++) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $orderDate = !empty($data['order_date']) ? $this->escape((string) $data['order_date']) : '________________________';
+
+        $noticeTs = !empty($data['notice_date']) ? strtotime($data['notice_date']) : (!empty($data['hearing_date']) ? strtotime($data['hearing_date']) : time());
+        $noticeDay = date('j', $noticeTs);
+        $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
+        $noticeYear = date('Y', $noticeTs);
+
+        $officialName = !empty($data['official_name']) ? $this->escape((string) $data['official_name']) : 'HON. AKIKO LYNNE CENTENO';
+
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperEnd = $forPdf ? '' : '</div></div>';
+
+        return '<!DOCTYPE html>
+<html lang="fil">
+<head>
+    <meta charset="UTF-8">
+    <title>Pormularyo ng KP Blg. 21 - KATIBAYAN UPANG HADLANGAN NA MAKAPAGSAKDAL</title>
+    <style>
+        @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
+        * { box-sizing: border-box; }
+        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
+        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+        .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
+    </style>
+</head>
+<body>
+' . $wrapperStart . '
+    <div class="form-code">Pormularyo ng KP Blg. 21</div>
+
+    <table class="header-table">
+        <tr>
+            <td style="width: 80px; text-align: left; vertical-align: top;">
+                ' . (!empty($tumanaLogo) ? '<img src="' . $tumanaLogo . '" alt="Barangay Tumana" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+            <td class="header-center" style="vertical-align: top;">
+                <div>Republika ng Pilipinas</div>
+                <div>Lalawigan ng NCR</div>
+                <div>Lungsod ng Marikina</div>
+                <div style="font-weight: bold;">Barangay Tumana</div>
+                <div style="font-size: 9.5pt;">Telephone Nos. 8-238-4208</div>
+                <div style="font-size: 9.5pt;">EMAILADDRESS:barangaytumana2023@gmail.com</div>
+            </td>
+            <td style="width: 80px; text-align: right; vertical-align: top;">
+                ' . (!empty($marikinaLogo) ? '<img src="' . $marikinaLogo . '" alt="Lungsod ng Marikina" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; font-weight: bold; font-size: 11pt; margin-top: 10px; margin-bottom: 16px;">TANGGAPAN NG LUPONG TAGAPAMAYAPA</div>
+
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10.5pt;">
+        <tr>
+            <td style="width: 50%; vertical-align: top;">
+                ' . $compLines . '
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">(Mga) Nagrereklamo</div>
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">-laban kay/kina-</div>
+                ' . $respLines . '
+                <div style="text-align: center; font-size: 10pt;">(Mga) Inirereklamo</div>
+            </td>
+            <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 20px;">
+                <div>Usapin ng Barangay Blg.: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 130px; font-weight: bold; text-align: center;">' . $caseNumber . '</span></div>
+                <div style="margin-top: 6px;">Para sa: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 160px; font-weight: bold; text-align: center;">' . $title . '</span></div>
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; margin: 18px 0;">
+        <div style="font-size: 13.5pt; font-weight: bold; letter-spacing: 0.5px;">KATIBAYAN UPANG HADLANGAN NA MAKAPAGSAKDAL</div>
+        <div style="font-size: 11pt; font-weight: bold;">(Certification to Bar Action)</div>
+    </div>
+
+    <div style="font-size: 11pt; line-height: 2; text-align: justify; margin-bottom: 25px;">
+        <p style="text-indent: 40px; margin: 0 0 16px 0;">
+            ITO AY NAGPAPATUNAY NA ang usaping nakasaad sa itaas ay ipinawalang-saysay sa Kautusan na may petsang <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 150px; font-weight: bold; text-align: center;">' . $orderDate . '</span> para sa mga nagrereklamong si <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 200px; font-weight: bold; text-align: center;">' . $complainantNames . '</span>, dahil sa sinadya o kusang di-pagharap sa pagdinig sa harap ng Punong Barangay/Pangkat ng Tagapagkasundo at dahil dito, ang nagrereklamo/mga nagrereklamo ay hinahadlangang makapaghain ng sakdal sa hukuman/tanggapan ng pamahalaan.
+        </p>
+        <p style="text-indent: 40px; margin: 0;">
+            Ngayong ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 120px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, ' . $noticeYear . '.
+        </p>
+    </div>
+
+    <table style="width: 100%; border-collapse: collapse; margin-top: 30px;">
+        <tr>
+            <td style="width: 50%; vertical-align: top;">
+                <div style="border-top: 1px solid #111; width: 220px; margin-bottom: 4px;"></div>
+                <div style="font-size: 10pt; margin-bottom: 35px;">Tagapangulo ng Pangkat</div>
+
+                <div style="border-top: 1px solid #111; width: 260px; margin-bottom: 4px;"></div>
+                <div style="font-weight: bold; font-size: 11pt;">' . $officialName . '</div>
+                <div style="font-size: 10pt;">Punong Barangay</div>
+            </td>
+            <td style="width: 50%; vertical-align: top; text-align: right;">
+                <div style="display: inline-block; text-align: center;">
+                    <div style="border-top: 1px solid #111; width: 240px; margin-bottom: 4px;"></div>
+                    <div style="font-size: 10pt;">Kalihim ng Lupon/Pangkat</div>
+                </div>
+            </td>
+        </tr>
+    </table>
+' . $wrapperEnd . '
+</body>
+</html>';
+    }
+
+    public function renderKp22Html(array $data, bool $forPdf = false): string
+    {
+        return $this->kp22Html($data, $forPdf);
+    }
+
+    private function kp22Html(array $data, bool $forPdf = false): string
+    {
+        $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
+        $marikinaPath = __DIR__ . '/../../frontend/assets/images/marikina_logo.jpg';
+        $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
+        $marikinaLogo = file_exists($marikinaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($marikinaPath)) : '';
+
+        $caseNumber = !empty($data['case_number']) ? $this->escape((string) $data['case_number']) : '__________';
+        $title = !empty($data['complaint_title']) ? $this->escape((string) $data['complaint_title']) : '__________';
+
+        $compList = [];
+        if (!empty($data['complainants']) && is_array($data['complainants'])) {
+            foreach ($data['complainants'] as $c) {
+                $cName = is_array($c) ? ($c['full_name'] ?? '') : (string)$c;
+                if (trim($cName) !== '') $compList[] = trim($cName);
+            }
+        }
+        $respList = [];
+        if (!empty($data['respondents']) && is_array($data['respondents'])) {
+            foreach ($data['respondents'] as $r) {
+                $rName = is_array($r) ? ($r['full_name'] ?? '') : (string)$r;
+                if (trim($rName) !== '') $respList[] = trim($rName);
+            }
+        }
+        $respondentNames = !empty($respList) ? implode(' at ', array_map([$this, 'escape'], $respList)) : '______________________________';
+
+        $compLines = '';
+        foreach ($compList as $c) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($c) . '</div>'; }
+        for ($i = 0; $i < max(0, 2 - count($compList)); $i++) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $respLines = '';
+        foreach ($respList as $r) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($r) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($respList)); $i++) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $noticeTs = !empty($data['notice_date']) ? strtotime($data['notice_date']) : (!empty($data['hearing_date']) ? strtotime($data['hearing_date']) : time());
+        $noticeDay = date('j', $noticeTs);
+        $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
+        $noticeYear = date('Y', $noticeTs);
+
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperEnd = $forPdf ? '' : '</div></div>';
+
+        return '<!DOCTYPE html>
+<html lang="fil">
+<head>
+    <meta charset="UTF-8">
+    <title>Pormularyo ng KP Blg. 22 - KATIBAYAN UPANG HADLANGAN NA MAKAPAGSAKDAL</title>
+    <style>
+        @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
+        * { box-sizing: border-box; }
+        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
+        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+        .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
+    </style>
+</head>
+<body>
+' . $wrapperStart . '
+    <div class="form-code">Pormularyo ng KP Blg. 22</div>
+
+    <table class="header-table">
+        <tr>
+            <td style="width: 80px; text-align: left; vertical-align: top;">
+                ' . (!empty($tumanaLogo) ? '<img src="' . $tumanaLogo . '" alt="Barangay Tumana" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+            <td class="header-center" style="vertical-align: top;">
+                <div>Republika ng Pilipinas</div>
+                <div>Lalawigan ng NCR</div>
+                <div>Lungsod ng Marikina</div>
+                <div style="font-weight: bold;">Barangay Tumana</div>
+                <div style="font-size: 9.5pt;">Telephone Nos. 8-238-4208</div>
+                <div style="font-size: 9.5pt;">EMAILADDRESS:barangaytumana2023@gmail.com</div>
+            </td>
+            <td style="width: 80px; text-align: right; vertical-align: top;">
+                ' . (!empty($marikinaLogo) ? '<img src="' . $marikinaLogo . '" alt="Lungsod ng Marikina" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; font-weight: bold; font-size: 11pt; margin-top: 10px; margin-bottom: 16px;">TANGGAPAN NG LUPONG TAGAPAMAYAPA</div>
+
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10.5pt;">
+        <tr>
+            <td style="width: 50%; vertical-align: top;">
+                ' . $compLines . '
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">(Mga) Nagrereklamo</div>
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">-laban kay/kina-</div>
+                ' . $respLines . '
+                <div style="text-align: center; font-size: 10pt;">(Mga) Inirereklamo</div>
+            </td>
+            <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 20px;">
+                <div>Usapin ng Barangay Blg.: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 130px; font-weight: bold; text-align: center;">' . $caseNumber . '</span></div>
+                <div style="margin-top: 6px;">Para sa: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 160px; font-weight: bold; text-align: center;">' . $title . '</span></div>
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; margin: 18px 0;">
+        <div style="font-size: 13.5pt; font-weight: bold; letter-spacing: 0.5px;">KATIBAYAN UPANG HADLANGAN NA MAKAPAGSAKDAL</div>
+        <div style="font-size: 11pt; font-weight: bold;">(Certification to Bar Counterclaim)</div>
+    </div>
+
+    <div style="font-size: 11pt; line-height: 2; text-align: justify; margin-bottom: 25px;">
+        <p style="text-indent: 40px; margin: 0 0 16px 0;">
+            ITO AY NAGPAPATUNAY NA matapos ang mga nauunang paabiso at pagdinig, ang inirereklamo/mga inirereklamo na sina <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 200px; font-weight: bold; text-align: center;">' . $respondentNames . '</span>(pangalan), ay napag-alamang sinadya o tumangging humarap nang walang makatwirang dahilan sa harap ng Punong Barangay/Pangkat Tagapagkasundo at dahil dito ang inirereklamo/mga inirereklamo ay hinahadlangang maghain ng kanilang ganting-sumbong (kung meron) na nagmula sa sigalot sa hukuman/tanggapan ng pamahalaan.
+        </p>
+        <p style="text-indent: 40px; margin: 0;">
+            Ngayong ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 120px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, ' . $noticeYear . '.
+        </p>
+    </div>
+
+    <table style="width: 100%; border-collapse: collapse; margin-top: 25px;">
+        <tr>
+            <td style="width: 50%; vertical-align: top;">
+                <div style="border-top: 1px solid #111; width: 220px; margin-bottom: 4px;"></div>
+                <div style="font-size: 10pt; margin-bottom: 35px;">Tagapangulo ng Pangkat</div>
+
+                <div style="border-top: 1px solid #111; width: 260px; margin-bottom: 4px;"></div>
+                <div style="font-size: 10pt;">Tagapangulo ng Lupon/Tagapangulo ng Pangkat</div>
+            </td>
+            <td style="width: 50%; vertical-align: top; text-align: right;">
+                <div style="display: inline-block; text-align: center;">
+                    <div style="border-top: 1px solid #111; width: 240px; margin-bottom: 4px;"></div>
+                    <div style="font-size: 10pt;">Kalihim ng Lupon/Pangkat</div>
                 </div>
             </td>
         </tr>
     </table>
 
-    <div class="form-title-box">
-        <h2>' . $subTitle . '</h2>
+    <div style="font-size: 9.5pt; font-style: italic; color: #374151; margin-top: 25px; line-height: 1.4;">
+        <strong>Mahalaga:</strong> Kung ang Kalihim ng Lupon ang gumawa ng katibayan, ang Tagapangulo ng Lupon ang magpapatunay. Kung ang Kalihim ng Pangkat ang gumawa ng katibayan, ang Tagapangulo ng Pangkat ang magpapatunay.
+    </div>
+' . $wrapperEnd . '
+</body>
+</html>';
+    }
+
+
+    public function renderKp23Html(array $data, bool $forPdf = false): string
+    {
+        return $this->kp23Html($data, $forPdf);
+    }
+
+    private function kp23Html(array $data, bool $forPdf = false): string
+    {
+        $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
+        $marikinaPath = __DIR__ . '/../../frontend/assets/images/marikina_logo.jpg';
+        $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
+        $marikinaLogo = file_exists($marikinaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($marikinaPath)) : '';
+
+        $caseNumber = !empty($data['case_number']) ? $this->escape((string) $data['case_number']) : '__________';
+        $title = !empty($data['complaint_title']) ? $this->escape((string) $data['complaint_title']) : '__________';
+
+        $compList = [];
+        if (!empty($data['complainants']) && is_array($data['complainants'])) {
+            foreach ($data['complainants'] as $c) {
+                $cName = is_array($c) ? ($c['full_name'] ?? '') : (string)$c;
+                if (trim($cName) !== '') $compList[] = trim($cName);
+            }
+        }
+        $respList = [];
+        if (!empty($data['respondents']) && is_array($data['respondents'])) {
+            foreach ($data['respondents'] as $r) {
+                $rName = is_array($r) ? ($r['full_name'] ?? '') : (string)$r;
+                if (trim($rName) !== '') $respList[] = trim($rName);
+            }
+        }
+        $targetParty = !empty($data['moving_party_name']) ? $this->escape((string) $data['moving_party_name']) : (!empty($data['target_party_name']) ? $this->escape((string) $data['target_party_name']) : (!empty($respList) ? implode(' / ', $respList) : 'Inirereklamo'));
+
+        $compLines = '';
+        foreach ($compList as $c) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($c) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($compList)); $i++) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $respLines = '';
+        foreach ($respList as $r) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($r) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($respList)); $i++) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $settlementTs = !empty($data['settlement_date']) ? strtotime($data['settlement_date']) : (!empty($data['hearing_date']) ? strtotime($data['hearing_date']) : time());
+        $settlementDay = date('j', $settlementTs);
+        $settlementMonth = $this->filipinoMonth((int) date('n', $settlementTs));
+        $settlementYear = date('Y', $settlementTs);
+        $settlementDateStr = "ika-{$settlementDay} ng {$settlementMonth}, {$settlementYear}";
+
+        $noticeTs = !empty($data['notice_date']) ? strtotime($data['notice_date']) : time();
+        $noticeDateFormatted = date('j', $noticeTs) . ' ' . $this->filipinoMonth((int) date('n', $noticeTs)) . ' ' . date('Y', $noticeTs);
+
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperEnd = $forPdf ? '' : '</div></div>';
+
+        return '<!DOCTYPE html>
+<html lang="fil">
+<head>
+    <meta charset="UTF-8">
+    <title>Pormularyo ng KP Blg. 23 - MOSYON SA PAGPAPATUPAD</title>
+    <style>
+        @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
+        * { box-sizing: border-box; }
+        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
+        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+        .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
+    </style>
+</head>
+<body>
+' . $wrapperStart . '
+    <div class="form-code">Pormularyo ng KP Blg. 23</div>
+
+    <table class="header-table">
+        <tr>
+            <td style="width: 80px; text-align: left; vertical-align: top;">
+                ' . (!empty($tumanaLogo) ? '<img src="' . $tumanaLogo . '" alt="Barangay Tumana" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+            <td class="header-center" style="vertical-align: top;">
+                <div>Republika ng pilipinas</div>
+                <div>Lalawigan ng NCR</div>
+                <div>Lungsod ng Marikina</div>
+                <div style="font-weight: bold;">Barangay Tumana</div>
+                <div style="font-size: 9.5pt;">Telephone Nos. 8-238-4208</div>
+                <div style="font-size: 9.5pt;">EMAILADDRESS:barangaytumana2023@gmail.com</div>
+            </td>
+            <td style="width: 80px; text-align: right; vertical-align: top;">
+                ' . (!empty($marikinaLogo) ? '<img src="' . $marikinaLogo . '" alt="Lungsod ng Marikina" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; font-weight: bold; font-size: 11pt; margin-top: 10px; margin-bottom: 16px;">TANGGAPAN NG LUPONG TAGAPAMAYAPA</div>
+
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10.5pt;">
+        <tr>
+            <td style="width: 50%; vertical-align: top;">
+                ' . $compLines . '
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">(Mga) Nagrereklamo</div>
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">-laban kay/kina-</div>
+                ' . $respLines . '
+                <div style="text-align: center; font-size: 10pt;">(Mga) Inirereklamo</div>
+            </td>
+            <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 20px;">
+                <div>Usapin ng Barangay Blg.: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 130px; font-weight: bold; text-align: center;">' . $caseNumber . '</span></div>
+                <div style="margin-top: 6px;">Para sa: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 160px; font-weight: bold; text-align: center;">' . $title . '</span></div>
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; margin: 18px 0;">
+        <div style="font-size: 13.5pt; font-weight: bold; letter-spacing: 0.5px;">MOSYON SA PAGPAPATUPAD</div>
+        <div style="font-size: 11pt; font-weight: bold;">(Motion for Execution)</div>
     </div>
 
-    <div class="form-body">
-        ' . $body . '
-        <p style="text-indent: 12mm; margin-top: 6mm;">
-            Iginawad ngayong ika-<strong>' . date('j', strtotime($noticeDate)) . '</strong> ng <strong>' . $this->filipinoMonth((int) date('n', strtotime($noticeDate))) . '</strong>, <strong>' . date('Y', strtotime($noticeDate)) . '</strong>.
+    <div style="font-size: 11pt; line-height: 1.8; margin-bottom: 25px;">
+        <ol style="margin: 0; padding-left: 24px; text-align: justify;">
+            <li style="margin-bottom: 12px;">Na noong <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 160px; font-weight: bold; text-align: center;">' . $settlementDateStr . '</span> ang mga panig sa usaping ito ay lumagda sa isang matiwasay na pag-aayos/tumanggap ng gawad ng paghahatol ng Tagapangulo ng Lupon/Pangkat ng Tagapagkasundo;</li>
+            <li style="margin-bottom: 12px;">Ang sampung (10) araw na taning mula sa petsang nakasaad sa itaas ay natapos nang walang anumang sinumpaang salaysay ng pagtanggi sa pag-aayos ang inihain ng sinumang panig sa harap ng Tagapangulo ng Lupon, isang petisyon na nagpapawalang-saysay ng gawad ng paghahatol sa hukuman; at</li>
+            <li style="margin-bottom: 12px;">Ang matiwasay na pag-aayos/gawad ng paghahatol ay pinal at maaari nang ipatupad.</li>
+        </ol>
+        <p style="text-indent: 40px; margin: 18px 0 0 0; text-align: justify;">
+            DAHIL DITO, ang Nagrereklamo/Inirereklamo ay humiling na ang katumbas na kasulatan sa pagpapatupad sa usaping ito ay ipalabas na ng Tagapangulo ng Lupon.
         </p>
     </div>
 
-    <div class="signature-block">
-        <div class="signature-line">' . $officialName . '</div>
-        <div style="font-size: 9pt; font-style: italic;">Punong Barangay / Tagapangulo ng Lupon</div>
+    <table style="width: 100%; border-collapse: collapse; margin-top: 50px;">
+        <tr>
+            <td style="width: 45%; vertical-align: top;">
+                <div style="border-top: 1px solid #111; width: 180px; margin-bottom: 4px; font-weight: bold; padding-top: 4px;">' . $noticeDateFormatted . '</div>
+                <div style="font-size: 10pt;">Petsa</div>
+            </td>
+            <td style="width: 55%; vertical-align: top; text-align: right;">
+                <div style="display: inline-block; text-align: center;">
+                    <div style="border-top: 1px solid #111; width: 240px; margin-bottom: 4px; font-weight: bold; padding-top: 4px;">' . $targetParty . '</div>
+                    <div style="font-size: 10pt;">Inirereklamo</div>
+                </div>
+            </td>
+        </tr>
+    </table>
+' . $wrapperEnd . '
+</body>
+</html>';
+    }
+
+    public function renderKp25Html(array $data, bool $forPdf = false): string
+    {
+        return $this->kp25Html($data, $forPdf);
+    }
+
+    private function kp25Html(array $data, bool $forPdf = false): string
+    {
+        $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
+        $marikinaPath = __DIR__ . '/../../frontend/assets/images/marikina_logo.jpg';
+        $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
+        $marikinaLogo = file_exists($marikinaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($marikinaPath)) : '';
+
+        $caseNumber = !empty($data['case_number']) ? $this->escape((string) $data['case_number']) : '__________';
+        $title = !empty($data['complaint_title']) ? $this->escape((string) $data['complaint_title']) : '__________';
+
+        $compList = [];
+        if (!empty($data['complainants']) && is_array($data['complainants'])) {
+            foreach ($data['complainants'] as $c) {
+                $cName = is_array($c) ? ($c['full_name'] ?? '') : (string)$c;
+                if (trim($cName) !== '') $compList[] = trim($cName);
+            }
+        }
+        $respList = [];
+        if (!empty($data['respondents']) && is_array($data['respondents'])) {
+            foreach ($data['respondents'] as $r) {
+                $rName = is_array($r) ? ($r['full_name'] ?? '') : (string)$r;
+                if (trim($rName) !== '') $respList[] = trim($rName);
+            }
+        }
+
+        $defeatedParty = !empty($data['defeated_party_name']) ? $this->escape((string) $data['defeated_party_name']) : (!empty($respList) ? implode(' / ', $respList) : '______________________________');
+        $amountWords = !empty($data['execution_amount_words']) ? $this->escape((string) $data['execution_amount_words']) : (!empty($data['amount_words']) ? $this->escape((string) $data['amount_words']) : '________________________');
+        $amountNumbers = !empty($data['execution_amount_numbers']) ? $this->escape((string) $data['execution_amount_numbers']) : (!empty($data['amount_numeric']) ? $this->escape((string) $data['amount_numeric']) : '__________');
+        $agreementDetails = !empty($data['agreement_details']) ? $this->escape((string) $data['agreement_details']) : (!empty($data['terms']) ? $this->escape((string) $data['terms']) : '');
+
+        $compLines = '';
+        foreach ($compList as $c) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($c) . '</div>'; }
+        for ($i = 0; $i < max(0, 2 - count($compList)); $i++) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $respLines = '';
+        foreach ($respList as $r) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($r) . '</div>'; }
+        for ($i = 0; $i < max(0, 3 - count($respList)); $i++) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $settlementTs = !empty($data['settlement_date']) ? strtotime($data['settlement_date']) : (!empty($data['hearing_date']) ? strtotime($data['hearing_date']) : time());
+        $settlementDay = date('j', $settlementTs);
+        $settlementMonth = $this->filipinoMonth((int) date('n', $settlementTs));
+        $settlementYear = date('Y', $settlementTs);
+        $settlementDateStr = "ika-{$settlementDay} ng {$settlementMonth}, {$settlementYear}";
+
+        $noticeTs = !empty($data['notice_date']) ? strtotime($data['notice_date']) : time();
+        $noticeDay = date('j', $noticeTs);
+        $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
+        $noticeYear = date('Y', $noticeTs);
+
+        $officialName = !empty($data['official_name']) ? $this->escape((string) $data['official_name']) : 'HON. AKIKO LYNNE CENTENO';
+
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperEnd = $forPdf ? '' : '</div></div>';
+
+        $termsBlock = '';
+        if ($agreementDetails !== '') {
+            $termsBlock = '<div style="border-bottom: 1px solid #111; font-weight: bold; padding: 4px 0; margin-bottom: 14px;">' . $agreementDetails . '</div>';
+        } else {
+            $termsBlock = '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 6px;">&nbsp;</div>
+                <div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 6px;">&nbsp;</div>
+                <div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 6px;">&nbsp;</div>
+                <div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 14px;">&nbsp;</div>';
+        }
+
+        return '<!DOCTYPE html>
+<html lang="fil">
+<head>
+    <meta charset="UTF-8">
+    <title>Pormularyo ng KP Blg. 25 - PAABISO PARA SA PAGPAPATUPAD</title>
+    <style>
+        @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
+        * { box-sizing: border-box; }
+        body { font-family: "DejaVu Sans", "Times New Roman", Times, serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
+        .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
+        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+        .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
+    </style>
+</head>
+<body>
+' . $wrapperStart . '
+    <div class="form-code">Pormularyo ng KP Blg. 25</div>
+
+    <table class="header-table">
+        <tr>
+            <td style="width: 80px; text-align: left; vertical-align: top;">
+                ' . (!empty($tumanaLogo) ? '<img src="' . $tumanaLogo . '" alt="Barangay Tumana" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+            <td class="header-center" style="vertical-align: top;">
+                <div>Republika ng Pilipinas</div>
+                <div>Lalawigan ng NCR</div>
+                <div>Lungsod ng Marikina</div>
+                <div style="font-weight: bold;">Barangay Tumana</div>
+                <div style="font-size: 9.5pt;">Telephone Nos. 8-238-4208</div>
+                <div style="font-size: 9.5pt;">EMAILADDRESS:barangaytumana2023@gmail.com</div>
+            </td>
+            <td style="width: 80px; text-align: right; vertical-align: top;">
+                ' . (!empty($marikinaLogo) ? '<img src="' . $marikinaLogo . '" alt="Lungsod ng Marikina" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; font-weight: bold; font-size: 11pt; margin-top: 10px; margin-bottom: 16px;">TANGGAPAN NG LUPONG TAGAPAMAYAPA</div>
+
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10.5pt;">
+        <tr>
+            <td style="width: 50%; vertical-align: top;">
+                ' . $compLines . '
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">(Mga) Nagrereklamo</div>
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">-laban kay/kina-</div>
+                ' . $respLines . '
+                <div style="text-align: center; font-size: 10pt;">(Mga) Inirereklamo</div>
+            </td>
+            <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 20px;">
+                <div>Usapin ng Barangay Blg.: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 130px; font-weight: bold; text-align: center;">' . $caseNumber . '</span></div>
+                <div style="margin-top: 6px;">Para sa: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 160px; font-weight: bold; text-align: center;">' . $title . '</span></div>
+            </td>
+        </tr>
+    </table>
+
+    <div style="text-align: center; margin: 18px 0;">
+        <div style="font-size: 13.5pt; font-weight: bold; letter-spacing: 0.5px;">PAABISO PARA SA PAGPAPATUPAD</div>
+        <div style="font-size: 11pt; font-weight: bold;">(Notice for Execution)</div>
     </div>
 
-    ' . (in_array($formCode, ['KP Form 8', 'KP Form 9', 'KP Form 18', 'KP Form 19'], true) ? '
-    <div class="officers-return">
-        <h3>Katunayan ng Paglilingkod (Officer’s Return)</h3>
-        <p style="margin: 2mm 0; line-height: 1.4;">
-            Pinatutunayan ko na ang ' . ($formCode === 'KP Form 9' ? 'Patawag' : ($formCode === 'KP Form 8' ? 'Patalastas' : 'Paunawa')) . ' na ito ay personal / maayos na pinagsilbihan kay <strong>' . ($targetParty ?: ($formCode === 'KP Form 9' ? 'Ipinagsusumbong' : 'May-sumbong')) . '</strong>
-            ngayong ika-______ ng ______________________, 20______.
+    <div style="font-size: 11pt; line-height: 1.8; text-align: justify; margin-bottom: 25px;">
+        <p style="text-indent: 40px; margin: 0 0 14px 0;">
+            SSAPAGKAT, noong <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 150px; font-weight: bold; text-align: center;">' . $settlementDateStr . '</span> (petsa), isang matiwasay na pag-aayos ang nilagdaan ng mga panig sa usaping nakasaad sa itaas (o isang gawad ng paghahatol ang iginawad ng Punong Barangay/Pangkat ng Tagapagkasundo);
         </p>
-        <div style="width: 40%; margin-left: auto; text-align: center; margin-top: 6mm;">
-            <div style="border-top: 1px solid #111; padding-top: 1mm; font-weight: bold;">Summons Server / Tagapaglingkod</div>
-            <div style="font-size: 8.5pt;">Lagda sa ibabaw ng nakalimbag na pangalan</div>
+        <p style="text-indent: 40px; margin: 0 0 10px 0;">
+            SAPAGKAT, ang bahagi ng mga probisyon at mga kondisyon ng hatol ay mababasa tulad ng sumusunod:
+        </p>
+        ' . $termsBlock . '
+
+        <p style="margin: 0 0 14px 0;">
+            Ang nasabing pag-aayos/hatol ay pinal at maaari nang ipatupad;
+        </p>
+
+        <p style="text-indent: 40px; margin: 0 0 14px 0;">
+            SAPAGKAT, ang natalong panig na si <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 200px; font-weight: bold; text-align: center;">' . $defeatedParty . '</span>(pangalan) ay hindi tumupad nang kusang-loob sa nasabing matiwasay na pag-aayos/gawad ng paghahatol sa loob ng limang (5) araw mula sa petsa ng pagdinig ng mosyon ng pagpapatupad;
+        </p>
+
+        <p style="text-indent: 40px; margin: 0 0 14px 0;">
+            DAHIL DITO, sa ngalan ng Lupong Tagapamayapa at sa pamamagitan ng mga kapangyarihang ibinigay sa akin ng Lupon sa pamamagitan ng Batas at mga Patakaran ng Katarungang Pambarangay aking gagawin upang maisakatuparan mula sa mga kalakal at ari-ariang personal ni <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 200px; font-weight: bold; text-align: center;">' . $defeatedParty . '</span>(pangalan ng natalong panig) ang halagang <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 180px; font-weight: bold; text-align: center;">' . $amountWords . '</span>(₱<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 90px; font-weight: bold; text-align: center;">' . $amountNumbers . '</span>) (isaad ang halaga ng pag-aayos o hatol) na pinagkasunduan sa nasabing matiwasay na pag-aayos (o inihatol sa nasabing gawad ng paghahatol), maliban kung kusang-loob na tinupad ang nasabing pag-aayos o hatol ay ginawa sa sandaling matanggap ito.
+        </p>
+
+        <p style="text-indent: 40px; margin: 0;">
+            Nilagdaan ngayong ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 120px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, ' . $noticeYear . '.
+        </p>
+    </div>
+
+    <div style="text-align: right; margin-top: 40px;">
+        <div style="display: inline-block; text-align: center;">
+            <div style="border-top: 1px solid #111; width: 280px; margin-bottom: 4px;"></div>
+            <div style="font-weight: bold; font-size: 11pt;">' . $officialName . '</div>
+            <div style="font-size: 10pt;">Punong Barangay</div>
         </div>
-    </div>' : '') . '
+    </div>
+' . $wrapperEnd . '
 </body>
 </html>';
     }

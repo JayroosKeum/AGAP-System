@@ -143,21 +143,21 @@ include '../../layouts/header.php';
         <?php endif; ?>
 
         <!-- =========================================================================
-             SECTION 2: OFFICIAL KP FORMS CATALOG & PLACEHOLDERS (KP Forms 1 - 25)
+             SECTION 2: OFFICIAL BLANK KP FORMS & TEMPLATES CATALOG (30 Forms)
              ========================================================================= -->
         <section class="document-card" id="kpFormsCatalogSection">
             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; flex-wrap: wrap; gap: 14px;">
                 <div>
                     <h2 style="margin: 0; font-size: 1.3rem; color: #0f172a; display: flex; align-items: center; gap: 8px;">
-                        <span>📜</span> Official Katarungang Pambarangay Form Templates
+                        <span>📜</span> Official Blank KP Forms &amp; Operational Templates
                     </h2>
                     <p style="margin: 4px 0 0; color: #64748b; font-size: 0.88rem;">
-                        Statutory Katarungang Pambarangay forms (KP Forms 1 to 25). Upload custom office templates (.pdf, .docx, .doc, images), preview online, or print directly.
+                        Statutory Katarungang Pambarangay forms (KP Forms 1 to 25), Pre-Docketing (Patawag/Paanyaya), Case Profile Jackets, and Hearing Minutes. Upload custom office templates (.pdf, .docx, .doc, images), preview online, or print blank forms directly.
                     </p>
                 </div>
                 <div style="display: flex; gap: 10px; align-items: center;">
                     <span id="formsCountBadge" style="background: #e2e8f0; color: #334155; font-size: 0.82rem; font-weight: 700; padding: 6px 12px; border-radius: 20px;">
-                        27 Forms Available
+                        30 Forms Available
                     </span>
                     <span id="uploadedCountBadge" style="background: #dcfce7; color: #166534; font-size: 0.82rem; font-weight: 700; padding: 6px 12px; border-radius: 20px;">
                         0 Custom Uploaded
@@ -174,17 +174,18 @@ include '../../layouts/header.php';
             </div>
 
             <div class="catalog-filter-pills" id="catalogCategoryPills">
-                <button type="button" class="filter-pill active" data-category="ALL">All Forms (27)</button>
+                <button type="button" class="filter-pill active" data-category="ALL">All Forms (30)</button>
+                <button type="button" class="filter-pill" data-category="Pre-Docketing & Case Intake">Pre-Docketing &amp; Case Intake (Patawag, Jacket)</button>
                 <button type="button" class="filter-pill" data-category="Lupon Organization">Lupon Organization (KP 1-6)</button>
                 <button type="button" class="filter-pill" data-category="Mediation & Summons">Mediation &amp; Summons (KP 7-9)</button>
                 <button type="button" class="filter-pill" data-category="Conciliation & Pangkat">Conciliation &amp; Pangkat (KP 10-13)</button>
                 <button type="button" class="filter-pill" data-category="Arbitration & Settlement">Arbitration &amp; Settlement (KP 14-17)</button>
-                <button type="button" class="filter-pill" data-category="Hearings & Compliance">Hearings &amp; Compliance (KP 18-19)</button>
+                <button type="button" class="filter-pill" data-category="Hearings & Compliance">Hearings &amp; Compliance (KP 18-19, Minutes)</button>
                 <button type="button" class="filter-pill" data-category="Certifications & Barred Actions">Certifications (KP 20-22)</button>
                 <button type="button" class="filter-pill" data-category="Execution of Settlement">Execution (KP 23-25)</button>
             </div>
 
-            <!-- Grid of 27 Form Cards -->
+            <!-- Grid of 30 Form Cards -->
             <div class="kp-forms-grid" id="kpFormsGrid">
                 <!-- Populated dynamically via documents.js -->
                 <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: #64748b;">
