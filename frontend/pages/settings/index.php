@@ -23,6 +23,9 @@ if (!$activeTab) {
 if (!str_starts_with($activeTab, 'tab-')) {
     $activeTab = 'tab-' . $activeTab;
 }
+if ($activeTab === 'tab-documents') {
+    $activeTab = 'tab-barangay';
+}
 if (!$isAdmin) {
     $activeTab = 'tab-profile';
 }
@@ -102,12 +105,6 @@ include '../../layouts/header.php';
                                 <button type="button" class="settings-nav-btn <?php echo $activeTab === 'tab-categories' ? 'active' : ''; ?>" data-tab="tab-categories">
                                     <span class="nav-icon">📁</span>
                                     <span>Categories &amp; Intake</span>
-                                </button>
-                            </li>
-                            <li class="settings-nav-item">
-                                <button type="button" class="settings-nav-btn <?php echo $activeTab === 'tab-documents' ? 'active' : ''; ?>" data-tab="tab-documents">
-                                    <span class="nav-icon">📄</span>
-                                    <span>KP Documents &amp; Forms</span>
                                 </button>
                             </li>
                             <li class="settings-nav-item">
@@ -518,99 +515,7 @@ include '../../layouts/header.php';
                             </div>
 
                             <!-- ===================================================================
-                                 TAB 4: KP DOCUMENTS & FORMS
-                                 =================================================================== -->
-                            <div class="settings-tab-pane <?php echo $activeTab === 'tab-documents' ? 'active' : ''; ?>" id="tab-documents">
-                                <div class="settings-card">
-                                    <div class="settings-card-header">
-                                        <div>
-                                            <h3 class="settings-card-title">📄 Document Printing &amp; Page Size Rules</h3>
-                                            <p class="settings-card-subtitle">Standard dimensions used by Dompdf when generating official Katarungang Pambarangay forms.</p>
-                                        </div>
-                                    </div>
-                                    <div class="settings-card-body">
-                                        <div class="form-group">
-                                            <label class="form-label">Official Paper Size Format</label>
-                                            <div style="display: flex; gap: 24px; align-items: center; margin-top: 6px;">
-                                                <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem; cursor: pointer;">
-                                                    <input type="radio" name="document_paper_size" value="Legal" <?php echo ($settings['document_paper_size'] ?? 'Legal') === 'Legal' ? 'checked' : ''; ?>>
-                                                    <span><strong>Legal (8.5" &times; 14")</strong> &bull; Philippine KP Statutory Standard (Recommended)</span>
-                                                </label>
-                                                <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem; cursor: pointer;">
-                                                    <input type="radio" name="document_paper_size" value="A4" <?php echo ($settings['document_paper_size'] ?? '') === 'A4' ? 'checked' : ''; ?>>
-                                                    <span><strong>A4 (8.27" &times; 11.69")</strong> &bull; International Standard</span>
-                                                </label>
-                                            </div>
-                                        </div>
-
-                                        <div class="form-grid-4 form-grid-2" style="margin-top: 14px;">
-                                            <div class="form-group">
-                                                <label class="form-label">Top Margin (mm)</label>
-                                                <input type="number" name="document_margin_top" class="form-control" value="<?php echo htmlspecialchars($settings['document_margin_top'] ?? '15'); ?>" min="5" max="40">
-                                            </div>
-                                            <div class="form-group">
-                                                <label class="form-label">Bottom Margin (mm)</label>
-                                                <input type="number" name="document_margin_bottom" class="form-control" value="<?php echo htmlspecialchars($settings['document_margin_bottom'] ?? '15'); ?>" min="5" max="40">
-                                            </div>
-                                            <div class="form-group">
-                                                <label class="form-label">Left Margin (mm)</label>
-                                                <input type="number" name="document_margin_left" class="form-control" value="<?php echo htmlspecialchars($settings['document_margin_left'] ?? '18'); ?>" min="5" max="40">
-                                            </div>
-                                            <div class="form-group">
-                                                <label class="form-label">Right Margin (mm)</label>
-                                                <input type="number" name="document_margin_right" class="form-control" value="<?php echo htmlspecialchars($settings['document_margin_right'] ?? '18'); ?>" min="5" max="40">
-                                            </div>
-                                        </div>
-
-                                        <label class="switch-label" style="margin-top: 16px;">
-                                            <div class="switch-info">
-                                                <span class="switch-title">Auto-Serve Complainant Notice (KP Form 8)</span>
-                                                <span class="switch-desc">Automatically generate and log as 'Served' the Notice of Hearing for the Complainant whenever Respondent Summons is issued.</span>
-                                            </div>
-                                            <div class="switch">
-                                                <input type="checkbox" name="auto_serve_complainant_notice" value="1" <?php echo ($settings['auto_serve_complainant_notice'] ?? '1') === '1' ? 'checked' : ''; ?>>
-                                                <span class="slider"></span>
-                                            </div>
-                                        </label>
-                                    </div>
-                                </div>
-
-                                <div class="settings-card">
-                                    <div class="settings-card-header">
-                                        <div>
-                                            <h3 class="settings-card-title">⏱️ Statutory Summons SLA Rules (RA 7160 Sec. 410)</h3>
-                                            <p class="settings-card-subtitle">SLA thresholds feeding into the DILG 21-column Excel report and summons officer dispatch board.</p>
-                                        </div>
-                                    </div>
-                                    <div class="settings-card-body">
-                                        <div class="form-grid-2">
-                                            <div class="form-group">
-                                                <label class="form-label">Statutory Issuance SLA (Working Days)</label>
-                                                <input type="number" name="summons_sla_working_days" class="form-control" value="<?php echo htmlspecialchars($settings['summons_sla_working_days'] ?? '1'); ?>" min="1" max="5">
-                                                <div class="form-help">RA 7160 requires next-working-day summons generation upon docketing.</div>
-                                            </div>
-                                            <div class="form-group">
-                                                <label class="form-label">Unserved Warning Alert (Working Days)</label>
-                                                <input type="number" name="summons_delivery_warning_days" class="form-control" value="<?php echo htmlspecialchars($settings['summons_delivery_warning_days'] ?? '3'); ?>" min="1" max="10">
-                                                <div class="form-help">Highlights overdue summons deliveries on the officer GPS dashboard.</div>
-                                            </div>
-                                        </div>
-
-                                        <div class="form-group" style="margin-top: 12px;">
-                                            <label class="form-label">Header Top Banner (Republika ng Pilipinas)</label>
-                                            <input type="text" name="kp_header_title" class="form-control" value="<?php echo htmlspecialchars($settings['kp_header_title'] ?? 'REPUBLIKA NG PILIPINAS'); ?>">
-                                        </div>
-
-                                        <div class="form-group">
-                                            <label class="form-label">LGU Hierarchy Sub-Header</label>
-                                            <input type="text" name="kp_lgu_header" class="form-control" value="<?php echo htmlspecialchars($settings['kp_lgu_header'] ?? 'LALAWIGAN NG RIZAL / LUNGSOD NG MARIKINA / BARANGAY TUMANA'); ?>">
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- ===================================================================
-                                 TAB 5: AI & EXTERNAL SERVICES
+                                 TAB 4: AI & EXTERNAL SERVICES
                                  =================================================================== -->
                             <div class="settings-tab-pane <?php echo $activeTab === 'tab-external' ? 'active' : ''; ?>" id="tab-external">
                                 <div class="settings-card">
@@ -721,7 +626,7 @@ include '../../layouts/header.php';
                             </div>
 
                             <!-- ===================================================================
-                                 TAB 6: SECURITY, BACKUPS & MAINTENANCE
+                                 TAB 5: SECURITY, BACKUPS & MAINTENANCE
                                  =================================================================== -->
                             <div class="settings-tab-pane <?php echo $activeTab === 'tab-security' ? 'active' : ''; ?>" id="tab-security">
                                 <div class="settings-card">
@@ -855,7 +760,7 @@ include '../../layouts/header.php';
                         <?php endif; ?>
 
                         <!-- ===================================================================
-                             TAB 7: USER PROFILE & PERSONAL PREFERENCES (All Roles)
+                             TAB 6: USER PROFILE & PERSONAL PREFERENCES (All Roles)
                              =================================================================== -->
                         <div class="settings-tab-pane <?php echo $activeTab === 'tab-profile' ? 'active' : ''; ?>" id="tab-profile">
                             <div class="settings-card">
