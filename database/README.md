@@ -1,8 +1,9 @@
 # Database setup
 
-`schema.sql` is the canonical schema for a new AGAP database. It defines all
-relationships, indexes, uniqueness rules, and deletion behaviour used by the
-current PHP models.
+`schema.sql` is the canonical schema for a new AGAP database. It includes the
+current migration-defined tables, columns, indexes, and reference data used by
+the PHP models; a fresh installation must import this file only, not each
+historical migration afterward.
 
 For a fresh local environment, import it with:
 
