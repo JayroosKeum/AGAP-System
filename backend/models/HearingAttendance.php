@@ -445,6 +445,21 @@ class HearingAttendance
             // Log in audit trail
             $this->audit->log($userId, 'Recorded hearing attendance: ' . $situation['title'], 'Hearings', $hearingId);
 
+            try {
+                require_once __DIR__ . '/../services/NotificationService.php';
+                $notif = new NotificationService();
+                foreach ($updatedParties as $up) {
+                    if ($up['attendance_status'] === 'Absent' && empty($up['is_justified'])) {
+                        $pNameStmt = $this->conn->prepare("SELECT TRIM(CONCAT_WS(' ', first_name, middle_name, last_name)) FROM residents WHERE resident_id = ?");
+                        $pNameStmt->execute([$up['resident_id']]);
+                        $pName = $pNameStmt->fetchColumn() ?: $up['party_type'];
+                        $notif->notifyNonAppearanceRecorded((int)$hearing['case_id'], (string)$hearing['case_number'], $up['party_type'], $pName, $userId);
+                    }
+                }
+            } catch (Throwable $ne) {
+                error_log('Failed to dispatch non-appearance notification from attendance: ' . $ne->getMessage());
+            }
+
             return [
                 'success' => true,
                 'message' => 'Hearing attendance recorded successfully. ' . $situation['title'] . '.',

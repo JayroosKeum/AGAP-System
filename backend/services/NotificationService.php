@@ -26,7 +26,7 @@ class NotificationService
     {
         try {
             foreach ($this->notification->getCaseRecipients($caseId) as $userId) {
-                $this->notifyUser($userId, $title, $message, $excludeUserId);
+                $this->notifyUser($userId, $title, $message, $excludeUserId, $severity, $actionUrl, $caseId);
             }
         } catch (Throwable $exception) {
             error_log('Notification recipient lookup failed: ' . $exception->getMessage());
@@ -37,11 +37,131 @@ class NotificationService
     {
         try {
             foreach ($this->notification->getRoleRecipients($roles) as $userId) {
-                $this->notifyUser($userId, $title, $message, $excludeUserId);
+                $this->notifyUser($userId, $title, $message, $excludeUserId, $severity, $actionUrl, $caseId);
             }
         } catch (Throwable $exception) {
             error_log('Notification role lookup failed: ' . $exception->getMessage());
         }
+    }
+
+    // =========================================================================
+    // 1. PAANYAYA (PRE-DOCKETING) NOTIFICATIONS
+    // =========================================================================
+    public function notifyPaanyayaOutcome(int $complaintId, string $complaintNum, string $outcome, ?int $actorUserId = null): void
+    {
+        $actionUrl = "../complaints/paanyaya-workspace.php?id=" . $complaintId;
+        if ($outcome === 'Settled') {
+            $title = "Paanyaya Settled (LTIA Win)";
+            $msg = "Complaint {$complaintNum} was amicably settled at the Paanyaya dialogue level.";
+            $severity = 'success';
+        } else if ($outcome === 'Escalate_Mediation') {
+            $title = "Paanyaya Escalated to Formal Mediation";
+            $msg = "Complaint {$complaintNum} failed pre-docketing agreement and was escalated to formal Tuesday mediation.";
+            $severity = 'warning';
+        } else {
+            $title = "Paanyaya Session Updated";
+            $msg = "Dialogue notes recorded for {$complaintNum}. Outcome: {$outcome}.";
+            $severity = 'info';
+        }
+
+        $this->notifyRoles(['Administrator', 'Lupon Clerk'], $title, $msg, $actorUserId, $severity, $actionUrl);
+    }
+
+    // =========================================================================
+    // 2. SUMMONS & PROCESS SERVING (TANOD) NOTIFICATIONS
+    // =========================================================================
+    public function notifySummonsDispatched(int $caseId, string $caseNum, int $serverUserId, string $respondentName, ?int $actorUserId = null): void
+    {
+        $actionUrl = "../cases/case-details.php?id=" . $caseId;
+        // Notify the designated summons officer (Tanod)
+        $this->notifyUser(
+            $serverUserId,
+            "New Summons Assigned for Delivery",
+            "You have been assigned to serve KP Form 9 for {$caseNum} to {$respondentName}. Please observe statutory delivery SLA.",
+            $actorUserId,
+            'info',
+            $actionUrl,
+            $caseId
+        );
+    }
+
+    public function notifySummonsServed(int $caseId, string $caseNum, string $recipientName, string $serverName, ?int $actorUserId = null): void
+    {
+        $actionUrl = "../cases/case-details.php?id=" . $caseId;
+        $title = "Summons Served Successfully";
+        $msg = "Summons for {$caseNum} was served to {$recipientName} by {$serverName}. Proof of service logged.";
+        
+        $this->notifyRoles(['Administrator', 'Lupon Clerk'], $title, $msg, $actorUserId, 'success', $actionUrl, $caseId);
+        $this->notifyCaseMembers($caseId, $title, $msg, $actorUserId, 'success', $actionUrl);
+    }
+
+    public function notifySummonsDeliveryWarning(int $caseId, string $caseNum, int $daysUnserved, ?int $serverUserId = null): void
+    {
+        $actionUrl = "../cases/case-details.php?id=" . $caseId;
+        $title = "⚠️ Summons Delivery Warning";
+        $msg = "Summons for {$caseNum} has been unserved for {$daysUnserved} days. Please verify respondent address or execute 2nd attempt.";
+
+        $this->notifyRoles(['Administrator', 'Lupon Clerk'], $title, $msg, null, 'warning', $actionUrl, $caseId);
+        if ($serverUserId) {
+            $this->notifyUser($serverUserId, $title, $msg, null, 'warning', $actionUrl, $caseId);
+        }
+    }
+
+    // =========================================================================
+    // 3. HEARINGS & UNJUSTIFIED NON-APPEARANCE (SHOW-CAUSE)
+    // =========================================================================
+    public function notifyNonAppearanceRecorded(int $caseId, string $caseNum, string $partyType, string $partyName, ?int $actorUserId = null): void
+    {
+        $actionUrl = "../cases/case-details.php?id=" . $caseId;
+        $title = "⚠️ Non-Appearance: {$partyType}";
+        $msg = "{$partyType} {$partyName} failed to appear at the mediation hearing for {$caseNum} without justification. 3-day show-cause period initiated.";
+
+        $this->notifyRoles(['Administrator', 'Lupon Clerk'], $title, $msg, $actorUserId, 'urgent', $actionUrl, $caseId);
+        $this->notifyCaseMembers($caseId, $title, $msg, $actorUserId, 'urgent', $actionUrl);
+    }
+
+    // =========================================================================
+    // 4. SETTLEMENT, REPUDIATION, AND BREACH NOTIFICATIONS
+    // =========================================================================
+    public function notifySettlementApproved(int $caseId, string $caseNum, ?int $actorUserId = null): void
+    {
+        $actionUrl = "../cases/case-details.php?id=" . $caseId;
+        $title = "Amicable Settlement (Kasunduan) Executed";
+        $msg = "Amicable settlement signed for {$caseNum}. 10-day statutory repudiation window is now active.";
+
+        $this->notifyRoles(['Administrator', 'Lupon Clerk'], $title, $msg, $actorUserId, 'success', $actionUrl, $caseId);
+        $this->notifyCaseMembers($caseId, $title, $msg, $actorUserId, 'success', $actionUrl);
+    }
+
+    public function notifySettlementRepudiated(int $caseId, string $caseNum, string $repudiatingParty, string $grounds, ?int $actorUserId = null): void
+    {
+        $actionUrl = "../cases/case-details.php?id=" . $caseId;
+        $title = "🚨 URGENT: Settlement Repudiated (KP 17)";
+        $msg = "Party {$repudiatingParty} filed a sworn repudiation for {$caseNum} citing: '{$grounds}'. Prepare Certificate to File Action (20-B).";
+
+        // Urgent alert directly to Punong Barangay and Clerks
+        $this->notifyRoles(['Administrator', 'Lupon Clerk'], $title, $msg, $actorUserId, 'urgent', $actionUrl, $caseId);
+        $this->notifyCaseMembers($caseId, $title, $msg, $actorUserId, 'urgent', $actionUrl);
+    }
+
+    public function notifySettlementBreached(int $caseId, string $caseNum, string $breachDetails, ?int $actorUserId = null): void
+    {
+        $actionUrl = "../cases/case-details.php?id=" . $caseId;
+        $title = "⚠️ Settlement Terms Breached";
+        $msg = "Complainant reported non-compliance of amicable settlement for {$caseNum}: '{$breachDetails}'. File for execution or 10-day MTC transmittal.";
+
+        $this->notifyRoles(['Administrator', 'Lupon Clerk'], $title, $msg, $actorUserId, 'urgent', $actionUrl, $caseId);
+        $this->notifyCaseMembers($caseId, $title, $msg, $actorUserId, 'urgent', $actionUrl);
+    }
+
+    public function notifyCfaIssued(int $caseId, string $caseNum, string $cfaType, ?int $actorUserId = null): void
+    {
+        $actionUrl = "../cases/case-details.php?id=" . $caseId;
+        $title = "Certificate to File Action Ready ({$cfaType})";
+        $msg = "{$cfaType} has been prepared and certified for {$caseNum}. Ready for Punong Barangay review and issuance to complainant.";
+
+        $this->notifyRoles(['Administrator', 'Lupon Clerk'], $title, $msg, $actorUserId, 'warning', $actionUrl, $caseId);
+        $this->notifyCaseMembers($caseId, $title, $msg, $actorUserId, 'warning', $actionUrl);
     }
 
     public function caseNumber(int $caseId): string

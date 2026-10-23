@@ -171,6 +171,14 @@ class CFA
                 $this->conn->commit();
             }
 
+            try {
+                require_once __DIR__ . '/../services/NotificationService.php';
+                $notif = new NotificationService();
+                $notif->notifyCfaIssued($caseId, (string)$case['case_number'], 'KP Form 20', $userId);
+            } catch (Throwable $ne) {
+                error_log('Failed to dispatch CFA notification: ' . $ne->getMessage());
+            }
+
             return [
                 'success' => true,
                 'message' => 'Certificate to File Action (CFA) has been issued successfully.',

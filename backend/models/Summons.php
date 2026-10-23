@@ -947,10 +947,15 @@ class Summons
             $title = sprintf('Summons #%d Issued', $summonsNum);
             $message = sprintf('Summons #%d for case %s has been issued and is ready for service.', $summonsNum, $caseNumber);
 
+            require_once __DIR__ . '/../services/NotificationService.php';
+            $notif = new NotificationService();
+            $cIdStmt = $this->conn->prepare("SELECT case_id FROM cases WHERE case_number = ? LIMIT 1");
+            $cIdStmt->execute([$caseNumber]);
+            $cId = (int) $cIdStmt->fetchColumn() ?: 0;
+
             foreach ($servers as $serverId) {
                 if ((int) $serverId !== $actorUserId) {
-                    $insert = $this->conn->prepare("INSERT INTO notifications (user_id, title, message) VALUES (?, ?, ?)");
-                    $insert->execute([(int) $serverId, $title, $message]);
+                    $notif->notifySummonsDispatched($cId, $caseNumber, (int)$serverId, 'Respondent', $actorUserId);
                 }
             }
         } catch (Throwable $e) {

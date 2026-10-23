@@ -1881,12 +1881,7 @@ class Paanyaya
                     require_once __DIR__ . '/../services/NotificationService.php';
                     $notifService = new NotificationService();
                     $cNum = $complaint['complaint_number'] ?? "CMP-#{$complaintId}";
-                    $notifService->notifyRoles(
-                        ['Administrator', 'Lupon Clerk'],
-                        'Dispute Settled at Paanyaya Stage',
-                        "Complaint {$cNum} was amicably settled during {$stageType} informal dialogue (LTIA Pre-Docket Resolution win).",
-                        $userId
-                    );
+                    $notifService->notifyPaanyayaOutcome($complaintId, $cNum, 'Settled', $userId);
                 } catch (Throwable $ne) {
                     error_log('Failed to dispatch Paanyaya settled notification: ' . $ne->getMessage());
                 }
@@ -1912,6 +1907,15 @@ class Paanyaya
 
                 $this->conn->commit();
 
+                try {
+                    require_once __DIR__ . '/../services/NotificationService.php';
+                    $notifService = new NotificationService();
+                    $cNum = $complaint['complaint_number'] ?? "CMP-#{$complaintId}";
+                    $notifService->notifyPaanyayaOutcome($complaintId, $cNum, $outcome, $userId);
+                } catch (Throwable $ne) {
+                    error_log('Failed to dispatch Paanyaya notification: ' . $ne->getMessage());
+                }
+
                 return [
                     'success' => true,
                     'minutes_id' => $minutesId,
@@ -1936,6 +1940,16 @@ class Paanyaya
             $escResult['action'] = 'escalate_mediation';
             $escResult['outcome'] = $outcome;
             $escResult['complainant_choice'] = 'Escalate_Mediation';
+
+            try {
+                require_once __DIR__ . '/../services/NotificationService.php';
+                $notifService = new NotificationService();
+                $cNum = $complaint['complaint_number'] ?? "CMP-#{$complaintId}";
+                $notifService->notifyPaanyayaOutcome($complaintId, $cNum, 'Escalate_Mediation', $userId);
+            } catch (Throwable $ne) {
+                error_log('Failed to dispatch Paanyaya escalated notification: ' . $ne->getMessage());
+            }
+
             return $escResult;
 
         } catch (Throwable $e) {

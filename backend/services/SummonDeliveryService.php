@@ -1665,6 +1665,17 @@ class SummonDeliveryService
                 'Hearings',
                 $caseId
             );
+
+            try {
+                require_once __DIR__ . '/NotificationService.php';
+                $notif = new NotificationService();
+                $serverNameStmt = $this->conn->prepare("SELECT CONCAT(first_name, ' ', last_name) FROM users WHERE user_id = ?");
+                $serverNameStmt->execute([$servedBy]);
+                $srvName = $serverNameStmt->fetchColumn() ?: ('Officer #' . $servedBy);
+                $notif->notifySummonsServed($caseId, (string)$hearing['case_number'], $recipientName ?: $partyType, $srvName, $actorUserId);
+            } catch (Throwable $ne) {
+                error_log('Failed to dispatch summons served notification: ' . $ne->getMessage());
+            }
         }
 
         $cfaElig = $this->getCfaEligibility($caseId);

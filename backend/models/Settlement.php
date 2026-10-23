@@ -319,6 +319,17 @@ class Settlement
 
                 $hist = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, 'Settled', 'Amicable settlement reached, signed by parties, and attested by Punong Barangay. 10-day repudiation clock started.', ?)");
                 $hist->execute([$caseId, $actorUserId]);
+
+                try {
+                    require_once __DIR__ . '/../services/NotificationService.php';
+                    $notif = new NotificationService();
+                    $cNumStmt = $this->conn->prepare("SELECT case_number FROM cases WHERE case_id = ?");
+                    $cNumStmt->execute([$caseId]);
+                    $cNum = $cNumStmt->fetchColumn() ?: ('Case #' . $caseId);
+                    $notif->notifySettlementApproved($caseId, (string)$cNum, $actorUserId);
+                } catch (Throwable $ne) {
+                    error_log('Failed to dispatch settlement approved notification: ' . $ne->getMessage());
+                }
             }
 
             $this->conn->commit();
@@ -469,11 +480,27 @@ class Settlement
             $stmt->execute([$reason, $residentId, $docPath ?: null, $settlementId]);
 
             // Update case status
-            $updCase = $this->conn->prepare("UPDATE cases SET case_status = 'Repudiated', updated_at = NOW() WHERE case_id = ?");
+            $updCase = $this->conn->prepare("UPDATE cases SET case_status = 'Mediation', updated_at = NOW() WHERE case_id = ?");
             $updCase->execute([$settlement['case_id']]);
 
-            $hist = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, 'Repudiated', ?, ?)");
+            $hist = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, 'Mediation', ?, ?)");
             $hist->execute([$settlement['case_id'], "Settlement repudiated within 10-day statutory window. Ground: {$reason}", $actorUserId]);
+
+            try {
+                require_once __DIR__ . '/../services/NotificationService.php';
+                $notif = new NotificationService();
+                $cNumStmt = $this->conn->prepare("SELECT case_number FROM cases WHERE case_id = ?");
+                $cNumStmt->execute([(int)$settlement['case_id']]);
+                $cNum = $cNumStmt->fetchColumn() ?: ('Case #' . $settlement['case_id']);
+
+                $pNameStmt = $this->conn->prepare("SELECT TRIM(CONCAT_WS(' ', first_name, middle_name, last_name)) FROM residents WHERE resident_id = ?");
+                $pNameStmt->execute([$residentId]);
+                $pName = $pNameStmt->fetchColumn() ?: ('Resident #' . $residentId);
+
+                $notif->notifySettlementRepudiated((int)$settlement['case_id'], (string)$cNum, (string)$pName, $reason, $actorUserId);
+            } catch (Throwable $ne) {
+                error_log('Failed to dispatch settlement repudiated notification: ' . $ne->getMessage());
+            }
 
             $this->conn->commit();
             return [
@@ -539,8 +566,19 @@ class Settlement
             // Mark settlement as Breached
             $this->conn->prepare("UPDATE settlements SET compliance_status = 'Breached', updated_at = NOW() WHERE settlement_id = ?")->execute([$settlementId]);
 
-            $hist = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, 'Breached', ?, ?)");
+            $hist = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, 'Settled', ?, ?)");
             $hist->execute([$settlement['case_id'], "Motion for Execution filed (Execution #{$executionId}). Violated: {$obligation}", $actorUserId]);
+
+            try {
+                require_once __DIR__ . '/../services/NotificationService.php';
+                $notif = new NotificationService();
+                $cNumStmt = $this->conn->prepare("SELECT case_number FROM cases WHERE case_id = ?");
+                $cNumStmt->execute([(int)$settlement['case_id']]);
+                $cNum = $cNumStmt->fetchColumn() ?: ('Case #' . $settlement['case_id']);
+                $notif->notifySettlementBreached((int)$settlement['case_id'], (string)$cNum, $obligation, $actorUserId);
+            } catch (Throwable $ne) {
+                error_log('Failed to dispatch settlement breached notification: ' . $ne->getMessage());
+            }
 
             $this->conn->commit();
             return [

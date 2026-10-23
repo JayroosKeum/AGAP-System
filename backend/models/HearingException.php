@@ -14,10 +14,12 @@ class HearingException
     public function recordUnjustifiedNonAppearance(int $hearingId, int $residentId, string $remarks, int $userId): array
     {
         $party = $this->conn->prepare(
-            "SELECT h.case_id, c.case_status, cp.party_type
+            "SELECT h.case_id, c.case_number, c.case_status, cp.party_type,
+                    TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS resident_name
              FROM hearings h
              INNER JOIN cases c ON c.case_id = h.case_id
              INNER JOIN complaint_parties cp ON cp.complaint_id = c.complaint_id
+             INNER JOIN residents r ON r.resident_id = cp.resident_id
              WHERE h.hearing_id = ? AND cp.resident_id = ? AND cp.party_type IN ('Complainant', 'Respondent')"
         );
         $party->execute([$hearingId, $residentId]);
@@ -41,6 +43,21 @@ class HearingException
             $history = $this->conn->prepare('INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, ?, ?, ?)');
             $history->execute([$record['case_id'], $record['case_status'], ucfirst(strtolower($record['party_type'])) . ' marked with unjustified non-appearance for hearing #' . $hearingId . '.', $userId]);
             $this->conn->commit();
+
+            try {
+                require_once __DIR__ . '/../services/NotificationService.php';
+                $notif = new NotificationService();
+                $notif->notifyNonAppearanceRecorded(
+                    (int) $record['case_id'],
+                    (string) $record['case_number'],
+                    (string) $record['party_type'],
+                    (string) ($record['resident_name'] ?? 'Party'),
+                    $userId
+                );
+            } catch (Throwable $ne) {
+                error_log('Failed to dispatch non-appearance notification: ' . $ne->getMessage());
+            }
+
             return ['success' => true, 'case_id' => (int) $record['case_id'], 'message' => 'Unjustified non-appearance recorded.'];
         } catch (Throwable $exception) {
             if ($this->conn->inTransaction()) $this->conn->rollBack();
