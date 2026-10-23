@@ -1028,6 +1028,20 @@
     color: #0f172a;
 }
 
+/* Keep the notification control in the same sage/teal system as the signed-in shell. */
+.navbar .nav-bell-btn {
+    background: #ffffff;
+    border-color: #d7e4db;
+    color: #355750;
+}
+
+.navbar .nav-bell-btn:hover,
+.navbar .nav-bell-btn.active {
+    background: #edf5ef;
+    border-color: #bcd5c6;
+    color: #1f5f50;
+}
+
 .nav-bell-icon {
     width: 19px;
     height: 19px;

@@ -11,7 +11,7 @@ $dashboardLink = [1 => '../dashboard/admin-dashboard.php', 2 => '../dashboard/cl
 ?>
 <aside class="sidebar" id="appSidebar">
     <div class="sidebar-brand">
-        <span class="brand-mark">A</span>
+        <img class="brand-mark" src="../../assets/images/tumana_logo.jpg" alt="Barangay Tumana seal">
         <div class="sidebar-brand-text"><strong>AGAP</strong><span>Case Management</span></div>
     </div>
     <nav class="sidebar-nav" aria-label="Main navigation">

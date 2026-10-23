@@ -252,6 +252,82 @@
 .dashboard-empty { color:#71717a; font-size:13px; margin:0; padding:18px 0 4px; }
 .dashboard-empty-row td, .dashboard-empty-row p { color:#71717a; font-size:13px; margin:0; padding:22px 14px; text-align:center; }
 
+/* Dashboard color alignment with the public AGAP experience. */
+.dashboard-filter-bar,
+.dashboard-panel,
+.stat-card {
+    border-color: #dfe8e3;
+    box-shadow: 0 8px 24px rgba(32, 76, 62, .035);
+}
+
+.dashboard-filter-bar {
+    background: #fff;
+}
+
+.period-tabs {
+    background: #edf4ef;
+}
+
+.period-tab {
+    color: #567069;
+}
+
+.period-tab:hover {
+    background: rgba(255, 255, 255, .74);
+    color: #173638;
+}
+
+.period-tab.active {
+    background: #102b2d;
+    box-shadow: 0 2px 7px rgba(16, 43, 45, .2);
+}
+
+.period-indicator {
+    background: #f7faf7;
+    border-color: #dce8df;
+}
+
+.indicator-icon,
+.panel-heading a,
+.dashboard-list-link:hover,
+.case-number-link:hover {
+    color: #2b6b5e;
+}
+
+.indicator-texts strong,
+.stat-card h2,
+.panel-heading h2,
+.case-number-link {
+    color: #173638;
+}
+
+.btn-period-current,
+.btn-period-current.is-current-active {
+    background: #e4f1e8;
+    border-color: #bcd7c7;
+    color: #245e50;
+}
+
+.btn-period-nav:hover,
+.dashboard-case-row:hover td {
+    background: #f3f8f4;
+    border-color: #cbded1;
+}
+
+.panel-count-badge {
+    background: #edf5ef;
+    border-color: #d6e6db;
+    color: #42685d;
+}
+
+.btn-action-view {
+    background: #173638;
+}
+
+.btn-action-view:hover {
+    background: #2b6b5e;
+}
+
 .status-summary { display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); }
 .status-total { background:#fafafa; border:1px solid #f1f1f3; border-radius:8px; color:#52525b; display:flex; font-size:13px; justify-content:space-between; padding:12px; }
 .status-total strong { color:#18181b; font-size:16px; }

@@ -41,7 +41,7 @@ if (!empty($_SESSION['flash']) && is_array($_SESSION['flash']) && !empty($_SESSI
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#09090b">
+    <meta name="theme-color" content="#102b2d">
     <title>AGAP | Automated Grievance Assistance Platform</title>
     <link rel="stylesheet" href="../../assets/css/app.css?v=<?php echo filemtime(__DIR__ . '/../assets/css/app.css'); ?>">
     <link rel="stylesheet" href="../../assets/css/notifications.css?v=<?php echo filemtime(__DIR__ . '/../assets/css/notifications.css'); ?>">
