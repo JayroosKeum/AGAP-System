@@ -126,17 +126,11 @@ if (empty($respondents)) {
     exit;
 }
 
-// Fetch Presiding Official (Administrator / Barangay Captain)
-$officialStmt = $db->prepare("
-    SELECT TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS official_name
-    FROM users u
-    INNER JOIN roles r ON r.role_id = u.role_id
-    WHERE u.status = 'Active' AND r.role_name = 'Administrator'
-    ORDER BY u.user_id ASC
-    LIMIT 1
-");
-$officialStmt->execute();
-$officialName = (string) ($officialStmt->fetchColumn() ?: 'Punong Barangay');
+// Fetch Presiding Official (Punong Barangay / Lupon Chairman from Authorized Signatory Profiles in system_settings)
+$pbStmt = $db->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'captain_name' LIMIT 1");
+$pbStmt->execute();
+$captainVal = trim((string) $pbStmt->fetchColumn());
+$officialName = (!empty($captainVal) && strcasecmp($captainVal, 'Admin User') !== 0) ? $captainVal : 'HON. AKIKO LYNNE CENTENO';
 
 // Fetch or identify KP Form 9 document
 $doc = null;
@@ -224,6 +218,11 @@ if (!$docKp8 || empty($docKp8['file_path'])) {
         $docTime = strtotime($docKp8['generated_at']);
         if ($hTime && $docTime && $docTime < strtotime($hearing['updated_at'] ?? '')) {
             $needsKp8Regen = true;
+        } else {
+            $rawPdf = @file_get_contents($fullKp8Path);
+            if ($rawPdf && (str_contains($rawPdf, 'Admin User') || !str_contains($rawPdf, 'AKIKO LYNNE CENTENO'))) {
+                $needsKp8Regen = true;
+            }
         }
     }
 }
@@ -288,6 +287,11 @@ if (!$doc || empty($doc['file_path'])) {
         $docTime = strtotime($doc['generated_at']);
         if ($hTime && $docTime && $docTime < strtotime($hearing['updated_at'] ?? '')) {
             $needsRegeneration = true;
+        } else {
+            $rawPdf = @file_get_contents($fullPath);
+            if ($rawPdf && (str_contains($rawPdf, 'Admin User') || !str_contains($rawPdf, 'AKIKO LYNNE CENTENO'))) {
+                $needsRegeneration = true;
+            }
         }
     }
 }

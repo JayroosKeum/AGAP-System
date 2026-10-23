@@ -178,7 +178,7 @@ include '../../layouts/header.php';
             <div class="case-hero-card">
                 <div class="hero-badges-row">
                     <span id="heroCaseTypeBadge" class="hero-type-pill">CRIMINAL COMPLAINT</span>
-                    <span id="heroDaysRemainingBadge" class="hero-days-pill">
+                    <span id="heroDaysRemainingBadge" class="hero-days-pill" style="display: none;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
                         <span id="heroDaysRemainingText">26 days remaining</span>
                     </span>
@@ -566,7 +566,7 @@ include '../../layouts/header.php';
                     <h3 class="stage-card-title" style="font-size: 1.15rem; margin: 4px 0 4px;">Punong Barangay Mediation</h3>
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                         <span id="stage1StatusText" class="stage-sub-status" style="font-weight: 600;">In Progress</span>
-                        <span style="font-size: 0.78rem; opacity: 0.9;">Presiding: Punong Barangay &bull; 15-day statutory conciliation (RA 7160 Sec. 410b)</span>
+                        <span style="font-size: 0.78rem; opacity: 0.9;">Presiding: Punong Barangay</span>
                     </div>
                 </div>
             </div>

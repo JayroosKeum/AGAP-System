@@ -98,26 +98,7 @@ class Summons
                 ];
             }
 
-            // Enforce: mediation must be scheduled within 15 working days of complaint filing date (or escalation date if Pre-Docketed Paanyaya)
-            if (!empty($complaint['created_at'])) {
-                $isPaanyaya = ($complaint['status'] === 'Pre-Docketed (Paanyaya)');
-                $filingDateStr = $isPaanyaya ? date('Y-m-d') : substr($complaint['created_at'], 0, 10);
-                $filingDeadline = MediationDeadlineService::calculateBusinessDays($filingDateStr, 15);
-                $scheduledDate = new \DateTime($medDate);
-                $deadlineDate = new \DateTime($filingDeadline);
-                if ($scheduledDate > $deadlineDate) {
-                    $this->conn->rollBack();
-                    return [
-                        'success' => false,
-                        'message' => sprintf(
-                            'The mediation date must be within 15 working days of %s. Deadline: %s.',
-                            $isPaanyaya ? 'formal docketing / escalation' : 'the complaint filing date',
-                            $deadlineDate->format('F j, Y')
-                        ),
-                    ];
-                }
-                // Past date restriction bypassed for testing/development
-            }
+            // 15-working-day limit check removed
 
             $hearingDateTime = substr($medDate, 0, 10) . ' ' . substr($medTime, 0, 5) . ':00';
 
@@ -384,17 +365,11 @@ class Summons
                 }
             }
 
-            // Presiding official / Barangay Captain name
-            $officialStmt = $this->conn->prepare("
-                SELECT TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS official_name
-                FROM users u
-                INNER JOIN roles r ON r.role_id = u.role_id
-                WHERE u.status = 'Active' AND r.role_name = 'Administrator'
-                ORDER BY u.user_id ASC
-                LIMIT 1
-            ");
-            $officialStmt->execute();
-            $officialName = (string) ($officialStmt->fetchColumn() ?: 'Punong Barangay');
+            // Presiding official / Barangay Captain name from Authorized Signatory Profiles in system_settings
+            $pbStmt = $this->conn->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'captain_name' LIMIT 1");
+            $pbStmt->execute();
+            $captainVal = trim((string) $pbStmt->fetchColumn());
+            $officialName = (!empty($captainVal) && strcasecmp($captainVal, 'Admin User') !== 0) ? $captainVal : 'HON. AKIKO LYNNE CENTENO';
 
             require_once __DIR__ . '/../services/PDFService.php';
             $pdfService = new PDFService();
@@ -678,7 +653,8 @@ class Summons
         string $hearingDateTime,
         string $venue,
         ?int $excludeCaseId = null,
-        ?int $excludeHearingId = null
+        ?int $excludeHearingId = null,
+        string $hearingType = 'Mediation'
     ): ?array {
         $ts = strtotime($hearingDateTime);
         $date = date('Y-m-d', $ts);
@@ -687,25 +663,49 @@ class Summons
         $minute = (int) date('i', $ts);
         $timeMinutes = $hour * 60 + $minute;
 
-        // Working day check: Monday (1) to Friday (5)
+        // Weekend check
         if ($dow === 0 || $dow === 6) {
+            $label = ($hearingType === 'Conciliation') ? 'Conciliation' : 'Mediation';
             return [
                 'hearing_type' => 'Weekend Restriction',
                 'hearing_date' => $hearingDateTime,
                 'venue' => $venue,
                 'case_number' => '',
-                'message' => 'Mediation hearings can only be scheduled on working days (Monday to Friday).'
+                'message' => "{$label} hearings cannot be scheduled on weekends."
             ];
         }
 
-        // Operating hours check: 8:00 AM (08:00 = 480 mins) to 5:00 PM (17:00 = 1020 mins)
+        // Conciliation Tuesday afternoon restriction (Barangay Tumana Rule)
+        if ($hearingType === 'Conciliation' && $dow === 2 && $hour >= 12) {
+            return [
+                'hearing_type' => 'Tuesday Afternoon Restriction',
+                'hearing_date' => $hearingDateTime,
+                'venue' => $venue,
+                'case_number' => '',
+                'message' => 'Conciliation hearings on Tuesdays are permitted only in the morning (8:00 AM – 12:00 PM). Tuesday afternoons (1:00 PM – 5:00 PM) are exclusively reserved for Formal Mediation in the Lupon Court Room.'
+            ];
+        }
+
+        // Lunch break check
+        if ($hour === 12) {
+            return [
+                'hearing_type' => 'Lunch Break Restriction',
+                'hearing_date' => $hearingDateTime,
+                'venue' => $venue,
+                'case_number' => '',
+                'message' => 'Hearings cannot be scheduled during lunch break (12:00 PM – 1:00 PM).'
+            ];
+        }
+
+        // Operating hours check: 8:00 AM (480 mins) to 5:00 PM (1020 mins)
         if ($timeMinutes < 480 || $timeMinutes > 1020) {
+            $label = ($hearingType === 'Conciliation') ? 'Conciliation' : 'Mediation';
             return [
                 'hearing_type' => 'Operating Hours Restriction',
                 'hearing_date' => $hearingDateTime,
                 'venue' => $venue,
                 'case_number' => '',
-                'message' => 'Mediation hearings must be scheduled during regular Barangay working hours (8:00 AM to 5:00 PM, Monday to Friday).'
+                'message' => "{$label} hearings must be scheduled during regular Barangay working hours (8:00 AM to 5:00 PM, Monday to Friday)."
             ];
         }
 
@@ -765,7 +765,7 @@ class Summons
             ];
         }
 
-        // Check if the EXACT same case already has another active mediation hearing scheduled
+        // Check if the EXACT same case already has another active mediation hearing scheduled on the same date
         if ($excludeCaseId !== null && $excludeCaseId > 0) {
             $sameCaseSql = "
                 SELECT h.hearing_id, h.case_id, h.hearing_date, h.venue, h.hearing_type,
@@ -774,10 +774,11 @@ class Summons
                 INNER JOIN cases c ON c.case_id = h.case_id
                 LEFT JOIN complaints co ON co.complaint_id = c.complaint_id
                 WHERE h.case_id = ?
-                  AND h.hearing_type = 'Mediation'
+                  AND DATE(h.hearing_date) = ?
+                  AND h.hearing_type = ?
                   AND h.status NOT IN ('Cancelled', 'Office Cancelled')
             ";
-            $params = [$excludeCaseId];
+            $params = [$excludeCaseId, $date, $hearingType];
             if ($excludeHearingId !== null && $excludeHearingId > 0) {
                 $sameCaseSql .= " AND h.hearing_id <> ?";
                 $params[] = $excludeHearingId;
@@ -794,9 +795,43 @@ class Summons
                     'case_id' => $dupCase['case_id'],
                     'hearing_date' => $dupCase['hearing_date'],
                     'venue' => $dupCase['venue'],
-                    'hearing_type' => 'Mediation',
+                    'hearing_type' => $dupCase['hearing_type'] ?? $hearingType,
                     'case_number' => $dupCase['case_number'] ?? '',
-                    'message' => "This case already has an active Mediation hearing scheduled on {$cDate} at {$cTime}."
+                    'message' => "This case already has an active {$dupCase['hearing_type']} hearing scheduled on this date ({$cDate} at {$cTime}). Please select another date."
+                ];
+            }
+
+            // Also check if proposed date is on a prior date relative to the latest active hearing
+            $priorCaseSql = "
+                SELECT h.hearing_id, h.case_id, h.hearing_date, h.venue, h.hearing_type,
+                       c.case_number, co.complaint_title
+                FROM hearings h
+                INNER JOIN cases c ON c.case_id = h.case_id
+                LEFT JOIN complaints co ON co.complaint_id = c.complaint_id
+                WHERE h.case_id = ?
+                  AND DATE(h.hearing_date) > ?
+                  AND h.hearing_type = 'Mediation'
+                  AND h.status NOT IN ('Cancelled', 'Office Cancelled')
+            ";
+            $priorParams = [$excludeCaseId, $date];
+            if ($excludeHearingId !== null && $excludeHearingId > 0) {
+                $priorCaseSql .= " AND h.hearing_id <> ?";
+                $priorParams[] = $excludeHearingId;
+            }
+            $priorCaseSql .= " ORDER BY h.hearing_date DESC LIMIT 1";
+            $priorStmt = $this->conn->prepare($priorCaseSql);
+            $priorStmt->execute($priorParams);
+            $priorCase = $priorStmt->fetch(PDO::FETCH_ASSOC);
+            if ($priorCase) {
+                $pDate = date('M j, Y', strtotime($priorCase['hearing_date']));
+                return [
+                    'hearing_id' => $priorCase['hearing_id'],
+                    'case_id' => $priorCase['case_id'],
+                    'hearing_date' => $priorCase['hearing_date'],
+                    'venue' => $priorCase['venue'],
+                    'hearing_type' => 'Mediation',
+                    'case_number' => $priorCase['case_number'] ?? '',
+                    'message' => "A hearing for this case is already scheduled on {$pDate}. Subsequent hearings must be scheduled on a date after {$pDate}."
                 ];
             }
         }
@@ -807,9 +842,12 @@ class Summons
     /**
      * Retrieves all scheduled mediations for a given date.
      */
-    public function getScheduledMediationsForDate(string $date, ?int $excludeCaseId = null, ?int $excludeHearingId = null): array
+    public function getScheduledHearingsForDate(string $date, string $hearingType = 'Mediation', ?int $excludeCaseId = null, ?int $excludeHearingId = null): array
     {
         $dateOnly = substr($date, 0, 10);
+        $typeCondition = ($hearingType === 'Conciliation')
+            ? "h.hearing_type IN ('Conciliation', 'Mediation')"
+            : "h.hearing_type = 'Mediation'";
         $sql = "
             SELECT h.hearing_id, h.case_id, h.hearing_date, h.venue, h.hearing_type,
                    c.case_number, co.complaint_title
@@ -817,7 +855,7 @@ class Summons
             INNER JOIN cases c ON c.case_id = h.case_id
             LEFT JOIN complaints co ON co.complaint_id = c.complaint_id
             WHERE DATE(h.hearing_date) = ?
-              AND h.hearing_type = 'Mediation'
+              AND {$typeCondition}
               AND c.case_status NOT IN ('Dismissed', 'Settled')
         ";
         $params = [$dateOnly];
@@ -856,14 +894,18 @@ class Summons
      * Retrieves daily counts of scheduled mediation hearings within a date range.
      * Returns an associative array: ['YYYY-MM-DD' => count, ...]
      */
-    public function getDailyMediationCountsInRange(string $startDate, string $endDate, ?int $excludeCaseId = null): array
+    public function getDailyHearingCountsInRange(string $startDate, string $endDate, ?int $excludeCaseId = null, string $hearingType = 'Mediation'): array
     {
+        $typeCondition = ($hearingType === 'Conciliation')
+            ? "h.hearing_type IN ('Conciliation', 'Mediation')"
+            : "h.hearing_type = 'Mediation'";
+
         $sql = "
             SELECT DATE(h.hearing_date) AS h_date, COUNT(*) AS booked_count
             FROM hearings h
             INNER JOIN cases c ON c.case_id = h.case_id
             WHERE DATE(h.hearing_date) BETWEEN ? AND ?
-              AND h.hearing_type = 'Mediation'
+              AND {$typeCondition}
               AND h.status NOT IN ('Cancelled', 'Office Cancelled')
               AND c.case_status NOT IN ('Dismissed', 'Settled')
         ";
@@ -883,6 +925,11 @@ class Summons
             $results[$row['h_date']] = (int) $row['booked_count'];
         }
         return $results;
+    }
+
+    public function getDailyMediationCountsInRange(string $startDate, string $endDate, ?int $excludeCaseId = null): array
+    {
+        return $this->getDailyHearingCountsInRange($startDate, $endDate, $excludeCaseId, 'Mediation');
     }
 
     private function notifySummonsServers(string $caseNumber, int $summonsNum, int $actorUserId): void
@@ -909,5 +956,10 @@ class Summons
         } catch (Throwable $e) {
             error_log('Error notifying summons servers: ' . $e->getMessage());
         }
+    }
+
+    public function getScheduledMediationsForDate(string $date, ?int $excludeCaseId = null, ?int $excludeHearingId = null): array
+    {
+        return $this->getScheduledHearingsForDate($date, 'Mediation', $excludeCaseId, $excludeHearingId);
     }
 }

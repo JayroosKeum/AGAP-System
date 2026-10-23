@@ -9,6 +9,8 @@ if (!isset($_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2,
 require_once __DIR__ . '/../../../backend/config/database.php';
 $db = (new Database())->connect();
 
+$roleId = (int) ($_SESSION['role_id'] ?? 0);
+$canAuthorizePastDate = $roleId === 1;
 $caseId = filter_var($_GET['case_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 $complaintId = filter_var($_GET['complaint_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 
@@ -245,48 +247,106 @@ include '../../layouts/header.php';
 <!-- MODAL 1: Schedule Conciliation Hearing    -->
 <!-- ========================================== -->
 <div id="wsScheduleModal" class="modal" style="display: none;">
-    <div class="modal-content" style="max-width: 500px;">
-        <div class="modal-header">
-            <h2>Schedule Conciliation Session</h2>
+    <div class="modal-content" style="max-width: 640px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; padding: 0;">
+        <div class="modal-header" style="padding: 16px 24px; border-bottom: 1px solid #e2e8f0; margin-bottom: 0;">
+            <h2 id="wsSchedModalTitle" style="font-size: 1.15rem; font-weight: 700; color: #0f172a; margin: 0;">Schedule Conciliation Session</h2>
             <button type="button" class="close-btn" onclick="closeScheduleModal()">&times;</button>
         </div>
-        <form id="wsScheduleForm" onsubmit="submitSchedule(event)">
+        <form id="wsScheduleForm" onsubmit="submitSchedule(event)" style="display: flex; flex-direction: column; flex: 1; overflow-y: auto;">
             <input type="hidden" id="schedHearingType" value="Conciliation">
-            <p style="margin: 0 0 12px; font-size: 0.86rem; color: #475569; line-height: 1.5;">
-                In accordance with KP rules, scheduling a conciliation hearing registers the session in the central calendar and generates <strong>KP Form 11 (Notice of Hearing before the Pangkat)</strong>.
-            </p>
-            <div id="schedStageRuleHint" style="padding: 10px 14px; border-radius: 6px; font-size: 0.82rem; margin-bottom: 14px; background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; display: flex; align-items: flex-start; gap: 8px;">
-                <span style="font-size: 1rem; line-height: 1;">📅</span>
-                <div>
-                    <strong>Barangay Tumana Rule:</strong> Conciliation hearings before the Pangkat are held on Mondays, Wednesdays, Thursdays, and Fridays (8:00 AM – 12:00 PM &amp; 1:00 PM – 5:00 PM) and Tuesday Mornings (8:00 AM – 12:00 PM). (Tuesday afternoons are exclusively reserved for Formal Mediation).
+            <input type="hidden" id="schedCaseId" value="<?php echo htmlspecialchars($caseId); ?>">
+            <input type="hidden" id="schedComplaintId" value="<?php echo htmlspecialchars($complaintId); ?>">
+
+            <div style="padding: 16px 24px 20px; flex: 1;">
+                <p id="wsSchedModalSubtitle" style="margin: 0 0 12px; font-size: 0.85rem; color: #475569; line-height: 1.5;">
+                    In accordance with KP rules, scheduling a conciliation hearing registers the session in the central calendar and generates <strong>KP Form 11 (Notice of Hearing before the Pangkat)</strong>.
+                </p>
+
+                <div id="schedStageRuleHint" style="padding: 10px 14px; border-radius: 6px; font-size: 0.82rem; margin-bottom: 14px; background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; display: flex; align-items: flex-start; gap: 8px;">
+                    <span style="font-size: 1rem; line-height: 1;">📅</span>
+                    <div>
+                        <strong>Barangay Tumana Rule:</strong> Conciliation hearings before the Pangkat are held on Mondays, Wednesdays, Thursdays, and Fridays (8:00 AM – 12:00 PM &amp; 1:00 PM – 5:00 PM) and Tuesday Mornings (8:00 AM – 12:00 PM). (Tuesday afternoons are exclusively reserved for Formal Mediation).
+                    </div>
                 </div>
+
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label for="schedDate" style="margin: 0; font-weight: 600; font-size: 0.86rem;">
+                            <span id="schedDateLabel">Conciliation Date</span> <span class="required-mark" aria-hidden="true">*</span>
+                        </label>
+                        <span id="schedWindowStatutoryBadge" style="display: none; font-size: 0.72rem; background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; padding: 2px 8px; border-radius: 9999px; font-weight: 600;"></span>
+                    </div>
+
+                    <input type="date" id="schedDate" name="hearing_date" required style="margin-bottom: 8px; width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.88rem; box-sizing: border-box; background: #fff;">
+
+                    <!-- Visual Calendar & Capacity Strip -->
+                    <div id="schedVisualDatePickerContainer" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-top: 6px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.78rem; flex-wrap: wrap; gap: 6px;">
+                            <span id="schedVisualDeckTitle" style="font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.03em; font-size: 0.74rem;">
+                                📅 AVAILABLE CONCILIATION DAYS (MON, TUE AM, WED, THU, FRI):
+                            </span>
+                            <div style="display: flex; gap: 10px; font-size: 0.72rem; flex-wrap: wrap;">
+                                <span style="display: inline-flex; align-items: center; gap: 4px; color: #166534;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e;"></span> Available</span>
+                                <span style="display: inline-flex; align-items: center; gap: 4px; color: #991b1b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #ef4444;"></span> Full</span>
+                                <span style="display: inline-flex; align-items: center; gap: 4px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #94a3b8;"></span> Closed</span>
+                            </div>
+                        </div>
+
+                        <!-- Scrollable Day Cards Grid -->
+                        <div id="schedVisualDayGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; max-height: 155px; overflow-y: auto; padding: 4px 2px;">
+                            <div style="text-align: center; color: #64748b; font-size: 0.78rem; padding: 12px; grid-column: 1 / -1;">
+                                Loading conciliation availability &amp; capacity...
+                            </div>
+                        </div>
+                        <div id="schedVisualDateStatusNotice" style="margin-top: 6px; font-size: 0.75rem; color: #64748b; line-height: 1.4;"></div>
+                    </div>
+                </div>
+
+                <!-- Existing Hearings on selected date -->
+                <div id="schedDaySchedulesWrap" style="display: none; margin-bottom: 14px; padding: 10px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.84rem;">
+                    <div style="font-weight: 600; color: #334155; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
+                        <span id="schedDaySchedulesTitle">📅 Scheduled Conciliations on this Date:</span>
+                        <span id="schedDaySlotsCount" style="font-size: 0.72rem; background: #e2e8f0; color: #475569; padding: 2px 7px; border-radius: 9999px; font-weight: 600;">0</span>
+                    </div>
+                    <div id="schedDaySlotsList" style="color: #64748b; font-size: 0.82rem; line-height: 1.5;">
+                        No other hearings scheduled on this day.
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <label for="schedTime"><span id="schedTimeLabel">Conciliation Time</span> <span class="required-mark" aria-hidden="true">*</span></label>
+                    <input type="time" id="schedTime" name="hearing_time" value="09:00" min="08:00" max="17:00" step="1800" required style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.88rem; box-sizing: border-box; background: #fff;">
+                    <small id="schedTimeHint" class="field-hint" style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Regular Conciliation hours: Mon/Wed/Thu/Fri 8:00 AM – 12:00 PM &amp; 1:00 PM – 5:00 PM; Tuesday 8:00 AM – 12:00 PM (Morning only). Standard duration is 1 hour.</small>
+                </div>
+
+                <!-- Conflict Alert Box -->
+                <div id="schedScheduleConflictAlert" class="alert alert-danger" style="display: none; margin: 0 0 14px; padding: 10px 12px; font-size: 0.84rem; border-radius: 6px; background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; line-height: 1.4;">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <label for="schedVenue">Venue <span class="required-mark" aria-hidden="true">*</span></label>
+                    <input type="text" id="schedVenue" name="venue" maxlength="255" value="Lupon Court Room" readonly required style="background: #f8fafc; cursor: not-allowed; width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.88rem; box-sizing: border-box;">
+                    <small style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Conciliation sessions share the Lupon Court Room during operating windows.</small>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 6px;">
+                    <label for="schedRemarks">Session Instructions / Remarks <span class="optional-label">Optional</span></label>
+                    <textarea id="schedRemarks" name="remarks" maxlength="5000" rows="2" placeholder="Optional conciliation session instructions or notes..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.84rem; box-sizing: border-box;"></textarea>
+                </div>
+
+                <?php if (!empty($canAuthorizePastDate)): ?>
+                <div class="form-group" style="margin-top: 10px;">
+                    <label for="schedPastDateExceptionReason">Administrator past-date exception reason</label>
+                    <textarea id="schedPastDateExceptionReason" rows="2" maxlength="2000" placeholder="Required only when scheduling a past date or time (10–2,000 characters)." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.84rem; box-sizing: border-box;"></textarea>
+                    <small style="color: #64748b; font-size: 0.75rem;">The reason is saved with the hearing and audit history.</small>
+                </div>
+                <?php endif; ?>
             </div>
-            <div class="form-group">
-                <label for="schedDate">Hearing Date (Mon, Tue Morning, Wed, Thu, Fri) <span class="required-mark">*</span></label>
-                <input type="text" id="schedDate" placeholder="Select hearing date..." required style="background: #fff; cursor: pointer;">
-                <small id="schedDateSoftIndicator" style="color: #0369a1; font-size: 0.76rem; display: block; margin-top: 4px; font-weight: 600;"></small>
-                <small id="schedDateError" style="color: #b91c1c; font-size: 0.75rem; display: none; margin-top: 4px;"></small>
-            </div>
-            <div class="form-group">
-                <label for="schedTime">Call Time / Target Start Time <span class="required-mark">*</span></label>
-                <select id="schedTime" required style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem; background: #fff;">
-                    <option value="">Select a date first</option>
-                </select>
-                <small id="schedSlotFeedback" style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Target call times on the conciliation docket. Elastic session duration (actual start &amp; end tracked).</small>
-            </div>
-            <div class="form-group">
-                <label for="schedVenue">Venue <span class="required-mark">*</span></label>
-                <input type="text" id="schedVenue" value="Lupon Court Room" readonly required maxlength="255" style="background: #f8fafc; cursor: not-allowed;">
-                <small style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Conciliation sessions share the Lupon Court Room during operating windows.</small>
-            </div>
-            <div class="form-group">
-                <label for="schedRemarks">Session Instructions / Remarks <span class="optional-label">Optional</span></label>
-                <textarea id="schedRemarks" rows="2" placeholder="Optional conciliation session instructions..."></textarea>
-            </div>
-            <div class="modal-actions">
+            <div class="modal-actions" style="padding: 12px 24px; border-top: 1px solid #e2e8f0; background: #f8fafc; margin-top: 0; flex-shrink: 0; display: flex; justify-content: flex-end; gap: 10px;">
                 <button type="button" class="btn-secondary" onclick="closeScheduleModal()">Cancel</button>
                 <button type="submit" class="btn-create" id="submitSchedBtn">Schedule Conciliation Hearing</button>
             </div>
+            <p id="schedMessage" role="status" style="margin: 0; padding: 0 24px 8px; font-size: 0.84rem;"></p>
         </form>
     </div>
 </div>

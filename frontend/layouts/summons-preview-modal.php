@@ -131,6 +131,16 @@
 .summons-dual-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
+    overflow-x: hidden;
+}
+
+.preview-document-column {
+    overflow: hidden !important;
+}
+
+.preview-document-column iframe {
+    width: 100% !important;
+    overflow-x: hidden !important;
 }
 
 @media (max-width: 991px) {

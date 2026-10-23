@@ -21,6 +21,39 @@ class PDFService
         require_once $autoload;
     }
 
+    /**
+     * Resolves the official Punong Barangay / Lupon Chairman from system_settings or default profile.
+     */
+    public function getAuthorizedCaptainName(?string $explicit = null): string
+    {
+        $candidate = trim((string) $explicit);
+        if ($candidate !== '' &&
+            strcasecmp($candidate, 'Admin User') !== 0 &&
+            strcasecmp($candidate, 'Punong Barangay') !== 0 &&
+            strcasecmp($candidate, 'Tagapangulo ng Lupon') !== 0 &&
+            strcasecmp($candidate, 'Punong Barangay / Lupon Chairman') !== 0 &&
+            strcasecmp($candidate, 'Punong Barangay / Tagapangulo ng Lupon') !== 0) {
+            return $candidate;
+        }
+
+        try {
+            if (!$this->conn) {
+                require_once __DIR__ . '/../config/Database.php';
+                $this->conn = (new Database())->connect();
+            }
+            $pbStmt = $this->conn->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'captain_name' LIMIT 1");
+            $pbStmt->execute();
+            $val = trim((string) $pbStmt->fetchColumn());
+            if ($val !== '' && strcasecmp($val, 'Admin User') !== 0) {
+                return $val;
+            }
+        } catch (Throwable $e) {
+            // ignore and fallback
+        }
+
+        return 'HON. AKIKO LYNNE CENTENO';
+    }
+
     public function generateKp12(
         array $data,
         string $absolutePath
@@ -395,7 +428,7 @@ class PDFService
         $respondents = $this->partyLines($data['respondents'] ?? []);
         $caseNumber = $this->escape((string) ($data['case_number'] ?? ''));
         $title = $this->escape((string) ($data['complaint_title'] ?? ''));
-        $officialName = $this->escape((string) ($data['official_name'] ?? $data['chairman_name'] ?? 'HON. AKIKO LYNNE CENTENO'));
+        $officialName = $this->escape($this->getAuthorizedCaptainName($data['official_name'] ?? $data['chairman_name'] ?? $data['captain_name'] ?? null));
 
         $formTitle = 'Pormularyo ng ' . $formCode;
 
@@ -467,11 +500,20 @@ class PDFService
 
         $compLines = '';
         foreach ($compList as $c) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($c) . '</div>'; }
-        for ($i = 0; $i < max(0, 3 - count($compList)); $i++) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+        for ($i = 0; $i < max(0, 2 - count($compList)); $i++) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
 
         $respLines = '';
         foreach ($respList as $r) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($r) . '</div>'; }
-        for ($i = 0; $i < max(0, 3 - count($respList)); $i++) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+        for ($i = 0; $i < max(0, 2 - count($respList)); $i++) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+
+        $targetRespLines = '';
+        if (empty($respList)) {
+            $targetRespLines = '<div style="border-bottom: 1px solid #111; min-height: 20px; margin-bottom: 6px;">&nbsp;</div>';
+        } else {
+            foreach ($respList as $r) {
+                $targetRespLines .= '<div style="border-bottom: 1px solid #111; min-height: 20px; margin-bottom: 6px; font-weight: bold; font-size: 11pt;">' . $this->escape($r) . '</div>';
+            }
+        }
 
         $hearingTs = !empty($data['hearing_date']) ? strtotime($data['hearing_date']) : null;
         if ($hearingTs) {
@@ -488,9 +530,9 @@ class PDFService
         $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
         $noticeYear = date('Y', $noticeTs);
 
-        $officialName = !empty($data['official_name']) ? $this->escape((string) $data['official_name']) : 'HON. AKIKO LYNNE CENTENO';
+        $officialName = $this->escape($this->getAuthorizedCaptainName($data['official_name'] ?? $data['captain_name'] ?? null));
 
-        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperStart = $forPdf ? '' : '<div class="preview-outer" style="background: #f1f5f9; padding: 14px 10px; min-height: 100%; display: flex; justify-content: center; box-sizing: border-box;"><div class="preview-sheet" style="background: #fff; width: 100%; max-width: 760px; min-height: 960px; padding: 14mm 16mm; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-radius: 4px; box-sizing: border-box;">';
         $wrapperEnd = $forPdf ? '' : '</div></div>';
 
         return '<!DOCTYPE html>
@@ -504,8 +546,14 @@ class PDFService
         body { font-family: Arial, "DejaVu Sans", Helvetica, sans-serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
         .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
         .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+        .header-table td { vertical-align: middle; }
         .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
-        .offices { text-align: center; font-weight: bold; font-size: 11pt; margin-top: 10px; margin-bottom: 16px; letter-spacing: 0.3px; line-height: 1.35; }
+        .offices { text-align: center; font-weight: bold; font-size: 11pt; margin-top: 10px; margin-bottom: 14px; letter-spacing: 0.3px; line-height: 1.35; }
+        @media print {
+            html, body { background: #fff !important; width: 100% !important; overflow: visible !important; margin: 0 !important; padding: 0 !important; }
+            .preview-outer { background: transparent !important; padding: 0 !important; display: block !important; min-height: 0 !important; }
+            .preview-sheet { width: 100% !important; max-width: 100% !important; min-height: 0 !important; padding: 0 !important; box-shadow: none !important; border-radius: 0 !important; }
+        }
     </style>
 </head>
 <body>
@@ -514,19 +562,19 @@ class PDFService
 
     <table class="header-table">
         <tr>
-            <td style="width: 80px; text-align: left; vertical-align: top;">
-                ' . (!empty($tumanaLogo) ? '<img src="' . $tumanaLogo . '" alt="Barangay Tumana" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            <td style="width: 80px; text-align: left;">
+                ' . (!empty($tumanaLogo) ? '<img src="' . $tumanaLogo . '" alt="Barangay Tumana" style="width: 72px; height: 72px; object-fit: contain;">' : '') . '
             </td>
-            <td class="header-center" style="vertical-align: top;">
+            <td class="header-center">
                 <div>Republika ng Pilipinas</div>
                 <div>Lalawigan ng NCR</div>
                 <div>Lungsod ng Marikina</div>
-                <div style="font-weight: bold;">Barangay Tumana</div>
-                <div style="font-size: 9.5pt;">Telephone Nos. 8-238-4208</div>
-                <div style="font-size: 9.5pt;">EMAILADDRESS:barangaytumana2023@gmail.com</div>
+                <div style="font-weight: bold; font-size: 11pt; margin-top: 1px;">Barangay Tumana</div>
+                <div style="font-size: 9pt; margin-top: 2px;">Telephone Nos. 8-238-4208</div>
+                <div style="font-size: 8.5pt;">EMAIL ADDRESS: barangaytumana2023@gmail.com</div>
             </td>
-            <td style="width: 80px; text-align: right; vertical-align: top;">
-                ' . (!empty($marikinaLogo) ? '<img src="' . $marikinaLogo . '" alt="Lungsod ng Marikina" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            <td style="width: 80px; text-align: right;">
+                ' . (!empty($marikinaLogo) ? '<img src="' . $marikinaLogo . '" alt="Lungsod ng Marikina" style="width: 72px; height: 72px; object-fit: contain;">' : '') . '
             </td>
         </tr>
     </table>
@@ -538,33 +586,40 @@ class PDFService
 
     <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10.5pt;">
         <tr>
-            <td style="width: 50%; vertical-align: top;">
+            <td style="width: 52%; vertical-align: top;">
                 ' . $compLines . '
-                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">(Mga) nagrereklamo</div>
-                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">-laban kay/kina-</div>
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 6px; color: #334155;">(Mga) nagrereklamo</div>
+                <div style="text-align: center; font-size: 10pt; margin-bottom: 6px; font-style: italic;">-laban kay/kina-</div>
                 ' . $respLines . '
-                <div style="text-align: center; font-size: 10pt;">(Mga) Inirereklamo</div>
+                <div style="text-align: center; font-size: 10pt; color: #334155;">(Mga) inirereklamo</div>
             </td>
-            <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 20px;">
+            <td style="width: 48%; vertical-align: top; text-align: right; padding-left: 16px;">
                 <div>Usapin ng Barangay Blg: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 130px; font-weight: bold; text-align: center;">' . $caseNumber . '</span></div>
-                <div style="margin-top: 6px;">Para sa: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 160px; font-weight: bold; text-align: center;">' . $title . '</span></div>
+                <div style="margin-top: 6px;">Para sa: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 140px; font-weight: bold; text-align: center;">' . $title . '</span></div>
             </td>
         </tr>
     </table>
 
     <div style="text-align: center; margin: 16px 0;">
         <div style="font-size: 13.5pt; font-weight: bold; letter-spacing: 0.5px;">PATAWAG</div>
-        <div style="font-size: 11.5pt; font-weight: bold;">(Summons)</div>
+        <div style="font-size: 11pt; font-weight: bold;">(Summons)</div>
     </div>
 
-    <div style="margin-bottom: 16px; font-size: 11pt;">
-        <div>Para kay: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 250px; font-weight: bold;">' . (!empty($respList) ? implode(' / ', $respList) : '&nbsp;') . '</span></div>
-        <div style="text-align: center; font-size: 10.5pt; margin-top: 4px;">(Mga) inerereklamo</div>
+    <div style="margin-bottom: 18px; font-size: 11pt;">
+        <table style="border-collapse: collapse;">
+            <tr>
+                <td style="vertical-align: top; padding-right: 12px; font-size: 11pt; white-space: nowrap; padding-top: 1px;">Para kay/Kina:</td>
+                <td style="vertical-align: top; width: 320px;">
+                    ' . $targetRespLines . '
+                    <div style="text-align: center; font-size: 10pt; margin-top: 3px; color: #334155;">(Mga) inirereklamo</div>
+                </td>
+            </tr>
+        </table>
     </div>
 
     <div style="font-size: 11pt; line-height: 2; text-align: justify; margin-bottom: 22px;">
         <p style="text-indent: 40px; margin: 0 0 16px 0;">
-            Ikaw ay ipinatawag upang humarap sa akin nang personal kasama ang iyong mga testigo, sa <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 160px; font-weight: bold;">' . $venue . '</span> ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 50px; font-weight: bold; text-align: center;">' . $hearingDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 100px; font-weight: bold; text-align: center;">' . $hearingMonth . '</span>, <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 50px; font-weight: bold; text-align: center;">' . $hearingYear . '</span> sa ganap na ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 80px; font-weight: bold; text-align: center;">' . $hearingTime . '</span> upang sagutin ang reklamo laban sa iyo na idinulog sa harap ko, kakabit nito ang kopya, para sa pamamagitan/pag-aayos ng inyong mga sigalot ng nagrereklamo/mga nagrereklamo.
+            Ikaw ay ipinatawag upang humarap sa akin nang personal kasama ang iyong mga testigo, sa <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 160px; font-weight: bold; text-align: center;">' . $venue . '</span> ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 45px; font-weight: bold; text-align: center;">' . $hearingDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 100px; font-weight: bold; text-align: center;">' . $hearingMonth . '</span>, <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 50px; font-weight: bold; text-align: center;">' . $hearingYear . '</span> sa ganap na ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 80px; font-weight: bold; text-align: center;">' . $hearingTime . '</span> upang sagutin ang reklamo laban sa iyo na idinulog sa harap ko, kakabit nito ang kopya, para sa pamamagitan/pag-aayos ng inyong mga sigalot ng nagrereklamo/mga nagrereklamo.
         </p>
         <p style="text-indent: 40px; margin: 0 0 16px 0;">
             Binabalaan ka na ang iyong pagtanggi o sadyang di-pagharap upang sundin ang patawag na ito ay maghahadlang sa iyo na makapaghain ng ganting-sumbong na magmumula sa reklamong ito.
@@ -573,14 +628,14 @@ class PDFService
             Kung sakali at mabigo ka, mahaharap ka sa kaparusahang paglapastangan sa hukuman.
         </p>
         <p style="text-indent: 40px; margin: 0;">
-            Ngayong Ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 100px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, ' . $noticeYear . '.
+            Ngayong Ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 50px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 100px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, ' . $noticeYear . '.
         </p>
     </div>
 
-    <div style="margin-top: 35px; display: flex; justify-content: flex-end;">
-        <div style="text-align: center; min-width: 290px;">
+    <div style="margin-top: 35px; text-align: right;">
+        <div style="display: inline-block; text-align: center; min-width: 290px;">
             <div style="border-top: 1px solid #111; padding-top: 4px; font-weight: bold; font-size: 11pt;">' . $officialName . '</div>
-            <div style="font-size: 10pt;">Punong Barangay/ Tagapangulo ng Lupon</div>
+            <div style="font-size: 10pt; margin-top: 2px;">Punong Barangay / Tagapangulo ng Lupon</div>
         </div>
     </div>
 ' . $wrapperEnd . '
@@ -638,9 +693,9 @@ class PDFService
         $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
         $noticeYear = date('Y', $noticeTs);
 
-        $officialName = !empty($data['official_name']) ? $this->escape((string) $data['official_name']) : 'AKIKO LYNNE CENTENO';
+        $officialName = $this->escape($this->getAuthorizedCaptainName($data['official_name'] ?? $data['captain_name'] ?? null));
 
-        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 100%; max-width: 760px; min-height: 960px; padding: 14mm 16mm; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-radius: 4px; box-sizing: border-box;">';
         $wrapperEnd = $forPdf ? '' : '</div></div>';
 
         return '<!DOCTYPE html>
@@ -789,10 +844,10 @@ class PDFService
         $noticeYear = date('Y', $noticeTs);
         $dateStr = 'ika-' . $noticeDay . ' ng ' . $noticeMonth . ', ' . $noticeYear;
 
-        $officialName = !empty($data['official_name']) ? $this->escape((string) $data['official_name']) : 'HON. AKIKO LYNNE CENTENO';
+        $officialName = $this->escape($this->getAuthorizedCaptainName($data['official_name'] ?? $data['captain_name'] ?? null));
         $secretaryName = !empty($data['secretary_name']) ? $this->escape((string) $data['secretary_name']) : 'PAMELA D. CONSULTA';
 
-        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 100%; max-width: 760px; min-height: 960px; padding: 14mm 16mm; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-radius: 4px; box-sizing: border-box;">';
         $wrapperEnd = $forPdf ? '' : '</div></div>';
 
         return '<!DOCTYPE html>
@@ -949,7 +1004,7 @@ class PDFService
 
         $chairmanPangkat = !empty($data['chairman_name']) ? $this->escape((string) $data['chairman_name']) : (!empty($data['pangkat_chairman']) ? $this->escape((string) $data['pangkat_chairman']) : '&nbsp;');
 
-        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 100%; max-width: 760px; min-height: 960px; padding: 14mm 16mm; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-radius: 4px; box-sizing: border-box;">';
         $wrapperEnd = $forPdf ? '' : '</div></div>';
 
         return '<!DOCTYPE html>
@@ -1083,17 +1138,11 @@ class PDFService
         $compLinesHtml = '';
         if (empty($compList)) {
             $compLinesHtml = '
-                <div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 8px;">&nbsp;</div>
-                <div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 8px;">&nbsp;</div>
-                <div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 6px;">&nbsp;</div>
+                <div style="border-bottom: 1px solid #111; min-height: 20px; margin-bottom: 6px;">&nbsp;</div>
             ';
         } else {
             foreach ($compList as $idx => $cName) {
-                $compLinesHtml .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 8px; font-weight: bold; font-size: 11pt;">' . $this->escape($cName) . '</div>';
-            }
-            $remaining = max(0, 3 - count($compList));
-            for ($i = 0; $i < $remaining; $i++) {
-                $compLinesHtml .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 8px;">&nbsp;</div>';
+                $compLinesHtml .= '<div style="border-bottom: 1px solid #111; min-height: 20px; margin-bottom: 6px; font-weight: bold; font-size: 11pt;">' . $this->escape($cName) . '</div>';
             }
         }
 
@@ -1101,11 +1150,9 @@ class PDFService
         if ($hearingTs) {
             $hearingDateFormatted = 'ika-' . date('j', $hearingTs) . ' ng ' . $this->filipinoMonth((int) date('n', $hearingTs)) . ', ' . date('Y', $hearingTs);
             $hearingTimeFormatted = date('g:i A', $hearingTs);
-            $hearingMonthFormatted = $this->filipinoMonth((int) date('n', $hearingTs));
         } else {
             $hearingDateFormatted = '________________________';
             $hearingTimeFormatted = '_________';
-            $hearingMonthFormatted = '_________';
         }
 
         $noticeTs = !empty($data['notice_date']) ? strtotime($data['notice_date']) : time();
@@ -1113,18 +1160,18 @@ class PDFService
         $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
         $noticeYear = date('Y', $noticeTs);
 
-        $officialName = !empty($data['official_name']) ? $this->escape((string) $data['official_name']) : 'HON.AKIKO LYNNE CENTENO';
+        $officialName = $this->escape($this->getAuthorizedCaptainName($data['official_name'] ?? $data['captain_name'] ?? null));
 
         $bodyContent = '
-            <p style="text-indent: 40px; margin: 0 0 25px 0; text-align: justify; line-height: 2.1;">
-                Ikaw ay hinihilingang humarap sa akin sa <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 180px; font-weight: bold;">' . $venue . '</span>, <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 140px; font-weight: bold;">' . $hearingDateFormatted . '</span>, sa ganap na ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 90px; font-weight: bold; text-align: center;">' . $hearingTimeFormatted . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 100px; font-weight: bold; text-align: center;">' . $hearingMonthFormatted . '</span> para sa pagdinig ng iyong reklamo.
+            <p style="text-indent: 40px; margin: 0 0 20px 0; text-align: justify; line-height: 2;">
+                Ikaw ay hinihilingang humarap sa akin sa <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 180px; font-weight: bold; text-align: center;">' . $venue . '</span>, <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 160px; font-weight: bold; text-align: center;">' . $hearingDateFormatted . '</span>, sa ganap na ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 90px; font-weight: bold; text-align: center;">' . $hearingTimeFormatted . '</span> para sa pagdinig ng iyong reklamo.
             </p>
-            <p style="text-indent: 40px; margin: 0; text-align: justify; line-height: 2.1;">
-                Ngayong Ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 70px; text-align: center; font-weight: bold;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 110px; text-align: center; font-weight: bold;">' . $noticeMonth . '</span>, ' . $noticeYear . '.
+            <p style="text-indent: 40px; margin: 0; text-align: justify; line-height: 2;">
+                Ngayong Ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; text-align: center; font-weight: bold;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 110px; text-align: center; font-weight: bold;">' . $noticeMonth . '</span>, ' . $noticeYear . '.
             </p>
         ';
 
-        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperStart = $forPdf ? '' : '<div class="preview-outer" style="background: #f1f5f9; padding: 14px 10px; min-height: 100%; display: flex; justify-content: center; box-sizing: border-box;"><div class="preview-sheet" style="background: #fff; width: 100%; max-width: 760px; min-height: 960px; padding: 14mm 16mm; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-radius: 4px; box-sizing: border-box;">';
         $wrapperEnd = $forPdf ? '' : '</div></div>';
 
         return '<!DOCTYPE html>
@@ -1138,24 +1185,25 @@ class PDFService
         body { font-family: Arial, "DejaVu Sans", Helvetica, sans-serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
         .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
         .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
-        .header-table td { vertical-align: top; }
+        .header-table td { vertical-align: middle; }
         .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
-        .offices { text-align: center; font-weight: bold; font-size: 11pt; margin-top: 12px; margin-bottom: 18px; letter-spacing: 0.3px; line-height: 1.35; }
-        .case-meta { text-align: right; font-size: 10.5pt; line-height: 1.6; margin-bottom: 22px; }
-        .form-title-block { text-align: center; margin-bottom: 24px; }
+        .offices { text-align: center; font-weight: bold; font-size: 11pt; margin-top: 10px; margin-bottom: 14px; letter-spacing: 0.3px; line-height: 1.35; }
+        .case-meta { text-align: right; font-size: 10.5pt; line-height: 1.6; margin-bottom: 18px; }
+        .form-title-block { text-align: center; margin-bottom: 20px; }
         .form-title { font-size: 13.5pt; font-weight: bold; letter-spacing: 0.5px; }
-        .form-sub { font-size: 11.5pt; font-weight: bold; }
-        .addressee-block { margin-bottom: 20px; }
-        .addressee-row { display: table; width: 100%; }
-        .addressee-label { display: table-cell; width: 110px; font-size: 11pt; white-space: nowrap; vertical-align: bottom; }
-        .addressee-lines { display: table-cell; vertical-align: bottom; }
-        .body-section { font-size: 11pt; line-height: 2.1; margin-top: 25px; margin-bottom: 25px; }
-        .sig-block { margin-top: 35px; margin-bottom: 40px; text-align: right; }
+        .form-sub { font-size: 11pt; font-weight: bold; }
+        .addressee-block { margin-bottom: 18px; }
+        .sig-block { margin-top: 35px; margin-bottom: 35px; text-align: right; }
         .sig-box { display: inline-block; text-align: center; min-width: 280px; }
         .sig-line { border-top: 1px solid #111; padding-top: 4px; font-weight: bold; font-size: 11pt; }
         .sig-title { font-size: 10pt; margin-top: 2px; }
-        .ack-section { margin-top: 30px; font-size: 11pt; }
+        .ack-section { margin-top: 25px; font-size: 11pt; }
         .ack-box { display: inline-block; text-align: center; min-width: 250px; }
+        @media print {
+            html, body { background: #fff !important; width: 100% !important; overflow: visible !important; margin: 0 !important; padding: 0 !important; }
+            .preview-outer { background: transparent !important; padding: 0 !important; display: block !important; min-height: 0 !important; }
+            .preview-sheet { width: 100% !important; max-width: 100% !important; min-height: 0 !important; padding: 0 !important; box-shadow: none !important; border-radius: 0 !important; }
+        }
     </style>
 </head>
 <body>
@@ -1165,25 +1213,25 @@ class PDFService
     <table class="header-table">
         <tr>
             <td style="width: 80px; text-align: left;">
-                ' . (!empty($tumanaLogo) ? '<img src="' . $tumanaLogo . '" alt="Barangay Tumana" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+                ' . (!empty($tumanaLogo) ? '<img src="' . $tumanaLogo . '" alt="Barangay Tumana" style="width: 72px; height: 72px; object-fit: contain;">' : '') . '
             </td>
             <td class="header-center">
                 <div>Republika ng Pilipinas</div>
                 <div>Lalawigan ng NCR</div>
                 <div>Lungsod ng Marikina</div>
-                <div style="font-weight: bold;">Barangay Tumana</div>
-                <div style="font-size: 9.5pt;">Telephone Nos. 8-238-4208</div>
-                <div style="font-size: 9.5pt;">EMAILADDRESS:barangaytumana2023@gmail.com</div>
+                <div style="font-weight: bold; font-size: 11pt; margin-top: 1px;">Barangay Tumana</div>
+                <div style="font-size: 9pt; margin-top: 2px;">Telephone Nos. 8-238-4208</div>
+                <div style="font-size: 8.5pt;">EMAIL ADDRESS: barangaytumana2023@gmail.com</div>
             </td>
             <td style="width: 80px; text-align: right;">
-                ' . (!empty($marikinaLogo) ? '<img src="' . $marikinaLogo . '" alt="Lungsod ng Marikina" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+                ' . (!empty($marikinaLogo) ? '<img src="' . $marikinaLogo . '" alt="Lungsod ng Marikina" style="width: 72px; height: 72px; object-fit: contain;">' : '') . '
             </td>
         </tr>
     </table>
 
     <div class="offices">
         <div>TANGGAPAN NG PUNONG BARANGAY</div>
-        <div style="margin-top: 3px;">TANGGAPAN NG LUPONG TAGAPAMAYAPA</div>
+        <div style="margin-top: 2px;">TANGGAPAN NG LUPONG TAGAPAMAYAPA</div>
     </div>
 
     <div class="case-meta">
@@ -1197,15 +1245,17 @@ class PDFService
     </div>
 
     <div class="addressee-block">
-        <div class="addressee-row">
-            <div class="addressee-label">Para kay/Kina:</div>
-            <div class="addressee-lines">
-                ' . $compLinesHtml . '
-            </div>
-        </div>
-        <div style="text-align: center; font-size: 10.5pt; margin-top: 4px;">
-            (Mga) Nagrereklamo
-        </div>
+        <table style="border-collapse: collapse;">
+            <tr>
+                <td style="vertical-align: top; padding-right: 12px; font-size: 11pt; white-space: nowrap; padding-top: 1px;">
+                    Para kay/Kina:
+                </td>
+                <td style="vertical-align: top; width: 320px;">
+                    ' . $compLinesHtml . '
+                    <div style="text-align: center; font-size: 10pt; margin-top: 3px; color: #334155;">(Mga) Nagrereklamo</div>
+                </td>
+            </tr>
+        </table>
     </div>
 
     <div class="body-section">
@@ -1221,7 +1271,7 @@ class PDFService
 
     <div class="ack-section">
         <div style="margin-bottom: 25px;">
-            Ipinagbigay-alam ngayong ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 70px; text-align: center; font-weight: bold;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 110px; text-align: center; font-weight: bold;">' . $noticeMonth . '</span>, ' . $noticeYear . '.
+            Ipinagbigay-alam ngayong ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; text-align: center; font-weight: bold;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 110px; text-align: center; font-weight: bold;">' . $noticeMonth . '</span>, ' . $noticeYear . '.
         </div>
 
         <div style="text-align: right;">
@@ -1290,9 +1340,9 @@ class PDFService
         $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
         $noticeYear = date('Y', $noticeTs);
 
-        $officialName = !empty($data['official_name']) ? $this->escape((string) $data['official_name']) : 'HON. AKIKO LYNNE CENTENO';
+        $officialName = $this->escape($this->getAuthorizedCaptainName($data['official_name'] ?? $data['captain_name'] ?? null));
 
-        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 100%; max-width: 760px; min-height: 960px; padding: 14mm 16mm; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-radius: 4px; box-sizing: border-box;">';
         $wrapperEnd = $forPdf ? '' : '</div></div>';
 
         return '<!DOCTYPE html>
@@ -1423,9 +1473,9 @@ class PDFService
         $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
         $noticeYear = date('Y', $noticeTs);
 
-        $officialName = !empty($data['official_name']) ? $this->escape((string) $data['official_name']) : 'HON. AKIKO LYNNE CENTENO';
+        $officialName = $this->escape($this->getAuthorizedCaptainName($data['official_name'] ?? $data['captain_name'] ?? null));
 
-        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 100%; max-width: 760px; min-height: 960px; padding: 14mm 16mm; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-radius: 4px; box-sizing: border-box;">';
         $wrapperEnd = $forPdf ? '' : '</div></div>';
 
         return '<!DOCTYPE html>
@@ -1577,7 +1627,7 @@ class PDFService
         $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
         $noticeYear = date('Y', $noticeTs);
 
-        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 100%; max-width: 760px; min-height: 960px; padding: 14mm 16mm; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-radius: 4px; box-sizing: border-box;">';
         $wrapperEnd = $forPdf ? '' : '</div></div>';
 
         return '<!DOCTYPE html>
@@ -1719,9 +1769,9 @@ class PDFService
         $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
         $noticeYear = date('Y', $noticeTs);
 
-        $officialName = !empty($data['official_name']) ? $this->escape((string) $data['official_name']) : 'HON. AKIKO LYNNE CENTENO';
+        $officialName = $this->escape($this->getAuthorizedCaptainName($data['official_name'] ?? $data['captain_name'] ?? null));
 
-        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 100%; max-width: 760px; min-height: 960px; padding: 14mm 16mm; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-radius: 4px; box-sizing: border-box;">';
         $wrapperEnd = $forPdf ? '' : '</div></div>';
 
         return '<!DOCTYPE html>
@@ -1887,9 +1937,9 @@ class PDFService
         $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
         $noticeYear = date('Y', $noticeTs);
 
-        $officialName = !empty($data['official_name']) ? $this->escape((string) $data['official_name']) : 'HON. AKIKO LYNNE CENTENO';
+        $officialName = $this->escape($this->getAuthorizedCaptainName($data['official_name'] ?? $data['captain_name'] ?? null));
 
-        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 100%; max-width: 760px; min-height: 960px; padding: 14mm 16mm; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-radius: 4px; box-sizing: border-box;">';
         $wrapperEnd = $forPdf ? '' : '</div></div>';
 
         return '<!DOCTYPE html>
@@ -2064,9 +2114,9 @@ class PDFService
         $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
         $noticeYear = date('Y', $noticeTs);
 
-        $officialName = !empty($data['official_name']) ? $this->escape((string) $data['official_name']) : 'HON. AKIKO LYNNE CENTENO';
+        $officialName = $this->escape($this->getAuthorizedCaptainName($data['official_name'] ?? $data['captain_name'] ?? null));
 
-        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 100%; max-width: 760px; min-height: 960px; padding: 14mm 16mm; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-radius: 4px; box-sizing: border-box;">';
         $wrapperEnd = $forPdf ? '' : '</div></div>';
 
         return '<!DOCTYPE html>
@@ -2213,9 +2263,9 @@ class PDFService
         $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
         $noticeYear = date('Y', $noticeTs);
 
-        $officialName = !empty($data['official_name']) ? $this->escape((string) $data['official_name']) : 'HON. AKIKO LYNNE CENTENO';
+        $officialName = $this->escape($this->getAuthorizedCaptainName($data['official_name'] ?? $data['captain_name'] ?? null));
 
-        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 100%; max-width: 760px; min-height: 960px; padding: 14mm 16mm; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-radius: 4px; box-sizing: border-box;">';
         $wrapperEnd = $forPdf ? '' : '</div></div>';
 
         return '<!DOCTYPE html>
@@ -2359,7 +2409,7 @@ class PDFService
         $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
         $noticeYear = date('Y', $noticeTs);
 
-        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 100%; max-width: 760px; min-height: 960px; padding: 14mm 16mm; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-radius: 4px; box-sizing: border-box;">';
         $wrapperEnd = $forPdf ? '' : '</div></div>';
 
         return '<!DOCTYPE html>
@@ -2490,7 +2540,7 @@ class PDFService
         $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
         $noticeYear = date('Y', $noticeTs);
 
-        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 100%; max-width: 760px; min-height: 960px; padding: 14mm 16mm; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-radius: 4px; box-sizing: border-box;">';
         $wrapperEnd = $forPdf ? '' : '</div></div>';
 
         return '<!DOCTYPE html>
@@ -2621,7 +2671,7 @@ class PDFService
         $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
         $noticeYear = date('Y', $noticeTs);
 
-        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 100%; max-width: 760px; min-height: 960px; padding: 14mm 16mm; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-radius: 4px; box-sizing: border-box;">';
         $wrapperEnd = $forPdf ? '' : '</div></div>';
 
         return '<!DOCTYPE html>
@@ -2755,9 +2805,9 @@ class PDFService
         $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
         $noticeYear = date('Y', $noticeTs);
 
-        $officialName = !empty($data['official_name']) ? $this->escape((string) $data['official_name']) : 'HON. AKIKO LYNNE CENTENO';
+        $officialName = $this->escape($this->getAuthorizedCaptainName($data['official_name'] ?? $data['captain_name'] ?? null));
 
-        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 100%; max-width: 760px; min-height: 960px; padding: 14mm 16mm; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-radius: 4px; box-sizing: border-box;">';
         $wrapperEnd = $forPdf ? '' : '</div></div>';
 
         return '<!DOCTYPE html>
@@ -2859,6 +2909,7 @@ class PDFService
 
     private function kp22Html(array $data, bool $forPdf = false): string
     {
+        $officialName = $this->escape($this->getAuthorizedCaptainName($data['official_name'] ?? $data['captain_name'] ?? null));
         $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
         $marikinaPath = __DIR__ . '/../../frontend/assets/images/marikina_logo.jpg';
         $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
@@ -2896,7 +2947,7 @@ class PDFService
         $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
         $noticeYear = date('Y', $noticeTs);
 
-        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 100%; max-width: 760px; min-height: 960px; padding: 14mm 16mm; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-radius: 4px; box-sizing: border-box;">';
         $wrapperEnd = $forPdf ? '' : '</div></div>';
 
         return '<!DOCTYPE html>
@@ -2975,6 +3026,7 @@ class PDFService
                 <div style="font-size: 10pt; margin-bottom: 35px;">Tagapangulo ng Pangkat</div>
 
                 <div style="border-top: 1px solid #111; width: 260px; margin-bottom: 4px;"></div>
+                <div style="font-weight: bold; font-size: 11pt;">' . $officialName . '</div>
                 <div style="font-size: 10pt;">Tagapangulo ng Lupon/Tagapangulo ng Pangkat</div>
             </td>
             <td style="width: 50%; vertical-align: top; text-align: right;">
@@ -3043,7 +3095,7 @@ class PDFService
         $noticeTs = !empty($data['notice_date']) ? strtotime($data['notice_date']) : time();
         $noticeDateFormatted = date('j', $noticeTs) . ' ' . $this->filipinoMonth((int) date('n', $noticeTs)) . ' ' . date('Y', $noticeTs);
 
-        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 100%; max-width: 760px; min-height: 960px; padding: 14mm 16mm; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-radius: 4px; box-sizing: border-box;">';
         $wrapperEnd = $forPdf ? '' : '</div></div>';
 
         return '<!DOCTYPE html>
@@ -3190,9 +3242,9 @@ class PDFService
         $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
         $noticeYear = date('Y', $noticeTs);
 
-        $officialName = !empty($data['official_name']) ? $this->escape((string) $data['official_name']) : 'HON. AKIKO LYNNE CENTENO';
+        $officialName = $this->escape($this->getAuthorizedCaptainName($data['official_name'] ?? $data['captain_name'] ?? null));
 
-        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 8.5in; min-height: 11in; padding: 18mm 20mm; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 100%; max-width: 760px; min-height: 960px; padding: 14mm 16mm; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-radius: 4px; box-sizing: border-box;">';
         $wrapperEnd = $forPdf ? '' : '</div></div>';
 
         $termsBlock = '';
@@ -3406,7 +3458,7 @@ class PDFService
         $month = $this->filipinoMonth((int) date('n', $filedTs));
         $year = date('Y', $filedTs);
 
-        $captainName = !empty($data['punong_barangay']) ? $this->escape((string) $data['punong_barangay']) : 'HON. AKIKO LYNNE CENTENO';
+        $captainName = $this->escape($this->getAuthorizedCaptainName($data['punong_barangay'] ?? $data['captain_name'] ?? $data['official_name'] ?? null));
 
         // Styling differences for Dompdf vs Interactive Screen Preview + Browser Print
         $cssStyles = $forPdf ? '

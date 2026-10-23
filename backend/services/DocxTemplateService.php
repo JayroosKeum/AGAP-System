@@ -260,7 +260,7 @@ class DocxTemplateService
             'page_numbering' => true,
             'officers' => [
                 'punong_barangay' => [
-                    'name' => 'HON. FRANCISCO G. SANDOVAL',
+                    'name' => 'HON. AKIKO LYNNE CENTENO',
                     'title' => 'Punong Barangay / Lupon Chairman',
                     'signature_image' => ''
                 ],
@@ -1156,9 +1156,9 @@ class DocxTemplateService
             '{venue}' => htmlspecialchars($caseData['venue'] ?? 'Tanggapan ng Lupong Tagapamayapa / Lupon Court Room'),
             '{docket_date}' => htmlspecialchars($caseData['docket_date'] ?? date('F d, Y')),
             '{date_today}' => htmlspecialchars($caseData['date_today'] ?? date('F d, Y')),
-            '{punong_barangay}' => htmlspecialchars($branding['officers']['punong_barangay']['name'] ?? 'HON. FRANCISCO G. SANDOVAL'),
+            '{punong_barangay}' => htmlspecialchars($branding['officers']['punong_barangay']['name'] ?? 'HON. AKIKO LYNNE CENTENO'),
             '{barangay_secretary}' => htmlspecialchars($branding['officers']['barangay_secretary']['name'] ?? 'MARIA CRISTINA SANTOS'),
-            '{lupon_chairperson}' => htmlspecialchars($branding['officers']['punong_barangay']['name'] ?? 'HON. FRANCISCO G. SANDOVAL'),
+            '{lupon_chairperson}' => htmlspecialchars($branding['officers']['punong_barangay']['name'] ?? 'HON. AKIKO LYNNE CENTENO'),
             '{pangkat_chairperson}' => htmlspecialchars($branding['officers']['pangkat_secretary']['name'] ?? 'ANTONIO V. REYES'),
         ];
 
@@ -1487,7 +1487,7 @@ class DocxTemplateService
 
     private static function getFormBodyHtml(string $formKey, array $data, array $branding): string
     {
-        $officer = $branding['officers']['punong_barangay']['name'] ?? 'HON. FRANCISCO G. SANDOVAL';
+        $officer = $branding['officers']['punong_barangay']['name'] ?? 'HON. AKIKO LYNNE CENTENO';
         $officerTitle = $branding['officers']['punong_barangay']['title'] ?? 'Punong Barangay / Lupon Chairman';
 
         switch ($formKey) {

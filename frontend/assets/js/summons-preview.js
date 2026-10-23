@@ -157,11 +157,25 @@ async function openSummonsPreviewModal(caseId, documentId = null, hearingId = nu
         // Render KP Form 8 in left frame
         if (frameKp8 && data.kp8?.html) {
             frameKp8.srcdoc = data.kp8.html;
+            frameKp8.onload = () => {
+                try {
+                    if (frameKp8.contentWindow) {
+                        frameKp8.contentWindow.scrollTo(0, 0);
+                    }
+                } catch (e) {}
+            };
         }
 
         // Render KP Form 9 in right frame
         if (frameKp9) {
             frameKp9.srcdoc = data.kp9?.html || data.html || '';
+            frameKp9.onload = () => {
+                try {
+                    if (frameKp9.contentWindow) {
+                        frameKp9.contentWindow.scrollTo(0, 0);
+                    }
+                } catch (e) {}
+            };
         }
 
         // Download links

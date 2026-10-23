@@ -402,16 +402,8 @@ function renderStageOverview(data, stage) {
 
     let deadlineBadgeHtml = '';
     if (mode === 'Mediation' && caseData.mediation_timer) {
-        const timer = caseData.mediation_timer;
-        deadlineBadgeHtml = `
-            <div class="overview-stat-card">
-                <span class="stat-label">15-Day Mediation Limit</span>
-                <span class="badge-timer ${escapeHtml(timer.badge_class || '')}" style="font-size: 0.82rem; padding: 4px 8px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px; font-weight: 700; margin-top: 4px;">
-                    ${escapeHtml(timer.badge_label || '')}
-                </span>
-                <span class="stat-sub">Limit: ${formatDateReadable(timer.mediation_deadline_date)}</span>
-            </div>
-        `;
+        // 15-Day Mediation Limit badge removed
+        deadlineBadgeHtml = '';
     } else if (mode === 'Conciliation' && stage.deadline) {
         const dl = stage.deadline;
         let conveningHtml = '';
@@ -440,44 +432,8 @@ function renderStageOverview(data, stage) {
             `;
         }
 
-        let conciliationClockHtml = '';
-        if (!dl.is_convened) {
-            conciliationClockHtml = `
-                <div class="overview-stat-card">
-                    <span class="stat-label">15-Day Conciliation Limit</span>
-                    <strong class="stat-value" style="font-size: 0.88rem; color: #64748b;">Pending First Convening</strong>
-                    <span class="stat-sub">Clock commences when Pangkat convenes</span>
-                </div>
-            `;
-        } else if (dl.is_lapsed) {
-            conciliationClockHtml = `
-                <div class="overview-stat-card" style="border-left: 4px solid #ef4444;">
-                    <span class="stat-label">15-Day Conciliation Limit</span>
-                    <span style="font-size: 0.8rem; padding: 3px 8px; border-radius: 4px; font-weight: 700; background: #fee2e2; color: #991b1b; display: inline-flex; width: fit-content; margin: 3px 0;">
-                        🚨 Conciliation Lapsed
-                    </span>
-                    <span class="stat-sub">Lapsed on: ${formatDateReadable(dl.target_date)} (Extend or Issue CFA)</span>
-                </div>
-            `;
-        } else if (dl.is_extended) {
-            conciliationClockHtml = `
-                <div class="overview-stat-card" style="border-left: 4px solid #0284c7;">
-                    <span class="stat-label">15-Day Conciliation Limit</span>
-                    <strong class="stat-value" style="font-size: 0.9rem; color: #0369a1;">Due: ${formatDateReadable(dl.target_date)}</strong>
-                    <span class="stat-sub">Extended +${dl.extended_days}d (${escapeHtml(dl.extension_type)}) · ${dl.days_remaining}d left</span>
-                </div>
-            `;
-        } else {
-            conciliationClockHtml = `
-                <div class="overview-stat-card" style="border-left: 4px solid #3b82f6;">
-                    <span class="stat-label">15-Day Conciliation Limit</span>
-                    <strong class="stat-value" style="font-size: 0.9rem; color: #1e40af;">Due: ${formatDateReadable(dl.target_date)}</strong>
-                    <span class="stat-sub">${dl.days_remaining} calendar day(s) remaining</span>
-                </div>
-            `;
-        }
-
-        deadlineBadgeHtml = conveningHtml + conciliationClockHtml;
+        // 15-Day Conciliation Limit clock removed
+        deadlineBadgeHtml = conveningHtml;
     } else if (mode === 'Arbitration') {
         const arbRec = stage.arbitration_record || {};
         deadlineBadgeHtml = `
@@ -1911,6 +1867,7 @@ async function openScheduleModal(hearingId = null) {
         submitBtn.title = '';
     }
 
+    const isConciliation = (stageWorkspaceState.mode === 'Conciliation');
     if (stageWorkspaceState.mode === 'Mediation') {
         const activeHearingId = stageWorkspaceState.activeSessionHearingId;
         const activeSession = stageWorkspaceState.sessions.find(s => Number(s.hearing_id) === Number(activeHearingId)) || {};
@@ -1924,6 +1881,31 @@ async function openScheduleModal(hearingId = null) {
         if (subtitleEl) {
             subtitleEl.innerHTML = `Enter the date and time to schedule the ${nextSeqOrdinal} mediation session immediately. <strong>RA 7160 Sec. 410 Notice Exemption:</strong> Because both parties are present in this session and notified, prior personal notice is legally recognized and no redundant summons (KP Form 9) is generated.`;
         }
+        const deckTitle = document.getElementById('schedVisualDeckTitle');
+        if (deckTitle) deckTitle.textContent = '📅 AVAILABLE MEDIATION DAYS (MAX 8 HEARINGS/DAY):';
+        const schedDayTitle = document.getElementById('schedDaySchedulesTitle');
+        if (schedDayTitle) schedDayTitle.textContent = '📅 Scheduled Mediations on this Date:';
+        if (submitBtn) submitBtn.textContent = `Schedule ${nextSeqOrdinal} Mediation`;
+    } else if (isConciliation) {
+        const conciliationCount = stageWorkspaceState.sessions ? stageWorkspaceState.sessions.length : 0;
+        const nextSeq = conciliationCount + 1;
+        const nextSeqOrdinal = nextSeq === 1 ? '1st' : (nextSeq === 2 ? '2nd' : (nextSeq === 3 ? '3rd' : `${nextSeq}th`));
+
+        if (titleEl) titleEl.textContent = `Schedule ${nextSeqOrdinal} Conciliation Session`;
+        if (dateLabelEl) dateLabelEl.textContent = `${nextSeqOrdinal} Conciliation Date`;
+        if (timeLabelEl) timeLabelEl.textContent = `${nextSeqOrdinal} Conciliation Time`;
+        if (subtitleEl) {
+            subtitleEl.innerHTML = `In accordance with KP rules, scheduling a conciliation hearing registers the session in the central calendar and generates <strong>KP Form 11 (Notice of Hearing before the Pangkat)</strong>.`;
+        }
+        const deckTitle = document.getElementById('schedVisualDeckTitle');
+        if (deckTitle) deckTitle.textContent = '📅 AVAILABLE CONCILIATION DAYS (MON, TUE AM, WED, THU, FRI):';
+        const schedDayTitle = document.getElementById('schedDaySchedulesTitle');
+        if (schedDayTitle) schedDayTitle.textContent = '📅 Scheduled Conciliations on this Date:';
+        const timeHint = document.getElementById('schedTimeHint');
+        if (timeHint) {
+            timeHint.textContent = 'Regular Conciliation hours: Mon/Wed/Thu/Fri 8:00 AM – 12:00 PM & 1:00 PM – 5:00 PM; Tuesday 8:00 AM – 12:00 PM (Morning only). Standard duration is 1 hour.';
+        }
+        if (submitBtn) submitBtn.textContent = `Schedule ${nextSeqOrdinal} Conciliation`;
     }
 
     // Set up listeners for date/time
@@ -1944,7 +1926,8 @@ async function openScheduleModal(hearingId = null) {
     const caseId = stageWorkspaceState.caseId;
     const complaintId = document.getElementById('schedComplaintId')?.value || '';
     try {
-        const res = await fetch(getStageApiUrl(`summons/check-schedule.php?case_id=${encodeURIComponent(caseId)}&complaint_id=${encodeURIComponent(complaintId)}&get_window=1`));
+        const hearingTypeParam = (stageWorkspaceState.mode === 'Conciliation') ? 'Conciliation' : 'Mediation';
+        const res = await fetch(getStageApiUrl(`summons/check-schedule.php?case_id=${encodeURIComponent(caseId)}&complaint_id=${encodeURIComponent(complaintId)}&hearing_type=${encodeURIComponent(hearingTypeParam)}&get_window=1`));
         const json = await res.json();
         if (json.window) {
             currentWsWindowMeta = json.window;
@@ -1989,11 +1972,7 @@ function renderWorkspaceVisualDatePicker(windowMeta, selectedDate) {
     const badgeEl = document.getElementById('schedWindowStatutoryBadge');
     if (!gridEl || !windowMeta || !windowMeta.daily_slots) return;
 
-    if (badgeEl && windowMeta.deadline_date) {
-        const dObj = new Date(windowMeta.deadline_date + 'T00:00:00');
-        const formatted = isNaN(dObj.getTime()) ? windowMeta.deadline_date : dObj.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
-        badgeEl.textContent = `15-Working-Day Window (Deadline: ${formatted})`;
-    }
+    if (badgeEl) { badgeEl.style.display = 'none'; }
 
     const days = Object.values(windowMeta.daily_slots);
     if (!days.length) {
@@ -2010,6 +1989,7 @@ function renderWorkspaceVisualDatePicker(windowMeta, selectedDate) {
         let disabledAttr = '';
         let tooltip = `${d.date}: ${d.available} of ${d.max} slots available.`;
 
+        const isConciliationMode = (stageWorkspaceState.mode === 'Conciliation' || windowMeta.hearing_type === 'Conciliation');
         if (d.is_past) {
             badgeText = 'Past';
             badgeBg = '#f1f5f9';
@@ -2017,27 +1997,26 @@ function renderWorkspaceVisualDatePicker(windowMeta, selectedDate) {
             cardStyle = 'border: 1px solid #e2e8f0; background: #f8fafc; color: #94a3b8; cursor: not-allowed; opacity: 0.5;';
             disabledAttr = 'disabled';
             tooltip = `${d.date}: Past date cannot be scheduled.`;
-        } else if (d.is_outside_window) {
-            badgeText = '>15 Days';
-            badgeBg = '#fee2e2';
-            badgeColor = '#991b1b';
-            cardStyle = 'border: 1px dashed #fca5a5; background: #fff5f5; color: #991b1b; cursor: not-allowed; opacity: 0.55;';
-            disabledAttr = 'disabled';
-            tooltip = `${d.date}: Exceeds 15-working-day statutory window under RA 7160 Sec. 410.`;
-        } else if (d.is_fully_booked) {
-            badgeText = '8/8 FULL';
-            badgeBg = '#fee2e2';
-            badgeColor = '#b91c1c';
-            cardStyle = 'border: 1px solid #fecaca; background: #fff1f2; color: #881337; cursor: not-allowed; opacity: 0.65;';
-            disabledAttr = 'disabled';
-            tooltip = `${d.date}: Fully booked! Maximum 8 mediation sessions reached for this date.`;
         } else if (d.is_weekend || d.is_non_working_day) {
             badgeText = d.is_non_working_day ? 'Holiday' : 'Weekend';
             badgeBg = '#f1f5f9';
             badgeColor = '#64748b';
             cardStyle = 'border: 1px dashed #cbd5e1; background: #f8fafc; color: #64748b; cursor: not-allowed; opacity: 0.55;';
             disabledAttr = 'disabled';
-            tooltip = `${d.date}: ${d.is_non_working_day ? 'Official holiday' : 'Weekend'}. Closed for sessions.`;
+            tooltip = `${d.date}: ${d.is_non_working_day ? 'Official holiday' : 'Weekend'}. Closed for ${isConciliationMode ? 'conciliation' : 'mediation'}.`;
+        } else if (d.is_fully_booked) {
+            badgeText = `${d.booked}/${d.max} FULL`;
+            badgeBg = '#fee2e2';
+            badgeColor = '#b91c1c';
+            cardStyle = 'border: 1px solid #fecaca; background: #fff1f2; color: #881337; cursor: not-allowed; opacity: 0.65;';
+            disabledAttr = 'disabled';
+            tooltip = `${d.date}: Fully booked! All ${d.max} sessions occupied for this date.`;
+        } else if (isConciliationMode && (d.day_name === 'Tue' || d.is_tuesday_morning_only)) {
+            badgeText = `${d.available} AM`;
+            badgeBg = '#e0f2fe';
+            badgeColor = '#0369a1';
+            cardStyle = 'border: 1px solid #7dd3fc; background: #f0f9ff; color: #0c4a6e; cursor: pointer;';
+            tooltip = `${d.date}: Tuesday Morning Only (8:00 AM – 12:00 PM, ${d.available} of 4 slots open). Tuesday afternoons reserved for Formal Mediation.`;
         }
 
         if (isSelected) {
@@ -2067,15 +2046,13 @@ function renderWorkspaceVisualDatePicker(windowMeta, selectedDate) {
     if (noticeEl) {
         if (selectedDate && windowMeta.daily_slots[selectedDate]) {
             const selectedDayData = windowMeta.daily_slots[selectedDate];
-            if (selectedDayData.is_outside_window) {
-                noticeEl.innerHTML = `<span style="color: #dc2626; font-weight: 600;">⚠️ Selected date exceeds the 15-working-day statutory limit (Deadline: ${windowMeta.deadline_date}).</span>`;
-            } else if (selectedDayData.is_fully_booked) {
+            if (selectedDayData.is_fully_booked) {
                 noticeEl.innerHTML = `<span style="color: #dc2626; font-weight: 600;">⚠️ Selected date is fully booked (8 of 8 daily mediation sessions).</span>`;
             } else {
-                noticeEl.innerHTML = `<span style="color: #15803d; font-weight: 600;">✓ Valid statutory mediation date selected: ${selectedDayData.available} slots remaining.</span>`;
+                noticeEl.innerHTML = `<span style="color: #15803d; font-weight: 600;">✓ Date selected: ${selectedDayData.available} slots remaining.</span>`;
             }
         } else {
-            noticeEl.textContent = 'Click any available day card above to select. Days exceeding 8 hearings or past 15 working days are disabled.';
+            noticeEl.textContent = 'Click any available day card above to select. Fully booked dates are disabled.';
         }
     }
 }
@@ -2085,6 +2062,36 @@ function selectWorkspaceVisualDate(dateStr) {
     const dateInput = document.getElementById('schedDate');
     if (!dateInput) return;
     dateInput.value = dateStr;
+
+    // Apply Tuesday morning time restrictions if in Conciliation mode
+    const isConciliationMode = (stageWorkspaceState.mode === 'Conciliation' || currentWsWindowMeta?.hearing_type === 'Conciliation');
+    const timeInput = document.getElementById('schedTime');
+    const timeHint = document.getElementById('schedTimeHint');
+    if (isConciliationMode && dateStr) {
+        const dObj = new Date(dateStr + 'T00:00:00');
+        const isTue = (dObj.getDay() === 2);
+        if (isTue) {
+            if (timeInput) {
+                timeInput.min = '08:00';
+                timeInput.max = '11:30';
+                if (timeInput.value >= '12:00') {
+                    timeInput.value = '09:00';
+                }
+            }
+            if (timeHint) {
+                timeHint.innerHTML = '<span style="color: #0369a1; font-weight: 600;">ℹ️ Tuesday Conciliation is held in the MORNING ONLY (8:00 AM – 12:00 PM). Tuesday afternoons are exclusively reserved for Formal Mediation.</span>';
+            }
+        } else {
+            if (timeInput) {
+                timeInput.min = '08:00';
+                timeInput.max = '16:30';
+            }
+            if (timeHint) {
+                timeHint.textContent = 'Regular Conciliation hours: Mon/Wed/Thu/Fri 8:00 AM – 12:00 PM & 1:00 PM – 5:00 PM (12–1 PM lunch break closed). Standard duration is 1 hour.';
+            }
+        }
+    }
+
     if (currentWsWindowMeta) {
         renderWorkspaceVisualDatePicker(currentWsWindowMeta, dateStr);
     }
@@ -2115,11 +2122,13 @@ async function checkWorkspaceScheduleConflict() {
         return;
     }
 
+    const typeVal = document.getElementById('schedHearingType')?.value || (stageWorkspaceState.mode === 'Conciliation' ? 'Conciliation' : 'Mediation');
     const params = new URLSearchParams();
     params.set('date', dateVal);
     if (timeVal) params.set('time', timeVal);
     if (venueVal) params.set('venue', venueVal);
     if (caseIdVal) params.set('case_id', caseIdVal);
+    params.set('hearing_type', typeVal);
     params.set('get_window', '1');
 
     try {
@@ -2140,18 +2149,7 @@ async function checkWorkspaceScheduleConflict() {
             return;
         }
 
-        // 1. Statutory 15-working-day window validation check
-        if (result.is_outside_window) {
-            if (conflictAlert) {
-                conflictAlert.textContent = `⚠️ Statutory Limit Exceeded: ${result.deadline_message || 'The selected date exceeds the 15-working-day mediation statutory limit.'}`;
-                conflictAlert.style.display = 'block';
-            }
-            if (submitBtn) {
-                submitBtn.disabled = true;
-                submitBtn.title = 'Cannot submit: Selected mediation date falls outside the 15-working-day statutory window.';
-            }
-            return;
-        }
+        // 15-working-day statutory window check removed
 
         // 2. Capacity limit check: Max 8 sessions per day
         const bookedCount = result.total_booked ?? (result.scheduled_mediations ? result.scheduled_mediations.length : 0);
@@ -2268,13 +2266,18 @@ async function submitSchedule(e) {
             return;
         }
     } else if (typeVal === 'Conciliation') {
-        if (day === 2 || day === 0 || day === 6) {
-            notifyUser('Conciliation cannot be scheduled on Tuesdays or weekends.', 'warning');
+        if (day === 0 || day === 6) {
+            notifyUser('Conciliation hearings cannot be scheduled on weekends.', 'warning');
+            if (btn) btn.disabled = false;
+            return;
+        }
+        if (day === 2 && hour >= 12) {
+            notifyUser('Conciliation on Tuesdays is permitted only in the morning (8:00 AM – 12:00 PM). Tuesday afternoons are reserved for Formal Mediation.', 'warning');
             if (btn) btn.disabled = false;
             return;
         }
         if ((hour < 8 || hour >= 17) || (hour >= 12 && hour < 13)) {
-            notifyUser('Conciliation hearings must be during regular office hours (excluding 12-1 PM lunch break).', 'warning');
+            notifyUser('Conciliation hearings must be during regular office hours (excluding 12–1 PM lunch break).', 'warning');
             if (btn) btn.disabled = false;
             return;
         }

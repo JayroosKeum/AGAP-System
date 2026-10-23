@@ -85,16 +85,11 @@ $targetPartyName = ($targetPartyType === 'Complainant')
     ? ($parties['complainant']['full_name'] ?? 'Complainant')
     : ($parties['respondent']['full_name'] ?? 'Respondent');
 
-// Get Lupon Chairman name
-$chairStmt = $conn->prepare("
-    SELECT TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS chair_name
-    FROM case_assignments ca
-    INNER JOIN users u ON u.user_id = ca.member_id
-    WHERE ca.case_id = ? AND ca.assignment_role IN ('Head', 'Mediator')
-    ORDER BY ca.assigned_date DESC LIMIT 1
-");
-$chairStmt->execute([$caseId]);
-$chairName = $chairStmt->fetchColumn() ?: 'Punong Barangay / Lupon Chairman';
+// Get Lupon Chairman name from Authorized Signatory Profiles in system_settings
+$chairStmt = $conn->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'captain_name' LIMIT 1");
+$chairStmt->execute();
+$chairVal = trim((string) $chairStmt->fetchColumn());
+$chairName = (!empty($chairVal) && strcasecmp($chairVal, 'Admin User') !== 0 && strcasecmp($chairVal, 'Punong Barangay / Lupon Chairman') !== 0) ? $chairVal : 'HON. AKIKO LYNNE CENTENO';
 
 // Determine hearing sequence for mediation
 $hearingSequence = 1;

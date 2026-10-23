@@ -723,14 +723,7 @@ function validateHearingDateInput(dateInput) {
 
     const selectedDay = value.slice(0, 10);
 
-    // 1. Check 15-working-day statutory restriction on 1st Hearing Modal (RA 7160 Sec. 410)
-    if (dateInput.dataset.isFirstHearing === '1' && dateInput.dataset.firstHearingDeadline) {
-        const deadline = dateInput.dataset.firstHearingDeadline;
-        if (selectedDay > deadline) {
-            const formattedDl = formatFriendlyDate(deadline);
-            return markError(`Under RA 7160 Sec. 410, the 1st mediation hearing must be scheduled within 15 working days of filing. Statutory deadline: ${formattedDl}.`);
-        }
-    }
+    // 15-working-day statutory restriction removed
 
     // 2. Existing hearing date progression check (same day or prior date relative to booked hearings)
     const latestDay = dateInput.dataset.latestHearingDay;
@@ -803,28 +796,11 @@ function updateDateRestrictions() {
         const minDay = (filingDate && filingDate > todayStr) ? filingDate : todayStr;
         date.min = `${minDay}T08:00`;
 
-        if (deadline) {
-            date.max = `${deadline}T17:00`;
-            if (statutoryBadge && statutoryDeadlineEl) {
-                const formattedDeadline = formatFriendlyDate(deadline);
-                const formattedFiling = filingDate ? formatFriendlyDate(filingDate) : 'Filing';
-                statutoryDeadlineEl.textContent = `${formattedDeadline} (Filing date: ${formattedFiling})`;
-                statutoryBadge.style.display = 'block';
-            }
-
-            // If current date is empty or outside statutory window, set to next available business day
-            if (!date.value) {
-                const defaultDate = calculateBusinessDays(minDay, 2);
-                const clampedDefault = (defaultDate > deadline) ? deadline : defaultDate;
-                date.value = `${clampedDefault}T09:00`;
-                handleHearingDateOrDurationChange();
-            } else {
-                const curDay = date.value.slice(0, 10);
-                if (curDay > deadline) {
-                    date.value = `${deadline}T09:00`;
-                    handleHearingDateOrDurationChange();
-                }
-            }
+        if (statutoryBadge) statutoryBadge.style.display = 'none';
+        if (!date.value) {
+            const defaultDate = calculateBusinessDays(minDay, 2);
+            date.value = `${defaultDate}T09:00`;
+            handleHearingDateOrDurationChange();
         }
     } else {
         date.removeAttribute('max');
@@ -909,19 +885,7 @@ function updateNextSchedule() {
             return;
         }
 
-        if (isLapsed) {
-            type.add(new Option('Mediation period lapsed', ''));
-            type.disabled = true;
-            help.innerHTML = `
-                <span style="color: #b91c1c; font-weight: 600;">The 15-day statutory mediation period has lapsed for this case.</span>
-                Further Punong Barangay mediation is restricted. You must
-                <a href="../cases/case-list.php?assign_case_id=${encodeURIComponent(caseId)}#caseAssignments" style="color: #1e40af; font-weight: 600; text-decoration: underline;">Constitute Pangkat Tagapagkasundo (Lupon Case Team)</a>
-                or
-                <a href="../documents/cfa.php?case_id=${encodeURIComponent(caseId)}" style="color: #991b1b; font-weight: 600; text-decoration: underline;">Issue a CFA</a>.
-            `;
-            if (submitBtn) { submitBtn.disabled = true; submitBtn.title = 'Mediation period has lapsed for this case.'; }
-            return;
-        }
+        // 15-day mediation lapsed restriction removed
 
         typeValue = 'Mediation';
         label = `${ordinal(mediationCount + 1)} Mediation`;

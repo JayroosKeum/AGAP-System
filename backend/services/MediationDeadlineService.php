@@ -222,7 +222,7 @@ class MediationDeadlineService
         if ($isConvened && $conciliationDeadline) {
             $dtToday = new DateTimeImmutable($today);
             $dtConDeadline = new DateTimeImmutable($conciliationDeadline);
-            $isLapsed = ($today > $conciliationDeadline);
+            $isLapsed = false; // 15-day lapse restriction removed
             $daysLeft = (int) $dtToday->diff($dtConDeadline)->format('%r%a');
         }
 
@@ -344,51 +344,12 @@ class MediationDeadlineService
         $deadlineObj = new DateTimeImmutable($deadlineDate);
         $daysRemaining = (int) $today->diff($deadlineObj)->format('%r%a');
 
-        if ($daysRemaining > 5) {
-            return [
-                'days_remaining' => $daysRemaining,
-                'timer_status' => 'Within Period',
-                'badge_class' => 'badge-within-period',
-                'badge_label' => "{$daysRemaining} days remaining",
-                'is_lapsed' => false,
-                'is_paused' => false,
-                'mediation_start_date' => $startDate,
-                'mediation_deadline_date' => $deadlineDate,
-                'pause_reason' => null,
-                'pause_notes' => null,
-                'paused_at' => null,
-                'can_pause' => true,
-                'can_resume' => false,
-            ];
-        }
-
-        if ($daysRemaining > 0) {
-            return [
-                'days_remaining' => $daysRemaining,
-                'timer_status' => 'Expiring Soon',
-                'badge_class' => 'badge-expiring-soon',
-                'badge_label' => "{$daysRemaining} days remaining - Action Needed",
-                'is_lapsed' => false,
-                'is_paused' => false,
-                'mediation_start_date' => $startDate,
-                'mediation_deadline_date' => $deadlineDate,
-                'pause_reason' => null,
-                'pause_notes' => null,
-                'paused_at' => null,
-                'can_pause' => true,
-                'can_resume' => false,
-            ];
-        }
-
-        // Lapsed (<= 0 days remaining)
-        $this->checkAndLogLapse((int) $case['case_id'], $deadlineDate);
-
         return [
-            'days_remaining' => $daysRemaining,
-            'timer_status' => 'Mediation Lapsed',
-            'badge_class' => 'badge-mediation-lapsed',
-            'badge_label' => '15-day limit reached',
-            'is_lapsed' => true,
+            'days_remaining' => null,
+            'timer_status' => 'Active Proceeding',
+            'badge_class' => 'badge-within-period',
+            'badge_label' => 'Active Proceeding',
+            'is_lapsed' => false,
             'is_paused' => false,
             'mediation_start_date' => $startDate,
             'mediation_deadline_date' => $deadlineDate,

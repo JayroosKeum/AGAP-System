@@ -319,13 +319,7 @@ class Hearing
                     ];
                 }
 
-                if ($statusInfo['is_lapsed']) {
-                    $this->conn->rollBack();
-                    return [
-                        'success' => false,
-                        'message' => 'Mediation period has lapsed (15-day limit reached). You must elevate the case to Pangkat Tagapagkasundo or issue a Certificate to File Action (CFA).'
-                    ];
-                }
+                // 15-day mediation lapse restriction removed
             }
 
             $counts = $this->conn->prepare(
@@ -378,26 +372,7 @@ class Hearing
                     $attemptExceptionReason = trim((string) ($data['attempt_exception_reason'] ?? 'Authorized exception recorded by officer'));
                 }
 
-                // Enforce 15-working-day statutory limit for 1st Mediation Hearing (RA 7160 Sec. 410)
-                if ($activeMediationCount === 0) {
-                    $compStmt = $this->conn->prepare('SELECT created_at FROM complaints WHERE complaint_id = ?');
-                    $compStmt->execute([$caseRecord['complaint_id']]);
-                    $compCreatedAt = $compStmt->fetchColumn();
-                    $filingDateStr = $compCreatedAt ? substr($compCreatedAt, 0, 10) : substr($caseRecord['docket_date'] ?? date('Y-m-d'), 0, 10);
-                    $filingDeadline = MediationDeadlineService::calculateBusinessDays($filingDateStr, 15);
-                    $scheduledDate = new \DateTime(substr($data['hearing_date'], 0, 10));
-                    $deadlineDate = new \DateTime($filingDeadline);
-                    if ($scheduledDate > $deadlineDate) {
-                        $this->conn->rollBack();
-                        return [
-                            'success' => false,
-                            'message' => sprintf(
-                                'The 1st mediation hearing must be scheduled within 15 working days of the complaint filing date (RA 7160 Sec. 410). Statutory deadline: %s.',
-                                $deadlineDate->format('F j, Y')
-                            ),
-                        ];
-                    }
-                }
+                // 15-working-day limit for 1st mediation removed
             }
 
             if ($data['hearing_type'] !== $expectedType) {
@@ -421,30 +396,9 @@ class Hearing
                 $conService = new MediationDeadlineService($this->conn);
                 $pangkatStatus = $conService->computeConciliationStatus((int) $data['case_id']);
 
-                if ($pangkatStatus['is_constituted'] && $pangkatStatus['is_lapsed']) {
-                    $this->conn->rollBack();
-                    $dlFormatted = !empty($pangkatStatus['conciliation_deadline']) ? date('F j, Y', strtotime($pangkatStatus['conciliation_deadline'])) : 'the statutory deadline';
-                    return [
-                        'success' => false,
-                        'message' => "The statutory conciliation period has lapsed (deadline was {$dlFormatted}). Under RA 7160 Sec. 410(c), you must record an authorized extension (up to 15 days, or clearly meritorious exception), record an amicable settlement, or issue a Certificate to File Action (CFA - KP Form 20)."
-                    ];
-                }
+                // 15-day conciliation lapse restriction removed
 
-                // Enforce 3-day convening requirement for the 1st Conciliation session
-                if ($scheduled['Conciliation'] === 0 && $pangkatStatus['is_constituted']) {
-                    $conveningDeadline = $pangkatStatus['convening_deadline'];
-                    $schedDate = substr($data['hearing_date'], 0, 10);
-                    if ($schedDate > $conveningDeadline && empty($data['convening_delay_justification']) && empty($data['force_schedule'])) {
-                        $this->conn->rollBack();
-                        $dlFormatted = date('F j, Y', strtotime($conveningDeadline));
-                        return [
-                            'success' => false,
-                            'requires_convening_justification' => true,
-                            'convening_deadline' => $conveningDeadline,
-                            'message' => "Under RA 7160 Sec. 410(c), the Pangkat must convene no later than 3 days from its constitution (convening deadline was {$dlFormatted}). To proceed, provide a valid administrative justification for scheduling beyond the 3-day convening period."
-                        ];
-                    }
-                }
+                // 3-day convening deadline validation check removed per user request
             }
 
             // Conciliation case team validation: Lupon team must be chosen first; Administrator is for Mediation only.
@@ -1446,16 +1400,11 @@ class Hearing
             $primaryComp = reset($compList) ?: ['resident_id' => 0, 'full_name' => 'Complainant'];
             $primaryResp = reset($respList) ?: ['resident_id' => 0, 'full_name' => 'Respondent'];
 
-            // Official Name
-            $officialStmt = $this->conn->prepare("
-                SELECT TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS official_name
-                FROM users u
-                INNER JOIN roles r ON r.role_id = u.role_id
-                WHERE u.status = 'Active' AND r.role_name = 'Administrator'
-                ORDER BY u.user_id ASC LIMIT 1
-            ");
-            $officialStmt->execute();
-            $officialName = (string) ($officialStmt->fetchColumn() ?: 'Punong Barangay / Lupon Chairman');
+            // Official Name from Authorized Signatory Profiles in system_settings
+            $pbStmt = $this->conn->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'captain_name' LIMIT 1");
+            $pbStmt->execute();
+            $captainVal = trim((string) $pbStmt->fetchColumn());
+            $officialName = (!empty($captainVal) && strcasecmp($captainVal, 'Admin User') !== 0) ? $captainVal : 'HON. AKIKO LYNNE CENTENO';
 
             // Template IDs
             $t8Stmt = $this->conn->prepare("SELECT template_id FROM document_templates WHERE template_name = 'KP Form 8' LIMIT 1");

@@ -23,6 +23,10 @@ $input = ($_SERVER['REQUEST_METHOD'] === 'POST') ? $_POST : $_GET;
 $date = trim((string) ($input['date'] ?? ''));
 $time = trim((string) ($input['time'] ?? ''));
 $venue = trim((string) ($input['venue'] ?? 'Lupon Court Room'));
+$hearingType = trim((string) ($input['hearing_type'] ?? 'Mediation'));
+if ($hearingType !== 'Conciliation') {
+    $hearingType = 'Mediation';
+}
 $complaintId = filter_var($input['complaint_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
 $caseId = filter_var($input['case_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
 $getWindow = !empty($input['get_window']) || !empty($input['window']);
@@ -66,7 +70,7 @@ if ($complaintId || $getWindow) {
     $rangeStart = min($todayStr, $filingDateStr);
     $rangeEnd = date('Y-m-d', strtotime($deadlineDateStr . ' +7 days'));
 
-    $dailyCounts = $summons->getDailyMediationCountsInRange($rangeStart, $rangeEnd, $caseId);
+    $dailyCounts = $summons->getDailyHearingCountsInRange($rangeStart, $rangeEnd, $caseId, $hearingType);
 
     $days = [];
     $cur = new DateTimeImmutable($rangeStart);
@@ -74,15 +78,33 @@ if ($complaintId || $getWindow) {
 
     while ($cur <= $endDt) {
         $dStr = $cur->format('Y-m-d');
-        $dayOfWeek = (int) $cur->format('N');
+        $dayOfWeek = (int) $cur->format('N'); // 1 = Mon, 2 = Tue, ..., 7 = Sun
         $isWeekend = ($dayOfWeek === 6 || $dayOfWeek === 7);
         $isHoliday = MediationDeadlineService::isNonWorkingDay($cur);
+        $isTuesday = ($dayOfWeek === 2);
         $booked = $dailyCounts[$dStr] ?? 0;
-        $maxSlots = 8;
-        $avail = max(0, $maxSlots - $booked);
-        $isFull = ($booked >= $maxSlots);
-        $isPast = ($dStr < $todayStr);
-        $isOutsideWindow = ($dStr > $deadlineDateStr);
+
+        if ($hearingType === 'Conciliation') {
+            // Tumana Master Schedule: Tuesday morning only (8:00 AM - 12:00 PM) = 4 sessions
+            // Mon, Wed, Thu, Fri = 8 sessions. Weekends & Holidays = 0.
+            if ($isWeekend || $isHoliday) {
+                $maxSlots = 0;
+                $avail = 0;
+                $isFull = false;
+                $canSchedule = false;
+            } else {
+                $maxSlots = $isTuesday ? 4 : 8;
+                $avail = max(0, $maxSlots - $booked);
+                $isFull = ($booked >= $maxSlots);
+                $canSchedule = (!$isPast = ($dStr < $todayStr)) && !$isFull;
+            }
+        } else {
+            $maxSlots = 8;
+            $avail = max(0, $maxSlots - $booked);
+            $isFull = ($booked >= $maxSlots);
+            $isPast = ($dStr < $todayStr);
+            $canSchedule = (!$isPast && !$isFull);
+        }
 
         $days[$dStr] = [
             'date' => $dStr,
@@ -96,9 +118,10 @@ if ($complaintId || $getWindow) {
             'is_fully_booked' => $isFull,
             'is_weekend' => $isWeekend,
             'is_non_working_day' => $isHoliday,
-            'is_past' => $isPast,
-            'is_outside_window' => $isOutsideWindow,
-            'can_schedule' => (!$isPast && !$isOutsideWindow && !$isFull)
+            'is_tuesday_morning_only' => ($hearingType === 'Conciliation' && $isTuesday),
+            'is_past' => ($dStr < $todayStr),
+            'is_outside_window' => false,
+            'can_schedule' => $canSchedule
         ];
 
         $cur = $cur->modify('+1 day');
@@ -108,8 +131,8 @@ if ($complaintId || $getWindow) {
         'filing_date' => $filingDateStr,
         'deadline_date' => $deadlineDateStr,
         'today' => $todayStr,
-        'max_slots_per_day' => 8,
-        'statutory_working_days' => 15,
+        'hearing_type' => $hearingType,
+        'max_slots_per_day' => ($hearingType === 'Conciliation') ? 8 : 8,
         'daily_slots' => $days
     ];
 }
@@ -134,28 +157,28 @@ $dayOfWeek = (int) $dateObj->format('N');
 $isWeekend = ($dayOfWeek === 6 || $dayOfWeek === 7);
 $isNonWorkingDay = MediationDeadlineService::isNonWorkingDay($dateObj);
 
-$scheduledMediations = $summons->getScheduledMediationsForDate($date, $caseId);
+$curDayOfWeek = (int) $dateObj->format('N');
+$isCurTuesday = ($curDayOfWeek === 2);
+if ($hearingType === 'Conciliation') {
+    $maxSlots = ($isWeekend || $isNonWorkingDay) ? 0 : ($isCurTuesday ? 4 : 8);
+} else {
+    $maxSlots = 8;
+}
+
+$scheduledMediations = $summons->getScheduledHearingsForDate($date, $hearingType, $caseId);
 $totalBooked = count($scheduledMediations);
-$maxSlots = 8;
 $availableSlots = max(0, $maxSlots - $totalBooked);
-$isFullyBooked = ($totalBooked >= $maxSlots);
+$isFullyBooked = ($maxSlots > 0 && $totalBooked >= $maxSlots);
 
 $isOutside15DayWindow = false;
 $deadlineMessage = null;
-if ($windowMeta) {
-    if ($date > $windowMeta['deadline_date']) {
-        $isOutside15DayWindow = true;
-        $deadlineFormatted = date('F j, Y', strtotime($windowMeta['deadline_date']));
-        $deadlineMessage = "The selected date exceeds the 15-working-day statutory mediation deadline ({$deadlineFormatted}).";
-    }
-}
 
 $hasConflict = false;
 $conflictData = null;
 
 if ($time !== '' && preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', $time)) {
     $hearingDateTime = substr($date, 0, 10) . ' ' . substr($time, 0, 5) . ':00';
-    $conflict = $summons->findMediationConflict($hearingDateTime, $venue, $caseId);
+    $conflict = $summons->findMediationConflict($hearingDateTime, $venue, $caseId, null, $hearingType);
     if ($conflict) {
         $hasConflict = true;
         $cStart = date('g:i A', strtotime($conflict['hearing_date']));
