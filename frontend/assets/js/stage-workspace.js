@@ -606,9 +606,11 @@ function renderSessionsList(data, stage) {
                     </div>
                     <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
                         ${!isConcluded && !isInSession ? `
+                            ${isReady ? `
                             <button type="button" class="btn-create" onclick="handleDocketStartSession(${s.hearing_id})" style="font-size: 0.78rem; padding: 5px 12px; background: ${isReady ? '#16a34a' : '#2563eb'}; display: inline-flex; align-items: center; gap: 4px;" title="Out-of-order session activation: Call to session immediately if ready">
                                 ▶️ Call to Session / Start Hearing
                             </button>
+                            ` : ''}
                             <button type="button" class="btn-secondary" onclick="handleDocketStandby(${s.hearing_id}, ${isStandby ? 'false' : 'true'})" style="font-size: 0.78rem; padding: 5px 9px; display: inline-flex; align-items: center; gap: 4px;" title="Put on standby to keep room available for other ready cases">
                                 ${isStandby ? '▶️ Resume from Standby' : '⏸️ Put on Standby'}
                             </button>

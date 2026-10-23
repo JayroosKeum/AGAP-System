@@ -286,9 +286,11 @@ function renderActionsCell(item) {
         let docketBtns = '';
         if (canManageHearings && !isConcluded) {
             if (!isInSession) {
-                // Out-of-order session activation: Captain/Chairman can click call to session on ANY ready case
-                docketBtns += `
+                // A later ready case may be called before an incomplete earlier case.
+                if (isBothReady) docketBtns += `
                     <button type="button" onclick="startDocketHearingSession(${id})" style="font-size:0.72rem; padding:3px 7px; border-radius:4px; background:${isBothReady ? '#16a34a' : '#2563eb'}; color:#fff; border:none; cursor:pointer;" title="Call to Session / Start Hearing (Out-of-Order Activation)">▶️ Start</button>
+                `;
+                docketBtns += `
                     <button type="button" onclick="toggleDocketStandbyHearing(${id}, ${isStandby ? 'false' : 'true'})" style="font-size:0.72rem; padding:3px 7px; border-radius:4px; background:#fef3c7; color:#b45309; border:1px solid #fde68a; cursor:pointer;" title="${isStandby ? 'Resume from Standby' : 'Put on Standby'}">${isStandby ? '▶️ Resume' : '⏸️ Standby'}</button>
                 `;
             } else {

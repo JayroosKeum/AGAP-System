@@ -969,6 +969,9 @@ class HearingController
             if (!$session) {
                 return ['success' => false, 'message' => 'Paanyaya session not found.'];
             }
+            if (in_array($session['queue_status'], ['In_Session', 'Concluded'], true)) {
+                return ['success' => false, 'message' => 'Party check-in cannot be changed after a session has started or concluded.'];
+            }
 
             $newVal = ($status === 'Checked In') ? 'Present' : 'Absent';
             $col = ($partyType === 'Complainant') ? 'complainant_attended' : 'respondent_attended';
@@ -997,6 +1000,10 @@ class HearingController
         $hearing = $hStmt->fetch(PDO::FETCH_ASSOC);
         if (!$hearing) {
             return ['success' => false, 'message' => 'Hearing not found.'];
+        }
+        if (in_array($hearing['queue_status'], ['In_Session', 'Concluded'], true)
+            || in_array($hearing['status'], ['Completed', 'Cancelled', 'Office Cancelled'], true)) {
+            return ['success' => false, 'message' => 'Party check-in cannot be changed after a hearing has started, concluded, or become unavailable.'];
         }
 
         $newVal = ($status === 'Checked In') ? 'Present' : 'Pending';
@@ -1069,10 +1076,13 @@ class HearingController
         $db = (new Database())->connect();
 
         if ($sessionSource === 'paanyaya') {
-            $pStmt = $db->prepare('SELECT session_id, complainant_attended, respondent_attended FROM paanyaya_sessions WHERE session_id = ?');
+            $pStmt = $db->prepare('SELECT session_id, complainant_attended, respondent_attended, queue_status FROM paanyaya_sessions WHERE session_id = ?');
             $pStmt->execute([$hearingId]);
             $session = $pStmt->fetch(PDO::FETCH_ASSOC);
             if (!$session) return ['success' => false, 'message' => 'Paanyaya session not found.'];
+            if (in_array($session['queue_status'], ['In_Session', 'Concluded'], true)) {
+                return ['success' => false, 'message' => 'An active or concluded session cannot be moved to standby.'];
+            }
 
             $isBoth = ($session['complainant_attended'] === 'Present' && $session['respondent_attended'] === 'Present');
             $newQueue = $standby ? 'Standby' : ($isBoth ? 'Ready' : 'Waiting');
@@ -1088,11 +1098,15 @@ class HearingController
             ];
         }
 
-        $hStmt = $db->prepare('SELECT hearing_id, case_id, complainant_attendance, respondent_attendance, queue_status FROM hearings WHERE hearing_id = ?');
+        $hStmt = $db->prepare('SELECT hearing_id, case_id, complainant_attendance, respondent_attendance, queue_status, status FROM hearings WHERE hearing_id = ?');
         $hStmt->execute([$hearingId]);
         $hearing = $hStmt->fetch(PDO::FETCH_ASSOC);
         if (!$hearing) {
             return ['success' => false, 'message' => 'Hearing not found.'];
+        }
+        if (in_array($hearing['queue_status'], ['In_Session', 'Concluded'], true)
+            || in_array($hearing['status'], ['Completed', 'Cancelled', 'Office Cancelled'], true)) {
+            return ['success' => false, 'message' => 'An active, concluded, or unavailable hearing cannot be moved to standby.'];
         }
 
         $compIn = in_array($hearing['complainant_attendance'], ['Present', 'Late'], true);
@@ -1141,43 +1155,124 @@ class HearingController
         $now = date('Y-m-d H:i:s');
 
         if ($sessionSource === 'paanyaya') {
-            $upd = $db->prepare("
-                UPDATE paanyaya_sessions 
-                SET actual_start_time = COALESCE(actual_start_time, ?),
-                    queue_status = 'In_Session'
-                WHERE session_id = ?
+            try {
+                $db->beginTransaction();
+                $pStmt = $db->prepare('SELECT session_id, scheduled_date, venue, complainant_attended, respondent_attended, queue_status FROM paanyaya_sessions WHERE session_id = ? FOR UPDATE');
+                $pStmt->execute([$hearingId]);
+                $session = $pStmt->fetch(PDO::FETCH_ASSOC);
+                if (!$session) {
+                    $db->rollBack();
+                    return ['success' => false, 'message' => 'Paanyaya session not found.'];
+                }
+                if ($session['scheduled_date'] !== date('Y-m-d')) {
+                    $db->rollBack();
+                    return ['success' => false, 'message' => 'Only sessions scheduled for today can be called to order.'];
+                }
+                if ($session['queue_status'] === 'Concluded' || $session['complainant_attended'] !== 'Present' || $session['respondent_attended'] !== 'Present') {
+                    $db->rollBack();
+                    return ['success' => false, 'message' => 'A Paanyaya session can be called only after both parties have checked in.'];
+                }
+                $activeStmt = $db->prepare("SELECT 1 FROM hearings WHERE DATE(hearing_date) = ? AND venue = ? AND queue_status = 'In_Session' AND status NOT IN ('Cancelled', 'Office Cancelled') LIMIT 1");
+                $activeStmt->execute([$session['scheduled_date'], $session['venue']]);
+                $activePaanyayaStmt = $db->prepare("SELECT 1 FROM paanyaya_sessions WHERE session_id <> ? AND scheduled_date = ? AND venue = ? AND queue_status = 'In_Session' LIMIT 1");
+                $activePaanyayaStmt->execute([$hearingId, $session['scheduled_date'], $session['venue']]);
+                if ($activeStmt->fetchColumn() || $activePaanyayaStmt->fetchColumn()) {
+                    $db->rollBack();
+                    return ['success' => false, 'message' => 'Another session is already in progress at this venue. Conclude it before calling the next ready case.'];
+                }
+                $db->prepare("UPDATE paanyaya_sessions SET actual_start_time = COALESCE(actual_start_time, ?), queue_status = 'In_Session' WHERE session_id = ?")
+                    ->execute([$now, $hearingId]);
+                $db->commit();
+            } catch (Throwable $exception) {
+                if ($db->inTransaction()) $db->rollBack();
+                error_log('Unable to start Paanyaya session: ' . $exception->getMessage());
+                return ['success' => false, 'message' => 'Unable to start the Paanyaya session. Please try again.'];
+            }
+
+            return ['success' => true, 'hearing_id' => $hearingId, 'actual_start_time' => $now, 'queue_status' => 'In_Session', 'message' => 'Paanyaya session called to session and started successfully.'];
+        }
+
+        try {
+            $db->beginTransaction();
+
+            // Lock this docket entry so concurrent actions cannot bypass readiness.
+            $hStmt = $db->prepare("
+                SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.venue, h.status, h.queue_status,
+                       h.actual_start_time, h.complainant_attendance, h.respondent_attendance, c.case_status
+                FROM hearings h INNER JOIN cases c ON c.case_id = h.case_id
+                WHERE h.hearing_id = ? FOR UPDATE
             ");
-            $upd->execute([$now, $hearingId]);
+            $hStmt->execute([$hearingId]);
+            $hearing = $hStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$hearing) {
+                $db->rollBack();
+                return ['success' => false, 'message' => 'Hearing not found.'];
+            }
+            if (in_array($hearing['status'], ['Completed', 'Cancelled', 'Office Cancelled'], true)
+                || $hearing['queue_status'] === 'Concluded') {
+                $db->rollBack();
+                return ['success' => false, 'message' => 'This hearing is already concluded or unavailable.'];
+            }
+            if (date('Y-m-d', strtotime($hearing['hearing_date'])) !== date('Y-m-d')) {
+                $db->rollBack();
+                return ['success' => false, 'message' => 'Only hearings scheduled for today can be called to order.'];
+            }
 
-            return [
-                'success' => true,
-                'hearing_id' => $hearingId,
-                'actual_start_time' => $now,
-                'queue_status' => 'In_Session',
-                'message' => 'Paanyaya session called to session and started successfully.'
-            ];
+            $bothPartiesPresent = in_array($hearing['complainant_attendance'], ['Present', 'Late'], true)
+                && in_array($hearing['respondent_attendance'], ['Present', 'Late'], true);
+            if (!$bothPartiesPresent) {
+                $db->rollBack();
+                return ['success' => false, 'message' => 'A session can be called only after both parties have checked in. Keep this hearing in the waiting room or place it on standby.'];
+            }
+
+            // A later ready case may jump an incomplete earlier one, but no venue
+            // can have two live sessions at once.
+            $activeStmt = $db->prepare("
+                SELECT hearing_id FROM hearings
+                WHERE hearing_id <> ? AND DATE(hearing_date) = DATE(?) AND venue = ?
+                  AND queue_status = 'In_Session'
+                  AND status NOT IN ('Cancelled', 'Office Cancelled')
+                FOR UPDATE
+            ");
+            $activeStmt->execute([$hearingId, $hearing['hearing_date'], $hearing['venue']]);
+            $activePaanyayaStmt = $db->prepare("SELECT 1 FROM paanyaya_sessions WHERE scheduled_date = ? AND venue = ? AND queue_status = 'In_Session' LIMIT 1");
+            $activePaanyayaStmt->execute([date('Y-m-d', strtotime($hearing['hearing_date'])), $hearing['venue']]);
+            if ($activeStmt->fetchColumn() || $activePaanyayaStmt->fetchColumn()) {
+                $db->rollBack();
+                return ['success' => false, 'message' => 'Another hearing is already in session at this venue. Conclude it before calling the next ready case.'];
+            }
+
+            $startTime = $hearing['actual_start_time'] ?: $now;
+            $wasOutOfOrder = strtotime($startTime) < strtotime($hearing['hearing_date']);
+            $upd = $db->prepare("
+                UPDATE hearings SET actual_start_time = COALESCE(actual_start_time, ?), queue_status = 'In_Session'
+                WHERE hearing_id = ?
+            ");
+            $upd->execute([$startTime, $hearingId]);
+
+            $history = $db->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, ?, ?, ?)");
+            $history->execute([
+                (int) $hearing['case_id'],
+                $hearing['case_status'],
+                sprintf(
+                    '%s started at %s%s. Scheduled call time: %s; both parties were present.',
+                    sprintf('%s session %s', $hearing['hearing_type'], $wasOutOfOrder ? 'called early from the ready queue' : 'called to order'),
+                    date('g:i A', strtotime($startTime)),
+                    $wasOutOfOrder ? ' under first-come, first-served priority' : '',
+                    date('g:i A', strtotime($hearing['hearing_date']))
+                ),
+                $userId
+            ]);
+            $db->commit();
+        } catch (Throwable $exception) {
+            if ($db->inTransaction()) $db->rollBack();
+            error_log('Unable to start docket session: ' . $exception->getMessage());
+            return ['success' => false, 'message' => 'Unable to start the hearing session. Please try again.'];
         }
-
-        $hStmt = $db->prepare('SELECT hearing_id, case_id, queue_status, actual_start_time FROM hearings WHERE hearing_id = ?');
-        $hStmt->execute([$hearingId]);
-        $hearing = $hStmt->fetch(PDO::FETCH_ASSOC);
-        if (!$hearing) {
-            return ['success' => false, 'message' => 'Hearing not found.'];
-        }
-
-        $startTime = $hearing['actual_start_time'] ?: $now;
-
-        $upd = $db->prepare("
-            UPDATE hearings 
-            SET actual_start_time = COALESCE(actual_start_time, ?),
-                queue_status = 'In_Session'
-            WHERE hearing_id = ?
-        ");
-        $upd->execute([$startTime, $hearingId]);
 
         $this->audit->log(
             $userId,
-            sprintf('Called hearing #%d to session (Out-of-Order Docket Activation). Actual start time: %s', $hearingId, $startTime),
+            sprintf('Called hearing #%d to session%s. Actual start time: %s', $hearingId, $wasOutOfOrder ? ' ahead of its scheduled call time' : '', $startTime),
             'Hearings',
             $hearingId
         );
@@ -1188,7 +1283,9 @@ class HearingController
             'actual_start_time' => $startTime,
             'actual_start_time_formatted' => date('g:i A', strtotime($startTime)),
             'queue_status' => 'In_Session',
-            'message' => 'Hearing called to session and started. Lupon Court Room is now In Session.'
+            'message' => $wasOutOfOrder
+                ? 'Ready hearing called early under first-come, first-served priority. Actual start time has been recorded.'
+                : 'Hearing called to session and started. Actual start time has been recorded.'
         ];
     }
 
@@ -1210,6 +1307,13 @@ class HearingController
         $now = date('Y-m-d H:i:s');
 
         if ($sessionSource === 'paanyaya') {
+            $pStmt = $db->prepare('SELECT session_id, actual_start_time, queue_status FROM paanyaya_sessions WHERE session_id = ?');
+            $pStmt->execute([$hearingId]);
+            $session = $pStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$session) return ['success' => false, 'message' => 'Paanyaya session not found.'];
+            if ($session['queue_status'] !== 'In_Session') {
+                return ['success' => false, 'message' => 'Only a Paanyaya session currently in progress can be concluded.'];
+            }
             $upd = $db->prepare("
                 UPDATE paanyaya_sessions 
                 SET actual_end_time = ?,
@@ -1227,11 +1331,14 @@ class HearingController
             ];
         }
 
-        $hStmt = $db->prepare('SELECT hearing_id, case_id, actual_start_time, duration_minutes FROM hearings WHERE hearing_id = ?');
+        $hStmt = $db->prepare('SELECT hearing_id, case_id, actual_start_time, duration_minutes, queue_status, status FROM hearings WHERE hearing_id = ?');
         $hStmt->execute([$hearingId]);
         $hearing = $hStmt->fetch(PDO::FETCH_ASSOC);
         if (!$hearing) {
             return ['success' => false, 'message' => 'Hearing not found.'];
+        }
+        if ($hearing['queue_status'] !== 'In_Session' || in_array($hearing['status'], ['Completed', 'Cancelled', 'Office Cancelled'], true)) {
+            return ['success' => false, 'message' => 'Only a hearing that is currently in session can be concluded through the docket queue.'];
         }
 
         $startTime = $hearing['actual_start_time'] ?: $now;
