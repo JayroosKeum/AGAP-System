@@ -144,6 +144,8 @@ class PDFService
             $htmlToLoad = $this->kp22Html($data, true);
         } elseif ($formCode === 'KP Form 23' || $formCode === 'Pormularyo ng KP Blg. 23') {
             $htmlToLoad = $this->kp23Html($data, true);
+        } elseif ($formCode === 'KP Form 24' || $formCode === 'Pormularyo ng KP Blg. 24') {
+            $htmlToLoad = $this->kp24Html($data, true);
         } elseif ($formCode === 'KP Form 25' || $formCode === 'Pormularyo ng KP Blg. 25') {
             $htmlToLoad = $this->kp25Html($data, true);
         } else {
@@ -420,6 +422,8 @@ class PDFService
             return $this->kp22Html($data);
         } elseif ($formCode === 'KP Form 23' || $formCode === 'Pormularyo ng KP Blg. 23') {
             return $this->kp23Html($data);
+        } elseif ($formCode === 'KP Form 24' || $formCode === 'Pormularyo ng KP Blg. 24') {
+            return $this->kp24Html($data);
         } elseif ($formCode === 'KP Form 25' || $formCode === 'Pormularyo ng KP Blg. 25') {
             return $this->kp25Html($data);
         }
@@ -3188,6 +3192,44 @@ class PDFService
 </html>';
     }
 
+    /**
+     * KP Form 24 — Notice of Hearing on a Motion for Execution.
+     */
+    public function renderKp24Html(array $data, bool $forPdf = false): string
+    {
+        return $this->kp24Html($data, $forPdf);
+    }
+
+    private function kp24Html(array $data, bool $forPdf = false): string
+    {
+        $caseNumber = $this->escape((string) ($data['case_number'] ?? '__________'));
+        $title = $this->escape((string) ($data['complaint_title'] ?? '__________'));
+        $movingParty = $this->escape((string) ($data['moving_party_name'] ?? $data['target_party_name'] ?? '______________________________'));
+        $opposingParty = $this->escape((string) ($data['opposing_party_name'] ?? '______________________________'));
+        $hearingDate = $this->escape((string) ($data['hearing_date'] ?? '________________'));
+        $hearingTime = $this->escape((string) ($data['hearing_time'] ?? '________________'));
+        $venue = $this->escape((string) ($data['venue'] ?? 'Tanggapan ng Lupong Tagapamayapa'));
+        $noticeDate = $this->escape((string) ($data['notice_date'] ?? $data['date_today'] ?? date('F j, Y')));
+        $officialName = $this->escape($this->getAuthorizedCaptainName($data['official_name'] ?? $data['captain_name'] ?? null));
+        $wrapperStart = $forPdf ? '' : '<div style="background:#f1f5f9;padding:24px 12px;min-height:100vh;display:flex;justify-content:center"><div style="background:#fff;width:100%;max-width:760px;min-height:960px;padding:14mm 16mm;box-shadow:0 4px 15px rgba(0,0,0,.08);box-sizing:border-box">';
+        $wrapperEnd = $forPdf ? '' : '</div></div>';
+
+        return '<!DOCTYPE html>
+<html lang="fil"><head><meta charset="UTF-8"><title>Pormularyo ng KP Blg. 24 - PAABISO NG PAGDINIG</title>
+<style>@page{size:A4 portrait;margin:15mm 18mm}*{box-sizing:border-box}body{font-family:Arial,"DejaVu Sans",sans-serif;font-size:11pt;color:#111827;line-height:1.5;margin:0}.center{text-align:center}.line{display:inline-block;border-bottom:1px solid #111;min-width:180px;font-weight:bold;text-align:center}</style>
+</head><body>' . $wrapperStart . '
+<div style="font-weight:bold;font-size:11pt">Pormularyo ng KP Blg. 24</div>
+<div class="center" style="margin-top:14px"><div>Republika ng Pilipinas</div><div>Lungsod ng Marikina</div><div style="font-weight:bold">Barangay Tumana</div><div style="font-weight:bold;margin-top:8px">TANGGAPAN NG LUPONG TAGAPAMAYAPA</div></div>
+<table style="width:100%;border-collapse:collapse;margin-top:28px"><tr><td style="width:55%;vertical-align:top"><strong>' . $movingParty . '</strong><br><span style="font-size:10pt">Naghain ng Mosyon para sa Pagpapatupad</span><div class="center" style="margin:10px 0">- laban kay -</div><strong>' . $opposingParty . '</strong><br><span style="font-size:10pt">Kabilang Panig</span></td><td style="vertical-align:top;text-align:right">Usaping Barangay Blg.<br><span class="line">' . $caseNumber . '</span><br><br>Para sa:<br><span class="line">' . $title . '</span></td></tr></table>
+<div class="center" style="margin:34px 0 24px"><div style="font-weight:bold;font-size:14pt">PAABISO NG PAGDINIG</div><div style="font-weight:bold">(Re: Mosyon sa Pagpapatupad)</div></div>
+<p>PARA KAY: <strong>' . $opposingParty . '</strong></p>
+<p style="text-align:justify">IPINAGBIBIGAY-ALAM na ang Mosyon para sa Pagpapatupad sa usaping ito ay diringgin sa <strong>' . $hearingDate . '</strong>, sa ganap na <strong>' . $hearingTime . '</strong>, sa <strong>' . $venue . '</strong>. Ikaw/kayo ay hinihiling na humarap upang maipahayag ang anumang pagtutol o paliwanag ukol sa nasabing mosyon.</p>
+<p style="text-align:justify">Kung hindi makakaharap nang walang sapat na dahilan, ang pagdinig ay maaaring ituloy at ang mosyon ay pagpasiyahan batay sa mga rekord at ebidensiyang nasa harap ng Lupon/Pangkat.</p>
+<p style="margin-top:36px">Ipinagkaloob ngayong <strong>' . $noticeDate . '</strong> sa Barangay Tumana, Lungsod ng Marikina.</p>
+<div style="text-align:right;margin-top:64px"><div style="display:inline-block;text-align:center;min-width:250px;border-top:1px solid #111;padding-top:4px;font-weight:bold">' . $officialName . '</div><br><span style="font-size:10pt">Punong Barangay / Tagapangulo ng Lupon</span></div>
+' . $wrapperEnd . '</body></html>';
+    }
+
     public function renderKp25Html(array $data, bool $forPdf = false): string
     {
         return $this->kp25Html($data, $forPdf);
@@ -3319,7 +3361,7 @@ class PDFService
 
     <div style="font-size: 11pt; line-height: 1.8; text-align: justify; margin-bottom: 25px;">
         <p style="text-indent: 40px; margin: 0 0 14px 0;">
-            SSAPAGKAT, noong <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 150px; font-weight: bold; text-align: center;">' . $settlementDateStr . '</span> (petsa), isang matiwasay na pag-aayos ang nilagdaan ng mga panig sa usaping nakasaad sa itaas (o isang gawad ng paghahatol ang iginawad ng Punong Barangay/Pangkat ng Tagapagkasundo);
+            SAPAGKAT, noong <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 150px; font-weight: bold; text-align: center;">' . $settlementDateStr . '</span> (petsa), isang matiwasay na pag-aayos ang nilagdaan ng mga panig sa usaping nakasaad sa itaas (o isang gawad ng paghahatol ang iginawad ng Punong Barangay/Pangkat ng Tagapagkasundo);
         </p>
         <p style="text-indent: 40px; margin: 0 0 10px 0;">
             SAPAGKAT, ang bahagi ng mga probisyon at mga kondisyon ng hatol ay mababasa tulad ng sumusunod:

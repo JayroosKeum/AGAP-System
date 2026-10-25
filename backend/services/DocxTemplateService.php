@@ -1003,6 +1003,53 @@ class DocxTemplateService
       <w:r><w:t>Punong Barangay / Tagapangulo ng Lupon</w:t></w:r>
     </w:p>';
 
+            case 'kp_24':
+                return '
+    <w:p>
+      <w:pPr><w:jc w:val="center"/><w:spacing w:before="120" w:after="80"/></w:pPr>
+      <w:r><w:rPr><w:b/><w:sz w:val="26"/></w:rPr><w:t>PORMULARYO NG KP BLG. 24</w:t></w:r>
+    </w:p>
+    <w:p>
+      <w:pPr><w:jc w:val="center"/><w:spacing w:after="160"/></w:pPr>
+      <w:r><w:rPr><w:b/><w:sz w:val="24"/></w:rPr><w:t>PAABISO NG PAGDINIG</w:t></w:r>
+    </w:p>
+    <w:p>
+      <w:pPr><w:jc w:val="center"/><w:spacing w:after="160"/></w:pPr>
+      <w:r><w:rPr><w:i/></w:rPr><w:t>(Ukol sa Mosyon sa Pagpapatupad / Notice of Hearing re: Motion for Execution)</w:t></w:r>
+    </w:p>
+    <w:p><w:pPr><w:spacing w:after="60"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>Usaping Barangay Blg.: </w:t></w:r><w:r><w:t>{case_number}</w:t></w:r></w:p>
+    <w:p><w:pPr><w:spacing w:after="100"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>Para sa: </w:t></w:r><w:r><w:t>{complaint_title}</w:t></w:r></w:p>
+    <w:p><w:pPr><w:spacing w:after="120"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>PARA KAY: </w:t></w:r><w:r><w:t>{opposing_party_name}</w:t></w:r></w:p>
+    <w:p>
+      <w:pPr><w:jc w:val="both"/><w:spacing w:after="140"/></w:pPr>
+      <w:r><w:t>IPINAGBIBIGAY-ALAM na ang Mosyon para sa Pagpapatupad sa usaping ito ay diringgin sa </w:t></w:r><w:r><w:rPr><w:b/></w:rPr><w:t>{hearing_date}</w:t></w:r><w:r><w:t> sa ganap na </w:t></w:r><w:r><w:rPr><w:b/></w:rPr><w:t>{hearing_time}</w:t></w:r><w:r><w:t> sa </w:t></w:r><w:r><w:rPr><w:b/></w:rPr><w:t>{venue}</w:t></w:r><w:r><w:t>. Ikaw/kayo ay hinihiling na humarap upang maipahayag ang anumang pagtutol o paliwanag ukol sa nasabing mosyon.</w:t></w:r>
+    </w:p>
+    <w:p><w:pPr><w:jc w:val="both"/><w:spacing w:after="180"/></w:pPr><w:r><w:t>Kung hindi makakaharap nang walang sapat na dahilan, ang pagdinig ay maaaring ituloy at ang mosyon ay pagpasiyahan batay sa mga rekord at ebidensiyang nasa harap ng Lupon/Pangkat.</w:t></w:r></w:p>
+    <w:p><w:pPr><w:spacing w:after="180"/></w:pPr><w:r><w:t>Ipinagkaloob ngayong </w:t></w:r><w:r><w:t>{date_today}</w:t></w:r><w:r><w:t> sa Barangay Tumana, Lungsod ng Marikina.</w:t></w:r></w:p>
+    <w:p><w:pPr><w:jc w:val="right"/><w:spacing w:before="240" w:after="40"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>{punong_barangay}</w:t></w:r></w:p>
+    <w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:t>Punong Barangay / Tagapangulo ng Lupon</w:t></w:r></w:p>';
+
+            case 'kp_25':
+                return '
+    <w:p>
+      <w:pPr><w:jc w:val="center"/><w:spacing w:before="120" w:after="80"/></w:pPr>
+      <w:r><w:rPr><w:b/><w:sz w:val="26"/></w:rPr><w:t>PORMULARYO NG KP BLG. 25</w:t></w:r>
+    </w:p>
+    <w:p>
+      <w:pPr><w:jc w:val="center"/><w:spacing w:after="160"/></w:pPr>
+      <w:r><w:rPr><w:b/><w:sz w:val="24"/></w:rPr><w:t>PAABISO PARA SA PAGPAPATUPAD</w:t></w:r>
+    </w:p>
+    <w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="160"/></w:pPr><w:r><w:rPr><w:i/></w:rPr><w:t>(Notice for Execution)</w:t></w:r></w:p>
+    <w:p><w:pPr><w:spacing w:after="60"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>Usaping Barangay Blg.: </w:t></w:r><w:r><w:t>{case_number}</w:t></w:r></w:p>
+    <w:p><w:pPr><w:spacing w:after="100"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>Para sa: </w:t></w:r><w:r><w:t>{complaint_title}</w:t></w:r></w:p>
+    <w:p><w:pPr><w:jc w:val="both"/><w:spacing w:after="140"/></w:pPr><w:r><w:t>SAPAGKAT, ang mga panig ay lumagda sa isang matiwasay na pag-aayos o tumanggap ng gawad ng paghahatol noong </w:t></w:r><w:r><w:rPr><w:b/></w:rPr><w:t>{settlement_date}</w:t></w:r><w:r><w:t>, at ang nasabing pag-aayos o hatol ay naging pinal at maaari nang ipatupad.</w:t></w:r></w:p>
+    <w:p><w:pPr><w:jc w:val="both"/><w:spacing w:after="140"/></w:pPr><w:r><w:t>SAPAGKAT, ang natalong panig na si </w:t></w:r><w:r><w:rPr><w:b/></w:rPr><w:t>{defeated_party_name}</w:t></w:r><w:r><w:t> ay hindi tumupad nang kusang-loob sa kasunduan o hatol sa loob ng panahong itinakda.</w:t></w:r></w:p>
+    <w:p><w:pPr><w:jc w:val="both"/><w:spacing w:after="140"/></w:pPr><w:r><w:t>DAHIL DITO, ipinag-uutos ang pagpapatupad ng kasunduan o hatol, kabilang ang halagang </w:t></w:r><w:r><w:rPr><w:b/></w:rPr><w:t>{execution_amount_words}</w:t></w:r><w:r><w:t> (₱</w:t></w:r><w:r><w:rPr><w:b/></w:rPr><w:t>{execution_amount_numbers}</w:t></w:r><w:r><w:t>) at ang sumusunod na mga kondisyon:</w:t></w:r></w:p>
+    <w:p><w:pPr><w:ind w:left="360"/><w:spacing w:after="160"/></w:pPr><w:r><w:t>{agreement_details}</w:t></w:r></w:p>
+    <w:p><w:pPr><w:spacing w:after="180"/></w:pPr><w:r><w:t>Nilagdaan ngayong </w:t></w:r><w:r><w:t>{date_today}</w:t></w:r><w:r><w:t> sa Barangay Tumana, Lungsod ng Marikina.</w:t></w:r></w:p>
+    <w:p><w:pPr><w:jc w:val="right"/><w:spacing w:before="240" w:after="40"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>{punong_barangay}</w:t></w:r></w:p>
+    <w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:t>Punong Barangay / Tagapangulo ng Lupon</w:t></w:r></w:p>';
+
             case 'patawag':
             default:
                 return '
@@ -1206,6 +1253,13 @@ class DocxTemplateService
             'venue' => 'Tanggapan ng Lupong Tagapamayapa, Barangay Hall, Tumana',
             'docket_date' => date('F d, Y'),
             'date_today' => date('F d, Y'),
+            'moving_party_name' => 'Juan Dela Cruz y Santos',
+            'opposing_party_name' => 'Pedro Garcia at Maria Garcia',
+            'settlement_date' => 'September 15, 2026',
+            'defeated_party_name' => 'Pedro Garcia at Maria Garcia',
+            'execution_amount_words' => 'Dalawampu’t Limang Libong Piso',
+            'execution_amount_numbers' => '25,000.00',
+            'agreement_details' => 'Bayaran nang buo ang halagang napagkasunduan sa loob ng itinakdang panahon.',
         ], $sampleData);
 
         // Header HTML
@@ -1632,6 +1686,49 @@ class DocxTemplateService
                         <div class="sig-title">' . htmlspecialchars($officerTitle) . '</div>
                     </div>
                 </div>';
+
+            case 'kp_24':
+                return '
+                <div class="form-title-block">
+                    <h2 class="form-code">PORMULARYO NG KP BLG. 24</h2>
+                    <h3 class="form-title">PAABISO NG PAGDINIG</h3>
+                    <div class="form-subtitle">Ukol sa Mosyon sa Pagpapatupad / Notice of Hearing re: Motion for Execution</div>
+                </div>
+                <table class="case-meta-table">
+                    <tr><td style="width: 170px;"><strong>Usaping Barangay Blg.:</strong></td><td>' . htmlspecialchars($data['case_number']) . '</td></tr>
+                    <tr><td><strong>Para sa:</strong></td><td>' . htmlspecialchars($data['complaint_title']) . '</td></tr>
+                </table>
+                <div class="parties-block">
+                    <div><strong>Naghain ng Mosyon:</strong> ' . htmlspecialchars($data['moving_party_name']) . '</div>
+                    <div style="margin-top: 4px;"><strong>PARA KAY:</strong> ' . htmlspecialchars($data['opposing_party_name']) . '</div>
+                </div>
+                <div class="narrative-body">
+                    IPINAGBIBIGAY-ALAM na ang Mosyon para sa Pagpapatupad sa usaping ito ay diringgin sa <strong>' . htmlspecialchars($data['hearing_date']) . '</strong> sa ganap na <strong>' . htmlspecialchars($data['hearing_time']) . '</strong> sa <strong>' . htmlspecialchars($data['venue']) . '</strong>. Ikaw/kayo ay hinihiling na humarap upang maipahayag ang anumang pagtutol o paliwanag ukol sa nasabing mosyon.
+                </div>
+                <div class="narrative-body">
+                    Kung hindi makakaharap nang walang sapat na dahilan, ang pagdinig ay maaaring ituloy at ang mosyon ay pagpasiyahan batay sa mga rekord at ebidensiyang nasa harap ng Lupon/Pangkat.
+                </div>
+                <div class="date-statement">Ipinagkaloob ngayong <strong>' . htmlspecialchars($data['date_today']) . '</strong> sa Barangay Tumana, Lungsod ng Marikina.</div>
+                <div class="signature-row"><div class="signature-box"><div class="sig-line">' . htmlspecialchars($officer) . '</div><div class="sig-title">' . htmlspecialchars($officerTitle) . '</div></div></div>';
+
+            case 'kp_25':
+                return '
+                <div class="form-title-block">
+                    <h2 class="form-code">PORMULARYO NG KP BLG. 25</h2>
+                    <h3 class="form-title">PAABISO PARA SA PAGPAPATUPAD</h3>
+                    <div class="form-subtitle">Notice for Execution</div>
+                </div>
+                <table class="case-meta-table">
+                    <tr><td style="width: 170px;"><strong>Usaping Barangay Blg.:</strong></td><td>' . htmlspecialchars($data['case_number']) . '</td></tr>
+                    <tr><td><strong>Para sa:</strong></td><td>' . htmlspecialchars($data['complaint_title']) . '</td></tr>
+                </table>
+                <div class="parties-block"><div><strong>May-sumbong:</strong> ' . htmlspecialchars($data['complainants']) . '</div><div style="margin-top: 4px;"><strong>Ipinagsusumbong:</strong> ' . htmlspecialchars($data['respondents']) . '</div></div>
+                <div class="narrative-body">SAPAGKAT, ang mga panig ay lumagda sa isang matiwasay na pag-aayos o tumanggap ng gawad ng paghahatol noong <strong>' . htmlspecialchars($data['settlement_date']) . '</strong>, at ang nasabing pag-aayos o hatol ay naging pinal at maaari nang ipatupad.</div>
+                <div class="narrative-body">SAPAGKAT, ang natalong panig na si <strong>' . htmlspecialchars($data['defeated_party_name']) . '</strong> ay hindi tumupad nang kusang-loob sa kasunduan o hatol sa loob ng panahong itinakda.</div>
+                <div class="narrative-body">DAHIL DITO, ipinag-uutos ang pagpapatupad ng kasunduan o hatol, kabilang ang halagang <strong>' . htmlspecialchars($data['execution_amount_words']) . ' (₱' . htmlspecialchars($data['execution_amount_numbers']) . ')</strong> at ang sumusunod na mga kondisyon:</div>
+                <div class="narrative-quote">' . nl2br(htmlspecialchars($data['agreement_details'])) . '</div>
+                <div class="date-statement">Nilagdaan ngayong <strong>' . htmlspecialchars($data['date_today']) . '</strong> sa Barangay Tumana, Lungsod ng Marikina.</div>
+                <div class="signature-row"><div class="signature-box"><div class="sig-line">' . htmlspecialchars($officer) . '</div><div class="sig-title">' . htmlspecialchars($officerTitle) . '</div></div></div>';
 
             case 'kp_20':
             case 'kp_20_a':

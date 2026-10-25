@@ -756,7 +756,7 @@ foreach ($masterForms as $k => $f) {
             $badge = 'DOCX template';
         }
     } else {
-        if (in_array($k, ['kp_8', 'kp_9'], true)) {
+        if (in_array($k, ['kp_8', 'kp_9', 'kp_24', 'kp_25'], true)) {
             $badge = 'Published';
             $publishedCount++;
         } elseif ($k === 'patawag') {
