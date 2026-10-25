@@ -98,7 +98,7 @@ class NotificationService
     public function notifySummonsDeliveryWarning(int $caseId, string $caseNum, int $daysUnserved, ?int $serverUserId = null): void
     {
         $actionUrl = "../cases/case-details.php?id=" . $caseId;
-        $title = "⚠️ Summons Delivery Warning";
+        $title = "Summons Delivery Warning";
         $msg = "Summons for {$caseNum} has been unserved for {$daysUnserved} days. Please verify respondent address or execute 2nd attempt.";
 
         $this->notifyRoles(['Administrator', 'Lupon Clerk'], $title, $msg, null, 'warning', $actionUrl, $caseId);
@@ -113,7 +113,7 @@ class NotificationService
     public function notifyNonAppearanceRecorded(int $caseId, string $caseNum, string $partyType, string $partyName, ?int $actorUserId = null): void
     {
         $actionUrl = "../cases/case-details.php?id=" . $caseId;
-        $title = "⚠️ Non-Appearance: {$partyType}";
+        $title = "Non-Appearance: {$partyType}";
         $msg = "{$partyType} {$partyName} failed to appear at the mediation hearing for {$caseNum} without justification. 3-day show-cause period initiated.";
 
         $this->notifyRoles(['Administrator', 'Lupon Clerk'], $title, $msg, $actorUserId, 'urgent', $actionUrl, $caseId);
@@ -136,7 +136,7 @@ class NotificationService
     public function notifySettlementRepudiated(int $caseId, string $caseNum, string $repudiatingParty, string $grounds, ?int $actorUserId = null): void
     {
         $actionUrl = "../cases/case-details.php?id=" . $caseId;
-        $title = "🚨 URGENT: Settlement Repudiated (KP 17)";
+        $title = "URGENT: Settlement Repudiated (KP 17)";
         $msg = "Party {$repudiatingParty} filed a sworn repudiation for {$caseNum} citing: '{$grounds}'. Prepare Certificate to File Action (20-B).";
 
         // Urgent alert directly to Punong Barangay and Clerks
@@ -147,7 +147,7 @@ class NotificationService
     public function notifySettlementBreached(int $caseId, string $caseNum, string $breachDetails, ?int $actorUserId = null): void
     {
         $actionUrl = "../cases/case-details.php?id=" . $caseId;
-        $title = "⚠️ Settlement Terms Breached";
+        $title = "Settlement Terms Breached";
         $msg = "Complainant reported non-compliance of amicable settlement for {$caseNum}: '{$breachDetails}'. File for execution or 10-day MTC transmittal.";
 
         $this->notifyRoles(['Administrator', 'Lupon Clerk'], $title, $msg, $actorUserId, 'urgent', $actionUrl, $caseId);

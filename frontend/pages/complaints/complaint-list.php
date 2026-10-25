@@ -226,7 +226,7 @@ include '../../layouts/header.php';
                 <tbody id="complaintTable">
                     <tr>
                         <td colspan="5" class="table-empty-wrap">
-                            <div class="empty-icon-circle">⌛</div>
+                            <div class="empty-icon-circle"></div>
                             <div class="empty-state-title">Loading complaint records...</div>
                         </td>
                     </tr>

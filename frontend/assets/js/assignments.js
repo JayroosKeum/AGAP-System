@@ -338,7 +338,7 @@
                 if (isHead) {
                     actionCell = `
                         <button type="button" class="btn-action-view btn-substitute-trigger" data-case-id="${escapeHtml(item.case_id || '')}" data-hearing-id="${escapeHtml(item.hearing_id || '')}" style="background: #2563eb; color: #ffffff; border: none; padding: 5px 11px; border-radius: 5px; font-size: 0.78rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" title="Designate or Update Substitute Presider">
-                            👤 Substitute Presider
+                            Substitute Presider
                         </button>
                     `;
                 }

@@ -35,9 +35,9 @@
 
     const defaultIcons = {
         success: '✓',
-        error: '✗',
-        warning: '⚠️',
-        info: 'ℹ️'
+        error: '✕',
+        warning: '!',
+        info: 'i'
     };
 
     const defaultTitles = {
@@ -317,27 +317,35 @@
         });
     }
 
+    function stripNotificationEmoji(text) {
+        if (!text && text !== 0) return '';
+        return String(text)
+            .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F1E6}-\u{1F1FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{2300}-\u{23FF}]/gu, '')
+            .replace(/^[:\s\-–—]+|[:\s\-–—]+$/g, '')
+            .trim();
+    }
+
     function createPopoverItem(item) {
         const isUnread = !Number(item.is_read);
         const sev = (item.severity || 'info').toLowerCase();
 
-        // Avatar styling & icon
+        // Avatar styling & clean SVG icon
         let avClass = 'av-info';
         let dotClass = 'dot-blue';
-        let avIcon = '📄';
+        let avIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>';
 
         if (sev === 'urgent') {
             avClass = 'av-urgent';
             dotClass = 'dot-red';
-            avIcon = '🔴';
+            avIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>';
         } else if (sev === 'warning') {
             avClass = 'av-warning';
             dotClass = 'dot-orange';
-            avIcon = '⚠️';
+            avIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>';
         } else if (sev === 'success') {
             avClass = 'av-success';
             dotClass = 'dot-green';
-            avIcon = '✓';
+            avIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
         }
 
         // Action URL
@@ -362,7 +370,7 @@
         if (actionUrl) {
             actionsHtml += `
                 <a href="${escapePopoverAttr(actionUrl)}" class="btn-popover-primary" onclick="handlePopoverActionClick(event, ${item.notification_id}, '${escapePopoverAttr(actionUrl)}')">
-                    🚀 Open Case
+                    Open Case
                 </a>
             `;
         }
@@ -374,13 +382,14 @@
             `;
         }
 
+        const cleanTitle = stripNotificationEmoji(item.title);
         el.innerHTML = `
             <div class="nav-item-avatar ${avClass}">
                 ${avIcon}
                 <span class="nav-item-status-dot ${dotClass}"></span>
             </div>
             <div class="nav-item-body">
-                <div class="nav-item-title">${escapePopoverHtml(item.title)}</div>
+                <div class="nav-item-title">${escapePopoverHtml(cleanTitle)}</div>
                 <div class="nav-item-sub">${escapePopoverHtml(relTime)}${item.case_number ? ' • ' + escapePopoverHtml(item.case_number) : ''}</div>
                 ${actionsHtml ? `<div class="nav-item-actions">${actionsHtml}</div>` : ''}
             </div>

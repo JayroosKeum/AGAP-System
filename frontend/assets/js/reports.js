@@ -128,7 +128,7 @@ async function exportCaseRegister() {
     const endDate   = document.getElementById('registerEndDate')?.value || '';
 
     const origText = btn ? btn.textContent : '';
-    if (btn) { btn.disabled = true; btn.textContent = '⏳ Generating…'; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
     setMessage('');
 
     try {
@@ -142,7 +142,7 @@ async function exportCaseRegister() {
             body: JSON.stringify(payload)
         });
 
-        setMessage(`✓ ${result.message}`, true);
+        setMessage(result.message, true);
         // Trigger download
         window.location.assign(result.download_url);
     } catch (error) {

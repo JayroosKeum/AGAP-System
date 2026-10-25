@@ -64,7 +64,7 @@ if ($isPaanyayaStage) {
     http_response_code(403);
     echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>KP Form 7: On Hold</title></head><body style="font-family:system-ui,-apple-system,sans-serif;padding:40px 20px;background:#f8fafc;color:#1e293b;text-align:center;">'
         . '<div style="max-width:520px;margin:30px auto;border:1px solid #fde68a;background:#fffbeb;border-radius:12px;padding:28px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">'
-        . '<div style="font-size:2.5rem;margin-bottom:12px;">⚖️</div>'
+        
         . '<h2 style="color:#b45309;margin:0 0 10px;font-size:1.25rem;">KP Form 7: On Hold</h2>'
         . '<span style="display:inline-block;padding:3px 10px;border-radius:999px;font-size:0.75rem;font-weight:700;background:#fef3c7;color:#92400e;margin-bottom:14px;">Pending Paanyaya Outcome</span>'
         . '<p style="font-size:0.92rem;line-height:1.6;color:#475569;margin:0 0 16px;">This complaint is currently in the <strong>Pre-Docketing (Paanyaya)</strong> informal stage. Official KP Form 7 (Formal Complaint) is not issued unless the dispute fails informal settlement and is formally escalated to mediation.</p>'

@@ -41,7 +41,7 @@
                     <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; flex: 0 0 auto;">
                         <div style="min-width: 0; overflow: hidden;">
                             <div style="font-weight: 700; font-size: 0.85rem; color: #0f172a; display: flex; align-items: center; gap: 6px; white-space: nowrap;">
-                                <span>📄 KP Form No. 8</span>
+                                <span>KP Form No. 8</span>
                                 <span style="font-size: 0.68rem; font-weight: 700; background: #dbeafe; color: #1e40af; padding: 1px 6px; border-radius: 4px;">Patalastas ng Pagdinig</span>
                             </div>
                             <div id="kp8PartyHint" style="font-size: 0.72rem; color: #64748b; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
@@ -67,7 +67,7 @@
                     <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; flex: 0 0 auto;">
                         <div style="min-width: 0; overflow: hidden;">
                             <div style="font-weight: 700; font-size: 0.85rem; color: #0f172a; display: flex; align-items: center; gap: 6px; white-space: nowrap;">
-                                <span>📄 KP Form No. 9</span>
+                                <span>KP Form No. 9</span>
                                 <span style="font-size: 0.68rem; font-weight: 700; background: #fef3c7; color: #92400e; padding: 1px 6px; border-radius: 4px;">Patawag</span>
                             </div>
                             <div id="kp9PartyHint" style="font-size: 0.72rem; color: #64748b; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">

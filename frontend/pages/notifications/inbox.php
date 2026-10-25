@@ -46,10 +46,10 @@ include '../../layouts/header.php';
                     <div class="notif-filter-select-box">
                         <select id="notifSeveritySelect" onchange="handleSeverityChange(event)" title="Filter by priority">
                             <option value="all">All Priorities</option>
-                            <option value="urgent">🔴 Urgent / Critical</option>
-                            <option value="warning">⚠️ Timeline Risks</option>
-                            <option value="info">ℹ️ Notices &amp; Updates</option>
-                            <option value="success">✓ Resolved / Closed</option>
+                            <option value="urgent">Urgent / Critical</option>
+                            <option value="warning">Timeline Risks</option>
+                            <option value="info">Notices &amp; Updates</option>
+                            <option value="success">Resolved / Closed</option>
                         </select>
                     </div>
 
@@ -66,7 +66,7 @@ include '../../layouts/header.php';
                     <!-- Sort Dropdown -->
                     <div class="notif-sort-box">
                         <select id="notifSortSelect" onchange="handleSortChange(event)" title="Sort notifications">
-                            <option value="date_desc">Newest first ⌵</option>
+                            <option value="date_desc">Newest first</option>
                             <option value="date_asc">Oldest first</option>
                             <option value="urgency">Highest Priority</option>
                         </select>
@@ -74,7 +74,7 @@ include '../../layouts/header.php';
 
                     <!-- Clear / Reset Filters -->
                     <button type="button" class="notif-btn-clear-filters" id="btnClearFilters" onclick="resetAllFilters()" style="display:none;" title="Reset active filters">
-                        Reset Filters ✕
+                        Reset Filters
                     </button>
 
                     <button type="button" class="notif-btn-mark-all" id="btnMarkAllRead" onclick="markAllAsRead()">
@@ -89,28 +89,28 @@ include '../../layouts/header.php';
                     All <span class="chip-count" id="chipCount_all">0</span>
                 </button>
                 <button type="button" class="notif-chip chip-critical" id="chip_critical" data-category="critical" onclick="setCategoryFilter('critical')">
-                    <span class="chip-icon">🔴</span> Critical <span class="chip-count" id="chipCount_critical">0</span>
+                    Critical <span class="chip-count" id="chipCount_critical">0</span>
                 </button>
                 <button type="button" class="notif-chip chip-warning" id="chip_warning" data-category="warning" onclick="setCategoryFilter('warning')">
-                    <span class="chip-icon">⚠️</span> Timeline Risks <span class="chip-count" id="chipCount_warning">0</span>
+                    Timeline Risks <span class="chip-count" id="chipCount_warning">0</span>
                 </button>
                 <button type="button" class="notif-chip chip-hearing" id="chip_hearing" data-category="hearing" onclick="setCategoryFilter('hearing')">
-                    <span class="chip-icon">📅</span> Hearings <span class="chip-count" id="chipCount_hearing">0</span>
+                    Hearings <span class="chip-count" id="chipCount_hearing">0</span>
                 </button>
                 <button type="button" class="notif-chip chip-summons" id="chip_summons" data-category="summons" onclick="setCategoryFilter('summons')">
-                    <span class="chip-icon">📜</span> Summons <span class="chip-count" id="chipCount_summons">0</span>
+                    Summons <span class="chip-count" id="chipCount_summons">0</span>
                 </button>
                 <button type="button" class="notif-chip chip-pangkat" id="chip_pangkat" data-category="pangkat" onclick="setCategoryFilter('pangkat')">
-                    <span class="chip-icon">👥</span> Pangkat <span class="chip-count" id="chipCount_pangkat">0</span>
+                    Pangkat <span class="chip-count" id="chipCount_pangkat">0</span>
                 </button>
                 <button type="button" class="notif-chip chip-complaint" id="chip_complaint" data-category="complaint" onclick="setCategoryFilter('complaint')">
-                    <span class="chip-icon">📝</span> Intake <span class="chip-count" id="chipCount_complaint">0</span>
+                    Intake <span class="chip-count" id="chipCount_complaint">0</span>
                 </button>
                 <button type="button" class="notif-chip chip-document" id="chip_document" data-category="document" onclick="setCategoryFilter('document')">
-                    <span class="chip-icon">📄</span> Documents <span class="chip-count" id="chipCount_document">0</span>
+                    Documents <span class="chip-count" id="chipCount_document">0</span>
                 </button>
                 <button type="button" class="notif-chip chip-success" id="chip_success" data-category="success" onclick="setCategoryFilter('success')">
-                    <span class="chip-icon">✓</span> Resolved <span class="chip-count" id="chipCount_success">0</span>
+                    Resolved <span class="chip-count" id="chipCount_success">0</span>
                 </button>
             </div>
 
@@ -132,7 +132,7 @@ include '../../layouts/header.php';
                             Delete (<span class="bulk-count">0</span>)
                         </button>
                         <button type="button" class="btn-bulk-action btn-bulk-read" onclick="markSelectedAsRead()" title="Mark selected as read">
-                            <span>✓</span> Mark read
+                            Mark read
                         </button>
                         <button type="button" class="btn-bulk-cancel" onclick="clearAllSelections()" title="Cancel selection">
                             Cancel

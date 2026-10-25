@@ -1,3 +1,7 @@
+function stripNotificationEmoji(text) {
+    if (!text && text !== 0) return '';
+    return String(text).replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F1E6}-\u{1F1FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{2300}-\u{23FF}]/gu, '').replace(/^[:\s\-–—]+|[:\s\-–—]+$/g, '').trim();
+}
 /**
  * AGAP Notifications Inbox Engine
  * Layout and interaction designed to match modern activity format:
@@ -93,7 +97,7 @@ async function loadNotifications() {
         if (listEl) {
             listEl.innerHTML = `
                 <div class="notif-empty-state">
-                    <span class="notif-empty-icon">⚠️</span>
+                    
                     <div class="notif-empty-title">Unable to Load Notifications</div>
                     <p class="notif-empty-desc">${escapeHtml(error.message || 'Server connection error.')}</p>
                 </div>
@@ -403,12 +407,12 @@ function renderNotifications() {
 
         listEl.innerHTML = `
             <div class="notif-empty-state">
-                <span class="notif-empty-icon">${hasFilters ? '🔍' : (currentNotifTab === 'unread' ? '🎉' : '📂')}</span>
+                
                 <div class="notif-empty-title">${escapeHtml(emptyTitle)}</div>
                 <p class="notif-empty-desc">${escapeHtml(emptyDesc)}</p>
                 ${hasFilters ? `
                     <button type="button" class="notif-btn-switch-tab" onclick="resetAllFilters()">
-                        Reset All Filters ✕
+                        Reset All Filters
                     </button>
                 ` : (currentNotifTab === 'unread' ? `
                     <button type="button" class="notif-btn-switch-tab" onclick="setNotifTab('read')">
@@ -438,13 +442,13 @@ function renderNotifications() {
                 <div class="notif-row-left">
                     <span class="notif-dot ${isUnread ? 'dot-unread dot-' + effectiveSeverity : 'dot-read'}" title="${isUnread ? 'Unread (' + effectiveSeverity.toUpperCase() + ')' : 'Read'}"></span>
                     <div class="notif-text-col">
-                        <div class="notif-row-title">${escapeHtml(item.title || 'Notification')}</div>
+                        <div class="notif-row-title">${escapeHtml(stripNotificationEmoji(item.title) || 'Notification')}</div>
                         <div class="notif-row-msg">${escapeHtml(item.message || '')}</div>
                     </div>
                 </div>
                 <div class="notif-row-category">
                     <span class="notif-category-badge ${cat.class}">
-                        <span class="notif-category-icon">${cat.icon}</span>
+                        ${cat.icon ? `<span class="notif-category-icon">${cat.icon}</span>` : ''}
                         <span class="notif-category-label">${escapeHtml(cat.label)}</span>
                     </span>
                 </div>
@@ -464,12 +468,12 @@ function renderNotifications() {
                         <div class="notif-menu-dropdown" id="notifMenu_${item.notification_id}">
                             ${actionUrl ? `
                                 <a href="${escapeAttr(actionUrl)}" class="notif-menu-item" onclick="closeAllMenus()">
-                                    <span>🚀</span> Open Case / Record
+                                    Open Case / Record
                                 </a>
                             ` : ''}
                             ${isUnread ? `
                                 <button type="button" class="notif-menu-item" onclick="markRead(${item.notification_id})">
-                                    <span>✓</span> Mark as read
+                                    Mark as read
                                 </button>
                             ` : `
                                 <button type="button" class="notif-menu-item" onclick="markUnread(${item.notification_id})">
@@ -477,7 +481,7 @@ function renderNotifications() {
                                 </button>
                             `}
                             <button type="button" class="notif-menu-item text-danger" onclick="deleteNotification(${item.notification_id})">
-                                <span>🗑️</span> Delete
+                                Delete
                             </button>
                         </div>
                     </div>
@@ -692,30 +696,30 @@ function inferCategoryTag(title, message, severity) {
     const sev = (severity || '').toLowerCase();
 
     if (text.includes('sla') || text.includes('overdue') || text.includes('emergency') || text.includes('cancelled') || text.includes('breach') || sev === 'urgent') {
-        return { key: 'critical', icon: '🔴', label: 'Critical Blocker', class: 'tag-critical', severity: 'urgent' };
+        return { key: 'critical', icon: '', label: 'Critical Blocker', class: 'tag-critical', severity: 'urgent' };
     }
     if (text.includes('deadline') || text.includes('due soon') || text.includes('warning') || text.includes('lapsed') || sev === 'warning') {
-        return { key: 'warning', icon: '⚠️', label: 'Timeline Risk', class: 'tag-warning', severity: 'warning' };
+        return { key: 'warning', icon: '', label: 'Timeline Risk', class: 'tag-warning', severity: 'warning' };
     }
     if (text.includes('hearing') || text.includes('rescheduled') || text.includes('appearance') || text.includes('mediation')) {
-        return { key: 'hearing', icon: '📅', label: 'Hearing Schedule', class: 'tag-hearing', severity: 'info' };
+        return { key: 'hearing', icon: '', label: 'Hearing Schedule', class: 'tag-hearing', severity: 'info' };
     }
     if (text.includes('summon') || text.includes('kp form 9') || text.includes('kp form 8')) {
-        return { key: 'summons', icon: '📜', label: 'Summons Service', class: 'tag-summons', severity: 'info' };
+        return { key: 'summons', icon: '', label: 'Summons Service', class: 'tag-summons', severity: 'info' };
     }
     if (text.includes('pangkat') || text.includes('conciliation')) {
-        return { key: 'pangkat', icon: '👥', label: 'Pangkat Formation', class: 'tag-pangkat', severity: 'info' };
+        return { key: 'pangkat', icon: '', label: 'Pangkat Formation', class: 'tag-pangkat', severity: 'info' };
     }
     if (text.includes('paanyaya') || text.includes('complaint') || text.includes('intake')) {
-        return { key: 'complaint', icon: '📝', label: 'Complaint Intake', class: 'tag-complaint', severity: 'info' };
+        return { key: 'complaint', icon: '', label: 'Complaint Intake', class: 'tag-complaint', severity: 'info' };
     }
     if (text.includes('kp form') || text.includes('document')) {
-        return { key: 'document', icon: '📄', label: 'Legal Document', class: 'tag-document', severity: 'info' };
+        return { key: 'document', icon: '', label: 'Legal Document', class: 'tag-document', severity: 'info' };
     }
     if (text.includes('settled') || text.includes('resolved') || text.includes('amicable') || sev === 'success') {
-        return { key: 'success', icon: '✓', label: 'Case Resolution', class: 'tag-success', severity: 'success' };
+        return { key: 'success', icon: '', label: 'Case Resolution', class: 'tag-success', severity: 'success' };
     }
-    return { key: 'info', icon: 'ℹ️', label: 'System Notice', class: 'tag-info', severity: sev || 'info' };
+    return { key: 'info', icon: '', label: 'System Notice', class: 'tag-info', severity: sev || 'info' };
 }
 
 /**

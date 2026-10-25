@@ -108,7 +108,7 @@ async function loadCasePreview(caseId) {
             if (cfaElig.eligible) {
                 summonsBannerHtml = `
                     <div style="margin-top: 0.75rem; padding: 12px 16px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; color: #166534; font-size: 0.88rem; display: flex; align-items: center; gap: 8px;">
-                        <span style="font-size: 1.1rem;">✅</span>
+                        
                         <div>
                             <strong>CFA Unlocked (3 Failed Summons Attempts):</strong> ${escapeHtml(cfaElig.reason || 'All three summons delivery attempts have resulted in qualifying delivery failure.')}
                         </div>
@@ -122,7 +122,7 @@ async function loadCasePreview(caseId) {
             } else if (cfaElig.attempts_count > 0) {
                 summonsBannerHtml = `
                     <div style="margin-top: 0.75rem; padding: 12px 16px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; color: #92400e; font-size: 0.88rem; display: flex; align-items: center; gap: 8px;">
-                        <span style="font-size: 1.1rem;">🔒</span>
+                        
                         <div>
                             <strong>Summons Delivery Status:</strong> ${escapeHtml(cfaElig.reason || 'CFA is locked through this path.')}
                         </div>
@@ -207,14 +207,14 @@ async function handleCfaSubmit(event) {
                 printActionHtml = `
                     <div style="margin-top: 10px;">
                         <a href="${escapeHtml(res.pdf_url)}" target="_blank" class="btn-create" style="display: inline-flex; align-items: center; gap: 6px; text-decoration: none;">
-                            🖨️ Print KP Form 20 (CFA Document)
+                            Print KP Form 20 (CFA Document)
                         </a>
                     </div>
                 `;
             }
             preview.innerHTML = `
                 <div style="color: #166534; font-weight: 600;">
-                    ✓ CFA was successfully issued and KP Form No. 20 has been generated.
+                    CFA was successfully issued and KP Form No. 20 has been generated.
                 </div>
                 ${printActionHtml}
             `;

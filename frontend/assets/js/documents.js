@@ -132,7 +132,7 @@ async function loadKPForms() {
         if (grid) {
             grid.innerHTML = `
                 <div class="doc-loading-state" style="color: #ef4444;">
-                    <div style="font-size: 1.5rem; margin-bottom: 8px;">⚠️</div>
+                    
                     <strong>Failed to load templates:</strong> ${escapeHtml(err.message)}
                 </div>
             `;
@@ -170,7 +170,7 @@ function renderKPFormsGrid() {
     if (filtered.length === 0) {
         grid.innerHTML = `
             <div class="doc-loading-state">
-                <div style="font-size: 1.8rem; margin-bottom: 8px;">🔍</div>
+                
                 <strong style="color: #1e293b; font-size: 1rem;">No matching templates found</strong>
                 <p style="margin: 4px 0 0 0; font-size: 0.82rem;">Try adjusting your search query or switching categories.</p>
             </div>
@@ -216,9 +216,9 @@ function renderKPFormsGrid() {
                 </div>
 
                 <div class="template-meta-pills">
-                    <span class="meta-pill">📋 ${escapeHtml(item.category)}</span>
-                    <span class="meta-pill">📄 ${escapeHtml(paperLabel)}</span>
-                    <span class="meta-pill">🏛️ ${escapeHtml(headerModeLabel)}</span>
+                    <span class="meta-pill">${escapeHtml(item.category)}</span>
+                    <span class="meta-pill">${escapeHtml(paperLabel)}</span>
+                    <span class="meta-pill">${escapeHtml(headerModeLabel)}</span>
                 </div>
 
                 <div class="template-card-actions">

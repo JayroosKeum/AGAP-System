@@ -92,7 +92,7 @@ $docketMessages = [
                     <div id="pangkatElevationNotice" class="elevation-notice" style="display: none; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 10px 14px; margin-bottom: 14px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
                             <div>
-                                <strong style="color: #1e40af; font-size: 0.88rem; display: block;">🤝 Pangkat Tagapagkasundo Constitution Mode</strong>
+                                <strong style="color: #1e40af; font-size: 0.88rem; display: block;">Pangkat Tagapagkasundo Constitution Mode</strong>
                                 <span id="pangkatElevationReason" style="color: #1d4ed8; font-size: 0.78rem;">Elevate this mediation case to conciliation by constituting a 3-member Lupon team.</span>
                             </div>
                             <button type="button" id="btnCancelElevation" class="btn-secondary" style="font-size: 0.75rem; padding: 4px 10px; border-radius: 4px; cursor: pointer; border: 1px solid #cbd5e1; background: #ffffff; color: #475569;">
@@ -113,10 +113,10 @@ $docketMessages = [
                                 </div>
                                 <div style="display: flex; gap: 6px; flex-shrink: 0; align-items: center;">
                                     <button type="button" onclick="openSubstitutePresiderForCase()" style="background: #2563eb; color: #fff; border: none; padding: 4px 10px; border-radius: 5px; font-size: 0.75rem; font-weight: 600; cursor: pointer; white-space: nowrap;" title="Assign a substitute mediator if the Punong Barangay cannot preside">
-                                        👤 Substitute Presider
+                                        Substitute Presider
                                     </button>
                                     <button type="button" id="btnTriggerElevation" style="background: #0284c7; color: #fff; border: none; padding: 4px 10px; border-radius: 5px; font-size: 0.75rem; font-weight: 600; cursor: pointer; white-space: nowrap;" title="Constitute 3-member Pangkat team to elevate case to Conciliation">
-                                        🤝 Elevate to Pangkat
+                                        Elevate to Pangkat
                                     </button>
                                 </div>
                             </div>

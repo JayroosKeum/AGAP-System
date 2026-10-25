@@ -48,7 +48,7 @@
                     <!-- MTC Column -->
                     <div style="background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px;">
                         <strong style="display: block; font-size: 0.82rem; color: #1e3a8a; margin-bottom: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">
-                            ⚖️ MTCC Marikina City
+                            MTCC Marikina City
                         </strong>
                         <div class="form-group" style="margin-bottom: 8px;">
                             <label for="transmittalMtcReceiver" style="font-size: 0.78rem; font-weight: 600;">Received by (Name/Title)</label>
@@ -63,7 +63,7 @@
                     <!-- DILG Column -->
                     <div style="background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px;">
                         <strong style="display: block; font-size: 0.82rem; color: #065f46; margin-bottom: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">
-                            🏛️ DILG Marikina Field Office
+                            DILG Marikina Field Office
                         </strong>
                         <div class="form-group" style="margin-bottom: 8px;">
                             <label for="transmittalDilgReceiver" style="font-size: 0.78rem; font-weight: 600;">Received by (Name/Title)</label>
@@ -80,7 +80,7 @@
             <!-- Scanned Receiving Copy Upload -->
             <div class="form-group" style="margin-bottom: 14px;">
                 <label for="transmittalReceivingFile" style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 4px;">
-                    📎 Scanned / Photo of Stamped Receiving Copy <span style="font-weight: 400; color: #64748b;">(Optional)</span>
+                    Scanned / Photo of Stamped Receiving Copy <span style="font-weight: 400; color: #64748b;">(Optional)</span>
                 </label>
                 <input type="file" id="transmittalReceivingFile" name="receiving_copy" accept=".pdf, .jpg, .jpeg, .png, .webp" style="width: 100%; font-size: 0.82rem; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 8px 10px; background: #fafafa; box-sizing: border-box;">
                 <small style="color: #64748b; font-size: 0.76rem; display: block; margin-top: 4px;">
@@ -98,7 +98,7 @@
 
             <div class="modal-actions" style="margin-top: 10px;">
                 <button type="button" class="btn-secondary" onclick="closeRecordTransmittalModal()">Cancel</button>
-                <button type="submit" class="btn-create" id="btnSubmitTransmittal">💾 Save Transmittal Record</button>
+                <button type="submit" class="btn-create" id="btnSubmitTransmittal">Save Transmittal Record</button>
             </div>
         </form>
     </div>
@@ -111,15 +111,15 @@
     <div class="modal-content" style="width: 900px; max-width: calc(100% - 32px); height: 92vh; display: flex; flex-direction: column; padding: 18px 20px;">
         <div class="modal-header" style="margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #e2e8f0;">
             <div>
-                <h2 id="prevTransTitle" style="margin: 0; font-size: 1.15rem; color: #0f172a;">📄 Transmittal Letter Preview</h2>
+                <h2 id="prevTransTitle" style="margin: 0; font-size: 1.15rem; color: #0f172a;">Transmittal Letter Preview</h2>
                 <p style="margin: 2px 0 0; font-size: 0.8rem; color: #64748b;">Official Court &amp; DILG Transmittal Letter under Section 411, RA 7160</p>
             </div>
             <div style="display: flex; gap: 8px; align-items: center;">
                 <a id="btnDownloadTransmittalPdf" href="#" class="btn-secondary" style="font-size: 0.82rem; padding: 6px 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
-                    📥 Download PDF
+                    Download PDF
                 </a>
                 <button type="button" class="btn-create" onclick="printTransmittalIframe()" style="font-size: 0.82rem; padding: 6px 12px; display: inline-flex; align-items: center; gap: 5px;">
-                    🖨️ Print
+                    Print
                 </button>
                 <button type="button" class="close-btn" onclick="closePreviewTransmittalModal()" style="font-size: 1.5rem; line-height: 1;">&times;</button>
             </div>

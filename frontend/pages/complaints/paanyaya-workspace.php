@@ -262,15 +262,15 @@ include '../../layouts/header.php';
                     <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                         <?php if ($isResolved): ?>
                             <span class="stat-pill" style="background: #bbf7d0; color: #14532d; font-size: 0.88rem; padding: 6px 14px;">
-                                ✓ Resolved at Paanyaya / Closed
+                                Resolved at Paanyaya / Closed
                             </span>
                         <?php elseif ($isEscalated): ?>
                             <span class="stat-pill" style="background: #bfdbfe; color: #1e40af; font-size: 0.88rem; padding: 6px 14px;">
-                                ⚖️ Formally Docketed (Case #<?php echo htmlspecialchars($case['case_number'] ?? ''); ?>)
+                                Formally Docketed (Case #<?php echo htmlspecialchars($case['case_number'] ?? ''); ?>)
                             </span>
                         <?php else: ?>
                             <span class="stat-pill" style="background: #dbeafe; color: #1e40af; font-size: 0.88rem; padding: 6px 14px;">
-                                ✉️ Paanyaya Attempt <?php echo (int)$attemptCount; ?> of 2
+                                Paanyaya Attempt <?php echo (int)$attemptCount; ?> of 2
                             </span>
                         <?php endif; ?>
 
@@ -284,7 +284,7 @@ include '../../layouts/header.php';
 
             <!-- LTIA Guidance Banner -->
             <div class="ltia-banner">
-                <div class="ltia-banner-icon">🏛️</div>
+                <div class="ltia-banner-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M3 10h18M5 10v11M9 10v11M15 10v11M19 10v11M12 2L2 7h20L12 2z"/></svg></div>
                 <div style="flex: 1;">
                     <h4 style="margin: 0 0 4px; font-size: 0.95rem; font-weight: 800; color: #14532d;">
                         LTIA Rule: Informal Pre-Docketing Keeps Contested Case Load Low
@@ -310,8 +310,8 @@ include '../../layouts/header.php';
                         <div style="margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px dashed #e2e8f0;">
                             <div style="font-weight: 700; color: #0f172a; font-size: 0.95rem;"><?php echo htmlspecialchars($c['full_name']); ?></div>
                             <div style="font-size: 0.82rem; color: #64748b; margin-top: 2px;">
-                                📍 <?php echo htmlspecialchars($c['address'] ?: 'Barangay Tumana'); ?>
-                                <?php if (!empty($c['contact_no'])): ?> • 📞 <?php echo htmlspecialchars($c['contact_no']); ?><?php endif; ?>
+                                <?php echo htmlspecialchars($c['address'] ?: 'Barangay Tumana'); ?>
+                                <?php if (!empty($c['contact_no'])): ?> • Tel: <?php echo htmlspecialchars($c['contact_no']); ?><?php endif; ?>
                             </div>
                         </div>
                     <?php endforeach; ?>
@@ -330,8 +330,8 @@ include '../../layouts/header.php';
                         <div style="margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px dashed #e2e8f0;">
                             <div style="font-weight: 700; color: #0f172a; font-size: 0.95rem;"><?php echo htmlspecialchars($r['full_name']); ?></div>
                             <div style="font-size: 0.82rem; color: #64748b; margin-top: 2px;">
-                                📍 <?php echo htmlspecialchars($r['address'] ?: 'Barangay Tumana'); ?>
-                                <?php if (!empty($r['contact_no'])): ?> • 📞 <?php echo htmlspecialchars($r['contact_no']); ?><?php endif; ?>
+                                <?php echo htmlspecialchars($r['address'] ?: 'Barangay Tumana'); ?>
+                                <?php if (!empty($r['contact_no'])): ?> • Tel: <?php echo htmlspecialchars($r['contact_no']); ?><?php endif; ?>
                             </div>
                         </div>
                     <?php endforeach; ?>
@@ -343,7 +343,7 @@ include '../../layouts/header.php';
                 <div class="paanyaya-card-header">
                     <div>
                         <h3>
-                            <span style="font-size: 1.25rem;">📅</span>
+                            
                             Paanyaya Sessions History &amp; State Machine
                         </h3>
                         <p style="margin: 3px 0 0; font-size: 0.82rem; color: #64748b;">
@@ -395,18 +395,18 @@ include '../../layouts/header.php';
                                         <?php endif; ?>
                                     </div>
                                     <div style="font-size: 0.84rem; color: #475569; margin-top: 4px;">
-                                        🗓️ <strong>Date:</strong> <?php echo date('F d, Y', strtotime($sess['scheduled_date'])); ?> (<?php echo date('l', strtotime($sess['scheduled_date'])); ?>)
+                                        <strong>Date:</strong> <?php echo date('F d, Y', strtotime($sess['scheduled_date'])); ?> (<?php echo date('l', strtotime($sess['scheduled_date'])); ?>)
                                         <span style="margin: 0 6px; color: #cbd5e1;">•</span>
-                                        ⏰ <strong>Time:</strong> <?php echo date('g:i A', strtotime($sess['scheduled_time'])); ?>
+                                        <strong>Time:</strong> <?php echo date('g:i A', strtotime($sess['scheduled_time'])); ?>
                                         <span style="margin: 0 6px; color: #cbd5e1;">•</span>
-                                        📍 <strong>Venue:</strong> <?php echo htmlspecialchars($sess['venue']); ?>
+                                        <strong>Venue:</strong> <?php echo htmlspecialchars($sess['venue']); ?>
                                     </div>
                                 </div>
 
                                 <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                                     <?php if ($isSettled): ?>
                                         <span class="stat-pill" style="background: #bbf7d0; color: #14532d;">
-                                            ✓ Settled Amicably
+                                            Settled Amicably
                                         </span>
                                     <?php elseif ($sessOutcome === 'Absent_Retry'): ?>
                                         <span class="stat-pill" style="background: #fed7aa; color: #9a3412;">
@@ -426,19 +426,19 @@ include '../../layouts/header.php';
                                         </span>
                                     <?php else: ?>
                                         <span class="stat-pill" style="background: #fef08a; color: #854d0e;">
-                                            ⏳ Scheduled / Awaiting Dialogue
+                                            Scheduled / Awaiting Dialogue
                                         </span>
                                     <?php endif; ?>
 
                                     <?php if (!empty($sess['pdf_path'])): ?>
                                         <a href="../../<?php echo htmlspecialchars($sess['pdf_path']); ?>" target="_blank" class="btn-sm btn-secondary" style="display: inline-flex; align-items: center; gap: 5px; text-decoration: none;">
-                                            📄 View Letter
+                                            View Letter
                                         </a>
                                     <?php endif; ?>
 
                                     <?php if ($isAwaiting && !$isResolved && !$isEscalated): ?>
                                         <button type="button" class="btn-sm btn-create" onclick="openRecordOutcomeModal(<?php echo (int)$sess['session_id']; ?>, <?php echo $attNum; ?>)" style="background: #16a34a; border-color: #16a34a;">
-                                            📝 Record Outcome
+                                            Record Outcome
                                         </button>
                                     <?php endif; ?>
                                 </div>
@@ -503,7 +503,7 @@ include '../../layouts/header.php';
     <div class="modal-content" style="max-width: 620px; padding: 26px; border-radius: 12px; box-shadow: 0 25px 30px -5px rgba(0,0,0,0.2);">
         <div class="modal-header" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 12px;">
             <div style="display: flex; align-items: center; gap: 10px;">
-                <span style="font-size: 1.4rem;">📝</span>
+                
                 <h2 id="outcomeModalTitle" style="font-size: 1.18rem; font-weight: 800; color: #0f172a; margin: 0;">
                     Record Paanyaya Outcome
                 </h2>
@@ -551,7 +551,7 @@ include '../../layouts/header.php';
                     <div style="display: flex; align-items: flex-start; gap: 10px;">
                         <input type="radio" name="outcome" value="Settled" checked onchange="handleOutcomeSelect(this)" style="margin-top: 3px;">
                         <div>
-                            <span class="radio-title" style="color: #166534;">✓ Resolved Amicably (Close Dispute - No Docketing)</span>
+                            <span class="radio-title" style="color: #166534;">Resolved Amicably (Close Dispute - No Docketing)</span>
                             <span class="radio-desc">Both parties attended and agreed to amicable terms. The dispute is finalized and closed without ever starting the 15-day court clock (LTIA Pre-Docket Resolution).</span>
                         </div>
                     </div>
@@ -562,7 +562,7 @@ include '../../layouts/header.php';
                     <div style="display: flex; align-items: flex-start; gap: 10px;">
                         <input type="radio" name="outcome" value="Absent_Retry" onchange="handleOutcomeSelect(this)" style="margin-top: 3px;">
                         <div>
-                            <span class="radio-title" style="color: #9a3412;">⚠️ Party Absent (Issue 2nd Paanyaya)</span>
+                            <span class="radio-title" style="color: #9a3412;">Party Absent (Issue 2nd Paanyaya)</span>
                             <span class="radio-desc">One or both parties failed to appear. Extends the second and final informal chance before formal docketing.</span>
                         </div>
                     </div>
@@ -573,7 +573,7 @@ include '../../layouts/header.php';
                     <div style="display: flex; align-items: flex-start; gap: 10px;">
                         <input type="radio" name="outcome" value="Continued_Dialogue" onchange="handleOutcomeSelect(this)" style="margin-top: 3px;">
                         <div>
-                            <span class="radio-title" style="color: #3730a3;">💬 Need 2nd Meeting to Finalize (Schedule 2nd Paanyaya)</span>
+                            <span class="radio-title" style="color: #3730a3;">Need 2nd Meeting to Finalize (Schedule 2nd Paanyaya)</span>
                             <span class="radio-desc">Both parties attended, made progress, and mutually agreed to a second informal session to finalize settlement terms.</span>
                         </div>
                     </div>
@@ -584,7 +584,7 @@ include '../../layouts/header.php';
                     <div style="display: flex; align-items: flex-start; gap: 10px;">
                         <input type="radio" name="outcome" value="Impasse_Escalate" onchange="handleOutcomeSelect(this)" style="margin-top: 3px;">
                         <div>
-                            <span class="radio-title" style="color: #dc2626;">⚖️ Parties Refused to Settle (Escalate to Formal Docketing immediately)</span>
+                            <span class="radio-title" style="color: #dc2626;">Parties Refused to Settle (Escalate to Formal Docketing immediately)</span>
                             <span class="radio-desc">Hostility or clear refusal to settle. Do NOT waste time on a 2nd Paanyaya. Immediately assigns Case Number and generates KP Forms 7, 8, 9 for formal Mediation.</span>
                         </div>
                     </div>
@@ -601,7 +601,7 @@ include '../../layouts/header.php';
                     <div style="display: flex; align-items: flex-start; gap: 10px;">
                         <input type="radio" name="outcome" value="Settled" onchange="handleOutcomeSelect(this)" style="margin-top: 3px;">
                         <div>
-                            <span class="radio-title" style="color: #166534;">✓ Resolved Amicably (Close Dispute - No Docketing)</span>
+                            <span class="radio-title" style="color: #166534;">Resolved Amicably (Close Dispute - No Docketing)</span>
                             <span class="radio-desc">Parties resolved the dispute. Ends proceedings here as an LTIA Pre-Docket Resolution.</span>
                         </div>
                     </div>
@@ -611,7 +611,7 @@ include '../../layouts/header.php';
                     <div style="display: flex; align-items: flex-start; gap: 10px;">
                         <input type="radio" name="outcome" value="Max_Failed_Escalate" onchange="handleOutcomeSelect(this)" style="margin-top: 3px;">
                         <div>
-                            <span class="radio-title" style="color: #dc2626;">⚖️ Unsettled / Party Absent (Automatically Escalate to Formal Docketing)</span>
+                            <span class="radio-title" style="color: #dc2626;">Unsettled / Party Absent (Automatically Escalate to Formal Docketing)</span>
                             <span class="radio-desc">2-attempt maximum reached. The Paanyaya stage is closed. Formal Case Docket Number will be assigned, starting the 15-day Punong Barangay mediation timer.</span>
                         </div>
                     </div>
@@ -641,7 +641,7 @@ include '../../layouts/header.php';
     <div class="modal-content" style="max-width: 560px; padding: 26px; border-radius: 12px; box-shadow: 0 25px 30px -5px rgba(0,0,0,0.2);">
         <div class="modal-header" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 12px;">
             <div style="display: flex; align-items: center; gap: 10px;">
-                <span style="font-size: 1.4rem;">✉️</span>
+                
                 <h2 style="font-size: 1.18rem; font-weight: 800; color: #0f172a; margin: 0;">
                     Schedule 2nd Paanyaya (Final Chance)
                 </h2>
@@ -702,14 +702,14 @@ include '../../layouts/header.php';
     <div class="modal-content" style="max-width: 900px; width: 95%; height: 90vh; padding: 0; display: flex; flex-direction: column; overflow: hidden; border-radius: 12px;">
         <div class="modal-header" style="padding: 14px 20px; border-bottom: 1px solid #e2e8f0; background: #ffffff; display: flex; justify-content: space-between; align-items: center;">
             <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 1.25rem;">📄</span>
+                
                 <h3 id="previewModalHeading" style="margin: 0; font-size: 1.05rem; font-weight: 800; color: #0f172a;">
                     Paanyaya Letter Preview
                 </h3>
             </div>
             <div style="display: flex; align-items: center; gap: 10px;">
                 <button type="button" class="btn-sm btn-secondary" onclick="printPreviewIframe()">
-                    🖨️ Print
+                    Print
                 </button>
                 <a id="btnDownloadPdf" href="#" target="_blank" class="btn-sm btn-create" style="text-decoration: none;">
                     ⬇ Download PDF

@@ -162,13 +162,13 @@ include '../../layouts/header.php';
                 </div>
                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                     <button type="button" class="btn-create" onclick="openScheduleModal()" style="font-size: 0.82rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px;">
-                        📅 Schedule Arbitration Hearing
+                        Schedule Arbitration Hearing
                     </button>
                     <button type="button" class="btn-secondary" onclick="openRecordOutcomeModal()" style="font-size: 0.82rem; padding: 7px 12px; display: inline-flex; align-items: center; gap: 5px;">
-                        ⚖️ Record Arbitration Outcome
+                        Record Arbitration Outcome
                     </button>
                     <a href="../cases/case-list.php?assign_case_id=<?php echo $caseId; ?>#caseAssignments" class="btn-secondary" style="font-size: 0.82rem; padding: 7px 12px; display: inline-flex; align-items: center; gap: 5px; text-decoration: none;" title="Manage Lupon Team">
-                        👥 Cases &amp; Assignments &rarr;
+                        Cases &amp; Assignments &rarr;
                     </a>
                 </div>
             </div>
@@ -176,7 +176,7 @@ include '../../layouts/header.php';
             <!-- LOCKED GATE STATE (If Arbitration stage is locked) -->
             <div id="stageLockedGate" style="display: none;">
                 <div class="locked-gate-banner">
-                    <div style="font-size: 3rem; margin-bottom: 12px;">🔒</div>
+                    
                     <h2 style="margin: 0 0 10px; font-size: 1.25rem; color: #0f172a; font-weight: 700;">
                         Arbitration Stage is Locked
                     </h2>

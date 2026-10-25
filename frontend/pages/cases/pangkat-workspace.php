@@ -174,7 +174,7 @@ include '../../layouts/header.php';
             <!-- LOCKED GATE STATE (If Pangkat stage is locked) -->
             <div id="stageLockedGate" style="display: none;">
                 <div class="locked-gate-banner">
-                    <div style="font-size: 3rem; margin-bottom: 12px;">🔒</div>
+                    
                     <h2 style="margin: 0 0 10px; font-size: 1.25rem; color: #0f172a; font-weight: 700;">
                         Pangkat Conciliation is Locked
                     </h2>
@@ -263,7 +263,7 @@ include '../../layouts/header.php';
                 </p>
 
                 <div id="schedStageRuleHint" style="padding: 10px 14px; border-radius: 6px; font-size: 0.82rem; margin-bottom: 14px; background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; display: flex; align-items: flex-start; gap: 8px;">
-                    <span style="font-size: 1rem; line-height: 1;">📅</span>
+                    
                     <div>
                         <strong>Barangay Tumana Rule:</strong> Conciliation hearings before the Pangkat are held on Mondays, Wednesdays, Thursdays, and Fridays (8:00 AM – 12:00 PM &amp; 1:00 PM – 5:00 PM) and Tuesday Mornings (8:00 AM – 12:00 PM). (Tuesday afternoons are exclusively reserved for Formal Mediation).
                     </div>
@@ -283,7 +283,7 @@ include '../../layouts/header.php';
                     <div id="schedVisualDatePickerContainer" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-top: 6px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.78rem; flex-wrap: wrap; gap: 6px;">
                             <span id="schedVisualDeckTitle" style="font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.03em; font-size: 0.74rem;">
-                                📅 AVAILABLE CONCILIATION DAYS (MON, TUE AM, WED, THU, FRI):
+                                AVAILABLE CONCILIATION DAYS (MON, TUE AM, WED, THU, FRI):
                             </span>
                             <div style="display: flex; gap: 10px; font-size: 0.72rem; flex-wrap: wrap;">
                                 <span style="display: inline-flex; align-items: center; gap: 4px; color: #166534;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e;"></span> Available</span>
@@ -305,7 +305,7 @@ include '../../layouts/header.php';
                 <!-- Existing Hearings on selected date -->
                 <div id="schedDaySchedulesWrap" style="display: none; margin-bottom: 14px; padding: 10px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.84rem;">
                     <div style="font-weight: 600; color: #334155; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
-                        <span id="schedDaySchedulesTitle">📅 Scheduled Conciliations on this Date:</span>
+                        <span id="schedDaySchedulesTitle">Scheduled Conciliations on this Date:</span>
                         <span id="schedDaySlotsCount" style="font-size: 0.72rem; background: #e2e8f0; color: #475569; padding: 2px 7px; border-radius: 9999px; font-weight: 600;">0</span>
                     </div>
                     <div id="schedDaySlotsList" style="color: #64748b; font-size: 0.82rem; line-height: 1.5;">

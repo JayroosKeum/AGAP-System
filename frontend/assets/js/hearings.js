@@ -262,19 +262,19 @@ function renderTimeCell(item) {
 
     let badge = '';
     if (qStatus === 'In_Session') {
-        badge = `<span style="display:block; font-size:0.7rem; font-weight:700; color:#1e40af; background:#dbeafe; padding:1px 5px; border-radius:3px; margin-top:2px;">🔵 In Session</span>`;
+        badge = `<span style="display:block; font-size:0.7rem; font-weight:700; color:#1e40af; background:#dbeafe; padding:1px 5px; border-radius:3px; margin-top:2px;">In Session</span>`;
     } else if (isBothReady || qStatus === 'Ready') {
-        badge = `<span style="display:block; font-size:0.7rem; font-weight:800; color:#15803d; background:#dcfce7; padding:1px 5px; border-radius:3px; margin-top:2px;">🟢 Complete &amp; Ready</span>`;
+        badge = `<span style="display:block; font-size:0.7rem; font-weight:800; color:#15803d; background:#dcfce7; padding:1px 5px; border-radius:3px; margin-top:2px;">Complete &amp; Ready</span>`;
     } else if (qStatus === 'Standby') {
-        badge = `<span style="display:block; font-size:0.7rem; font-weight:700; color:#b45309; background:#fef3c7; padding:1px 5px; border-radius:3px; margin-top:2px;">⏸️ Standby</span>`;
+        badge = `<span style="display:block; font-size:0.7rem; font-weight:700; color:#b45309; background:#fef3c7; padding:1px 5px; border-radius:3px; margin-top:2px;">Standby</span>`;
     } else if (qStatus === 'Concluded' || item.status === 'Completed') {
-        badge = `<span style="display:block; font-size:0.7rem; font-weight:600; color:#475569; background:#f1f5f9; padding:1px 5px; border-radius:3px; margin-top:2px;">✓ Concluded (${item.actual_duration_minutes || item.duration_minutes || 45}m)</span>`;
+        badge = `<span style="display:block; font-size:0.7rem; font-weight:600; color:#475569; background:#f1f5f9; padding:1px 5px; border-radius:3px; margin-top:2px;">Concluded (${item.actual_duration_minutes || item.duration_minutes || 45}m)</span>`;
     } else {
-        badge = `<span style="display:block; font-size:0.7rem; font-weight:600; color:#64748b; margin-top:2px;">⏳ Waiting (${compIn ? '1/2' : (respIn ? '1/2' : '0/2')})</span>`;
+        badge = `<span style="display:block; font-size:0.7rem; font-weight:600; color:#64748b; margin-top:2px;">Waiting (${compIn ? '1/2' : (respIn ? '1/2' : '0/2')})</span>`;
     }
 
     if (delayMinutes >= 15 && !isBothReady && qStatus !== 'Standby' && qStatus !== 'In_Session' && qStatus !== 'Concluded') {
-        badge += `<span style="display:block; font-size:0.68rem; font-weight:700; color:#dc2626; background:#fee2e2; padding:1px 5px; border-radius:3px; margin-top:2px;">⚠️ Delayed (${delayMinutes}m)</span>`;
+        badge += `<span style="display:block; font-size:0.68rem; font-weight:700; color:#dc2626; background:#fee2e2; padding:1px 5px; border-radius:3px; margin-top:2px;">Delayed (${delayMinutes}m)</span>`;
     }
 
     return `<span class="hearing-time-text">${escapeHtml(timeStr)}</span>${badge}`;
@@ -299,11 +299,11 @@ function renderActionsCell(item) {
                     <button type="button" onclick="startDocketHearingSession(${id})" style="font-size:0.72rem; padding:3px 7px; border-radius:4px; background:${isBothReady ? '#16a34a' : '#2563eb'}; color:#fff; border:none; cursor:pointer;" title="Call to Session / Start Hearing (Out-of-Order Activation)">▶️ Start</button>
                 `;
                 docketBtns += `
-                    <button type="button" onclick="toggleDocketStandbyHearing(${id}, ${isStandby ? 'false' : 'true'})" style="font-size:0.72rem; padding:3px 7px; border-radius:4px; background:#fef3c7; color:#b45309; border:1px solid #fde68a; cursor:pointer;" title="${isStandby ? 'Resume from Standby' : 'Put on Standby'}">${isStandby ? '▶️ Resume' : '⏸️ Standby'}</button>
+                    <button type="button" onclick="toggleDocketStandbyHearing(${id}, ${isStandby ? 'false' : 'true'})" style="font-size:0.72rem; padding:3px 7px; border-radius:4px; background:#fef3c7; color:#b45309; border:1px solid #fde68a; cursor:pointer;" title="${isStandby ? 'Resume from Standby' : 'Put on Standby'}">${isStandby ? '▶️ Resume' : 'Standby'}</button>
                 `;
             } else {
                 docketBtns += `
-                    <button type="button" onclick="concludeDocketHearingSession(${id})" style="font-size:0.72rem; padding:3px 7px; border-radius:4px; background:#b91c1c; color:#fff; border:none; cursor:pointer;" title="Conclude Session">⏹️ End</button>
+                    <button type="button" onclick="concludeDocketHearingSession(${id})" style="font-size:0.72rem; padding:3px 7px; border-radius:4px; background:#b91c1c; color:#fff; border:none; cursor:pointer;" title="Conclude Session">End</button>
                 `;
             }
         }
@@ -928,7 +928,7 @@ function updateNextSchedule() {
         type.disabled = true;
         help.innerHTML = `
             <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 10px 12px; margin-top: 6px;">
-                <strong style="color: #991b1b; display: block; margin-bottom: 4px; font-size: 0.88rem;">⚠️ Lupon Case Team Required:</strong>
+                <strong style="color: #991b1b; display: block; margin-bottom: 4px; font-size: 0.88rem;">Lupon Case Team Required:</strong>
                 <span style="color: #7f1d1d; font-size: 0.84rem; display: block; line-height: 1.45;">
                     Before you can book a Conciliation hearing, you must choose your 3-member Lupon team on Case Team Assignment first.
                     The Administrator is for Mediation only.
@@ -959,7 +959,7 @@ function updateNextSchedule() {
         const nextDayStr = `${nextDay.getFullYear()}-${String(nextDay.getMonth() + 1).padStart(2, '0')}-${String(nextDay.getDate()).padStart(2, '0')}`;
         helpContent += `
             <div style="margin-top: 8px; color: #1e3a8a; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 8px 10px; font-size: 0.83rem;">
-                📅 <strong>Latest booked hearing:</strong> ${escapeHtml(formatFriendlyDate(latestDay))}.<br>
+                <strong>Latest booked hearing:</strong> ${escapeHtml(formatFriendlyDate(latestDay))}.<br>
                 <span>New hearings must be scheduled on or after <strong>${escapeHtml(formatFriendlyDate(nextDayStr))}</strong> (Monday – Friday, 8:00 AM – 5:00 PM).</span>
             </div>
         `;
@@ -1035,7 +1035,7 @@ async function confirmHearingSchedule() {
         if (error.alternative_slots && error.alternative_slots.length) {
             msgHtml += `<div style="margin-top: 10px; font-size: 0.85rem;"><strong>Available Alternative Slots:</strong><div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px;">`;
             error.alternative_slots.forEach((s) => {
-                msgHtml += `<button type="button" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 10px; border-radius: 4px; background: #fff; cursor: pointer;" onclick="applySuggestedSlot('${escapeHtml(s.datetime)}')">📅 ${escapeHtml(s.formatted_date)} (${escapeHtml(s.start_time)} - ${escapeHtml(s.end_time)})</button>`;
+                msgHtml += `<button type="button" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 10px; border-radius: 4px; background: #fff; cursor: pointer;" onclick="applySuggestedSlot('${escapeHtml(s.datetime)}')">${escapeHtml(s.formatted_date)} (${escapeHtml(s.start_time)} - ${escapeHtml(s.end_time)})</button>`;
             });
             msgHtml += `</div></div>`;
         }
@@ -1488,18 +1488,18 @@ async function openHearingAttendanceModal(hearingId) {
 function getHearingSummonDeliveryBadge(p) {
     const status = p.summon_delivery_status || (p.service_confirmed ? 'Served' : 'Pending');
     if (status === 'Served Personal' || status === 'Served — Personal') {
-        return `<span class="service-status-badge confirmed" title="Personally served to recipient">✓ Served — Personal</span>`;
+        return `<span class="service-status-badge confirmed" title="Personally served to recipient">Served — Personal</span>`;
     } else if (status === 'Served Substituted' || status === 'Served — Substituted') {
-        return `<span class="service-status-badge confirmed" title="Substituted service to household/authorized person">✓ Served — Substituted</span>`;
+        return `<span class="service-status-badge confirmed" title="Substituted service to household/authorized person">Served — Substituted</span>`;
     } else if (status === 'Served Refused' || status === 'Refused to Receive') {
-        return `<span class="service-status-badge confirmed" title="Summon tendered; recipient refused to sign or receive">✓ Refused to Receive</span>`;
+        return `<span class="service-status-badge confirmed" title="Summon tendered; recipient refused to sign or receive">Refused to Receive</span>`;
     } else if (status === 'Served') {
-        return `<span class="service-status-badge confirmed" title="Service confirmed">✓ Served</span>`;
+        return `<span class="service-status-badge confirmed" title="Service confirmed">Served</span>`;
     } else if (status === 'Unserved') {
         const reason = p.summon_unserved_reason ? ` (${p.summon_unserved_reason})` : '';
-        return `<span class="service-status-badge unserved" title="Hearing summon unserved">✕ Unserved${escapeHtml(reason)}</span>`;
+        return `<span class="service-status-badge unserved" title="Hearing summon unserved">Unserved${escapeHtml(reason)}</span>`;
     } else {
-        return `<span class="service-status-badge pending" title="Hearing summon delivery pending">⏳ Pending Delivery</span>`;
+        return `<span class="service-status-badge pending" title="Hearing summon delivery pending">Pending Delivery</span>`;
     }
 }
 
@@ -1549,7 +1549,7 @@ function renderAttendanceParties(parties) {
                     <strong>${escapeHtml(attempt.service_result)}</strong> · ${escapeHtml(formatDateTime(attempt.service_date))} · Officer: ${escapeHtml(attempt.officer_name || 'Summons Server')} · ${attempt.template_name ? escapeHtml(attempt.template_name) : `Document #${Number(attempt.document_id)}`}
                     <br><strong>Return:</strong> ${escapeHtml(attempt.officer_return || '')}
                     ${attempt.reason ? `<br><span style="color: #b91c1c;">Reason: ${escapeHtml(attempt.reason)}</span>` : ''}
-                    ${attempt.supporting_file ? `<br><a href="../../../${escapeHtml(attempt.supporting_file)}" target="_blank" style="color: #0284c7; text-decoration: underline; font-size: 0.78rem;">📎 View Attached Return File</a>` : ''}
+                    ${attempt.supporting_file ? `<br><a href="../../../${escapeHtml(attempt.supporting_file)}" target="_blank" style="color: #0284c7; text-decoration: underline; font-size: 0.78rem;">View Attached Return File</a>` : ''}
                 </li>
             `).join('')
             : '<li>No service attempts recorded for this hearing.</li>';
@@ -1632,7 +1632,7 @@ function renderAttendanceParties(parties) {
                 ${(isComplainant || isRespondent) && canManageHearings ? `
                 <details class="post-absence-box" style="margin-top: 10px;">
                     <summary style="font-size: 0.85rem; font-weight: 700; color: #1e293b; cursor: pointer;">
-                        ⚙️ Nonappearance &amp; Legal Actions Workflow (${escapeHtml(p.party_type)})
+                        Nonappearance &amp; Legal Actions Workflow (${escapeHtml(p.party_type)})
                     </summary>
                     <div style="margin-top: 10px;">
                         <div class="post-absence-tabs">
@@ -1695,7 +1695,7 @@ function renderAttendanceParties(parties) {
                         <!-- Tab 3: Authorized Legal Action Review -->
                         <div id="tabLegal_${Number(p.resident_id)}" class="workflow-tab-content" style="display: none;">
                             <div class="human-review-callout">
-                                ⚖️ <strong>Human Review Required:</strong> AGAP never automatically imposes legal consequences. An authorized official must review and approve adverse certifications or court transmittals.
+                                <strong>Human Review Required:</strong> AGAP never automatically imposes legal consequences. An authorized official must review and approve adverse certifications or court transmittals.
                             </div>
                             <div class="workflow-form-grid">
                                 <div>
@@ -1740,7 +1740,7 @@ function renderAttendanceParties(parties) {
                                 <span class="badge ${e.outcome === 'Justified' ? 'badge-success' : (e.outcome === 'Unjustified' ? 'badge-danger' : 'badge-secondary')}">${escapeHtml(e.outcome)}</span>
                                 ${e.decided_at ? ` · Decided ${escapeHtml(formatDateTime(e.decided_at))} by ${escapeHtml(e.decided_by_name || 'Lupon')}` : ''}
                                 <br>${escapeHtml(e.explanation)}
-                                ${e.supporting_file ? `<br><a href="../../../${escapeHtml(e.supporting_file)}" target="_blank" style="color: #0284c7; text-decoration: underline;">📎 View Attached Explanation File</a>` : ''}
+                                ${e.supporting_file ? `<br><a href="../../../${escapeHtml(e.supporting_file)}" target="_blank" style="color: #0284c7; text-decoration: underline;">View Attached Explanation File</a>` : ''}
                             </li>
                         `).join('')}
                     </ul>
@@ -1803,7 +1803,7 @@ function renderAttendanceParties(parties) {
                 if (result.download_url) {
                     const downloadContainer = card.querySelector('.notice-download-container');
                     if (downloadContainer) {
-                        downloadContainer.innerHTML = `<a href="${result.download_url}" target="_blank" class="btn-att-action btn-att-action-primary" style="display:inline-flex;margin-top:6px;">📥 Download Generated ${escapeHtml(result.form_code || 'Notice')} (PDF)</a>`;
+                        downloadContainer.innerHTML = `<a href="${result.download_url}" target="_blank" class="btn-att-action btn-att-action-primary" style="display:inline-flex;margin-top:6px;">Download Generated ${escapeHtml(result.form_code || 'Notice')} (PDF)</a>`;
                     }
                 }
                 await openHearingAttendanceModal(hearingId);
@@ -1953,7 +1953,7 @@ function evaluateLiveAttendanceSituation() {
     const cards = cardContainer.querySelectorAll('.party-att-card');
     if (!cards.length) {
         situationBox.className = 'att-situation-box sit-neutral';
-        iconEl.textContent = '⚖️';
+        iconEl.textContent = '';
         badgeTextEl.textContent = 'No Parties Found';
         refEl.textContent = 'R.A. 7160';
         consequencesListEl.innerHTML = '<li>Complaint parties must be registered in the resident database.</li>';
@@ -2009,7 +2009,7 @@ function evaluateLiveAttendanceSituation() {
     if (complainantPresent === 0 && complainantUnjustified === 0 && complainantExcused === 0 && complainantLate === 0 && complainantNotServed === 0
         && respondentPresent === 0 && respondentUnjustified === 0 && respondentExcused === 0 && respondentLate === 0 && respondentNotServed === 0) {
         situationBox.classList.add('sit-neutral');
-        iconEl.textContent = '⚖️';
+        iconEl.textContent = '';
         badgeTextEl.textContent = 'Pending Appearance Intake';
         refEl.textContent = 'R.A. 7160 Sec. 415';
         consequencesListEl.innerHTML = '<li>Record attendance for Complainant and Respondent to determine statutory proceedings.</li>';
@@ -2021,7 +2021,7 @@ function evaluateLiveAttendanceSituation() {
     // Situation: Both Not Served
     if (complainantNotServed > 0 && respondentNotServed > 0) {
         situationBox.classList.add('sit-warning');
-        iconEl.textContent = '⚠️';
+        iconEl.textContent = '';
         badgeTextEl.textContent = 'Both Parties Not Served — Re-issue Notices / Summonses';
         refEl.textContent = 'R.A. 7160 Sec. 410(b)';
         consequencesListEl.innerHTML = `
@@ -2037,7 +2037,7 @@ function evaluateLiveAttendanceSituation() {
     // Situation: Respondent Not Served
     if (respondentNotServed > 0) {
         situationBox.classList.add('sit-warning');
-        iconEl.textContent = '⚠️';
+        iconEl.textContent = '';
         badgeTextEl.textContent = 'Respondent Not Served — Failure to Appear Cannot Be Imposed';
         refEl.textContent = 'R.A. 7160 Sec. 410(b)';
         consequencesListEl.innerHTML = `
@@ -2053,7 +2053,7 @@ function evaluateLiveAttendanceSituation() {
     // Situation: Complainant Not Served
     if (complainantNotServed > 0) {
         situationBox.classList.add('sit-warning');
-        iconEl.textContent = '⚠️';
+        iconEl.textContent = '';
         badgeTextEl.textContent = 'Complainant Not Served — Complaint Cannot Be Dismissed';
         refEl.textContent = 'Katarungang Pambarangay Rules';
         consequencesListEl.innerHTML = `
@@ -2069,7 +2069,7 @@ function evaluateLiveAttendanceSituation() {
     // 1. Both Absent (Unjustified)
     if (complainantUnjustified > 0 && respondentUnjustified > 0) {
         situationBox.classList.add('sit-danger');
-        iconEl.textContent = '❌';
+        iconEl.textContent = '';
         badgeTextEl.textContent = 'Both Parties Absent (Unjustified) — Dismissal Without Prejudice';
         refEl.textContent = 'R.A. 7160 Sec. 415 / KP Rules';
         consequencesListEl.innerHTML = `
@@ -2085,7 +2085,7 @@ function evaluateLiveAttendanceSituation() {
     // 2. Complainant Absent (Unjustified)
     if (complainantUnjustified > 0) {
         situationBox.classList.add('sit-danger');
-        iconEl.textContent = '🛑';
+        iconEl.textContent = '';
         badgeTextEl.textContent = 'Complainant Absent (Unjustified) — Dismissal & Judicial Recourse Barred';
         refEl.textContent = 'R.A. 7160 Sec. 415 / KP Rule VI Sec. 8';
         consequencesListEl.innerHTML = `
@@ -2103,7 +2103,7 @@ function evaluateLiveAttendanceSituation() {
     if (respondentUnjustified > 0) {
         if (summonsCount <= 1) {
             situationBox.classList.add('sit-warning');
-            iconEl.textContent = '⚠️';
+            iconEl.textContent = '';
             badgeTextEl.textContent = 'Respondent Absent (1st Notice) — Issue KP Form 19 Notice to Explain';
             refEl.textContent = 'R.A. 7160 Sec. 410 / KP Form 19';
             consequencesListEl.innerHTML = `
@@ -2118,7 +2118,7 @@ function evaluateLiveAttendanceSituation() {
             `;
         } else if (summonsCount === 2) {
             situationBox.classList.add('sit-warning');
-            iconEl.textContent = '⚠️';
+            iconEl.textContent = '';
             badgeTextEl.textContent = 'Respondent Absent (2nd Notice) — Issue 3rd & Final Summons with Warning';
             refEl.textContent = 'R.A. 7160 Sec. 410 / KP Form 9';
             consequencesListEl.innerHTML = `
@@ -2133,7 +2133,7 @@ function evaluateLiveAttendanceSituation() {
             `;
         } else {
             situationBox.classList.add('sit-danger');
-            iconEl.textContent = '🚫';
+            iconEl.textContent = '';
             badgeTextEl.textContent = 'Respondent Repeated Non-Appearance — Barred Counterclaim & Issue CFA';
             refEl.textContent = 'R.A. 7160 Sec. 415 & Sec. 515 / KP Form 20 & 22';
             consequencesListEl.innerHTML = `
@@ -2154,7 +2154,7 @@ function evaluateLiveAttendanceSituation() {
     // 4. Excused / Justified Absence
     if (complainantExcused > 0 || respondentExcused > 0) {
         situationBox.classList.add('sit-info');
-        iconEl.textContent = 'ℹ️';
+        iconEl.textContent = '';
         badgeTextEl.textContent = 'Excused / Justified Absence — Reset Without Sanction';
         refEl.textContent = 'R.A. 7160 Sec. 410 & KP Rule VI';
         consequencesListEl.innerHTML = `
@@ -2173,7 +2173,7 @@ function evaluateLiveAttendanceSituation() {
     // 5. Late Appearance
     if (complainantLate > 0 || respondentLate > 0) {
         situationBox.classList.add('sit-info');
-        iconEl.textContent = '⏱️';
+        iconEl.textContent = '';
         badgeTextEl.textContent = 'Late Appearance Noted — Hearing In Progress';
         refEl.textContent = 'KP Procedural Rules';
         consequencesListEl.innerHTML = `
@@ -2193,7 +2193,7 @@ function evaluateLiveAttendanceSituation() {
 
     // Default neutral
     situationBox.classList.add('sit-neutral');
-    iconEl.textContent = '⚖️';
+    iconEl.textContent = '';
     badgeTextEl.textContent = 'Attendance Incomplete';
     refEl.textContent = 'R.A. 7160 Sec. 415';
     consequencesListEl.innerHTML = '<li>Complete attendance selection for all parties to evaluate statutory next steps.</li>';
@@ -2564,7 +2564,7 @@ async function handleOfficeCancelSubmit(event) {
         const box = document.getElementById('hearingMessage');
         if (box && result.can_reschedule && !result.new_hearing_id) {
             box.className = 'alert success';
-            box.innerHTML = `${escapeHtml(successMsg)} <button type="button" class="btn-secondary" style="margin-left: 10px; font-weight: 700; color: #1e40af; padding: 3px 8px; font-size: 0.8rem;" onclick="editHearing(${Number(hearingId)})">📅 Reschedule Hearing Now &rarr;</button>`;
+            box.innerHTML = `${escapeHtml(successMsg)} <button type="button" class="btn-secondary" style="margin-left: 10px; font-weight: 700; color: #1e40af; padding: 3px 8px; font-size: 0.8rem;" onclick="editHearing(${Number(hearingId)})">Reschedule Hearing Now &rarr;</button>`;
             box.style.display = 'block';
         } else {
             setMessage(successMsg, true);
@@ -2734,7 +2734,7 @@ async function viewCaseTransferPackage(caseId) {
                     <strong>${escapeHtml(d.template_name || 'Document')}</strong>
                     <div style="font-size: 0.78rem; color: #64748b;">Generated: ${escapeHtml(formatDateTime(d.created_at))} · Status: ${escapeHtml(d.service_status || 'Generated')}</div>
                 </div>
-                ${d.file_path ? `<a href="../../../${escapeHtml(d.file_path)}" target="_blank" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 10px;">📄 View PDF</a>` : ''}
+                ${d.file_path ? `<a href="../../../${escapeHtml(d.file_path)}" target="_blank" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 10px;">View PDF</a>` : ''}
             </div>
         `).join('') : '<div class="empty-state">No generated documents yet.</div>';
 

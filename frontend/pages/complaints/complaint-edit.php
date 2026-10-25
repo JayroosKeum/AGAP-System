@@ -435,8 +435,8 @@ include __DIR__ . '/../../layouts/header.php';
                                                     </div>
                                                 </div>
                                                 <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
-                                                    <a href="../../../backend/api/complaints/scanned-document.php?id=<?php echo $complaintId; ?>" target="_blank" class="btn-outline-sm" title="Open scan in new tab">👁️ View Scan</a>
-                                                    <a href="../../../backend/api/complaints/scanned-document.php?id=<?php echo $complaintId; ?>&download=1" class="btn-outline-sm" title="Download scan">📥 Download</a>
+                                                    <a href="../../../backend/api/complaints/scanned-document.php?id=<?php echo $complaintId; ?>" target="_blank" class="btn-outline-sm" title="Open scan in new tab">View Scan</a>
+                                                    <a href="../../../backend/api/complaints/scanned-document.php?id=<?php echo $complaintId; ?>&download=1" class="btn-outline-sm" title="Download scan">Download</a>
                                                     <button type="button" class="btn-outline-sm" id="btnToggleReplaceScan">Upload Replacement</button>
                                                 </div>
                                             </div>
@@ -484,12 +484,12 @@ include __DIR__ . '/../../layouts/header.php';
                                                     <div class="kp7-preview-meta">
                                                         <span class="badge-pill" id="kp7FileTypeBadge">PDF</span>
                                                         <span id="kp7FileSize">0 MB</span>
-                                                        <span style="color: #16a34a; font-weight: 600;">✓ Ready to save</span>
+                                                        <span style="color: #16a34a; font-weight: 600;">Ready to save</span>
                                                     </div>
                                                 </div>
                                             </div>
                                             <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
-                                                <button type="button" class="btn-outline-sm" id="btnPreviewKp7Modal" title="Preview document before saving">👁️ Preview</button>
+                                                <button type="button" class="btn-outline-sm" id="btnPreviewKp7Modal" title="Preview document before saving">Preview</button>
                                                 <button type="button" class="btn-outline-sm" id="btnReplaceKp7" title="Select a different file">Change</button>
                                                 <button type="button" class="btn-outline-sm" id="btnRemoveKp7" style="color: #dc2626; border-color: #fca5a5;" title="Remove this file">&times; Remove</button>
                                             </div>
@@ -526,7 +526,7 @@ include __DIR__ . '/../../layouts/header.php';
                             <!-- "Others Please Specify" Input (Dynamically shown when Others is selected) -->
                             <div class="form-group" id="otherCategoryWrapper" style="display: none; margin-top: 8px; margin-bottom: 12px;">
                                 <label for="otherCategorySpecification" style="font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 6px;">
-                                    <span>📝 Specify Complaint Category / Pakitukoy ang Kategorya</span>
+                                    <span>Specify Complaint Category / Pakitukoy ang Kategorya</span>
                                     <span class="required-mark">*</span>
                                 </label>
                                 <input type="text" id="otherCategorySpecification" name="other_category_specification" maxlength="255" placeholder="Pakitukoy ang partikular na alitan o kategorya (e.g. Alitan sa bintana, ingay ng aircon)..." value="<?php echo htmlspecialchars($effOtherCategorySpec); ?>" style="border: 1.5px solid #3b82f6; background: #f8fafc; border-radius: 6px; padding: 9px 12px; font-size: 0.9rem;">
@@ -554,7 +554,7 @@ include __DIR__ . '/../../layouts/header.php';
                                             <span>Exact time unknown</span>
                                         </label>
                                     </div>
-                                    <span id="futureDateNotice" class="future-date-hint" style="display:none;">⚠️ Notice: Selected incident date is in the future. Please verify before saving.</span>
+                                    <span id="futureDateNotice" class="future-date-hint" style="display:none;">Notice: Selected incident date is in the future. Please verify before saving.</span>
                                 </div>
                             </div>
 
@@ -581,7 +581,7 @@ include __DIR__ . '/../../layouts/header.php';
                             <!-- Real-time Duplicate Warning Banner -->
                             <div id="duplicateComplaintBanner" class="duplicate-warning-banner" style="display:none;">
                                 <div class="duplicate-warning-header">
-                                    <span>⚠️ Potential Duplicate Complaint Detected</span>
+                                    <span>Potential Duplicate Complaint Detected</span>
                                     <button type="button" class="btn-clear-evidence" id="dismissDuplicateBanner" style="background:none;border:none;cursor:pointer;font-size:1.1rem;color:#9a3412;">&times;</button>
                                 </div>
                                 <p style="margin:0;font-size:0.83rem;">The system found active complaint record(s) involving the same complainant and respondent:</p>
@@ -590,7 +590,7 @@ include __DIR__ . '/../../layouts/header.php';
                             </div>
 
                             <div id="partyDistinctError" class="alert alert-danger" style="display:none; margin: 0 0 16px; padding: 10px 14px; font-size: 0.88rem; border-radius: 6px; background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5;">
-                                ⚠️ The complainant and respondent cannot be the same profile. Please select or enter different individuals.
+                                The complainant and respondent cannot be the same profile. Please select or enter different individuals.
                             </div>
 
                             <!-- Checkbox options if there are multiple complainants or respondents -->
@@ -722,7 +722,7 @@ include __DIR__ . '/../../layouts/header.php';
                                 <textarea id="narrative" name="narrative" rows="5" maxlength="15000" required placeholder="Describe in detail what occurred, when, and the circumstances surrounding the incident..."><?php echo htmlspecialchars($effNarrative); ?></textarea>
                                 <div class="ai-narrative-actions">
                                     <div class="ai-narrative-tools">
-                                        <button type="button" class="btn-outline-sm" data-enhance-narrative>✨ Enhance with AI</button>
+                                        <button type="button" class="btn-outline-sm" data-enhance-narrative>Enhance with AI</button>
                                         <small class="field-hint">Keep statements chronological, clear, and focused on key incident details.</small>
                                     </div>
                                     <label class="ai-consent-checkbox-label">
@@ -836,7 +836,7 @@ include __DIR__ . '/../../layouts/header.php';
                                 <!-- Right Column: Map Pinpoint Box -->
                                 <div class="location-map-pinbox">
                                     <div class="map-pinbox-topbar">
-                                        <span><i class="map-icon" style="color:#e11d48;">📍</i> Location Coordinates: <strong id="mapCoordsDisplay"><?php echo ($savedLat && $savedLng) ? number_format((float)$savedLat, 4) . '° N, ' . number_format((float)$savedLng, 4) . '° E' : '14.6521° N, 121.0854° E'; ?></strong></span>
+                                        <span>Location Coordinates: <strong id="mapCoordsDisplay"><?php echo ($savedLat && $savedLng) ? number_format((float)$savedLat, 4) . '° N, ' . number_format((float)$savedLng, 4) . '° E' : '14.6521° N, 121.0854° E'; ?></strong></span>
                                         <button type="button" class="btn-recenter-map" id="btnRecenterMap" title="Center map on Barangay Tumana">Recenter</button>
                                     </div>
 
@@ -879,7 +879,7 @@ include __DIR__ . '/../../layouts/header.php';
                                         <?php foreach ($attachments as $att): ?>
                                             <div style="display: flex; align-items: center; justify-content: space-between; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px; gap: 8px;">
                                                 <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
-                                                    <span style="font-size: 1.1rem;">📎</span>
+                                                    
                                                     <div style="min-width: 0;">
                                                         <div style="font-weight: 600; font-size: 0.88rem; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                                                             <?php echo htmlspecialchars($att['file_name']); ?>
@@ -891,7 +891,7 @@ include __DIR__ . '/../../layouts/header.php';
                                                 </div>
                                                 <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
                                                     <a href="../../../backend/api/complaints/download-attachment.php?id=<?php echo (int)$att['attachment_id']; ?>" class="btn-outline-sm" style="font-size: 0.75rem; padding: 4px 10px;" target="_blank">
-                                                        📥 Download
+                                                        Download
                                                     </a>
                                                 </div>
                                             </div>
@@ -937,14 +937,14 @@ include __DIR__ . '/../../layouts/header.php';
                                         Proof Notes <span class="optional-label">Optional</span>
                                     </label>
                                     <div style="display:flex;align-items:center;gap:8px;">
-                                        <button type="button" class="btn-outline-sm" id="btnProofOcr" title="Scan a handwritten or printed image and extract text into Proof Notes">📷 Scan Proof (OCR)</button>
+                                        <button type="button" class="btn-outline-sm" id="btnProofOcr" title="Scan a handwritten or printed image and extract text into Proof Notes">Scan Proof (OCR)</button>
                                         <input type="file" id="proofOcrFileInput" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none;">
                                     </div>
                                 </div>
                                 <textarea id="proofOcrNotes" name="proof_ocr_notes" rows="4" maxlength="10000"
                                     placeholder="Extracted text from scanned proofs will appear here. You may also type or paste additional context about the attached evidence..."
                                     style="resize:vertical;"><?php echo htmlspecialchars($effProofOcrNotes); ?></textarea>
-                                <small class="field-hint">Use ✨ OCR on any uploaded image above, or click “Scan Proof” to pick a file directly. Extracted text is appended here.</small>
+                                <small class="field-hint">Use OCR on any uploaded image above, or click “Scan Proof” to pick a file directly. Extracted text is appended here.</small>
                             </div>
                         </section>
 
@@ -1121,7 +1121,7 @@ include __DIR__ . '/../../layouts/header.php';
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                             <label for="modalAddress" style="margin-bottom: 0;">Complete Street Address <span class="required-mark">*</span></label>
                             <button type="button" class="btn-secondary btn-sm" id="btnPinPartyAddress" style="padding: 2px 8px; font-size: 0.72rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;" title="Find and drop pin on map">
-                                <span>📍 Pin on Map</span>
+                                <span>Pin on Map</span>
                             </button>
                         </div>
                         <input type="text" id="modalAddress" required placeholder="House #, Street name, Purok/Compound, Barangay Tumana">
@@ -1153,7 +1153,7 @@ include __DIR__ . '/../../layouts/header.php';
 
                     <div id="modalGuardianSection" class="conditional-party-details guardian-box" style="display:none; margin-top:16px;">
                         <div class="guardian-box-title" style="font-size:0.84rem; font-weight:700; color:#0369a1; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px;">
-                            <span>🛡️ Legal Guardian / Representative Details</span>
+                            <span>Legal Guardian / Representative Details</span>
                             <span style="background:#e0f2fe; color:#0369a1; font-size:0.75rem; font-weight:600; padding:2px 8px; border-radius:9999px;">Person is a Minor (&lt; 18 years old)</span>
                         </div>
                             <div class="party-fields-grid-2">
@@ -1259,7 +1259,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (isSameProfile || isSameName) {
             if (errorBox) {
-                errorBox.innerHTML = '<strong>⚠️ Same person selected!</strong> The complainant and respondent cannot be the same person. Please specify different individuals.';
+                errorBox.innerHTML = '<strong>Same person selected!</strong> The complainant and respondent cannot be the same person. Please specify different individuals.';
                 errorBox.style.display = 'block';
             }
             [compGroup, respGroup].forEach(g => {
@@ -2004,7 +2004,7 @@ document.addEventListener('DOMContentLoaded', () => {
             partyMapInstance.setView([lat, lng], 17);
             partyMapInstance.invalidateSize();
             const statusEl = document.getElementById('modalPartyMapStatus');
-            if (statusEl) statusEl.textContent = '📍 Address pinned from saved profile coordinates.';
+            if (statusEl) statusEl.textContent = 'Address pinned from saved profile coordinates.';
             return;
         }
 
@@ -2258,7 +2258,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 coordsEl.textContent = `${foundLat.toFixed(6)}° N, ${foundLng.toFixed(6)}° E`;
             }
             if (statusEl) {
-                statusEl.textContent = `📍 Address pinned on map: ${addr || matchedDisplay}`;
+                statusEl.textContent = `Address pinned on map: ${addr || matchedDisplay}`;
             }
         } else {
             if (statusEl) {
@@ -2576,7 +2576,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (complainantsList.length === 0) {
             listEl.innerHTML = `
                 <div class="party-empty-card" onclick="openPartyModal('complainant', 'add')">
-                    <span style="font-size: 1.3rem;">👤</span>
+                    
                     <div>
                         <strong>No complainant added yet</strong>
                         <div style="font-size: 0.78rem; color: #64748b;">Click here or "+ Add Complainant" to fill in complainant details</div>
@@ -2591,15 +2591,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 const rolePillClass = idx === 0 ? 'primary-complainant' : 'additional-party';
 
                 const details = [];
-                if (c.contact_no) details.push(`<span>📞 ${escapeHtml(c.contact_no)}</span>`);
-                if (c.purok || c.address) details.push(`<span>📍 ${escapeHtml(c.address || c.purok)}</span>`);
+                if (c.contact_no) details.push(`<span>Tel: ${escapeHtml(c.contact_no)}</span>`);
+                if (c.purok || c.address) details.push(`<span>${escapeHtml(c.address || c.purok)}</span>`);
                 const demo = [];
                 if (c.age) demo.push(`${escapeHtml(c.age)} yrs old`);
                 if (c.gender) demo.push(escapeHtml(c.gender));
                 if (c.civil_status) demo.push(escapeHtml(c.civil_status));
                 if (demo.length) details.push(`<span>${demo.join(' • ')}</span>`);
                 if (c.is_minor && c.guardian_name) {
-                    details.push(`<span>🛡️ Minor (Guardian: ${escapeHtml(c.guardian_name)}${c.guardian_relationship ? ' - ' + escapeHtml(c.guardian_relationship) : ''})</span>`);
+                    details.push(`<span>Minor (Guardian: ${escapeHtml(c.guardian_name)}${c.guardian_relationship ? ' - ' + escapeHtml(c.guardian_relationship) : ''})</span>`);
                 }
 
                 return `
@@ -2653,7 +2653,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (respondentsList.length === 0) {
             listEl.innerHTML = `
                 <div class="party-empty-card" onclick="openPartyModal('respondent', 'add')">
-                    <span style="font-size: 1.3rem;">👤</span>
+                    
                     <div>
                         <strong>No respondent added yet</strong>
                         <div style="font-size: 0.78rem; color: #64748b;">Click here or "+ Add Respondent" to fill in respondent details</div>
@@ -2669,11 +2669,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const details = [];
                 if (r.contact_unknown) {
-                    details.push('<span>📞 Contact Unknown</span>');
+                    details.push('<span>Tel: Contact Unknown</span>');
                 } else if (r.contact_no) {
-                    details.push(`<span>📞 ${escapeHtml(r.contact_no)}</span>`);
+                    details.push(`<span>Tel: ${escapeHtml(r.contact_no)}</span>`);
                 }
-                if (r.purok || r.address) details.push(`<span>📍 ${escapeHtml(r.address || r.purok)}</span>`);
+                if (r.purok || r.address) details.push(`<span>${escapeHtml(r.address || r.purok)}</span>`);
                 const demo = [];
                 if (r.birth_unknown) {
                     demo.push('<span>Birthdate Unknown</span>');
@@ -2684,7 +2684,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (r.civil_status) demo.push(`<span>${escapeHtml(r.civil_status)}</span>`);
                 if (demo.length) details.push(`<span>${demo.join(' • ')}</span>`);
                 if (r.is_minor && r.guardian_name) {
-                    details.push(`<span>🛡️ Minor (Guardian: ${escapeHtml(r.guardian_name)}${r.guardian_relationship ? ' - ' + escapeHtml(r.guardian_relationship) : ''})</span>`);
+                    details.push(`<span>Minor (Guardian: ${escapeHtml(r.guardian_name)}${r.guardian_relationship ? ' - ' + escapeHtml(r.guardian_relationship) : ''})</span>`);
                 }
 
                 return `
@@ -3336,7 +3336,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ocrBtn.className = 'btn-outline-sm btn-ocr-queue';
                 ocrBtn.title = 'Extract text from this image and append to narrative';
                 ocrBtn.style.cssText = 'font-size:0.75rem;padding:3px 8px;white-space:nowrap;';
-                ocrBtn.textContent = '✨ OCR';
+                ocrBtn.textContent = 'OCR';
                 ocrBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     runProofOcrOnQueuedFile(file, ocrBtn);
@@ -3481,7 +3481,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const originalLabel = triggerBtn.textContent;
         triggerBtn.disabled = true;
-        triggerBtn.textContent = '⏳ Scanning…';
+        triggerBtn.textContent = 'Scanning…';
 
         try {
             const formData = new FormData();

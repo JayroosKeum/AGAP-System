@@ -239,7 +239,7 @@ include '../../layouts/header.php';
                     <div id="schedVisualDatePickerContainer" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-top: 6px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.78rem; flex-wrap: wrap; gap: 6px;">
                             <span style="font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.03em; font-size: 0.74rem;">
-                                📅 AVAILABLE MEDIATION DAYS (MAX 8 HEARINGS/DAY):
+                                AVAILABLE MEDIATION DAYS (MAX 8 HEARINGS/DAY):
                             </span>
                             <div style="display: flex; gap: 10px; font-size: 0.72rem; flex-wrap: wrap;">
                                 <span style="display: inline-flex; align-items: center; gap: 4px; color: #166534;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e;"></span> Available</span>
@@ -261,7 +261,7 @@ include '../../layouts/header.php';
                 <!-- Existing Mediations on selected date -->
                 <div id="schedDaySchedulesWrap" style="display: none; margin-bottom: 14px; padding: 10px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.84rem;">
                     <div style="font-weight: 600; color: #334155; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
-                        <span>📅 Scheduled Mediations on this Date:</span>
+                        <span>Scheduled Mediations on this Date:</span>
                         <span id="schedDaySlotsCount" style="font-size: 0.72rem; background: #e2e8f0; color: #475569; padding: 2px 7px; border-radius: 9999px; font-weight: 600;">0</span>
                     </div>
                     <div id="schedDaySlotsList" style="color: #64748b; font-size: 0.82rem; line-height: 1.5;">

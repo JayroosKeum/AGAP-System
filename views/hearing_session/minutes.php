@@ -183,7 +183,7 @@ async function toggleVoiceRecording() {
         btn.classList.remove('recording');
         textSpan.textContent = 'Record Voice';
         btn.disabled = true;
-        statusBanner.innerHTML = '⏳ Transcribing audio with Gemini 1.5 Flash... Please wait.';
+        statusBanner.innerHTML = 'Transcribing audio with Gemini 1.5 Flash... Please wait.';
     }
 }
 
@@ -204,7 +204,7 @@ async function sendAudioToGeminiSTT(audioBlob) {
 
         const result = await response.json();
         if (result.success && result.text) {
-            appendTextToMinutes(result.text, '🎙️ Audio Transcription');
+            appendTextToMinutes(result.text, 'Audio Transcription');
             statusBanner.style.display = 'none';
         } else {
             statusBanner.innerHTML = `<span style="color:#ef4444;">Error: ${result.message || 'Transcription failed.'}</span>`;
@@ -235,7 +235,7 @@ async function handleNotesFileSelected(input) {
     uploadBtn.disabled = true;
     uploadBtn.textContent = 'Processing OCR...';
     statusBanner.style.display = 'flex';
-    statusBanner.innerHTML = '⏳ Extracting text from image with Gemini 1.5 Flash OCR...';
+    statusBanner.innerHTML = 'Extracting text from image with Gemini 1.5 Flash OCR...';
 
     try {
         const formData = new FormData();
@@ -249,7 +249,7 @@ async function handleNotesFileSelected(input) {
 
         const result = await response.json();
         if (result.success && result.text) {
-            appendTextToMinutes(result.text, '📄 OCR Notes Extract');
+            appendTextToMinutes(result.text, 'OCR Notes Extract');
             statusBanner.style.display = 'none';
         } else {
             statusBanner.innerHTML = `<span style="color:#ef4444;">Error: ${result.message || 'OCR extraction failed.'}</span>`;

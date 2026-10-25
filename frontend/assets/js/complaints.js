@@ -120,7 +120,7 @@ function initialiseNarrativeEnhancement() {
     let proposedNarrative = '';
     const setBusy = (busy) => {
         button.disabled = busy;
-        button.textContent = busy ? 'Enhancing…' : '✨ Enhance with AI';
+        button.textContent = busy ? 'Enhancing…' : 'Enhance with AI';
     };
 
     button.addEventListener('click', async () => {
@@ -749,9 +749,9 @@ function renderParties(parties) {
         const fullAddress = addrParts.length > 0 ? addrParts.join(', ') : 'No address on file';
 
         const isMinor = Number(party.is_minor) === 1 || (party.age !== undefined && party.age !== null && party.age !== '' && Number(party.age) < 18);
-        const guardianInfo = party.guardian_name ? `🛡️ Guardian: ${escapeHtml(party.guardian_name)}${party.guardian_relationship ? ` (${escapeHtml(party.guardian_relationship)})` : ''}` : '';
-        const prefContact = party.preferred_contact ? `✉️ ${escapeHtml(party.preferred_contact)}` : '';
-        const ageText = (party.age !== undefined && party.age !== null && party.age !== '') ? `🎂 ${party.age} yrs` : '';
+        const guardianInfo = party.guardian_name ? `Guardian: ${escapeHtml(party.guardian_name)}${party.guardian_relationship ? ` (${escapeHtml(party.guardian_relationship)})` : ''}` : '';
+        const prefContact = party.preferred_contact ? `${escapeHtml(party.preferred_contact)}` : '';
+        const ageText = (party.age !== undefined && party.age !== null && party.age !== '') ? `${party.age} yrs` : '';
 
         cards += `
             <div class="party-entry-card">
@@ -764,8 +764,8 @@ function renderParties(parties) {
                     </div>
                 </div>
                 <div class="party-entry-name">${escapeHtml(party.resident_name || 'Unnamed Party')}${party.suffix ? ' ' + escapeHtml(party.suffix) : ''}</div>
-                <div class="party-entry-meta">📞 ${party.contact_unknown ? 'Contact: Unknown' : escapeHtml(party.contact_no || 'No contact on file')}${prefContact ? ' &bull; ' + prefContact : ''}</div>
-                <div class="party-entry-meta">📍 ${escapeHtml(fullAddress)}${party.address_requires_verification ? ' <span style="color:#b45309;font-weight:600;">(Needs Verification)</span>' : ''}</div>
+                <div class="party-entry-meta">Tel: ${party.contact_unknown ? 'Contact: Unknown' : escapeHtml(party.contact_no || 'No contact on file')}${prefContact ? ' &bull; ' + prefContact : ''}</div>
+                <div class="party-entry-meta">${escapeHtml(fullAddress)}${party.address_requires_verification ? ' <span style="color:#b45309;font-weight:600;">(Needs Verification)</span>' : ''}</div>
                 ${guardianInfo ? `<div class="party-entry-meta" style="color:#4338ca;font-weight:600;font-size:0.78rem;">${guardianInfo}</div>` : ''}
             </div>
         `;
@@ -901,11 +901,11 @@ function renderCaseWorkspace(workspace, complaint) {
         if (stage2Card && stage2Status && stage2Icon) {
             if (con.is_locked) {
                 stage2Card.className = 'stage-card-item locked';
-                stage2Icon.textContent = '🔒';
+                stage2Icon.textContent = '2';
                 stage2Status.textContent = 'Locked until mediation concludes';
             } else {
                 stage2Card.className = 'stage-card-item active';
-                stage2Icon.textContent = '✓';
+                stage2Icon.textContent = '2';
                 stage2Status.textContent = con.stage_status || 'In Progress';
             }
         }
@@ -915,11 +915,11 @@ function renderCaseWorkspace(workspace, complaint) {
             if (isArbActive) {
                 stage3Card.className = 'stage-card-item active';
                 stage3Status.textContent = arb.stage_status || 'In Progress';
-                if (stage3Icon) stage3Icon.textContent = '✓';
+                if (stage3Icon) stage3Icon.textContent = '3';
             } else {
                 stage3Card.className = 'stage-card-item pending';
                 stage3Status.textContent = arb.stage_status || 'Pending';
-                if (stage3Icon) stage3Icon.textContent = '🔒';
+                if (stage3Icon) stage3Icon.textContent = '3';
             }
         }
     }
@@ -965,7 +965,7 @@ function renderCaseWorkspace(workspace, complaint) {
             if (savedMinIcon) savedMinIcon.textContent = '✓';
         } else {
             savedMinText.textContent = 'Not Recorded Yet';
-            if (savedMinIcon) savedMinIcon.textContent = '⚠️';
+            if (savedMinIcon) savedMinIcon.textContent = '';
         }
     }
 
@@ -1027,7 +1027,7 @@ function renderCaseWorkspace(workspace, complaint) {
                         </div>
                         <div class="party-entry-name">${escapeHtml(displayName)}</div>
                         <div class="party-entry-meta">
-                            <span>📅 Assigned: ${m.assigned_date ? escapeHtml(formatDateReadable(m.assigned_date)) : 'N/A'}</span>
+                            <span>Assigned: ${m.assigned_date ? escapeHtml(formatDateReadable(m.assigned_date)) : 'N/A'}</span>
                         </div>
                     </div>
                 `;
@@ -1078,12 +1078,12 @@ function renderCaseWorkspace(workspace, complaint) {
                                 </span>
                             </div>
                             <div class="kp-form-meta-text">
-                                <span>📅 <strong>${escapeHtml(hearingDateFormatted)}</strong></span> &bull; <span>📍 ${escapeHtml(h.venue || 'Barangay Hall')}</span>
+                                <span><strong>${escapeHtml(hearingDateFormatted)}</strong></span> &bull; <span>${escapeHtml(h.venue || 'Barangay Hall')}</span>
                             </div>
                             ${(presentCount > 0 || absentCount > 0) ? `
                                 <div style="display: flex; align-items: center; gap: 10px; font-size: 0.75rem; color: #64748b; margin-top: 2px;">
-                                    <span style="color: #15803d; font-weight: 600;">✓ ${presentCount} Present</span>
-                                    ${absentCount > 0 ? `<span style="color: #b91c1c; font-weight: 600;">✕ ${absentCount} Non-appearance</span>` : ''}
+                                    <span style="color: #15803d; font-weight: 600;">${presentCount} Present</span>
+                                    ${absentCount > 0 ? `<span style="color: #b91c1c; font-weight: 600;">${absentCount} Non-appearance</span>` : ''}
                                 </div>
                             ` : ''}
                         </div>
@@ -1154,7 +1154,7 @@ function renderOfficialKpForms(workspace, complaint) {
         rowsHtml += `
             <div class="kp-form-item-row" style="background: #f0fdf4; border-left: 4px solid #16a34a;">
                 <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
-                    <span style="font-size: 1.5rem; color: #16a34a; line-height: 1;">✉️</span>
+                    
                     <div>
                         <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                             <span style="font-weight: 700; color: #0f172a;">Paanyaya (Informal Invitation Letter)</span>
@@ -1185,7 +1185,7 @@ function renderOfficialKpForms(workspace, complaint) {
             rowsHtml += `
                 <div class="kp-form-item-row" style="background: #f8fafc; border-left: 4px solid #f59e0b;">
                     <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
-                        <span style="font-size: 1.5rem; color: #94a3b8; line-height: 1;">⚖️</span>
+                        
                         <div>
                             <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                                 <span style="font-weight: 700; color: #64748b;">Pormularyo ng KP Blg. 7 (Reklamo / Formal Complaint)</span>
@@ -1209,7 +1209,7 @@ function renderOfficialKpForms(workspace, complaint) {
             rowsHtml += `
                 <div class="kp-form-item-row" style="background: #ffffff;">
                     <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
-                        <span style="font-size: 1.5rem; color: #0284c7; line-height: 1;">⚖️</span>
+                        
                         <div>
                             <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                                 <span style="font-weight: 700; color: #0f172a;">Pormularyo ng KP Blg. 7 (Reklamo / Formal Complaint)</span>
@@ -1267,7 +1267,7 @@ function renderOfficialKpForms(workspace, complaint) {
         rowsHtml += `
             <div class="kp-form-item-row">
                 <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
-                    <span style="font-size: 1.5rem; color: #64748b; line-height: 1;">📄</span>
+                    
                     <div>
                         <div class="kp-form-name-text">
                             ${escapeHtml(doc.template_name || 'KP Form Document')}
@@ -1540,13 +1540,13 @@ function renderPaanyayaStageCard(stageNum, stageData, caseNum, compNames, respNa
             let bText = 'Minutes Recorded';
             let bClass = 'outcome-delivered';
             if (minutesData.outcome === 'Settled') {
-                bText = '✓ Settled Informally';
+                bText = 'Settled Informally';
                 bClass = 'outcome-delivered';
             } else if (minutesData.complainant_choice === 'Request_Paanyaya_2') {
-                bText = '⚡ 2nd Paanyaya Requested';
+                bText = '2nd Paanyaya Requested';
                 bClass = 'outcome-unavailable';
             } else if (minutesData.complainant_choice === 'Escalate_Mediation') {
-                bText = '⚡ Escalated to Mediation';
+                bText = 'Escalated to Mediation';
                 bClass = 'outcome-refused';
             }
             minutesBadge.innerHTML = `<span class="outcome-badge ${bClass}">${bText}</span>`;
@@ -1602,17 +1602,17 @@ function renderPaanyayaTab(data) {
             stage0Badge.textContent = 'Attempts Exhausted – For Review';
             stage0Badge.style.background = '#fee2e2';
             stage0Badge.style.color = '#991b1b';
-            if (stage0Icon) stage0Icon.textContent = '⚠️';
+            if (stage0Icon) stage0Icon.textContent = '0';
         } else if (stage1.details?.status === 'In Progress' || stage2.details?.status === 'In Progress') {
             stage0Badge.textContent = 'Paanyaya In Progress';
             stage0Badge.style.background = '#fef08a';
             stage0Badge.style.color = '#854d0e';
-            if (stage0Icon) stage0Icon.textContent = '✉️';
+            if (stage0Icon) stage0Icon.textContent = '0';
         } else {
             stage0Badge.textContent = 'Paanyaya Preliminary Stage';
             stage0Badge.style.background = '#fef08a';
             stage0Badge.style.color = '#854d0e';
-            if (stage0Icon) stage0Icon.textContent = '✉️';
+            if (stage0Icon) stage0Icon.textContent = '0';
         }
     }
 
@@ -1637,8 +1637,8 @@ function renderPaanyayaTab(data) {
                 <div style="margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px dashed #e2e8f0;">
                     <div style="font-weight: 700; color: #0f172a; font-size: 0.92rem;">${esc(name)}</div>
                     <div style="font-size: 0.8rem; color: #64748b; margin-top: 2px;">
-                        📍 ${esc(addr)}
-                        ${phone ? ` &bull; 📞 ${esc(phone)}` : ''}
+                        ${esc(addr)}
+                        ${phone ? ` &bull; Tel: ${esc(phone)}` : ''}
                     </div>
                 </div>
             `;
@@ -1721,7 +1721,7 @@ function renderMediationCard(stages, caseId, complaint, workspace) {
         if (enabled) {
             return `<a href="${url}" class="btn-secondary" style="font-size: 0.74rem; padding: 4px 8px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; border-color: #cbd5e1; background: #fff;">${label} &rarr;</a>`;
         }
-        return `<span title="${escapeHtml(disabledReason)}" style="font-size: 0.74rem; padding: 4px 8px; border-radius: 4px; background: #f8fafc; color: #94a3b8; border: 1px dashed #e2e8f0; cursor: not-allowed; display: inline-flex; align-items: center; gap: 4px;">${label} 🔒</span>`;
+        return `<span title="${escapeHtml(disabledReason)}" style="font-size: 0.74rem; padding: 4px 8px; border-radius: 4px; background: #f8fafc; color: #94a3b8; border: 1px dashed #e2e8f0; cursor: not-allowed; display: inline-flex; align-items: center; gap: 4px;">${label}</span>`;
     };
 
     container.innerHTML = `
@@ -1729,7 +1729,7 @@ function renderMediationCard(stages, caseId, complaint, workspace) {
             <div style="padding: 10px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                     <span style="font-size: 0.78rem; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.03em;">
-                        📅 Hearings &amp; Attendance
+                        Hearings &amp; Attendance
                     </span>
                     <a href="../hearings/schedules.php?case_id=${encodeURIComponent(caseId || '')}&type=Mediation" class="btn-secondary" style="font-size: 0.72rem; padding: 2px 7px; text-decoration: none;">
                         View Hearings &rarr;
@@ -1787,7 +1787,7 @@ function renderConciliationCard(stages, caseId, complaint) {
             };
             linkEl.style.opacity = '0.6';
             linkEl.style.cursor = 'not-allowed';
-            linkEl.innerHTML = 'Manage Conciliation 🔒';
+            linkEl.innerHTML = 'Manage Conciliation';
         } else {
             linkEl.href = `../cases/pangkat-workspace.php?case_id=${encodeURIComponent(caseId || '')}&complaint_id=${encodeURIComponent(complaint.complaint_id || '')}`;
             linkEl.onclick = null;
@@ -1803,7 +1803,7 @@ function renderConciliationCard(stages, caseId, complaint) {
         const canRefer = stages?.mediation?.documents_and_actions?.can_proceed_to_pangkat;
         container.innerHTML = `
             <div style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 24px 16px; text-align: center; color: #64748b;">
-                <div style="font-size: 1.8rem; margin-bottom: 6px;">🔒</div>
+                
                 <div style="font-size: 0.92rem; font-weight: 700; color: #334155; margin-bottom: 4px;">
                     Pangkat Conciliation is locked
                 </div>
@@ -1829,7 +1829,7 @@ function renderConciliationCard(stages, caseId, complaint) {
             <div><strong>Secretary:</strong> ${escapeHtml(pInfo.secretary?.member_name || 'Not assigned')}</div>
             <div><strong>Member:</strong> ${escapeHtml(pInfo.member?.member_name || 'Not assigned')}</div>
             <div style="margin-top: 6px; font-size: 0.78rem; color: #64748b;">
-                <span>📅 Constituted: ${pInfo.formation_date ? escapeHtml(formatDateReadable(pInfo.formation_date)) : 'N/A'}</span>
+                <span>Constituted: ${pInfo.formation_date ? escapeHtml(formatDateReadable(pInfo.formation_date)) : 'N/A'}</span>
                 &bull; <span>Status: <strong>${escapeHtml(pInfo.assignment_status || 'Pending')}</strong></span>
             </div>
             <div style="margin-top: 10px;">
@@ -1870,7 +1870,7 @@ function renderArbitrationCard(stages, caseId, complaint) {
     if (isLocked) {
         container.innerHTML = `
             <div style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 24px 16px; text-align: center; color: #64748b;">
-                <div style="font-size: 1.8rem; margin-bottom: 6px;">⚖️</div>
+                
                 <div style="font-size: 0.92rem; font-weight: 700; color: #334155; margin-bottom: 4px;">
                     Arbitration / CFA is not active
                 </div>
@@ -2070,9 +2070,9 @@ function renderSummonVisualDatePicker(windowMeta, selectedDate) {
             const selectedDayData = windowMeta.daily_slots[selectedDate];
             if (selectedDayData) {
                 if (selectedDayData.is_fully_booked) {
-                    noticeEl.innerHTML = `<span style="color: #dc2626; font-weight: 600;">⚠️ Selected date is fully booked (8 of 8 daily mediation sessions).</span>`;
+                    noticeEl.innerHTML = `<span style="color: #dc2626; font-weight: 600;">Selected date is fully booked (8 of 8 daily mediation sessions).</span>`;
                 } else {
-                    noticeEl.innerHTML = `<span style="color: #15803d; font-weight: 600;">✓ Date selected: ${selectedDayData.available} slots remaining.</span>`;
+                    noticeEl.innerHTML = `<span style="color: #15803d; font-weight: 600;">Date selected: ${selectedDayData.available} slots remaining.</span>`;
                 }
             }
         } else {
@@ -2126,7 +2126,7 @@ async function checkMediationScheduleConflict() {
 
         if (!response.ok || !result.success) {
             if (conflictAlert && result.message) {
-                conflictAlert.textContent = `⚠️ Notice: ${result.message}`;
+                conflictAlert.textContent = `Notice: ${result.message}`;
                 conflictAlert.style.display = 'block';
                 if (submitBtn) submitBtn.disabled = true;
             }
@@ -2142,7 +2142,7 @@ async function checkMediationScheduleConflict() {
 
         if (result.is_fully_booked || bookedCount >= maxSlots) {
             if (conflictAlert) {
-                conflictAlert.textContent = `⚠️ Date Fully Booked: All ${maxSlots} daily mediation slots on this date are occupied. Please select another date.`;
+                conflictAlert.textContent = `Date Fully Booked: All ${maxSlots} daily mediation slots on this date are occupied. Please select another date.`;
                 conflictAlert.style.display = 'block';
             }
             if (submitBtn) {
@@ -2161,7 +2161,7 @@ async function checkMediationScheduleConflict() {
 
             const scheduled = result.scheduled_mediations || [];
             if (scheduled.length === 0) {
-                slotsList.innerHTML = `<span style="color: #166534; font-weight: 500;">✓ All 8 session slots available on this date (${dateVal}).</span>`;
+                slotsList.innerHTML = `<span style="color: #166534; font-weight: 500;">All 8 session slots available on this date (${dateVal}).</span>`;
             } else {
                 slotsList.innerHTML = `
                     <div style="margin-bottom: 6px; font-weight: 600; color: #475569;">${availSlots} of ${maxSlots} slots available for this date:</div>
@@ -2181,7 +2181,7 @@ async function checkMediationScheduleConflict() {
         if (result.has_conflict && result.conflict) {
             const conflictMsg = result.conflict.message || 'The selected time overlaps with an existing scheduled mediation.';
             if (conflictAlert) {
-                conflictAlert.textContent = `⚠️ Schedule Conflict: ${conflictMsg}`;
+                conflictAlert.textContent = `Schedule Conflict: ${conflictMsg}`;
                 conflictAlert.style.display = 'block';
             }
             if (timeInput) {
@@ -3177,7 +3177,7 @@ window.initPartySearchCombobox = function(comboboxEl, residentsList) {
 
     function showInlineWarning(msg) {
         if (!warningEl) return;
-        warningEl.innerHTML = `<span>⚠️ ${escapeHtml(msg)}</span>`;
+        warningEl.innerHTML = `<span>${escapeHtml(msg)}</span>`;
         warningEl.style.display = 'flex';
     }
 
@@ -3218,9 +3218,9 @@ window.initPartySearchCombobox = function(comboboxEl, residentsList) {
     function renderPreview(res) {
         if (!previewEl) return;
         const details = [
-            res.address ? `🏠 ${escapeHtml(res.address)}` : '',
-            res.purok ? `📍 Purok ${escapeHtml(res.purok)}` : '',
-            res.contact_no ? `📞 ${escapeHtml(res.contact_no)}` : ''
+            res.address ? `${escapeHtml(res.address)}` : '',
+            res.purok ? `Purok ${escapeHtml(res.purok)}` : '',
+            res.contact_no ? `Tel: ${escapeHtml(res.contact_no)}` : ''
         ].filter(Boolean).join(' &bull; ');
 
         let resBadge = '';
@@ -3386,9 +3386,9 @@ window.initPartySearchCombobox = function(comboboxEl, residentsList) {
                             : itemBadge}
                     </div>
                     <div class="party-search-item-meta">
-                        <span>📍 ${escapeHtml(res.purok ? 'Purok ' + res.purok : 'Barangay Tumana')}</span>
-                        ${res.address ? `<span>🏠 ${escapeHtml(res.address)}</span>` : ''}
-                        ${res.contact_no ? `<span>📞 ${escapeHtml(res.contact_no)}</span>` : ''}
+                        <span>${escapeHtml(res.purok ? 'Purok ' + res.purok : 'Barangay Tumana')}</span>
+                        ${res.address ? `<span>${escapeHtml(res.address)}</span>` : ''}
+                        ${res.contact_no ? `<span>Tel: ${escapeHtml(res.contact_no)}</span>` : ''}
                     </div>
                 </div>
             `;
@@ -3595,7 +3595,7 @@ async function openHearingSessionDetails(hearingId) {
 
     bodyEl.innerHTML = `
         <div style="text-align: center; padding: 40px 20px; color: #64748b;">
-            <div style="font-size: 1.5rem; margin-bottom: 8px;">⏳</div>
+            
             <p style="margin: 0; font-weight: 500;">Loading mediation / conciliation session &amp; process details...</p>
         </div>
     `;
@@ -3801,7 +3801,7 @@ async function openHearingSessionDetails(hearingId) {
         guidanceHtml = `
             <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-left: 4px solid #3b82f6; border-radius: 8px; padding: 14px 16px;">
                 <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
-                    <span style="font-size: 1.05rem;">⚖️</span>
+                    
                     <strong style="font-size: 0.88rem; color: #1e3a8a;">Katarungang Pambarangay Procedural Guidance:</strong>
                     ${situation.title ? `<span style="font-size: 0.76rem; font-weight: 700; background: #dbeafe; color: #1d4ed8; padding: 2px 7px; border-radius: 4px;">${escapeHtml(situation.title)}</span>` : ''}
                 </div>
@@ -3833,7 +3833,7 @@ async function openHearingSessionDetails(hearingId) {
                         <div>
                             <strong style="font-size: 0.88rem; color: #0f172a;">${escapeHtml(p.full_name || 'Party Member')}</strong>
                             <div style="font-size: 0.74rem; color: #64748b; margin-top: 1px;">
-                                ${p.service_confirmed ? '<span style="color: #15803d; font-weight: 600;">✓ Summons Confirmed Served</span>' : '<span style="color: #64748b;">⏳ Summons Service In Progress</span>'}
+                                ${p.service_confirmed ? '<span style="color: #15803d; font-weight: 600;">Summons Confirmed Served</span>' : '<span style="color: #64748b;">Summons Service In Progress</span>'}
                                 ${p.justification_reason ? ` &bull; <em>Excuse: ${escapeHtml(p.justification_reason)}</em>` : ''}
                                 ${p.remarks ? ` &bull; <span>Remarks: ${escapeHtml(p.remarks)}</span>` : ''}
                             </div>
@@ -3880,20 +3880,20 @@ async function openHearingSessionDetails(hearingId) {
         <!-- Section 2: Session Schedule & Logistics Grid -->
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px;">
             <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
-                <span style="font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 2px;">📅 Hearing Date &amp; Time</span>
+                <span style="font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 2px;">Hearing Date &amp; Time</span>
                 <strong style="font-size: 0.92rem; color: #0f172a; display: block;">${escapeHtml(dateFormatted)}</strong>
             </div>
             <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
-                <span style="font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 2px;">📍 Hearing Venue</span>
+                <span style="font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 2px;">Hearing Venue</span>
                 <strong style="font-size: 0.92rem; color: #0f172a; display: block;">${escapeHtml(venue)}</strong>
             </div>
             <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
-                <span style="font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 2px;">👤 Presiding Authority</span>
+                <span style="font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 2px;">Presiding Authority</span>
                 <strong style="font-size: 0.92rem; color: #0f172a; display: block;">${escapeHtml(presidingOfficial)}</strong>
                 <span style="font-size: 0.72rem; color: #64748b;">${escapeHtml(presidingRole)}</span>
             </div>
             <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
-                <span style="font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 2px;">📋 Stage Progression</span>
+                <span style="font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 2px;">Stage Progression</span>
                 <strong style="font-size: 0.92rem; color: #0f172a; display: block;">${escapeHtml(status)}</strong>
                 <span style="font-size: 0.72rem; color: #64748b;">${h.rescheduled_from_id ? 'Rescheduled hearing' : 'Original schedule'}</span>
             </div>
@@ -3911,9 +3911,9 @@ async function openHearingSessionDetails(hearingId) {
                     <span style="font-size: 0.78rem; color: #64748b;">Attendance, appearance verification, and summons service status</span>
                 </div>
                 <div style="display: flex; gap: 6px; align-items: center;">
-                    <span style="font-size: 0.74rem; font-weight: 700; color: #15803d; background: #dcfce7; padding: 2px 8px; border-radius: 9999px;">✓ ${presentCount} Present</span>
-                    <span style="font-size: 0.74rem; font-weight: 700; color: #b91c1c; background: #fee2e2; padding: 2px 8px; border-radius: 9999px;">✕ ${absentCount} Non-appearance</span>
-                    ${excusedCount > 0 ? `<span style="font-size: 0.74rem; font-weight: 700; color: #b45309; background: #fef3c7; padding: 2px 8px; border-radius: 9999px;">⚠️ ${excusedCount} Excused</span>` : ''}
+                    <span style="font-size: 0.74rem; font-weight: 700; color: #15803d; background: #dcfce7; padding: 2px 8px; border-radius: 9999px;">${presentCount} Present</span>
+                    <span style="font-size: 0.74rem; font-weight: 700; color: #b91c1c; background: #fee2e2; padding: 2px 8px; border-radius: 9999px;">${absentCount} Non-appearance</span>
+                    ${excusedCount > 0 ? `<span style="font-size: 0.74rem; font-weight: 700; color: #b45309; background: #fef3c7; padding: 2px 8px; border-radius: 9999px;">${excusedCount} Excused</span>` : ''}
                 </div>
             </div>
             <div style="display: flex; flex-direction: column; gap: 8px;">
@@ -4096,16 +4096,16 @@ function renderKp7Overview(complaint) {
         if (actionsWrap) {
             actionsWrap.innerHTML = `
                 <a href="${scanUrl}" target="_blank" class="btn-outline-sm" title="View scan in new tab">
-                    👁️ View Scan
+                    View Scan
                 </a>
                 <a href="${downloadUrl}" class="btn-outline-sm" title="Download scan">
-                    📥 Download
+                    Download
                 </a>
                 <button type="button" class="btn-outline-sm" onclick="openUploadScanModal()" title="Upload a clearer or corrected copy">
-                    🔄 Replace Scan
+                    Replace Scan
                 </button>
                 <button type="button" class="btn-outline-sm" onclick="openScanHistoryModal(${complaintId})" title="View upload and replacement history">
-                    📜 Version History (${(complaint.scan_history && complaint.scan_history.length) || 1})
+                    Version History (${(complaint.scan_history && complaint.scan_history.length) || 1})
                 </button>
             `;
         }
@@ -4113,7 +4113,7 @@ function renderKp7Overview(complaint) {
         if (isPaanyaya) {
             contentWrap.innerHTML = `
                 <div style="padding: 12px; background: #fffbeb; border: 1px dashed #fde68a; border-radius: 8px; text-align: center; color: #92400e; font-size: 0.82rem;">
-                    ⚖️ <strong>KP Form 7 is On Hold</strong> during the informal Paanyaya dialogue phase. If the dispute is settled informally, KP Form 7 is never created.
+                    <strong>KP Form 7 is On Hold</strong> during the informal Paanyaya dialogue phase. If the dispute is settled informally, KP Form 7 is never created.
                 </div>
             `;
         } else {
@@ -4126,7 +4126,7 @@ function renderKp7Overview(complaint) {
         if (actionsWrap) {
             actionsWrap.innerHTML = `
                 <button type="button" class="btn-outline-sm" onclick="openUploadScanModal()">
-                    📤 Upload Handwritten Scan
+                    Upload Handwritten Scan
                 </button>
             `;
         }
@@ -4345,7 +4345,7 @@ async function openScanHistoryModal(complaintId) {
                     </div>
                     <div style="flex-shrink: 0;">
                         <a href="${downloadUrl}" class="btn-outline-sm" style="font-size: 0.78rem;" download title="Download this version">
-                            📥 Download
+                            Download
                         </a>
                     </div>
                 </div>
@@ -4521,7 +4521,7 @@ function renderCaseSummary(data) {
                         <span class="status-badge ${getStatusBadgeClass(h.status)}">${escapeHtml(h.status || 'Scheduled')}</span>
                     </div>
                     <div class="log-item-meta">
-                        <span>📅 ${escapeHtml(hDate)}</span> &bull; <span>📍 ${escapeHtml(h.venue || 'Barangay Hall')}</span>
+                        <span>${escapeHtml(hDate)}</span> &bull; <span>${escapeHtml(h.venue || 'Barangay Hall')}</span>
                     </div>
                 `;
                 hearingsContainer.appendChild(item);
@@ -4559,9 +4559,9 @@ window.renderCaseSummary = renderCaseSummary;
 function formatAiSummaryHtml(text) {
     if (!text) return '';
     let html = escapeHtml(text);
-    html = html.replace(/^###\s*(.+)$/gm, '<strong class="brief-heading">📌 $1</strong>');
-    html = html.replace(/^##\s*(.+)$/gm, '<strong class="brief-heading">📌 $1</strong>');
-    html = html.replace(/^([0-9]+\.\s+[A-Z\s&]+)$/gm, '<strong class="brief-heading">📌 $1</strong>');
+    html = html.replace(/^###\s*(.+)$/gm, '<strong class="brief-heading">$1</strong>');
+    html = html.replace(/^##\s*(.+)$/gm, '<strong class="brief-heading">$1</strong>');
+    html = html.replace(/^([0-9]+\.\s+[A-Z\s&]+)$/gm, '<strong class="brief-heading">$1</strong>');
     html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     html = html.replace(/^[\*\-\•]\s+(.+)$/gm, '• $1');
     return html;
@@ -4609,7 +4609,7 @@ async function generateAiCaseBrief() {
             outputContainer.innerHTML = `
                 <div class="ai-brief-content">
                     <div class="ai-brief-toolbar">
-                        <span class="ai-brief-tag">${result.is_fallback ? '📋 Structured Case Brief' : '⚡ Gemini AI Legal Briefing'}</span>
+                        <span class="ai-brief-tag">${result.is_fallback ? 'Structured Case Brief' : 'Gemini AI Legal Briefing'}</span>
                         <span class="ai-brief-timestamp">Generated on ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
                     <div class="ai-brief-body">${formatAiSummaryHtml(result.summary)}</div>
@@ -4842,7 +4842,7 @@ window.openPaanyayaOutcomeModal = function(outcomeType) {
         }
     } else {
         if (modalTitle) modalTitle.textContent = 'Escalate to Formal Docketing (KP Form 7 & 9)';
-        if (modalIcon) modalIcon.textContent = '⚡';
+        if (modalIcon) modalIcon.textContent = '';
         if (resolvedNotice) resolvedNotice.style.display = 'none';
         if (escalateNotice) escalateNotice.style.display = 'block';
         if (escalationSection) escalationSection.style.display = 'block';
@@ -4997,7 +4997,7 @@ window.renderPaanyayaDeliveryHistoryTable = function(stageType) {
             esc(att.service_datetime || '—');
 
         const proofBtn = att.proof_file_path ?
-            `<button type="button" class="btn-case-outline" style="padding: 3px 8px; font-size: 0.76rem;" onclick="openPaanyayaProofLightbox('${esc(att.proof_file_path)}')">📷 View</button>` :
+            `<button type="button" class="btn-case-outline" style="padding: 3px 8px; font-size: 0.76rem;" onclick="openPaanyayaProofLightbox('${esc(att.proof_file_path)}')">View</button>` :
             `<span style="color: #94a3b8; font-size: 0.78rem;">None</span>`;
 
         const remarksText = att.remarks || att.unsuccessful_reason || '—';
@@ -5027,7 +5027,7 @@ window.renderPaanyayaDeliveryHistoryTable = function(stageType) {
                 </td>
                 <td style="padding: 10px 12px; text-align: center;">
                     <button type="button" class="btn-case-outline" style="padding: 3px 8px; font-size: 0.76rem;" onclick="viewOfficersReturnDetails(${att.id})">
-                        📄 Return
+                        Return
                     </button>
                 </td>
                 <td style="padding: 10px 12px; color: #64748b; font-size: 0.78rem; white-space: nowrap;">
@@ -5035,7 +5035,7 @@ window.renderPaanyayaDeliveryHistoryTable = function(stageType) {
                 </td>
                 <td style="padding: 10px 12px; text-align: right; white-space: nowrap;">
                     <button type="button" class="btn-case-outline" style="padding: 3px 8px; font-size: 0.76rem;" onclick="openEditOfficersReturnModal(${att.id})" title="Permitted administrative correction">
-                        ✏️ Edit
+                        Edit
                     </button>
                 </td>
             </tr>
@@ -5256,7 +5256,7 @@ window.captureReturnGpsLocation = function() {
             if (latInput) latInput.value = pos.coords.latitude.toFixed(6);
             if (lngInput) lngInput.value = pos.coords.longitude.toFixed(6);
             if (gpsStatus) {
-                gpsStatus.textContent = `📍 Captured: ${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)} (Accuracy ±${Math.round(pos.coords.accuracy)}m)`;
+                gpsStatus.textContent = `Captured: ${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)} (Accuracy ±${Math.round(pos.coords.accuracy)}m)`;
                 gpsStatus.style.color = '#15803d';
             }
         },
@@ -5350,13 +5350,13 @@ window.viewOfficersReturnDetails = async function(returnId) {
             <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-top: 6px;">
                 <strong style="font-size: 0.82rem; color: #475569; display: block; margin-bottom: 6px;">Proof of Service Attachment:</strong>
                 <button type="button" class="btn-create" style="padding: 6px 14px; font-size: 0.82rem;" onclick="openPaanyayaProofLightbox('${esc(d.proof_file_path)}')">
-                    📷 View Attached Proof Document
+                    View Attached Proof Document
                 </button>
             </div>
         ` : '<span style="color: #94a3b8; font-size: 0.84rem;">No proof file attached</span>';
 
         const gpsSection = (d.latitude && d.longitude) ? `
-            <span>📍 ${esc(d.latitude)}, ${esc(d.longitude)} &bull; <a href="https://www.google.com/maps?q=${esc(d.latitude)},${esc(d.longitude)}" target="_blank" style="color: #2563eb; text-decoration: underline;">View on Map</a></span>
+            <span>${esc(d.latitude)}, ${esc(d.longitude)} &bull; <a href="https://www.google.com/maps?q=${esc(d.latitude)},${esc(d.longitude)}" target="_blank" style="color: #2563eb; text-decoration: underline;">View on Map</a></span>
         ` : '<span style="color: #94a3b8;">No GPS coordinates recorded</span>';
 
         let auditHtml = '';
@@ -5897,16 +5897,16 @@ window.viewPaanyayaMinutes = async function(stageType = 'Paanyaya 1') {
 
         let outcomeBadge = '<span class="outcome-badge outcome-other">None</span>';
         if (minutes.outcome === 'Settled') {
-            outcomeBadge = '<span class="outcome-badge outcome-delivered">✓ Nagkasundo / Amicably Settled</span>';
+            outcomeBadge = '<span class="outcome-badge outcome-delivered">Nagkasundo / Amicably Settled</span>';
         } else if (minutes.complainant_choice === 'Request_Paanyaya_2') {
-            outcomeBadge = '<span class="outcome-badge outcome-unavailable">⚡ Walang Kasunduan – Humiling ng 2nd Paanyaya</span>';
+            outcomeBadge = '<span class="outcome-badge outcome-unavailable">Walang Kasunduan – Humiling ng 2nd Paanyaya</span>';
         } else if (minutes.complainant_choice === 'Escalate_Mediation') {
-            outcomeBadge = '<span class="outcome-badge outcome-refused">⚡ Inakyat sa Pormal na Mediation</span>';
+            outcomeBadge = '<span class="outcome-badge outcome-refused">Inakyat sa Pormal na Mediation</span>';
         }
 
         let fileAttachmentHtml = '<span style="color: #94a3b8; font-style: italic;">Walang naka-attach na dokumento</span>';
         if (minutes.scanned_minutes_path) {
-            fileAttachmentHtml = `<a href="../../../${esc(minutes.scanned_minutes_path)}" target="_blank" style="color: #2563eb; text-decoration: underline; font-weight: 600;">📎 Tingnan ang Naka-attach na Katitikan / Larawan</a>`;
+            fileAttachmentHtml = `<a href="../../../${esc(minutes.scanned_minutes_path)}" target="_blank" style="color: #2563eb; text-decoration: underline; font-weight: 600;">Tingnan ang Naka-attach na Katitikan / Larawan</a>`;
         }
 
         body.innerHTML = `
@@ -5916,8 +5916,8 @@ window.viewPaanyayaMinutes = async function(stageType = 'Paanyaya 1') {
                     <span style="font-size: 0.78rem; color: #64748b;">Itinala noong: ${formatDateReadable(minutes.dialogue_date || minutes.created_at)}</span>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.83rem;">
-                    <div><strong>Nagpaanyaya:</strong> <span style="color: ${minutes.complainant_attended === 'Present' ? '#166534' : '#991b1b'};">${minutes.complainant_attended === 'Present' ? '✓ Dumalo' : '✗ Hindi Dumalo'}</span></div>
-                    <div><strong>Inanyayahan:</strong> <span style="color: ${minutes.respondent_attended === 'Present' ? '#166534' : '#991b1b'};">${minutes.respondent_attended === 'Present' ? '✓ Dumalo' : '✗ Hindi Dumalo'}</span></div>
+                    <div><strong>Nagpaanyaya:</strong> <span style="color: ${minutes.complainant_attended === 'Present' ? '#166534' : '#991b1b'};">${minutes.complainant_attended === 'Present' ? 'Dumalo' : 'Hindi Dumalo'}</span></div>
+                    <div><strong>Inanyayahan:</strong> <span style="color: ${minutes.respondent_attended === 'Present' ? '#166534' : '#991b1b'};">${minutes.respondent_attended === 'Present' ? 'Dumalo' : 'Hindi Dumalo'}</span></div>
                     <div><strong>Nagtala:</strong> <span>${esc(minutes.recorded_by_name || 'Opisyal ng Barangay')}</span></div>
                     <div><strong>Kinalabasan:</strong> ${outcomeBadge}</div>
                 </div>
@@ -6007,13 +6007,13 @@ window.submitReopenForCfa = async function() {
         } else {
             if (window.agapNotify) window.agapNotify(json.message || 'Unable to reopen case. Please try again.', 'error');
             else alert(json.message || 'Unable to reopen case. Please try again.');
-            if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.innerHTML = '⚠️ Reopen &amp; Issue CFA'; }
+            if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.innerHTML = 'Reopen &amp; Issue CFA'; }
             if (cancelBtn) cancelBtn.disabled = false;
         }
     } catch (err) {
         if (window.agapNotify) window.agapNotify('Network error. Please try again.', 'error');
         else alert('Network error. Please try again.');
-        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.innerHTML = '⚠️ Reopen &amp; Issue CFA'; }
+        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.innerHTML = 'Reopen &amp; Issue CFA'; }
         if (cancelBtn) cancelBtn.disabled = false;
     }
 };

@@ -58,5 +58,4 @@ include '../../layouts/header.php';
     AGAP <span aria-hidden="true">·</span> Automated Grievance Assistance Platform <span aria-hidden="true">·</span> © <?php echo date('Y'); ?>
 </footer>
 
-<script src="../../assets/js/login.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/login.js'); ?>"></script>
 <?php include '../../layouts/footer.php'; ?>

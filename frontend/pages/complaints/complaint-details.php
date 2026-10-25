@@ -325,7 +325,7 @@ include '../../layouts/header.php';
                 <div id="stage0Card" class="stage-card-item active" style="background: linear-gradient(135deg, #15803d, #166534); border-color: #86efac; color: #ffffff;">
                     <div class="stage-card-top">
                         <span class="stage-label-num" style="background: rgba(255,255,255,0.2); color: #ffffff;">PRELIMINARY STAGE &bull; PAANYAYA PROCESS (BEFORE MEDIATION)</span>
-                        <span id="stage0Icon" style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: rgba(255,255,255,0.25); font-size: 0.75rem;">✉️</span>
+                        <span id="stage0Icon" style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: rgba(255,255,255,0.25); font-size: 0.75rem;">0</span>
                     </div>
                     <h3 class="stage-card-title" style="font-size: 1.15rem; margin: 4px 0 4px; color: #ffffff;">Paanyaya (Preliminary Invitations &amp; Officer's Return Tracking)</h3>
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
@@ -435,22 +435,22 @@ include '../../layouts/header.php';
                     <!-- Action Buttons -->
                     <div class="paanyaya-card-actions">
                         <button type="button" class="btn-create" id="btnIssueP1" onclick="openIssuePaanyayaModal('Paanyaya 1')">
-                            ✉️ Issue Paanyaya 1
+                            Issue Paanyaya 1
                         </button>
                         <button type="button" class="btn-create" id="btnRecordReturnP1" onclick="openRecordReturnModal('Paanyaya 1')" style="background: #2563eb; border-color: #2563eb; display: none;">
-                            📝 Record Officer's Return
+                            Record Officer's Return
                         </button>
                         <button type="button" class="btn-create" id="btnRecordMinutesP1" onclick="openPaanyayaMinutesModal('Paanyaya 1')" style="background: #2563eb; border-color: #2563eb; display: none;">
-                            📝 Record Dialogue Minutes
+                            Record Dialogue Minutes
                         </button>
                         <button type="button" class="btn-sess-white" id="btnViewMinutesP1" onclick="viewPaanyayaMinutes('Paanyaya 1')" style="display: none;">
-                            📄 View Dialogue Minutes
+                            View Dialogue Minutes
                         </button>
                         <button type="button" class="btn-sess-indigo" id="btnPreviewP1" onclick="previewPaanyayaStageLetter('Paanyaya 1')" style="display: none;">
-                            👁️ Preview Letter
+                            Preview Letter
                         </button>
                         <button type="button" class="btn-create" id="btnReviewP1" onclick="openPaanyayaReviewModal('Paanyaya 1')" style="background: #dc2626; border-color: #dc2626; display: none;">
-                            ⚖️ Review Case
+                            Review Case
                         </button>
                     </div>
                 </div>
@@ -468,7 +468,7 @@ include '../../layouts/header.php';
 
                         <!-- Locked State Alert Banner (when Paanyaya 1 is still incomplete) -->
                         <div id="p2LockedNotice" style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 14px; margin-bottom: 16px; font-size: 0.85rem; color: #64748b; display: flex; align-items: center; gap: 10px;">
-                            <span style="font-size: 1.3rem;">🔒</span>
+                            
                             <span>Paanyaya 2 is locked. It unlocks ONLY if Paanyaya 1 concludes with 'No Agreement' and the complainant requests a second invitation.</span>
                         </div>
 
@@ -528,22 +528,22 @@ include '../../layouts/header.php';
                     <!-- Action Buttons -->
                     <div class="paanyaya-card-actions">
                         <button type="button" class="btn-create" id="btnIssueP2" onclick="openIssuePaanyayaModal('Paanyaya 2')" disabled style="opacity: 0.55; cursor: not-allowed;">
-                            ✉️ Issue Paanyaya 2
+                            Issue Paanyaya 2
                         </button>
                         <button type="button" class="btn-create" id="btnRecordReturnP2" onclick="openRecordReturnModal('Paanyaya 2')" style="background: #2563eb; border-color: #2563eb; display: none;">
-                            📝 Record Officer's Return
+                            Record Officer's Return
                         </button>
                         <button type="button" class="btn-create" id="btnRecordMinutesP2" onclick="openPaanyayaMinutesModal('Paanyaya 2')" style="background: #2563eb; border-color: #2563eb; display: none;">
-                            📝 Record Dialogue Minutes
+                            Record Dialogue Minutes
                         </button>
                         <button type="button" class="btn-sess-white" id="btnViewMinutesP2" onclick="viewPaanyayaMinutes('Paanyaya 2')" style="display: none;">
-                            📄 View Dialogue Minutes
+                            View Dialogue Minutes
                         </button>
                         <button type="button" class="btn-sess-indigo" id="btnPreviewP2" onclick="previewPaanyayaStageLetter('Paanyaya 2')" style="display: none;">
-                            👁️ Preview Letter
+                            Preview Letter
                         </button>
                         <button type="button" class="btn-create" id="btnReviewP2" onclick="openPaanyayaReviewModal('Paanyaya 2')" style="background: #dc2626; border-color: #dc2626; display: none;">
-                            ⚖️ Review Case
+                            Review Case
                         </button>
                     </div>
                 </div>
@@ -561,7 +561,7 @@ include '../../layouts/header.php';
                 <div id="stage1Card" class="stage-card-item active">
                     <div class="stage-card-top">
                         <span class="stage-label-num">STAGE 1 &bull; KATARUNGANG PAMBARANGAY</span>
-                        <span id="stage1Icon" style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: rgba(255,255,255,0.25); font-size: 0.75rem;">✓</span>
+                        <span id="stage1Icon" style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: rgba(255,255,255,0.25); font-size: 0.75rem;">1</span>
                     </div>
                     <h3 class="stage-card-title" style="font-size: 1.15rem; margin: 4px 0 4px;">Punong Barangay Mediation</h3>
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
@@ -603,7 +603,7 @@ include '../../layouts/header.php';
                     <div class="session-kpi-item">
                         <span class="kpi-label">Saved Minutes</span>
                         <div class="kpi-val-row">
-                            <span id="savedMinutesIcon">⚠️</span>
+                            <span id="savedMinutesIcon"></span>
                             <span id="savedMinutesText">Not Recorded Yet</span>
                         </div>
                     </div>
@@ -666,7 +666,7 @@ include '../../layouts/header.php';
                 <div id="stage2Card" class="stage-card-item locked">
                     <div class="stage-card-top">
                         <span class="stage-label-num">STAGE 2 &bull; KATARUNGANG PAMBARANGAY</span>
-                        <span id="stage2Icon" style="display: inline-flex; align-items: center; justify-content: center; font-size: 0.85rem;">🔒</span>
+                        <span id="stage2Icon" style="display: inline-flex; align-items: center; justify-content: center; font-size: 0.85rem;">2</span>
                     </div>
                     <h3 class="stage-card-title" style="font-size: 1.15rem; margin: 4px 0 4px;">Pangkat Conciliation</h3>
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
@@ -725,7 +725,7 @@ include '../../layouts/header.php';
                 <div id="stage3Card" class="stage-card-item pending">
                     <div class="stage-card-top">
                         <span class="stage-label-num">STAGE 3 &bull; KATARUNGANG PAMBARANGAY</span>
-                        <span id="stage3Icon" style="display: inline-flex; align-items: center; justify-content: center; font-size: 0.85rem;">🔒</span>
+                        <span id="stage3Icon" style="display: inline-flex; align-items: center; justify-content: center; font-size: 0.85rem;">3</span>
                     </div>
                     <h3 class="stage-card-title" style="font-size: 1.15rem; margin: 4px 0 4px;">Arbitration / Court Referral</h3>
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
@@ -855,7 +855,7 @@ include '../../layouts/header.php';
                     <div id="summonVisualDatePickerContainer" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-top: 6px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.78rem; flex-wrap: wrap; gap: 6px;">
                             <span style="font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.03em; font-size: 0.74rem;">
-                                📅 Available Mediation Days (Max 8 Hearings/Day):
+                                Available Mediation Days (Max 8 Hearings/Day):
                             </span>
                             <div style="display: flex; gap: 10px; font-size: 0.72rem; flex-wrap: wrap;">
                                 <span style="display: inline-flex; align-items: center; gap: 4px; color: #166534;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e;"></span> Available</span>
@@ -877,7 +877,7 @@ include '../../layouts/header.php';
                 <!-- Existing Mediations on selected date -->
                 <div id="summonDaySchedulesWrap" style="display: none; margin-bottom: 14px; padding: 10px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.84rem;">
                     <div style="font-weight: 600; color: #334155; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
-                        <span>📅 Scheduled Mediations on this Date:</span>
+                        <span>Scheduled Mediations on this Date:</span>
                         <span id="summonDaySlotsCount" style="font-size: 0.72rem; background: #e2e8f0; color: #475569; padding: 2px 7px; border-radius: 9999px; font-weight: 600;">0</span>
                     </div>
                     <div id="summonDaySlotsList" style="color: #64748b; font-size: 0.82rem; line-height: 1.5;">
@@ -948,7 +948,7 @@ include '../../layouts/header.php';
     <div class="modal-content" style="max-width: 1350px; width: 96vw; height: calc(100vh - 24px); max-height: calc(100vh - 24px); display: flex; flex-direction: column; padding: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 25px 35px -5px rgba(0, 0, 0, 0.35); background: #ffffff;">
         <div class="modal-header" style="padding: 14px 24px; margin-bottom: 0; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #ffffff; flex-shrink: 0;">
             <div style="display: flex; align-items: center; gap: 10px;">
-                <span style="font-size: 1.3rem;">⚖️</span>
+                
                 <div>
                     <h2 id="kp7ModalHeading" style="font-size: 1.15rem; margin: 0; color: #0f172a; font-weight: 700;">Pormularyo ng KP Blg. 7: Reklamo (Formal Complaint)</h2>
                     <p style="margin: 2px 0 0; font-size: 0.78rem; color: #64748b;">Barangay Tumana Lupong Tagapamayapa Official Katarungang Pambarangay Form</p>
@@ -965,7 +965,7 @@ include '../../layouts/header.php';
             </div>
             <div style="display: flex; gap: 8px; align-items: center;">
                 <button type="button" class="btn-create" onclick="printKp7Iframe()" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; font-weight: 600;">
-                    🖨️ Print Form
+                    Print Form
                 </button>
                 <button type="button" class="btn-secondary" onclick="closeKp7DigitalPreviewModal()">Close</button>
             </div>
@@ -978,7 +978,7 @@ include '../../layouts/header.php';
     <div class="modal-content" style="max-width: 1350px; width: 96vw; height: calc(100vh - 24px); max-height: calc(100vh - 24px); display: flex; flex-direction: column; padding: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 25px 35px -5px rgba(0, 0, 0, 0.35); background: #ffffff;">
         <div class="modal-header" style="padding: 14px 24px; margin-bottom: 0; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #ffffff; flex-shrink: 0;">
             <div style="display: flex; align-items: center; gap: 10px;">
-                <span id="kpDocModalIcon" style="font-size: 1.3rem;">📄</span>
+                <span id="kpDocModalIcon" style="font-size: 1.3rem;"></span>
                 <div>
                     <h2 id="kpDocModalHeading" style="font-size: 1.15rem; margin: 0; color: #0f172a; font-weight: 700;">KP Form Document Preview</h2>
                     <p id="kpDocModalSub" style="margin: 2px 0 0; font-size: 0.78rem; color: #64748b;">Barangay Tumana Lupong Tagapamayapa Official Katarungang Pambarangay Form</p>
@@ -986,7 +986,7 @@ include '../../layouts/header.php';
             </div>
             <div style="display: flex; align-items: center; gap: 8px;">
                 <button type="button" class="btn-create" onclick="printKpDocIframe()" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; font-weight: 600; font-size: 0.85rem;">
-                    🖨️ Print Form
+                    Print Form
                 </button>
                 <a id="btnDownloadKpDocPdf" href="#" class="btn-pdf-chip" download style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; text-decoration: none; font-size: 0.85rem;">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
@@ -1004,7 +1004,7 @@ include '../../layouts/header.php';
             </div>
             <div style="display: flex; gap: 8px; align-items: center;">
                 <button type="button" class="btn-create" onclick="printKpDocIframe()" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; font-weight: 600;">
-                    🖨️ Print Form
+                    Print Form
                 </button>
                 <button type="button" class="btn-secondary" onclick="closeKpDocumentPreviewModal()">Close</button>
             </div>
@@ -1017,7 +1017,7 @@ include '../../layouts/header.php';
     <div class="modal-content" style="max-width: 520px; padding: 24px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);">
         <div class="modal-header" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 0;">
             <div style="display: flex; align-items: center; gap: 10px;">
-                <span style="font-size: 1.3rem;">📤</span>
+                
                 <h2 id="uploadScanModalTitle" style="font-size: 1.15rem; font-weight: 700; color: #0f172a; margin: 0;">Upload Handwritten KP Form 7</h2>
             </div>
             <button type="button" class="close-btn" onclick="closeUploadScanModal()">&times;</button>
@@ -1050,7 +1050,7 @@ include '../../layouts/header.php';
     <div class="modal-content" style="max-width: 680px; max-height: calc(100vh - 60px); display: flex; flex-direction: column; padding: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);">
         <div class="modal-header" style="padding: 16px 24px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #ffffff;">
             <div style="display: flex; align-items: center; gap: 10px;">
-                <span style="font-size: 1.3rem;">📜</span>
+                
                 <h2 id="historyModalTitle" style="font-size: 1.15rem; font-weight: 700; color: #0f172a; margin: 0;">KP Form 7 Scan Version History</h2>
             </div>
             <button type="button" class="close-btn" onclick="closeScanHistoryModal()">&times;</button>
@@ -1069,7 +1069,7 @@ include '../../layouts/header.php';
     <div class="modal-content" style="max-width: 900px; width: 95%; height: 90vh; display: flex; flex-direction: column; padding: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);">
         <div class="modal-header" style="padding: 14px 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #ffffff;">
             <div style="display: flex; align-items: center; gap: 10px;">
-                <span style="font-size: 1.3rem;">✉️</span>
+                
                 <div>
                     <h2 id="paanyayaModalTitle" style="font-size: 1.15rem; font-weight: 700; color: #0f172a; margin: 0;">Official Paanyaya (Invitation Letter) Preview</h2>
 
@@ -1077,7 +1077,7 @@ include '../../layouts/header.php';
             </div>
             <div style="display: flex; align-items: center; gap: 10px;">
                 <button type="button" class="btn-sm btn-outline-sm" onclick="printPaanyayaIframe()" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px;">
-                    🖨️ Print
+                    Print
                 </button>
                 <button type="button" class="close-btn" onclick="closePaanyayaPreviewModal()">&times;</button>
             </div>
@@ -1087,7 +1087,7 @@ include '../../layouts/header.php';
         </div>
         <div class="modal-actions" style="padding: 12px 20px; border-top: 1px solid #e2e8f0; background: #f8fafc; margin-top: 0; display: flex; justify-content: flex-end; align-items: center; gap: 10px;">
                 <button type="button" class="btn-create" id="btnFooterToOfficersReturn" onclick="proceedToOfficersReturnFromPreview()" style="background: #2563eb; border-color: #2563eb; padding: 8px 18px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(37,99,235,0.25);">
-                    📝 Proceed to Officer's Return &rarr;
+                    Proceed to Officer's Return &rarr;
                 </button>
         </div>
     </div>
@@ -1098,7 +1098,7 @@ include '../../layouts/header.php';
     <div class="modal-content" style="max-width: 560px; padding: 24px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);">
         <div class="modal-header" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 0;">
             <div style="display: flex; align-items: center; gap: 10px;">
-                <span style="font-size: 1.3rem;">✉️</span>
+                
                 <h2 id="scheduleModalTitle" style="font-size: 1.15rem; font-weight: 700; color: #0f172a; margin: 0;">Schedule Paanyaya Session</h2>
             </div>
             <button type="button" class="close-btn" onclick="closePaanyayaScheduleModal()">&times;</button>
@@ -1146,7 +1146,7 @@ include '../../layouts/header.php';
     <div class="modal-content" style="max-width: 580px; padding: 24px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);">
         <div class="modal-header" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 0;">
             <div style="display: flex; align-items: center; gap: 10px;">
-                <span id="outcomeModalIcon" style="font-size: 1.3rem;">⚡</span>
+                <span id="outcomeModalIcon" style="font-size: 1.3rem;"></span>
                 <h2 id="outcomeModalTitle" style="font-size: 1.15rem; font-weight: 700; color: #0f172a; margin: 0;">Record Paanyaya Outcome</h2>
             </div>
             <button type="button" class="close-btn" onclick="closePaanyayaOutcomeModal()">&times;</button>
@@ -1157,12 +1157,12 @@ include '../../layouts/header.php';
             <input type="hidden" id="outcomeActionType" name="outcome" value="Resolved">
 
             <div id="outcomeResolvedNotice" style="display:none; margin-bottom: 16px; background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 12px 14px; font-size: 0.88rem; color: #166534;">
-                <strong>✓ Informal Amicable Resolution:</strong>
+                <strong>Informal Amicable Resolution:</strong>
                 <p style="margin: 4px 0 0;">Parties reached an understanding during informal dialogue. The complaint will be closed without starting formal statutory court deadlines.</p>
             </div>
 
             <div id="outcomeEscalateNotice" style="display:none; margin-bottom: 16px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 14px; font-size: 0.88rem; color: #991b1b;">
-                <strong>⚡ Escalate to Formal Docketing (KP Form 7 &amp; 9):</strong>
+                <strong>Escalate to Formal Docketing (KP Form 7 &amp; 9):</strong>
                 <p style="margin: 4px 0 0;">Dialogue failed or respondent failed to attend. The system will assign an official Case Number, set stage to Mediation, and generate KP Form 7 Complaint and KP Form 9 Summons.</p>
             </div>
 
@@ -1210,7 +1210,7 @@ include '../../layouts/header.php';
     <div class="modal-content" style="max-width: 640px; padding: 24px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15); max-height: 90vh; overflow-y: auto;">
         <div class="modal-header" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 0;">
             <div style="display: flex; align-items: center; gap: 10px;">
-                <span style="font-size: 1.4rem;">📝</span>
+                
                 <div>
                     <h2 id="minutesModalHeading" style="font-size: 1.18rem; font-weight: 800; color: #0f172a; margin: 0;">Record Paanyaya Dialogue Minutes</h2>
                     <span id="minutesModalSub" style="font-size: 0.8rem; color: #64748b;">Salaysay at Napag-usapan sa Harapan ng Barangay</span>
@@ -1237,11 +1237,11 @@ include '../../layouts/header.php';
                         <div style="display: flex; gap: 12px; font-size: 0.85rem;">
                             <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
                                 <input type="radio" name="complainant_attended" value="Present" checked>
-                                <span style="color: #166534; font-weight: 600;">✓ Dumalo (Present)</span>
+                                <span style="color: #166534; font-weight: 600;">Dumalo (Present)</span>
                             </label>
                             <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
                                 <input type="radio" name="complainant_attended" value="Absent">
-                                <span style="color: #991b1b;">✗ Hindi Dumalo</span>
+                                <span style="color: #991b1b;">Hindi Dumalo</span>
                             </label>
                         </div>
                     </div>
@@ -1250,11 +1250,11 @@ include '../../layouts/header.php';
                         <div style="display: flex; gap: 12px; font-size: 0.85rem;">
                             <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
                                 <input type="radio" name="respondent_attended" value="Present" checked onchange="handleMinutesAttendanceChange()">
-                                <span style="color: #166534; font-weight: 600;">✓ Dumalo (Present)</span>
+                                <span style="color: #166534; font-weight: 600;">Dumalo (Present)</span>
                             </label>
                             <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
                                 <input type="radio" name="respondent_attended" value="Absent" onchange="handleMinutesAttendanceChange()">
-                                <span style="color: #991b1b;">✗ Hindi Dumalo</span>
+                                <span style="color: #991b1b;">Hindi Dumalo</span>
                             </label>
                         </div>
                     </div>
@@ -1287,7 +1287,7 @@ include '../../layouts/header.php';
                     <label id="optMinutesSettledWrap" style="display: flex; align-items: flex-start; gap: 8px; background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 8px; padding: 10px 12px; cursor: pointer;">
                         <input type="radio" name="outcome" value="Settled" checked onchange="toggleMinutesOutcomeViews()" style="margin-top: 3px;">
                         <div>
-                            <strong style="color: #166534; font-size: 0.88rem;">✓ Nagkasundo / Amicably Settled (Informal Settlement)</strong>
+                            <strong style="color: #166534; font-size: 0.88rem;">Nagkasundo / Amicably Settled (Informal Settlement)</strong>
                             <p style="margin: 2px 0 0; font-size: 0.78rem; color: #166534;">Nalutas ang usapin sa impormal na pag-uusap. Isasara ang complaint nang hindi na kailangang i-docket sa pormal na korte (LTIA performance win).</p>
                         </div>
                     </label>
@@ -1295,7 +1295,7 @@ include '../../layouts/header.php';
                     <label id="optMinutesNoAgreementWrap" style="display: flex; align-items: flex-start; gap: 8px; background: #fef2f2; border: 1.5px solid #fecaca; border-radius: 8px; padding: 10px 12px; cursor: pointer;">
                         <input type="radio" name="outcome" value="No_Agreement" onchange="toggleMinutesOutcomeViews()" style="margin-top: 3px;">
                         <div>
-                            <strong style="color: #991b1b; font-size: 0.88rem;">⚡ Walang Kasunduan / No Agreement Reached (or Respondent No-Show)</strong>
+                            <strong style="color: #991b1b; font-size: 0.88rem;">Walang Kasunduan / No Agreement Reached (or Respondent No-Show)</strong>
                             <p style="margin: 2px 0 0; font-size: 0.78rem; color: #991b1b;">Hindi nagkasundo ang mga panig, tumanggi ang inanyayahan, o hindi sumipot. Piliin ang desisyon ng nagrereklamo sa ibaba.</p>
                         </div>
                     </label>
@@ -1364,7 +1364,7 @@ include '../../layouts/header.php';
     <div class="modal-content" style="max-width: 600px; padding: 24px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15); max-height: 90vh; overflow-y: auto;">
         <div class="modal-header" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 0;">
             <div style="display: flex; align-items: center; gap: 10px;">
-                <span style="font-size: 1.4rem;">📄</span>
+                
                 <div>
                     <h2 id="viewMinutesModalHeading" style="font-size: 1.18rem; font-weight: 800; color: #0f172a; margin: 0;">Recorded Dialogue Minutes</h2>
                     <span id="viewMinutesModalSub" style="font-size: 0.8rem; color: #64748b;">Katitikan ng Impormal na Pag-uusap</span>
@@ -1390,7 +1390,7 @@ include '../../layouts/header.php';
     <div class="modal-content" style="max-width: 580px; padding: 24px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);">
         <div class="modal-header" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 0;">
             <div style="display: flex; align-items: center; gap: 10px;">
-                <span style="font-size: 1.4rem;">✉️</span>
+                
                 <div>
                     <h2 id="issueStageModalHeading" style="font-size: 1.18rem; font-weight: 800; color: #0f172a; margin: 0;">Issue Paanyaya 1</h2>
                     <span id="issueStageModalSub" style="font-size: 0.8rem; color: #64748b;">First Preliminary Invitation (Informal Dialogue)</span>
@@ -1456,7 +1456,7 @@ include '../../layouts/header.php';
     <div class="modal-content" style="max-width: 620px; padding: 24px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15); max-height: calc(100vh - 40px); overflow-y: auto;">
         <div class="modal-header" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 0;">
             <div style="display: flex; align-items: center; gap: 10px;">
-                <span style="font-size: 1.4rem;">📝</span>
+                
                 <div>
                     <h2 id="rorModalHeading" style="font-size: 1.18rem; font-weight: 800; color: #0f172a; margin: 0;">Record Officer's Return</h2>
                     <div style="display: flex; gap: 6px; align-items: center; margin-top: 3px;">
@@ -1503,12 +1503,12 @@ include '../../layouts/header.php';
                 <label for="rorDeliveryOutcome" style="font-weight: 600; font-size: 0.84rem;">Delivery Outcome <span class="required-mark">*</span></label>
                 <select id="rorDeliveryOutcome" name="delivery_outcome" required onchange="handleRorOutcomeChange()" style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
                     <option value="">-- Select Actual Delivery Outcome --</option>
-                    <option value="Successfully delivered">✓ Successfully delivered</option>
-                    <option value="Recipient unavailable">⚠️ Recipient unavailable</option>
-                    <option value="Recipient refused to receive">⛔ Recipient refused to receive</option>
-                    <option value="Respondent not found at the address">❓ Respondent not found at the address</option>
-                    <option value="Incorrect or incomplete address">📍 Incorrect or incomplete address</option>
-                    <option value="Other reason">📋 Other reason</option>
+                    <option value="Successfully delivered">Successfully delivered</option>
+                    <option value="Recipient unavailable">Recipient unavailable</option>
+                    <option value="Recipient refused to receive">Recipient refused to receive</option>
+                    <option value="Respondent not found at the address">Respondent not found at the address</option>
+                    <option value="Incorrect or incomplete address">Incorrect or incomplete address</option>
+                    <option value="Other reason">Other reason</option>
                 </select>
             </div>
 
@@ -1534,9 +1534,9 @@ include '../../layouts/header.php';
             <!-- 8. GPS Coordinates & Recorded Service Location -->
             <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                    <span style="font-size: 0.8rem; font-weight: 700; color: #0f172a;">📍 GPS Location Coordinates</span>
+                    <span style="font-size: 0.8rem; font-weight: 700; color: #0f172a;">GPS Location Coordinates</span>
                     <button type="button" class="btn-sm btn-case-outline" onclick="captureReturnGpsLocation()" style="padding: 3px 10px; font-size: 0.76rem;">
-                        📍 Capture Current Location
+                        Capture Current Location
                     </button>
                 </div>
                 <div class="form-row-2">
@@ -1571,7 +1571,7 @@ include '../../layouts/header.php';
     <div class="modal-content" style="max-width: 660px; padding: 24px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15); max-height: calc(100vh - 40px); overflow-y: auto;">
         <div class="modal-header" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 0;">
             <div style="display: flex; align-items: center; gap: 10px;">
-                <span style="font-size: 1.4rem;">📄</span>
+                
                 <div>
                     <h2 id="vorModalHeading" style="font-size: 1.18rem; font-weight: 800; color: #0f172a; margin: 0;">Officer's Return Details</h2>
                     <span id="vorModalSub" style="font-size: 0.8rem; color: #64748b;">Official Service Attempt Record</span>
@@ -1586,7 +1586,7 @@ include '../../layouts/header.php';
 
         <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; padding-top: 14px; border-top: 1px solid #e2e8f0;">
             <button type="button" class="btn-case-outline" id="btnVorEditCorrection" style="display: none;" onclick="openEditFromViewReturn()">
-                ✏️ Edit Correction
+                Edit Correction
             </button>
             <button type="button" class="btn-secondary" onclick="closeViewOfficersReturnModal()">Close</button>
         </div>
@@ -1598,7 +1598,7 @@ include '../../layouts/header.php';
     <div class="modal-content" style="max-width: 560px; padding: 24px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);">
         <div class="modal-header" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 0;">
             <div style="display: flex; align-items: center; gap: 10px;">
-                <span style="font-size: 1.3rem;">✏️</span>
+                
                 <h2 id="eorModalHeading" style="font-size: 1.15rem; font-weight: 700; color: #0f172a; margin: 0;">Edit Officer's Return (Permitted Correction)</h2>
             </div>
             <button type="button" class="close-btn" onclick="closeEditOfficersReturnModal()">&times;</button>
@@ -1645,7 +1645,7 @@ include '../../layouts/header.php';
     <div class="modal-content" style="max-width: 580px; padding: 24px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);">
         <div class="modal-header" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 0;">
             <div style="display: flex; align-items: center; gap: 10px;">
-                <span style="font-size: 1.4rem;">⚖️</span>
+                
                 <div>
                     <h2 id="rpmModalHeading" style="font-size: 1.18rem; font-weight: 800; color: #0f172a; margin: 0;">Authorized Lupon Review Decision</h2>
                     <span id="rpmModalSub" style="font-size: 0.8rem; color: #64748b;">Review for Paanyaya 1</span>
@@ -1659,7 +1659,7 @@ include '../../layouts/header.php';
             <input type="hidden" id="rpmStageType" name="stage_type" value="Paanyaya 1">
 
             <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; font-size: 0.86rem; color: #991b1b; line-height: 1.45;">
-                <strong>⚠️ Safeguard Notice:</strong> All six (6) delivery attempts have been exhausted without successful service. The system does not automatically advance or issue summons. An authorized Lupon officer must review and decide the next procedural action.
+                <strong>Safeguard Notice:</strong> All six (6) delivery attempts have been exhausted without successful service. The system does not automatically advance or issue summons. An authorized Lupon officer must review and decide the next procedural action.
             </div>
 
             <div class="form-group" style="margin-bottom: 14px;">
@@ -1699,7 +1699,7 @@ include '../../layouts/header.php';
             <div id="plbPdfContainer" style="display: none; padding: 20px; color: #ffffff;">
                 <p>This proof is a PDF document.</p>
                 <a id="plbPdfLink" href="#" target="_blank" class="btn-create" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px;">
-                    📄 Open PDF in New Window
+                    Open PDF in New Window
                 </a>
             </div>
         </div>
@@ -1718,7 +1718,7 @@ include '../../layouts/header.php';
 <div id="modalReopenForCfa" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(15,23,42,0.55); align-items:center; justify-content:center;">
     <div style="background:#fff; border-radius:12px; max-width:520px; width:92%; padding:28px 28px 22px; box-shadow:0 20px 60px rgba(0,0,0,0.2);">
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
-            <span style="background:#fee2e2; color:#dc2626; border-radius:8px; padding:6px 9px; font-size:1.1rem;">⚠️</span>
+            
             <div>
                 <h3 style="margin:0; font-size:1rem; color:#0f172a; font-weight:800;">Reopen Case for CFA Issuance</h3>
                 <p style="margin:2px 0 0; font-size:0.78rem; color:#64748b;">RA 7160 Sec. 417 — Non-compliance with Amicable Settlement</p>
@@ -1737,7 +1737,7 @@ include '../../layouts/header.php';
                 style="width:100%; box-sizing:border-box; padding:9px 12px; border:1px solid #e2e8f0; border-radius:7px; font-size:0.84rem; color:#0f172a; resize:vertical; font-family:inherit;"></textarea>
         </div>
         <p style="font-size:0.78rem; color:#94a3b8; margin:0 0 18px;">
-            ⚠️ This action is <strong>irreversible</strong>. Ensure all facts of non-compliance are accurately documented before proceeding.
+            This action is <strong>irreversible</strong>. Ensure all facts of non-compliance are accurately documented before proceeding.
         </p>
         <div style="display:flex; justify-content:flex-end; gap:10px;">
             <button type="button" class="btn-secondary" onclick="closeReopenCfaModal()" id="btnReopenCfaCancel">Cancel</button>
@@ -1745,7 +1745,7 @@ include '../../layouts/header.php';
                 onclick="submitReopenForCfa()"
                 style="background:#dc2626; border-color:#dc2626;"
             >
-                ⚠️ Reopen &amp; Issue CFA
+                Reopen &amp; Issue CFA
             </button>
         </div>
     </div>

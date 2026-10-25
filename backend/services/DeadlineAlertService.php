@@ -43,19 +43,19 @@ class DeadlineAlertService
             $severity = $isOverdue ? 'urgent' : 'warning';
 
             if ($deadline['deadline_type'] === 'Pangkat Convening') {
-                $title = $isOverdue ? '⚠️ Pangkat Convening Overdue' : '⏰ Pangkat Convening Due Soon';
+                $title = $isOverdue ? 'Pangkat Convening Overdue' : 'Pangkat Convening Due Soon';
                 $urgency = $isOverdue ? 'OVERDUE' : 'due within 3 days';
                 $message = sprintf('Case %s: Under RA 7160 Sec. 410(c), Pangkat must convene no later than 3 days from constitution. Convening deadline is %s (%s). Schedule the first conciliation session immediately.', $caseNumber, $urgency, $dueDateFmt);
             } elseif ($deadline['deadline_type'] === '15-Day Mediation Deadline' || $deadline['deadline_type'] === 'Mediation Period') {
-                $title = $isOverdue ? '⚠️ 15-Day Mediation Deadline Overdue' : '⏰ 15-Day Mediation Deadline Due Soon';
+                $title = $isOverdue ? '15-Day Mediation Deadline Overdue' : '15-Day Mediation Deadline Due Soon';
                 $urgency = $isOverdue ? 'OVERDUE' : 'due within 3 days';
                 $message = sprintf('Case %s: Under RA 7160 Sec. 410(b), the 15-day statutory mediation period is %s (%s). Convene Pangkat Tagapagkasundo or execute amicable settlement.', $caseNumber, $urgency, $dueDateFmt);
             } elseif (str_contains($deadline['deadline_type'], 'Summon')) {
-                $title = $isOverdue ? '⚠️ Summons Delivery Overdue' : '⏰ Summons Delivery SLA Due Soon';
+                $title = $isOverdue ? 'Summons Delivery Overdue' : 'Summons Delivery SLA Due Soon';
                 $days = abs((int) $deadline['days_diff']);
                 $message = sprintf('Case %s: Summons service is %s (%s). Please verify service status.', $caseNumber, $isOverdue ? "{$days} day(s) overdue" : "due soon", $dueDateFmt);
             } else {
-                $title = $isOverdue ? "⚠️ {$deadline['deadline_type']} Overdue" : "⏰ {$deadline['deadline_type']} Due Soon";
+                $title = $isOverdue ? "{$deadline['deadline_type']} Overdue" : "{$deadline['deadline_type']} Due Soon";
                 $message = sprintf('%s for %s is %s (%s).', $deadline['deadline_type'], $caseNumber, $isOverdue ? 'overdue' : 'due within 3 days', $dueDateFmt);
             }
 
@@ -120,7 +120,7 @@ class DeadlineAlertService
             // Check if warning already sent within 24 hours to avoid spamming
             $chk = $this->conn->prepare("
                 SELECT COUNT(*) FROM notifications
-                WHERE case_id = ? AND title = '⚠️ Summons Delivery Warning' AND created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)
+                WHERE case_id = ? AND (title = 'Summons Delivery Warning' OR title = '⚠️ Summons Delivery Warning') AND created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)
             ");
             $chk->execute([$cId]);
             if ((int) $chk->fetchColumn() > 0) {

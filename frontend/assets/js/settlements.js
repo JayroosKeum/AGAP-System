@@ -134,11 +134,11 @@ function renderSettlementRow(item) {
     // Repudiation badge
     let repBadge = '';
     if (item.repudiation_status === 'Repudiated') {
-        repBadge = `<span class="badge" style="background:#fee2e2; color:#b91c1c; font-weight:700;">✕ Repudiated</span>`;
+        repBadge = `<span class="badge" style="background:#fee2e2; color:#b91c1c; font-weight:700;">Repudiated</span>`;
     } else if (item.repudiation_status === 'Within Repudiation Period' && daysLeft >= 0) {
-        repBadge = `<span class="badge" style="background:#dbeafe; color:#1e40af; font-weight:700;" title="Sec. 418 window closes in ${daysLeft} days">⏳ ${daysLeft}d left (10-Day Window)</span>`;
+        repBadge = `<span class="badge" style="background:#dbeafe; color:#1e40af; font-weight:700;" title="Sec. 418 window closes in ${daysLeft} days">${daysLeft}d left (10-Day Window)</span>`;
     } else {
-        repBadge = `<span class="badge" style="background:#f1f5f9; color:#475569; font-weight:600;">✓ Enforceable / Expired</span>`;
+        repBadge = `<span class="badge" style="background:#f1f5f9; color:#475569; font-weight:600;">Enforceable / Expired</span>`;
     }
 
     // Milestones progress
@@ -152,7 +152,7 @@ function renderSettlementRow(item) {
     if (Number(item.certified_copies_issued) === 1) milestonesScore++;
 
     const milestoneBadge = milestonesScore === 7
-        ? `<span class="badge" style="background:#dcfce7; color:#15803d; font-weight:700;">✓ All 7 Verified</span>`
+        ? `<span class="badge" style="background:#dcfce7; color:#15803d; font-weight:700;">All 7 Verified</span>`
         : `<span class="badge" style="background:#fef9c3; color:#a16207; font-weight:700;">${milestonesScore}/7 Complete</span>`;
 
     // Compliance Badge
@@ -484,7 +484,7 @@ async function viewSettlementDetails(id) {
                     <div style="font-size:0.84rem; color:#1d4ed8; margin-top:4px;">
                         Settlement Date: ${formatDate(item.settlement_date)}<br>
                         Repudiation Deadline: ${formatDate(item.repudiation_deadline)}
-                        ${Number(item.repudiation_days_left) >= 0 ? `<br><strong>⏳ ${Number(item.repudiation_days_left)} calendar days remaining to repudiate</strong>` : '<br><strong>✓ Repudiation window has elapsed. Enforceable by execution.</strong>'}
+                        ${Number(item.repudiation_days_left) >= 0 ? `<br><strong>${Number(item.repudiation_days_left)} calendar days remaining to repudiate</strong>` : '<br><strong>Repudiation window has elapsed. Enforceable by execution.</strong>'}
                     </div>
                 </div>
             </div>
@@ -499,13 +499,13 @@ async function viewSettlementDetails(id) {
             <div style="margin-bottom:16px;">
                 <h4 style="margin:0 0 6px; font-size:0.9rem; color:#1e293b;">Milestone Verifications (Section H Checklist)</h4>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; font-size:0.82rem; color:#334155;">
-                    <div>${Number(item.terms_read_to_parties) === 1 ? '✅' : '❌'} Terms read &amp; explained</div>
-                    <div>${Number(item.complainant_signed) === 1 ? '✅' : '❌'} Complainant signed</div>
-                    <div>${Number(item.respondent_signed) === 1 ? '✅' : '❌'} Respondent signed</div>
-                    <div>${Number(item.pb_attested) === 1 ? '✅' : '❌'} PB Attestation (${escapeHtml(item.attested_by_name || 'PB')})</div>
-                    <div>${Number(item.barangay_sealed) === 1 ? '✅' : '❌'} Barangay Seal Affixed</div>
-                    <div>${Number(item.original_in_case_folder) === 1 ? '✅' : '❌'} Original filed in case folder</div>
-                    <div>${Number(item.certified_copies_issued) === 1 ? '✅' : '❌'} Certified copies issued to parties</div>
+                    <div>${Number(item.terms_read_to_parties) === 1 ? '<span style="color:#15803d;font-weight:700;">[✓]</span>' : '<span style="color:#94a3b8;">[–]</span>'} Terms read &amp; explained</div>
+                    <div>${Number(item.complainant_signed) === 1 ? '<span style="color:#15803d;font-weight:700;">[✓]</span>' : '<span style="color:#94a3b8;">[–]</span>'} Complainant signed</div>
+                    <div>${Number(item.respondent_signed) === 1 ? '<span style="color:#15803d;font-weight:700;">[✓]</span>' : '<span style="color:#94a3b8;">[–]</span>'} Respondent signed</div>
+                    <div>${Number(item.pb_attested) === 1 ? '<span style="color:#15803d;font-weight:700;">[✓]</span>' : '<span style="color:#94a3b8;">[–]</span>'} PB Attestation (${escapeHtml(item.attested_by_name || 'PB')})</div>
+                    <div>${Number(item.barangay_sealed) === 1 ? '<span style="color:#15803d;font-weight:700;">[✓]</span>' : '<span style="color:#94a3b8;">[–]</span>'} Barangay Seal Affixed</div>
+                    <div>${Number(item.original_in_case_folder) === 1 ? '<span style="color:#15803d;font-weight:700;">[✓]</span>' : '<span style="color:#94a3b8;">[–]</span>'} Original filed in case folder</div>
+                    <div>${Number(item.certified_copies_issued) === 1 ? '<span style="color:#15803d;font-weight:700;">[✓]</span>' : '<span style="color:#94a3b8;">[–]</span>'} Certified copies issued to parties</div>
                 </div>
             </div>
 

@@ -152,7 +152,7 @@ async function loadStageData() {
                     <span class="stat-label" style="color: #991b1b; font-weight: 700;">Error Loading Stage Data</span>
                     <strong class="stat-value" style="font-size: 0.95rem; color: #991b1b; margin-top: 4px;">${escapeHtml(err.message)}</strong>
                     <div style="margin-top: 10px;">
-                        <button type="button" class="btn-secondary" onclick="loadStageData()" style="font-size: 0.8rem; padding: 5px 12px; cursor: pointer;">🔄 Retry Loading</button>
+                        <button type="button" class="btn-secondary" onclick="loadStageData()" style="font-size: 0.8rem; padding: 5px 12px; cursor: pointer;">Retry Loading</button>
                     </div>
                 </div>
             `;
@@ -412,7 +412,7 @@ function renderStageOverview(data, stage) {
             const daysLeft = Number(dl.convening_days_left ?? 0);
             const badgeBg = isOverdue ? '#fee2e2' : '#fef3c7';
             const badgeColor = isOverdue ? '#991b1b' : '#92400e';
-            const badgeText = isOverdue ? `⚠️ Convening Overdue (${Math.abs(daysLeft)}d late)` : `⏰ Convene within ${daysLeft} day(s)`;
+            const badgeText = isOverdue ? `Convening Overdue (${Math.abs(daysLeft)}d late)` : `Convene within ${daysLeft} day(s)`;
             conveningHtml = `
                 <div class="overview-stat-card" style="border-left: 4px solid ${isOverdue ? '#ef4444' : '#f59e0b'};">
                     <span class="stat-label">3-Day Convening Requirement</span>
@@ -426,7 +426,7 @@ function renderStageOverview(data, stage) {
             conveningHtml = `
                 <div class="overview-stat-card" style="border-left: 4px solid #10b981;">
                     <span class="stat-label">Pangkat Convened</span>
-                    <strong class="stat-value" style="font-size: 0.9rem; color: #15803d;">✅ ${formatDateReadable(dl.convened_date)}</strong>
+                    <strong class="stat-value" style="font-size: 0.9rem; color: #15803d;">${formatDateReadable(dl.convened_date)}</strong>
                     <span class="stat-sub">Constituted: ${formatDateReadable(dl.formation_date)}</span>
                 </div>
             `;
@@ -501,7 +501,7 @@ function renderSessionsList(data, stage) {
                     No ${escapeHtml(stageWorkspaceState.mode.toLowerCase())} hearing sessions scheduled yet.
                 </p>
                 <button type="button" class="btn-create" onclick="openScheduleModal()" style="font-size: 0.85rem; padding: 7px 16px; display: inline-flex; align-items: center; gap: 6px;">
-                    📅 Schedule ${escapeHtml(stageWorkspaceState.mode)} Hearing &rarr;
+                    Schedule ${escapeHtml(stageWorkspaceState.mode)} Hearing &rarr;
                 </button>
             </div>
         `;
@@ -524,41 +524,41 @@ function renderSessionsList(data, stage) {
 
         let queueBadgeHtml = '';
         if (isInSession) {
-            queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe;">🔵 In Session (Started: ${formatTimeOnly(s.actual_start_time)})</span>`;
+            queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe;">In Session (Started: ${formatTimeOnly(s.actual_start_time)})</span>`;
         } else if (isReady) {
-            queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 800; padding: 2px 8px; border-radius: 4px; background: #dcfce7; color: #15803d; border: 1px solid #86efac;">🟢 Complete &amp; Ready</span>`;
+            queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 800; padding: 2px 8px; border-radius: 4px; background: #dcfce7; color: #15803d; border: 1px solid #86efac;">Complete &amp; Ready</span>`;
         } else if (isStandby) {
-            queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #fef3c7; color: #b45309; border: 1px solid #fde68a;">⏸️ On Standby</span>`;
+            queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #fef3c7; color: #b45309; border: 1px solid #fde68a;">On Standby</span>`;
         } else if (isConcluded) {
-            queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;">✓ Concluded (${s.actual_duration_minutes || s.duration_minutes || 45} mins)</span>`;
+            queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;">Concluded (${s.actual_duration_minutes || s.duration_minutes || 45} mins)</span>`;
         } else {
-            queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0;">⏳ Waiting Room</span>`;
+            queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0;">Waiting Room</span>`;
         }
 
         let partyAttHtml = '';
         if (s.parties && s.parties.length) {
             partyAttHtml = s.parties.map(p => {
                 let badgeStyle = 'background: #f1f5f9; color: #64748b;';
-                let icon = '⏳';
+                let icon = '';
                 const st = p.attendance_status || 'Pending';
                 if (st === 'Present') {
                     badgeStyle = 'background: #dcfce7; color: #15803d;';
-                    icon = '✓';
+                    icon = '';
                 } else if (st === 'Late') {
                     badgeStyle = 'background: #dbeafe; color: #1e40af;';
-                    icon = '⏰';
+                    icon = '';
                 } else if (st === 'Excused') {
                     badgeStyle = 'background: #fef3c7; color: #b45309;';
-                    icon = 'ℹ️';
+                    icon = '';
                 } else if (st === 'Absent') {
                     badgeStyle = 'background: #fee2e2; color: #991b1b;';
-                    icon = '✗';
+                    icon = '';
                 }
                 const excuseText = p.justification_reason ? ` (${escapeHtml(p.justification_reason)})` : '';
                 return `<div style="font-size: 0.78rem; margin-top: 2px;">
                     <span style="font-weight: 600; color: #475569;">${escapeHtml(p.party_type)}: ${escapeHtml(p.full_name)}</span> &rarr;
                     <span style="display: inline-flex; align-items: center; gap: 3px; font-weight: 700; padding: 1px 6px; border-radius: 4px; font-size: 0.74rem; ${badgeStyle}">
-                        ${icon} ${escapeHtml(st)}${excuseText}
+                        ${escapeHtml(st)}${excuseText}
                     </span>
                 </div>`;
             }).join('');
@@ -587,7 +587,7 @@ function renderSessionsList(data, stage) {
                             </span>
                             ${s.attempt_exception_reason ? `
                                 <span style="font-size: 0.72rem; color: #b45309; background: #fef3c7; border: 1px solid #fde68a; padding: 2px 7px; border-radius: 4px; font-weight: 600;">
-                                    ⚠️ Exception: ${escapeHtml(s.attempt_exception_reason)}
+                                    Exception: ${escapeHtml(s.attempt_exception_reason)}
                                 </span>
                             ` : ''}
                             ${s.cancellation_category ? `
@@ -597,11 +597,11 @@ function renderSessionsList(data, stage) {
                             ` : ''}
                         </div>
                         <div style="font-size: 0.84rem; color: #475569; display: flex; gap: 14px; flex-wrap: wrap;">
-                            <span>📅 Call Time: <strong>${formatDateTimeReadable(s.hearing_date)}</strong></span>
-                            <span>📍 Venue: <strong>${escapeHtml(s.venue || 'Lupon Court Room')}</strong></span>
-                            ${s.presiding_officer_name ? `<span>👤 Presider: <strong>${escapeHtml(s.presiding_officer_name)}</strong></span>` : ''}
-                            ${s.actual_start_time ? `<span>⏱️ Actual Start: <strong>${formatTimeOnly(s.actual_start_time)}</strong></span>` : ''}
-                            ${s.actual_duration_minutes ? `<span>⌛ Duration: <strong>${s.actual_duration_minutes} mins</strong></span>` : ''}
+                            <span>Call Time: <strong>${formatDateTimeReadable(s.hearing_date)}</strong></span>
+                            <span>Venue: <strong>${escapeHtml(s.venue || 'Lupon Court Room')}</strong></span>
+                            ${s.presiding_officer_name ? `<span>Presider: <strong>${escapeHtml(s.presiding_officer_name)}</strong></span>` : ''}
+                            ${s.actual_start_time ? `<span>Actual Start: <strong>${formatTimeOnly(s.actual_start_time)}</strong></span>` : ''}
+                            ${s.actual_duration_minutes ? `<span>Duration: <strong>${s.actual_duration_minutes} mins</strong></span>` : ''}
                         </div>
                     </div>
                     <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
@@ -612,24 +612,24 @@ function renderSessionsList(data, stage) {
                             </button>
                             ` : ''}
                             <button type="button" class="btn-secondary" onclick="handleDocketStandby(${s.hearing_id}, ${isStandby ? 'false' : 'true'})" style="font-size: 0.78rem; padding: 5px 9px; display: inline-flex; align-items: center; gap: 4px;" title="Put on standby to keep room available for other ready cases">
-                                ${isStandby ? '▶️ Resume from Standby' : '⏸️ Put on Standby'}
+                                ${isStandby ? 'Resume from Standby' : 'Put on Standby'}
                             </button>
                         ` : ''}
                         ${isInSession ? `
                             <button type="button" class="btn-create" onclick="handleDocketConcludeSession(${s.hearing_id})" style="font-size: 0.78rem; padding: 5px 12px; background: #b91c1c; display: inline-flex; align-items: center; gap: 4px;">
-                                ⏹️ Conclude Session
+                                Conclude Session
                             </button>
                         ` : ''}
                         ${Number(s.session_index || 1) === 1 ? `
                             <button type="button" class="btn-secondary" onclick="openSummonsPreviewModal(${Number(stageWorkspaceState.caseId)}, null, ${Number(s.hearing_id)})" style="font-size: 0.78rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 4px; border-color: #0284c7; color: #0284c7; background: #f0f9ff;" title="Preview, print, or download KP Form No. 9 summons">
-                                📄 KP Form
+                                KP Form
                             </button>
                         ` : ''}
                         <button type="button" class="btn-secondary" onclick="openAttendanceModal(${s.hearing_id})" style="font-size: 0.78rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 4px;">
-                            👤 Detailed Attendance
+                            Detailed Attendance
                         </button>
                         <button type="button" class="btn-secondary" onclick="selectInlineMinutesSession(${s.hearing_id})" style="font-size: 0.78rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 4px; ${isFinalized ? 'border-color: #86efac; background: #f0fdf4;' : ''}">
-                            📝 ${isFinalized ? 'View Finalized Minutes' : (hasMinutes ? 'Edit Minutes Draft' : 'Add Minutes')}
+                            ${isFinalized ? 'View Finalized Minutes' : (hasMinutes ? 'Edit Minutes Draft' : 'Add Minutes')}
                         </button>
                     </div>
                 </div>
@@ -642,11 +642,11 @@ function renderSessionsList(data, stage) {
                     return `
                         <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 14px; margin-bottom: 12px; font-size: 0.8rem; color: #991b1b; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                             <div>
-                                <strong>⚠️ 15-Minute Grace Period Expired:</strong> Scheduled call time has passed and parties remain incomplete.
+                                <strong>15-Minute Grace Period Expired:</strong> Scheduled call time has passed and parties remain incomplete.
                             </div>
                             <div style="display: flex; gap: 6px;">
-                                <button type="button" class="btn-secondary" onclick="handleDocketStandby(${s.hearing_id}, true)" style="font-size: 0.74rem; padding: 4px 8px; background: #fff;">⏸️ Move to Standby</button>
-                                <button type="button" class="btn-secondary" onclick="openAttendanceModal(${s.hearing_id})" style="font-size: 0.74rem; padding: 4px 8px; background: #fee2e2; border-color: #fca5a5; color: #991b1b;">⚠️ Record Non-Appearance</button>
+                                <button type="button" class="btn-secondary" onclick="handleDocketStandby(${s.hearing_id}, true)" style="font-size: 0.74rem; padding: 4px 8px; background: #fff;">Move to Standby</button>
+                                <button type="button" class="btn-secondary" onclick="openAttendanceModal(${s.hearing_id})" style="font-size: 0.74rem; padding: 4px 8px; background: #fee2e2; border-color: #fca5a5; color: #991b1b;">Record Non-Appearance</button>
                             </div>
                         </div>
                     `;
@@ -660,20 +660,20 @@ function renderSessionsList(data, stage) {
                             const isPIn = (p.attendance_status === 'Present' || p.attendance_status === 'Late');
                             return `
                                 <button type="button" onclick="handleDocketCheckIn(${s.hearing_id}, '${p.party_type}', '${isPIn ? 'Waiting' : 'Checked In'}', ${p.resident_id})" style="font-size: 0.76rem; padding: 3px 8px; border-radius: 6px; border: 1px solid ${isPIn ? '#86efac' : '#cbd5e1'}; background: ${isPIn ? '#dcfce7' : '#fff'}; color: ${isPIn ? '#15803d' : '#475569'}; font-weight: 600; cursor: pointer;" title="Toggle arrival for ${escapeHtml(p.full_name)}">
-                                    ${escapeHtml(p.party_type)} (${escapeHtml(p.full_name)}): [ ${isPIn ? '✓' : '⏳'} ]
+                                    ${escapeHtml(p.party_type)} (${escapeHtml(p.full_name)}): [ ${isPIn ? 'Checked In' : 'Waiting'} ]
                                 </button>
                             `;
                         }).join('') : `
                             <button type="button" onclick="handleDocketCheckIn(${s.hearing_id}, 'Complainant', '${compIn ? 'Waiting' : 'Checked In'}')" style="font-size: 0.78rem; padding: 3px 10px; border-radius: 6px; border: 1px solid ${compIn ? '#86efac' : '#cbd5e1'}; background: ${compIn ? '#dcfce7' : '#fff'}; color: ${compIn ? '#15803d' : '#475569'}; font-weight: 600; cursor: pointer;">
-                                Complainant: [ ${compIn ? '✓ Checked In' : '⏳ Waiting / In Transit'} ]
+                                Complainant: [ ${compIn ? 'Checked In' : 'Waiting / In Transit'} ]
                             </button>
                             <button type="button" onclick="handleDocketCheckIn(${s.hearing_id}, 'Respondent', '${respIn ? 'Waiting' : 'Checked In'}')" style="font-size: 0.78rem; padding: 3px 10px; border-radius: 6px; border: 1px solid ${respIn ? '#86efac' : '#cbd5e1'}; background: ${respIn ? '#dcfce7' : '#fff'}; color: ${respIn ? '#15803d' : '#475569'}; font-weight: 600; cursor: pointer;">
-                                Respondent: [ ${respIn ? '✓ Checked In' : '⏳ Waiting / In Transit'} ]
+                                Respondent: [ ${respIn ? 'Checked In' : 'Waiting / In Transit'} ]
                             </button>
                         `}
                     </div>
                     <div style="font-size: 0.8rem; font-weight: 600;">
-                        ${isReady ? '<span style="color: #15803d;">🟢 Complete &amp; Ready for Hearing</span>' : '<span style="color: #64748b;">⏳ Waiting for parties to arrive</span>'}
+                        ${isReady ? '<span style="color: #15803d;">Complete &amp; Ready for Hearing</span>' : '<span style="color: #64748b;">Waiting for parties to arrive</span>'}
                     </div>
                 </div>
 
@@ -683,7 +683,7 @@ function renderSessionsList(data, stage) {
                         <span style="color: #64748b; font-size: 0.74rem; display: block; font-weight: 600;">PROOF OF SERVICE</span>
                         <div style="margin-top: 3px; display: flex; align-items: center; gap: 6px;">
                             <span style="font-size: 0.76rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; ${s.proof_of_service_status === 'Served' ? 'background: #dcfce7; color: #15803d;' : 'background: #fef3c7; color: #b45309;'}">
-                                ${s.proof_of_service_status === 'Served' ? '✓ Notice Served' : '⏳ Pending / Unserved'}
+                                ${s.proof_of_service_status === 'Served' ? 'Notice Served' : 'Pending / Unserved'}
                             </span>
                         </div>
                     </div>
@@ -853,22 +853,22 @@ function renderMinutesSection(data, stage) {
     const anyCaucus = sessions.some(s => Boolean(s.caucus_conducted));
 
     if (hasSettled || stage.outcome === 'Settled') {
-        trajectoryStatus = '✓ Amicable Settlement Reached';
+        trajectoryStatus = 'Amicable Settlement Reached';
         trajectoryBadgeStyle = 'background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0;';
     } else if (hasAward || stage.outcome === 'Arbitration Award') {
-        trajectoryStatus = '⚖️ Arbitration Award Rendered';
+        trajectoryStatus = 'Arbitration Award Rendered';
         trajectoryBadgeStyle = 'background: #e0e7ff; color: #3730a3; border: 1px solid #c7d2fe;';
     } else if (hasFailed || stage.outcome === 'Unsuccessful') {
-        trajectoryStatus = mode === 'Mediation' ? '⚠️ Impasse · Elevated to Pangkat' : '⚠️ Impasse · Eligible for CFA';
+        trajectoryStatus = mode === 'Mediation' ? 'Impasse · Elevated to Pangkat' : 'Impasse · Eligible for CFA';
         trajectoryBadgeStyle = 'background: #fee2e2; color: #991b1b; border: 1px solid #fecaca;';
     } else if (latestProposal && latestCounteroffer) {
-        trajectoryStatus = '🤝 Active Proposals & Counteroffers';
+        trajectoryStatus = 'Active Proposals & Counteroffers';
         trajectoryBadgeStyle = 'background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe;';
     } else if (latestProposal) {
-        trajectoryStatus = '📄 Proposal Under Party Review';
+        trajectoryStatus = 'Proposal Under Party Review';
         trajectoryBadgeStyle = 'background: #eff6ff; color: #2563eb; border: 1px solid #dbeafe;';
     } else if (anyCaucus) {
-        trajectoryStatus = '🔒 Private Caucus Held · Exploring Options';
+        trajectoryStatus = 'Private Caucus Held · Exploring Options';
         trajectoryBadgeStyle = 'background: #f3e8ff; color: #7e22ce; border: 1px solid #e9d5ff;';
     }
 
@@ -879,7 +879,7 @@ function renderMinutesSection(data, stage) {
                 <p style="margin: 0 0 10px; font-size: 0.95rem; color: #475569;">No ${escapeHtml(mode.toLowerCase())} sessions scheduled yet.</p>
                 <small style="display: block; margin-bottom: 14px; color: #94a3b8;">Schedule a session first to record hearing minutes, statements, and settlement progress.</small>
                 <button type="button" class="btn-create" onclick="openScheduleModal()" style="font-size: 0.84rem; padding: 7px 16px;">
-                    📅 Schedule ${escapeHtml(mode)} Hearing &rarr;
+                    Schedule ${escapeHtml(mode)} Hearing &rarr;
                 </button>
             </div>
         `;
@@ -1032,11 +1032,11 @@ function renderMinutesSection(data, stage) {
                     <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap;">
                         <span style="color: #991b1b; font-weight: 700;">Complainant Non-appearance</span>
                         <button type="button" class="btn-secondary" onclick="openKPFormPreview(${stageWorkspaceState.caseId}, 'KP Form 18', ${activeSession.hearing_id})" style="font-size: 0.7rem; padding: 2px 7px; background: #fff; border-color: #fca5a5; color: #991b1b; cursor: pointer;">
-                            📄 Preview KP Form 18
+                            Preview KP Form 18
                         </button>
                     </div>
                     <div style="color: #64748b; font-size: 0.71rem; margin-top: 3px;">
-                        🔒 KP Form 21 (Bar Action) locked pending show-cause evaluation.
+                        KP Form 21 (Bar Action) locked pending show-cause evaluation.
                     </div>
                 </div>
             `;
@@ -1058,11 +1058,11 @@ function renderMinutesSection(data, stage) {
                     <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap;">
                         <span style="color: #991b1b; font-weight: 700;">Respondent Non-appearance</span>
                         <button type="button" class="btn-secondary" onclick="openKPFormPreview(${stageWorkspaceState.caseId}, 'KP Form 19', ${activeSession.hearing_id})" style="font-size: 0.7rem; padding: 2px 7px; background: #fff; border-color: #fca5a5; color: #991b1b; cursor: pointer;">
-                            📄 Preview KP Form 19
+                            Preview KP Form 19
                         </button>
                     </div>
                     <div style="color: #64748b; font-size: 0.71rem; margin-top: 3px;">
-                        🔒 KP Form 22 (Bar Counterclaim) locked pending show-cause evaluation.
+                        KP Form 22 (Bar Counterclaim) locked pending show-cause evaluation.
                     </div>
                 </div>
             `;
@@ -1111,14 +1111,14 @@ function renderMinutesSection(data, stage) {
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                     <span style="font-size: 0.78rem; padding: 4px 10px; border-radius: 9999px; font-weight: 700; ${isFinalized ? 'background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0;' : 'background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe;'}">
-                        ${isFinalized ? '✓ FINALIZED &amp; LOCKED' : '📝 WORKING DRAFT'}
+                        ${isFinalized ? 'FINALIZED &amp; LOCKED' : 'WORKING DRAFT'}
                     </span>
                     <button type="button" class="btn-secondary" onclick="openPreviewMinutesModal(${activeSession.hearing_id})" style="font-size: 0.78rem; padding: 4px 10px;">
-                        🔍 Preview Letterhead
+                        Preview Letterhead
                     </button>
                     ${(isFinalized || activeSession.minutes_id) ? `
                         <button type="button" class="btn-secondary" onclick="printHearingMinutes(${activeSession.hearing_id})" style="font-size: 0.78rem; padding: 4px 10px;">
-                            🖨️ Print Minutes
+                            Print Minutes
                         </button>
                     ` : ''}
                 </div>
@@ -1128,7 +1128,7 @@ function renderMinutesSection(data, stage) {
             ${isFinalized ? `
                 <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 12px 16px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                     <div style="color: #166534; font-size: 0.85rem;">
-                        <strong>🔒 Official Record Locked:</strong> This session minutes was finalized${activeSession.finalized_at ? ` on ${formatDateTimeReadable(activeSession.finalized_at)}` : ''}${activeSession.finalized_by_name ? ` by ${escapeHtml(activeSession.finalized_by_name)}` : ''}. To preserve legal integrity, finalized minutes cannot be modified.
+                        <strong>Official Record Locked:</strong> This session minutes was finalized${activeSession.finalized_at ? ` on ${formatDateTimeReadable(activeSession.finalized_at)}` : ''}${activeSession.finalized_by_name ? ` by ${escapeHtml(activeSession.finalized_by_name)}` : ''}. To preserve legal integrity, finalized minutes cannot be modified.
                     </div>
                 </div>
             ` : ''}
@@ -1147,7 +1147,7 @@ function renderMinutesSection(data, stage) {
                             <h4 style="margin: 0; font-size: 0.96rem; font-weight: 700; color: #0f172a;">Preliminaries &amp; Procedural Opening</h4>
                         </div>
                         <button type="button" class="btn-secondary" onclick="openAttendanceModal(${activeSession.hearing_id})" style="font-size: 0.76rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
-                            👤 Verify / Edit Attendance
+                            Verify / Edit Attendance
                         </button>
                     </div>
 
@@ -1210,10 +1210,10 @@ function renderMinutesSection(data, stage) {
                         ${!isFinalized ? `
                             <div style="display: flex; gap: 6px; align-items: center;">
                                 <button type="button" class="btn-secondary" id="btnStageRecordVoice" onclick="toggleStageVoiceRecording()" style="font-size: 0.76rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
-                                    <span id="stageRecordVoiceText">🎙️ Record Voice (STT)</span>
+                                    <span id="stageRecordVoiceText">Record Voice (STT)</span>
                                 </button>
                                 <button type="button" class="btn-secondary" id="btnStageUploadNotes" onclick="triggerStageNotesUpload()" style="font-size: 0.76rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
-                                    📄 Upload Notes (OCR)
+                                    Upload Notes (OCR)
                                 </button>
                                 <input type="file" id="stageNotesFileInput" accept="image/*" style="display: none;" onchange="handleStageNotesFileSelected(this)">
                             </div>
@@ -1271,7 +1271,7 @@ function renderMinutesSection(data, stage) {
                     <!-- Row 4: Settlement Proposals, Counteroffers & Caucus (Integrated Sub-Panel) -->
                     <details class="proposals-caucus-details" ${hasProposalsOrCaucus ? 'open' : ''} style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px;">
                         <summary style="cursor: pointer; font-size: 0.82rem; font-weight: 700; color: #334155; user-select: none; display: flex; align-items: center; justify-content: space-between;">
-                            <span>🤝 Settlement Proposals, Counteroffers &amp; Private Caucus (Optional)</span>
+                            <span>Settlement Proposals, Counteroffers &amp; Private Caucus (Optional)</span>
                             <span style="font-size: 0.74rem; font-weight: normal; color: #64748b;">${hasProposalsOrCaucus ? 'Details recorded' : 'Click to expand if applicable'}</span>
                         </summary>
                         <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #e2e8f0;">
@@ -1317,14 +1317,14 @@ function renderMinutesSection(data, stage) {
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
                         <div class="form-group" style="margin-bottom: 0;">
                             <label for="minAgreements" style="font-weight: 600; font-size: 0.82rem; color: #166534; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
-                                <span>✓ Agreed Terms / Action Items</span>
+                                <span>Agreed Terms / Action Items</span>
                                 <span style="font-size: 0.72rem; color: #64748b; font-weight: normal;">Mutual stipulations &amp; payment milestones</span>
                             </label>
                             <textarea id="minAgreements" rows="3" maxlength="3000" placeholder="Stipulations mutually agreed upon, payment milestones, restitution schedule, or behavioral commitments..." style="width: 100%; border: 1px solid #bbf7d0; background: #f0fdf4; border-radius: 6px; padding: 8px; font-size: 0.84rem; font-family: inherit; line-height: 1.4; box-sizing: border-box;" ${readonlyAttr}>${escapeHtml(activeSession.agreements_action_items || '')}</textarea>
                         </div>
                         <div class="form-group" style="margin-bottom: 0;">
                             <label for="minUnresolved" style="font-weight: 600; font-size: 0.82rem; color: #991b1b; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
-                                <span>⚠️ Issues Remaining Unresolved</span>
+                                <span>Issues Remaining Unresolved</span>
                                 <span style="font-size: 0.72rem; color: #64748b; font-weight: normal;">Points of contention or deferred items</span>
                             </label>
                             <textarea id="minUnresolved" rows="3" maxlength="3000" placeholder="Unresolved contentious points or items deferred to subsequent hearing or conciliation..." style="width: 100%; border: 1px solid #fecaca; background: #fff5f5; border-radius: 6px; padding: 8px; font-size: 0.84rem; font-family: inherit; line-height: 1.4; box-sizing: border-box;" ${readonlyAttr}>${escapeHtml(activeSession.unresolved_issues || '')}</textarea>
@@ -1363,11 +1363,11 @@ function renderMinutesSection(data, stage) {
                 <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; border-top: 1px solid #e2e8f0; padding-top: 16px;">
                     <div style="display: flex; gap: 8px;">
                         <button type="button" class="btn-secondary" onclick="openPreviewMinutesModal(${activeSession.hearing_id})" style="font-size: 0.84rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px;">
-                            🔍 Preview Letterhead
+                            Preview Letterhead
                         </button>
                         ${(isFinalized || activeSession.minutes_id) ? `
                             <button type="button" class="btn-secondary" onclick="printHearingMinutes(${activeSession.hearing_id})" style="font-size: 0.84rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px;">
-                                🖨️ Print Minutes
+                                Print Minutes
                             </button>
                         ` : ''}
                     </div>
@@ -1377,14 +1377,14 @@ function renderMinutesSection(data, stage) {
                                 Reset
                             </button>
                             <button type="button" class="btn-create" id="btnSaveMinutesDraft" onclick="saveHearingMinutes('Draft')" style="font-size: 0.84rem; padding: 7px 18px; background: #0f172a; color: #fff;">
-                                💾 Save Minutes Draft
+                                Save Minutes Draft
                             </button>
                             <button type="button" class="btn-create" id="btnSaveMinutesFinalize" onclick="saveHearingMinutes('Finalized')" style="font-size: 0.84rem; padding: 7px 18px; background: #16a34a; color: #fff;">
-                                🔒 Finalize &amp; Lock
+                                Finalize &amp; Lock
                             </button>
                         ` : `
                             <span style="font-size: 0.84rem; color: #15803d; font-weight: 700; display: inline-flex; align-items: center; gap: 5px; padding: 6px 14px; background: #f0fdf4; border-radius: 6px; border: 1px solid #bbf7d0;">
-                                🔒 Finalized Official Record
+                                Finalized Official Record
                             </span>
                         `}
                     </div>
@@ -1421,15 +1421,15 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false) {
         bannerEl.innerHTML = `
             <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                 <div style="color: #166534; font-size: 0.85rem;">
-                    <strong style="font-size: 0.92rem; display: block; color: #14532d;">✓ Amicable Settlement Reached (Kasunduan)</strong>
+                    <strong style="font-size: 0.92rem; display: block; color: #14532d;">Amicable Settlement Reached (Kasunduan)</strong>
                     Parties have agreed on settlement terms. Finalize the minutes, then preview or print the formal Amicable Settlement (KP Form 16).
                 </div>
                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                     <button type="button" class="btn-secondary" onclick="openKPFormPreview(${Number(caseId)}, 'KP Form 16', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #86efac; color: #166534; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
-                        🔍 Preview / Print KP Form 16
+                        Preview / Print KP Form 16
                     </button>
                     <a href="../settlements/settlements.php?case_id=${encodeURIComponent(caseId)}" class="btn-create" style="font-size: 0.82rem; padding: 7px 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
-                        📝 Open Amicable Settlement &rarr;
+                        Open Amicable Settlement &rarr;
                     </a>
                 </div>
             </div>
@@ -1440,7 +1440,7 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false) {
             bannerEl.innerHTML = `
                 <div style="background: #fef2f2; border: 1px solid #fca5a5; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                     <div style="color: #991b1b; font-size: 0.85rem;">
-                        <strong style="font-size: 0.92rem; display: block; color: #7f1d1d;">⚠️ Party Non-Appearance Recorded (${sessionIndex === 1 ? '1st Mediation' : '2nd Mediation'})</strong>
+                        <strong style="font-size: 0.92rem; display: block; color: #7f1d1d;">Party Non-Appearance Recorded (${sessionIndex === 1 ? '1st Mediation' : '2nd Mediation'})</strong>
                         ${isSecondOrLater 
                             ? 'A required party was absent in the 2nd Mediation session. Preview Notice of Hearing for failure to appear (KP Form 18 for Complainant / KP Form 19 for Respondent). Barring actions (KP Form 21 / 22) remain locked pending show-cause evaluation.'
                             : 'A required party was absent in the 1st Mediation. Under KP rules, proceed directly to book the 2nd Mediation session without sending another summon. KP Form 18/19 notices unlock upon non-appearance in the 2nd Mediation session.'
@@ -1448,10 +1448,10 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false) {
                     </div>
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                         <button type="button" class="btn-secondary" onclick="openAttendanceModal(${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 12px; color: #991b1b; border-color: #fca5a5; background: #fff; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
-                            👤 Verify Attendance &amp; Notices
+                            Verify Attendance &amp; Notices
                         </button>
                         <button type="button" class="btn-secondary" onclick="openScheduleModal()" style="font-size: 0.82rem; padding: 7px 12px; cursor: pointer;">
-                            📅 ${sessionIndex === 1 ? 'Book 2nd Mediation &rarr;' : 'Re-schedule Session &rarr;'}
+                            ${sessionIndex === 1 ? 'Book 2nd Mediation &rarr;' : 'Re-schedule Session &rarr;'}
                         </button>
                     </div>
                 </div>
@@ -1470,12 +1470,12 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false) {
                 bannerEl.innerHTML = `
                     <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                         <div style="color: #166534; font-size: 0.85rem;">
-                            <strong style="font-size: 0.92rem; display: block; color: #14532d;">📅 2nd Mediation Session Required</strong>
+                            <strong style="font-size: 0.92rem; display: block; color: #14532d;">2nd Mediation Session Required</strong>
                             No settlement reached in 1st Mediation. Schedule the 2nd mediation session under RA 7160 Sec. 410 (Summons bypassed as parties are notified in person).
                         </div>
                         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                             <button type="button" class="btn-create" onclick="openScheduleModal()" style="font-size: 0.82rem; padding: 7px 16px; background: #16a34a; border: none; border-radius: 6px; color: #fff; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
-                                📅 Schedule 2nd Mediation &rarr;
+                                Schedule 2nd Mediation &rarr;
                             </button>
                         </div>
                     </div>
@@ -1489,7 +1489,7 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false) {
             bannerEl.innerHTML = `
                 <div style="background: #f0f9ff; border: 1px solid #7dd3fc; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                     <div style="color: #0369a1; font-size: 0.85rem;">
-                        <strong style="font-size: 0.92rem; display: block; color: #0c4a6e;">👥 Mediation Concluded Unresolved (2 of 2 Sessions Completed)</strong>
+                        <strong style="font-size: 0.92rem; display: block; color: #0c4a6e;">Mediation Concluded Unresolved (2 of 2 Sessions Completed)</strong>
                         Both mediation sessions before the Punong Barangay have concluded without agreement. The case is now eligible to elevate to Pangkat Conciliation (KP Form 10) by explicit authorized action.
                     </div>
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
@@ -1504,7 +1504,7 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false) {
         bannerEl.innerHTML = `
             <div style="background: #fff7ed; border: 1px solid #fdba74; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                 <div style="color: #9a3412; font-size: 0.85rem;">
-                    <strong style="font-size: 0.92rem; display: block; color: #7c2d12;">📄 Eligible for Certificate to File Action (CFA)</strong>
+                    <strong style="font-size: 0.92rem; display: block; color: #7c2d12;">Eligible for Certificate to File Action (CFA)</strong>
                     Conciliation proceedings before the Pangkat concluded without settlement. The case may now proceed for court endorsement (KP Form 20).
                 </div>
                 <div>
@@ -1518,12 +1518,12 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false) {
         bannerEl.innerHTML = `
             <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                 <div style="color: #334155; font-size: 0.85rem;">
-                    <strong style="font-size: 0.92rem; display: block; color: #0f172a;">📅 Proceedings Ongoing — Next Session Required</strong>
+                    <strong style="font-size: 0.92rem; display: block; color: #0f172a;">Proceedings Ongoing — Next Session Required</strong>
                     Parties require additional discussions to resolve issues. Schedule the subsequent hearing session within the statutory period.
                 </div>
                 <div>
                     <button type="button" class="btn-create" onclick="openScheduleModal()" style="font-size: 0.82rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 4px;">
-                        📅 Schedule Next Session &rarr;
+                        Schedule Next Session &rarr;
                     </button>
                 </div>
             </div>
@@ -1715,7 +1715,7 @@ function renderOutcomeAndReferralSection(data, stage) {
                 <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                     <div>
                         <h4 style="margin: 0 0 4px; font-size: 1rem; color: #14532d; font-weight: 700;">
-                            ✓ Amicable Settlement Reached (Kasunduan)
+                            Amicable Settlement Reached (Kasunduan)
                         </h4>
                         <p style="margin: 0; font-size: 0.85rem; color: #166534;">
                             The parties reached an amicable settlement. Formal settlement terms are active and enforceable.
@@ -1723,7 +1723,7 @@ function renderOutcomeAndReferralSection(data, stage) {
                     </div>
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                         <button type="button" class="btn-secondary" onclick="openKPFormPreview(${Number(stageWorkspaceState.caseId)}, 'KP Form 16')" style="font-size: 0.82rem; padding: 6px 14px; background: #fff; border-color: #86efac; color: #166534; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
-                            🔍 Preview / Print KP Form 16
+                            Preview / Print KP Form 16
                         </button>
                         <a href="../settlements/settlements.php?case_id=${encodeURIComponent(stageWorkspaceState.caseId)}" class="btn-create" style="font-size: 0.82rem; padding: 6px 14px; text-decoration: none;">
                             View Amicable Settlement &rarr;
@@ -1748,7 +1748,7 @@ function renderOutcomeAndReferralSection(data, stage) {
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
                         <div>
                             <h4 style="margin: 0 0 4px; font-size: 1rem; color: #14532d; font-weight: 700;">
-                                ✓ Case Referred to Pangkat ng Tagapagkasundo
+                                Case Referred to Pangkat ng Tagapagkasundo
                             </h4>
                             <p style="margin: 0; font-size: 0.84rem; color: #166534;">
                                 Mediation concluded. KP Form 10 issued. Case is active in Pangkat Conciliation.
@@ -1756,7 +1756,7 @@ function renderOutcomeAndReferralSection(data, stage) {
                         </div>
                         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                             <a href="pangkat-workspace.php?case_id=${encodeURIComponent(stageWorkspaceState.caseId)}" class="btn-secondary" style="font-size: 0.82rem; padding: 7px 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
-                                ⚖️ Open Pangkat Conciliation &rarr;
+                                Open Pangkat Conciliation &rarr;
                             </a>
                         </div>
                     </div>
@@ -1782,7 +1782,7 @@ function renderOutcomeAndReferralSection(data, stage) {
                         <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
                             ${canBookNext ? `
                                 <button type="button" class="btn-create" onclick="openScheduleModal()" style="font-size: 0.82rem; padding: 6px 14px; background: #2563eb; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
-                                    📅 Book 2nd Mediation Hearing &rarr;
+                                    Book 2nd Mediation Hearing &rarr;
                                 </button>
                             ` : ''}
                             <button type="button" class="btn-secondary" onclick="openRecordOutcomeModal()" style="font-size: 0.82rem; padding: 6px 12px; cursor: pointer;">
@@ -1794,17 +1794,17 @@ function renderOutcomeAndReferralSection(data, stage) {
                                 </button>
                             ` : `
                                 <button type="button" class="btn-secondary" disabled title="${escapeHtml(pangkatLockReason)}" style="font-size: 0.82rem; padding: 6px 12px; opacity: 0.55; cursor: not-allowed;">
-                                    Refer to Pangkat 🔒
+                                    Refer to Pangkat
                                 </button>
                             `}
                             <a href="../cases/case-list.php?assign_case_id=${encodeURIComponent(stageWorkspaceState.caseId)}#caseAssignments" class="btn-secondary" style="font-size: 0.82rem; padding: 6px 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
-                                👥 Cases &amp; Assignments &rarr;
+                                Cases &amp; Assignments &rarr;
                             </a>
                         </div>
                     </div>
                     ${!canRefer && pangkatLockReason ? `
                         <div style="font-size: 0.77rem; color: #64748b; margin-top: 10px; border-top: 1px dashed #e2e8f0; padding-top: 8px;">
-                            🔒 <strong>Why Pangkat referral is locked:</strong> ${escapeHtml(pangkatLockReason)}
+                            <strong>Why Pangkat referral is locked:</strong> ${escapeHtml(pangkatLockReason)}
                         </div>
                     ` : ''}
                 </div>
@@ -1913,9 +1913,9 @@ async function openScheduleModal(hearingId = null) {
             subtitleEl.innerHTML = `Enter the date and time to schedule the ${nextSeqOrdinal} mediation session immediately. <strong>RA 7160 Sec. 410 Notice Exemption:</strong> Because both parties are present in this session and notified, prior personal notice is legally recognized and no redundant summons (KP Form 9) is generated.`;
         }
         const deckTitle = document.getElementById('schedVisualDeckTitle');
-        if (deckTitle) deckTitle.textContent = '📅 AVAILABLE MEDIATION DAYS (MAX 8 HEARINGS/DAY):';
+        if (deckTitle) deckTitle.textContent = 'AVAILABLE MEDIATION DAYS (MAX 8 HEARINGS/DAY):';
         const schedDayTitle = document.getElementById('schedDaySchedulesTitle');
-        if (schedDayTitle) schedDayTitle.textContent = '📅 Scheduled Mediations on this Date:';
+        if (schedDayTitle) schedDayTitle.textContent = 'Scheduled Mediations on this Date:';
         if (submitBtn) submitBtn.textContent = `Schedule ${nextSeqOrdinal} Mediation`;
     } else if (isConciliation) {
         const conciliationCount = stageWorkspaceState.sessions ? stageWorkspaceState.sessions.length : 0;
@@ -1929,9 +1929,9 @@ async function openScheduleModal(hearingId = null) {
             subtitleEl.innerHTML = `In accordance with KP rules, scheduling a conciliation hearing registers the session in the central calendar and generates <strong>KP Form 11 (Notice of Hearing before the Pangkat)</strong>.`;
         }
         const deckTitle = document.getElementById('schedVisualDeckTitle');
-        if (deckTitle) deckTitle.textContent = '📅 AVAILABLE CONCILIATION DAYS (MON, TUE AM, WED, THU, FRI):';
+        if (deckTitle) deckTitle.textContent = 'AVAILABLE CONCILIATION DAYS (MON, TUE AM, WED, THU, FRI):';
         const schedDayTitle = document.getElementById('schedDaySchedulesTitle');
-        if (schedDayTitle) schedDayTitle.textContent = '📅 Scheduled Conciliations on this Date:';
+        if (schedDayTitle) schedDayTitle.textContent = 'Scheduled Conciliations on this Date:';
         const timeHint = document.getElementById('schedTimeHint');
         if (timeHint) {
             timeHint.textContent = 'Regular Conciliation hours: Mon/Wed/Thu/Fri 8:00 AM – 12:00 PM & 1:00 PM – 5:00 PM; Tuesday 8:00 AM – 12:00 PM (Morning only). Standard duration is 1 hour.';
@@ -1978,14 +1978,14 @@ async function openScheduleModal(hearingId = null) {
         } else {
             const gridEl = document.getElementById('schedVisualDayGrid');
             if (gridEl) {
-                gridEl.innerHTML = `<div style="color: #dc2626; font-size: 0.78rem; grid-column: 1 / -1; text-align: center; padding: 10px;">⚠️ ${escapeHtml(json.message || 'Unable to load scheduling window.')}</div>`;
+                gridEl.innerHTML = `<div style="color: #dc2626; font-size: 0.78rem; grid-column: 1 / -1; text-align: center; padding: 10px;">${escapeHtml(json.message || 'Unable to load scheduling window.')}</div>`;
             }
         }
     } catch (e) {
         console.warn('Failed to load window metadata for workspace scheduler:', e);
         const gridEl = document.getElementById('schedVisualDayGrid');
         if (gridEl) {
-            gridEl.innerHTML = `<div style="color: #dc2626; font-size: 0.78rem; grid-column: 1 / -1; text-align: center; padding: 10px;">⚠️ Could not connect to schedule server. Please check connection.</div>`;
+            gridEl.innerHTML = `<div style="color: #dc2626; font-size: 0.78rem; grid-column: 1 / -1; text-align: center; padding: 10px;">Could not connect to schedule server. Please check connection.</div>`;
         }
     }
 }
@@ -2078,9 +2078,9 @@ function renderWorkspaceVisualDatePicker(windowMeta, selectedDate) {
         if (selectedDate && windowMeta.daily_slots[selectedDate]) {
             const selectedDayData = windowMeta.daily_slots[selectedDate];
             if (selectedDayData.is_fully_booked) {
-                noticeEl.innerHTML = `<span style="color: #dc2626; font-weight: 600;">⚠️ Selected date is fully booked (8 of 8 daily mediation sessions).</span>`;
+                noticeEl.innerHTML = `<span style="color: #dc2626; font-weight: 600;">Selected date is fully booked (8 of 8 daily mediation sessions).</span>`;
             } else {
-                noticeEl.innerHTML = `<span style="color: #15803d; font-weight: 600;">✓ Date selected: ${selectedDayData.available} slots remaining.</span>`;
+                noticeEl.innerHTML = `<span style="color: #15803d; font-weight: 600;">Date selected: ${selectedDayData.available} slots remaining.</span>`;
             }
         } else {
             noticeEl.textContent = 'Click any available day card above to select. Fully booked dates are disabled.';
@@ -2173,7 +2173,7 @@ async function checkWorkspaceScheduleConflict() {
 
         if (!response.ok || !result.success) {
             if (conflictAlert && result.message) {
-                conflictAlert.textContent = `⚠️ Notice: ${result.message}`;
+                conflictAlert.textContent = `Notice: ${result.message}`;
                 conflictAlert.style.display = 'block';
                 if (submitBtn) submitBtn.disabled = true;
             }
@@ -2189,7 +2189,7 @@ async function checkWorkspaceScheduleConflict() {
 
         if (result.is_fully_booked || bookedCount >= maxSlots) {
             if (conflictAlert) {
-                conflictAlert.textContent = `⚠️ Date Fully Booked: All ${maxSlots} daily mediation slots on this date are occupied. Please select another date.`;
+                conflictAlert.textContent = `Date Fully Booked: All ${maxSlots} daily mediation slots on this date are occupied. Please select another date.`;
                 conflictAlert.style.display = 'block';
             }
             if (submitBtn) {
@@ -2208,7 +2208,7 @@ async function checkWorkspaceScheduleConflict() {
 
             const scheduled = result.scheduled_mediations || [];
             if (scheduled.length === 0) {
-                slotsList.innerHTML = `<span style="color: #166534; font-weight: 500;">✓ All 8 session slots available on this date (${dateVal}).</span>`;
+                slotsList.innerHTML = `<span style="color: #166534; font-weight: 500;">All 8 session slots available on this date (${dateVal}).</span>`;
             } else {
                 slotsList.innerHTML = `
                     <div style="margin-bottom: 6px; font-weight: 600; color: #475569;">${availSlots} of ${maxSlots} slots available for this date:</div>
@@ -2228,7 +2228,7 @@ async function checkWorkspaceScheduleConflict() {
         if (result.has_conflict && result.conflict) {
             const conflictMsg = result.conflict.message || 'The selected time overlaps with an existing scheduled mediation.';
             if (conflictAlert) {
-                conflictAlert.textContent = `⚠️ Schedule Conflict: ${conflictMsg}`;
+                conflictAlert.textContent = `Schedule Conflict: ${conflictMsg}`;
                 conflictAlert.style.display = 'block';
             }
             if (timeInput) {
@@ -2503,7 +2503,7 @@ function renderAttendanceModalForm(data) {
             <div id="wsPresiderAbsenceDecisionBox" style="${presiderStatus === 'Absent' ? '' : 'display: none;'} margin-top: 12px; background: #fff; border: 1px solid #fed7aa; border-left: 4px solid #f97316; border-radius: 8px; padding: 14px;">
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
                     <span style="font-size: 0.85rem; font-weight: 700; color: #9a3412; display: inline-flex; align-items: center; gap: 6px;">
-                        ⚠️ Presider Absence Workflow (RA 7160 Sec. 410)
+                        Presider Absence Workflow (RA 7160 Sec. 410)
                     </span>
                     <span style="font-size: 0.72rem; background: #ffedd5; color: #9a3412; font-weight: 600; padding: 2px 8px; border-radius: 4px;">
                         2 Available Remedies
@@ -2538,7 +2538,7 @@ function renderAttendanceModalForm(data) {
                 <!-- Option A Sub-panel: Designated Substitute Presider -->
                 <div id="wsSubstitutePresiderWrap" style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 12px; margin-bottom: 6px;">
                     <div style="font-size: 0.78rem; font-weight: 700; color: #1e293b; margin-bottom: 8px;">
-                        👥 Designate Authorized Substitute Presider (Proceed Today)
+                        Designate Authorized Substitute Presider (Proceed Today)
                     </div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
                         <div>
@@ -2564,14 +2564,14 @@ function renderAttendanceModalForm(data) {
                         </label>
                     </div>
                     <div style="font-size: 0.74rem; color: #15803d; background: #f0fdf4; border: 1px solid #bbf7d0; padding: 6px 10px; border-radius: 4px;">
-                        ✓ Proceed below to verify party appearances and record minutes for today's session under this designated officer.
+                        Proceed below to verify party appearances and record minutes for today's session under this designated officer.
                     </div>
                 </div>
 
                 <!-- Option B Sub-panel: Emergency Reschedule -->
                 <div id="wsEmergencyRescheduleWrap" style="display: none; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 12px; margin-bottom: 6px;">
                     <div style="font-size: 0.78rem; font-weight: 700; color: #991b1b; margin-bottom: 6px;">
-                        📅 Emergency Reschedule Hearing (Presider Unavailability)
+                        Emergency Reschedule Hearing (Presider Unavailability)
                     </div>
                     <p style="font-size: 0.76rem; color: #7f1d1d; margin: 0 0 10px; line-height: 1.4;">
                         Under KP rules (RA 7160), neither party is penalized. Today's hearing will be marked <strong>Office Cancelled</strong>, a new hearing will be scheduled, and legal notices will be auto-generated.
@@ -2579,7 +2579,7 @@ function renderAttendanceModalForm(data) {
 
                     <div style="background: #fff; border: 1px solid #fca5a5; border-radius: 6px; padding: 10px; margin-bottom: 10px;">
                         <div style="font-size: 0.74rem; font-weight: 700; color: #991b1b; text-transform: uppercase; margin-bottom: 4px;">
-                            📄 Automatic Document Issuance:
+                            Automatic Document Issuance:
                         </div>
                         <ul style="margin: 0; padding-left: 18px; font-size: 0.76rem; color: #334155; line-height: 1.5;">
                             <li><strong>KP Form 8 (Notice of Hearing)</strong>: Issued to the <strong>Complainant</strong> with the new hearing date and reason.</li>
@@ -2604,7 +2604,7 @@ function renderAttendanceModalForm(data) {
 
                     <div style="display: flex; justify-content: flex-end; gap: 8px;">
                         <button type="button" class="btn-primary" id="btnExecuteReschedule" onclick="executeEmergencyReschedule(${hearingId}, ${caseId})" style="background: #dc2626; border-color: #dc2626; color: #fff; font-size: 0.82rem; padding: 7px 14px; border-radius: 6px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
-                            📅 Confirm Emergency Reschedule &amp; Issue KP Forms 8 &amp; 9
+                            Confirm Emergency Reschedule &amp; Issue KP Forms 8 &amp; 9
                         </button>
                     </div>
                 </div>
@@ -2631,10 +2631,10 @@ function renderAttendanceModalForm(data) {
             formRulesHtml = `
                 <div class="att-legal-notices-wrap" style="${isAbsent ? '' : 'display: none;'} margin-top: 10px; padding: 10px 12px; background: #fff5f5; border: 1px solid #fecaca; border-radius: 6px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px;">
-                        <span style="font-size: 0.78rem; font-weight: 700; color: #991b1b;">📄 Notice of Hearing (Complainant Non-appearance):</span>
+                        <span style="font-size: 0.78rem; font-weight: 700; color: #991b1b;">Notice of Hearing (Complainant Non-appearance):</span>
                         ${isSecondOrLater ? `
                             <button type="button" class="btn-secondary" onclick="openKPFormPreview(${caseId}, 'KP Form 18', ${hearingId})" style="font-size: 0.76rem; padding: 4px 10px; background: #fff; border-color: #fca5a5; color: #991b1b; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
-                                🔍 Preview / Print KP Form 18 Notice
+                                Preview / Print KP Form 18 Notice
                             </button>
                         ` : `
                             <span style="font-size: 0.74rem; color: #64748b; font-style: italic; background: #fff; border: 1px solid #cbd5e1; padding: 3px 8px; border-radius: 4px;">
@@ -2645,10 +2645,10 @@ function renderAttendanceModalForm(data) {
                     ${isSecondOrLater ? `
                         <div style="font-size: 0.76rem; border-top: 1px dashed #fca5a5; padding-top: 6px; margin-top: 4px;">
                             ${kp21Unlocked ? `
-                                <span style="color: #15803d; font-weight: 700;">✓ KP Form 21 (Certificate to Bar Action) Eligible:</span> Non-appearance was ruled unjustified.
+                                <span style="color: #15803d; font-weight: 700;">KP Form 21 (Certificate to Bar Action) Eligible:</span> Non-appearance was ruled unjustified.
                                 <button type="button" class="btn-secondary" onclick="openKPFormPreview(${caseId}, 'KP Form 21', ${hearingId})" style="font-size: 0.72rem; padding: 2px 8px; margin-left: 6px;">Preview KP Form 21</button>
                             ` : `
-                                <span style="color: #991b1b; font-weight: 700;">🔒 KP Form 21 (Certificate to Bar Action) Locked:</span>
+                                <span style="color: #991b1b; font-weight: 700;">KP Form 21 (Certificate to Bar Action) Locked:</span>
                                 <span style="color: #475569;">${escapeHtml(kp21Reason)}</span>
                             `}
                         </div>
@@ -2661,10 +2661,10 @@ function renderAttendanceModalForm(data) {
             formRulesHtml = `
                 <div class="att-legal-notices-wrap" style="${isAbsent ? '' : 'display: none;'} margin-top: 10px; padding: 10px 12px; background: #fff5f5; border: 1px solid #fecaca; border-radius: 6px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px;">
-                        <span style="font-size: 0.78rem; font-weight: 700; color: #991b1b;">📄 Notice of Hearing (Respondent Non-appearance):</span>
+                        <span style="font-size: 0.78rem; font-weight: 700; color: #991b1b;">Notice of Hearing (Respondent Non-appearance):</span>
                         ${isSecondOrLater ? `
                             <button type="button" class="btn-secondary" onclick="openKPFormPreview(${caseId}, 'KP Form 19', ${hearingId})" style="font-size: 0.76rem; padding: 4px 10px; background: #fff; border-color: #fca5a5; color: #991b1b; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
-                                🔍 Preview / Print KP Form 19 Notice
+                                Preview / Print KP Form 19 Notice
                             </button>
                         ` : `
                             <span style="font-size: 0.74rem; color: #64748b; font-style: italic; background: #fff; border: 1px solid #cbd5e1; padding: 3px 8px; border-radius: 4px;">
@@ -2675,10 +2675,10 @@ function renderAttendanceModalForm(data) {
                     ${isSecondOrLater ? `
                         <div style="font-size: 0.76rem; border-top: 1px dashed #fca5a5; padding-top: 6px; margin-top: 4px;">
                             ${kp22Unlocked ? `
-                                <span style="color: #15803d; font-weight: 700;">✓ KP Form 22 (Certificate to Bar Counterclaim) Eligible:</span> Non-appearance was ruled unjustified.
+                                <span style="color: #15803d; font-weight: 700;">KP Form 22 (Certificate to Bar Counterclaim) Eligible:</span> Non-appearance was ruled unjustified.
                                 <button type="button" class="btn-secondary" onclick="openKPFormPreview(${caseId}, 'KP Form 22', ${hearingId})" style="font-size: 0.72rem; padding: 2px 8px; margin-left: 6px;">Preview KP Form 22</button>
                             ` : `
-                                <span style="color: #991b1b; font-weight: 700;">🔒 KP Form 22 (Certificate to Bar Counterclaim) Locked:</span>
+                                <span style="color: #991b1b; font-weight: 700;">KP Form 22 (Certificate to Bar Counterclaim) Locked:</span>
                                 <span style="color: #475569;">${escapeHtml(kp22Reason)}</span>
                             `}
                         </div>
@@ -2857,7 +2857,7 @@ async function executeEmergencyReschedule(hearingId, caseId) {
 
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = '⏳ Rescheduling &amp; Generating Forms...';
+        btn.innerHTML = 'Rescheduling &amp; Generating Forms...';
     }
 
     try {
@@ -2891,7 +2891,7 @@ async function executeEmergencyReschedule(hearingId, caseId) {
                         </p>
                         <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 12px; max-width: 520px; margin: 0 auto 18px; text-align: left;">
                             <div style="font-size: 0.78rem; font-weight: 700; color: #166534; margin-bottom: 6px;">
-                                📄 Auto-Generated Legal Documents (Ready for Service):
+                                Auto-Generated Legal Documents (Ready for Service):
                             </div>
                             <ul style="margin: 0; padding-left: 18px; font-size: 0.76rem; color: #14532d; line-height: 1.5;">
                                 <li><strong>KP Form 8 (Notice of Hearing)</strong>: Issued to Complainant with new hearing date and reason.</li>
@@ -2900,10 +2900,10 @@ async function executeEmergencyReschedule(hearingId, caseId) {
                         </div>
                         <div style="display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
                             <button type="button" class="btn-secondary" onclick="openKPFormPreview(${Number(caseId)}, 'KP Form 8', ${newHearingId})" style="padding: 7px 14px; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
-                                📄 Preview KP Form 8 (Complainant)
+                                Preview KP Form 8 (Complainant)
                             </button>
                             <button type="button" class="btn-secondary" onclick="openKPFormPreview(${Number(caseId)}, 'KP Form 9', ${newHearingId})" style="padding: 7px 14px; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
-                                📄 Preview KP Form 9 (Respondent)
+                                Preview KP Form 9 (Respondent)
                             </button>
                         </div>
                         <div>
@@ -2918,7 +2918,7 @@ async function executeEmergencyReschedule(hearingId, caseId) {
             alert(json.message || 'Unable to reschedule hearing.');
             if (btn) {
                 btn.disabled = false;
-                btn.innerHTML = '📅 Confirm Emergency Reschedule &amp; Issue KP Forms 8 &amp; 9';
+                btn.innerHTML = 'Confirm Emergency Reschedule &amp; Issue KP Forms 8 &amp; 9';
             }
         }
     } catch (err) {
@@ -2926,7 +2926,7 @@ async function executeEmergencyReschedule(hearingId, caseId) {
         alert('Network error while executing emergency reschedule.');
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = '📅 Confirm Emergency Reschedule &amp; Issue KP Forms 8 &amp; 9';
+            btn.innerHTML = 'Confirm Emergency Reschedule &amp; Issue KP Forms 8 &amp; 9';
         }
     }
 }
@@ -3118,17 +3118,17 @@ async function toggleStageVoiceRecording() {
                 btn.style.color = '#ffffff';
                 btn.style.borderColor = '#dc2626';
             }
-            if (textSpan) textSpan.textContent = '⏹️ Stop Recording (00:00)';
+            if (textSpan) textSpan.textContent = 'Stop Recording (00:00)';
             if (statusBanner) {
                 statusBanner.style.display = 'block';
-                statusBanner.innerHTML = '🔴 <strong>Recording audio from microphone...</strong> Speak clearly. Click "Stop Recording" when finished.';
+                statusBanner.innerHTML = '<strong>Recording audio from microphone...</strong> Speak clearly. Click "Stop Recording" when finished.';
             }
 
             stageRecordingTimerInterval = setInterval(() => {
                 stageRecordingSeconds++;
                 const mins = String(Math.floor(stageRecordingSeconds / 60)).padStart(2, '0');
                 const secs = String(stageRecordingSeconds % 60).padStart(2, '0');
-                if (textSpan) textSpan.textContent = `⏹️ Stop Recording (${mins}:${secs})`;
+                if (textSpan) textSpan.textContent = `Stop Recording (${mins}:${secs})`;
             }, 1000);
         } catch (err) {
             console.error('Microphone access denied:', err);
@@ -3147,10 +3147,10 @@ async function toggleStageVoiceRecording() {
             btn.style.borderColor = '';
             btn.disabled = true;
         }
-        if (textSpan) textSpan.textContent = '⏳ Transcribing Voice...';
+        if (textSpan) textSpan.textContent = 'Transcribing Voice...';
         if (statusBanner) {
             statusBanner.style.display = 'block';
-            statusBanner.innerHTML = '⏳ <strong>Transcribing voice with Gemini 1.5 Flash...</strong> Please wait.';
+            statusBanner.innerHTML = '<strong>Transcribing voice with Gemini 1.5 Flash...</strong> Please wait.';
         }
     }
 }
@@ -3171,27 +3171,27 @@ async function sendStageAudioToGemini(audioBlob) {
 
         const result = await response.json();
         if (result.success && result.text) {
-            appendGeminiTextToMinutes(result.text, '🎙️ Voice Transcription');
+            appendGeminiTextToMinutes(result.text, 'Voice Transcription');
             if (statusBanner) {
                 statusBanner.style.display = 'block';
-                statusBanner.innerHTML = '✅ <strong>Voice transcription appended successfully!</strong>';
+                statusBanner.innerHTML = '<strong>Voice transcription appended successfully.</strong>';
                 setTimeout(() => { if (statusBanner) statusBanner.style.display = 'none'; }, 4000);
             }
         } else {
             if (statusBanner) {
                 statusBanner.style.display = 'block';
-                statusBanner.innerHTML = `<span style="color:#b91c1c;">⚠️ Transcription error: ${escapeHtml(result.message || 'Failed to process audio.')}</span>`;
+                statusBanner.innerHTML = `<span style="color:#b91c1c;">Transcription error: ${escapeHtml(result.message || 'Failed to process audio.')}</span>`;
             }
         }
     } catch (error) {
         console.error('Audio transcription error:', error);
         if (statusBanner) {
             statusBanner.style.display = 'block';
-            statusBanner.innerHTML = `<span style="color:#b91c1c;">⚠️ Network error during transcription: ${escapeHtml(error.message)}</span>`;
+            statusBanner.innerHTML = `<span style="color:#b91c1c;">Network error during transcription: ${escapeHtml(error.message)}</span>`;
         }
     } finally {
         if (btn) btn.disabled = false;
-        if (textSpan) textSpan.textContent = '🎙️ Record Voice (STT)';
+        if (textSpan) textSpan.textContent = 'Record Voice (STT)';
     }
 }
 
@@ -3209,7 +3209,7 @@ async function handleStageNotesFileSelected(input) {
     if (uploadBtn) uploadBtn.disabled = true;
     if (statusBanner) {
         statusBanner.style.display = 'block';
-        statusBanner.innerHTML = '⏳ <strong>Extracting handwritten/printed notes with Gemini 1.5 Flash OCR...</strong> Please wait.';
+        statusBanner.innerHTML = '<strong>Extracting handwritten/printed notes with Gemini 1.5 Flash OCR...</strong> Please wait.';
     }
 
     try {
@@ -3223,23 +3223,23 @@ async function handleStageNotesFileSelected(input) {
 
         const result = await response.json();
         if (result.success && result.text) {
-            appendGeminiTextToMinutes(result.text, '📄 OCR Notes Extract');
+            appendGeminiTextToMinutes(result.text, 'OCR Notes Extract');
             if (statusBanner) {
                 statusBanner.style.display = 'block';
-                statusBanner.innerHTML = '✅ <strong>Notes extracted and appended successfully!</strong>';
+                statusBanner.innerHTML = '<strong>Notes extracted and appended successfully.</strong>';
                 setTimeout(() => { if (statusBanner) statusBanner.style.display = 'none'; }, 4000);
             }
         } else {
             if (statusBanner) {
                 statusBanner.style.display = 'block';
-                statusBanner.innerHTML = `<span style="color:#b91c1c;">⚠️ OCR error: ${escapeHtml(result.message || 'Failed to extract text from image.')}</span>`;
+                statusBanner.innerHTML = `<span style="color:#b91c1c;">OCR error: ${escapeHtml(result.message || 'Failed to extract text from image.')}</span>`;
             }
         }
     } catch (error) {
         console.error('OCR error:', error);
         if (statusBanner) {
             statusBanner.style.display = 'block';
-            statusBanner.innerHTML = `<span style="color:#b91c1c;">⚠️ Network error during OCR: ${escapeHtml(error.message)}</span>`;
+            statusBanner.innerHTML = `<span style="color:#b91c1c;">Network error during OCR: ${escapeHtml(error.message)}</span>`;
         }
     } finally {
         if (uploadBtn) uploadBtn.disabled = false;
@@ -3341,9 +3341,9 @@ function openPreviewMinutesModal(hearingId) {
                 <div style="margin-bottom: 12px;">
                     <strong style="color: #0f172a; font-size: 0.88rem; border-bottom: 1px solid #cbd5e1; display: block; padding-bottom: 3px;">1. Procedural Opening &amp; Identity Verification</strong>
                     <div style="font-size: 0.84rem; margin-top: 6px;">
-                        Opening Statement: <strong>${min.opening_conducted ? '✓ Conducted' : 'Not Recorded'}</strong> · 
-                        Parties Identity: <strong>${min.identity_verified ? '✓ Verified' : 'Not Recorded'}</strong> · 
-                        Complaint Read &amp; Reviewed: <strong>${min.complaint_reviewed ? '✓ Reviewed' : 'Not Recorded'}</strong>
+                        Opening Statement: <strong>${min.opening_conducted ? 'Conducted' : 'Not Recorded'}</strong> · 
+                        Parties Identity: <strong>${min.identity_verified ? 'Verified' : 'Not Recorded'}</strong> · 
+                        Complaint Read &amp; Reviewed: <strong>${min.complaint_reviewed ? 'Reviewed' : 'Not Recorded'}</strong>
                     </div>
                 </div>
 
@@ -3359,7 +3359,7 @@ function openPreviewMinutesModal(hearingId) {
                     <strong style="color: #0f172a; font-size: 0.88rem; border-bottom: 1px solid #cbd5e1; display: block; padding-bottom: 3px;">3. Negotiation, Proposals &amp; Caucus</strong>
                     <div style="font-size: 0.84rem; margin-top: 6px;"><strong>Proposal / Offer:</strong> ${escapeHtml(min.new_proposal || 'None submitted')}</div>
                     <div style="font-size: 0.84rem; margin-top: 4px;"><strong>Counteroffer / Response:</strong> ${escapeHtml(min.counteroffer || 'None recorded')}</div>
-                    <div style="font-size: 0.84rem; margin-top: 4px;"><strong>Private Caucus:</strong> ${min.caucus_conducted ? `✓ Conducted — ${escapeHtml(min.caucus_notes || 'Confidential')}` : 'None held'}</div>
+                    <div style="font-size: 0.84rem; margin-top: 4px;"><strong>Private Caucus:</strong> ${min.caucus_conducted ? `Conducted — ${escapeHtml(min.caucus_notes || 'Confidential')}` : 'None held'}</div>
                 </div>
 
                 <div style="margin-bottom: 12px;">
@@ -3378,7 +3378,7 @@ function openPreviewMinutesModal(hearingId) {
             </div>
             <div class="modal-actions" style="margin-top: 10px;">
                 <button type="button" class="btn-secondary" onclick="closePreviewMinutesModal()">Close</button>
-                <button type="button" class="btn-create" onclick="printHearingMinutes(${hearingId})" style="background: #0369a1;">🖨️ Print Official Minutes</button>
+                <button type="button" class="btn-create" onclick="printHearingMinutes(${hearingId})" style="background: #0369a1;">Print Official Minutes</button>
             </div>
         </div>
     `;
@@ -3647,10 +3647,10 @@ function renderPangkatPanelSection(data, stage) {
     const failureReason = pInfo.party_agreement_failure_reason || '';
 
     // Selection method badge
-    let selectionBadge = `<span style="background: #e0f2fe; color: #0369a1; padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 0.78rem;">🤝 Chosen by Parties</span>`;
+    let selectionBadge = `<span style="background: #e0f2fe; color: #0369a1; padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 0.78rem;">Chosen by Parties</span>`;
     if (isAgreementFailed || selectionMethod === 'PB Assignment' || selectionMethod === 'Raffle Draw') {
         const methodLabel = selectionMethod === 'Raffle Draw' ? 'PB Drawing of Lots (Raffle)' : 'Punong Barangay Appointment';
-        selectionBadge = `<span style="background: #fef3c7; color: #92400e; padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 0.78rem;">🎲 ${escapeHtml(methodLabel)}</span>`;
+        selectionBadge = `<span style="background: #fef3c7; color: #92400e; padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 0.78rem;">${escapeHtml(methodLabel)}</span>`;
     }
 
     // Pending challenges banner
@@ -3663,7 +3663,7 @@ function renderPangkatPanelSection(data, stage) {
                 <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                     <div>
                         <strong style="color: #92400e; font-size: 0.92rem; display: flex; align-items: center; gap: 6px;">
-                            ⚠️ Active Challenge Against Pangkat Member Pending
+                            Active Challenge Against Pangkat Member Pending
                         </strong>
                         <p style="margin: 4px 0 0; font-size: 0.84rem; color: #78350f;">
                             <strong>${escapeHtml(pch.challenged_name || 'Member')}</strong> was challenged by ${escapeHtml(pch.challenger_party || 'Party')} on grounds of <strong>${escapeHtml(pch.grounds)}</strong>.
@@ -3671,7 +3671,7 @@ function renderPangkatPanelSection(data, stage) {
                         </p>
                     </div>
                     <button type="button" class="btn-create" onclick="openResolveChallengeModal(${Number(pch.challenge_id)})" style="font-size: 0.8rem; padding: 7px 14px; background: #d97706;">
-                        ⚖️ Deliberate &amp; Resolve Challenge &rarr;
+                        Deliberate &amp; Resolve Challenge &rarr;
                     </button>
                 </div>
             </div>
@@ -3706,7 +3706,7 @@ function renderPangkatPanelSection(data, stage) {
                     <div style="margin-top: 12px; padding-top: 8px; border-top: 1px dashed #e2e8f0; display: flex; justify-content: flex-end;">
                         ${!isDisqualified ? `
                             <button type="button" class="btn-secondary" onclick="openChallengeMemberModal(${Number(m.member_id)}, '${escapeHtml(m.member_name)}')" style="font-size: 0.74rem; padding: 4px 10px; color: #64748b;" title="Challenge this member for bias, interest, or relationship">
-                                ⚖️ Challenge Member
+                                Challenge Member
                             </button>
                         ` : ''}
                     </div>
@@ -3753,10 +3753,10 @@ function renderPangkatPanelSection(data, stage) {
             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                 ${selectionBadge}
                 <button type="button" class="btn-secondary" onclick="openPangkatSelectionModal()" style="font-size: 0.78rem; padding: 5px 12px; display: inline-flex; align-items: center; gap: 4px;">
-                    🤝 Selection &amp; Replacement
+                    Selection &amp; Replacement
                 </button>
                 <button type="button" class="btn-create" onclick="openPangkatExtensionModal()" style="font-size: 0.78rem; padding: 5px 12px; background: #0369a1; display: inline-flex; align-items: center; gap: 4px;">
-                    ⏳ Grant Extension
+                    Grant Extension
                 </button>
             </div>
         </div>
@@ -4271,7 +4271,7 @@ async function loadTransmittalCard(caseId) {
 
         const receivingCopyHtml = data.receiving_copy_path ? `
             <div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed #cbd5e1; font-size: 0.82rem; color: #1e40af;">
-                📎 <strong>Stamped Receiving Copy on File:</strong> 
+                <strong>Stamped Receiving Copy on File:</strong> 
                 <a href="../../../${escapeHtml(data.receiving_copy_path)}" target="_blank" style="color: #0369a1; text-decoration: underline; font-weight: 600;">
                     View Stamped Court / DILG Copy &rarr;
                 </a>
@@ -4284,9 +4284,9 @@ async function loadTransmittalCard(caseId) {
                     <strong>Transmitted on:</strong> ${escapeHtml(data.transmittal_date || 'Logged')} &bull; 
                     <strong>Target:</strong> ${escapeHtml(data.target_agency_label || 'Both MTC & DILG')}
                 </div>
-                ${data.mtc_receiver_name ? `<div>⚖️ <strong>MTCC Receiver:</strong> ${escapeHtml(data.mtc_receiver_name)} ${data.mtc_received_date ? `(Received: ${escapeHtml(data.mtc_received_date)})` : ''}</div>` : ''}
-                ${data.dilg_receiver_name ? `<div>🏛️ <strong>DILG Receiver:</strong> ${escapeHtml(data.dilg_receiver_name)} ${data.dilg_received_date ? `(Received: ${escapeHtml(data.dilg_received_date)})` : ''}</div>` : ''}
-                ${data.remarks ? `<div style="margin-top: 3px; color: #64748b; font-style: italic;">📝 "${escapeHtml(data.remarks)}"</div>` : ''}
+                ${data.mtc_receiver_name ? `<div><strong>MTCC Receiver:</strong> ${escapeHtml(data.mtc_receiver_name)} ${data.mtc_received_date ? `(Received: ${escapeHtml(data.mtc_received_date)})` : ''}</div>` : ''}
+                ${data.dilg_receiver_name ? `<div><strong>DILG Receiver:</strong> ${escapeHtml(data.dilg_receiver_name)} ${data.dilg_received_date ? `(Received: ${escapeHtml(data.dilg_received_date)})` : ''}</div>` : ''}
+                ${data.remarks ? `<div style="margin-top: 3px; color: #64748b; font-style: italic;">"${escapeHtml(data.remarks)}"</div>` : ''}
             </div>
         ` : '';
 
@@ -4296,7 +4296,7 @@ async function loadTransmittalCard(caseId) {
                     <div>
                         <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                             <h4 style="margin: 0; font-size: 0.98rem; color: #0f172a; font-weight: 700;">
-                                ⚖️ MTC &amp; DILG Court Transmittal Module
+                                MTC &amp; DILG Court Transmittal Module
                             </h4>
                             <span style="font-size: 0.76rem; background: #f1f5f9; color: #475569; padding: 2px 7px; border-radius: 4px; font-weight: 600;">
                                 Ref: ${escapeHtml(data.transmittal_number || 'TR')}
@@ -4321,11 +4321,11 @@ async function loadTransmittalCard(caseId) {
                     </div>
                     ${data.is_repudiation_window_open ? `
                         <div style="margin-top: 5px; color: #b45309; font-weight: 600;">
-                            ⏳ Repudiation countdown: ${data.working_days_remaining} working day${data.working_days_remaining === 1 ? '' : 's'} remaining before formal transmittal is prescribed.
+                            Repudiation countdown: ${data.working_days_remaining} working day${data.working_days_remaining === 1 ? '' : 's'} remaining before formal transmittal is prescribed.
                         </div>
                     ` : `
                         <div style="margin-top: 5px; color: #15803d; font-weight: 600;">
-                            ✓ 10 working days elapsed with no repudiation filed. Amicable settlement now carries the force and effect of a final court judgment under Section 411.
+                            10 working days elapsed with no repudiation filed. Amicable settlement now carries the force and effect of a final court judgment under Section 411.
                         </div>
                     `}
                 </div>
@@ -4335,10 +4335,10 @@ async function loadTransmittalCard(caseId) {
 
                 <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; flex-wrap: wrap;">
                     <button type="button" class="btn-secondary" onclick="openPreviewTransmittalModal(${Number(caseId)})" style="font-size: 0.82rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
-                        📄 Preview / Print Transmittal Letter
+                        Preview / Print Transmittal Letter
                     </button>
                     <button type="button" class="btn-create" onclick="openRecordTransmittalModal(${Number(caseId)})" style="font-size: 0.82rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; background: #0f766e;">
-                        📤 Record Court / DILG Submission
+                        Record Court / DILG Submission
                     </button>
                 </div>
             </div>
@@ -4392,7 +4392,7 @@ function openRecordTransmittalModal(caseId) {
         if (data.is_repudiation_window_open) {
             alertBox.innerHTML = `
                 <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 10px 12px; font-size: 0.82rem; color: #92400e; line-height: 1.45;">
-                    ⚠️ <strong>Notice (RA 7160 Sec. 411):</strong> The 10-working-day repudiation window is currently active 
+                    <strong>Notice (RA 7160 Sec. 411):</strong> The 10-working-day repudiation window is currently active 
                     (<strong>${data.working_days_remaining} working day${data.working_days_remaining === 1 ? '' : 's'} remaining</strong> until ${data.ten_day_expiry_date_formatted}). 
                     Formal transmittal is legally prescribed upon lapse of this period without repudiation.
                 </div>
@@ -4401,7 +4401,7 @@ function openRecordTransmittalModal(caseId) {
         } else {
             alertBox.innerHTML = `
                 <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 10px 12px; font-size: 0.82rem; color: #166534; line-height: 1.45;">
-                    ✓ <strong>Statutory Repudiation Window Elapsed:</strong> No repudiation has been recorded. This settlement carries the force and effect of a final court judgment and is ready for court &amp; DILG transmittal.
+                    <strong>Statutory Repudiation Window Elapsed:</strong> No repudiation has been recorded. This settlement carries the force and effect of a final court judgment and is ready for court &amp; DILG transmittal.
                 </div>
             `;
             alertBox.style.display = 'block';
@@ -4480,7 +4480,7 @@ async function handleRecordTransmittalSubmit(event) {
     } finally {
         if (submitBtn) {
             submitBtn.disabled = false;
-            submitBtn.textContent = '💾 Save Transmittal Record';
+            submitBtn.textContent = 'Save Transmittal Record';
         }
     }
 }

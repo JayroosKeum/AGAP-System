@@ -418,7 +418,7 @@ function applySummonFilterAndRender() {
 
 function renderTableServiceStatus(item) {
     if (isCaseCfaReady(item)) {
-        return `<span class="service-status-pill badge-cfa-ready">📄 CFA Ready (6/6 Failed)</span>`;
+        return `<span class="service-status-pill badge-cfa-ready">CFA Ready (6/6 Failed)</span>`;
     }
 
     if (item && item.is_paanyaya) {
@@ -426,7 +426,7 @@ function renderTableServiceStatus(item) {
         const respFailCount = Number(item.respondent_failed_attempts || 0);
         const stageLabel = escapeGpsHtml(item.paanyaya_stage_type || 'Paanyaya');
         if (respServed) {
-            return `<span class="service-status-pill badge-served-mini" style="font-weight:700;">✓ Delivered (${stageLabel})</span>`;
+            return `<span class="service-status-pill badge-served-mini" style="font-weight:700;">Delivered (${stageLabel})</span>`;
         }
         if (respFailCount >= 6) {
             return `<span class="service-status-pill badge-failed-mini">6 Attempts Exhausted (${stageLabel})</span>`;
@@ -441,7 +441,7 @@ function renderTableServiceStatus(item) {
     const respServed = Number(item.respondent_served_attempts || 0) > 0 || respStatus.startsWith('Served');
 
     if (compServed && respServed) {
-        return `<span class="service-status-pill badge-served-mini" style="font-weight:700;">✓ Both Parties Served</span>`;
+        return `<span class="service-status-pill badge-served-mini" style="font-weight:700;">Both Parties Served</span>`;
     }
 
     let compPill = '';
@@ -487,7 +487,7 @@ function renderSummonCasesTable(cases) {
         tbody.innerHTML = `
             <tr>
                 <td colspan="6" class="empty-state" style="padding: 40px 16px; text-align: center; color: #64748b;">
-                    <div style="font-size: 1.8rem; margin-bottom: 8px;">📬</div>
+                    
                     <div style="font-weight: 700; color: #1e293b; font-size: 0.95rem; margin-bottom: 4px;">No cases found</div>
                     <div style="font-size: 0.85rem; color: #64748b; max-width: 420px; margin: 0 auto;">${escapeGpsHtml(emptyDesc)}</div>
                     ${activeFilterTab !== 'all' ? '<button type="button" class="btn-secondary" style="margin-top: 14px; padding: 6px 14px; border-radius: 6px; font-size: 0.82rem; cursor: pointer; border: 1px solid #cbd5e1; background: #fff;" onclick="setProofFilter(\'all\')">View All Cases</button>' : ''}
@@ -758,7 +758,7 @@ async function renderExpandedCaseView(caseId) {
         const renderCfaStepperNode = () => {
             if (isPaanyayaCase) return '';
             let circleClass = isCfaEligible ? 'cfa-ready' : 'cfa-locked';
-            let iconText = isCfaEligible ? '📄' : '🔒';
+            let iconText = isCfaEligible ? 'CFA' : '—';
             let statusText = isCfaEligible ? 'CFA Ready' : 'CFA Locked';
             let subText = isCfaEligible ? 'Eligible' : `${failedCount}/6 Failed`;
             let clickAction = isCfaEligible
