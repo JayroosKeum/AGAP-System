@@ -256,6 +256,10 @@ function renderTimeCell(item) {
     const isBothReady = compIn && respIn;
     const qStatus = item.queue_status || (isBothReady ? 'Ready' : 'Waiting');
 
+    const now = new Date();
+    const isPastCallTime = (qStatus !== 'In_Session' && qStatus !== 'Concluded' && item.status !== 'Completed' && !isNaN(dateObj.getTime()) && dateObj < now);
+    const delayMinutes = isPastCallTime ? Math.floor((now - dateObj) / 60000) : 0;
+
     let badge = '';
     if (qStatus === 'In_Session') {
         badge = `<span style="display:block; font-size:0.7rem; font-weight:700; color:#1e40af; background:#dbeafe; padding:1px 5px; border-radius:3px; margin-top:2px;">🔵 In Session</span>`;
@@ -267,6 +271,10 @@ function renderTimeCell(item) {
         badge = `<span style="display:block; font-size:0.7rem; font-weight:600; color:#475569; background:#f1f5f9; padding:1px 5px; border-radius:3px; margin-top:2px;">✓ Concluded (${item.actual_duration_minutes || item.duration_minutes || 45}m)</span>`;
     } else {
         badge = `<span style="display:block; font-size:0.7rem; font-weight:600; color:#64748b; margin-top:2px;">⏳ Waiting (${compIn ? '1/2' : (respIn ? '1/2' : '0/2')})</span>`;
+    }
+
+    if (delayMinutes >= 15 && !isBothReady && qStatus !== 'Standby' && qStatus !== 'In_Session' && qStatus !== 'Concluded') {
+        badge += `<span style="display:block; font-size:0.68rem; font-weight:700; color:#dc2626; background:#fee2e2; padding:1px 5px; border-radius:3px; margin-top:2px;">⚠️ Delayed (${delayMinutes}m)</span>`;
     }
 
     return `<span class="hearing-time-text">${escapeHtml(timeStr)}</span>${badge}`;
@@ -313,11 +321,13 @@ function renderActionsCell(item) {
     return '<span class="empty-cell">—</span>';
 }
 
-async function checkInDocketHearing(hearingId, partyType, status) {
+async function checkInDocketHearing(hearingId, partyType, status, residentId = null) {
     try {
+        const payload = { action: 'check_in', hearing_id: hearingId, party_type: partyType, status: status };
+        if (residentId) payload.resident_id = residentId;
         const res = await api('../../../backend/api/hearings/queue.php', {
             method: 'POST',
-            body: JSON.stringify({ action: 'check_in', hearing_id: hearingId, party_type: partyType, status: status })
+            body: JSON.stringify(payload)
         });
         if (res.success) {
             setMessage(res.message, true);

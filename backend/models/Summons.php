@@ -715,6 +715,7 @@ class Summons
 
         $overlapSql = "
             SELECT h.hearing_id, h.case_id, h.hearing_date, h.venue, h.hearing_type,
+                   h.actual_start_time, h.actual_end_time, h.status, h.queue_status,
                    c.case_number, co.complaint_title
             FROM hearings h
             INNER JOIN cases c ON c.case_id = h.case_id
@@ -722,10 +723,23 @@ class Summons
             WHERE DATE(h.hearing_date) = ?
               AND LOWER(TRIM(h.venue)) = LOWER(TRIM(?))
               AND h.status NOT IN ('Cancelled', 'Office Cancelled')
-              AND h.hearing_date < ?
-              AND DATE_ADD(h.hearing_date, INTERVAL 60 MINUTE) > ?
+              AND (
+                  CASE 
+                    WHEN (h.status = 'Completed' OR h.queue_status = 'Concluded') THEN
+                      (h.actual_start_time IS NOT NULL AND h.actual_end_time IS NOT NULL AND h.actual_start_time < ? AND h.actual_end_time > ?)
+                    WHEN h.queue_status = 'In_Session' AND h.actual_start_time IS NOT NULL THEN
+                      (h.actual_start_time < ? AND DATE_ADD(h.actual_start_time, INTERVAL COALESCE(h.duration_minutes, 45) MINUTE) > ?)
+                    ELSE
+                      (h.hearing_date < ? AND DATE_ADD(h.hearing_date, INTERVAL 60 MINUTE) > ?)
+                  END
+              )
         ";
-        $overlapParams = [$date, $venue, $proposedEnd, $proposedStart];
+        $overlapParams = [
+            $date, $venue,
+            $proposedEnd, $proposedStart,
+            $proposedEnd, $proposedStart,
+            $proposedEnd, $proposedStart
+        ];
 
         if ($excludeHearingId !== null && $excludeHearingId > 0) {
             $overlapSql .= " AND h.hearing_id <> ?";
@@ -742,9 +756,14 @@ class Summons
         $overlapConflict = $overlapStmt->fetch(PDO::FETCH_ASSOC);
 
         if ($overlapConflict) {
-            $cStart = date('g:i A', strtotime($overlapConflict['hearing_date']));
-            $cEnd = date('g:i A', strtotime($overlapConflict['hearing_date'] . ' +60 minutes'));
-            $cDate = date('M j, Y', strtotime($overlapConflict['hearing_date']));
+            $effectiveStart = (!empty($overlapConflict['actual_start_time']) && (in_array($overlapConflict['status'], ['Completed', 'Attendance Recorded'], true) || ($overlapConflict['queue_status'] ?? '') === 'Concluded'))
+                ? $overlapConflict['actual_start_time']
+                : $overlapConflict['hearing_date'];
+            $cStart = date('g:i A', strtotime($effectiveStart));
+            $cEnd = !empty($overlapConflict['actual_end_time'])
+                ? date('g:i A', strtotime($overlapConflict['actual_end_time']))
+                : date('g:i A', strtotime($effectiveStart . ' +60 minutes'));
+            $cDate = date('M j, Y', strtotime($effectiveStart));
             $caseRef = !empty($overlapConflict['case_number']) ? ' for Case ' . $overlapConflict['case_number'] : '';
             return [
                 'hearing_id' => $overlapConflict['hearing_id'],

@@ -634,16 +634,43 @@ function renderSessionsList(data, stage) {
                     </div>
                 </div>
 
+                ${(() => {
+                    const dateObj = new Date(s.hearing_date ? s.hearing_date.replace(' ', 'T') : '');
+                    const nowObj = new Date();
+                    const isDelayed15 = (!isConcluded && !isInSession && !isReady && !isStandby && !isNaN(dateObj.getTime()) && (nowObj - dateObj) > 15 * 60000);
+                    if (!isDelayed15) return '';
+                    return `
+                        <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 14px; margin-bottom: 12px; font-size: 0.8rem; color: #991b1b; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                            <div>
+                                <strong>⚠️ 15-Minute Grace Period Expired:</strong> Scheduled call time has passed and parties remain incomplete.
+                            </div>
+                            <div style="display: flex; gap: 6px;">
+                                <button type="button" class="btn-secondary" onclick="handleDocketStandby(${s.hearing_id}, true)" style="font-size: 0.74rem; padding: 4px 8px; background: #fff;">⏸️ Move to Standby</button>
+                                <button type="button" class="btn-secondary" onclick="openAttendanceModal(${s.hearing_id})" style="font-size: 0.74rem; padding: 4px 8px; background: #fee2e2; border-color: #fca5a5; color: #991b1b;">⚠️ Record Non-Appearance</button>
+                            </div>
+                        </div>
+                    `;
+                })()}
+
                 <!-- Daily Docket Live Arrival / Readiness Tracking Bar -->
                 <div style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                     <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                         <span style="font-size: 0.76rem; font-weight: 700; color: #475569; text-transform: uppercase;">Party Arrival Check-In:</span>
-                        <button type="button" onclick="handleDocketCheckIn(${s.hearing_id}, 'Complainant', '${compIn ? 'Waiting' : 'Checked In'}')" style="font-size: 0.78rem; padding: 3px 10px; border-radius: 6px; border: 1px solid ${compIn ? '#86efac' : '#cbd5e1'}; background: ${compIn ? '#dcfce7' : '#fff'}; color: ${compIn ? '#15803d' : '#475569'}; font-weight: 600; cursor: pointer;">
-                            Complainant: [ ${compIn ? '✓ Checked In' : '⏳ Waiting / In Transit'} ]
-                        </button>
-                        <button type="button" onclick="handleDocketCheckIn(${s.hearing_id}, 'Respondent', '${respIn ? 'Waiting' : 'Checked In'}')" style="font-size: 0.78rem; padding: 3px 10px; border-radius: 6px; border: 1px solid ${respIn ? '#86efac' : '#cbd5e1'}; background: ${respIn ? '#dcfce7' : '#fff'}; color: ${respIn ? '#15803d' : '#475569'}; font-weight: 600; cursor: pointer;">
-                            Respondent: [ ${respIn ? '✓ Checked In' : '⏳ Waiting / In Transit'} ]
-                        </button>
+                        ${(s.parties && s.parties.length > 2) ? s.parties.map(p => {
+                            const isPIn = (p.attendance_status === 'Present' || p.attendance_status === 'Late');
+                            return `
+                                <button type="button" onclick="handleDocketCheckIn(${s.hearing_id}, '${p.party_type}', '${isPIn ? 'Waiting' : 'Checked In'}', ${p.resident_id})" style="font-size: 0.76rem; padding: 3px 8px; border-radius: 6px; border: 1px solid ${isPIn ? '#86efac' : '#cbd5e1'}; background: ${isPIn ? '#dcfce7' : '#fff'}; color: ${isPIn ? '#15803d' : '#475569'}; font-weight: 600; cursor: pointer;" title="Toggle arrival for ${escapeHtml(p.full_name)}">
+                                    ${escapeHtml(p.party_type)} (${escapeHtml(p.full_name)}): [ ${isPIn ? '✓' : '⏳'} ]
+                                </button>
+                            `;
+                        }).join('') : `
+                            <button type="button" onclick="handleDocketCheckIn(${s.hearing_id}, 'Complainant', '${compIn ? 'Waiting' : 'Checked In'}')" style="font-size: 0.78rem; padding: 3px 10px; border-radius: 6px; border: 1px solid ${compIn ? '#86efac' : '#cbd5e1'}; background: ${compIn ? '#dcfce7' : '#fff'}; color: ${compIn ? '#15803d' : '#475569'}; font-weight: 600; cursor: pointer;">
+                                Complainant: [ ${compIn ? '✓ Checked In' : '⏳ Waiting / In Transit'} ]
+                            </button>
+                            <button type="button" onclick="handleDocketCheckIn(${s.hearing_id}, 'Respondent', '${respIn ? 'Waiting' : 'Checked In'}')" style="font-size: 0.78rem; padding: 3px 10px; border-radius: 6px; border: 1px solid ${respIn ? '#86efac' : '#cbd5e1'}; background: ${respIn ? '#dcfce7' : '#fff'}; color: ${respIn ? '#15803d' : '#475569'}; font-weight: 600; cursor: pointer;">
+                                Respondent: [ ${respIn ? '✓ Checked In' : '⏳ Waiting / In Transit'} ]
+                            </button>
+                        `}
                     </div>
                     <div style="font-size: 0.8rem; font-weight: 600;">
                         ${isReady ? '<span style="color: #15803d;">🟢 Complete &amp; Ready for Hearing</span>' : '<span style="color: #64748b;">⏳ Waiting for parties to arrive</span>'}
@@ -693,17 +720,19 @@ function formatTimeOnly(dateStr) {
     }
 }
 
-async function handleDocketCheckIn(hearingId, partyType, status) {
+async function handleDocketCheckIn(hearingId, partyType, status, residentId = null) {
     try {
+        const payload = {
+            action: 'check_in',
+            hearing_id: hearingId,
+            party_type: partyType,
+            status: status
+        };
+        if (residentId) payload.resident_id = residentId;
         const res = await fetch(getStageApiUrl('hearings/queue.php'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: 'check_in',
-                hearing_id: hearingId,
-                party_type: partyType,
-                status: status
-            })
+            body: JSON.stringify(payload)
         });
         const data = await res.json();
         if (data.success) {

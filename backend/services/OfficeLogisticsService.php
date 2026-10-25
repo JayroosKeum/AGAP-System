@@ -378,7 +378,8 @@ class OfficeLogisticsService
         $userName = $nameStmt->fetchColumn() ?: "Officer #{$userId}";
 
         $sql = "
-            SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.end_time, c.case_number
+            SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.end_time, h.actual_start_time, h.actual_end_time,
+                   h.status, h.queue_status, c.case_number
             FROM hearings h
             INNER JOIN cases c ON c.case_id = h.case_id
             LEFT JOIN case_assignments ca ON ca.case_id = h.case_id AND ca.member_id = ?
@@ -390,10 +391,22 @@ class OfficeLogisticsService
                   SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
               )
               AND (
-                  h.hearing_date < ? AND COALESCE(h.end_time, DATE_ADD(h.hearing_date, INTERVAL COALESCE(h.duration_minutes, 45) MINUTE)) > ?
+                  CASE 
+                    WHEN (h.status = 'Completed' OR h.queue_status = 'Concluded') THEN
+                      (h.actual_start_time IS NOT NULL AND h.actual_end_time IS NOT NULL AND h.actual_start_time < ? AND h.actual_end_time > ?)
+                    WHEN h.queue_status = 'In_Session' AND h.actual_start_time IS NOT NULL THEN
+                      (h.actual_start_time < ? AND DATE_ADD(h.actual_start_time, INTERVAL COALESCE(h.duration_minutes, 45) MINUTE) > ?)
+                    ELSE
+                      (h.hearing_date < ? AND COALESCE(h.end_time, DATE_ADD(h.hearing_date, INTERVAL COALESCE(h.duration_minutes, 45) MINUTE)) > ?)
+                  END
               )
         ";
-        $params = [$userId, $userId, $userId, $userId, $userId, $userId, $endDateTime, $startDateTime];
+        $params = [
+            $userId, $userId, $userId, $userId, $userId, $userId,
+            $endDateTime, $startDateTime,
+            $endDateTime, $startDateTime,
+            $endDateTime, $startDateTime
+        ];
         if ($excludeHearingId) {
             $sql .= ' AND h.hearing_id != ?';
             $params[] = $excludeHearingId;
@@ -405,11 +418,16 @@ class OfficeLogisticsService
         $conflict = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($conflict) {
-            $startFormatted = date('g:i A', strtotime($conflict['hearing_date']));
-            $endFormatted = !empty($conflict['end_time'])
-                ? date('g:i A', strtotime($conflict['end_time']))
-                : date('g:i A', strtotime($conflict['hearing_date'] . ' +45 minutes'));
-            $dateFormatted = date('F j, Y', strtotime($conflict['hearing_date']));
+            $effectiveStart = (!empty($conflict['actual_start_time']) && (in_array($conflict['status'], ['Completed', 'Attendance Recorded'], true) || ($conflict['queue_status'] ?? '') === 'Concluded'))
+                ? $conflict['actual_start_time']
+                : $conflict['hearing_date'];
+            $effectiveEnd = (!empty($conflict['actual_end_time']) && (in_array($conflict['status'], ['Completed', 'Attendance Recorded'], true) || ($conflict['queue_status'] ?? '') === 'Concluded'))
+                ? $conflict['actual_end_time']
+                : (!empty($conflict['end_time']) ? $conflict['end_time'] : date('Y-m-d H:i:s', strtotime($conflict['hearing_date'] . ' +45 minutes')));
+
+            $startFormatted = date('g:i A', strtotime($effectiveStart));
+            $endFormatted = date('g:i A', strtotime($effectiveEnd));
+            $dateFormatted = date('F j, Y', strtotime($effectiveStart));
 
             return [
                 'available' => false,
@@ -490,7 +508,7 @@ class OfficeLogisticsService
 
         // 1. Block duplicate active schedule for the same date/time
         $sqlTime = "
-            SELECT hearing_id, hearing_type, hearing_date, end_time
+            SELECT hearing_id, hearing_type, hearing_date, end_time, actual_start_time, actual_end_time, status, queue_status
             FROM hearings
             WHERE case_id = ?
               AND status NOT IN ('Cancelled', 'Office Cancelled')
@@ -498,10 +516,22 @@ class OfficeLogisticsService
                   SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = hearings.hearing_id
               )
               AND (
-                  hearing_date < ? AND COALESCE(end_time, DATE_ADD(hearing_date, INTERVAL COALESCE(duration_minutes, 45) MINUTE)) > ?
+                  CASE 
+                    WHEN (status = 'Completed' OR queue_status = 'Concluded') THEN
+                      (actual_start_time IS NOT NULL AND actual_end_time IS NOT NULL AND actual_start_time < ? AND actual_end_time > ?)
+                    WHEN queue_status = 'In_Session' AND actual_start_time IS NOT NULL THEN
+                      (actual_start_time < ? AND DATE_ADD(actual_start_time, INTERVAL COALESCE(duration_minutes, 45) MINUTE) > ?)
+                    ELSE
+                      (hearing_date < ? AND COALESCE(end_time, DATE_ADD(hearing_date, INTERVAL COALESCE(duration_minutes, 45) MINUTE)) > ?)
+                  END
               )
         ";
-        $paramsTime = [$caseId, $endDateTime, $startDateTime];
+        $paramsTime = [
+            $caseId,
+            $endDateTime, $startDateTime,
+            $endDateTime, $startDateTime,
+            $endDateTime, $startDateTime
+        ];
         if ($excludeHearingId) {
             $sqlTime .= ' AND hearing_id != ?';
             $paramsTime[] = $excludeHearingId;

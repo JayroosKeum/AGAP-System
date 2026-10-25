@@ -896,8 +896,51 @@ class HearingController
         $waitingCount = 0;
 
         foreach ($allSessions as $s) {
-            $compIn = in_array($s['complainant_attendance'] ?? '', ['Present', 'Late'], true);
-            $respIn = in_array($s['respondent_attendance'] ?? '', ['Present', 'Late'], true);
+            $partiesList = [];
+            if (($s['session_source'] ?? '') === 'hearing' && !empty($s['hearing_id'])) {
+                try {
+                    $partyStmt = $db->prepare("
+                        SELECT cp.party_id, cp.resident_id, cp.party_type,
+                               TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS full_name,
+                               COALESCE(ha.attendance_status, 'Pending') AS attendance_status,
+                               ha.justification_reason
+                        FROM complaint_parties cp
+                        INNER JOIN residents r ON r.resident_id = cp.resident_id
+                        LEFT JOIN hearing_attendance ha ON ha.hearing_id = ? AND ha.resident_id = cp.resident_id
+                        WHERE cp.complaint_id = ? AND cp.party_type IN ('Complainant', 'Respondent')
+                        ORDER BY cp.party_type ASC, cp.party_id ASC
+                    ");
+                    $partyStmt->execute([(int) $s['hearing_id'], (int) $s['complaint_id']]);
+                    $partiesList = $partyStmt->fetchAll(PDO::FETCH_ASSOC);
+                } catch (Throwable) {
+                    $partiesList = [];
+                }
+            }
+            $s['parties'] = $partiesList;
+
+            $compCount = 0; $compPresent = 0;
+            $respCount = 0; $respPresent = 0;
+            if (!empty($partiesList)) {
+                foreach ($partiesList as $p) {
+                    $isPres = in_array($p['attendance_status'], ['Present', 'Late'], true);
+                    if ($p['party_type'] === 'Complainant') {
+                        $compCount++;
+                        if ($isPres) $compPresent++;
+                    } elseif ($p['party_type'] === 'Respondent') {
+                        $respCount++;
+                        if ($isPres) $respPresent++;
+                    }
+                }
+            }
+
+            $compIn = ($compCount > 0)
+                ? ($compPresent >= $compCount)
+                : in_array($s['complainant_attendance'] ?? '', ['Present', 'Late'], true);
+
+            $respIn = ($respCount > 0)
+                ? ($respPresent >= $respCount)
+                : in_array($s['respondent_attendance'] ?? '', ['Present', 'Late'], true);
+
             $isCompleteAndReady = $compIn && $respIn;
 
             $qStatus = $s['queue_status'] ?? 'Waiting';
@@ -1006,14 +1049,61 @@ class HearingController
             return ['success' => false, 'message' => 'Party check-in cannot be changed after a hearing has started, concluded, or become unavailable.'];
         }
 
-        $newVal = ($status === 'Checked In') ? 'Present' : 'Pending';
-        $col = ($partyType === 'Complainant') ? 'complainant_attendance' : 'respondent_attendance';
-        $compIn = ($partyType === 'Complainant') ? true : in_array($hearing['complainant_attendance'], ['Present', 'Late'], true);
-        if ($partyType === 'Complainant' && $newVal === 'Pending') $compIn = false;
+        $residentId = filter_var($data['resident_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $attVal = ($status === 'Checked In') ? 'Present' : 'Pending Verification';
 
-        $respIn = ($partyType === 'Respondent') ? true : in_array($hearing['respondent_attendance'], ['Present', 'Late'], true);
-        if ($partyType === 'Respondent' && $newVal === 'Pending') $respIn = false;
+        // Synchronize hearing_attendance records
+        $syncCp = $db->prepare("
+            SELECT cp.resident_id
+            FROM complaint_parties cp
+            INNER JOIN cases c ON c.complaint_id = cp.complaint_id
+            WHERE c.case_id = ? AND cp.party_type = ?
+        ");
+        $syncCp->execute([(int) $hearing['case_id'], $partyType]);
+        $residentIds = $syncCp->fetchAll(PDO::FETCH_COLUMN);
 
+        if (!empty($residentIds)) {
+            $haUpsert = $db->prepare("
+                INSERT INTO hearing_attendance (hearing_id, resident_id, attendance_status, recorded_by, recorded_at)
+                VALUES (?, ?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE attendance_status = VALUES(attendance_status), recorded_by = VALUES(recorded_by), recorded_at = NOW()
+            ");
+            foreach ($residentIds as $rId) {
+                if (!$residentId || (int)$rId === (int)$residentId) {
+                    $haUpsert->execute([$hearingId, (int) $rId, $attVal, $userId]);
+                }
+            }
+        }
+
+        // Calculate multi-party readiness
+        $checkStmt = $db->prepare("
+            SELECT cp.party_type, COALESCE(ha.attendance_status, 'Pending Verification') AS att_status
+            FROM complaint_parties cp
+            INNER JOIN cases c ON c.complaint_id = cp.complaint_id
+            LEFT JOIN hearing_attendance ha ON ha.hearing_id = ? AND ha.resident_id = cp.resident_id
+            WHERE c.case_id = ? AND cp.party_type IN ('Complainant', 'Respondent')
+        ");
+        $checkStmt->execute([$hearingId, (int) $hearing['case_id']]);
+        $allParties = $checkStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $compCount = 0; $compPresent = 0;
+        $respCount = 0; $respPresent = 0;
+        foreach ($allParties as $p) {
+            $isPres = in_array($p['att_status'], ['Present', 'Late'], true);
+            if ($p['party_type'] === 'Complainant') {
+                $compCount++;
+                if ($isPres) $compPresent++;
+            } elseif ($p['party_type'] === 'Respondent') {
+                $respCount++;
+                if ($isPres) $respPresent++;
+            }
+        }
+
+        $compIn = ($compCount > 0) ? ($compPresent >= $compCount) : ($partyType === 'Complainant' ? ($status === 'Checked In') : in_array($hearing['complainant_attendance'], ['Present', 'Late'], true));
+        $respIn = ($respCount > 0) ? ($respPresent >= $respCount) : ($partyType === 'Respondent' ? ($status === 'Checked In') : in_array($hearing['respondent_attendance'], ['Present', 'Late'], true));
+
+        $compHeader = $compIn ? 'Present' : 'Pending';
+        $respHeader = $respIn ? 'Present' : 'Pending';
         $isBoth = ($compIn && $respIn);
         $curQ = $hearing['queue_status'] ?? 'Waiting';
 
@@ -1031,12 +1121,13 @@ class HearingController
 
         $upd = $db->prepare("
             UPDATE hearings 
-            SET {$col} = ?,
+            SET complainant_attendance = ?,
+                respondent_attendance = ?,
                 queue_status = ?,
                 attendance_recorded_at = NOW()
             WHERE hearing_id = ?
         ");
-        $upd->execute([$newVal, $newQueue, $hearingId]);
+        $upd->execute([$compHeader, $respHeader, $newQueue, $hearingId]);
 
         $this->audit->log(
             $userId,

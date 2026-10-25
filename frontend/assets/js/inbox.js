@@ -30,6 +30,44 @@ document.addEventListener('DOMContentLoaded', () => {
 /**
  * Fetch all notifications for the current user
  */
+/**
+ * Safely parses JSON response from API.
+ * Handles HTML error pages, non-JSON output, and HTTP errors gracefully
+ * without throwing unhandled SyntaxErrors.
+ */
+async function safeParseJson(response, fallbackMsg = 'Failed to process server response.') {
+    if (typeof window.safeParseJson === 'function') {
+        return window.safeParseJson(response, fallbackMsg);
+    }
+
+    let rawText = '';
+    try {
+        rawText = await response.text();
+    } catch (_) {
+        throw new Error('Unable to read server response.');
+    }
+
+    const trimmed = (rawText || '').trim();
+    let parsed = null;
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        try {
+            parsed = JSON.parse(trimmed);
+        } catch (_) {}
+    }
+
+    if (parsed && typeof parsed === 'object') {
+        if (!response.ok && (parsed.message || parsed.error_detail)) {
+            throw new Error(parsed.message || parsed.error_detail || fallbackMsg);
+        }
+        return parsed;
+    }
+
+    if (!response.ok) {
+        throw new Error(`Server returned error HTTP ${response.status}. Please try again later.`);
+    }
+
+    throw new Error(fallbackMsg);
+}
 async function loadNotifications() {
     const listEl = document.getElementById('notificationList');
 
@@ -39,11 +77,12 @@ async function loadNotifications() {
             headers: { 'Accept': 'application/json' }
         });
 
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: Failed to load notifications.`);
+        const result = await safeParseJson(response, 'Failed to load notifications.');
+
+        if (result.status === 'error' || result.success === false) {
+            throw new Error(result.message || 'Failed to retrieve notification updates.');
         }
 
-        const result = await response.json();
         allNotifications = Array.isArray(result.data) ? result.data : [];
 
         updateTabBadges();
@@ -61,7 +100,7 @@ async function loadNotifications() {
             `;
         }
         if (window.agapNotify) {
-            window.agapNotify('Failed to retrieve notification updates.', 'error');
+            window.agapNotify(error.message || 'Failed to retrieve notification updates.', 'error');
         }
     }
 }
@@ -579,8 +618,8 @@ async function deleteSelectedNotifications() {
             body: formData
         });
 
-        const res = await resp.json();
-        if (resp.ok && res.success) {
+        const res = await safeParseJson(resp, 'Failed to delete selected notifications.');
+        if (res && res.success) {
             const idSet = new Set(ids);
             allNotifications = allNotifications.filter(n => !idSet.has(Number(n.notification_id)));
 
@@ -614,10 +653,13 @@ async function markSelectedAsRead() {
     if (ids.length === 0) return;
 
     try {
-        await Promise.all(ids.map(id => {
+        await Promise.all(ids.map(async id => {
             const fd = new FormData();
             fd.append('notification_id', id);
-            return fetch('../../../backend/api/notifications/read.php', { method: 'POST', body: fd });
+            const resp = await fetch('../../../backend/api/notifications/read.php', { method: 'POST', body: fd });
+            return safeParseJson(resp, 'Failed to mark notification read.').catch(err => {
+                console.warn(`Failed marking notification ${id} read:`, err);
+            });
         }));
 
         const idSet = new Set(ids);
@@ -810,8 +852,8 @@ async function markRead(notificationId, showToast = true) {
             body: formData
         });
 
-        const res = await resp.json();
-        if (resp.ok && res.success) {
+        const res = await safeParseJson(resp, 'Failed to mark notification read.');
+        if (res && res.success) {
             const item = allNotifications.find(n => Number(n.notification_id) === Number(notificationId));
             if (item) {
                 item.is_read = 1;
@@ -844,8 +886,8 @@ async function markUnread(notificationId) {
             body: formData
         });
 
-        const res = await resp.json();
-        if (resp.ok && res.success) {
+        const res = await safeParseJson(resp, 'Failed to mark notification unread.');
+        if (res && res.success) {
             const item = allNotifications.find(n => Number(n.notification_id) === Number(notificationId));
             if (item) {
                 item.is_read = 0;
@@ -880,8 +922,8 @@ async function deleteNotification(notificationId) {
             body: formData
         });
 
-        const res = await resp.json();
-        if (resp.ok && res.success) {
+        const res = await safeParseJson(resp, 'Failed to delete notification.');
+        if (res && res.success) {
             allNotifications = allNotifications.filter(n => Number(n.notification_id) !== Number(notificationId));
             if (window.agapNotify) {
                 window.agapNotify('Notification removed.', 'success');
@@ -909,8 +951,8 @@ async function markAllAsRead() {
             method: 'POST'
         });
 
-        const res = await resp.json();
-        if (resp.ok && res.success) {
+        const res = await safeParseJson(resp, 'Failed to mark all notifications read.');
+        if (res && res.success) {
             allNotifications.forEach(n => {
                 n.is_read = 1;
                 n.read_at = new Date().toISOString();

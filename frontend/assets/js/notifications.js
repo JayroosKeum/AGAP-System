@@ -47,6 +47,41 @@
         info: 'Notice'
     };
 
+    /**
+     * Safely parse JSON from fetch Response, handling non-JSON/HTML error pages
+     * without throwing raw syntax errors.
+     */
+    async function safeParseJson(response, fallbackMsg = 'Failed to process server response.') {
+        let rawText = '';
+        try {
+            rawText = await response.text();
+        } catch (_) {
+            throw new Error('Unable to read server response.');
+        }
+
+        const trimmed = (rawText || '').trim();
+        let parsed = null;
+        if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+            try {
+                parsed = JSON.parse(trimmed);
+            } catch (_) {}
+        }
+
+        if (parsed && typeof parsed === 'object') {
+            if (!response.ok && (parsed.message || parsed.error_detail)) {
+                throw new Error(parsed.message || parsed.error_detail || fallbackMsg);
+            }
+            return parsed;
+        }
+
+        if (!response.ok) {
+            throw new Error(`Server returned error HTTP ${response.status}. Please try again later.`);
+        }
+
+        throw new Error(fallbackMsg);
+    }
+    window.safeParseJson = safeParseJson;
+
     function escapeToastText(str) {
         if (!str && str !== 0) return '';
         const div = document.createElement('div');
@@ -81,7 +116,6 @@
             container.appendChild(toast);
         } else if (document.body) {
             document.body.appendChild(container);
-            container.appendChild(toast);
         } else {
             document.addEventListener('DOMContentLoaded', () => {
                 const c = getContainer();
@@ -206,8 +240,10 @@
         if (!listEl) return;
 
         try {
-            const res = await fetch('../../../backend/api/notifications/list.php');
-            const data = await res.json();
+            const res = await fetch('../../../backend/api/notifications/list.php', {
+                headers: { 'Accept': 'application/json' }
+            });
+            const data = await safeParseJson(res, 'Failed to load notifications.');
             if (res.ok && data.success) {
                 popoverNotifications = Array.isArray(data.data) ? data.data : [];
                 const unreadCount = Number(data.unread_count || 0);
@@ -358,6 +394,7 @@
         try {
             await fetch('../../../backend/api/notifications/read.php', {
                 method: 'POST',
+                headers: { 'Accept': 'application/json' },
                 body: new URLSearchParams({ notification_id: notificationId })
             });
         } catch (_) {}
@@ -373,10 +410,11 @@
         try {
             const res = await fetch('../../../backend/api/notifications/read.php', {
                 method: 'POST',
+                headers: { 'Accept': 'application/json' },
                 body: new URLSearchParams({ notification_id: notificationId })
             });
-            const data = await res.json();
-            if (res.ok && data.success) {
+            const data = await safeParseJson(res, 'Failed to mark notification read.');
+            if (data && data.success) {
                 const item = popoverNotifications.find(n => Number(n.notification_id) === Number(notificationId));
                 if (item) {
                     item.is_read = 1;
@@ -405,9 +443,12 @@
         if (markBtn) markBtn.textContent = 'Marking...';
 
         try {
-            const res = await fetch('../../../backend/api/notifications/mark-all-read.php', { method: 'POST' });
-            const data = await res.json();
-            if (res.ok && data.success) {
+            const res = await fetch('../../../backend/api/notifications/mark-all-read.php', {
+                method: 'POST',
+                headers: { 'Accept': 'application/json' }
+            });
+            const data = await safeParseJson(res, 'Failed to mark all as read.');
+            if (data && data.success) {
                 popoverNotifications.forEach(n => {
                     n.is_read = 1;
                     n.read_at = n.read_at || new Date().toISOString();
@@ -486,9 +527,11 @@
         const badge = document.getElementById('navBellBadge');
         if (!badge) return;
         try {
-            const res = await fetch('../../../backend/api/notifications/list.php');
-            const data = await res.json();
-            if (res.ok && data.success) {
+            const res = await fetch('../../../backend/api/notifications/list.php', {
+                headers: { 'Accept': 'application/json' }
+            });
+            const data = await safeParseJson(res);
+            if (res.ok && data && data.success) {
                 const count = Number(data.unread_count || 0);
                 updateNavNotificationBadge(count);
             }
