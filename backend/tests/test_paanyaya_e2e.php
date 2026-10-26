@@ -5,9 +5,11 @@ require_once __DIR__ . '/../../backend/models/Complaint.php';
 require_once __DIR__ . '/../../backend/models/Paanyaya.php';
 require_once __DIR__ . '/../../backend/models/CaseModel.php';
 require_once __DIR__ . '/../../backend/services/PDFService.php';
+require_once __DIR__ . '/TestDataCleanup.php';
 
 echo "Testing Paanyaya flow...\n";
 $db = (new Database())->connect();
+$cleanup = new TestDataCleanup($db);
 
 // Ensure we have 2 residents
 $res = $db->query("SELECT resident_id FROM residents LIMIT 2")->fetchAll(PDO::FETCH_COLUMN);
@@ -36,6 +38,10 @@ $createRes = $complaintModel->create([
     'created_by' => 1
 ]);
 $cid = (int)($createRes['complaint_id'] ?? 0);
+$cleanup->trackComplaint($cid);
+if (empty($createRes['success']) || $cid <= 0) {
+    throw new RuntimeException('Complaint setup failed: ' . ($createRes['message'] ?? 'Unknown error'));
+}
 echo "Complaint created: ID {$cid}\n";
 
 // 2. Schedule Paanyaya
@@ -50,7 +56,10 @@ $scheduleRes = $paanyayaModel->schedule([
     'remarks' => 'Pre-docketing dialogue'
 ], 1);
 echo "Paanyaya scheduled: " . json_encode($scheduleRes) . "\n";
-$paanyayaId = (int)($scheduleRes['paanyaya_id'] ?? 0);
+$paanyayaId = (int)($scheduleRes['session_id'] ?? 0);
+if (empty($scheduleRes['success']) || $paanyayaId <= 0) {
+    throw new RuntimeException('Paanyaya scheduling failed: ' . ($scheduleRes['message'] ?? 'Unknown error'));
+}
 
 // Verify complaint status
 $comp = $complaintModel->getById($cid);
@@ -72,58 +81,15 @@ echo "HTML Verification -> Tumana: " . ($hasTumana ? 'YES' : 'NO') . ", Signatur
 // 3B. Test Outcome 1: Resolved Informally
 $resolvedResult = $paanyayaModel->recordOutcome($paanyayaId, 'Resolved', 'Parties met and shook hands informally.', 1);
 echo "Resolved Outcome result: " . json_encode($resolvedResult['success'] ?? false) . "\n";
+if (empty($resolvedResult['success'])) {
+    throw new RuntimeException('Paanyaya settlement failed: ' . ($resolvedResult['message'] ?? 'Unknown error'));
+}
 $compResolved = $complaintModel->getById($cid);
 echo "Complaint status after resolution: {$compResolved['status']} (Expected: Resolved at Paanyaya / Closed)\n";
-
-// Reset to Paanyaya for escalation test
-$db->prepare("UPDATE complaints SET status = 'Pre-Docketed (Paanyaya)' WHERE complaint_id = ?")->execute([$cid]);
-$db->prepare("UPDATE complaint_paanyaya SET status = 'Scheduled' WHERE paanyaya_id = ?")->execute([$paanyayaId]);
-
-// 4. Test Escalation
-$escalateResult = $paanyayaModel->recordOutcome($paanyayaId, 'Escalate', 'Respondent failed to appear for dialogue.', 1, [
-    'hearing_date' => '2026-11-03',
-    'hearing_time' => '14:00',
-    'case_type' => 'Civil'
-]);
-echo "Escalation result: " . json_encode($escalateResult) . "\n";
-echo "Escalation completed: " . json_encode($escalateResult['success'] ?? false) . ". Case Number: " . ($escalateResult['case_number'] ?? 'N/A') . "\n";
-
-// Verify case created and status
-$compUpdated = $complaintModel->getById($cid);
-echo "Updated complaint status: {$compUpdated['status']}\n";
-$caseId = (int)($escalateResult['case_id'] ?? 0);
-
-// Check mediation hearing
-$stmt = $db->prepare("SELECT * FROM hearings WHERE case_id = ?");
-$stmt->execute([$caseId]);
-$hearing = $stmt->fetch(PDO::FETCH_ASSOC);
-echo "Mediation Hearing created: " . ($hearing ? "Hearing ID {$hearing['hearing_id']} / Type: {$hearing['hearing_type']} / Date: {$hearing['hearing_date']} / Venue: {$hearing['venue']}" : "None") . "\n";
-
-// Check generated documents (KP Form 8 & 9)
-$stmt = $db->prepare("SELECT document_id, template_id, file_path FROM generated_documents WHERE case_id = ?");
-$stmt->execute([$caseId]);
-$docs = $stmt->fetchAll(PDO::FETCH_ASSOC);
-echo "Generated Documents count: " . count($docs) . "\n";
-
-// Check summon deliveries
-$stmt = $db->prepare("SELECT delivery_id, party_type, delivery_status FROM summon_deliveries WHERE case_id = ?");
-$stmt->execute([$caseId]);
-$delivs = $stmt->fetchAll(PDO::FETCH_ASSOC);
-echo "Summon Deliveries count: " . count($delivs) . "\n";
-
-// Clean up test data
-if ($caseId > 0) {
-    $db->prepare("DELETE FROM summon_deliveries WHERE case_id = ?")->execute([$caseId]);
-    $db->prepare("DELETE FROM generated_documents WHERE case_id = ?")->execute([$caseId]);
-    $db->prepare("DELETE FROM case_history WHERE case_id = ?")->execute([$caseId]);
-    $db->prepare("DELETE FROM case_deadlines WHERE case_id = ?")->execute([$caseId]);
-    $db->prepare("DELETE FROM case_assignments WHERE case_id = ?")->execute([$caseId]);
-    $db->prepare("DELETE FROM hearings WHERE case_id = ?")->execute([$caseId]);
-    $db->prepare("DELETE FROM cases WHERE case_id = ?")->execute([$caseId]);
+if (($compResolved['status'] ?? '') !== 'Settled') {
+    throw new RuntimeException('Expected settled Paanyaya status, got: ' . ($compResolved['status'] ?? 'missing'));
 }
-$db->prepare("DELETE FROM complaint_paanyaya WHERE complaint_id = ?")->execute([$cid]);
-$db->prepare("DELETE FROM complaint_parties WHERE complaint_id = ?")->execute([$cid]);
-$db->prepare("DELETE FROM complaints WHERE complaint_id = ?")->execute([$cid]);
+
 if (file_exists($testPdfFile)) @unlink($testPdfFile);
 
-echo "Test completed successfully and test data cleaned up!\n";
+echo "Test completed successfully; registered shutdown cleanup will remove test data.\n";

@@ -1689,6 +1689,10 @@ function renderOfficialKpForms(workspace, complaint) {
     const isArbitration = compStatus.includes('arbitrat') || compStage.includes('arbitrat') ||
                           arbOutcome !== '' || medOutcome.includes('arbitrat') || concOutcome.includes('arbitrat') ||
                           sessionOutcomes.some(o => o.includes('arbitrat')) || Boolean(activeComplaint?.arbitration || workspace?.arbitration);
+    const isArbitrationAward = arbOutcome.includes('award') ||
+                               sessionOutcomes.some(o => o.includes('arbitration award')) ||
+                               Boolean(activeComplaint?.arbitration?.award_date || activeComplaint?.arbitration?.award_terms ||
+                                   workspace?.arbitration?.award_date || workspace?.arbitration?.award_terms);
 
     const isRepudiated = compStatus.includes('repudiat') || sessionOutcomes.some(o => o.includes('repudiat')) ||
                          Boolean(activeComplaint?.settlement?.repudiation_date || workspace?.settlement?.repudiation_date);
@@ -1702,6 +1706,31 @@ function renderOfficialKpForms(workspace, complaint) {
                                 Boolean(activeComplaint?.cfa || workspace?.cfa);
 
     const hasDocTpl = (tpl) => docs.some(d => (d.template_name || '').toLowerCase().includes(tpl.toLowerCase()));
+    const cfaDetails = activeComplaint?.cfa || workspace?.cfa || {};
+    const cfaType = String(cfaDetails.cfa_type || cfaDetails.form_code || '').toLowerCase();
+    const repudiatingParty = String(activeComplaint?.settlement?.repudiating_party || workspace?.settlement?.repudiating_party || '').toLowerCase();
+    const isComplainantBarred = cfaType.includes('20-a') || compStatus.includes('dismiss') ||
+        sessionOutcomes.some(o => o.includes('complainant absent')) || repudiatingParty.includes('complainant');
+    const isRespondentBarred = cfaType.includes('20-b') ||
+        sessionOutcomes.some(o => o.includes('respondent absent')) || repudiatingParty.includes('respondent');
+
+    const appendCfaVariant = (code, title, description) => {
+        if (hasDocTpl(code) || !activeCaseId) return;
+        const encodedCode = encodeURIComponent(code);
+        rowsHtml += `
+            <div class="kp-form-item-row" style="background: #fef2f2; border-left: 4px solid #ef4444;">
+                <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
+                    <div>
+                        <div class="kp-form-name-text"><span style="font-weight: 700; color: #7f1d1d;">${title}</span></div>
+                        <div class="kp-form-meta-text"><span>${description}</span></div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <button type="button" class="btn-small-link" onclick="openKpFormModal(${Number(activeCaseId)}, '${code}')" style="color: #991b1b; border-color: #fca5a5; font-weight: 600;">Preview / Print</button>
+                    <a href="../../../backend/api/documents/kp-form.php?case_id=${encodeURIComponent(activeCaseId)}&form_code=${encodedCode}&pdf=1" class="btn-pdf-chip" download title="Download official PDF"><span>PDF</span></a>
+                </div>
+            </div>`;
+    };
 
     // 1. When Outcome = "Amicably Settled (KP Form 16)"
     if (isSettled && !hasDocTpl('KP Form 16') && activeCaseId > 0) {
@@ -1763,7 +1792,7 @@ function renderOfficialKpForms(workspace, complaint) {
                 </div>
             `;
         }
-        if (!hasDocTpl('KP Form 15')) {
+        if (isArbitrationAward && !hasDocTpl('KP Form 15')) {
             rowsHtml += `
                 <div class="kp-form-item-row" style="background: #fffbeb; border-left: 4px solid #d97706;">
                     <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
@@ -1823,7 +1852,7 @@ function renderOfficialKpForms(workspace, complaint) {
                 </div>
             `;
         }
-        if (!hasDocTpl('KP Form 20')) {
+        if (!isComplainantBarred && !isRespondentBarred && !hasDocTpl('KP Form 20')) {
             rowsHtml += `
                 <div class="kp-form-item-row" style="background: #fef2f2; border-left: 4px solid #ef4444;">
                     <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
@@ -1850,6 +1879,12 @@ function renderOfficialKpForms(workspace, complaint) {
                     </div>
                 </div>
             `;
+        }
+        if (isComplainantBarred) {
+            appendCfaVariant('KP Form 20-A', 'Pormularyo ng KP Blg. 20-A (Katibayan Upang Hadlangan ang Paghahain ng Aksyon)', 'Certificate to Bar Action — complainant caused the failure or repudiation without a valid ground.');
+        }
+        if (isRespondentBarred) {
+            appendCfaVariant('KP Form 20-B', 'Pormularyo ng KP Blg. 20-B (Katibayan Upang Hadlangan ang Ganting-Sakdal)', 'Certificate to Bar Counterclaim — respondent caused the failure or repudiation without a valid ground.');
         }
     }
 

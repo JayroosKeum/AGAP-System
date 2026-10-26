@@ -4,12 +4,14 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../models/Complaint.php';
 require_once __DIR__ . '/../models/Paanyaya.php';
 require_once __DIR__ . '/../models/CaseModel.php';
+require_once __DIR__ . '/TestDataCleanup.php';
 
 echo "====================================================\n";
 echo "TESTING MANDATORY PAANYAYA PRE-DOCKETING WORKFLOW\n";
 echo "====================================================\n\n";
 
 $db = (new Database())->connect();
+$cleanup = new TestDataCleanup($db);
 $complaintModel = new Complaint($db);
 $paanyayaModel = new Paanyaya($db);
 
@@ -60,6 +62,7 @@ if (!$createResult['success']) {
     die("FAILED to create complaint: " . $createResult['message'] . "\n");
 }
 $complaintId = (int) $createResult['complaint_id'];
+$cleanup->trackComplaint($complaintId);
 $trackingNumber = $createResult['complaint_number'];
 
 echo "  ✓ Complaint created with ID: {$complaintId}\n";
@@ -185,6 +188,7 @@ $createData2 = $createData;
 $createData2['complaint_title'] = 'Automated Test: Minor Noise Complaint Settled';
 $res2 = $complaintModel->create($createData2);
 $cid2 = (int) $res2['complaint_id'];
+$cleanup->trackComplaint($cid2);
 $pRes = $paanyayaModel->schedule(['complaint_id' => $cid2, 'invitation_date' => date('Y-m-d', strtotime('+2 weekdays')), 'invitation_time' => '14:00'], 1);
 $sid2 = (int) $pRes['session_id'];
 

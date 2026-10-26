@@ -389,7 +389,7 @@ function legacyOpenKPFormPreview(caseId, formCode, hearingId = null) {
     }
     window.open(url, '_blank');
 }
-window.openKPFormPreview = openKPFormPreview;
+window.openKPFormPreview = openKpFormModal;
 
 function notifyUser(message, type = 'info', title = null, duration = 4000) {
     if (window.agapNotify) {
@@ -1200,7 +1200,9 @@ function getOutcomeOptionsForSession(session, mode) {
             // 2nd Mediation (or higher): elevation unlocked, remove book 2nd mediation
             opts.push({ val: 'Elevate to Pangkat', label: 'Failure of Mediation / Endorse to Pangkat (KP Form 10)' });
         }
-        opts.push({ val: 'Arbitration Award', label: 'Arbitration Award (Submit to Arbitration — KP Form 14/15)' });
+        // An agreement to arbitrate is distinct from the later award.  The
+        // former must create KP Form 14 and offer the arbitration scheduler.
+        opts.push({ val: 'Arbitration', label: 'Submit to Voluntary Arbitration (KP Form 14)' });
         opts.push({ val: 'Repudiated', label: 'Repudiated Settlement' });
         opts.push({ val: 'Party Absent', label: 'Non-Appearance / Certified for Show Cause' });
         opts.push({ val: 'Rescheduled', label: 'Rescheduled — Session Reset' });
@@ -1221,7 +1223,7 @@ function getOutcomeOptionsForSession(session, mode) {
             // 3rd Conciliation (or final): max conciliation sessions reached, issue CFA
             opts.push({ val: 'Pending CFA', label: 'Conciliation Failed — Ready for CFA (KP Form 20)' });
         }
-        opts.push({ val: 'Arbitration Award', label: 'Arbitration Award (Submit to Arbitration — KP Form 14/15)' });
+        opts.push({ val: 'Arbitration', label: 'Submit to Voluntary Arbitration (KP Form 14)' });
         opts.push({ val: 'Repudiated', label: 'Repudiated Settlement' });
         opts.push({ val: 'Party Absent', label: 'Party Absent / Non-appearance Recorded' });
         opts.push({ val: 'Rescheduled', label: 'Rescheduled — Session Reset' });
@@ -1849,7 +1851,7 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false, hearingId 
                 </div>
             `;
         }
-    } else if (outcomeVal === 'Arbitration' || outcomeVal === 'Arbitration Award' || outcomeVal === 'Submit to Arbitration') {
+    } else if (outcomeVal === 'Arbitration' || outcomeVal === 'Submit to Arbitration' || outcomeVal === 'Submit to Voluntary Arbitration (KP Form 14)') {
         unlockOutcomesTab();
         bannerEl.innerHTML = `
             <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px 18px; margin-top: 10px;">
@@ -1859,7 +1861,7 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false, hearingId 
                 </p>
                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                     <button type="button" class="btn-create" onclick="openEmbeddedScheduleModal('Arbitration')" style="background: #d97706; border-color: #d97706; font-size: 0.82rem; padding: 7px 14px;">
-                        ðŸ“… Schedule Arbitration Session &rarr;
+                        Schedule Arbitration Session &rarr;
                     </button>
                     <button type="button" class="btn-secondary" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 14', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #fde68a; color: #92400e; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
                         Preview KP Form 14
@@ -2379,6 +2381,11 @@ async function openScheduleModal(hearingId = null, targetStageType = null) {
     const subtitleEl = document.getElementById('wsSchedModalSubtitle');
     const dateLabelEl = document.getElementById('schedDateLabel');
     const timeLabelEl = document.getElementById('schedTimeLabel');
+    const venueLabelEl = document.getElementById('schedVenueLabel');
+    const remarksLabelEl = document.getElementById('schedRemarksLabel');
+    const presiderGroupEl = document.getElementById('schedPresidingOfficerGroup');
+    const presiderLabelEl = document.getElementById('schedPresidingOfficerLabel');
+    const presiderInputEl = document.getElementById('schedPresidingOfficer');
     const conflictAlert = document.getElementById('schedScheduleConflictAlert');
     const submitBtn = document.getElementById('submitSchedBtn');
     const dateInput = document.getElementById('schedDate');
@@ -2405,8 +2412,17 @@ async function openScheduleModal(hearingId = null, targetStageType = null) {
         if (typeInput) typeInput.value = 'Arbitration';
         const venueInput = document.getElementById('schedVenue');
         if (venueInput && !venueInput.value) venueInput.value = 'Lupon Court Room';
+        if (venueLabelEl) venueLabelEl.textContent = 'Lugar / Venue';
+        if (remarksLabelEl) remarksLabelEl.textContent = 'Hearing Notes';
+        if (presiderGroupEl) presiderGroupEl.style.display = 'block';
+        if (presiderLabelEl) presiderLabelEl.textContent = 'Presiding Arbitrator (Punong Barangay / Pangkat Chairman)';
+        if (presiderInputEl) {
+            const panelChair = stageWorkspaceState.stageData?.conciliation?.pangkat_assignment?.chairperson?.member_name;
+            presiderInputEl.value = panelChair || stageWorkspaceState.stageData?.arbitration?.presiding_officer || 'Punong Barangay / Pangkat Chairman';
+        }
         if (submitBtn) submitBtn.textContent = 'Schedule Arbitration Session';
     } else if (stageWorkspaceState.mode === 'Mediation') {
+        if (presiderGroupEl) presiderGroupEl.style.display = 'none';
         const activeHearingId = stageWorkspaceState.activeSessionHearingId;
         const activeSession = stageWorkspaceState.sessions.find(s => Number(s.hearing_id) === Number(activeHearingId)) || {};
         const curSeq = Number(activeSession.session_index || 1);
@@ -2425,6 +2441,7 @@ async function openScheduleModal(hearingId = null, targetStageType = null) {
         if (schedDayTitle) schedDayTitle.textContent = 'Scheduled Mediations on this Date:';
         if (submitBtn) submitBtn.textContent = `Schedule ${nextSeqOrdinal} Mediation`;
     } else if (isConciliation) {
+        if (presiderGroupEl) presiderGroupEl.style.display = 'none';
         const conciliationCount = stageWorkspaceState.sessions ? stageWorkspaceState.sessions.length : 0;
         const nextSeq = conciliationCount + 1;
         const nextSeqOrdinal = nextSeq === 1 ? '1st' : (nextSeq === 2 ? '2nd' : (nextSeq === 3 ? '3rd' : `${nextSeq}th`));
@@ -2892,6 +2909,7 @@ async function submitSchedule(e) {
         if (json.success) {
             closeScheduleModal();
             await loadStageData();
+            if (typeVal === 'Arbitration') unlockOutcomesTab(stageWorkspaceState.caseId);
             const schedSeq = Number(json.sequence || 0);
             if (typeof openSummonsPreviewModal === 'function' && stageWorkspaceState.mode === 'Mediation' && schedSeq <= 1) {
                 openSummonsPreviewModal(stageWorkspaceState.caseId, null, json.hearing_id, true);
@@ -3793,6 +3811,15 @@ function closeRecordOutcomeModal() {
     if (modal) modal.style.display = 'none';
 }
 
+// The compact outcome modal shares the arbitration callout used by the
+// embedded complaint workspace. Keep this small adapter here because case
+// workspaces load stage-workspace.js directly.
+function handleEmbeddedStageOutcomeChange(outcome) {
+    const banner = document.getElementById('stageOutcomeArbitrationBanner');
+    if (banner) banner.style.display = outcome === 'Arbitration' ? 'block' : 'none';
+}
+window.handleEmbeddedStageOutcomeChange = handleEmbeddedStageOutcomeChange;
+
 async function submitRecordOutcome(e) {
     e.preventDefault();
     const btn = document.getElementById('submitOutcomeBtn');
@@ -3819,6 +3846,15 @@ async function submitRecordOutcome(e) {
             alert(json.message);
             closeRecordOutcomeModal();
             await loadStageData();
+            if (outcomeVal === 'Arbitration') {
+                // Use the same in-workspace booking interface as mediation and
+                // conciliation, now configured for voluntary arbitration.
+                openScheduleModal(null, 'Arbitration');
+            } else if (outcomeVal === 'Settled') {
+                openKpFormModal(stageWorkspaceState.caseId, 'KP Form 16');
+            } else if (outcomeVal === 'Repudiated') {
+                openKpFormModal(stageWorkspaceState.caseId, 'KP Form 17');
+            }
         } else {
             alert(json.message || 'Unable to record outcome.');
         }
@@ -3910,11 +3946,11 @@ async function submitReferPangkat(e) {
         });
         const json = await res.json();
         if (json.success) {
-            notifyUser('Case successfully referred to Pangkat ng Tagapagkasundo! KP Form 10 generated.', 'success');
+            notifyUser('Case successfully referred to Pangkat ng Tagapagkasundo. KP Forms 10, 11, and 12 are ready for review.', 'success');
             closeReferPangkatModal();
             setTimeout(() => {
-                window.location.href = `pangkat-workspace.php?case_id=${encodeURIComponent(stageWorkspaceState.caseId)}`;
-            }, 600);
+                openTriPanelPangkatModal(stageWorkspaceState.caseId);
+            }, 250);
         } else {
             notifyUser(json.message || 'Unable to refer case to Pangkat.', 'error');
         }
@@ -4527,7 +4563,7 @@ window.togglePartyAgreementFailed = togglePartyAgreementFailed;
 window.submitPangkatSelection = submitPangkatSelection;
 
 // Attendance & Form preview exposure
-window.openKPFormPreview = openKPFormPreview;
+window.openKPFormPreview = openKpFormModal;
 window.togglePresiderSubstituteSection = togglePresiderSubstituteSection;
 window.handlePresiderAbsenceChoiceChange = handlePresiderAbsenceChoiceChange;
 window.executeEmergencyReschedule = executeEmergencyReschedule;

@@ -305,13 +305,18 @@ include '../../layouts/header.php';
                 </div>
 
                 <div class="form-group" style="margin-bottom: 14px;">
-                    <label for="schedVenue">Venue <span class="required-mark" aria-hidden="true">*</span></label>
+                    <label for="schedVenue"><span id="schedVenueLabel">Venue</span> <span class="required-mark" aria-hidden="true">*</span></label>
                     <input type="text" id="schedVenue" name="venue" maxlength="255" value="Lupon Court Room" readonly required style="background: #f8fafc; cursor: not-allowed; width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.88rem; box-sizing: border-box;">
                     <small style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Conciliation sessions share the Lupon Court Room during operating windows.</small>
                 </div>
 
+                <div class="form-group" id="schedPresidingOfficerGroup" style="display: none; margin-bottom: 14px;">
+                    <label for="schedPresidingOfficer"><span id="schedPresidingOfficerLabel">Presiding Officer</span></label>
+                    <input type="text" id="schedPresidingOfficer" readonly value="Punong Barangay / Pangkat Chairman" style="background: #f8fafc; width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.88rem; box-sizing: border-box;">
+                </div>
+
                 <div class="form-group" style="margin-bottom: 6px;">
-                    <label for="schedRemarks">Session Instructions / Remarks <span class="optional-label">Optional</span></label>
+                    <label for="schedRemarks"><span id="schedRemarksLabel">Session Instructions / Remarks</span> <span class="optional-label">Optional</span></label>
                     <textarea id="schedRemarks" name="remarks" maxlength="5000" rows="2" placeholder="Optional conciliation session instructions or notes..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.84rem; box-sizing: border-box;"></textarea>
                 </div>
 
@@ -362,12 +367,18 @@ include '../../layouts/header.php';
             </p>
             <div class="form-group">
                 <label for="stageOutcomeSelect">Procedural Outcome <span class="required-mark">*</span></label>
-                <select id="stageOutcomeSelect" required style="padding: 9px;">
+                <select id="stageOutcomeSelect" required onchange="handleEmbeddedStageOutcomeChange(this.value)" style="padding: 9px;">
                     <option value="Settled">Settled — Parties Reached Amicable Settlement</option>
                     <option value="Unsuccessful">Unsuccessful — Conciliation Failed (Eligible for CFA)</option>
+                    <option value="Arbitration">Submit to Voluntary Arbitration (KP Form 14)</option>
                     <option value="Dismissed">Dismissed — Complainant Wilfully Failed to Appear</option>
                     <option value="Repudiated">Repudiated — Settlement Repudiated by Party</option>
                 </select>
+            </div>
+            <div id="stageOutcomeArbitrationBanner" style="display: none; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px 18px; margin: 0 0 16px;">
+                <strong style="color: #92400e; font-size: 0.95rem; display: block;">Parties Agreed to Voluntary Arbitration (KP Form 14)</strong>
+                <p style="margin: 4px 0 10px; font-size: 0.84rem; color: #78350f;">Both parties have voluntarily agreed in writing to submit their dispute to binding arbitration under RA 7160 Sec. 413.</p>
+                <button type="button" class="btn-create" onclick="openEmbeddedScheduleModal('Arbitration')" style="background: #d97706; border-color: #d97706;">Schedule Arbitration Session &rarr;</button>
             </div>
             <div class="form-group">
                 <label for="stageOutcomeRemarks">Determination Notes / Remarks <span class="optional-label">Optional</span></label>

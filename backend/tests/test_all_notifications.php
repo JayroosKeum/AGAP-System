@@ -11,8 +11,10 @@ require_once __DIR__ . '/../models/CFA.php';
 require_once __DIR__ . '/../services/NotificationService.php';
 require_once __DIR__ . '/../services/DeadlineAlertService.php';
 require_once __DIR__ . '/../services/SummonDeliveryService.php';
+require_once __DIR__ . '/TestDataCleanup.php';
 
 $db = (new Database())->connect();
+$cleanup = new TestDataCleanup($db);
 $notifService = new NotificationService();
 $complaintModel = new Complaint($db);
 $paanyayaModel = new Paanyaya($db);
@@ -57,6 +59,7 @@ if (empty($c1['success'])) {
     exit(1);
 }
 $c1Id = (int) $c1['complaint_id'];
+$cleanup->trackComplaint($c1Id);
 $c1Num = $c1['complaint_number'];
 echo "  ✓ Complaint Created: {$c1Num} (ID: {$c1Id})\n";
 
@@ -69,6 +72,9 @@ $p1Res = $paanyayaModel->schedule([
     'venue' => 'Tanggapan ng Barangay Tumana',
     'salaysay' => 'Paanyaya para sa pag-aayos ng bakod at boundary line.'
 ], 2);
+if (empty($p1Res['success'])) {
+    throw new RuntimeException('Paanyaya 1 scheduling failed: ' . ($p1Res['message'] ?? 'Unknown error'));
+}
 echo "  ✓ Paanyaya 1 Session ID: " . ($p1Res['session_id'] ?? 'OK') . "\n\n";
 
 // -----------------------------------------------------------------------------
@@ -96,10 +102,11 @@ if (empty($c2['success'])) {
     exit(1);
 }
 $c2Id = (int) $c2['complaint_id'];
+$cleanup->trackComplaint($c2Id);
 $c2Num = $c2['complaint_number'];
 echo "  ✓ Complaint Created: {$c2Num} (ID: {$c2Id})\n";
 
-$paanyayaModel->schedule([
+$c2Schedule = $paanyayaModel->schedule([
     'complaint_id' => $c2Id,
     'attempt_number' => 1,
     'invitation_date' => date('Y-m-d', strtotime('+1 day')),
@@ -107,6 +114,9 @@ $paanyayaModel->schedule([
     'venue' => 'Tanggapan ng Barangay Tumana',
     'salaysay' => 'Paanyaya hinggil sa ingay ng videoke.'
 ], 2);
+if (empty($c2Schedule['success'])) {
+    throw new RuntimeException('Settled-case Paanyaya scheduling failed: ' . ($c2Schedule['message'] ?? 'Unknown error'));
+}
 
 echo "  -> Recording Dialogue Minutes: Amicably Settled...\n";
 $settleRes = $paanyayaModel->recordMinutes($c2Id, 'Paanyaya 1', [
@@ -146,10 +156,11 @@ if (empty($c3['success'])) {
     exit(1);
 }
 $c3Id = (int) $c3['complaint_id'];
+$cleanup->trackComplaint($c3Id);
 $c3Num = $c3['complaint_number'];
 echo "  ✓ Complaint Created: {$c3Num} (ID: {$c3Id})\n";
 
-$paanyayaModel->schedule([
+$c3Schedule = $paanyayaModel->schedule([
     'complaint_id' => $c3Id,
     'attempt_number' => 1,
     'invitation_date' => date('Y-m-d'),
@@ -157,6 +168,9 @@ $paanyayaModel->schedule([
     'venue' => 'Tanggapan ng Barangay Tumana',
     'salaysay' => 'Paanyaya ukol sa bayarin sa tindahan.'
 ], 2);
+if (empty($c3Schedule['success'])) {
+    throw new RuntimeException('Escalation-case Paanyaya scheduling failed: ' . ($c3Schedule['message'] ?? 'Unknown error'));
+}
 
 echo "  -> Recording Dialogue Minutes: Refused to Settle -> Escalate to Formal Mediation...\n";
 $escRes = $paanyayaModel->recordMinutes($c3Id, 'Paanyaya 1', [
@@ -171,6 +185,9 @@ $escRes = $paanyayaModel->recordMinutes($c3Id, 'Paanyaya 1', [
     'mediation_time' => '13:00',
     'case_type' => 'Civil'
 ], 2);
+if (empty($escRes['success'])) {
+    throw new RuntimeException('Paanyaya escalation failed: ' . ($escRes['message'] ?? 'Unknown error'));
+}
 
 $case3Id = (int) ($escRes['case_id'] ?? 0);
 $case3Num = $escRes['case_number'] ?? '';

@@ -988,7 +988,7 @@ class CaseStage
     }
 
     /**
-     * Records stage procedural outcome (Settled, Unsuccessful, Repudiated, Dismissed, Arbitration Award).
+     * Records stage procedural outcome, including a voluntary agreement to arbitrate.
      */
     public function recordOutcome(int $caseId, string $stageType, string $outcome, ?string $remarks, int $userId): array
     {
@@ -996,9 +996,9 @@ class CaseStage
             return ['success' => false, 'message' => 'Invalid stage type.'];
         }
 
-        $allowedOutcomes = ['Settled', 'Unsuccessful', 'Repudiated', 'Dismissed', 'Arbitration Award'];
+        $allowedOutcomes = ['Settled', 'Unsuccessful', 'Repudiated', 'Dismissed', 'Arbitration', 'Arbitration Award'];
         if (!in_array($outcome, $allowedOutcomes, true)) {
-            return ['success' => false, 'message' => 'Please select a valid stage outcome (Settled, Unsuccessful, Repudiated, Dismissed, or Arbitration Award).'];
+            return ['success' => false, 'message' => 'Please select a valid stage outcome.'];
         }
 
         $overview = $this->getStageOverview($caseId);
@@ -1054,13 +1054,14 @@ class CaseStage
                 "Outcome recorded: {$outcome}. Notes: " . ($remarks ?: 'None')
             ]);
 
-            // Case status update if Settled or Arbitration Award
+            // An agreement to arbitrate opens the Arbitration stage; the award
+            // is recorded later after the scheduled arbitration hearing.
             if ($outcome === 'Settled') {
                 $updCase = $this->conn->prepare("UPDATE cases SET case_status = 'Settled', updated_at = NOW() WHERE case_id = ?");
                 $updCase->execute([$caseId]);
                 $updComp = $this->conn->prepare("UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = 'Settled', co.updated_at = NOW() WHERE c.case_id = ?");
                 $updComp->execute([$caseId]);
-            } elseif ($outcome === 'Arbitration Award') {
+            } elseif ($outcome === 'Arbitration' || $outcome === 'Arbitration Award') {
                 $updCase = $this->conn->prepare("UPDATE cases SET case_status = 'Arbitration', updated_at = NOW() WHERE case_id = ?");
                 $updCase->execute([$caseId]);
                 $updComp = $this->conn->prepare("UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = 'Arbitration', co.updated_at = NOW() WHERE c.case_id = ?");
@@ -1283,6 +1284,42 @@ class CaseStage
                 'venue' => 'Lupon Court Room',
                 'constitution_date' => $referralDate
             ], $this->conn);
+
+            // KP Form 12 must be trackable for both parties as soon as the
+            // Pangkat is constituted. The first hearing date may be set later,
+            // so these are deliberately unassigned, pending-service returns.
+            $partiesStmt = $this->conn->prepare("
+                SELECT cp.resident_id, cp.party_type,
+                       TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS recipient_name
+                FROM complaint_parties cp
+                INNER JOIN cases c ON c.complaint_id = cp.complaint_id
+                INNER JOIN residents r ON r.resident_id = cp.resident_id
+                WHERE c.case_id = ? AND cp.party_type IN ('Complainant', 'Respondent')
+            ");
+            $partiesStmt->execute([$caseId]);
+            $kp12DeliveryExists = $this->conn->prepare("
+                SELECT delivery_id FROM summon_deliveries
+                WHERE case_id = ? AND resident_id = ? AND party_type = ?
+                  AND remarks = 'KP Form 12 — Notice of Pangkat Conciliation Hearing'
+                LIMIT 1
+            ");
+            $createKp12Delivery = $this->conn->prepare("
+                INSERT INTO summon_deliveries
+                    (hearing_id, case_id, party_type, resident_id, form_type, delivery_status, recipient_name, created_by, remarks)
+                VALUES (NULL, ?, ?, ?, 'Notice of Hearing', 'Pending', ?, ?, 'KP Form 12 — Notice of Pangkat Conciliation Hearing')
+            ");
+            foreach ($partiesStmt->fetchAll(PDO::FETCH_ASSOC) as $party) {
+                $kp12DeliveryExists->execute([$caseId, $party['resident_id'], $party['party_type']]);
+                if (!$kp12DeliveryExists->fetchColumn()) {
+                    $createKp12Delivery->execute([
+                        $caseId,
+                        $party['party_type'],
+                        $party['resident_id'],
+                        $party['recipient_name'],
+                        $userId
+                    ]);
+                }
+            }
 
             // 7. Record Stage Transition Audit
             $trans = $this->conn->prepare("

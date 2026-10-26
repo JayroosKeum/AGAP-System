@@ -449,7 +449,8 @@ class KpFormService
             ];
         }
 
-        // Check Voluntary Arbitration (KP Form 14 & 15)
+        // An agreement unlocks Form 14. Form 15 is available only after the
+        // arbitrator has actually rendered an award.
         $isArbitration = ($stage === 'Arbitration' || $caseStatus === 'Arbitration' ||
                           $lastOutcome === 'Arbitration Award' || $lastOutcome === 'Arbitration' || !empty($arbitration));
         if ($isArbitration) {
@@ -460,13 +461,15 @@ class KpFormService
                 'status' => 'Ready',
                 'description' => 'Written agreement submitting the dispute to binding arbitration under RA 7160 Sec. 413.'
             ];
-            $forms[] = [
-                'code' => 'KP Form 15',
-                'title' => 'Pormularyo ng KP Blg. 15 (Gawad ng Arbitrasyon / Arbitration Award)',
-                'category' => 'Arbitration',
-                'status' => (!empty($arbitration['award_date']) || !empty($arbitration['award_terms'])) ? 'Award Rendered' : 'Ready',
-                'description' => 'Formal arbitration award rendered by the Lupon Presider / Pangkat Chairman.'
-            ];
+            if ($lastOutcome === 'Arbitration Award' || !empty($arbitration['award_date']) || !empty($arbitration['award_terms'])) {
+                $forms[] = [
+                    'code' => 'KP Form 15',
+                    'title' => 'Pormularyo ng KP Blg. 15 (Gawad ng Arbitrasyon / Arbitration Award)',
+                    'category' => 'Arbitration',
+                    'status' => 'Award Rendered',
+                    'description' => 'Formal arbitration award rendered by the Lupon Presider / Pangkat Chairman.'
+                ];
+            }
         }
 
         // Check Repudiation (KP Form 17)
