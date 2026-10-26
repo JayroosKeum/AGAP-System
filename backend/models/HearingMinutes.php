@@ -96,6 +96,8 @@ class HearingMinutes
             'Conciliation', 'Arbitration', 'Show Cause'
         ];
         $sessionType = in_array($rawSessionType, $allowedSessionTypes, true) ? $rawSessionType : $defaultType;
+        // Normalize for MySQL enum column which only contains ('1st Mediation','2nd Mediation','3rd Mediation','Conciliation','Arbitration','Show Cause')
+        $dbSessionType = str_contains($sessionType, 'Conciliation') ? 'Conciliation' : $sessionType;
 
         // 3. Normalize and validate checkboxes (0 or 1)
         $opening = !empty($data['opening_conducted']) ? 1 : 0;
@@ -209,7 +211,7 @@ class HearingMinutes
 
             $stmt = $this->conn->prepare($sql);
             $stmt->execute([
-                $hearingId, $caseId, $sessionType, $opening, $identity,
+                $hearingId, $caseId, $dbSessionType, $opening, $identity,
                 $reviewed, $compStmt ?: null, $respStmt ?: null,
                 $dispute ?: null, $discussion ?: null, $caucus,
                 $caucusNotes ?: null, $prevProposal ?: null, $newProposal ?: null, $counteroffer ?: null,

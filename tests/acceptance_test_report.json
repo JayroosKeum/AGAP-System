@@ -1,0 +1,50 @@
+[
+  {
+    "name": "Staff Authentication",
+    "status": "PASSED",
+    "details": "Logged in as Lupon Clerk and landed on Dashboard",
+    "time": "2026-10-26T22:14:04.330Z"
+  },
+  {
+    "name": "Complaint Intake & Filing",
+    "status": "PASSED",
+    "details": "Created Complaint #43 (Paanyaya Case #P-10-43-2026)",
+    "time": "2026-10-26T22:14:11.927Z"
+  },
+  {
+    "name": "Preliminary Paanyaya Service",
+    "status": "PASSED",
+    "details": "Paanyaya 1 marked Successfully Delivered; Summons gate unlocked",
+    "time": "2026-10-26T22:14:18.857Z"
+  },
+  {
+    "name": "Formal Docketing & Summons",
+    "status": "PASSED",
+    "details": "Assigned Docket Case #10-10-2026, scheduled 1st Mediation hearing #179, generated KP Forms 8 & 9",
+    "time": "2026-10-26T22:14:27.846Z"
+  },
+  {
+    "name": "1st Mediation Session Conducted",
+    "status": "PASSED",
+    "details": "Finalized 1st Mediation minutes (Outcome: Continue Mediation); automatically booked 2nd Mediation hearing #180 under RA 7160 Sec. 410",
+    "time": "2026-10-26T22:14:37.618Z"
+  },
+  {
+    "name": "2nd Mediation Concluded & Elevation Unlocked",
+    "status": "PASSED",
+    "details": "Completed 2 of 2 statutory mediation sessions; mediation unsuccessful, unlocked Pangkat referral",
+    "time": "2026-10-26T22:14:47.517Z"
+  },
+  {
+    "name": "Pangkat Constitution & Document Generation",
+    "status": "PASSED",
+    "details": "Constituted 3-member Pangkat Tagapagkasundo (Chairperson, Secretary, Member); generated KP Forms 10, 11, and 12",
+    "time": "2026-10-26T22:14:50.110Z"
+  },
+  {
+    "name": "Acceptance Test Execution",
+    "status": "FAILED",
+    "details": "Conciliation minutes save failed: A valid hearing ID is required.",
+    "time": "2026-10-26T22:14:54.852Z"
+  }
+]
