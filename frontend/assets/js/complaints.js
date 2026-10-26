@@ -1552,7 +1552,11 @@ function renderPaanyayaStageCard(stageNum, stageData, caseNum, compNames, respNa
             }
             minutesBadge.innerHTML = `<span class="outcome-badge ${bClass}">${bText}</span>`;
             const notePreview = minutesData.agreed_terms || minutesData.discussion_summary || '';
-            minutesSummary.textContent = notePreview ? `“${notePreview.substring(0, 90)}${notePreview.length > 90 ? '...' : ''}”` : '';
+            let summaryText = notePreview ? `“${notePreview.substring(0, 90)}${notePreview.length > 90 ? '...' : ''}”` : '';
+            if (minutesData.session_remarks) {
+                summaryText += ` • Puna sa Simula: “${minutesData.session_remarks.substring(0, 60)}${minutesData.session_remarks.length > 60 ? '...' : ''}”`;
+            }
+            minutesSummary.textContent = summaryText;
         } else {
             minutesRow.style.display = 'none';
         }
@@ -5670,6 +5674,22 @@ window.proceedToOfficersReturnFromPreview = function() {
 // TEMPORARY MINUTES OF THE MEETING & COMPLAINANT DECISION HANDLERS
 // ===================================================================
 
+window.setMinutesActualStartNow = function() {
+    const el = document.getElementById('minutesActualStartTime');
+    if (!el) return;
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    el.value = `${hh}:${mm}`;
+};
+
+window.applyDelayRemark = function(remark) {
+    const el = document.getElementById('minutesSessionRemarks');
+    if (!el) return;
+    el.value = remark;
+    el.focus();
+};
+
 window.openPaanyayaMinutesModal = function(stageType = 'Paanyaya 1') {
     const modal = document.getElementById('paanyayaMinutesModal');
     if (!modal) return;
@@ -5704,9 +5724,18 @@ window.openPaanyayaMinutesModal = function(stageType = 'Paanyaya 1') {
         const summary = document.getElementById('minutesDiscussionSummary');
         const terms = document.getElementById('minutesAgreedTerms');
         const file = document.getElementById('minutesScannedFile');
+        const actualStart = document.getElementById('minutesActualStartTime');
+        const sessionRemarks = document.getElementById('minutesSessionRemarks');
         if (summary) summary.value = '';
         if (terms) terms.value = '';
         if (file) file.value = '';
+        if (sessionRemarks) sessionRemarks.value = '';
+        if (actualStart) {
+            const now = new Date();
+            const hh = String(now.getHours()).padStart(2, '0');
+            const mm = String(now.getMinutes()).padStart(2, '0');
+            actualStart.value = `${hh}:${mm}`;
+        }
 
         // Reset radio buttons
         const compRadio = form.querySelector('input[name="complainant_attended"][value="Present"]');
@@ -5921,8 +5950,18 @@ window.viewPaanyayaMinutes = async function(stageType = 'Paanyaya 1') {
                     <div><strong>Inanyayahan:</strong> <span style="color: ${minutes.respondent_attended === 'Present' ? '#166534' : '#991b1b'};">${minutes.respondent_attended === 'Present' ? 'Dumalo' : 'Hindi Dumalo'}</span></div>
                     <div><strong>Nagtala:</strong> <span>${esc(minutes.recorded_by_name || 'Opisyal ng Barangay')}</span></div>
                     <div><strong>Kinalabasan:</strong> ${outcomeBadge}</div>
+                    ${minutes.actual_start_time ? `<div><strong>Aktwal na Simula:</strong> <span style="font-weight: 600; color: #1e293b;">${esc(minutes.actual_start_time)}</span></div>` : ''}
                 </div>
             </div>
+
+            ${minutes.session_remarks ? `
+            <div style="margin-bottom: 14px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 10px 12px;">
+                <strong style="font-size: 0.84rem; color: #92400e; display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                    <span>⚠️ Puna sa Oras ng Simula / Dahilan ng Pagkaantala:</span>
+                </strong>
+                <div style="font-size: 0.85rem; color: #78350f; font-style: italic;">“${esc(minutes.session_remarks)}”</div>
+            </div>
+            ` : ''}
 
             <div style="margin-bottom: 14px;">
                 <strong style="font-size: 0.85rem; color: #0f172a; display: block; margin-bottom: 4px;">Salaysay at Buod ng Napag-usapan:</strong>

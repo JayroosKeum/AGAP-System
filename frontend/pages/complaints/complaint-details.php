@@ -1234,10 +1234,41 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
             <input type="hidden" id="minutesComplaintId" name="complaint_id" value="">
             <input type="hidden" id="minutesStageType" name="stage_type" value="Paanyaya 1">
 
-            <!-- Dialogue Date & Time -->
+            <!-- Dialogue Date & Time and Actual Start Time -->
+            <div style="margin-bottom: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="minutesDialogueDate" style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 4px;">Petsa at Takdang Oras (Scheduled Date &amp; Time) <span class="required-mark">*</span></label>
+                    <input type="datetime-local" id="minutesDialogueDate" name="dialogue_date" required style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%; box-sizing: border-box;">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                        <label for="minutesActualStartTime" style="font-weight: 600; font-size: 0.84rem; margin: 0;">Aktwal na Oras ng Simula (Actual Start Time)</label>
+                        <button type="button" onclick="setMinutesActualStartNow()" style="background: none; border: none; color: #2563eb; font-size: 0.76rem; font-weight: 600; cursor: pointer; padding: 0;">Oras Ngayon (Now)</button>
+                    </div>
+                    <input type="time" id="minutesActualStartTime" name="actual_start_time" style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%; box-sizing: border-box;">
+                </div>
+            </div>
+
+            <!-- Session Delay Remarks / Dahilan ng Pagkaantala -->
             <div class="form-group" style="margin-bottom: 14px;">
-                <label for="minutesDialogueDate" style="font-weight: 600; font-size: 0.84rem;">Petsa at Oras ng Pag-uusap (Dialogue Date & Time) <span class="required-mark">*</span></label>
-                <input type="datetime-local" id="minutesDialogueDate" name="dialogue_date" required style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+                    <label for="minutesSessionRemarks" style="font-weight: 600; font-size: 0.84rem; margin: 0;">Puna sa Oras ng Simula / Dahilan ng Pagkaantala (Session Delay Remarks)</label>
+                    <span style="font-size: 0.74rem; color: #64748b;">(Kung sakaling late nag-umpisa ang session)</span>
+                </div>
+                <textarea id="minutesSessionRemarks" name="session_remarks" rows="2" placeholder="Halimbawa: Naantala ang simula dahil may naunang kaso sa Lupon Court Room. Present ang mga partido." style="padding: 8px 10px; font-size: 0.86rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%; box-sizing: border-box;"></textarea>
+                <!-- Quick Preset Chips -->
+                <div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+                    <span style="font-size: 0.74rem; color: #64748b; font-weight: 600;">I-click para ilagay:</span>
+                    <button type="button" onclick="applyDelayRemark('Naantala ang simula dahil may naunang kaso sa Lupon Court Room. Present ang mga partido.')" style="font-size: 0.74rem; padding: 4px 9px; border-radius: 9999px; border: 1px solid #cbd5e1; background: #eff6ff; color: #1e40af; cursor: pointer; font-weight: 500;">
+                        📌 Naunang kaso sa Court Room
+                    </button>
+                    <button type="button" onclick="applyDelayRemark('Naantala dahil nahuli sa pagdating ang isa o magkabilang panig.')" style="font-size: 0.74rem; padding: 4px 9px; border-radius: 9999px; border: 1px solid #cbd5e1; background: #fff7ed; color: #c2410c; cursor: pointer; font-weight: 500;">
+                        📌 Nahuli ang panig
+                    </button>
+                    <button type="button" onclick="applyDelayRemark('Nagsimula sa takdang oras nang walang pagkaantala.')" style="font-size: 0.74rem; padding: 4px 9px; border-radius: 9999px; border: 1px solid #cbd5e1; background: #f0fdf4; color: #166534; cursor: pointer; font-weight: 500;">
+                        📌 Nasa oras
+                    </button>
+                </div>
             </div>
 
             <!-- Party Attendance -->

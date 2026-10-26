@@ -1747,6 +1747,14 @@ class Paanyaya
             ? trim((string)$data['respondent_attended']) : 'Present';
 
         $discussionSummary = trim((string)($data['discussion_summary'] ?? ($data['summary'] ?? '')));
+        $sessionRemarks = trim((string)($data['session_remarks'] ?? ($data['delay_remarks'] ?? ($data['remarks'] ?? ''))));
+        $actualStartTime = !empty($data['actual_start_time']) ? trim((string)$data['actual_start_time']) : null;
+        if ($actualStartTime) {
+            $parsedTime = strtotime($actualStartTime);
+            if ($parsedTime !== false) {
+                $actualStartTime = date('H:i:s', $parsedTime);
+            }
+        }
         $agreedTerms = trim((string)($data['agreed_terms'] ?? ($data['terms'] ?? '')));
 
         if ($discussionSummary === '') {
@@ -1807,15 +1815,15 @@ class Paanyaya
 
             $insStmt = $this->conn->prepare("
                 INSERT INTO paanyaya_minutes (
-                    complaint_id, stage_type, dialogue_date,
+                    complaint_id, stage_type, dialogue_date, actual_start_time,
                     complainant_attended, respondent_attended,
-                    discussion_summary, agreed_terms,
+                    discussion_summary, agreed_terms, session_remarks,
                     outcome, complainant_choice,
                     scanned_minutes_path, recorded_by, created_at
                 ) VALUES (
+                    ?, ?, ?, ?,
+                    ?, ?,
                     ?, ?, ?,
-                    ?, ?,
-                    ?, ?,
                     ?, ?,
                     ?, ?, CURRENT_TIMESTAMP
                 )
@@ -1824,10 +1832,12 @@ class Paanyaya
                 $complaintId,
                 $stageType,
                 $dialogueDate,
+                $actualStartTime,
                 $compAttended,
                 $respAttended,
                 $discussionSummary,
                 $agreedTerms ?: null,
+                $sessionRemarks ?: null,
                 $outcome,
                 $complainantChoice,
                 $scannedMinutesPath,
@@ -1854,12 +1864,15 @@ class Paanyaya
                     UPDATE paanyaya_sessions
                     SET session_outcome = ?,
                         outcome_notes = ?,
+                        session_remarks = COALESCE(?, session_remarks),
+                        actual_start_time = COALESCE(?, actual_start_time),
                         complainant_attended = ?,
                         respondent_attended = ?,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE session_id = ?
                 ");
-                $updSess->execute([$sessOutcome, $discussionSummary, $compAttended, $respAttended, (int)$sess['session_id']]);
+                $fullActualStart = $actualStartTime ? (date('Y-m-d', strtotime($dialogueDate)) . ' ' . $actualStartTime) : null;
+                $updSess->execute([$sessOutcome, $discussionSummary, $sessionRemarks ?: null, $fullActualStart, $compAttended, $respAttended, (int)$sess['session_id']]);
             }
 
             // Case 1: Settled
