@@ -31,7 +31,7 @@ $dashboardLink = [1 => '../dashboard/admin-dashboard.php', 2 => '../dashboard/cl
                     <a href="../residents/resident-list.php"<?php echo $isActive(['resident-list.php']); ?>><span class="nav-icon" aria-hidden="true"><img src="../../assets/icons/resident%20profiles.svg" alt=""></span><span class="nav-link-label">Profiles</span></a>
                     */ ?>
                     <a href="../complaints/complaint-list.php"<?php echo $isActive(['complaint-list.php', 'complaint-create.php', 'complaint-details.php']); ?>><span class="nav-icon" aria-hidden="true"><img src="../../assets/icons/complaints.svg" alt=""></span><span class="nav-link-label">Complaints</span></a>
-                    <a href="../cases/case-list.php"<?php echo $isActive(['case-list.php', 'create-case.php', 'case-assignment.php']); ?>><span class="nav-icon" aria-hidden="true"><img src="../../assets/icons/casesandassignments.svg" alt=""></span><span class="nav-link-label">Cases and assignments</span></a>
+                    <a href="../cases/case-list.php"<?php echo $isActive(['case-list.php', 'create-case.php', 'case-assignment.php']); ?>><span class="nav-icon" aria-hidden="true"><img src="../../assets/icons/casesandassignments.svg" alt=""></span><span class="nav-link-label">Cases</span></a>
                 </div>
             </details>
             <details class="nav-group"<?php echo $isGroupActive(['document-center.php', 'summons.php', 'settlements.php', 'cfa.php', 'kp-form-9.php', 'proof-service.php']) ? ' open' : ''; ?> data-nav-group="operations">

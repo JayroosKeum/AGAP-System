@@ -1,3 +1,166 @@
+
+function getMinutesField(baseId, hearingId = null) {
+    if (hearingId) {
+        const el = document.getElementById(`${baseId}_${hearingId}`);
+        if (el) return el;
+    }
+    if (stageWorkspaceState.activeSessionHearingId) {
+        const el = document.getElementById(`${baseId}_${stageWorkspaceState.activeSessionHearingId}`);
+        if (el) return el;
+    }
+    return document.getElementById(baseId);
+}
+window.getMinutesField = getMinutesField;
+
+function insertAgreedClause(text, hearingId = null) {
+    const ta = getMinutesField('minAgreements', hearingId);
+    if (!ta) return;
+    if (ta.value.trim() === '') {
+        ta.value = text;
+    } else {
+        ta.value = ta.value.trim() + '\n\n' + text;
+    }
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    ta.dispatchEvent(new Event('change', { bubbles: true }));
+    ta.focus();
+}
+window.insertAgreedClause = insertAgreedClause;
+
+function setNowHearingEndTime(hearingId = null) {
+    const input = getMinutesField('minActualEndTime', hearingId);
+    if (!input) return;
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    input.value = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+}
+window.setNowHearingEndTime = setNowHearingEndTime;
+window.setActualEndTimeNow = setNowHearingEndTime;
+
+async function loadHearingMinutesDocuments(hearingId) {
+    const container = document.getElementById(`minutesUploadedDocsContainer_${hearingId}`) || document.getElementById('minutesUploadedDocsContainer');
+    if (!container || !hearingId) return;
+
+    try {
+        const res = await fetch(`../../../backend/api/hearings/upload-minutes-evidence.php?hearing_id=${encodeURIComponent(hearingId)}&_t=${Date.now()}`);
+        const json = await res.json();
+        if (!json.success) return;
+
+        const docs = json.data || [];
+        if (!docs.length) {
+            container.innerHTML = '<span style="font-size: 0.78rem; color: #94a3b8; font-style: italic;">Walang nakalakip na dokumento o isinulat-kamay na katitikan sa kasalukuyan.</span>';
+            return;
+        }
+
+        container.innerHTML = `
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <span style="font-size: 0.76rem; font-weight: 700; color: #475569; text-transform: uppercase;">Nakalakip na Dokumento (${docs.length}):</span>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                    ${docs.map(d => {
+                        const isHandwritten = d.document_type === 'handwritten_minutes';
+                        const badgeColor = isHandwritten ? 'background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe;' : 'background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1;';
+                        const typeLabel = isHandwritten ? 'Katitikan (Handwritten)' : 'Ebidensya (Evidence)';
+                        const sizeKb = d.file_size ? `${Math.round(d.file_size / 1024)} KB` : '';
+                        return `
+                            <div style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 8px; ${badgeColor} font-size: 0.8rem; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+                                <span>${isHandwritten ? '📄' : '📎'}</span>
+                                <div style="max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                    <strong style="display: block; font-size: 0.82rem; color: inherit;">${escapeHtml(d.file_name)}</strong>
+                                    <small style="font-size: 0.7rem; opacity: 0.85;">${typeLabel} ${sizeKb ? '· ' + sizeKb : ''}</small>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 4px; margin-left: 6px;">
+                                    <a href="../../${escapeHtml(d.file_path)}" target="_blank" style="padding: 2px 7px; background: #fff; border: 1px solid rgba(0,0,0,0.15); border-radius: 4px; color: #0284c7; text-decoration: none; font-size: 0.72rem; font-weight: 700;">
+                                        Preview
+                                    </a>
+                                    <button type="button" onclick="deleteHearingMinutesDocument(${d.id}, ${d.hearing_id})" style="padding: 2px 6px; background: #fff; border: 1px solid #fca5a5; border-radius: 4px; color: #dc2626; cursor: pointer; font-size: 0.72rem; font-weight: 700;" title="Alisin ang attachment">
+                                        &times;
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+        `;
+    } catch (e) {
+        console.warn('Failed to load minutes documents:', e);
+    }
+}
+window.loadHearingMinutesDocuments = loadHearingMinutesDocuments;
+
+async function handleMinutesEvidenceUpload(input, documentType, targetHearingId = null) {
+    if (!input.files || !input.files.length) return;
+    const hearingId = targetHearingId || input.getAttribute('data-hearing-id') || document.getElementById('minHearingId')?.value || stageWorkspaceState.activeSessionHearingId;
+    const caseId = stageWorkspaceState.caseId;
+    if (!hearingId || !caseId) {
+        alert('Please select an active hearing session first.');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('hearing_id', hearingId);
+    formData.append('case_id', caseId);
+    formData.append('document_type', documentType);
+    for (let i = 0; i < input.files.length; i++) {
+        formData.append('file[]', input.files[i]);
+    }
+
+    try {
+        const res = await fetch('../../../backend/api/hearings/upload-minutes-evidence.php', {
+            method: 'POST',
+            body: formData
+        });
+        const json = await res.json();
+        if (json.success) {
+            if (window.AgapDraftManager) {
+                const draftKey = `agap_draft_${stageWorkspaceState.mode}_case_${stageWorkspaceState.caseId}_hearing_${hearingId}`;
+                window.AgapDraftManager.markSubmitted(draftKey);
+                window.AgapDraftManager.setIndicator('wsDraftIndicator', 'synced', '✓ All changes submitted');
+            }
+            loadHearingMinutesDocuments(hearingId);
+        } else {
+            alert(json.message || 'Failed to upload document.');
+        }
+    } catch (e) {
+        alert('Network error while uploading: ' + e.message);
+    } finally {
+        input.value = '';
+    }
+}
+window.handleMinutesEvidenceUpload = handleMinutesEvidenceUpload;
+
+async function deleteHearingMinutesDocument(docId, hearingId) {
+    if (!confirm('Sigurado ka bang nais mong tanggalin ang nakalakip na dokumentong ito?')) return;
+    try {
+        const formData = new FormData();
+        formData.append('action', 'delete');
+        formData.append('document_id', docId);
+        const res = await fetch('../../../backend/api/hearings/upload-minutes-evidence.php', {
+            method: 'POST',
+            body: formData
+        });
+        const json = await res.json();
+        if (json.success) {
+            loadHearingMinutesDocuments(hearingId);
+        } else {
+            alert(json.message || 'Failed to delete document.');
+        }
+    } catch (e) {
+        alert('Error removing document: ' + e.message);
+    }
+}
+window.deleteHearingMinutesDocument = deleteHearingMinutesDocument;
+
+function getStageSessionOrdinalLabel(stageType, index) {
+    const idx = parseInt(index, 10) || 1;
+    const s = ["th", "st", "nd", "rd"];
+    const v = idx % 100;
+    const ord = idx + (s[(v - 20) % 10] || s[v] || s[0]);
+    const stage = (stageType === 'Conciliation') ? 'Conciliation' : 'Mediation';
+    return `${ord} ${stage}`;
+}
+
 /**
  * AGAP - Stage Workspaces (Mediation & Pangkat Conciliation)
  * File: frontend/assets/js/stage-workspace.js
@@ -57,10 +220,168 @@ function formatDateTimeReadable(str) {
     }
 }
 
-function openKPFormPreview(caseId, formCode, hearingId = null) {
+function unlockOutcomesTab(cId) {
+    const compId = cId || stageWorkspaceState.complaintId || stageWorkspaceState.caseId;
+    if (compId) {
+        sessionStorage.setItem('agap_outcomes_unlocked_' + compId, '1');
+    }
+    sessionStorage.setItem('agap_outcomes_unlocked_global', '1');
+    window.agapOutcomesUnlocked = true;
+    try {
+        if (window.opener && window.opener.updateStageTabsLockState) {
+            if (compId) window.opener.sessionStorage.setItem('agap_outcomes_unlocked_' + compId, '1');
+            window.opener.sessionStorage.setItem('agap_outcomes_unlocked_global', '1');
+            window.opener.agapOutcomesUnlocked = true;
+            window.opener.updateStageTabsLockState();
+        }
+        if (window.parent && window.parent.updateStageTabsLockState && window.parent !== window) {
+            if (compId) window.parent.sessionStorage.setItem('agap_outcomes_unlocked_' + compId, '1');
+            window.parent.sessionStorage.setItem('agap_outcomes_unlocked_global', '1');
+            window.parent.agapOutcomesUnlocked = true;
+            window.parent.updateStageTabsLockState();
+        }
+        if (typeof updateStageTabsLockState === 'function') {
+            updateStageTabsLockState();
+        }
+    } catch (e) {
+        // Cross-origin or window reference expired
+    }
+}
+window.unlockOutcomesTab = unlockOutcomesTab;
+
+function openKpFormModal(caseId, formCode, hearingId = null) {
+    const activeCaseId = caseId || stageWorkspaceState.caseId;
+    if (!activeCaseId) {
+        notifyUser('Case ID is required to preview document.', 'warning');
+        return;
+    }
+    if (['KP Form 16', 'KP Form 20', 'KP Form 14', 'KP Form 15', 'Transmittal', 'Court Transmittal'].includes(formCode)) {
+        unlockOutcomesTab(activeCaseId);
+    }
+
+    const modal = document.getElementById('kpDocumentPreviewModal');
+    const iframe = document.getElementById('kpDocPreviewIframe');
+    const heading = document.getElementById('kpDocModalHeading');
+    const sub = document.getElementById('kpDocModalSub');
+    const dlBtn = document.getElementById('btnDownloadKpDocPdf');
+
+    const baseApi = (typeof getStageApiUrl === 'function')
+        ? getStageApiUrl('documents/kp-form.php')
+        : `../../../backend/api/documents/kp-form.php`;
+
+    let previewUrl = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&form_code=${encodeURIComponent(formCode)}&preview=1&bare=1`;
+    let pdfUrl = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&form_code=${encodeURIComponent(formCode)}&pdf=1`;
+    if (hearingId) {
+        previewUrl += `&hearing_id=${encodeURIComponent(hearingId)}`;
+        pdfUrl += `&hearing_id=${encodeURIComponent(hearingId)}`;
+    }
+
+    if (modal && iframe) {
+        if (heading) heading.textContent = `${formCode} Preview`;
+        if (sub) sub.textContent = `Barangay Tumana Lupong Tagapamayapa Â· Case #${activeCaseId}`;
+        iframe.src = previewUrl;
+        if (dlBtn) dlBtn.href = pdfUrl;
+        modal.style.display = 'flex';
+    } else {
+        window.open(previewUrl.replace('&bare=1', ''), '_blank');
+    }
+}
+window.openKpFormModal = openKpFormModal;
+window.openKPFormPreview = openKpFormModal;
+
+function closeKpDocumentPreviewModal() {
+    const modal = document.getElementById('kpDocumentPreviewModal');
+    const iframe = document.getElementById('kpDocPreviewIframe');
+    if (iframe) iframe.src = 'about:blank';
+    if (modal) modal.style.display = 'none';
+}
+window.closeKpDocumentPreviewModal = closeKpDocumentPreviewModal;
+
+function printKpDocIframe() {
+    const iframe = document.getElementById('kpDocPreviewIframe');
+    if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+    }
+}
+window.printKpDocIframe = printKpDocIframe;
+
+function openTriPanelPangkatModal(caseId) {
+    const activeCaseId = caseId || stageWorkspaceState.caseId;
+    if (!activeCaseId) {
+        notifyUser('Case ID is required for Pangkat notices preview.', 'warning');
+        return;
+    }
+    const modal = document.getElementById('pangkatNoticesModal');
+    if (!modal) {
+        console.warn('pangkatNoticesModal element not found in DOM.');
+        return;
+    }
+
+    const complaintId = stageWorkspaceState.complaintId || (window.currentComplaintData ? window.currentComplaintData.complaint_id : '') || (window.complaintData ? window.complaintData.complaint_id : '');
+    const frame10 = document.getElementById('pangkatPreviewFrameKp10');
+    const frame11 = document.getElementById('pangkatPreviewFrameKp11');
+    const frame12 = document.getElementById('pangkatPreviewFrameKp12');
+    const dl10 = document.getElementById('btnDownloadPangkatKp10');
+    const dl11 = document.getElementById('btnDownloadPangkatKp11');
+    const dl12 = document.getElementById('btnDownloadPangkatKp12');
+    const retComp = document.getElementById('btnPangkatOfficersReturnComp');
+    const retResp = document.getElementById('btnPangkatOfficersReturnResp');
+    const retFull = document.getElementById('btnPangkatOfficerReturnFull');
+
+    const baseApi = (typeof getStageApiUrl === 'function')
+        ? getStageApiUrl('documents/kp-form.php')
+        : `../../../backend/api/documents/kp-form.php`;
+
+    if (frame10) frame10.src = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+10&preview=1&bare=1`;
+    if (frame11) frame11.src = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+11&preview=1&bare=1`;
+    if (frame12) frame12.src = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+12&preview=1&bare=1`;
+
+    if (dl10) dl10.href = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+10&pdf=1`;
+    if (dl11) dl11.href = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+11&pdf=1`;
+    if (dl12) dl12.href = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+12&pdf=1`;
+
+    const gpsUrl = (party) => `../../pages/gps/proof-service.php?case_id=${encodeURIComponent(activeCaseId)}&complaint_id=${encodeURIComponent(complaintId)}&stage=Conciliation&form=KP12${party ? `&party=${encodeURIComponent(party)}` : ''}`;
+    if (retComp) retComp.href = gpsUrl('Complainant');
+    if (retResp) retResp.href = gpsUrl('Respondent');
+    if (retFull) retFull.href = gpsUrl();
+
+    modal.style.display = 'flex';
+}
+window.openTriPanelPangkatModal = openTriPanelPangkatModal;
+
+function closeTriPanelPangkatModal() {
+    const modal = document.getElementById('pangkatNoticesModal');
+    if (modal) modal.style.display = 'none';
+}
+window.closeTriPanelPangkatModal = closeTriPanelPangkatModal;
+
+function printPangkatFrame(which) {
+    let frameId = 'pangkatPreviewFrameKp10';
+    if (which === 'kp11') frameId = 'pangkatPreviewFrameKp11';
+    else if (which === 'kp12') frameId = 'pangkatPreviewFrameKp12';
+    const iframe = document.getElementById(frameId);
+    if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+    }
+}
+window.printPangkatFrame = printPangkatFrame;
+
+function printAllPangkatNotices() {
+    ['kp10', 'kp11', 'kp12'].forEach((which, i) => {
+        setTimeout(() => printPangkatFrame(which), i * 1500);
+    });
+}
+window.printAllPangkatNotices = printAllPangkatNotices;
+
+function legacyOpenKPFormPreview(caseId, formCode, hearingId = null) {
     if (!caseId) {
         notifyUser('Case ID is required to preview document.', 'warning');
         return;
+    }
+    if (['KP Form 16', 'KP Form 20', 'KP Form 14', 'KP Form 15', 'Transmittal', 'Court Transmittal'].includes(formCode)) {
+        unlockOutcomesTab(caseId);
     }
     let url = getStageApiUrl(`documents/kp-form.php?case_id=${encodeURIComponent(caseId)}&form_code=${encodeURIComponent(formCode)}&preview=1`);
     if (hearingId) {
@@ -314,7 +635,11 @@ function renderHeaderAndBreadcrumbs(data, stage) {
     }
 
     if (subtextEl) {
-        subtextEl.textContent = `Case #${caseData.case_number || 'N/A'} · Complaint #${caseData.complaint_number || 'N/A'} · Docketed: ${formatDateReadable(caseData.docket_date)}`;
+        const compNames = caseData.complainant_names || caseData.complainant_name || '—';
+        const respNames = caseData.respondent_names || caseData.respondent_name || '—';
+        const compTitle = caseData.complaint_title || caseData.title || caseData.case_title || '';
+        const titleStr = compTitle ? ` · "${escapeHtml(compTitle)}"` : '';
+        subtextEl.innerHTML = `Case #${escapeHtml(caseData.case_number || 'N/A')} · <strong>${escapeHtml(compNames)}</strong> vs <strong>${escapeHtml(respNames)}</strong>${titleStr}`;
     }
 
     if (backLinkEl && stageWorkspaceState.complaintId) {
@@ -353,14 +678,15 @@ function renderWorkspaceActions(stage) {
         handler = 'openScheduleModal()';
     }
 
-    primary.innerHTML = `<button type="button" class="btn-create" onclick="${handler}" style="font-size:.82rem; padding:7px 14px; display:inline-flex; align-items:center; gap:5px;">${escapeHtml(label)} &rarr;</button>`;
+    primary.innerHTML = `<button type="button" class="btn-secondary" onclick="openPrintBlankMinutes()" style="font-size:.82rem; padding:7px 14px; display:inline-flex; align-items:center; gap:5px; background:#fff; border:1px solid #cbd5e1; cursor:pointer; font-weight:600; color:#334155; margin-right:6px;" title="Print official blank ruled minutes sheet">🖨️ Print Blank Minutes Sheet</button><button type="button" class="btn-create" onclick="${handler}" style="font-size:.82rem; padding:7px 14px; display:inline-flex; align-items:center; gap:5px;">${escapeHtml(label)} &rarr;</button>`;
 
     const scheduleLabel = mode === 'Conciliation' ? 'Schedule Conciliation' : 'Schedule Mediation';
     const panelAction = mode === 'Conciliation'
         ? `<button type="button" class="btn-secondary" onclick="openPangkatSelectionModal()">Panel selection</button><button type="button" class="btn-secondary" onclick="openPangkatExtensionModal()">Grant extension</button>`
         : `<button type="button" class="btn-secondary" onclick="openReferPangkatModal()">Refer to Pangkat</button>`;
     const cfaAction = mode === 'Conciliation' ? `<a class="btn-secondary" href="../documents/cfa.php?case_id=${encodeURIComponent(stageWorkspaceState.caseId)}">CFA workflow</a>` : '';
-    more.innerHTML = `<button type="button" class="btn-secondary" onclick="openScheduleModal()">${scheduleLabel}</button><button type="button" class="btn-secondary" onclick="openRecordOutcomeModal()">Record stage outcome</button>${panelAction}${cfaAction}`;
+    const outcomeAction = (mode === 'Mediation') ? '' : `<button type="button" class="btn-secondary" onclick="openRecordOutcomeModal()">Record stage outcome</button>`;
+    more.innerHTML = `<button type="button" class="btn-secondary" onclick="openScheduleModal()">${scheduleLabel}</button>${outcomeAction}${panelAction}${cfaAction}`;
     more.querySelectorAll('.btn-secondary').forEach((button) => {
         button.style.cssText = 'display:block; width:100%; margin:2px 0; text-align:left; border:0; background:transparent; padding:8px 10px; cursor:pointer; text-decoration:none; color:#334155; font-size:.82rem;';
     });
@@ -594,7 +920,7 @@ function renderSessionsList(data, stage) {
                                 #${s.session_index}
                             </span>
                             <h4 style="margin: 0; font-size: 1.05rem; color: #0f172a; font-weight: 700;">
-                                ${escapeHtml(s.attempt_label || s.session_number)}
+                                ${escapeHtml(getStageSessionOrdinalLabel(stageWorkspaceState.mode || stageWorkspaceState.stageType, s.session_index || 1))}
                             </h4>
                             ${queueBadgeHtml}
                             <span class="status-pill status-${escapeHtml(s.status.toLowerCase())}" style="font-size: 0.74rem; padding: 2px 8px; border-radius: 4px; font-weight: 700;">
@@ -856,6 +1182,427 @@ window.formatTimeOnly = formatTimeOnly;
  * Streamlined Option 2: 3 Chronological Sections
  * (Preliminaries -> Proceedings & Discussion -> Agreed Terms & Outcome)
  */
+/**
+ * Dynamic Session-Specific Outcome Options (RA 7160 Sec. 410)
+ */
+function getOutcomeOptionsForSession(session, mode) {
+    const curOutcome = (session && session.session_outcome) || 'Pending';
+    const sessionIndex = session ? Number(session.session_index || 1) : 1;
+    if (mode === 'Mediation') {
+        const opts = [
+            { val: 'Pending', label: 'Pending Evaluation' },
+            { val: 'Settled', label: 'Amicably Settled / Nagkasundo (KP Form 16)' }
+        ];
+        if (sessionIndex === 1) {
+            // 1st Mediation only
+            opts.push({ val: 'Continue Mediation', label: 'Unresolved / Book 2nd Mediation' });
+        } else {
+            // 2nd Mediation (or higher): elevation unlocked, remove book 2nd mediation
+            opts.push({ val: 'Elevate to Pangkat', label: 'Failure of Mediation / Endorse to Pangkat (KP Form 10)' });
+        }
+        opts.push({ val: 'Arbitration Award', label: 'Arbitration Award (Submit to Arbitration — KP Form 14/15)' });
+        opts.push({ val: 'Repudiated', label: 'Repudiated Settlement' });
+        opts.push({ val: 'Party Absent', label: 'Non-Appearance / Certified for Show Cause' });
+        opts.push({ val: 'Rescheduled', label: 'Rescheduled — Session Reset' });
+        return opts.map(o => `<option value="${o.val}" ${curOutcome === o.val ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('');
+    } else if (mode === 'Conciliation') {
+        const opts = [
+            { val: 'Pending', label: 'Pending Evaluation' },
+            { val: 'Settled', label: 'Amicably Settled / Nagkasundo (KP Form 16)' }
+        ];
+        if (sessionIndex === 1) {
+            // 1st Conciliation: can book 2nd conciliation, NO CFA yet
+            opts.push({ val: 'Continue Conciliation', label: 'Unresolved / Book 2nd Conciliation' });
+        } else if (sessionIndex === 2) {
+            // 2nd Conciliation: can book 3rd conciliation OR issue CFA
+            opts.push({ val: 'Continue Conciliation', label: 'Unresolved / Book 3rd Conciliation' });
+            opts.push({ val: 'Pending CFA', label: 'Conciliation Failed — Ready for CFA (KP Form 20)' });
+        } else {
+            // 3rd Conciliation (or final): max conciliation sessions reached, issue CFA
+            opts.push({ val: 'Pending CFA', label: 'Conciliation Failed — Ready for CFA (KP Form 20)' });
+        }
+        opts.push({ val: 'Arbitration Award', label: 'Arbitration Award (Submit to Arbitration — KP Form 14/15)' });
+        opts.push({ val: 'Repudiated', label: 'Repudiated Settlement' });
+        opts.push({ val: 'Party Absent', label: 'Party Absent / Non-appearance Recorded' });
+        opts.push({ val: 'Rescheduled', label: 'Rescheduled — Session Reset' });
+        return opts.map(o => `<option value="${o.val}" ${curOutcome === o.val ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('');
+    } else if (mode === 'Arbitration') {
+        const opts = [
+            { val: 'Continue Arbitration', label: 'Continue Arbitration Hearing' },
+            { val: 'Arbitration Award', label: 'Render Arbitration Award (KP Form 15)' },
+            { val: 'Settled', label: 'Settled — Parties Reached Settlement During Hearing' },
+            { val: 'Party Absent', label: 'Party Absent' },
+            { val: 'Rescheduled', label: 'Rescheduled' },
+            { val: 'Failed', label: 'Dismissed / Repudiated Arbitration Agreement' },
+            { val: 'Pending', label: 'Pending Evaluation' }
+        ];
+        return opts.map(o => `<option value="${o.val}" ${curOutcome === o.val ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('');
+    }
+    return '';
+}
+window.getOutcomeOptionsForSession = getOutcomeOptionsForSession;
+
+function renderSingleSessionMinutesCard(session, mode, allSessions) {
+    const hId = session.hearing_id;
+    const sessionIndex = Number(session.session_index || 1);
+    const sessionLabel = `#${sessionIndex} ${getStageSessionOrdinalLabel(mode || stageWorkspaceState.stageType, sessionIndex)}`;
+    const isFinalized = (session.minutes_status === 'Finalized');
+    const readonlyAttr = isFinalized ? 'readonly disabled' : '';
+    const curOutcome = session.session_outcome || 'Pending';
+    const outcomeOptions = getOutcomeOptionsForSession(session, mode);
+
+    const compAtt = session.complainant_attendance || 'Pending';
+    const respAtt = session.respondent_attendance || 'Pending';
+    const compAttBadge = compAtt === 'Present' ? 'background: #dcfce7; color: #15803d;' : (compAtt === 'Absent' ? 'background: #fee2e2; color: #991b1b;' : 'background: #f1f5f9; color: #64748b;');
+    const respAttBadge = respAtt === 'Present' ? 'background: #dcfce7; color: #15803d;' : (respAtt === 'Absent' ? 'background: #fee2e2; color: #991b1b;' : 'background: #f1f5f9; color: #64748b;');
+
+    let presiderDisplayHtml = '';
+    if (session.substitute_presider_name) {
+        presiderDisplayHtml = `
+            <div style="font-size: 0.78rem; margin-bottom: 7px; padding: 5px 9px; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: #475569; font-weight: 600;">Presider:</span>
+                    <span style="font-size: 0.7rem; font-weight: 700; padding: 1px 5px; border-radius: 4px; background: #fee2e2; color: #991b1b;">Absent</span>
+                </div>
+                <div style="color: #0f172a; font-weight: 600; font-size: 0.8rem;">
+                    ${escapeHtml(session.presiding_officer_name || 'Punong Barangay')}
+                </div>
+                <div style="margin-top: 3px; font-size: 0.75rem; color: #2563eb; font-weight: 600;">
+                    ↳ Substitute: ${escapeHtml(session.substitute_presider_name)} (Consent: Verified)
+                </div>
+                ${session.substitute_reason ? `<div style="font-size: 0.71rem; color: #64748b; margin-top: 2px;">Reason: ${escapeHtml(session.substitute_reason)}</div>` : ''}
+            </div>
+        `;
+    } else {
+        presiderDisplayHtml = `
+            <div style="font-size: 0.78rem; margin-bottom: 7px; padding: 5px 9px; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <span style="color: #475569; font-weight: 600;">Presider:</span>
+                    <span style="color: #0f172a; font-weight: 600; margin-left: 4px;">${escapeHtml(session.presiding_officer_name || (mode === 'Conciliation' ? 'Pangkat Chairman' : 'Punong Barangay / Lupon Chairman'))}</span>
+                </div>
+                <span style="font-size: 0.7rem; font-weight: 700; padding: 1px 5px; border-radius: 4px; background: #dcfce7; color: #15803d;">Present</span>
+            </div>
+        `;
+    }
+
+    const isSecondOrLater = (sessionIndex >= 2 || !['Initial Hearing', 'Mediation'].includes(session.hearing_type));
+    let compConsequenceHtml = '';
+    if (compAtt === 'Absent') {
+        if (isSecondOrLater) {
+            compConsequenceHtml = `
+                <div style="margin-top: 5px; font-size: 0.74rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; padding: 5px 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap;">
+                        <span style="color: #991b1b; font-weight: 700;">Complainant Non-appearance</span>
+                        <button type="button" class="btn-secondary" onclick="openKPFormPreview(${stageWorkspaceState.caseId}, 'KP Form 18', ${hId})" style="font-size: 0.7rem; padding: 2px 7px; background: #fff; border-color: #fca5a5; color: #991b1b; cursor: pointer;">
+                            Preview KP Form 18
+                        </button>
+                    </div>
+                    <div style="color: #64748b; font-size: 0.71rem; margin-top: 3px;">
+                        KP Form 21 (Bar Action) locked pending show-cause evaluation.
+                    </div>
+                </div>
+            `;
+        } else {
+            compConsequenceHtml = `
+                <div style="margin-top: 5px; font-size: 0.74rem; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 4px; padding: 5px 8px;">
+                    <span style="color: #475569; font-weight: 600;">Complainant Non-appearance (${escapeHtml(sessionLabel)}):</span>
+                    <span style="color: #64748b; margin-left: 4px;">Proceed to book 2nd session. KP Form 18 notice unlocks upon non-appearance in 2nd session.</span>
+                </div>
+            `;
+        }
+    }
+
+    let respConsequenceHtml = '';
+    if (respAtt === 'Absent') {
+        if (isSecondOrLater) {
+            respConsequenceHtml = `
+                <div style="margin-top: 5px; font-size: 0.74rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; padding: 5px 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap;">
+                        <span style="color: #991b1b; font-weight: 700;">Respondent Non-appearance</span>
+                        <button type="button" class="btn-secondary" onclick="openKPFormPreview(${stageWorkspaceState.caseId}, 'KP Form 19', ${hId})" style="font-size: 0.7rem; padding: 2px 7px; background: #fff; border-color: #fca5a5; color: #991b1b; cursor: pointer;">
+                            Preview KP Form 19
+                        </button>
+                    </div>
+                    <div style="color: #64748b; font-size: 0.71rem; margin-top: 3px;">
+                        KP Form 22 (Bar Counterclaim) locked pending show-cause evaluation.
+                    </div>
+                </div>
+            `;
+        } else {
+            respConsequenceHtml = `
+                <div style="margin-top: 5px; font-size: 0.74rem; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 4px; padding: 5px 8px;">
+                    <span style="color: #475569; font-weight: 600;">Respondent Non-appearance (${escapeHtml(sessionLabel)}):</span>
+                    <span style="color: #64748b; margin-left: 4px;">Proceed to book 2nd session. KP Form 19 notice unlocks upon non-appearance in 2nd session.</span>
+                </div>
+            `;
+        }
+    }
+
+    const cardBorder = sessionIndex === 1 ? '#cbd5e1' : (sessionIndex === 2 ? '#93c5fd' : '#c084fc');
+    const badgeColor = isFinalized ? 'background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0;' : (session.minutes_id ? 'background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe;' : 'background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0;');
+
+    return `
+        <div class="inline-minutes-card" id="minutesCard_${hId}" style="background: #fff; border: 1.5px solid ${cardBorder}; border-radius: 12px; padding: 22px 24px; margin-bottom: 24px; box-shadow: 0 2px 6px rgba(0,0,0,0.03);">
+            <!-- Card Header -->
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid #e2e8f0;">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="background: ${sessionIndex === 1 ? '#2563eb' : (sessionIndex === 2 ? '#0284c7' : '#7c3aed')}; color: #fff; font-size: 0.76rem; font-weight: 800; padding: 2px 9px; border-radius: 6px;">
+                            ${escapeHtml(mode.toUpperCase())} #${sessionIndex}
+                        </span>
+                        <h3 style="margin: 0; font-size: 1.15rem; font-weight: 800; color: #0f172a;">
+                            Minutes of the Meeting &amp; Hearing: ${escapeHtml(sessionLabel)}
+                        </h3>
+                    </div>
+                    <p style="margin: 4px 0 0; font-size: 0.83rem; color: #64748b;">
+                        Record formal proceedings, statements, agreed terms, and disposition for <strong>${escapeHtml(sessionLabel)}</strong> (${formatDateTimeReadable(session.hearing_date)}).
+                    </p>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <span style="font-size: 0.78rem; padding: 4px 10px; border-radius: 9999px; font-weight: 700; ${badgeColor}">
+                        ${isFinalized ? 'FINALIZED &amp; LOCKED' : (session.minutes_id ? 'WORKING DRAFT' : 'NOT YET RECORDED')}
+                    </span>
+                    <button type="button" class="btn-secondary" onclick="openPrintBlankMinutes()" style="font-size: 0.78rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;" title="Print official blank ruled minutes sheet">
+                        🖨️ Print Blank Minutes Sheet
+                    </button>
+                    <button type="button" class="btn-secondary" onclick="openPreviewMinutesModal(${hId})" style="font-size: 0.78rem; padding: 4px 10px;">
+                        Preview Letterhead
+                    </button>
+                    <button type="button" class="btn-secondary" onclick="printHearingMinutes(${hId})" style="font-size: 0.78rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
+                        🖨️ Print Minutes
+                    </button>
+                </div>
+            </div>
+
+            <!-- Lock Notice if Finalized -->
+            ${isFinalized ? `
+                <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 12px 16px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div style="color: #166534; font-size: 0.85rem;">
+                        <strong>Official Record Locked:</strong> This session minutes was finalized${session.finalized_at ? ` on ${formatDateTimeReadable(session.finalized_at)}` : ''}${session.finalized_by_name ? ` by ${escapeHtml(session.finalized_by_name)}` : ''}. Finalized minutes are legally protected from alteration.
+                    </div>
+                </div>
+            ` : ''}
+
+            <!-- Form -->
+            <form id="inlineMinutesForm_${hId}" data-hearing-id="${hId}" onsubmit="event.preventDefault();">
+                <input type="hidden" id="minHearingId_${hId}" name="hearing_id" value="${hId}">
+
+                <!-- ============================================================== -->
+                <!-- SECTION 1: SALAYSAY, BUOD NG USAPAN AT TALAKAYAN              -->
+                <!-- ============================================================== -->
+                <div class="minutes-flow-step" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid #f1f5f9;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="background: #2563eb; color: #fff; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.78rem; font-weight: 700;">1</span>
+                            <div>
+                                <h4 style="margin: 0; font-size: 0.96rem; font-weight: 700; color: #0f172a;">Salaysay, Buod ng Usapan at Talakayan (Proceedings &amp; Discussion)</h4>
+                                <span style="font-size: 0.76rem; color: #64748b;">Itala ang buod ng alitan, mga salaysay, talakayan sa pagdinig, at kalakip na ebidensya</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Dispute Focus / Main Issue -->
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label for="minDisputeSummary_${hId}" style="font-weight: 700; font-size: 0.82rem; color: #1e293b; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center;">
+                            <span>Pangunahing Usapin (Dispute Focus / Main Issue Identified)</span>
+                            <span style="font-size: 0.72rem; color: #64748b; font-weight: normal;">Buod ng hidwaan</span>
+                        </label>
+                        <input type="text" id="minDisputeSummary_${hId}" name="minDisputeSummary" maxlength="1000" placeholder="Halimbawa: Paniningil ng utang, alitan sa boundary o bakod, panggugulo sa oras ng pahinga..." value="${escapeHtml(session.main_dispute_identified || '')}" ${readonlyAttr} style="width: 100%; padding: 8px 12px; font-size: 0.85rem; border: 1px solid #cbd5e1; border-radius: 6px;">
+                    </div>
+
+                    <!-- Voice STT & Notes OCR Toolbar directly above Salaysay -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 8px;">
+                        <label for="session_minutes_${hId}" style="font-weight: 700; font-size: 0.84rem; color: #1e293b; margin-bottom: 0;">
+                            Salaysay ng Magkabilang Panig at Buod ng Talakayan (Discussion Summary &amp; Statements) <span style="color: #dc2626;">*</span>
+                        </label>
+                        ${!isFinalized ? `
+                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <label style="font-size: 0.74rem; color: #475569; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+                                    <input type="checkbox" id="stageAiConsentCheckbox_${hId}" checked style="accent-color: #2563eb; cursor: pointer;">
+                                    <span>Consent to Gemini AI</span>
+                                </label>
+                                <button type="button" class="btn-secondary" id="btnStageRecordVoice_${hId}" onclick="toggleStageVoiceRecording(${hId})" style="font-size: 0.76rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
+                                    <span id="stageRecordVoiceText_${hId}">🎙️ Record Voice (STT)</span>
+                                </button>
+                                <button type="button" class="btn-secondary" id="btnStageUploadNotes_${hId}" onclick="triggerStageNotesUpload(${hId})" style="font-size: 0.76rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
+                                    📷 Upload Notes (OCR)
+                                </button>
+                                <input type="file" id="stageNotesFileInput_${hId}" accept="image/*" style="display: none;" onchange="handleStageNotesFileSelected(this, ${hId})">
+                            </div>
+                        ` : ''}
+                    </div>
+
+                    <!-- AI Status Banner -->
+                    <div id="stageAiStatusBanner_${hId}" style="display: none; padding: 8px 12px; margin-bottom: 10px; border-radius: 6px; font-size: 0.82rem; background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af;"></div>
+
+                    <!-- Central Discussion Textarea -->
+                    <textarea id="session_minutes_${hId}" name="session_minutes" rows="5" placeholder="Detalyadong buod ng mga naging salaysay, paliwanag ng mga partido, at talakayan sa pagdinig..." ${readonlyAttr} required style="width: 100%; padding: 10px 12px; font-size: 0.86rem; line-height: 1.5; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; resize: vertical;">${escapeHtml(session.settlement_discussion_notes || session.session_minutes || '')}</textarea>
+
+                    <!-- Kopya ng Isinulat-Kamay na Katitikan at Ebidensya -->
+                    <div style="margin-top: 14px; padding: 14px 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
+                        <div style="margin-bottom: 10px;">
+                            <h5 style="margin: 0 0 3px; font-size: 0.88rem; font-weight: 700; color: #0f172a;">
+                                Kopya ng Isinulat-Kamay na Katitikan at Ebidensya (Written Minutes &amp; Evidences)
+                            </h5>
+                            <span style="font-size: 0.76rem; color: #64748b; display: block;">
+                                I-upload ang litrato o scan ng isinulat-kamay na katitikan, lagda ng mga partido, at mga kalakip na ebidensya para sa sesyong ito.
+                            </span>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 10px;">
+                            <div class="minutes-dropzone" style="padding: 12px 14px;">
+                                <div style="font-size: 1.4rem; margin-bottom: 2px;">📄</div>
+                                <strong style="display: block; font-size: 0.82rem; color: #0f172a; margin-bottom: 2px;">Upload Scanned / Written Minutes</strong>
+                                <span style="display: block; font-size: 0.72rem; color: #64748b; margin-bottom: 8px;">PDF o larawan ng nilagdaang katitikan</span>
+                                <input type="file" id="uploadHandwrittenMinutesInput_${hId}" data-hearing-id="${hId}" accept="image/*,.pdf" style="display: none;" onchange="handleMinutesEvidenceUpload(this, 'handwritten_minutes', ${hId})">
+                                <button type="button" class="btn-secondary" onclick="document.getElementById('uploadHandwrittenMinutesInput_${hId}').click()" style="font-size: 0.75rem; padding: 5px 10px;" ${readonlyAttr}>
+                                    📄 Upload Scanned / Written Minutes
+                                </button>
+                            </div>
+                            <div class="minutes-dropzone" style="padding: 12px 14px;">
+                                <div style="font-size: 1.4rem; margin-bottom: 2px;">📎</div>
+                                <strong style="display: block; font-size: 0.82rem; color: #0f172a; margin-bottom: 2px;">Attach Evidences &amp; Photos</strong>
+                                <span style="display: block; font-size: 0.72rem; color: #64748b; margin-bottom: 8px;">Larawan, resibo, o iba pang kasulatan</span>
+                                <input type="file" id="uploadEvidenceAttachmentsInput_${hId}" data-hearing-id="${hId}" accept="image/*,.pdf,.doc,.docx" multiple style="display: none;" onchange="handleMinutesEvidenceUpload(this, 'evidence', ${hId})">
+                                <button type="button" class="btn-secondary" onclick="document.getElementById('uploadEvidenceAttachmentsInput_${hId}').click()" style="font-size: 0.75rem; padding: 5px 10px;" ${readonlyAttr}>
+                                    📎 Attach Evidences / Photos / Receipts
+                                </button>
+                            </div>
+                        </div>
+                        <div id="minutesUploadedDocsContainer_${hId}">
+                            <span style="font-size: 0.78rem; color: #94a3b8; font-style: italic;">Walang nakalakip na dokumento o isinulat-kamay na katitikan sa kasalukuyan.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ============================================================== -->
+                <!-- SECTION 2: MGA MUNGKAHI, ALOK AT NAPAGKASUNDUANG KONDISYON   -->
+                <!-- ============================================================== -->
+                <div class="minutes-flow-step" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid #f1f5f9;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="background: #16a34a; color: #fff; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.78rem; font-weight: 700;">2</span>
+                            <div>
+                                <h4 style="margin: 0; font-size: 0.96rem; font-weight: 700; color: #0f172a;">Mga Mungkahi, Alok at Napagkasunduang Kondisyon (Agreed Terms &amp; Settlement)</h4>
+                                <span style="font-size: 0.76rem; color: #64748b;">Itala ang mga napagkasunduan, plano ng pagbabayad o pagtupad, o mga puntong hindi pa nareresolba</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Pre-drafted Clause Chips -->
+                    <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; align-items: center;">
+                        <span style="font-size: 0.75rem; font-weight: 600; color: #475569;">Quick Insert:</span>
+                        <button type="button" class="btn-secondary" onclick="insertAgreedClause('Nagkasundo ang magkabilang panig na ayusin ang alitan sa pamamagitan ng...', ${hId})" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 12px; background: #f8fafc;" ${readonlyAttr}>
+                            + Kasunduan sa Pag-aayos
+                        </button>
+                        <button type="button" class="btn-secondary" onclick="insertAgreedClause('Nangangako ang ipinagsumbong na magbabayad ng halagang ₱________ sa o bago sumapit ang petsang ________.', ${hId})" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 12px; background: #f8fafc;" ${readonlyAttr}>
+                            + Plano ng Pagbabayad
+                        </button>
+                        <button type="button" class="btn-secondary" onclick="insertAgreedClause('Pumapayag ang may sumbong na bigyan ng palugit ang ipinagsumbong hanggang ________ upang tuparin ang napag-usapan.', ${hId})" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 12px; background: #f8fafc;" ${readonlyAttr}>
+                            + Takdang Araw ng Pagtupad
+                        </button>
+                    </div>
+
+                    <!-- Agreed Terms Textarea -->
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label for="minAgreements_${hId}" style="font-weight: 700; font-size: 0.84rem; color: #166534; margin-bottom: 4px; display: block;">
+                            Napagkasunduang Kondisyon at Kasunduan (Agreed Terms / Action Items)
+                        </label>
+                        <textarea id="minAgreements_${hId}" name="minAgreements" rows="4" maxlength="4000" placeholder="Mga partikular na kondisyong pinagkasunduan, halaga ng bayarin, iskedyul ng pagbabayad, o mga gagawin..." ${readonlyAttr} style="width: 100%; padding: 10px 12px; font-size: 0.86rem; line-height: 1.5; border: 1px solid #86efac; background: #f0fdf4; border-radius: 6px; box-sizing: border-box; resize: vertical;">${escapeHtml(session.agreements_action_items || '')}</textarea>
+                    </div>
+
+                    <!-- Contentious / Unresolved items -->
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="minUnresolved_${hId}" style="font-weight: 600; font-size: 0.82rem; color: #991b1b; margin-bottom: 4px; display: block;">
+                            Usaping Hindi Napagkasunduan (Issues Remaining Unresolved)
+                        </label>
+                        <textarea id="minUnresolved_${hId}" name="minUnresolved" rows="2" maxlength="3000" placeholder="Mga puntong hindi nagkasundo ang mga partido..." ${readonlyAttr} style="width: 100%; padding: 8px 12px; font-size: 0.85rem; border: 1px solid #fca5a5; background: #fef2f2; border-radius: 6px; box-sizing: border-box; resize: vertical;">${escapeHtml(session.unresolved_issues || '')}</textarea>
+                    </div>
+                </div>
+
+                <!-- ============================================================== -->
+                <!-- SECTION 3: KINALABASAN NG SESYON (Outcome Determination)        -->
+                <!-- ============================================================== -->
+                <div class="minutes-flow-step" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid #f1f5f9;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="background: #7c3aed; color: #fff; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.78rem; font-weight: 700;">3</span>
+                            <div>
+                                <h4 style="margin: 0; font-size: 0.96rem; font-weight: 700; color: #0f172a;">Kinalabasan ng Sesyon (Outcome Determination)</h4>
+                                <span style="font-size: 0.76rem; color: #64748b;">Itala ang opisyal na resulta ng pagdinig, oras ng pagtatapos, at susunod na legal na hakbang</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1.2fr 1.1fr 1.3fr; gap: 14px; margin-bottom: 14px;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="minOutcome_${hId}" style="font-weight: 700; font-size: 0.82rem; color: #0f172a; margin-bottom: 4px; display: block;">
+                                Kinalabasan ng Pagdinig (Session Outcome) <span style="color: #dc2626;">*</span>
+                            </label>
+                            <select id="minOutcome_${hId}" name="minOutcome" onchange="handleMinutesOutcomeChange(this.value, true, ${hId})" ${readonlyAttr} required style="width: 100%; padding: 8px 12px; font-size: 0.85rem; border: 1.5px solid #2563eb; border-radius: 6px; background: #fff; font-weight: 600; color: #0f172a;">
+                                ${outcomeOptions}
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <label for="minActualEndTime_${hId}" style="font-weight: 700; font-size: 0.82rem; color: #0f172a; margin: 0;">
+                                    Aktwal na Oras ng Pagtatapos
+                                </label>
+                                ${!readonlyAttr ? `
+                                    <button type="button" onclick="setNowHearingEndTime(${hId})" style="background: none; border: none; color: #2563eb; font-size: 0.74rem; font-weight: 600; cursor: pointer; padding: 0;">
+                                        Set Now
+                                    </button>
+                                ` : ''}
+                            </div>
+                            <input type="time" id="minActualEndTime_${hId}" name="minActualEndTime" value="${escapeHtml(formatForTimeInput(session.actual_end_time))}" ${readonlyAttr} style="width: 100%; padding: 8px 12px; font-size: 0.85rem; border: 1px solid #cbd5e1; border-radius: 6px;">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="minOutcomeRemarks_${hId}" style="font-weight: 700; font-size: 0.82rem; color: #0f172a; margin-bottom: 4px; display: block;">
+                                Opisyal na Tala / Remarks
+                            </label>
+                            <input type="text" id="minOutcomeRemarks_${hId}" name="minOutcomeRemarks" placeholder="Mga tagubilin, referral, o kasunduan..." value="${escapeHtml(session.outcome_remarks || '')}" ${readonlyAttr} style="width: 100%; padding: 8px 12px; font-size: 0.85rem; border: 1px solid #cbd5e1; border-radius: 6px;">
+                        </div>
+                    </div>
+
+                    <!-- Dynamic Next-Step Action Banner -->
+                    <div id="minStageActionBanner_${hId}" style="margin-top: 14px;"></div>
+                </div>
+
+                <!-- Actions Footer -->
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 18px; padding-top: 14px; border-top: 1px solid #e2e8f0;">
+                    <div style="display: flex; gap: 8px;">
+                        <button type="button" class="btn-secondary" onclick="openPrintBlankMinutes()" style="font-size: 0.84rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px;">
+                            🖨️ Print Blank Minutes Sheet
+                        </button>
+                        <button type="button" class="btn-secondary" onclick="openPreviewMinutesModal(${hId})" style="font-size: 0.84rem; padding: 7px 14px;">
+                            Preview Letterhead
+                        </button>
+                        <button type="button" class="btn-secondary" onclick="printHearingMinutes(${hId})" style="font-size: 0.84rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px;">
+                            🖨️ Print Minutes
+                        </button>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        ${!isFinalized ? `
+                            <button type="button" class="btn-secondary" onclick="renderMinutesSection(stageWorkspaceState.stageData, stageWorkspaceState.stageData?.mediation || {})" style="font-size: 0.84rem; padding: 7px 14px;">
+                                Reset
+                            </button>
+                            <button type="button" class="btn-create" id="btnSaveMinutesDraft_${hId}" onclick="saveHearingMinutes('Draft', ${hId})" style="font-size: 0.84rem; padding: 7px 16px; background: #0284c7; border-color: #0284c7;">
+                                Save #${sessionIndex} Draft
+                            </button>
+                            <button type="button" class="btn-create" id="btnSaveMinutesFinalize_${hId}" onclick="saveHearingMinutes('Finalized', ${hId})" style="font-size: 0.84rem; padding: 7px 16px;">
+                                Finalize &amp; Lock #${sessionIndex}
+                            </button>
+                        ` : `
+                            <span style="font-size: 0.84rem; color: #15803d; font-weight: 700; display: inline-flex; align-items: center; gap: 5px; padding: 7px 12px; background: #dcfce7; border-radius: 6px;">
+                                ✓ Finalized Official Record
+                            </span>
+                        `}
+                    </div>
+                </div>
+            </form>
+        </div>
+    `;
+}
+
 function renderMinutesSection(data, stage) {
     const minContainer = document.getElementById('wsMinutesSectionContainer');
     if (!minContainer) return;
@@ -908,207 +1655,39 @@ function renderMinutesSection(data, stage) {
         return;
     }
 
-    // Determine active session
-    let activeHearingId = stageWorkspaceState.activeSessionHearingId;
-    let activeSession = sessions.find(s => Number(s.hearing_id) === Number(activeHearingId));
-    if (!activeSession) {
-        activeSession = sessions[0];
-        stageWorkspaceState.activeSessionHearingId = Number(activeSession.hearing_id);
+    // Set default active session
+    if (!stageWorkspaceState.activeSessionHearingId && sessions.length > 0) {
+        stageWorkspaceState.activeSessionHearingId = Number(sessions[0].hearing_id);
     }
 
-    const isFinalized = (activeSession.minutes_status === 'Finalized');
-    const readonlyAttr = isFinalized ? 'readonly disabled' : '';
-
-    const sessionIndex = Number(activeSession.session_index || 1);
-    const nextSessionIndex = sessionIndex + 1;
-    const nextSession = sessions.find(s => Number(s.session_index) === nextSessionIndex);
-
-    // Compute min and default next hearing date based on current session
-    let minNextDate = '';
-    let defaultNextDate = '';
-    if (activeSession.hearing_date) {
-        const curD = new Date(activeSession.hearing_date.replace(' ', 'T'));
-        if (!isNaN(curD.getTime())) {
-            const minD = new Date(curD);
-            minD.setDate(minD.getDate() + 1);
-            minNextDate = minD.toISOString().substring(0, 10);
-
-            const defD = new Date(curD);
-            defD.setDate(defD.getDate() + 3);
-            if (defD.getDay() === 0) defD.setDate(defD.getDate() + 1);
-            else if (defD.getDay() === 6) defD.setDate(defD.getDate() + 2);
-            defaultNextDate = defD.toISOString().substring(0, 10);
-        }
-    }
-    if (!minNextDate) {
-        const today = new Date();
-        today.setDate(today.getDate() + 1);
-        minNextDate = today.toISOString().substring(0, 10);
-        defaultNextDate = minNextDate;
-    }
-
-    // Stage-adapted outcome options
-    let outcomeOptions = '';
-    const curOutcome = activeSession.session_outcome || 'Pending';
-    if (mode === 'Mediation') {
-        const opts = [
-            { val: 'Continue Mediation', label: 'No Settlement → Set Another Meeting' },
-            { val: 'Settled', label: 'Settled (Amicable Settlement Reached — KP Form 16)' },
-            { val: 'Elevate to Pangkat', label: 'Elevate to Pangkat ng Tagapagkasundo (KP Form 10)' },
-            { val: 'Party Absent', label: 'Party Absent / Non-appearance Recorded' },
-            { val: 'Rescheduled', label: 'Rescheduled — Session Reset Upon Request' },
-            { val: 'Failed', label: 'Failed — Mediation Unsuccessful / Impasse' },
-            { val: 'Pending', label: 'Pending Evaluation' }
-        ];
-        outcomeOptions = opts.map(o => `<option value="${o.val}" ${curOutcome === o.val ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('');
-    } else if (mode === 'Conciliation') {
-        const opts = [
-            { val: 'Continue Conciliation', label: 'Continue Conciliation (Next Session Required)' },
-            { val: 'Settled', label: 'Settled (Amicable Settlement Reached — KP Form 16)' },
-            { val: 'Pending CFA', label: 'Conciliation Failed — Ready for CFA (KP Form 20)' },
-            { val: 'Party Absent', label: 'Party Absent / Non-appearance Recorded' },
-            { val: 'Rescheduled', label: 'Rescheduled — Session Reset' },
-            { val: 'Failed', label: 'Failed — Conciliation Unsuccessful / Impasse' },
-            { val: 'Pending', label: 'Pending Evaluation' }
-        ];
-        outcomeOptions = opts.map(o => `<option value="${o.val}" ${curOutcome === o.val ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('');
-    } else if (mode === 'Arbitration') {
-        const opts = [
-            { val: 'Continue Arbitration', label: 'Continue Arbitration Hearing' },
-            { val: 'Arbitration Award', label: 'Render Arbitration Award (KP Form 15)' },
-            { val: 'Settled', label: 'Settled — Parties Reached Settlement During Hearing' },
-            { val: 'Party Absent', label: 'Party Absent' },
-            { val: 'Rescheduled', label: 'Rescheduled' },
-            { val: 'Failed', label: 'Dismissed / Repudiated Arbitration Agreement' },
-            { val: 'Pending', label: 'Pending Evaluation' }
-        ];
-        outcomeOptions = opts.map(o => `<option value="${o.val}" ${curOutcome === o.val ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('');
-    }
-
-    // Build session selector tabs
-    let sessionTabsHtml = '';
+    // Build Quick-Jump bar
+    let quickJumpHtml = '';
     sessions.forEach(s => {
-        const isSelected = (Number(s.hearing_id) === Number(activeSession.hearing_id));
         const hasMin = Boolean(s.minutes_id && s.minutes_status !== 'Not Recorded');
         const isFin = (s.minutes_status === 'Finalized');
         let badgeBg = '#f1f5f9', badgeColor = '#64748b';
         if (isFin) { badgeBg = '#dcfce7'; badgeColor = '#15803d'; }
         else if (hasMin) { badgeBg = '#dbeafe'; badgeColor = '#1e40af'; }
 
-        sessionTabsHtml += `
-            <button type="button" onclick="selectInlineMinutesSession(${s.hearing_id})" style="border: 2px solid ${isSelected ? '#2563eb' : '#e2e8f0'}; background: ${isSelected ? '#eff6ff' : '#fff'}; border-radius: 8px; padding: 7px 13px; cursor: pointer; text-align: left; display: inline-flex; align-items: center; gap: 8px; font-family: inherit; transition: all 0.15s ease;">
+        quickJumpHtml += `
+            <a href="#minutesCard_${s.hearing_id}" onclick="event.preventDefault(); selectInlineMinutesSession(${s.hearing_id});" style="text-decoration: none; border: 1.5px solid #cbd5e1; background: #fff; border-radius: 8px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 8px; font-family: inherit; transition: all 0.15s ease;">
                 <div>
-                    <strong style="display: block; font-size: 0.83rem; color: ${isSelected ? '#1e40af' : '#0f172a'};">#${s.session_index} ${escapeHtml(s.session_number)}</strong>
-                    <small style="color: #64748b; font-size: 0.73rem;">${formatDateReadable(s.hearing_date)}</small>
+                    <strong style="display: block; font-size: 0.83rem; color: #0f172a;">#${s.session_index} ${escapeHtml(getStageSessionOrdinalLabel(mode || stageWorkspaceState.stageType, s.session_index || 1))}</strong>
+                    <small style="color: #64748b; font-size: 0.72rem;">${formatDateReadable(s.hearing_date)}</small>
                 </div>
                 <span style="font-size: 0.70rem; padding: 2px 6px; border-radius: 4px; font-weight: 700; background: ${badgeBg}; color: ${badgeColor};">
                     ${escapeHtml(s.minutes_status)}
                 </span>
-            </button>
+            </a>
         `;
     });
 
-    // Party appearance tags
-    const compAtt = activeSession.complainant_attendance || 'Pending';
-    const respAtt = activeSession.respondent_attendance || 'Pending';
-    const compAttBadge = compAtt === 'Present' ? 'background: #dcfce7; color: #15803d;' : (compAtt === 'Absent' ? 'background: #fee2e2; color: #991b1b;' : 'background: #f1f5f9; color: #64748b;');
-    const respAttBadge = respAtt === 'Present' ? 'background: #dcfce7; color: #15803d;' : (respAtt === 'Absent' ? 'background: #fee2e2; color: #991b1b;' : 'background: #f1f5f9; color: #64748b;');
-
-    // Presider attendance snippet
-    let presiderDisplayHtml = '';
-    if (activeSession.substitute_presider_name) {
-        presiderDisplayHtml = `
-            <div style="font-size: 0.78rem; margin-bottom: 7px; padding: 5px 9px; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="color: #475569; font-weight: 600;">Presider:</span>
-                    <span style="font-size: 0.7rem; font-weight: 700; padding: 1px 5px; border-radius: 4px; background: #fee2e2; color: #991b1b;">Absent</span>
-                </div>
-                <div style="color: #0f172a; font-weight: 600; font-size: 0.8rem;">
-                    ${escapeHtml(activeSession.presiding_officer_name || 'Punong Barangay')}
-                </div>
-                <div style="margin-top: 3px; font-size: 0.75rem; color: #2563eb; font-weight: 600;">
-                    ↳ Substitute: ${escapeHtml(activeSession.substitute_presider_name)} (Consent: Verified)
-                </div>
-                ${activeSession.substitute_reason ? `<div style="font-size: 0.71rem; color: #64748b; margin-top: 2px;">Reason: ${escapeHtml(activeSession.substitute_reason)}</div>` : ''}
-            </div>
-        `;
-    } else {
-        presiderDisplayHtml = `
-            <div style="font-size: 0.78rem; margin-bottom: 7px; padding: 5px 9px; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <span style="color: #475569; font-weight: 600;">Presider:</span>
-                    <span style="color: #0f172a; font-weight: 600; margin-left: 4px;">${escapeHtml(activeSession.presiding_officer_name || 'Punong Barangay / Lupon Chairman')}</span>
-                </div>
-                <span style="font-size: 0.7rem; font-weight: 700; padding: 1px 5px; border-radius: 4px; background: #dcfce7; color: #15803d;">Present</span>
-            </div>
-        `;
-    }
-
-    const isSecondOrLaterSession = (Number(activeSession.session_index || 1) >= 2 || !['Initial Hearing', 'Mediation'].includes(activeSession.hearing_type));
-
-    let compConsequenceHtml = '';
-    if (compAtt === 'Absent') {
-        if (isSecondOrLaterSession) {
-            compConsequenceHtml = `
-                <div style="margin-top: 5px; font-size: 0.74rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; padding: 5px 8px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap;">
-                        <span style="color: #991b1b; font-weight: 700;">Complainant Non-appearance</span>
-                        <button type="button" class="btn-secondary" onclick="openKPFormPreview(${stageWorkspaceState.caseId}, 'KP Form 18', ${activeSession.hearing_id})" style="font-size: 0.7rem; padding: 2px 7px; background: #fff; border-color: #fca5a5; color: #991b1b; cursor: pointer;">
-                            Preview KP Form 18
-                        </button>
-                    </div>
-                    <div style="color: #64748b; font-size: 0.71rem; margin-top: 3px;">
-                        KP Form 21 (Bar Action) locked pending show-cause evaluation.
-                    </div>
-                </div>
-            `;
-        } else {
-            compConsequenceHtml = `
-                <div style="margin-top: 5px; font-size: 0.74rem; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 4px; padding: 5px 8px;">
-                    <span style="color: #475569; font-weight: 600;">Complainant Non-appearance (1st Mediation):</span>
-                    <span style="color: #64748b; margin-left: 4px;">Proceed to book 2nd Mediation (no new summon needed). KP Form 18 notice unlocks upon non-appearance in 2nd Mediation.</span>
-                </div>
-            `;
-        }
-    }
-
-    let respConsequenceHtml = '';
-    if (respAtt === 'Absent') {
-        if (isSecondOrLaterSession) {
-            respConsequenceHtml = `
-                <div style="margin-top: 5px; font-size: 0.74rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; padding: 5px 8px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap;">
-                        <span style="color: #991b1b; font-weight: 700;">Respondent Non-appearance</span>
-                        <button type="button" class="btn-secondary" onclick="openKPFormPreview(${stageWorkspaceState.caseId}, 'KP Form 19', ${activeSession.hearing_id})" style="font-size: 0.7rem; padding: 2px 7px; background: #fff; border-color: #fca5a5; color: #991b1b; cursor: pointer;">
-                            Preview KP Form 19
-                        </button>
-                    </div>
-                    <div style="color: #64748b; font-size: 0.71rem; margin-top: 3px;">
-                        KP Form 22 (Bar Counterclaim) locked pending show-cause evaluation.
-                    </div>
-                </div>
-            `;
-        } else {
-            respConsequenceHtml = `
-                <div style="margin-top: 5px; font-size: 0.74rem; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 4px; padding: 5px 8px;">
-                    <span style="color: #475569; font-weight: 600;">Respondent Non-appearance (1st Mediation):</span>
-                    <span style="color: #64748b; margin-left: 4px;">Proceed to book 2nd Mediation (no new summon needed). KP Form 19 notice unlocks upon non-appearance in 2nd Mediation.</span>
-                </div>
-            `;
-        }
-    }
-
-    // Check if proposals or caucus have content
-    const hasProposalsOrCaucus = Boolean(activeSession.new_proposal?.trim() || activeSession.counteroffer?.trim() || activeSession.caucus_conducted || activeSession.caucus_notes?.trim());
-
-    // 3. Build Form with 3 Streamlined Sections
-    let formHtml = `
-        <!-- Compact Session Selector & Trajectory Bar (Replaces bulky 4-box tracker) -->
-        <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+    const topBarHtml = `
+        <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                <span style="font-size: 0.84rem; font-weight: 700; color: #0f172a;">Select Session:</span>
+                <span style="font-size: 0.84rem; font-weight: 700; color: #0f172a;">Quick Jump:</span>
                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    ${sessionTabsHtml}
+                    ${quickJumpHtml}
                 </div>
             </div>
             <div style="display: flex; align-items: center; gap: 8px;">
@@ -1118,332 +1697,82 @@ function renderMinutesSection(data, stage) {
                 </span>
             </div>
         </div>
-
-        <!-- The 3-Section Streamlined Minutes Workspace Card -->
-        <div class="inline-minutes-card" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 22px 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.03);">
-            <!-- Card Header -->
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid #e2e8f0;">
-                <div>
-                    <h3 style="margin: 0; font-size: 1.15rem; font-weight: 800; color: #0f172a;">
-                        Minutes of the Meeting &amp; Hearing Workspace
-                    </h3>
-                    <p style="margin: 3px 0 0; font-size: 0.83rem; color: #64748b;">
-                        Record formal proceedings, statements, agreed terms, and disposition for <strong>${escapeHtml(activeSession.session_number)}</strong> (${formatDateTimeReadable(activeSession.hearing_date)}).
-                    </p>
-                </div>
-                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                    <span style="font-size: 0.78rem; padding: 4px 10px; border-radius: 9999px; font-weight: 700; ${isFinalized ? 'background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0;' : 'background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe;'}">
-                        ${isFinalized ? 'FINALIZED &amp; LOCKED' : 'WORKING DRAFT'}
-                    </span>
-                    <button type="button" class="btn-secondary" onclick="openPreviewMinutesModal(${activeSession.hearing_id})" style="font-size: 0.78rem; padding: 4px 10px;">
-                        Preview Letterhead
-                    </button>
-                    ${(isFinalized || activeSession.minutes_id) ? `
-                        <button type="button" class="btn-secondary" onclick="printHearingMinutes(${activeSession.hearing_id})" style="font-size: 0.78rem; padding: 4px 10px;">
-                            Print Minutes
-                        </button>
-                    ` : ''}
-                </div>
-            </div>
-
-            <!-- Lock Notice if Finalized -->
-            ${isFinalized ? `
-                <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 12px 16px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                    <div style="color: #166534; font-size: 0.85rem;">
-                        <strong>Official Record Locked:</strong> This session minutes was finalized${activeSession.finalized_at ? ` on ${formatDateTimeReadable(activeSession.finalized_at)}` : ''}${activeSession.finalized_by_name ? ` by ${escapeHtml(activeSession.finalized_by_name)}` : ''}. To preserve legal integrity, finalized minutes cannot be modified.
-                    </div>
-                </div>
-            ` : ''}
-
-            <!-- Form -->
-            <form id="inlineMinutesForm" onsubmit="event.preventDefault();">
-                <input type="hidden" id="minHearingId" value="${activeSession.hearing_id}">
-
-                <!-- ============================================================== -->
-                <!-- SECTION 1: PRELIMINARIES (Quorum, Attendance & Opening Checks)  -->
-                <!-- ============================================================== -->
-                <div class="minutes-flow-step" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 18px; margin-bottom: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid #f1f5f9;">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <span style="background: #2563eb; color: #fff; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.78rem;">1</span>
-                            <h4 style="margin: 0; font-size: 0.96rem; font-weight: 700; color: #0f172a;">Preliminaries &amp; Procedural Opening</h4>
-                        </div>
-                        <button type="button" class="btn-secondary" onclick="openAttendanceModal(${activeSession.hearing_id})" style="font-size: 0.76rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
-                            Verify / Edit Attendance
-                        </button>
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: 1.15fr 1.2fr; gap: 16px; align-items: flex-start; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px;">
-                        <!-- Left: Presider & Party Appearance Status -->
-                        <div>
-                            <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.04em; display: block; margin-bottom: 6px;">Presider &amp; Party Appearance</span>
-                            ${presiderDisplayHtml}
-                            <div style="display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.83rem; margin-bottom: 4px;">
-                                <div style="display: inline-flex; align-items: center; gap: 6px;">
-                                    <span style="color: #475569; font-weight: 600;">Complainant:</span>
-                                    <span style="font-size: 0.74rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; ${compAttBadge}">
-                                        ${escapeHtml(compAtt)}
-                                    </span>
-                                </div>
-                                <div style="display: inline-flex; align-items: center; gap: 6px;">
-                                    <span style="color: #475569; font-weight: 600;">Respondent:</span>
-                                    <span style="font-size: 0.74rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; ${respAttBadge}">
-                                        ${escapeHtml(respAtt)}
-                                    </span>
-                                </div>
-                            </div>
-                            ${compConsequenceHtml}
-                            ${respConsequenceHtml}
-                        </div>
-
-                        <!-- Right: Procedural Checkboxes -->
-                        <div>
-                            <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.04em; display: block; margin-bottom: 6px;">Procedural Verification</span>
-                            <div style="display: flex; gap: 18px; flex-wrap: wrap; font-size: 0.83rem;">
-                                <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
-                                    <input type="checkbox" id="minOpening" ${activeSession.opening_conducted ? 'checked' : ''} ${readonlyAttr} style="width: 15px; height: 15px; accent-color: #2563eb;">
-                                    <span style="color: #334155; font-weight: 500;">Opening Conducted</span>
-                                </label>
-                                <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
-                                    <input type="checkbox" id="minIdentity" ${activeSession.identity_verified ? 'checked' : ''} ${readonlyAttr} style="width: 15px; height: 15px; accent-color: #2563eb;">
-                                    <span style="color: #334155; font-weight: 500;">Identities Verified</span>
-                                </label>
-                                <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
-                                    <input type="checkbox" id="minReviewed" ${activeSession.complaint_reviewed ? 'checked' : ''} ${readonlyAttr} style="width: 15px; height: 15px; accent-color: #2563eb;">
-                                    <span style="color: #334155; font-weight: 500;">Complaint Read</span>
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- ============================================================== -->
-                <!-- SECTION 2: PROCEEDINGS & DISCUSSION (Dispute, Statements, STT) -->
-                <!-- ============================================================== -->
-                <div class="minutes-flow-step" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 18px; margin-bottom: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid #f1f5f9; flex-wrap: wrap; gap: 8px;">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <span style="background: #2563eb; color: #fff; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.78rem;">2</span>
-                            <div>
-                                <h4 style="margin: 0; font-size: 0.96rem; font-weight: 700; color: #0f172a;">Proceedings &amp; Discussion</h4>
-                                <span style="font-size: 0.76rem; color: #64748b;">Dispute focus, party statements, negotiations, and live transcript</span>
-                            </div>
-                        </div>
-                        ${!isFinalized ? `
-                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                                <label style="font-size: 0.74rem; color: #475569; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; background: #f8fafc; border: 1px solid #cbd5e1; padding: 4px 8px; border-radius: 6px;" title="Confirm that this recording or image may be sent to Google Gemini for AI processing">
-                                    <input type="checkbox" id="stageAiConsentCheckbox" checked style="accent-color: #2563eb; cursor: pointer; margin: 0;">
-                                    <span>Consent to Google Gemini AI</span>
-                                </label>
-                                <button type="button" class="btn-secondary" id="btnStageRecordVoice" onclick="toggleStageVoiceRecording()" style="font-size: 0.76rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
-                                    <span id="stageRecordVoiceText">Record Voice (STT)</span>
-                                </button>
-                                <button type="button" class="btn-secondary" id="btnStageUploadNotes" onclick="triggerStageNotesUpload()" style="font-size: 0.76rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
-                                    Upload Notes (OCR)
-                                </button>
-                                <input type="file" id="stageNotesFileInput" accept="image/*" style="display: none;" onchange="handleStageNotesFileSelected(this)">
-                            </div>
-                        ` : ''}
-                    </div>
-
-                    <!-- AI Status Banner -->
-                    <div id="stageAiStatusBanner" style="display: none; padding: 8px 12px; margin-bottom: 12px; border-radius: 6px; font-size: 0.82rem; background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af;"></div>
-
-                    <!-- Row 1: Dispute Focus & Agenda Topics -->
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="minDisputeSummary" style="font-weight: 600; font-size: 0.82rem; color: #1e293b; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
-                                <span>Main Dispute Identified</span>
-                                <span style="font-size: 0.72rem; color: #64748b; font-weight: normal;">Core conflict summary</span>
-                            </label>
-                            <input type="text" id="minDisputeSummary" maxlength="1000" placeholder="e.g. Boundary encroachment, unpaid debt, disturbance during rest hours..." value="${escapeHtml(activeSession.main_dispute_identified || '')}" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; font-size: 0.84rem; box-sizing: border-box;" ${readonlyAttr}>
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="minAgenda" style="font-weight: 600; font-size: 0.82rem; color: #1e293b; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
-                                <span>Agenda / Key Discussion Topics</span>
-                                <span style="font-size: 0.72rem; color: #64748b; font-weight: normal;">Matters addressed</span>
-                            </label>
-                            <input type="text" id="minAgenda" maxlength="3000" placeholder="e.g. Survey verification, payment schedule terms, apology condition..." value="${escapeHtml(activeSession.agenda_topics || '')}" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; font-size: 0.84rem; box-sizing: border-box;" ${readonlyAttr}>
-                        </div>
-                    </div>
-
-                    <!-- Row 2: Complainant vs Respondent Statements -->
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="minCompStmt" style="font-weight: 600; font-size: 0.82rem; color: #1e293b; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
-                                <span>Complainant Statement &amp; Claims</span>
-                                <span style="font-size: 0.72rem; color: #64748b; font-weight: normal;">Grievances &amp; demands</span>
-                            </label>
-                            <textarea id="minCompStmt" rows="3" maxlength="5000" placeholder="Summary of complainant's claims, grievances, and narration of facts..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.84rem; font-family: inherit; line-height: 1.4; box-sizing: border-box;" ${readonlyAttr}>${escapeHtml(activeSession.complainant_statement || '')}</textarea>
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="minRespStmt" style="font-weight: 600; font-size: 0.82rem; color: #1e293b; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
-                                <span>Respondent Statement &amp; Defenses</span>
-                                <span style="font-size: 0.72rem; color: #64748b; font-weight: normal;">Explanation &amp; defenses</span>
-                            </label>
-                            <textarea id="minRespStmt" rows="3" maxlength="5000" placeholder="Summary of respondent's explanation, defenses, and counter-statements..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.84rem; font-family: inherit; line-height: 1.4; box-sizing: border-box;" ${readonlyAttr}>${escapeHtml(activeSession.respondent_statement || '')}</textarea>
-                        </div>
-                    </div>
-
-                    <!-- Row 3: Central Discussion & Proceedings Transcript -->
-                    <div class="form-group" style="margin-bottom: 12px;">
-                        <label for="session_minutes" style="font-weight: 600; font-size: 0.82rem; color: #1e293b; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
-                            <span>Hearing Proceedings &amp; Discussion Transcript</span>
-                            <span style="font-size: 0.72rem; color: #64748b; font-weight: normal;">Full recorded dialogue or audio transcription</span>
-                        </label>
-                        <textarea id="session_minutes" rows="4" placeholder="Detailed notes of proceedings, mediator interventions, exchanges between parties, commitments made..." ${readonlyAttr} style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 9px; font-size: 0.84rem; font-family: inherit; line-height: 1.45; box-sizing: border-box;">${escapeHtml(activeSession.settlement_discussion_notes || '')}</textarea>
-                    </div>
-
-                    <!-- Row 4: Settlement Proposals, Counteroffers & Caucus (Integrated Sub-Panel) -->
-                    <details class="proposals-caucus-details" ${hasProposalsOrCaucus ? 'open' : ''} style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px;">
-                        <summary style="cursor: pointer; font-size: 0.82rem; font-weight: 700; color: #334155; user-select: none; display: flex; align-items: center; justify-content: space-between;">
-                            <span>Settlement Proposals, Counteroffers &amp; Private Caucus (Optional)</span>
-                            <span style="font-size: 0.74rem; font-weight: normal; color: #64748b;">${hasProposalsOrCaucus ? 'Details recorded' : 'Click to expand if applicable'}</span>
-                        </summary>
-                        <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #e2e8f0;">
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 10px;">
-                                <div class="form-group" style="margin-bottom: 0;">
-                                    <label for="minNewProposal" style="font-weight: 600; font-size: 0.8rem; color: #334155; margin-bottom: 3px; display: block;">Settlement Proposal / Offer</label>
-                                    <textarea id="minNewProposal" rows="2" maxlength="3000" placeholder="Specific terms proposed by offering party (restitution, apology, timeline)..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 7px; font-size: 0.82rem; font-family: inherit; box-sizing: border-box;" ${readonlyAttr}>${escapeHtml(activeSession.new_proposal || '')}</textarea>
-                                </div>
-                                <div class="form-group" style="margin-bottom: 0;">
-                                    <label for="minCounterOffer" style="font-weight: 600; font-size: 0.8rem; color: #334155; margin-bottom: 3px; display: block;">Counteroffer / Response</label>
-                                    <textarea id="minCounterOffer" rows="2" maxlength="3000" placeholder="Counter-proposal, condition adjustments, or alternative terms offered..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 7px; font-size: 0.82rem; font-family: inherit; box-sizing: border-box;" ${readonlyAttr}>${escapeHtml(activeSession.counteroffer || '')}</textarea>
-                                </div>
-                            </div>
-                            <div style="margin-top: 6px;">
-                                <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.82rem; color: #334155; font-weight: 600;">
-                                    <input type="checkbox" id="minCaucus" ${activeSession.caucus_conducted ? 'checked' : ''} ${readonlyAttr} onchange="document.getElementById('minCaucusNotesWrap').style.display = this.checked ? 'block' : 'none';" style="width: 15px; height: 15px; accent-color: #2563eb;">
-                                    <span>Private Caucus Conducted (Separate meeting held with one party)</span>
-                                </label>
-                                <div id="minCaucusNotesWrap" style="${activeSession.caucus_conducted ? '' : 'display: none;'} margin-top: 8px;">
-                                    <label for="minCaucusNotes" style="font-size: 0.76rem; font-weight: 700; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 3px;">Confidential Caucus Notes</label>
-                                    <textarea id="minCaucusNotes" rows="2" placeholder="Confidential mediator insights, party reservations, concessions..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 7px; font-size: 0.82rem; font-family: inherit; box-sizing: border-box;" ${readonlyAttr}>${escapeHtml(activeSession.caucus_notes || '')}</textarea>
-                                </div>
-                            </div>
-                        </div>
-                    </details>
-                </div>
-
-                <!-- ============================================================== -->
-                <!-- SECTION 3: AGREED TERMS & OUTCOME (Terms, Outcome & Action)   -->
-                <!-- ============================================================== -->
-                <div class="minutes-flow-step" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 18px; margin-bottom: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid #f1f5f9;">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <span style="background: #2563eb; color: #fff; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.78rem;">3</span>
-                            <div>
-                                <h4 style="margin: 0; font-size: 0.96rem; font-weight: 700; color: #0f172a;">Agreed Terms &amp; Outcome Determination</h4>
-                                <span style="font-size: 0.76rem; color: #64748b;">Record agreed stipulations, session determination, and direct stage progression</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Row 1: Agreed Terms vs Unresolved Issues -->
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="minAgreements" style="font-weight: 600; font-size: 0.82rem; color: #166534; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
-                                <span>Agreed Terms / Action Items</span>
-                                <span style="font-size: 0.72rem; color: #64748b; font-weight: normal;">Mutual stipulations &amp; payment milestones</span>
-                            </label>
-                            <textarea id="minAgreements" rows="3" maxlength="3000" placeholder="Stipulations mutually agreed upon, payment milestones, restitution schedule, or behavioral commitments..." style="width: 100%; border: 1px solid #bbf7d0; background: #f0fdf4; border-radius: 6px; padding: 8px; font-size: 0.84rem; font-family: inherit; line-height: 1.4; box-sizing: border-box;" ${readonlyAttr}>${escapeHtml(activeSession.agreements_action_items || '')}</textarea>
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="minUnresolved" style="font-weight: 600; font-size: 0.82rem; color: #991b1b; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
-                                <span>Issues Remaining Unresolved</span>
-                                <span style="font-size: 0.72rem; color: #64748b; font-weight: normal;">Points of contention or deferred items</span>
-                            </label>
-                            <textarea id="minUnresolved" rows="3" maxlength="3000" placeholder="Unresolved contentious points or items deferred to subsequent hearing or conciliation..." style="width: 100%; border: 1px solid #fecaca; background: #fff5f5; border-radius: 6px; padding: 8px; font-size: 0.84rem; font-family: inherit; line-height: 1.4; box-sizing: border-box;" ${readonlyAttr}>${escapeHtml(activeSession.unresolved_issues || '')}</textarea>
-                        </div>
-                    </div>
-
-                    <!-- Row 2: Outcome Determination, End Time & Remarks -->
-                    <div style="display: grid; grid-template-columns: 1.2fr 1fr 1.2fr; gap: 14px; margin-bottom: 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="minOutcome" style="font-weight: 700; font-size: 0.82rem; color: #0f172a; margin-bottom: 4px; display: block;">
-                                Session Outcome Determination <span style="color: #dc2626;">*</span>
-                            </label>
-                            <select id="minOutcome" onchange="handleMinutesOutcomeChange(this.value, true)" ${readonlyAttr} required style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.84rem; box-sizing: border-box; background: #fff; font-weight: 600; color: #1e293b;">
-                                ${outcomeOptions}
-                            </select>
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="minActualEndTime" style="font-weight: 600; font-size: 0.82rem; color: #1e293b; margin-bottom: 4px; display: block;">
-                                Actual Session End Time
-                            </label>
-                            <input type="datetime-local" id="minActualEndTime" value="${activeSession.actual_end_time ? activeSession.actual_end_time.replace(' ', 'T').substring(0, 16) : ''}" ${readonlyAttr} style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.84rem; box-sizing: border-box; background: #fff;">
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="minOutcomeRemarks" style="font-weight: 600; font-size: 0.82rem; color: #1e293b; margin-bottom: 4px; display: block;">
-                                Determination Notes / Remarks
-                            </label>
-                            <input type="text" id="minOutcomeRemarks" maxlength="1000" placeholder="Notes on determination, duration or next hearing basis..." value="${escapeHtml(activeSession.outcome_remarks || '')}" ${readonlyAttr} style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; font-size: 0.84rem; box-sizing: border-box; background: #fff;">
-                        </div>
-                    </div>
-
-                    <!-- Row 3: Dynamic Next-Step Action Banner -->
-                    <div id="minStageActionBanner" style="margin-bottom: 12px;"></div>
-                </div>
-
-                <!-- Actions Footer -->
-                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; border-top: 1px solid #e2e8f0; padding-top: 16px;">
-                    <div style="display: flex; gap: 8px;">
-                        <button type="button" class="btn-secondary" onclick="openPreviewMinutesModal(${activeSession.hearing_id})" style="font-size: 0.84rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px;">
-                            Preview Letterhead
-                        </button>
-                        ${(isFinalized || activeSession.minutes_id) ? `
-                            <button type="button" class="btn-secondary" onclick="printHearingMinutes(${activeSession.hearing_id})" style="font-size: 0.84rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px;">
-                                Print Minutes
-                            </button>
-                        ` : ''}
-                    </div>
-                    <div style="display: flex; gap: 8px;">
-                        ${!isFinalized ? `
-                            <button type="button" class="btn-secondary" onclick="selectInlineMinutesSession(${activeSession.hearing_id})" style="font-size: 0.84rem; padding: 7px 14px;">
-                                Reset
-                            </button>
-                            <button type="button" class="btn-create" id="btnSaveMinutesDraft" onclick="saveHearingMinutes('Draft')" style="font-size: 0.84rem; padding: 7px 18px; background: #0f172a; color: #fff;">
-                                Save Minutes Draft
-                            </button>
-                            <button type="button" class="btn-create" id="btnSaveMinutesFinalize" onclick="saveHearingMinutes('Finalized')" style="font-size: 0.84rem; padding: 7px 18px; background: #16a34a; color: #fff;">
-                                Finalize &amp; Lock
-                            </button>
-                        ` : `
-                            <span style="font-size: 0.84rem; color: #15803d; font-weight: 700; display: inline-flex; align-items: center; gap: 5px; padding: 6px 14px; background: #f0fdf4; border-radius: 6px; border: 1px solid #bbf7d0;">
-                                Finalized Official Record
-                            </span>
-                        `}
-                    </div>
-                </div>
-            </form>
-        </div>
     `;
 
-    minContainer.innerHTML = formHtml;
+    // Render separated cards for EVERY scheduled session
+    const cardsHtml = sessions.map(s => renderSingleSessionMinutesCard(s, mode, sessions)).join('\n');
 
-    // Trigger dynamic next-step action banner for active session's outcome
-    handleMinutesOutcomeChange(curOutcome, false);
+    // Check if next session booking prompt should be displayed below cards
+    let nextBookingHtml = '';
+    const lastSession = sessions[sessions.length - 1];
+    const lastIndex = Number(lastSession.session_index || 1);
+    const maxAllowed = mode === 'Mediation' ? 2 : (mode === 'Conciliation' ? 3 : 1);
+    const canBookMore = (sessions.length < maxAllowed);
+
+    if (canBookMore && !hasSettled && !hasAward) {
+        const nextIdx = lastIndex + 1;
+        const nextOrdinal = nextIdx === 2 ? '2nd' : (nextIdx === 3 ? '3rd' : `${nextIdx}th`);
+        nextBookingHtml = `
+            <div style="background: #f8fafc; border: 1.5px dashed #94a3b8; border-radius: 12px; padding: 22px; text-align: center; margin-top: 10px; margin-bottom: 24px;">
+                <div style="font-size: 1.5rem; margin-bottom: 6px;">📅</div>
+                <h4 style="margin: 0 0 6px; font-size: 1rem; font-weight: 700; color: #1e293b;">
+                    Need an Additional Session?
+                </h4>
+                <p style="margin: 0 0 14px; font-size: 0.84rem; color: #64748b; max-width: 540px; margin-left: auto; margin-right: auto;">
+                    Under RA 7160 Katarungang Pambarangay guidelines, you can book the <strong>${nextOrdinal} ${escapeHtml(mode)}</strong> session directly.
+                </p>
+                <button type="button" class="btn-create" onclick="openScheduleModal()" style="font-size: 0.85rem; padding: 8px 20px; display: inline-flex; align-items: center; gap: 6px;">
+                    Schedule ${nextOrdinal} ${escapeHtml(mode)} Hearing &rarr;
+                </button>
+            </div>
+        `;
+    }
+
+    minContainer.innerHTML = topBarHtml + cardsHtml + nextBookingHtml;
+
+    // Teardown previous draft manager
+    if (window.stageDraftManager && typeof window.stageDraftManager.destroy === 'function') {
+        try { window.stageDraftManager.destroy(); } catch (e) {}
+        window.stageDraftManager = null;
+    }
+
+    // Initialize documents, outcome banners, and draft managers for all rendered session cards
+    sessions.forEach(s => {
+        loadHearingMinutesDocuments(s.hearing_id);
+        const curOutcome = s.session_outcome || 'Pending';
+        handleMinutesOutcomeChange(curOutcome, false, s.hearing_id);
+
+        if (window.AgapDraftManager) {
+            const draftKey = `agap_draft_${stageWorkspaceState.mode}_case_${stageWorkspaceState.caseId}_hearing_${s.hearing_id}`;
+            const minutesForm = document.getElementById(`inlineMinutesForm_${s.hearing_id}`);
+            if (minutesForm) {
+                window.AgapDraftManager.init(minutesForm, draftKey, {
+                    indicatorId: `wsDraftIndicator_${s.hearing_id}`,
+                    bannerMount: `#minutesCard_${s.hearing_id}`,
+                    isReadOnly: s.minutes_status === 'Finalized',
+                    onRestored: () => {
+                        const outcomeEl = document.getElementById(`minOutcome_${s.hearing_id}`);
+                        if (outcomeEl) {
+                            handleMinutesOutcomeChange(outcomeEl.value, false, s.hearing_id);
+                        }
+                    }
+                });
+            }
+        }
+    });
 }
 
-/**
- * Dynamic Next-Step Action Banner based on Session Outcome Determination
- */
-function handleMinutesOutcomeChange(outcomeVal, isUserChange = false) {
-    const bannerEl = document.getElementById('minStageActionBanner');
+function handleMinutesOutcomeChange(outcomeVal, isUserChange = false, hearingId = null) {
+    const activeHearingId = hearingId || stageWorkspaceState.activeSessionHearingId;
+    const bannerEl = document.getElementById(`minStageActionBanner_${activeHearingId}`) || document.getElementById('minStageActionBanner');
     if (!bannerEl) return;
     const mode = stageWorkspaceState.mode;
     const caseId = stageWorkspaceState.caseId;
-    const activeHearingId = stageWorkspaceState.activeSessionHearingId;
     const activeSession = stageWorkspaceState.sessions.find(s => Number(s.hearing_id) === Number(activeHearingId)) || {};
     const sessionIndex = Number(activeSession.session_index || 1);
 
-    // Toggle integrated Next Steps direct booking section (if exists)
-    const nextStepsEl = document.getElementById('minNextStepsSection');
-    if (nextStepsEl) {
-        nextStepsEl.style.display = (outcomeVal === 'Continue Mediation' && mode === 'Mediation') ? 'block' : 'none';
-    }
-
     if (outcomeVal === 'Settled') {
+        unlockOutcomesTab();
         bannerEl.innerHTML = `
             <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                 <div style="color: #166534; font-size: 0.85rem;">
@@ -1451,106 +1780,132 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false) {
                     Parties have agreed on settlement terms. Finalize the minutes, then preview or print the formal Amicable Settlement (KP Form 16).
                 </div>
                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <button type="button" class="btn-secondary" onclick="openKPFormPreview(${Number(caseId)}, 'KP Form 16', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #86efac; color: #166534; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+                    <button type="button" class="btn-create" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 16', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
+                        Open Amicable Settlement &rarr;
+                    </button>
+                    <button type="button" class="btn-secondary" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 16', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #86efac; color: #166534; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
                         Preview / Print KP Form 16
                     </button>
-                    <a href="../settlements/settlements.php?case_id=${encodeURIComponent(caseId)}" class="btn-create" style="font-size: 0.82rem; padding: 7px 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
-                        Open Amicable Settlement &rarr;
-                    </a>
                 </div>
             </div>
         `;
-    } else if (mode === 'Mediation') {
-        if (outcomeVal === 'Party Absent') {
-            const isSecondOrLater = Number(sessionIndex || 1) >= 2;
+    } else if (outcomeVal === 'Elevate to Pangkat') {
+        const isSession1 = (sessionIndex === 1);
+        if (mode === 'Mediation' && isSession1) {
             bannerEl.innerHTML = `
-                <div style="background: #fef2f2; border: 1px solid #fca5a5; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                    <div style="color: #991b1b; font-size: 0.85rem;">
-                        <strong style="font-size: 0.92rem; display: block; color: #7f1d1d;">Party Non-Appearance Recorded (${sessionIndex === 1 ? '1st Mediation' : '2nd Mediation'})</strong>
-                        ${isSecondOrLater 
-                            ? 'A required party was absent in the 2nd Mediation session. Preview Notice of Hearing for failure to appear (KP Form 18 for Complainant / KP Form 19 for Respondent). Barring actions (KP Form 21 / 22) remain locked pending show-cause evaluation.'
-                            : 'A required party was absent in the 1st Mediation. Under KP rules, proceed directly to book the 2nd Mediation session without sending another summon. KP Form 18/19 notices unlock upon non-appearance in the 2nd Mediation session.'
-                        }
+                <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div style="color: #92400e; font-size: 0.85rem;">
+                        <strong style="font-size: 0.92rem; display: block; color: #78350f;">1st Mediation Mandatory Safeguard (RA 7160 Sec. 410)</strong>
+                        Mediation requires 2 sessions before formal elevation to Pangkat. Book 2nd Mediation session below.
                     </div>
-                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                        <button type="button" class="btn-secondary" onclick="openAttendanceModal(${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 12px; color: #991b1b; border-color: #fca5a5; background: #fff; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
-                            Verify Attendance &amp; Notices
-                        </button>
-                        <button type="button" class="btn-secondary" onclick="openScheduleModal()" style="font-size: 0.82rem; padding: 7px 12px; cursor: pointer;">
-                            ${sessionIndex === 1 ? 'Book 2nd Mediation &rarr;' : 'Re-schedule Session &rarr;'}
-                        </button>
-                    </div>
+                    <button type="button" class="btn-create" onclick="openScheduleModal()" style="font-size: 0.82rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px;">
+                        Book 2nd Mediation &rarr;
+                    </button>
                 </div>
             `;
-        } else if (sessionIndex === 1) {
-            const nextOrdinal = '2nd';
-            const hasNextSession = stageWorkspaceState.sessions.some(s => Number(s.session_index) === 2);
-            if (hasNextSession) {
-                bannerEl.innerHTML = `
-                    <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 10px 14px; font-size: 0.84rem; color: #166534; display: flex; align-items: center; gap: 8px;">
-                        <span>✓</span>
-                        <span><strong>${nextOrdinal} Mediation hearing is already booked.</strong> Review session notes and save or finalize minutes below.</span>
-                    </div>
-                `;
-            } else {
-                bannerEl.innerHTML = `
-                    <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                        <div style="color: #166534; font-size: 0.85rem;">
-                            <strong style="font-size: 0.92rem; display: block; color: #14532d;">2nd Mediation Session Required</strong>
-                            No settlement reached in 1st Mediation. Schedule the 2nd mediation session under RA 7160 Sec. 410 (Summons bypassed as parties are notified in person).
-                        </div>
-                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                            <button type="button" class="btn-create" onclick="openScheduleModal()" style="font-size: 0.82rem; padding: 7px 16px; background: #16a34a; border: none; border-radius: 6px; color: #fff; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
-                                Schedule 2nd Mediation &rarr;
-                            </button>
-                        </div>
-                    </div>
-                `;
-                if (isUserChange && outcomeVal === 'Continue Mediation') {
-                    openScheduleModal();
-                }
-            }
         } else {
-            // Session 2 completed — show Pangkat referral prompt
             bannerEl.innerHTML = `
-                <div style="background: #f0f9ff; border: 1px solid #7dd3fc; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                    <div style="color: #0369a1; font-size: 0.85rem;">
-                        <strong style="font-size: 0.92rem; display: block; color: #0c4a6e;">Mediation Concluded Unresolved (2 of 2 Sessions Completed)</strong>
-                        Both mediation sessions before the Punong Barangay have concluded without agreement. The case is now eligible to elevate to Pangkat Conciliation (KP Form 10) by explicit authorized action.
+                <div style="background: #f8fafc; border: 1.5px solid #94a3b8; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div style="color: #1e293b; font-size: 0.85rem;">
+                        <strong style="font-size: 0.92rem; display: block; color: #0f172a;">Failure of Mediation Â· Elevate to Pangkat ng Tagapagkasundo</strong>
+                        2nd Mediation session concluded without agreement. The dispute elevates to the 3-member Pangkat panel (KP Form 10, 11, and 12).
                     </div>
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                        <button type="button" class="btn-create" onclick="openReferPangkatModal()" style="font-size: 0.82rem; padding: 7px 16px; background: #0369a1; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
+                        <button type="button" class="btn-secondary" onclick="openTriPanelPangkatModal(${Number(caseId)})" style="font-size: 0.82rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px;">
+                            Preview Pangkat Notices (KP 10, 11, 12)
+                        </button>
+                        <button type="button" class="btn-create" onclick="openReferPangkatModal()" style="font-size: 0.82rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px; background: #0f172a;">
                             Constitute Pangkat (KP Form 10) &rarr;
                         </button>
                     </div>
                 </div>
             `;
         }
-    } else if (outcomeVal === 'Pending CFA' || (mode === 'Conciliation' && outcomeVal === 'Failed')) {
-        bannerEl.innerHTML = `
-            <div style="background: #fff7ed; border: 1px solid #fdba74; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                <div style="color: #9a3412; font-size: 0.85rem;">
-                    <strong style="font-size: 0.92rem; display: block; color: #7c2d12;">Eligible for Certificate to File Action (CFA)</strong>
-                    Conciliation proceedings before the Pangkat concluded without settlement. The case may now proceed for court endorsement (KP Form 20).
+    } else if (outcomeVal === 'Continue Mediation' || outcomeVal === 'Continue Conciliation') {
+        const isMed = (mode === 'Mediation');
+        const nextIdx = sessionIndex + 1;
+        const nextOrd = nextIdx === 2 ? '2nd' : (nextIdx === 3 ? '3rd' : `${nextIdx}th`);
+        const hasNext = stageWorkspaceState.sessions.some(s => Number(s.session_index) === nextIdx);
+
+        if (hasNext) {
+            bannerEl.innerHTML = `
+                <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div style="color: #1e40af; font-size: 0.85rem;">
+                        <strong style="font-size: 0.92rem; display: block; color: #1e3a8a;">${nextOrd} ${escapeHtml(mode)} Session Scheduled</strong>
+                        The next hearing session is scheduled below. Finalize this session minutes to record proceedings.
+                    </div>
                 </div>
-                <div>
-                    <a href="../documents/cfa.php?case_id=${encodeURIComponent(caseId)}" class="btn-create" style="font-size: 0.82rem; padding: 7px 14px; background: #c2410c; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
-                        Issue CFA (KP Form 20) &rarr;
+            `;
+        } else {
+            bannerEl.innerHTML = `
+                <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div style="color: #1e40af; font-size: 0.85rem;">
+                        <strong style="font-size: 0.92rem; display: block; color: #1e3a8a;">Unresolved Â· Schedule ${nextOrd} ${escapeHtml(mode)}</strong>
+                        Parties were notified in person. Schedule the ${nextOrd} ${escapeHtml(mode)} session directly.
+                    </div>
+                    <button type="button" class="btn-create" onclick="openScheduleModal()" style="font-size: 0.82rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px;">
+                        Schedule ${nextOrd} ${escapeHtml(mode)} Hearing &rarr;
+                    </button>
+                </div>
+            `;
+        }
+    } else if (outcomeVal === 'Arbitration' || outcomeVal === 'Arbitration Award' || outcomeVal === 'Submit to Arbitration') {
+        unlockOutcomesTab();
+        bannerEl.innerHTML = `
+            <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px 18px; margin-top: 10px;">
+                <strong style="color: #92400e; font-size: 0.95rem; display: block;">Parties Agreed to Voluntary Arbitration (KP Form 14)</strong>
+                <p style="margin: 4px 0 10px; font-size: 0.84rem; color: #78350f;">
+                    Both parties have voluntarily agreed in writing to submit their dispute to binding arbitration under RA 7160 Sec. 413.
+                </p>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button type="button" class="btn-create" onclick="openEmbeddedScheduleModal('Arbitration')" style="background: #d97706; border-color: #d97706; font-size: 0.82rem; padding: 7px 14px;">
+                        ðŸ“… Schedule Arbitration Session &rarr;
+                    </button>
+                    <button type="button" class="btn-secondary" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 14', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #fde68a; color: #92400e; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+                        Preview KP Form 14
+                    </button>
+                    <button type="button" class="btn-secondary" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 15', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #fde68a; color: #92400e; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+                        Preview KP Form 15
+                    </button>
+                </div>
+            </div>
+        `;
+    } else if (outcomeVal === 'Repudiated' || outcomeVal === 'Repudiated Settlement') {
+        unlockOutcomesTab();
+        bannerEl.innerHTML = `
+            <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div style="color: #991b1b; font-size: 0.85rem;">
+                    <strong style="font-size: 0.92rem; display: block; color: #7f1d1d;">Settlement Repudiated Â· Unlocked KP Form 17 &amp; CFA</strong>
+                    A party filed repudiation under oath. Proceed with KP Form 17 and issuance of Certificate to File Action.
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button type="button" class="btn-secondary" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 17', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #fca5a5; color: #991b1b; display: inline-flex; align-items: center; gap: 5px;">
+                        Preview KP Form 17
+                    </button>
+                    <button type="button" class="btn-secondary" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 20', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #fca5a5; color: #991b1b; display: inline-flex; align-items: center; gap: 5px;">
+                        Preview CFA (KP Form 20)
+                    </button>
+                    <a href="../documents/cfa.php?case_id=${encodeURIComponent(caseId)}" class="btn-create" style="font-size: 0.82rem; padding: 7px 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; background: #b91c1c;">
+                        Issue CFA &rarr;
                     </a>
                 </div>
             </div>
         `;
-    } else if (outcomeVal === 'Continue Conciliation' || outcomeVal === 'Continue Arbitration' || outcomeVal === 'Rescheduled') {
+    } else if (outcomeVal === 'Pending CFA') {
+        unlockOutcomesTab();
         bannerEl.innerHTML = `
-            <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                <div style="color: #334155; font-size: 0.85rem;">
-                    <strong style="font-size: 0.92rem; display: block; color: #0f172a;">Proceedings Ongoing — Next Session Required</strong>
-                    Parties require additional discussions to resolve issues. Schedule the subsequent hearing session within the statutory period.
+            <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div style="color: #991b1b; font-size: 0.85rem;">
+                    <strong style="font-size: 0.92rem; display: block; color: #7f1d1d;">Conciliation Concluded Â· Ready for CFA (KP Form 20)</strong>
+                    Proceedings have failed to reach an amicable settlement. Eligible for Certificate to File Action. Outcomes tab is unlocked.
                 </div>
-                <div>
-                    <button type="button" class="btn-create" onclick="openScheduleModal()" style="font-size: 0.82rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 4px;">
-                        Schedule Next Session &rarr;
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button type="button" class="btn-secondary" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 20', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #fca5a5; color: #991b1b; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+                        Preview KP Form 20
                     </button>
+                    <a href="../documents/cfa.php?case_id=${encodeURIComponent(caseId)}" class="btn-create" style="font-size: 0.82rem; padding: 7px 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; background: #b91c1c;">
+                        Issue CFA &rarr;
+                    </a>
                 </div>
             </div>
         `;
@@ -1558,33 +1913,28 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false) {
         bannerEl.innerHTML = '';
     }
 }
-window.handleMinutesOutcomeChange = handleMinutesOutcomeChange;
 
-/**
- * Switch Active Minutes Session
- */
 function selectInlineMinutesSession(hearingId) {
     stageWorkspaceState.activeSessionHearingId = Number(hearingId);
     stageWorkspaceState.currentHearingId = Number(hearingId);
-    const stage = (stageWorkspaceState.mode === 'Conciliation') ? stageWorkspaceState.stageData?.conciliation : ((stageWorkspaceState.mode === 'Arbitration') ? stageWorkspaceState.stageData?.arbitration : stageWorkspaceState.stageData?.mediation);
-    renderMinutesSection(stageWorkspaceState.stageData, stage || {});
+
+    const card = document.getElementById(`minutesCard_${hearingId}`);
+    if (card) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        card.style.transition = 'box-shadow 0.3s ease';
+        card.style.boxShadow = '0 0 0 3px rgba(37, 99, 235, 0.4)';
+        setTimeout(() => { if (card) card.style.boxShadow = ''; }, 1200);
+    }
     if (document.getElementById('wsAttCardBody')) {
         openAttendanceModal(hearingId, false);
-    }
-    const minCard = document.getElementById('minutesSection');
-    if (minCard) {
-        minCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 }
 window.selectInlineMinutesSession = selectInlineMinutesSession;
 window.openMinutesModal = selectInlineMinutesSession;
 window.closeMinutesModal = function() {};
 
-/**
- * Unified Save Hearing Minutes (Draft or Finalized)
- */
-async function saveHearingMinutes(status = 'Draft') {
-    const hearingId = document.getElementById('minHearingId')?.value || stageWorkspaceState.activeSessionHearingId;
+async function saveHearingMinutes(status = 'Draft', targetHearingId = null) {
+    const hearingId = targetHearingId || document.getElementById('minHearingId')?.value || stageWorkspaceState.activeSessionHearingId;
     if (!hearingId) {
         notifyUser('No hearing session selected.', 'warning');
         return;
@@ -1596,10 +1946,11 @@ async function saveHearingMinutes(status = 'Draft') {
         return;
     }
 
-    const outcomeVal = document.getElementById('minOutcome')?.value;
+    const outcomeEl = getMinutesField('minOutcome', hearingId);
+    const outcomeVal = outcomeEl?.value;
     if (!outcomeVal) {
         notifyUser('Please select a session outcome.', 'warning');
-        document.getElementById('minOutcome')?.focus();
+        outcomeEl?.focus();
         return;
     }
 
@@ -1611,41 +1962,50 @@ async function saveHearingMinutes(status = 'Draft') {
         if (!confirmLock) return;
     }
 
-    const draftBtn = document.getElementById('btnSaveMinutesDraft');
-    const finalizeBtn = document.getElementById('btnSaveMinutesFinalize');
+    const draftBtn = document.getElementById(`btnSaveMinutesDraft_${hearingId}`) || document.getElementById('btnSaveMinutesDraft');
+    const finalizeBtn = document.getElementById(`btnSaveMinutesFinalize_${hearingId}`) || document.getElementById('btnSaveMinutesFinalize');
     if (draftBtn) draftBtn.disabled = true;
     if (finalizeBtn) finalizeBtn.disabled = true;
 
     let sessionType = '1st Mediation';
     if (stageWorkspaceState.mode === 'Mediation') {
-        sessionType = session ? (session.session_index === 1 ? '1st Mediation' : '2nd Mediation') : '1st Mediation';
+        const idx = Number(session.session_index || 1);
+        sessionType = idx === 1 ? '1st Mediation' : (idx === 2 ? '2nd Mediation' : '3rd Mediation');
     } else if (stageWorkspaceState.mode === 'Conciliation') {
-        sessionType = 'Conciliation';
+        const idx = Number(session.session_index || 1);
+        sessionType = idx === 1 ? '1st Conciliation' : (idx === 2 ? '2nd Conciliation' : '3rd Conciliation');
     } else if (stageWorkspaceState.mode === 'Arbitration') {
         sessionType = 'Arbitration';
     }
 
+    if (['Settled', 'Pending CFA', 'Arbitration Award'].includes(outcomeVal)) {
+        unlockOutcomesTab();
+    }
+
+    const getVal = (baseId) => (document.getElementById(`${baseId}_${hearingId}`) || document.getElementById(baseId))?.value || '';
+    const getChecked = (baseId) => (document.getElementById(`${baseId}_${hearingId}`) || document.getElementById(baseId))?.checked ? 1 : 0;
+
     const payload = {
         hearing_id: Number(hearingId),
         session_type: sessionType,
-        opening_conducted: document.getElementById('minOpening')?.checked ? 1 : 0,
-        identity_verified: document.getElementById('minIdentity')?.checked ? 1 : 0,
-        complaint_reviewed: document.getElementById('minReviewed')?.checked ? 1 : 0,
-        complainant_statement: document.getElementById('minCompStmt')?.value || '',
-        respondent_statement: document.getElementById('minRespStmt')?.value || '',
-        main_dispute_identified: document.getElementById('minDisputeSummary')?.value || '',
-        agenda_topics: document.getElementById('minAgenda')?.value || '',
-        new_proposal: document.getElementById('minNewProposal')?.value || '',
-        counteroffer: document.getElementById('minCounterOffer')?.value || '',
-        caucus_conducted: document.getElementById('minCaucus')?.checked ? 1 : 0,
-        caucus_notes: document.getElementById('minCaucusNotes')?.value || '',
-        agreements_action_items: document.getElementById('minAgreements')?.value || '',
-        unresolved_issues: document.getElementById('minUnresolved')?.value || '',
+        opening_conducted: getChecked('minOpening'),
+        identity_verified: getChecked('minIdentity'),
+        complaint_reviewed: getChecked('minReviewed'),
+        complainant_statement: '',
+        respondent_statement: '',
+        main_dispute_identified: getVal('minDisputeSummary'),
+        agenda_topics: '',
+        new_proposal: '',
+        counteroffer: '',
+        caucus_conducted: 0,
+        caucus_notes: '',
+        agreements_action_items: getVal('minAgreements'),
+        unresolved_issues: getVal('minUnresolved'),
         session_outcome: outcomeVal,
-        actual_end_time: document.getElementById('minActualEndTime')?.value || null,
-        outcome_remarks: document.getElementById('minOutcomeRemarks')?.value || '',
-        settlement_discussion_notes: document.getElementById('session_minutes')?.value || '',
-        session_minutes: document.getElementById('session_minutes')?.value || '',
+        actual_end_time: getVal('minActualEndTime') || null,
+        outcome_remarks: getVal('minOutcomeRemarks'),
+        settlement_discussion_notes: getVal('session_minutes'),
+        session_minutes: getVal('session_minutes'),
         status: status
     };
 
@@ -1655,9 +2015,9 @@ async function saveHearingMinutes(status = 'Draft') {
     const hasNextSession = stageWorkspaceState.sessions.some(s => Number(s.session_index) === nextSessionIndex);
 
     if (outcomeVal === 'Continue Mediation' && isMediation && !hasNextSession && sessionIndex < 3) {
-        const nextDate = document.getElementById('minNextHearingDate')?.value?.trim();
-        const nextTime = document.getElementById('minNextHearingTime')?.value?.trim();
-        const nextVenue = document.getElementById('minNextHearingVenue')?.value?.trim() || 'Lupon Court Room';
+        const nextDate = getVal('minNextHearingDate')?.trim();
+        const nextTime = getVal('minNextHearingTime')?.trim();
+        const nextVenue = getVal('minNextHearingVenue')?.trim() || 'Lupon Court Room';
         if (nextDate && nextTime) {
             payload.book_next_hearing = 1;
             payload.next_hearing_date = nextDate;
@@ -1675,6 +2035,11 @@ async function saveHearingMinutes(status = 'Draft') {
         });
         const json = await res.json();
         if (json.success) {
+            const draftKey = `agap_draft_${stageWorkspaceState.mode}_case_${stageWorkspaceState.caseId}_hearing_${hearingId}`;
+            if (window.AgapDraftManager) {
+                window.AgapDraftManager.markSubmitted(draftKey);
+                window.AgapDraftManager.clear(draftKey);
+            }
             await loadStageData();
             if (json.next_hearing_booked && json.next_hearing) {
                 const seqLabel = json.next_hearing?.sequence === 2 ? '2nd' : (json.next_hearing?.sequence === 3 ? '3rd' : 'Next');
@@ -1704,14 +2069,15 @@ window.saveHearingMinutes = saveHearingMinutes;
 window.saveInlineMinutes = saveHearingMinutes;
 window.saveMinutes = saveHearingMinutes;
 
+
 function showCloseoutFollowUp() {
     const data = stageWorkspaceState.stageData || {};
     const stage = stageWorkspaceState.mode === 'Conciliation' ? data.conciliation : data.mediation;
     const actions = stage?.documents_and_actions || {};
     let text = 'Session minutes were finalized. Review the next required action above.';
     let action = '';
-    if (stageWorkspaceState.mode === 'Mediation' && actions.can_proceed_to_pangkat) {
-        text = 'Session minutes were finalized. The case is ready for an authorized Pangkat referral.';
+    if (stageWorkspaceState.mode === 'Mediation' && (actions.can_proceed_to_pangkat || data.case?.case_status === 'Conciliation')) {
+        text = 'Session minutes were finalized and elevated to Pangkat Conciliation. Constitute Pangkat (KP Form 10) to convene proceedings.';
         action = '<button type="button" class="btn-create" onclick="openReferPangkatModal()">Constitute Pangkat &rarr;</button>';
     } else if (stageWorkspaceState.mode === 'Mediation' && actions.can_book_next_mediation) {
         text = 'Session minutes were finalized. The next required step is to book the next Mediation.';
@@ -1895,7 +2261,7 @@ function renderOutcomeAndReferralSection(data, stage) {
 let currentWsWindowMeta = null;
 let wsConflictCheckDebounceTimer = null;
 
-async function openScheduleModal(hearingId = null) {
+async function openScheduleModal(hearingId = null, targetStageType = null) {
     const modal = document.getElementById('wsScheduleModal');
     if (!modal) {
         const urlParams = new URLSearchParams(window.location.search);
@@ -1908,6 +2274,105 @@ async function openScheduleModal(hearingId = null) {
     }
 
     modal.style.display = 'flex';
+
+    if (!hearingId && targetStageType !== 'Arbitration' && (stageWorkspaceState.mode === 'Mediation' || stageWorkspaceState.stageType === 'Mediation')) {
+        const existing = stageWorkspaceState.sessions || [];
+        if (existing.length >= 1) {
+            const s1 = existing[0];
+            const s1Status = s1.status || '';
+            const s1Queue = s1.queue_status || '';
+            const s1Outcome = (s1.session_outcome || s1.outcome || '').toLowerCase();
+            const liveOutcome = (document.getElementById('minOutcome')?.value || '').toLowerCase();
+            const isSettled = s1Outcome.includes('settle') || liveOutcome.includes('settle');
+            if (isSettled) {
+                const msg = 'Cannot schedule 2nd Mediation: 1st Mediation concluded with an Amicable Settlement.';
+                if (typeof notifyUser === 'function') notifyUser(msg, 'error');
+                else alert(msg);
+                modal.style.display = 'none';
+                return;
+            }
+
+            const alreadyHas2nd = existing.some(s => Number(s.session_index || 1) >= 2 || (s.hearing_type || '').includes('2nd') || Number(s.mediation_attempt) >= 2);
+            if (alreadyHas2nd) {
+                const msg = '2nd Mediation hearing is already scheduled for this case.';
+                if (typeof notifyUser === 'function') notifyUser(msg, 'info');
+                else alert(msg);
+                modal.style.display = 'none';
+                return;
+            }
+
+            if (existing.length >= 3) {
+                const msg = 'Mediation is limited to a maximum of 3 sessions under Katarungang Pambarangay guidelines.';
+                if (typeof notifyUser === 'function') notifyUser(msg, 'error');
+                else alert(msg);
+                modal.style.display = 'none';
+                return;
+            }
+        }
+    }
+
+    if (!hearingId && targetStageType !== 'Arbitration' && (stageWorkspaceState.mode === 'Conciliation' || stageWorkspaceState.stageType === 'Conciliation')) {
+        const existing = stageWorkspaceState.sessions || [];
+        if (existing.length >= 1) {
+            const curCount = existing.length;
+            const nextIndex = curCount + 1;
+            const nextOrdinal = nextIndex === 2 ? '2nd' : (nextIndex === 3 ? '3rd' : `${nextIndex}th`);
+            const curOrdinal = curCount === 1 ? '1st' : (curCount === 2 ? '2nd' : `${curCount}th`);
+
+            const isSettled = existing.some(s => (s.session_outcome || s.outcome || '').toLowerCase().includes('settle')) ||
+                              (document.getElementById('minOutcome')?.value || '').toLowerCase().includes('settle');
+            if (isSettled) {
+                const msg = `Cannot schedule ${nextOrdinal} Conciliation: Conciliation concluded with an Amicable Settlement.`;
+                if (typeof notifyUser === 'function') notifyUser(msg, 'error');
+                else alert(msg);
+                modal.style.display = 'none';
+                return;
+            }
+
+            const isArbitration = existing.some(s => (s.session_outcome || s.outcome || '').toLowerCase().includes('arbitrat')) ||
+                                  (document.getElementById('minOutcome')?.value || '').toLowerCase().includes('arbitrat');
+            if (isArbitration) {
+                const msg = `Cannot schedule ${nextOrdinal} Conciliation: The dispute has been submitted to Arbitration.`;
+                if (typeof notifyUser === 'function') notifyUser(msg, 'error');
+                else alert(msg);
+                modal.style.display = 'none';
+                return;
+            }
+
+            if (existing.length >= 3) {
+                const msg = 'Conciliation is limited to a maximum of 3 sessions under Katarungang Pambarangay guidelines.';
+                if (typeof notifyUser === 'function') notifyUser(msg, 'error');
+                else alert(msg);
+                modal.style.display = 'none';
+                return;
+            }
+
+            const lastSession = existing[existing.length - 1];
+            const alreadyHasNext = existing.some(s => Number(s.session_index || 1) === nextIndex || (s.hearing_type || '').includes(nextOrdinal));
+            if (alreadyHasNext) {
+                const msg = `${nextOrdinal} Conciliation hearing is already scheduled for this case.`;
+                if (typeof notifyUser === 'function') notifyUser(msg, 'info');
+                else alert(msg);
+                modal.style.display = 'none';
+                return;
+            }
+
+            const lastDate = new Date(lastSession.hearing_date);
+            const isFuture = !isNaN(lastDate.getTime()) && lastDate.getTime() > Date.now();
+            const lastOutcome = (lastSession.session_outcome || '').toLowerCase();
+            const liveOutcome = (document.getElementById('minOutcome')?.value || '').toLowerCase();
+            const isPendingOutcome = (!lastOutcome || lastOutcome === 'pending') && (!liveOutcome || liveOutcome === 'pending');
+            const hasNoMinutes = !lastSession.minutes_status || lastSession.minutes_status === 'Not Recorded';
+
+            if (isFuture || (isPendingOutcome && hasNoMinutes)) {
+                const msg = `Cannot schedule ${nextOrdinal} Conciliation: The ${curOrdinal} Conciliation session is currently ongoing. Please conduct the ${curOrdinal} session and record its outcome/minutes before booking the ${nextOrdinal} session.`;
+                if (typeof notifyUser === 'function') notifyUser(msg, 'warning', `${curOrdinal} Conciliation Ongoing`);
+                else alert(msg);
+                modal.style.display = 'none';
+                return;
+            }
+        }
+    }
 
     // Title / Subtitle customization
     const titleEl = document.getElementById('wsSchedModalTitle');
@@ -1929,7 +2394,19 @@ async function openScheduleModal(hearingId = null) {
     }
 
     const isConciliation = (stageWorkspaceState.mode === 'Conciliation');
-    if (stageWorkspaceState.mode === 'Mediation') {
+    if (targetStageType === 'Arbitration' || stageWorkspaceState.mode === 'Arbitration') {
+        if (titleEl) titleEl.textContent = 'Schedule Arbitration Session';
+        if (dateLabelEl) dateLabelEl.textContent = 'Petsa ng Pagdinig (Hearing Date)';
+        if (timeLabelEl) timeLabelEl.textContent = 'Oras ng Pagdinig (Hearing Time)';
+        if (subtitleEl) {
+            subtitleEl.innerHTML = 'Enter date and time for voluntary binding arbitration session under <strong>RA 7160 Sec. 413</strong>.';
+        }
+        const typeInput = document.getElementById('schedHearingType');
+        if (typeInput) typeInput.value = 'Arbitration';
+        const venueInput = document.getElementById('schedVenue');
+        if (venueInput && !venueInput.value) venueInput.value = 'Lupon Court Room';
+        if (submitBtn) submitBtn.textContent = 'Schedule Arbitration Session';
+    } else if (stageWorkspaceState.mode === 'Mediation') {
         const activeHearingId = stageWorkspaceState.activeSessionHearingId;
         const activeSession = stageWorkspaceState.sessions.find(s => Number(s.hearing_id) === Number(activeHearingId)) || {};
         const curSeq = Number(activeSession.session_index || 1);
@@ -2327,6 +2804,56 @@ async function submitSchedule(e) {
             return;
         }
     } else if (typeVal === 'Conciliation') {
+        const existing = stageWorkspaceState.sessions || [];
+        if (existing.length >= 1) {
+            const curCount = existing.length;
+            const nextIndex = curCount + 1;
+            const nextOrdinal = nextIndex === 2 ? '2nd' : (nextIndex === 3 ? '3rd' : `${nextIndex}th`);
+            const curOrdinal = curCount === 1 ? '1st' : (curCount === 2 ? '2nd' : `${curCount}th`);
+
+            const isSettled = existing.some(s => (s.session_outcome || s.outcome || '').toLowerCase().includes('settle')) ||
+                              (document.getElementById('minOutcome')?.value || '').toLowerCase().includes('settle');
+            if (isSettled) {
+                notifyUser(`Cannot schedule ${nextOrdinal} Conciliation: Conciliation concluded with an Amicable Settlement.`, 'error');
+                if (btn) btn.disabled = false;
+                return;
+            }
+            const isArbitration = existing.some(s => (s.session_outcome || s.outcome || '').toLowerCase().includes('arbitrat')) ||
+                                  (document.getElementById('minOutcome')?.value || '').toLowerCase().includes('arbitrat');
+            if (isArbitration) {
+                notifyUser(`Cannot schedule ${nextOrdinal} Conciliation: The dispute has been submitted to Arbitration.`, 'error');
+                if (btn) btn.disabled = false;
+                return;
+            }
+
+            if (existing.length >= 3) {
+                notifyUser('Conciliation is limited to a maximum of 3 sessions under Katarungang Pambarangay guidelines.', 'error');
+                if (btn) btn.disabled = false;
+                return;
+            }
+
+            const lastSession = existing[existing.length - 1];
+            const alreadyHasNext = existing.some(s => Number(s.session_index || 1) === nextIndex || (s.hearing_type || '').includes(nextOrdinal));
+            if (alreadyHasNext) {
+                notifyUser(`${nextOrdinal} Conciliation hearing is already scheduled for this case.`, 'info');
+                if (btn) btn.disabled = false;
+                return;
+            }
+
+            const lastDate = new Date(lastSession.hearing_date);
+            const isFuture = !isNaN(lastDate.getTime()) && lastDate.getTime() > Date.now();
+            const lastOutcome = (lastSession.session_outcome || '').toLowerCase();
+            const liveOutcome = (document.getElementById('minOutcome')?.value || '').toLowerCase();
+            const isPendingOutcome = (!lastOutcome || lastOutcome === 'pending') && (!liveOutcome || liveOutcome === 'pending');
+            const hasNoMinutes = !lastSession.minutes_status || lastSession.minutes_status === 'Not Recorded';
+
+            if (isFuture || (isPendingOutcome && hasNoMinutes)) {
+                notifyUser(`Cannot schedule ${nextOrdinal} Conciliation: The ${curOrdinal} Conciliation session is currently ongoing. Please conduct the ${curOrdinal} session and record its outcome/minutes before booking the ${nextOrdinal} session.`, 'warning');
+                if (btn) btn.disabled = false;
+                return;
+            }
+        }
+
         if (day === 0 || day === 6) {
             notifyUser('Conciliation hearings cannot be scheduled on weekends.', 'warning');
             if (btn) btn.disabled = false;
@@ -2458,7 +2985,7 @@ async function openAttendanceModal(hearingId, shouldScroll = true) {
         const titleEl = document.getElementById('wsAttCardTitle');
         const subTitleEl = document.getElementById('wsAttCardSubtitle');
         if (titleEl) {
-            titleEl.textContent = `Hearing Session Attendance: ${session ? (session.attempt_label || session.session_number) : `Hearing #${hearingId}`}`;
+            titleEl.textContent = 'Hearing Session Attendance';
         }
         if (subTitleEl && session) {
             subTitleEl.textContent = `Scheduled: ${formatDateTimeReadable(session.hearing_date)} · Venue: ${escapeHtml(session.venue || 'Barangay Hall')}`;
@@ -2505,593 +3032,95 @@ function closeAttendanceModal() {
     if (modal) modal.style.display = 'none';
 }
 
-function renderAttendanceModalForm(data) {
-    const isCard = !!document.getElementById('wsAttCardBody');
-    const bodyEl = document.getElementById('wsAttCardBody') || document.getElementById('wsAttModalBody');
-    if (!bodyEl) return;
-
-    const hearing = data.hearing || data;
-    const parties = data.parties || [];
-    const luponMembers = data.lupon_members || stageWorkspaceState.luponMembers || [];
-    const partyFormRules = hearing.party_form_rules || data.party_form_rules || { complainant: {}, respondent: {} };
-    const caseId = Number(stageWorkspaceState.caseId);
-    const hearingId = Number(hearing.hearing_id || stageWorkspaceState.currentHearingId);
-
-    if (!parties.length) {
-        bodyEl.innerHTML = '<div class="empty-detail-state">No parties registered for this case.</div>';
-        return;
-    }
-
-    // 1. Presider Attendance & Verification Box
-    const presiderName = hearing.presiding_officer_name || 'Punong Barangay / Lupon Chairman';
-    const presiderRole = hearing.presiding_officer_role || 'Punong Barangay';
-    const substituteId = hearing.substitute_presider_id;
-    const substituteReason = hearing.substitute_reason || '';
-    const hasConsent = Boolean(hearing.parties_consent_to_substitute);
-    const presiderStatus = (substituteId || hearing.presider_attendance_status === 'Absent') ? 'Absent' : 'Present';
-
-    let luponOpts = luponMembers.map(m => {
-        const mId = Number(m.user_id || m.member_id);
-        const mName = m.full_name || `${m.last_name || ''}, ${m.first_name || ''} ${m.middle_name || ''}`.trim();
-        const isSelected = substituteId && Number(substituteId) === mId;
-        return `<option value="${mId}" ${isSelected ? 'selected' : ''}>${escapeHtml(mName)} (${escapeHtml(m.role_name || 'Lupon Member')})</option>`;
-    }).join('');
-
-    const presiderHtml = `
-        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
-                <div>
-                    <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: #475569; letter-spacing: 0.04em; display: block;">Presiding Officer (Hearing Presider)</span>
-                    <strong style="font-size: 0.95rem; color: #0f172a;">${escapeHtml(presiderName)}</strong>
-                    <span style="font-size: 0.74rem; color: #64748b; margin-left: 6px;">(${escapeHtml(presiderRole)})</span>
-                </div>
-                <div>
-                    <select id="wsPresiderStatus" onchange="togglePresiderSubstituteSection(this.value)" style="padding: 6px 10px; font-size: 0.84rem; font-weight: 600; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff;">
-                        <option value="Present" ${presiderStatus !== 'Absent' ? 'selected' : ''}>Present</option>
-                        <option value="Absent" ${presiderStatus === 'Absent' ? 'selected' : ''}>Absent / Unavailable</option>
-                    </select>
-                </div>
-            </div>
-
-            <!-- Upfront 2-Choice Decision Section (Required when Presider is Absent) -->
-            <div id="wsPresiderAbsenceDecisionBox" style="${presiderStatus === 'Absent' ? '' : 'display: none;'} margin-top: 12px; background: #fff; border: 1px solid #fed7aa; border-left: 4px solid #f97316; border-radius: 8px; padding: 14px;">
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
-                    <span style="font-size: 0.85rem; font-weight: 700; color: #9a3412; display: inline-flex; align-items: center; gap: 6px;">
-                        Presider Absence Workflow (RA 7160 Sec. 410)
-                    </span>
-                    <span style="font-size: 0.72rem; background: #ffedd5; color: #9a3412; font-weight: 600; padding: 2px 8px; border-radius: 4px;">
-                        2 Available Remedies
-                    </span>
-                </div>
-                <p style="font-size: 0.78rem; color: #475569; margin: 0 0 12px; line-height: 1.45;">
-                    The scheduled Presiding Officer is absent or unavailable. Under Katarungang Pambarangay rules, select either <strong>Option A (Designate Substitute Presider)</strong> with mutual party consent to proceed today, or <strong>Option B (Emergency Reschedule)</strong> to set a new hearing date and auto-issue KP Forms 8 &amp; 9.
-                </p>
-
-                <!-- 2-Choice Card Selectors -->
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
-                    <label id="wsChoiceCardSubstitute" style="display: block; border: 2px solid #2563eb; background: #eff6ff; border-radius: 6px; padding: 10px; cursor: pointer; transition: all 0.2s;">
-                        <div style="display: flex; align-items: flex-start; gap: 8px;">
-                            <input type="radio" name="presider_absence_choice" id="wsAbsenceChoiceSubstitute" value="substitute" checked onchange="handlePresiderAbsenceChoiceChange('substitute')" style="margin-top: 2px; accent-color: #2563eb;">
-                            <div>
-                                <strong style="display: block; font-size: 0.82rem; color: #1e3a8a;">Option A: Substitute Presider</strong>
-                                <span style="font-size: 0.72rem; color: #64748b; display: block; margin-top: 2px;">Both parties agree to proceed today under an authorized Lupon substitute.</span>
-                            </div>
-                        </div>
-                    </label>
-                    <label id="wsChoiceCardReschedule" style="display: block; border: 1px solid #cbd5e1; background: #fff; border-radius: 6px; padding: 10px; cursor: pointer; transition: all 0.2s;">
-                        <div style="display: flex; align-items: flex-start; gap: 8px;">
-                            <input type="radio" name="presider_absence_choice" id="wsAbsenceChoiceReschedule" value="reschedule" onchange="handlePresiderAbsenceChoiceChange('reschedule')" style="margin-top: 2px; accent-color: #dc2626;">
-                            <div>
-                                <strong style="display: block; font-size: 0.82rem; color: #0f172a;">Option B: Emergency Reschedule</strong>
-                                <span style="font-size: 0.72rem; color: #64748b; display: block; margin-top: 2px;">Reschedule hearing &amp; auto-issue KP Form 8 (Complainant) and KP Form 9 (Respondent).</span>
-                            </div>
-                        </div>
-                    </label>
-                </div>
-
-                <!-- Option A Sub-panel: Designated Substitute Presider -->
-                <div id="wsSubstitutePresiderWrap" style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 12px; margin-bottom: 6px;">
-                    <div style="font-size: 0.78rem; font-weight: 700; color: #1e293b; margin-bottom: 8px;">
-                        Designate Authorized Substitute Presider (Proceed Today)
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
-                        <div>
-                            <label style="font-size: 0.74rem; font-weight: 600; color: #334155; display: block; margin-bottom: 4px;">
-                                SELECT SUBSTITUTE PRESIDER <span style="color: #dc2626;">*</span>
-                            </label>
-                            <select id="wsSubstitutePresiderId" style="width: 100%; padding: 6px; font-size: 0.82rem; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff;">
-                                <option value="">-- Choose Active Lupon Member --</option>
-                                ${luponOpts}
-                            </select>
-                        </div>
-                        <div>
-                            <label style="font-size: 0.74rem; font-weight: 600; color: #334155; display: block; margin-bottom: 4px;">
-                                REASON FOR SUBSTITUTION <span style="color: #dc2626;">*</span>
-                            </label>
-                            <input type="text" id="wsSubstituteReason" value="${escapeHtml(substituteReason)}" placeholder="e.g. Official business, emergency leave..." style="width: 100%; padding: 6px; font-size: 0.82rem; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff;">
-                        </div>
-                    </div>
-                    <div style="margin-bottom: 8px;">
-                        <label style="display: inline-flex; align-items: center; gap: 7px; font-size: 0.8rem; color: #1e293b; font-weight: 600; cursor: pointer;">
-                            <input type="checkbox" id="wsPartiesConsentCheck" ${hasConsent ? 'checked' : ''} style="width: 15px; height: 15px; accent-color: #2563eb;">
-                            <span>Both parties have been informed and mutually consent to the designated substitute presider</span>
-                        </label>
-                    </div>
-                    <div style="font-size: 0.74rem; color: #15803d; background: #f0fdf4; border: 1px solid #bbf7d0; padding: 6px 10px; border-radius: 4px;">
-                        Proceed below to verify party appearances and record minutes for today's session under this designated officer.
-                    </div>
-                </div>
-
-                <!-- Option B Sub-panel: Emergency Reschedule -->
-                <div id="wsEmergencyRescheduleWrap" style="display: none; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 12px; margin-bottom: 6px;">
-                    <div style="font-size: 0.78rem; font-weight: 700; color: #991b1b; margin-bottom: 6px;">
-                        Emergency Reschedule Hearing (Presider Unavailability)
-                    </div>
-                    <p style="font-size: 0.76rem; color: #7f1d1d; margin: 0 0 10px; line-height: 1.4;">
-                        Under KP rules (RA 7160), neither party is penalized. Today's hearing will be marked <strong>Office Cancelled</strong>, a new hearing will be scheduled, and legal notices will be auto-generated.
-                    </p>
-
-                    <div style="background: #fff; border: 1px solid #fca5a5; border-radius: 6px; padding: 10px; margin-bottom: 10px;">
-                        <div style="font-size: 0.74rem; font-weight: 700; color: #991b1b; text-transform: uppercase; margin-bottom: 4px;">
-                            Automatic Document Issuance:
-                        </div>
-                        <ul style="margin: 0; padding-left: 18px; font-size: 0.76rem; color: #334155; line-height: 1.5;">
-                            <li><strong>KP Form 8 (Notice of Hearing)</strong>: Issued to the <strong>Complainant</strong> with the new hearing date and reason.</li>
-                            <li><strong>KP Form 9 (Summons for Rescheduled Hearing)</strong>: Issued to the <strong>Respondent</strong> for service.</li>
-                        </ul>
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
-                        <div>
-                            <label style="font-size: 0.74rem; font-weight: 600; color: #334155; display: block; margin-bottom: 4px;">
-                                NEW RESCHEDULED HEARING DATE &amp; TIME <span style="color: #dc2626;">*</span>
-                            </label>
-                            <input type="datetime-local" id="wsEmergencyRescheduleDate" value="${getSuggestedRescheduleDateTime(hearing.hearing_date)}" style="width: 100%; padding: 6px; font-size: 0.82rem; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff;">
-                        </div>
-                        <div>
-                            <label style="font-size: 0.74rem; font-weight: 600; color: #334155; display: block; margin-bottom: 4px;">
-                                OFFICIAL REASON / JUSTIFICATION <span style="color: #dc2626;">*</span>
-                            </label>
-                            <input type="text" id="wsEmergencyRescheduleReason" value="Presider Unavailability / Official Absence" placeholder="Enter reason..." style="width: 100%; padding: 6px; font-size: 0.82rem; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff;">
-                        </div>
-                    </div>
-
-                    <div style="display: flex; justify-content: flex-end; gap: 8px;">
-                        <button type="button" class="btn-primary" id="btnExecuteReschedule" onclick="executeEmergencyReschedule(${hearingId}, ${caseId})" style="background: #dc2626; border-color: #dc2626; color: #fff; font-size: 0.82rem; padding: 7px 14px; border-radius: 6px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
-                            Confirm Emergency Reschedule &amp; Issue KP Forms 8 &amp; 9
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-
-    // 2. Party Appearance Rows
-    let rowsHtml = '';
-    parties.forEach(p => {
-        const isWitness = p.party_type === 'Witness';
-        const isComplainant = p.party_type === 'Complainant';
-        const isRespondent = p.party_type === 'Respondent';
-        const serviceStatus = p.summon_delivery_status || (p.successful_service_count > 0 ? 'Served' : 'Pending');
-        const isServiceConfirmed = (serviceStatus && serviceStatus.toLowerCase().includes('served'));
-        const isAbsent = (p.attendance_status === 'Absent');
-        const isAbsentOrExcused = (p.attendance_status === 'Absent' || p.attendance_status === 'Excused');
-
-        let formRulesHtml = '';
-        const isSecondOrLater = Boolean(partyFormRules.is_second_or_later);
-        if (isComplainant) {
-            const kp21Unlocked = partyFormRules.complainant?.kp21_unlocked;
-            const kp21Reason = partyFormRules.complainant?.kp21_reason || 'Requires show-cause hearing evaluation ruling non-appearance as unjustified.';
-            formRulesHtml = `
-                <div class="att-legal-notices-wrap" style="${isAbsent ? '' : 'display: none;'} margin-top: 10px; padding: 10px 12px; background: #fff5f5; border: 1px solid #fecaca; border-radius: 6px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px;">
-                        <span style="font-size: 0.78rem; font-weight: 700; color: #991b1b;">Notice of Hearing (Complainant Non-appearance):</span>
-                        ${isSecondOrLater ? `
-                            <button type="button" class="btn-secondary" onclick="openKPFormPreview(${caseId}, 'KP Form 18', ${hearingId})" style="font-size: 0.76rem; padding: 4px 10px; background: #fff; border-color: #fca5a5; color: #991b1b; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
-                                Preview / Print KP Form 18 Notice
-                            </button>
-                        ` : `
-                            <span style="font-size: 0.74rem; color: #64748b; font-style: italic; background: #fff; border: 1px solid #cbd5e1; padding: 3px 8px; border-radius: 4px;">
-                                ℹ️ 1st Mediation: Proceed to book 2nd Mediation (no new summon needed). KP Form 18 unlocks if absent in 2nd Mediation.
-                            </span>
-                        `}
-                    </div>
-                    ${isSecondOrLater ? `
-                        <div style="font-size: 0.76rem; border-top: 1px dashed #fca5a5; padding-top: 6px; margin-top: 4px;">
-                            ${kp21Unlocked ? `
-                                <span style="color: #15803d; font-weight: 700;">KP Form 21 (Certificate to Bar Action) Eligible:</span> Non-appearance was ruled unjustified.
-                                <button type="button" class="btn-secondary" onclick="openKPFormPreview(${caseId}, 'KP Form 21', ${hearingId})" style="font-size: 0.72rem; padding: 2px 8px; margin-left: 6px;">Preview KP Form 21</button>
-                            ` : `
-                                <span style="color: #991b1b; font-weight: 700;">KP Form 21 (Certificate to Bar Action) Locked:</span>
-                                <span style="color: #475569;">${escapeHtml(kp21Reason)}</span>
-                            `}
-                        </div>
-                    ` : ''}
-                </div>
-            `;
-        } else if (isRespondent) {
-            const kp22Unlocked = partyFormRules.respondent?.kp22_unlocked;
-            const kp22Reason = partyFormRules.respondent?.kp22_reason || 'Requires show-cause hearing evaluation ruling non-appearance as unjustified.';
-            formRulesHtml = `
-                <div class="att-legal-notices-wrap" style="${isAbsent ? '' : 'display: none;'} margin-top: 10px; padding: 10px 12px; background: #fff5f5; border: 1px solid #fecaca; border-radius: 6px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px;">
-                        <span style="font-size: 0.78rem; font-weight: 700; color: #991b1b;">Notice of Hearing (Respondent Non-appearance):</span>
-                        ${isSecondOrLater ? `
-                            <button type="button" class="btn-secondary" onclick="openKPFormPreview(${caseId}, 'KP Form 19', ${hearingId})" style="font-size: 0.76rem; padding: 4px 10px; background: #fff; border-color: #fca5a5; color: #991b1b; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
-                                Preview / Print KP Form 19 Notice
-                            </button>
-                        ` : `
-                            <span style="font-size: 0.74rem; color: #64748b; font-style: italic; background: #fff; border: 1px solid #cbd5e1; padding: 3px 8px; border-radius: 4px;">
-                                ℹ️ 1st Mediation: Proceed to book 2nd Mediation (no new summon needed). KP Form 19 unlocks if absent in 2nd Mediation.
-                            </span>
-                        `}
-                    </div>
-                    ${isSecondOrLater ? `
-                        <div style="font-size: 0.76rem; border-top: 1px dashed #fca5a5; padding-top: 6px; margin-top: 4px;">
-                            ${kp22Unlocked ? `
-                                <span style="color: #15803d; font-weight: 700;">KP Form 22 (Certificate to Bar Counterclaim) Eligible:</span> Non-appearance was ruled unjustified.
-                                <button type="button" class="btn-secondary" onclick="openKPFormPreview(${caseId}, 'KP Form 22', ${hearingId})" style="font-size: 0.72rem; padding: 2px 8px; margin-left: 6px;">Preview KP Form 22</button>
-                            ` : `
-                                <span style="color: #991b1b; font-weight: 700;">KP Form 22 (Certificate to Bar Counterclaim) Locked:</span>
-                                <span style="color: #475569;">${escapeHtml(kp22Reason)}</span>
-                            `}
-                        </div>
-                    ` : ''}
-                </div>
-            `;
-        }
-
-        rowsHtml += `
-            <div class="att-party-row" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-                <input type="hidden" name="resident_id[]" value="${Number(p.resident_id)}">
-                <input type="hidden" name="party_type[]" value="${escapeHtml(p.party_type)}">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                    <div>
-                        <strong style="font-size: 0.92rem; color: #0f172a;">${escapeHtml(p.resident_name || p.full_name)}</strong>
-                        <span style="font-size: 0.72rem; padding: 2px 6px; border-radius: 4px; font-weight: 700; margin-left: 6px; ${isComplainant ? 'background: #dbeafe; color: #1e40af;' : (isRespondent ? 'background: #fef3c7; color: #b45309;' : 'background: #f1f5f9; color: #475569;')}">
-                            ${escapeHtml(p.party_type)}
-                        </span>
-                    </div>
-                    <div style="font-size: 0.76rem;">
-                        <span style="padding: 2px 6px; border-radius: 4px; font-weight: 700; ${isServiceConfirmed ? 'background: #dcfce7; color: #15803d;' : 'background: #fee2e2; color: #991b1b;'}">
-                            ${escapeHtml(serviceStatus)}
-                        </span>
-                    </div>
-                </div>
-
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px;">
-                    <div>
-                        <label style="font-size: 0.74rem; font-weight: 600; color: #475569; display: block; margin-bottom: 4px;">ATTENDANCE STATUS</label>
-                        <select name="attendance_status[]" class="att-status-select" onchange="toggleAttJustification(this)" style="width: 100%; padding: 6px; font-size: 0.84rem; border: 1px solid #cbd5e1; border-radius: 4px;">
-                            <option value="Present" ${p.attendance_status === 'Present' ? 'selected' : ''}>Present</option>
-                            <option value="Absent" ${p.attendance_status === 'Absent' ? 'selected' : ''}>Absent / Non-appearance</option>
-                            <option value="Excused" ${p.attendance_status === 'Excused' ? 'selected' : ''}>Excused</option>
-                            <option value="Pending Verification" ${p.attendance_status === 'Pending Verification' ? 'selected' : ''}>Pending Verification</option>
-                            <option value="Not Served" ${p.attendance_status === 'Not Served' ? 'selected' : ''}>Not Served</option>
-                        </select>
-                    </div>
-                    <div class="att-justification-wrap" style="${isAbsentOrExcused ? '' : 'display: none;'}">
-                        <label style="font-size: 0.74rem; font-weight: 600; color: #475569; display: block; margin-bottom: 4px;">
-                            ABSENCE EXPLANATION / JUSTIFICATION ${isAbsent ? '<span style="color: #dc2626;">*</span>' : ''}
-                        </label>
-                        <input type="text" name="justification_reason[]" value="${escapeHtml(p.justification_reason || '')}" placeholder="Enter party's reason for non-appearance..." style="width: 100%; padding: 6px; font-size: 0.84rem; border: 1px solid #cbd5e1; border-radius: 4px;">
-                    </div>
-                </div>
-                ${formRulesHtml}
-            </div>
-        `;
-    });
-
-    bodyEl.innerHTML = `
-        <form id="wsAttendanceForm" onsubmit="submitAttendance(event)">
-            ${presiderHtml}
-            <div id="wsPartyAppearanceWrap">
-                <div style="font-size: 0.76rem; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.04em; margin-bottom: 8px;">
-                    Party Appearance &amp; Summons Verification
-                </div>
-                ${rowsHtml}
-                <div class="modal-actions" style="margin-top: 16px; border-top: 1px solid #e2e8f0; padding-top: 14px; display: flex; justify-content: flex-end; gap: 8px;">
-                    ${isCard ? `<button type="button" class="btn-secondary" onclick="openAttendanceModal(${hearingId}, false)">Reset Changes</button>` : `<button type="button" class="btn-secondary" onclick="closeAttendanceModal()">Cancel</button>`}
-                    <button type="submit" class="btn-create" id="submitAttBtn" style="padding: 7px 18px; font-weight: 700;">Save Attendance Record</button>
-                </div>
-            </div>
-        </form>
-    `;
-}
-
-function getSuggestedRescheduleDateTime(baseDateStr) {
-    let d = baseDateStr ? new Date(baseDateStr.replace(' ', 'T')) : new Date();
-    if (isNaN(d.getTime())) d = new Date();
-    // Advance by 3 days
-    d.setDate(d.getDate() + 3);
-    // Skip weekends: if Sunday (0) add 1 day to Monday; if Saturday (6) add 2 days to Monday
-    if (d.getDay() === 0) d.setDate(d.getDate() + 1);
-    else if (d.getDay() === 6) d.setDate(d.getDate() + 2);
-    // Default working hour: 09:00 AM
-    d.setHours(9, 0, 0, 0);
-
-    const pad = n => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-window.getSuggestedRescheduleDateTime = getSuggestedRescheduleDateTime;
-
-function togglePresiderSubstituteSection(val) {
-    const decisionBox = document.getElementById('wsPresiderAbsenceDecisionBox');
-    if (decisionBox) {
-        decisionBox.style.display = (val === 'Absent') ? 'block' : 'none';
-    }
-    if (val === 'Absent') {
-        const currentChoice = document.querySelector('input[name="presider_absence_choice"]:checked')?.value || 'substitute';
-        handlePresiderAbsenceChoiceChange(currentChoice);
-    } else {
-        const partyWrap = document.getElementById('wsPartyAppearanceWrap');
-        if (partyWrap) partyWrap.style.display = 'block';
-        const submitBtn = document.getElementById('submitAttBtn');
-        if (submitBtn) {
-            submitBtn.style.display = 'inline-block';
-            submitBtn.disabled = false;
-        }
+function formatForDatetimeLocal(dtString) {
+    if (!dtString) return '';
+    try {
+        const d = new Date(dtString.replace(' ', 'T'));
+        if (isNaN(d.getTime())) return '';
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    } catch {
+        return '';
     }
 }
-window.togglePresiderSubstituteSection = togglePresiderSubstituteSection;
 
-function handlePresiderAbsenceChoiceChange(choice) {
-    const wrapSub = document.getElementById('wsSubstitutePresiderWrap');
-    const wrapResched = document.getElementById('wsEmergencyRescheduleWrap');
-    const cardSub = document.getElementById('wsChoiceCardSubstitute');
-    const cardResched = document.getElementById('wsChoiceCardReschedule');
-    const partyWrap = document.getElementById('wsPartyAppearanceWrap');
-    const submitBtn = document.getElementById('submitAttBtn');
-
-    if (choice === 'reschedule') {
-        if (wrapSub) wrapSub.style.display = 'none';
-        if (wrapResched) wrapResched.style.display = 'block';
-        if (cardResched) {
-            cardResched.style.border = '2px solid #dc2626';
-            cardResched.style.background = '#fef2f2';
-        }
-        if (cardSub) {
-            cardSub.style.border = '1px solid #cbd5e1';
-            cardSub.style.background = '#fff';
-        }
-        if (partyWrap) {
-            partyWrap.style.display = 'none';
-        }
-        if (submitBtn) {
-            submitBtn.style.display = 'none';
-        }
-    } else {
-        // Option A: Substitute
-        if (wrapSub) wrapSub.style.display = 'block';
-        if (wrapResched) wrapResched.style.display = 'none';
-        if (cardSub) {
-            cardSub.style.border = '2px solid #2563eb';
-            cardSub.style.background = '#eff6ff';
-        }
-        if (cardResched) {
-            cardResched.style.border = '1px solid #cbd5e1';
-            cardResched.style.background = '#fff';
-        }
-        if (partyWrap) {
-            partyWrap.style.display = 'block';
-        }
-        if (submitBtn) {
-            submitBtn.style.display = 'inline-block';
-            submitBtn.disabled = false;
-        }
-    }
+function formatForTimeInput(timeString) {
+    if (!timeString) return '';
+    const parts = String(timeString).split(/[ T]/);
+    const timePart = parts.length > 1 ? parts[1] : parts[0];
+    const match = timePart.match(/(\d{1,2}):(\d{2})/);
+    if (!match) return '';
+    let hours = parseInt(match[1], 10);
+    const mins = match[2];
+    if (/pm/i.test(timeString) && hours < 12) hours += 12;
+    if (/am/i.test(timeString) && hours === 12) hours = 0;
+    return `${String(hours).padStart(2, '0')}:${mins}`;
 }
-window.handlePresiderAbsenceChoiceChange = handlePresiderAbsenceChoiceChange;
 
-async function executeEmergencyReschedule(hearingId, caseId) {
-    const dateInput = document.getElementById('wsEmergencyRescheduleDate');
-    const reasonInput = document.getElementById('wsEmergencyRescheduleReason');
-    const btn = document.getElementById('btnExecuteReschedule');
+function setAttendanceActualStartTimeNow() {
+    const input = document.getElementById('attActualStartTime');
+    if (!input) return;
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    input.value = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+}
+window.setAttendanceActualStartTimeNow = setAttendanceActualStartTimeNow;
 
-    const rescheduleDate = dateInput ? dateInput.value : '';
-    const reason = reasonInput ? reasonInput.value.trim() : '';
-
-    if (!rescheduleDate) {
-        alert('Please select a valid new hearing date and time for the rescheduled hearing.');
-        dateInput?.focus();
-        return;
+function appendDelayRemark(remark) {
+    const textarea = document.getElementById('attDelayRemarks');
+    if (!textarea) return;
+    const current = textarea.value.trim();
+    if (!current) {
+        textarea.value = remark;
+    } else if (!current.includes(remark)) {
+        textarea.value = current.replace(/[.,;]?$/, '') + '. ' + remark;
     }
+    textarea.focus();
+}
+window.appendDelayRemark = appendDelayRemark;
 
-    const readableDate = formatDateTimeReadable(rescheduleDate);
-    const confirmMsg = `Confirm Emergency Hearing Reschedule?\n\n` +
-        `• New Hearing Date: ${readableDate}\n` +
-        `• Reason: ${reason || 'Presider Unavailability / Official Absence'}\n` +
-        `• Legal Remedy: Neither party is penalized with an unexcused absence.\n` +
-        `• Documents: KP Form 8 (Complainant) and KP Form 9 (Respondent) will be automatically generated.\n\n` +
-        `Do you want to proceed?`;
-
-    if (!confirm(confirmMsg)) {
-        return;
-    }
-
+async function saveStreamlinedAttendance() {
+    const btn = document.getElementById('btnSaveAttendanceStreamlined');
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = 'Rescheduling &amp; Generating Forms...';
+        btn.textContent = 'Saving...';
     }
 
-    try {
-        const payload = {
-            action: 'reschedule',
-            hearing_id: Number(hearingId || stageWorkspaceState.currentHearingId),
-            case_id: Number(caseId || stageWorkspaceState.caseId),
-            reschedule_date: rescheduleDate.replace('T', ' '),
-            reason: reason || 'Presider Unavailability / Official Absence'
-        };
+    const hearingId = stageWorkspaceState.currentHearingId;
+    const schedDate = document.getElementById('attScheduledDateTime')?.value;
+    const actualStart = document.getElementById('attActualStartTime')?.value;
+    const delayRemarks = document.getElementById('attDelayRemarks')?.value.trim() || '';
+    const compAtt = document.querySelector('input[name="att_comp_attendance"]:checked')?.value || 'Present';
+    const respAtt = document.querySelector('input[name="att_resp_attendance"]:checked')?.value || 'Present';
 
-        const res = await fetch(getStageApiUrl('hearings/presider-absence.php'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
+    const currentData = stageWorkspaceState.lastAttendanceData || {};
+    const parties = currentData.parties || [];
 
-        const json = await res.json();
-        if (json.success) {
-            const bodyEl = document.getElementById('wsAttCardBody') || document.getElementById('wsAttModalBody');
-            const newHearingId = json.new_hearing_id || hearingId;
-
-            if (bodyEl) {
-                bodyEl.innerHTML = `
-                    <div style="text-align: center; padding: 24px 16px;">
-                        <div style="font-size: 2.4rem; color: #16a34a; margin-bottom: 8px;">✓</div>
-                        <h3 style="margin: 0 0 8px; color: #0f172a; font-size: 1.15rem; font-weight: 700;">Hearing Rescheduled Successfully</h3>
-                        <p style="color: #475569; font-size: 0.85rem; max-width: 520px; margin: 0 auto 16px; line-height: 1.5;">
-                            The hearing has been officially cancelled due to presider unavailability and rescheduled to:
-                            <br><strong style="color: #0f172a; font-size: 0.95rem;">${escapeHtml(json.formatted_date || readableDate)}</strong>
-                        </p>
-                        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 12px; max-width: 520px; margin: 0 auto 18px; text-align: left;">
-                            <div style="font-size: 0.78rem; font-weight: 700; color: #166534; margin-bottom: 6px;">
-                                Auto-Generated Legal Documents (Ready for Service):
-                            </div>
-                            <ul style="margin: 0; padding-left: 18px; font-size: 0.76rem; color: #14532d; line-height: 1.5;">
-                                <li><strong>KP Form 8 (Notice of Hearing)</strong>: Issued to Complainant with new hearing date and reason.</li>
-                                <li><strong>KP Form 9 (Summons for Rescheduled Hearing)</strong>: Issued to Respondent with new hearing date and reason.</li>
-                            </ul>
-                        </div>
-                        <div style="display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
-                            <button type="button" class="btn-secondary" onclick="openKPFormPreview(${Number(caseId)}, 'KP Form 8', ${newHearingId})" style="padding: 7px 14px; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
-                                Preview KP Form 8 (Complainant)
-                            </button>
-                            <button type="button" class="btn-secondary" onclick="openKPFormPreview(${Number(caseId)}, 'KP Form 9', ${newHearingId})" style="padding: 7px 14px; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
-                                Preview KP Form 9 (Respondent)
-                            </button>
-                        </div>
-                        <div>
-                            <button type="button" class="btn-create" onclick="closeAttendanceModal(); loadStageData();" style="padding: 8px 22px; font-size: 0.85rem; font-weight: 700; cursor: pointer;">
-                                Return to Workspace &rarr;
-                            </button>
-                        </div>
-                    </div>
-                `;
-            }
-        } else {
-            alert(json.message || 'Unable to reschedule hearing.');
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = 'Confirm Emergency Reschedule &amp; Issue KP Forms 8 &amp; 9';
-            }
-        }
-    } catch (err) {
-        console.error('executeEmergencyReschedule error:', err);
-        alert('Network error while executing emergency reschedule.');
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = 'Confirm Emergency Reschedule &amp; Issue KP Forms 8 &amp; 9';
-        }
-    }
-}
-window.executeEmergencyReschedule = executeEmergencyReschedule;
-
-function toggleAttJustification(selectEl) {
-    const row = selectEl.closest('.att-party-row');
-    if (!row) return;
-    const isAbsentOrExcused = (selectEl.value === 'Absent' || selectEl.value === 'Excused');
-    const justWrap = row.querySelector('.att-justification-wrap');
-    if (justWrap) {
-        justWrap.style.display = isAbsentOrExcused ? 'block' : 'none';
-    }
-    const legalNoticeWrap = row.querySelector('.att-legal-notices-wrap');
-    if (legalNoticeWrap) {
-        legalNoticeWrap.style.display = (selectEl.value === 'Absent') ? 'block' : 'none';
-    }
-}
-window.toggleAttJustification = toggleAttJustification;
-
-async function submitAttendance(e) {
-    e.preventDefault();
-    const btn = document.getElementById('submitAttBtn');
-    if (btn) btn.disabled = true;
-
-    const presiderStatus = document.getElementById('wsPresiderStatus')?.value || 'Present';
-    let substituteId = null;
-    let substituteReason = '';
-    let consentVal = 0;
-
-    if (presiderStatus === 'Absent') {
-        const absenceChoice = document.querySelector('input[name="presider_absence_choice"]:checked')?.value || 'substitute';
-        if (absenceChoice === 'reschedule') {
-            alert('Emergency Reschedule is selected. Please click "Confirm Emergency Reschedule & Issue KP Forms 8 & 9" in the Presider Absence section to finalize.');
-            if (btn) btn.disabled = false;
-            return;
-        }
-
-        const subSelect = document.getElementById('wsSubstitutePresiderId');
-        const reasonInput = document.getElementById('wsSubstituteReason');
-        const consentCheck = document.getElementById('wsPartiesConsentCheck');
-
-        substituteId = subSelect ? subSelect.value : '';
-        substituteReason = reasonInput ? reasonInput.value.trim() : '';
-        consentVal = consentCheck && consentCheck.checked ? 1 : 0;
-
-        if (!substituteId) {
-            alert('Presider Attendance Validation: When the presiding officer is absent, selecting a designated substitute presider from the Lupong Tagapamayapa is required before this session can proceed.');
-            if (btn) btn.disabled = false;
-            subSelect?.focus();
-            return;
-        }
-        if (!substituteReason) {
-            alert('Presider Attendance Validation: Please enter the official reason for the presider absence and substitution.');
-            if (btn) btn.disabled = false;
-            reasonInput?.focus();
-            return;
-        }
-        if (!consentVal) {
-            alert('Presider Attendance Validation: Mutual consent of both parties to the substitute presider must be confirmed before proceeding.');
-            if (btn) btn.disabled = false;
-            consentCheck?.focus();
-            return;
-        }
-    }
-
-    const form = document.getElementById('wsAttendanceForm');
-    const residentIds = Array.from(form.querySelectorAll('input[name="resident_id[]"]')).map(el => Number(el.value));
-    const partyTypes = Array.from(form.querySelectorAll('input[name="party_type[]"]')).map(el => el.value);
-    const statuses = Array.from(form.querySelectorAll('select[name="attendance_status[]"]')).map(el => el.value);
-    const justifications = Array.from(form.querySelectorAll('input[name="justification_reason[]"]')).map(el => el.value.trim());
-
-    let compAtt = 'Present';
-    let respAtt = 'Present';
-    let compReason = '';
-    let respReason = '';
-
-    const records = residentIds.map((rid, idx) => {
-        const pType = partyTypes[idx];
-        const st = statuses[idx];
-        const jReason = justifications[idx] || '';
-
-        if (pType === 'Complainant') {
-            compAtt = (st === 'Absent' || st === 'Excused') ? 'Absent' : 'Present';
-            compReason = jReason;
-        } else if (pType === 'Respondent') {
-            respAtt = (st === 'Absent' || st === 'Excused') ? 'Absent' : 'Present';
-            respReason = jReason;
-        }
-
+    const partyRecords = parties.map(p => {
+        const isComp = (p.party_type === 'Complainant');
+        const st = isComp ? compAtt : respAtt;
         return {
-            resident_id: rid,
-            party_type: pType,
+            resident_id: p.resident_id,
+            party_type: p.party_type,
             attendance_status: st,
-            is_justified: (st === 'Excused' || jReason !== '') ? 1 : 0,
-            justification_reason: jReason || null,
+            is_justified: st === 'Present' ? 0 : (delayRemarks ? 1 : 0),
+            justification_reason: st === 'Present' ? null : (delayRemarks || null),
             verification_status: st === 'Present' ? 'Verified Served' : 'Pending'
         };
     });
 
     const payload = {
-        hearing_id: stageWorkspaceState.currentHearingId,
-        presider_attendance: presiderStatus,
-        substitute_presider_id: presiderStatus === 'Absent' ? Number(substituteId) : null,
-        substitute_reason: presiderStatus === 'Absent' ? substituteReason : null,
-        parties_consent_to_substitute: presiderStatus === 'Absent' && consentVal ? 1 : 0,
+        hearing_id: hearingId,
+        scheduled_datetime: schedDate ? schedDate.replace('T', ' ') + ':00' : null,
+        actual_start_time: actualStart || null,
+        delay_remarks: delayRemarks,
+        attendance_notes: delayRemarks,
+        presider_attendance: 'Present',
         complainant_attendance: compAtt,
-        complainant_explanation: compReason,
+        complainant_explanation: compAtt === 'Absent' ? delayRemarks : '',
         respondent_attendance: respAtt,
-        respondent_explanation: respReason,
-        parties: records
+        respondent_explanation: respAtt === 'Absent' ? delayRemarks : '',
+        parties: partyRecords
     };
 
     try {
@@ -3103,17 +3132,151 @@ async function submitAttendance(e) {
         const json = await res.json();
         if (json.success) {
             notifyUser('Attendance records saved successfully.', 'success');
+            if (window.AgapDraftManager) {
+                const draftKey = `agap_draft_${stageWorkspaceState.mode}_case_${stageWorkspaceState.caseId}_hearing_${hearingId}`;
+                window.AgapDraftManager.markSubmitted(draftKey);
+                window.AgapDraftManager.setIndicator('wsDraftIndicator', 'synced', '✓ Attendance submitted');
+            }
             closeAttendanceModal();
             await loadStageData();
         } else {
             notifyUser(json.message || 'Unable to save attendance.', 'error');
         }
     } catch (err) {
-        console.error('submitAttendance error:', err);
+        console.error('saveStreamlinedAttendance error:', err);
         notifyUser('Network error saving attendance.', 'error');
     } finally {
-        if (btn) btn.disabled = false;
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Save Attendance';
+        }
     }
+}
+window.saveStreamlinedAttendance = saveStreamlinedAttendance;
+
+function renderAttendanceModalForm(data) {
+    const isCard = !!document.getElementById('wsAttCardBody');
+    const bodyEl = document.getElementById('wsAttCardBody') || document.getElementById('wsAttModalBody');
+    if (!bodyEl) return;
+
+    stageWorkspaceState.lastAttendanceData = data;
+    const hearing = data.hearing || data;
+    const parties = data.parties || [];
+    const hearingId = Number(hearing.hearing_id || stageWorkspaceState.currentHearingId);
+
+    // Format initial values
+    const scheduledVal = formatForDatetimeLocal(hearing.hearing_date);
+    const actualStartVal = formatForTimeInput(hearing.actual_start_time || '');
+    const delayRemarksVal = hearing.attendance_notes || '';
+    const isSaved = Boolean(hearing.attendance_recorded_at);
+
+    let compIsPresent = true;
+    let respIsPresent = true;
+    if (hearing.complainant_attendance) {
+        compIsPresent = (hearing.complainant_attendance !== 'Absent');
+    }
+    if (hearing.respondent_attendance) {
+        respIsPresent = (hearing.respondent_attendance !== 'Absent');
+    }
+
+    bodyEl.innerHTML = `
+        <div class="streamlined-attendance-container" style="display: flex; flex-direction: column; gap: 16px;">
+            ${isSaved ? `
+                <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 6px; padding: 10px 14px; font-size: 0.84rem; color: #166534; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                    <span style="font-weight: 600;">✓ Attendance details recorded and saved in database${hearing.attendance_recorded_at ? ' (' + formatDateTimeReadable(hearing.attendance_recorded_at) + ')' : ''}</span>
+                    <span style="font-size: 0.78rem; background: #dcfce7; padding: 2px 8px; border-radius: 9999px; font-weight: 700;">STATUS: ${escapeHtml(hearing.status || 'Attendance Recorded')}</span>
+                </div>
+            ` : ''}
+            <!-- Row 1: Scheduled Date/Time & Actual Start Time -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div>
+                    <label for="attScheduledDateTime" style="display: block; font-weight: 600; color: #0f172a; font-size: 0.88rem; margin-bottom: 6px;">
+                        Petsa at Takdang Oras (Scheduled Date &amp; Time) <span style="color: #dc2626;">*</span>
+                    </label>
+                    <input type="datetime-local" id="attScheduledDateTime" value="${escapeHtml(scheduledVal)}" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; font-size: 0.88rem; box-sizing: border-box; background: #fff; font-family: inherit; color: #1e293b;">
+                </div>
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label for="attActualStartTime" style="font-weight: 600; color: #0f172a; font-size: 0.88rem;">
+                            Aktwal na Oras ng Simula (Actual Start Time)
+                        </label>
+                        <a href="javascript:void(0)" onclick="setAttendanceActualStartTimeNow()" class="time-now-link" style="color: #2563eb; font-weight: 600; font-size: 0.84rem; text-decoration: none;">
+                            Oras Ngayon (Now)
+                        </a>
+                    </div>
+                    <input type="time" id="attActualStartTime" value="${escapeHtml(actualStartVal)}" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; font-size: 0.88rem; box-sizing: border-box; background: #fff; font-family: inherit; color: #1e293b;">
+                </div>
+            </div>
+
+            <!-- Row 2: Session Delay Remarks -->
+            <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <label for="attDelayRemarks" style="font-weight: 600; color: #0f172a; font-size: 0.88rem;">
+                        Puna sa Oras ng Simula / Dahilan ng Pagkaantala (Session Delay Remarks)
+                    </label>
+                    <span style="color: #64748b; font-size: 0.8rem;">
+                        (Kung sakaling late nag-umpisa ang session)
+                    </span>
+                </div>
+                <textarea id="attDelayRemarks" rows="2" placeholder="Halimbawa: Naantala ang simula dahil may naunang kaso sa Lupon Court Room. Present ang mga partido." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 12px; font-size: 0.86rem; box-sizing: border-box; font-family: inherit; resize: vertical; line-height: 1.45; color: #1e293b;">${escapeHtml(delayRemarksVal)}</textarea>
+                
+                <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
+                    <span style="font-size: 0.8rem; color: #64748b; font-weight: 500;">I-click para ilagay:</span>
+                    <button type="button" class="delay-helper-pill" onclick="appendDelayRemark('Naunang kaso sa Court Room')">
+                        • Naunang kaso sa Court Room
+                    </button>
+                    <button type="button" class="delay-helper-pill pill-warning" onclick="appendDelayRemark('Nahuli ang panig')">
+                        • Nahuli ang panig
+                    </button>
+                    <button type="button" class="delay-helper-pill pill-success" onclick="appendDelayRemark('Nasa oras')">
+                        • Nasa oras
+                    </button>
+                </div>
+            </div>
+
+            <!-- Row 3: Party Attendance (Pagdalo ng Magkabilang Panig) -->
+            <div class="party-attendance-box">
+                <h4>
+                    Pagdalo ng Magkabilang Panig (Party Attendance) <span style="color: #dc2626;">*</span>
+                </h4>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div>
+                        <span class="party-att-col-title">Nagpaanyaya (Complainant):</span>
+                        <div style="display: flex; gap: 16px; align-items: center;">
+                            <label class="party-att-radio-label present">
+                                <input type="radio" name="att_comp_attendance" value="Present" ${compIsPresent ? 'checked' : ''} style="accent-color: #16a34a; width: 16px; height: 16px;">
+                                <span>Dumalo (Present)</span>
+                            </label>
+                            <label class="party-att-radio-label absent">
+                                <input type="radio" name="att_comp_attendance" value="Absent" ${!compIsPresent ? 'checked' : ''} style="accent-color: #dc2626; width: 16px; height: 16px;">
+                                <span>Hindi Dumalo (Absent)</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div>
+                        <span class="party-att-col-title">Inanyayahan (Respondent):</span>
+                        <div style="display: flex; gap: 16px; align-items: center;">
+                            <label class="party-att-radio-label present">
+                                <input type="radio" name="att_resp_attendance" value="Present" ${respIsPresent ? 'checked' : ''} style="accent-color: #16a34a; width: 16px; height: 16px;">
+                                <span>Dumalo (Present)</span>
+                            </label>
+                            <label class="party-att-radio-label absent">
+                                <input type="radio" name="att_resp_attendance" value="Absent" ${!respIsPresent ? 'checked' : ''} style="accent-color: #dc2626; width: 16px; height: 16px;">
+                                <span>Hindi Dumalo (Absent)</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Save Attendance Button -->
+            <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+                <button type="button" class="btn-create" id="btnSaveAttendanceStreamlined" onclick="saveStreamlinedAttendance()" style="padding: 8px 22px; font-size: 0.88rem; font-weight: 600; background: #0f172a; color: #fff; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                    ${isSaved ? 'Update Attendance' : 'Save Attendance'}
+                </button>
+            </div>
+        </div>
+    `;
 }
 
 /**
@@ -3265,17 +3428,18 @@ async function sendStageAudioToGemini(audioBlob) {
     }
 }
 
-function triggerStageNotesUpload() {
-    const fileInput = document.getElementById('stageNotesFileInput');
+function triggerStageNotesUpload(hearingId = null) {
+    const fileInput = getMinutesField('stageNotesFileInput', hearingId);
     if (fileInput) fileInput.click();
 }
+window.triggerStageNotesUpload = triggerStageNotesUpload;
 
-async function handleStageNotesFileSelected(input) {
+async function handleStageNotesFileSelected(input, hearingId = null) {
     if (!input.files || !input.files[0]) return;
     const file = input.files[0];
-    const statusBanner = document.getElementById('stageAiStatusBanner');
-    const uploadBtn = document.getElementById('btnStageUploadNotes');
-    const consentBox = document.getElementById('stageAiConsentCheckbox');
+    const statusBanner = getMinutesField('stageAiStatusBanner', hearingId);
+    const uploadBtn = getMinutesField('btnStageUploadNotes', hearingId);
+    const consentBox = getMinutesField('stageAiConsentCheckbox', hearingId);
 
     if (consentBox && !consentBox.checked) {
         if (confirm('Google Gemini AI is used to extract text from handwritten/printed notes. Do you confirm consent to send this document to Google Gemini?')) {
@@ -3310,7 +3474,7 @@ async function handleStageNotesFileSelected(input) {
 
         const result = await response.json();
         if (result.success && result.text) {
-            appendGeminiTextToMinutes(result.text, 'OCR Notes Extract');
+            appendGeminiTextToMinutes(result.text, 'Notes OCR Extraction', hearingId);
             if (statusBanner) {
                 statusBanner.style.display = 'block';
                 statusBanner.innerHTML = '<strong>Notes extracted and appended successfully.</strong>';
@@ -3319,11 +3483,11 @@ async function handleStageNotesFileSelected(input) {
         } else {
             if (statusBanner) {
                 statusBanner.style.display = 'block';
-                statusBanner.innerHTML = `<span style="color:#b91c1c;">OCR error: ${escapeHtml(result.message || 'Failed to extract text from image.')}</span>`;
+                statusBanner.innerHTML = `<span style="color:#b91c1c;">OCR error: ${escapeHtml(result.message || 'Failed to extract text.')}</span>`;
             }
         }
     } catch (error) {
-        console.error('OCR error:', error);
+        console.error('OCR Extraction error:', error);
         if (statusBanner) {
             statusBanner.style.display = 'block';
             statusBanner.innerHTML = `<span style="color:#b91c1c;">Network error during OCR: ${escapeHtml(error.message)}</span>`;
@@ -3333,9 +3497,10 @@ async function handleStageNotesFileSelected(input) {
         input.value = '';
     }
 }
+window.handleStageNotesFileSelected = handleStageNotesFileSelected;
 
-function appendGeminiTextToMinutes(newText, sourceLabel) {
-    const textarea = document.getElementById('session_minutes');
+function appendGeminiTextToMinutes(newText, sourceLabel, hearingId = null) {
+    const textarea = getMinutesField('session_minutes', hearingId);
     if (!textarea) return;
 
     const trimmed = newText.trim();
@@ -3353,43 +3518,38 @@ function appendGeminiTextToMinutes(newText, sourceLabel) {
     textarea.scrollTop = textarea.scrollHeight;
 }
 
-/**
- * Retrieves the current minutes data for a hearing (falling back to live form if active)
- */
 function getActiveMinutesSnapshot(hearingId) {
     const session = stageWorkspaceState.sessions.find(s => Number(s.hearing_id) === Number(hearingId)) || {};
-    const isActive = Number(document.getElementById('minHearingId')?.value) === Number(hearingId);
+    const form = document.getElementById(`inlineMinutesForm_${hearingId}`) || document.getElementById('inlineMinutesForm');
 
-    if (isActive) {
+    if (form) {
+        const getVal = (baseId) => (document.getElementById(`${baseId}_${hearingId}`) || document.getElementById(baseId))?.value;
+        const getChecked = (baseId) => (document.getElementById(`${baseId}_${hearingId}`) || document.getElementById(baseId))?.checked ? 1 : 0;
+
         return {
             ...session,
-            opening_conducted: document.getElementById('minOpening')?.checked ? 1 : 0,
-            identity_verified: document.getElementById('minIdentity')?.checked ? 1 : 0,
-            complaint_reviewed: document.getElementById('minReviewed')?.checked ? 1 : 0,
-            complainant_statement: document.getElementById('minCompStmt')?.value || session.complainant_statement || '',
-            respondent_statement: document.getElementById('minRespStmt')?.value || session.respondent_statement || '',
-            main_dispute_identified: document.getElementById('minDisputeSummary')?.value || session.main_dispute_identified || '',
-            agenda_topics: document.getElementById('minAgenda')?.value || session.agenda_topics || '',
-            new_proposal: document.getElementById('minNewProposal')?.value || session.new_proposal || '',
-            counteroffer: document.getElementById('minCounterOffer')?.value || session.counteroffer || '',
-            caucus_conducted: document.getElementById('minCaucus')?.checked ? 1 : 0,
-            caucus_notes: document.getElementById('minCaucusNotes')?.value || session.caucus_notes || '',
-            agreements_action_items: document.getElementById('minAgreements')?.value || session.agreements_action_items || '',
-            unresolved_issues: document.getElementById('minUnresolved')?.value || session.unresolved_issues || '',
-            session_outcome: document.getElementById('minOutcome')?.value || session.session_outcome || 'Pending',
-            actual_end_time: document.getElementById('minActualEndTime')?.value || session.actual_end_time || null,
-            outcome_remarks: document.getElementById('minOutcomeRemarks')?.value || session.outcome_remarks || '',
-            settlement_discussion_notes: document.getElementById('session_minutes')?.value || session.settlement_discussion_notes || ''
+            opening_conducted: getChecked('minOpening'),
+            identity_verified: getChecked('minIdentity'),
+            complaint_reviewed: getChecked('minReviewed'),
+            complainant_statement: getVal('minCompStmt') || session.complainant_statement || '',
+            respondent_statement: getVal('minRespStmt') || session.respondent_statement || '',
+            main_dispute_identified: getVal('minDisputeSummary') || session.main_dispute_identified || '',
+            agenda_topics: getVal('minAgenda') || session.agenda_topics || '',
+            new_proposal: getVal('minNewProposal') || session.new_proposal || '',
+            counteroffer: getVal('minCounterOffer') || session.counteroffer || '',
+            caucus_conducted: getChecked('minCaucus'),
+            caucus_notes: getVal('minCaucusNotes') || session.caucus_notes || '',
+            agreements_action_items: getVal('minAgreements') || session.agreements_action_items || '',
+            unresolved_issues: getVal('minUnresolved') || session.unresolved_issues || '',
+            session_outcome: getVal('minOutcome') || session.session_outcome || 'Pending',
+            actual_end_time: getVal('minActualEndTime') || session.actual_end_time || null,
+            outcome_remarks: getVal('minOutcomeRemarks') || session.outcome_remarks || '',
+            settlement_discussion_notes: getVal('session_minutes') || session.settlement_discussion_notes || ''
         };
     }
     return session;
 }
 
-/**
- * -----------------------------------------------------------------------------
- * MODAL: Preview Formatted Minutes
- * -----------------------------------------------------------------------------
- */
 function openPreviewMinutesModal(hearingId) {
     const session = stageWorkspaceState.sessions.find(s => Number(s.hearing_id) === Number(hearingId));
     const caseData = stageWorkspaceState.stageData?.case || {};
@@ -3483,81 +3643,133 @@ function closePreviewMinutesModal() {
  * -----------------------------------------------------------------------------
  */
 function printHearingMinutes(hearingId) {
-    const session = stageWorkspaceState.sessions.find(s => Number(s.hearing_id) === Number(hearingId));
+    const session = stageWorkspaceState.sessions.find(s => Number(s.hearing_id) === Number(hearingId)) || {};
     const caseData = stageWorkspaceState.stageData?.case || {};
     const min = getActiveMinutesSnapshot(hearingId);
+    const sessionLabel = getStageSessionOrdinalLabel(stageWorkspaceState.mode || stageWorkspaceState.stageType, session.session_index || 1);
+
+    const compAtt = session.complainant_attendance || 'Present';
+    const respAtt = session.respondent_attendance || 'Present';
+    const presiderName = session.substitute_presider_name || session.presiding_officer_name || (stageWorkspaceState.mode === 'Conciliation' ? 'Pangkat Chairman' : 'Hon. Akiko Lynne Centeno');
 
     const printWindow = window.open('', '_blank', 'width=850,height=950');
+    if (!printWindow) {
+        alert('Please allow popups to print the minutes.');
+        return;
+    }
+
     printWindow.document.write(`
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Minutes of Meeting - Case #${escapeHtml(caseData.case_number)}</title>
+            <title>Minutes of Meeting - Case #${escapeHtml(caseData.case_number || '')}</title>
             <style>
-                body { font-family: 'Segoe UI', Arial, sans-serif; padding: 40px; color: #1e293b; line-height: 1.6; }
-                .header { text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 16px; margin-bottom: 24px; }
-                .header h2 { margin: 0; font-size: 1.3rem; text-transform: uppercase; }
-                .header h3 { margin: 4px 0; font-size: 1.1rem; color: #475569; }
-                .meta-table { width: 100%; margin-bottom: 20px; border-collapse: collapse; }
-                .meta-table td { padding: 6px 0; font-size: 0.92rem; }
-                .section-title { font-size: 0.96rem; font-weight: bold; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; margin-top: 18px; color: #0f172a; }
-                .content-box { margin-top: 6px; font-size: 0.9rem; white-space: pre-wrap; line-height: 1.5; }
-                .footer { margin-top: 40px; display: flex; justify-content: space-between; font-size: 0.88rem; }
-                @media print { body { padding: 0; } }
+                @page { size: A4 portrait; margin: 20mm; }
+                body { font-family: 'Times New Roman', Times, serif; color: #000; margin: 0; padding: 25px 35px; line-height: 1.5; font-size: 11pt; }
+                .letterhead { text-align: center; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 20px; }
+                .letterhead p { margin: 2px 0; font-size: 10pt; }
+                .letterhead h2 { margin: 6px 0 2px; font-size: 14pt; letter-spacing: 1px; text-transform: uppercase; }
+                .letterhead h3 { margin: 2px 0; font-size: 12pt; font-weight: 700; text-transform: uppercase; color: #1e3a8a; }
+                .title-block { text-align: center; margin: 18px 0 16px; }
+                .title-block h1 { margin: 0; font-size: 13pt; text-transform: uppercase; text-decoration: underline; font-weight: bold; }
+                .title-block span { font-size: 10.5pt; font-style: italic; }
+                .meta-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10.5pt; }
+                .meta-table td { padding: 4px 6px; vertical-align: top; }
+                .attendance-table { width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 10pt; border: 1px solid #000; }
+                .attendance-table th, .attendance-table td { border: 1px solid #000; padding: 5px 8px; text-align: left; }
+                .attendance-table th { background: #f1f5f9; font-weight: bold; text-transform: uppercase; font-size: 9.5pt; }
+                .section-heading { font-weight: bold; font-size: 11pt; text-transform: uppercase; margin: 16px 0 6px; border-bottom: 1px solid #94a3b8; padding-bottom: 2px; }
+                .section-body { margin-bottom: 14px; text-align: justify; white-space: pre-wrap; font-size: 10.5pt; line-height: 1.55; }
+                .signatures { width: 100%; margin-top: 36px; border-collapse: collapse; font-size: 10pt; page-break-inside: avoid; }
+                .signatures td { vertical-align: top; text-align: center; width: 33.33%; padding: 0 10px; }
+                .sig-line { margin-top: 45px; border-top: 1px solid #000; padding-top: 4px; font-weight: bold; text-transform: uppercase; }
+                @media print {
+                    body { padding: 0; }
+                    .no-print { display: none !important; }
+                }
             </style>
         </head>
         <body>
-            <div class="header">
-                <h2>Republic of the Philippines · Barangay Tumana</h2>
-                <h3>Lupong Tagapamayapa · Official Session Minutes</h3>
+            <div class="letterhead">
+                <p>Republic of the Philippines</p>
+                <p>National Capital Judicial Region</p>
+                <p>City of Marikina</p>
+                <h2>Barangay Tumana</h2>
+                <h3>Tanggapan ng Lupong Tagapamayapa</h3>
             </div>
+
+            <div class="title-block">
+                <h1>Katitikan ng Pagdinig (Minutes of the Meeting)</h1>
+                <span>${escapeHtml(sessionLabel)} &bull; ${formatDateTimeReadable(session?.hearing_date)}</span>
+            </div>
+
             <table class="meta-table">
                 <tr>
-                    <td><strong>Case Number:</strong> Case #${escapeHtml(caseData.case_number || 'N/A')}</td>
-                    <td><strong>Hearing Date &amp; Time:</strong> ${formatDateTimeReadable(session?.hearing_date)}</td>
+                    <td style="width: 50%;"><strong>Usaping Barangay Blg. (Case No.):</strong> KP #${escapeHtml(caseData.case_number || 'N/A')}</td>
+                    <td style="width: 50%;"><strong>Petsa at Oras (Date &amp; Time):</strong> ${formatDateTimeReadable(session?.hearing_date)}</td>
                 </tr>
                 <tr>
-                    <td><strong>Complainant(s):</strong> ${escapeHtml(caseData.complainant_names || '—')}</td>
-                    <td><strong>Venue:</strong> ${escapeHtml(session?.venue || 'Barangay Hall')}</td>
+                    <td><strong>May Sumbong (Complainant/s):</strong> ${escapeHtml(caseData.complainant_names || '—')}</td>
+                    <td><strong>Lugar ng Pagpupulong (Venue):</strong> ${escapeHtml(session?.venue || 'Tanggapan ng Barangay Tumana')}</td>
                 </tr>
                 <tr>
-                    <td><strong>Respondent(s):</strong> ${escapeHtml(caseData.respondent_names || '—')}</td>
-                    <td><strong>Session:</strong> ${escapeHtml(session?.session_number || 'Hearing Session')}</td>
+                    <td><strong>Ipinagsumbong (Respondent/s):</strong> ${escapeHtml(caseData.respondent_names || '—')}</td>
+                    <td><strong>Ukol Sa (Complaint Title / Nature):</strong> ${escapeHtml(caseData.complaint_title || min.main_dispute_identified || 'Usaping Pambarangay')}</td>
                 </tr>
             </table>
 
-            <div class="section-title">1. Procedural Opening &amp; Identity Verification</div>
-            <div class="content-box">Opening Conducted: ${min.opening_conducted ? 'Yes' : 'No'} | Parties Verified: ${min.identity_verified ? 'Yes' : 'No'} | Complaint Reviewed: ${min.complaint_reviewed ? 'Yes' : 'No'}</div>
+            <table class="attendance-table">
+                <thead>
+                    <tr>
+                        <th style="width: 25%;">Panig (Party)</th>
+                        <th style="width: 45%;">Pangalan (Name)</th>
+                        <th style="width: 30%;">Katayuan (Appearance)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Punong Barangay / Tagapangulo</strong></td>
+                        <td>${escapeHtml(presiderName)}</td>
+                        <td>Dumalo (Present)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Nagsusumbong (Complainant)</strong></td>
+                        <td>${escapeHtml(caseData.complainant_names || '—')}</td>
+                        <td>${compAtt === 'Present' ? 'Dumalo (Present)' : 'Hindi Dumalo (Absent)'}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Ipinagsusumbong (Respondent)</strong></td>
+                        <td>${escapeHtml(caseData.respondent_names || '—')}</td>
+                        <td>${respAtt === 'Present' ? 'Dumalo (Present)' : 'Hindi Dumalo (Absent)'}</td>
+                    </tr>
+                </tbody>
+            </table>
 
-            <div class="section-title">2. Agenda Topics &amp; Core Dispute</div>
-            <div class="content-box"><strong>Main Dispute:</strong> ${escapeHtml(min.main_dispute_identified || 'None recorded')}\n<strong>Agenda Discussed:</strong> ${escapeHtml(min.agenda_topics || 'None recorded')}</div>
+            <div class="section-heading">I. Salaysay at Buod ng Usapan (Proceedings &amp; Discussion)</div>
+            <div class="section-body">${escapeHtml(min.settlement_discussion_notes || min.main_dispute_identified || 'Walang naitalang buod ng talakayan.')}</div>
 
-            <div class="section-title">3. Statements of Parties</div>
-            <div class="content-box"><strong>Complainant:</strong> ${escapeHtml(min.complainant_statement || 'None recorded')}\n\n<strong>Respondent:</strong> ${escapeHtml(min.respondent_statement || 'None recorded')}</div>
+            <div class="section-heading">II. Mga Mungkahi at Napagkasunduang Kondisyon (Agreed Terms &amp; Settlement)</div>
+            <div class="section-body">${escapeHtml(min.agreements_action_items || 'Walang pormal na kasunduang napagtibay sa sesyong ito.')}</div>
 
-            <div class="section-title">4. Settlement Proposals, Offers &amp; Caucus</div>
-            <div class="content-box"><strong>Proposal / Offer:</strong> ${escapeHtml(min.new_proposal || 'None submitted')}\n<strong>Counteroffer / Response:</strong> ${escapeHtml(min.counteroffer || 'None recorded')}\n<strong>Caucus Held:</strong> ${min.caucus_conducted ? 'Yes - ' + escapeHtml(min.caucus_notes || 'Confidential') : 'No'}</div>
+            <div class="section-heading">III. Kinalabasan ng Pagdinig at Susunod na Hakbang (Session Outcome)</div>
+            <div class="section-body"><strong>Kinalabasan (Outcome):</strong> ${escapeHtml(min.session_outcome || 'Pending Evaluation')}${min.outcome_remarks ? ' — ' + escapeHtml(min.outcome_remarks) : ''}${min.actual_end_time ? ' (Natapos: ' + formatDateTimeReadable(min.actual_end_time) + ')' : ''}</div>
 
-            <div class="section-title">5. Formal Proceedings / Session Record</div>
-            <div class="content-box">${escapeHtml(min.settlement_discussion_notes || 'None recorded')}</div>
-
-            <div class="section-title">6. Agreed Terms &amp; Procedural Outcome</div>
-            <div class="content-box"><strong>Agreements / Action Items:</strong> ${escapeHtml(min.agreements_action_items || 'None')}\n<strong>Unresolved Issues:</strong> ${escapeHtml(min.unresolved_issues || 'None')}\n<strong>Session Outcome:</strong> ${escapeHtml(min.session_outcome || 'Pending')}${min.outcome_remarks ? ' (' + escapeHtml(min.outcome_remarks) + ')' : ''}</div>
-
-            <div class="footer">
-                <div>
-                    <br><br>
-                    ___________________________<br>
-                    <strong>Prepared By:</strong><br>
-                    ${escapeHtml(min.recorded_by_name || 'Lupon Clerk')}
-                </div>
-                <div>
-                    <br><br>
-                    ___________________________<br>
-                    <strong>Approved / Presiding Officer:</strong><br>
-                    ${escapeHtml(session?.presider_name || 'Punong Barangay')}
-                </div>
-            </div>
+            <table class="signatures">
+                <tr>
+                    <td>
+                        <div class="sig-line">${escapeHtml(caseData.complainant_names || 'May Sumbong')}</div>
+                        <span>Lagda ng Nagsumbong</span>
+                    </td>
+                    <td>
+                        <div class="sig-line">${escapeHtml(caseData.respondent_names || 'Ipinagsumbong')}</div>
+                        <span>Lagda ng Ipinagsumbong</span>
+                    </td>
+                    <td>
+                        <div class="sig-line">${escapeHtml(presiderName)}</div>
+                        <span>${stageWorkspaceState.mode === 'Conciliation' ? 'Pangkat Chairman' : 'Punong Barangay / Tagapamagitan'}</span>
+                    </td>
+                </tr>
+            </table>
         </body>
         </html>
     `);
@@ -4436,6 +4648,7 @@ async function loadTransmittalCard(caseId) {
 }
 
 function openPreviewTransmittalModal(caseId) {
+    if (typeof unlockOutcomesTab === 'function') unlockOutcomesTab(caseId);
     const modal = document.getElementById('previewTransmittalModal');
     const iframe = document.getElementById('transmittalLetterPreviewIframe');
     const downloadBtn = document.getElementById('btnDownloadTransmittalPdf');
@@ -4580,3 +4793,23 @@ window.openRecordTransmittalModal = openRecordTransmittalModal;
 window.closeRecordTransmittalModal = closeRecordTransmittalModal;
 window.handleRecordTransmittalSubmit = handleRecordTransmittalSubmit;
 
+
+function openPrintBlankMinutes(caseId, complaintId) {
+    const csId = caseId || stageWorkspaceState.caseId || 0;
+    const cmpId = complaintId || stageWorkspaceState.complaintId || 0;
+    window.open(`../../../frontend/pages/complaints/print-blank-minutes.php?case_id=${encodeURIComponent(csId)}&id=${encodeURIComponent(cmpId)}`, '_blank');
+}
+window.openPrintBlankMinutes = openPrintBlankMinutes;
+
+function openPrintTransmittal(caseId) {
+    const csId = caseId || stageWorkspaceState.caseId || 0;
+    const cmpId = stageWorkspaceState.complaintId || 0;
+    window.open(`../../../frontend/pages/cases/transmittal-print.php?case_id=${encodeURIComponent(csId)}&complaint_id=${encodeURIComponent(cmpId)}`, '_blank');
+}
+window.openPrintTransmittal = openPrintTransmittal;
+
+window.openEmbeddedScheduleModal = function(stageType = 'Mediation') {
+    if (typeof openScheduleModal === 'function') {
+        openScheduleModal(null, stageType);
+    }
+};

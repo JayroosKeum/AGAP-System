@@ -55,9 +55,18 @@ include '../../layouts/header.php';
     }
     .overview-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-        gap: 14px;
-        margin-bottom: 24px;
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(0, 1fr);
+        gap: 10px;
+        margin-bottom: 20px;
+        width: 100%;
+    }
+    @media (max-width: 1100px) {
+        .overview-grid {
+            overflow-x: auto;
+            grid-auto-columns: minmax(150px, 1fr);
+            padding-bottom: 6px;
+        }
     }
     .overview-stat-card {
         background: #fff;
@@ -144,19 +153,19 @@ include '../../layouts/header.php';
 
             <!-- Page Header -->
             <div class="page-header" style="padding: 0 0 20px 0; margin-bottom: 20px; border-bottom: 1px solid #e2e8f0;">
-                <div>
-                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
-                        <span style="font-size: 0.74rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; background: #e0e7ff; color: #3730a3; padding: 3px 8px; border-radius: 4px;">
-                            BINDING ARBITRATION
-                        </span>
-                        <h1 id="wsStageTitle" style="margin: 0; font-size: 1.45rem; color: #0f172a; font-weight: 800;">
-                            Binding Arbitration
-                        </h1>
-                        <span id="wsStageStatusBadge" class="badge-stage" style="font-size: 0.78rem; padding: 3px 9px; border-radius: 9999px; font-weight: 700;">
-                            Loading...
-                        </span>
-                    </div>
-                    <p id="wsCaseSubtext" style="margin: 0; font-size: 0.86rem; color: #64748b;">
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <span style="font-size: 0.74rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; background: #e0e7ff; color: #3730a3; padding: 3px 8px; border-radius: 4px;">
+                        BINDING ARBITRATION
+                    </span>
+                    <h1 id="wsStageTitle" style="margin: 0; font-size: 1.45rem; color: #0f172a; font-weight: 800;">
+                        Arbitration
+                    </h1>
+                    <span id="wsStageStatusBadge" class="badge-stage" style="font-size: 0.78rem; padding: 3px 9px; border-radius: 9999px; font-weight: 700;">
+                        Loading...
+                    </span>
+                    <span id="wsDraftIndicator" class="agap-draft-indicator state-idle">✓ Saved</span>
+                    <span style="color: #cbd5e1; margin: 0 2px;">•</span>
+                    <p id="wsCaseSubtext" style="margin: 0; font-size: 0.86rem; color: #64748b; display: inline-flex; align-items: center; gap: 4px;">
                         Case Loading...
                     </p>
                 </div>
@@ -164,37 +173,13 @@ include '../../layouts/header.php';
                     <button type="button" class="btn-create" onclick="openScheduleModal()" style="font-size: 0.82rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px;">
                         Schedule Arbitration Hearing
                     </button>
-                    <button type="button" class="btn-secondary" onclick="openRecordOutcomeModal()" style="font-size: 0.82rem; padding: 7px 12px; display: inline-flex; align-items: center; gap: 5px;">
-                        Record Arbitration Outcome
-                    </button>
-                    <a href="../cases/case-list.php?assign_case_id=<?php echo $caseId; ?>#caseAssignments" class="btn-secondary" style="font-size: 0.82rem; padding: 7px 12px; display: inline-flex; align-items: center; gap: 5px; text-decoration: none;" title="Manage Lupon Team">
-                        Cases &amp; Assignments &rarr;
+                    <a id="wsViewArbitrationAwardLink" href="../documents/arbitration-award.php?case_id=<?php echo $caseId; ?>" class="btn-secondary" style="font-size: 0.82rem; padding: 7px 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
+                        Arbitration Award &rarr;
                     </a>
                 </div>
             </div>
 
-            <!-- LOCKED GATE STATE (If Arbitration stage is locked) -->
-            <div id="stageLockedGate" style="display: none;">
-                <div class="locked-gate-banner">
-                    
-                    <h2 style="margin: 0 0 10px; font-size: 1.25rem; color: #0f172a; font-weight: 700;">
-                        Arbitration Stage is Locked
-                    </h2>
-                    <p style="margin: 0 0 20px; font-size: 0.92rem; color: #64748b; line-height: 1.6;">
-                        Arbitration is locked. Under Katarungang Pambarangay rules (Sec 413, RA 7160), parties must first execute <strong>KP Form 14 (Agreement for Arbitration)</strong> to enter binding arbitration.
-                    </p>
-                    <div style="display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;">
-                        <a href="mediation-workspace.php?case_id=<?php echo $caseId; ?>&complaint_id=<?php echo $complaintId; ?>" class="btn-create" style="font-size: 0.85rem; padding: 8px 18px; text-decoration: none;">
-                            Go to Mediation Workspace &rarr;
-                        </a>
-                        <a href="../complaints/complaint-details.php?id=<?php echo $complaintId; ?>" class="btn-secondary" style="font-size: 0.85rem; padding: 8px 18px; text-decoration: none;">
-                            Back to Complaint Details
-                        </a>
-                    </div>
-                </div>
-            </div>
-
-            <!-- UNLOCKED WORKSPACE CONTENT -->
+            <!-- Content Container -->
             <div id="stageWorkspaceContent">
                 <!-- Section 1: Stage Overview -->
                 <div class="overview-grid" id="wsStageOverviewGrid">
@@ -327,6 +312,7 @@ include '../../layouts/header.php';
     </div>
 </div>
 
+<?php include __DIR__ . '/../../layouts/kp-form-preview-modal.php'; ?>
 <script src="../../assets/js/stage-workspace.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/stage-workspace.js'); ?>"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function() {

@@ -22,7 +22,7 @@ class HearingAttendance
         $stmt = $this->conn->prepare(
             "SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.venue, h.remarks AS hearing_remarks,
                     h.presiding_officer_id, h.substitute_presider_id, h.substitute_reason, h.parties_consent_to_substitute,
-                    h.complainant_attendance, h.respondent_attendance, h.attendance_recorded_at, h.attendance_notes,
+                    h.complainant_attendance, h.respondent_attendance, h.attendance_recorded_at, h.attendance_notes, h.actual_start_time,
                     TRIM(CONCAT_WS(' ', po.first_name, po.middle_name, po.last_name)) AS presiding_officer_name,
                     TRIM(CONCAT_WS(' ', sp.first_name, sp.middle_name, sp.last_name)) AS substitute_presider_name,
                     c.case_number, c.case_status, c.docket_date, c.complaint_id,

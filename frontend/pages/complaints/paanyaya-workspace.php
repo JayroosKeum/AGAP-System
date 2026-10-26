@@ -673,12 +673,7 @@ include '../../layouts/header.php';
                 <input type="text" id="secondVenue" name="venue" value="Tanggapan ng Barangay Tumana" style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; width: 100%;">
             </div>
 
-            <div class="form-group" style="margin-top: 10px;">
-                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.88rem; color: #1e293b; background: #f8fafc; padding: 8px 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
-                    <input type="checkbox" name="has_e_signature" value="1" checked style="width: 16px; height: 16px;">
-                    <span style="font-weight: 600;">Embed Punong Barangay (Hon. Akiko Lynne Centeno) calligraphic e-signature</span>
-                </label>
-            </div>
+            <input type="hidden" name="has_e_signature" value="1">
 
             <div class="form-group" style="margin-top: 10px;">
                 <label for="secondSalaysay" style="font-weight: 700; font-size: 0.85rem;">Salaysay / Reason for 2nd Invitation (Optional override)</label>

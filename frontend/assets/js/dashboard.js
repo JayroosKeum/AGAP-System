@@ -126,6 +126,36 @@ document.addEventListener('DOMContentLoaded', () => {
         content.append(heading, description);
         item.appendChild(content);
 
+        const actions = document.createElement('div');
+        actions.style.display = 'flex';
+        actions.style.alignItems = 'center';
+        actions.style.gap = '8px';
+        actions.style.flexWrap = 'wrap';
+
+        const rawStatus = (hearing.queue_status || hearing.status || 'Scheduled').trim();
+        const normStatus = rawStatus.toLowerCase().replace(/[\s-]+/g, '_');
+        
+        let badgeBg = '#e0f2fe', badgeColor = '#0369a1', badgeBorder = '#bae6fd', badgeLabel = rawStatus;
+
+        if (normStatus === 'in_session') {
+            badgeBg = '#dbeafe'; badgeColor = '#1e40af'; badgeBorder = '#93c5fd'; badgeLabel = 'In_Session';
+        } else if (normStatus === 'ready' || normStatus === 'ready_for_hearing') {
+            badgeBg = '#dcfce7'; badgeColor = '#15803d'; badgeBorder = '#86efac'; badgeLabel = 'Ready';
+        } else if (normStatus === 'waiting' || normStatus === 'waiting_room') {
+            badgeBg = '#f1f5f9'; badgeColor = '#475569'; badgeBorder = '#cbd5e1'; badgeLabel = 'Waiting';
+        } else if (normStatus === 'standby' || normStatus === 'on_standby') {
+            badgeBg = '#fef3c7'; badgeColor = '#b45309'; badgeBorder = '#fde68a'; badgeLabel = 'Standby';
+        } else if (normStatus === 'concluded' || normStatus === 'completed') {
+            badgeBg = '#f3e8ff'; badgeColor = '#7e22ce'; badgeBorder = '#d8b4fe'; badgeLabel = 'Concluded';
+        } else {
+            badgeBg = '#e0f2fe'; badgeColor = '#0369a1'; badgeBorder = '#bae6fd'; badgeLabel = rawStatus;
+        }
+
+        const statusPill = document.createElement('span');
+        statusPill.className = 'hearing-status-pill';
+        statusPill.style.cssText = `font-size: 0.74rem; font-weight: 700; padding: 4px 10px; border-radius: 9999px; background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder}; white-space: nowrap;`;
+        statusPill.textContent = badgeLabel;
+
         const openCaseBtn = document.createElement('a');
         openCaseBtn.className = 'btn-open-case';
         openCaseBtn.textContent = 'Open Case';
@@ -138,7 +168,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         openCaseBtn.title = 'View complaint details';
 
-        item.appendChild(openCaseBtn);
+        actions.appendChild(statusPill);
+        actions.appendChild(openCaseBtn);
+        item.appendChild(actions);
         container.appendChild(item);
     };
 
@@ -178,6 +210,21 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        const getQueueRank = (h) => {
+            const s = (h.queue_status || h.status || '').toLowerCase().replace(/[\s-]+/g, '_');
+            if (s === 'in_session') return 1;
+            if (s === 'ready' || s === 'ready_for_hearing') return 2;
+            if (s === 'waiting' || s === 'waiting_room') return 3;
+            if (s === 'standby' || s === 'on_standby') return 4;
+            if (s === 'concluded' || s === 'completed') return 5;
+            return 4;
+        };
+        matchingHearings.sort((a, b) => {
+            const rankA = getQueueRank(a);
+            const rankB = getQueueRank(b);
+            if (rankA !== rankB) return rankA - rankB;
+            return new Date(a.hearing_date || 0) - new Date(b.hearing_date || 0);
+        });
         state.hearings = matchingHearings;
         state.hearingsPage = 1;
         state.hearingsPeriodLabel = isToday ? 'today' : formattedDate;
@@ -191,7 +238,22 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const renderHearings = (hearings, periodLabel) => {
-        state.hearings = hearings || [];
+        const getQueueRank = (h) => {
+            const s = (h.queue_status || h.status || '').toLowerCase().replace(/[\s-]+/g, '_');
+            if (s === 'in_session') return 1;
+            if (s === 'ready' || s === 'ready_for_hearing') return 2;
+            if (s === 'waiting' || s === 'waiting_room') return 3;
+            if (s === 'standby' || s === 'on_standby') return 4;
+            if (s === 'concluded' || s === 'completed') return 5;
+            return 4;
+        };
+        const sortedHearings = [...(hearings || [])].sort((a, b) => {
+            const rankA = getQueueRank(a);
+            const rankB = getQueueRank(b);
+            if (rankA !== rankB) return rankA - rankB;
+            return new Date(a.hearing_date || 0) - new Date(b.hearing_date || 0);
+        });
+        state.hearings = sortedHearings;
         state.hearingsPage = 1;
         state.hearingsPeriodLabel = periodLabel;
 

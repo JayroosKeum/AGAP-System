@@ -48,6 +48,8 @@ if (!empty($_SESSION['flash']) && is_array($_SESSION['flash']) && !empty($_SESSI
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="../../assets/js/notifications.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/notifications.js'); ?>"></script>
+    <script src="../../assets/js/draft-manager.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/draft-manager.js'); ?>"></script>
+    <script src="../../assets/js/draft-autosave.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/draft-autosave.js'); ?>"></script>
     <meta name="agap-csrf-token" content="<?php echo htmlspecialchars($headerCsrfToken, ENT_QUOTES, 'UTF-8'); ?>">
 </head>
 <body>

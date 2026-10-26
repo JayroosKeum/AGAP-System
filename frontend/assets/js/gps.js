@@ -690,14 +690,14 @@ async function renderExpandedCaseView(caseId) {
         const respName = respDeliv?.recipient_name || respProfile.resident_name || (respAttempts[0]?.recipient_name) || currentCaseItem.respondent_names || 'Respondent';
         const respResidentId = respDeliv?.resident_id || respProfile.resident_id || (respAttempts[0]?.resident_id) || 0;
 
-        const canNext = Boolean(activeHearing.can_initiate_next_attempt);
+                const anyRespServed = respAttempts.some(a => a.is_served);
+        const canNext = Boolean(activeHearing.can_initiate_next_attempt) && !anyRespServed;
         const nextNum = activeHearing.next_attempt_number || (respAttempts.length + 1);
         const ordinals = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th'];
         const nextOrd = ordinals[nextNum] || nextNum + 'th';
-        const anyRespServed = respAttempts.some(a => a.is_served);
         const latestServedResp = respAttempts.find(a => a.is_served) || null;
         const activePendingResp = respAttempts.find(a => a.is_pending) || null;
-        const targetRespAttemptForReturn = activePendingResp;
+        const targetRespAttemptForReturn = anyRespServed ? null : activePendingResp;
 
         const maxAllowedAttempts = isPaanyayaCase
             ? Number(activeHearing.max_attempts || window.AGAP_SETTINGS?.paanyaya_max_attempts || 3)
@@ -729,6 +729,15 @@ async function renderExpandedCaseView(caseId) {
                 const targetResId = Number(att.resident_id || respResidentId) || 0;
                 const deliveryId = Number(att.delivery_id);
                 const attDelivId = (Number.isSafeInteger(deliveryId) && deliveryId > 0) ? deliveryId : 'null';
+                if (att.is_pending && anyRespServed) {
+                    return `
+                        <div class="stepper-step" style="cursor: default;" title="${ord} Attempt: Cancelled (Notice already served)">
+                            <div class="step-circle pending">✓</div>
+                            <span class="step-label">${ord} Attempt</span>
+                            <span class="step-subtext">Notice Served</span>
+                        </div>
+                    `;
+                }
 
                 if (att.is_served) {
                     circleClass = 'served';
@@ -1517,10 +1526,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 await toggleExpandCase(targetCase.case_id);
             }
 
-            if (shouldOpenReturn) {
+                        if (shouldOpenReturn) {
                 setTimeout(() => {
                     const activeHearing = window.activeExpandedHearingData || {};
                     const respAttempts = activeHearing.respondent_attempts || [];
+                    const anyRespServed = respAttempts.some(a => a.is_served);
+                    if (anyRespServed) {
+                        return; // Prevent opening return modal if already served
+                    }
                     const pendingAttempt = respAttempts.find(a => a.is_pending) || null;
                     const nextAttemptNum = pendingAttempt ? pendingAttempt.attempt_number : (respAttempts.length + 1);
                     const respResidentId = Number(activeHearing.deliveries?.find(d => d.party_type === 'Respondent')?.resident_id || 0);

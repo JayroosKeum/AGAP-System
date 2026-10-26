@@ -42,16 +42,16 @@ class CaseTransmittal
     }
 
     /**
-     * Creates or returns existing transmittal for a settled case.
+     * Creates or returns existing transmittal for a resolved case.
      */
-    public function createOrGetTransmittal(int $caseId, ?int $officerId = null): array
+    public function createOrGetTransmittal(int $caseId, ?int $officerId = null): ?array
     {
         $existing = $this->getByCaseId($caseId);
         if ($existing) {
             return $existing;
         }
 
-        // 1. Determine settlement date
+        // 1. Determine resolution type & date (Settlement, Arbitration Award, or CFA)
         $settleStmt = $this->conn->prepare("
             SELECT settlement_date, created_at, repudiation_deadline
             FROM settlements
@@ -62,18 +62,54 @@ class CaseTransmittal
         $settleStmt->execute([$caseId]);
         $settle = $settleStmt->fetch(PDO::FETCH_ASSOC);
 
+        $arbStmt = $this->conn->prepare("
+            SELECT award_date, created_at
+            FROM arbitration_records
+            WHERE case_id = ?
+            ORDER BY arbitration_id DESC
+            LIMIT 1
+        ");
+        $arbStmt->execute([$caseId]);
+        $arb = $arbStmt->fetch(PDO::FETCH_ASSOC);
+
+        $cfaStmt = $this->conn->prepare("
+            SELECT issuance_date, created_at
+            FROM cfa_records
+            WHERE case_id = ?
+            ORDER BY cfa_id DESC
+            LIMIT 1
+        ");
+        $cfaStmt->execute([$caseId]);
+        $cfa = $cfaStmt->fetch(PDO::FETCH_ASSOC);
+
+        $caseStmt = $this->conn->prepare("SELECT case_status, updated_at, docket_date FROM cases WHERE case_id = ?");
+        $caseStmt->execute([$caseId]);
+        $c = $caseStmt->fetch(PDO::FETCH_ASSOC);
+
+        $resolutionType = null;
         $settlementDate = null;
-        if (!empty($settle['settlement_date'])) {
-            $settlementDate = $settle['settlement_date'];
-        } else {
-            // Fallback to case updated_at or today
-            $caseStmt = $this->conn->prepare("SELECT updated_at, docket_date FROM cases WHERE case_id = ?");
-            $caseStmt->execute([$caseId]);
-            $c = $caseStmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($settle) {
+            $resolutionType = 'AMICABLE SETTLEMENT';
+            $settlementDate = !empty($settle['settlement_date']) ? $settle['settlement_date'] : substr($settle['created_at'], 0, 10);
+        } elseif ($arb) {
+            $resolutionType = 'ARBITRATION AWARD';
+            $settlementDate = !empty($arb['award_date']) ? $arb['award_date'] : substr($arb['created_at'], 0, 10);
+        } elseif ($cfa) {
+            $resolutionType = 'CERTIFICATE TO FILE ACTION';
+            $settlementDate = !empty($cfa['issuance_date']) ? $cfa['issuance_date'] : substr($cfa['created_at'], 0, 10);
+        } elseif ($c && in_array($c['case_status'], ['CFA Issued', 'Dismissed'], true)) {
+            $resolutionType = 'CERTIFICATE TO FILE ACTION';
             $settlementDate = !empty($c['updated_at']) ? substr($c['updated_at'], 0, 10) : date('Y-m-d');
+        } elseif ($c && $c['case_status'] === 'Settled') {
+            $resolutionType = 'AMICABLE SETTLEMENT';
+            $settlementDate = !empty($c['updated_at']) ? substr($c['updated_at'], 0, 10) : date('Y-m-d');
+        } else {
+            // Case is not yet formally resolved
+            return null;
         }
 
-        // 2. Compute 10-working-day expiry date under RA 7160 Section 411
+        // 2. Compute 10-working-day expiry date under RA 7160 Section 416 (excluding weekends & holidays)
         $expiryDate = MediationDeadlineService::calculateBusinessDays($settlementDate, 10);
 
         // 3. Generate unique transmittal reference number (e.g. TR-2026-0001)
@@ -102,14 +138,15 @@ class CaseTransmittal
         // 5. Insert transmittal record
         $ins = $this->conn->prepare("
             INSERT INTO case_transmittals (
-                case_id, transmittal_number, settlement_date, ten_day_expiry_date,
-                target_agency, transmitting_officer_id, attesting_officer_id, status, created_at
-            ) VALUES (?, ?, ?, ?, 'Both', ?, ?, 'Pending', NOW())
+                case_id, transmittal_number, settlement_date, resolution_type, ten_day_expiry_date,
+                target_agency, transmitting_officer_id, attesting_officer_id, status, transmittal_notified, created_at
+            ) VALUES (?, ?, ?, ?, ?, 'Both', ?, ?, 'Pending', 0, NOW())
         ");
         $ins->execute([
             $caseId,
             $transmittalNumber,
             $settlementDate,
+            $resolutionType,
             $expiryDate,
             $defaultSecId,
             $defaultPbId
@@ -143,7 +180,7 @@ class CaseTransmittal
     }
 
     /**
-     * Enriches a transmittal database row with dynamic countdown and UI badge properties.
+     * Enriches a transmittal database row with dynamic countdown, statutory notification, and UI badge properties.
      */
     private function enrichTransmittalData(array $row): array
     {
@@ -158,6 +195,7 @@ class CaseTransmittal
         $eTs = strtotime($expiryDate);
         $settlementDateFormatted = $sTs ? date('M j, Y', $sTs) : $settlementDate;
         $expiryDateFormatted = $eTs ? date('M j, Y', $eTs) : $expiryDate;
+        $resolutionLegalDate = $this->formatLegalDate($settlementDate);
 
         // Computed status badge
         $statusKey = $row['status'];
@@ -172,17 +210,26 @@ class CaseTransmittal
             $badgeLabel = 'Acknowledged by MTC & DILG';
         } elseif ($isWindowOpen) {
             $badgeClass = 'badge-amber';
-            $badgeLabel = sprintf('Repudiation Window Open: %d working day%s left', $daysRemaining, $daysRemaining === 1 ? '' : 's');
+            $badgeLabel = sprintf('🔒 Locked (%d business day%s remaining - Repudiation Window)', $daysRemaining, $daysRemaining === 1 ? '' : 's');
         } else {
             $badgeClass = 'badge-green';
-            $badgeLabel = '✓ Ready for Transmittal';
+            $badgeLabel = '✓ Ready for Court Transmittal';
+        }
+
+        // Automatic in-app notification when 10 business days elapse
+        if ($daysRemaining <= 0 && empty($row['transmittal_notified'])) {
+            $this->dispatchTransmittalNotification((int)$row['transmittal_id'], (int)$row['case_id']);
+            $row['transmittal_notified'] = 1;
         }
 
         $row['working_days_remaining'] = $daysRemaining;
+        $row['is_locked'] = $isWindowOpen;
         $row['is_repudiation_window_open'] = $isWindowOpen;
         $row['is_ready_for_transmittal'] = $isReady;
         $row['settlement_date_formatted'] = $settlementDateFormatted;
         $row['ten_day_expiry_date_formatted'] = $expiryDateFormatted;
+        $row['unlock_date_formatted'] = $expiryDateFormatted;
+        $row['resolution_date_legal'] = $resolutionLegalDate;
         $row['badge_class'] = $badgeClass;
         $row['badge_label'] = $badgeLabel;
 
@@ -194,6 +241,59 @@ class CaseTransmittal
         };
 
         return $row;
+    }
+
+    /**
+     * Formats a date string into formal legal style: e.g. "30th day of September, 2026".
+     */
+    public function formatLegalDate(string $dateStr): string
+    {
+        $ts = strtotime($dateStr);
+        if (!$ts) return $dateStr;
+        $day = date('j', $ts);
+        $suffix = date('S', $ts);
+        $monthYear = date('F, Y', $ts);
+        return "{$day}{$suffix} day of {$monthYear}";
+    }
+
+    /**
+     * Dispatches in-app notification to PB, Secretary, and Lupon Clerks when 10 business days elapse.
+     */
+    private function dispatchTransmittalNotification(int $transmittalId, int $caseId): void
+    {
+        try {
+            // Mark notified immediately
+            $upd = $this->conn->prepare("UPDATE case_transmittals SET transmittal_notified = 1, updated_at = NOW() WHERE transmittal_id = ?");
+            $upd->execute([$transmittalId]);
+
+            // Fetch case particulars
+            $cStmt = $this->conn->prepare("SELECT case_number, complaint_id FROM cases WHERE case_id = ?");
+            $cStmt->execute([$caseId]);
+            $c = $cStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$c) return;
+
+            $caseNumber = $c['case_number'];
+            $complaintId = $c['complaint_id'];
+
+            // Fetch staff users (role_id 1 = PB, 2 = Secretary, 3 = Lupon)
+            $uStmt = $this->conn->prepare("SELECT user_id FROM users WHERE role_id IN (1, 2, 3)");
+            $uStmt->execute();
+            $userIds = $uStmt->fetchAll(PDO::FETCH_COLUMN);
+
+            $title = "Case #{$caseNumber} Ready for Court Transmittal";
+            $message = "The 10-business-day repudiation period has elapsed for Case #{$caseNumber}. The Court Transmittal Letter to the Metropolitan Trial Court is now unlocked and ready for printing.";
+            $actionUrl = "../complaints/complaint-details.php?id={$complaintId}&tab=tab-overview";
+
+            $notifStmt = $this->conn->prepare("
+                INSERT INTO notifications (user_id, title, severity, message, action_url, case_id, created_at)
+                VALUES (?, ?, 'info', ?, ?, ?, NOW())
+            ");
+            foreach ($userIds as $uid) {
+                $notifStmt->execute([(int)$uid, $title, $message, $actionUrl, $caseId]);
+            }
+        } catch (Throwable $e) {
+            error_log("Failed to dispatch transmittal notification: " . $e->getMessage());
+        }
     }
 
     /**
@@ -224,38 +324,36 @@ class CaseTransmittal
                 return ['success' => false, 'message' => 'Invalid receiving copy file type. Allowed: PDF, JPG, PNG, WEBP.'];
             }
 
-            if ($file['size'] > 15 * 1024 * 1024) {
-                return ['success' => false, 'message' => 'Receiving copy file exceeds the maximum 15MB limit.'];
+            if ($file['size'] > (15 * 1024 * 1024)) {
+                return ['success' => false, 'message' => 'File size exceeds maximum allowed limit (15MB).'];
             }
 
-            // Case number directory
-            $caseStmt = $this->conn->prepare("SELECT case_number FROM cases WHERE case_id = ?");
-            $caseStmt->execute([$caseId]);
-            $caseNumber = $caseStmt->fetchColumn() ?: "case-{$caseId}";
-            $safeCaseDir = preg_replace('/[^a-zA-Z0-9_-]/', '_', $caseNumber);
-
-            $relativeDir = 'storage/uploads/transmittals/' . $safeCaseDir;
-            $absoluteDir = __DIR__ . '/../../' . $relativeDir;
-            if (!is_dir($absoluteDir)) {
-                @mkdir($absoluteDir, 0755, true);
+            $uploadDir = __DIR__ . '/../../uploads/transmittals/';
+            if (!is_dir($uploadDir) && !mkdir($uploadDir, 0755, true) && !is_dir($uploadDir)) {
+                return ['success' => false, 'message' => 'Failed to initialize transmittals storage directory.'];
             }
 
-            $fileName = sprintf('transmittal-receiving-copy-%d-%s.%s', $caseId, date('Ymd_His'), $ext);
-            $targetPath = $absoluteDir . '/' . $fileName;
+            $filename = sprintf('receiving_case_%d_%s.%s', $caseId, uniqid(), $ext);
+            $destination = $uploadDir . $filename;
 
-            if (move_uploaded_file($file['tmp_name'], $targetPath)) {
-                $receivingCopyPath = $relativeDir . '/' . $fileName;
+            if (move_uploaded_file($file['tmp_name'], $destination)) {
+                $receivingCopyPath = 'uploads/transmittals/' . $filename;
             }
         }
 
-        // Determine status: Acknowledged if both receivers logged, else Transmitted
-        $hasReceivers = (!empty($mtcReceiverName) || !empty($dilgReceiverName));
-        $newStatus = $hasReceivers ? 'Acknowledged' : 'Transmitted';
+        // Determine new status
+        $newStatus = 'Transmitted';
+        if ($targetAgency === 'Both' && $mtcReceivedDate && $dilgReceivedDate) {
+            $newStatus = 'Acknowledged';
+        } elseif ($targetAgency === 'MTC' && $mtcReceivedDate) {
+            $newStatus = 'Acknowledged';
+        } elseif ($targetAgency === 'DILG' && $dilgReceivedDate) {
+            $newStatus = 'Acknowledged';
+        }
 
-        // Update database
         $upd = $this->conn->prepare("
-            UPDATE case_transmittals SET
-                status = ?,
+            UPDATE case_transmittals
+            SET status = ?,
                 transmittal_date = ?,
                 target_agency = ?,
                 mtc_received_date = ?,
@@ -343,7 +441,7 @@ class CaseTransmittal
             throw new RuntimeException("Case #{$caseId} not found.");
         }
 
-        // Fetch parties
+        // Fetch parties with addresses
         $partiesStmt = $this->conn->prepare("
             SELECT cp.party_type,
                    TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name, COALESCE(cp.suffix, r.suffix))) AS full_name,
@@ -358,11 +456,16 @@ class CaseTransmittal
 
         $complainants = [];
         $respondents = [];
+        $complainantsWithAddress = [];
+        $respondentsWithAddress = [];
         foreach ($allParties as $p) {
+            $addr = !empty($p['address']) ? $p['address'] : 'Tumana, Marikina City';
             if ($p['party_type'] === 'Complainant') {
                 $complainants[] = $p['full_name'];
+                $complainantsWithAddress[] = $p['full_name'] . ' resident of ' . $addr;
             } else {
                 $respondents[] = $p['full_name'];
+                $respondentsWithAddress[] = $p['full_name'] . ' resident of ' . $addr;
             }
         }
 
@@ -372,6 +475,20 @@ class CaseTransmittal
         ");
         $settleStmt->execute([$caseId]);
         $settlement = $settleStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        // Determine resolution document label
+        $resType = $transmittal['resolution_type'] ?? '';
+        if (!$resType) {
+            if (!empty($settlement)) {
+                $resType = 'AMICABLE SETTLEMENT';
+            } elseif ($caseInfo['case_status'] === 'CFA Issued') {
+                $resType = 'CERTIFICATE TO FILE ACTION';
+            } elseif ($caseInfo['case_status'] === 'Arbitration') {
+                $resType = 'ARBITRATION AWARD';
+            } else {
+                $resType = 'AMICABLE SETTLEMENT';
+            }
+        }
 
         // Fetch secretary and captain names
         $secName = $transmittal['transmitting_officer_name'] ?? '';
@@ -391,7 +508,7 @@ class CaseTransmittal
                 FROM users WHERE role_id = 1 LIMIT 1
             ");
             $pbStmt->execute();
-            $pbName = $pbStmt->fetchColumn() ?: 'Punong Barangay';
+            $pbName = $pbStmt->fetchColumn() ?: 'Hon. Akiko Lynne Centeno';
         }
 
         return [
@@ -399,6 +516,9 @@ class CaseTransmittal
             'case' => $caseInfo,
             'complainants' => $complainants,
             'respondents' => $respondents,
+            'complainants_with_address' => !empty($complainantsWithAddress) ? implode(', ', $complainantsWithAddress) : '_________________________',
+            'respondents_with_address' => !empty($respondentsWithAddress) ? implode(', ', $respondentsWithAddress) : '_________________________',
+            'resolution_type' => $resType,
             'settlement' => $settlement,
             'secretary_name' => $secName,
             'punong_barangay_name' => $pbName,

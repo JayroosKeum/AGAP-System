@@ -1,3 +1,16 @@
+function getOrdinal(n) {
+    const s = ["th", "st", "nd", "rd"];
+    const v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+function getSessionOrdinalLabel(stageType, index) {
+    const idx = parseInt(index, 10) || 1;
+    const ord = getOrdinal(idx);
+    const stage = (stageType === 'Conciliation') ? 'Conciliation' : 'Mediation';
+    return `${ord} ${stage}`;
+}
+window.getSessionOrdinalLabel = getSessionOrdinalLabel;
+
 const complaintApi = async (url, options = {}) => {
     const response = await fetch(url, options);
     const data = await response.json().catch(() => ({ success: false, message: 'Invalid server response.' }));
@@ -174,6 +187,166 @@ function initialiseNarrativeEnhancement() {
     });
 }
 
+function canAccessTab(tabId, caseStatus, stageProgress) {
+    if (tabId === 'tab-overview' || tabId === 'tab-paanyaya') {
+        return { allowed: true };
+    }
+
+    const complaint = window.complaintData || {};
+    const cStatus = caseStatus || complaint.case_workspace?.case?.case_status || complaint.status || '';
+    const progress = stageProgress || window.caseProgressData || {};
+    const stages = complaint.case_workspace?.stages || {};
+    const lifecycle = progress.lifecycle_status || complaint.lifecycle_status || '';
+    const caseId = complaint.case_id || complaint.case_workspace?.case?.case_id || (new URLSearchParams(window.location.search)).get('case_id');
+
+    const paanyayaStatuses = [
+        'Pre-Docketed (Paanyaya)',
+        '1st Paanyaya Failed (No-Show)',
+        'Paanyaya In Progress',
+        'Paanyaya'
+    ];
+    const isPaanyayaActive = paanyayaStatuses.includes(complaint.status) && !caseId;
+    const isPaanyayaCompletedOrEscalated = !isPaanyayaActive && (
+        Boolean(caseId) ||
+        ['Mediation', 'Conciliation', 'Arbitration', 'CFA', 'Settled', 'Resolution / Closed'].includes(lifecycle) ||
+        ['Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Closed'].includes(cStatus) ||
+        Boolean(complaint.paanyaya_stages?.stage_1?.complainant_choice === 'Escalate_Mediation') ||
+        Boolean(complaint.paanyaya_stages?.stage_2?.complainant_choice === 'Escalate_Mediation') ||
+        Boolean(complaint.paanyaya_workspace?.escalated_to_case_id) ||
+        Boolean(progress.summons && progress.summons.length > 0)
+    );
+
+    if (tabId === 'tab-mediation') {
+        if (!isPaanyayaCompletedOrEscalated) {
+            return {
+                allowed: false,
+                prerequisite: 'Paanyaya',
+                message: 'This stage is locked until Paanyaya is completed'
+            };
+        }
+        return { allowed: true };
+    }
+
+    const medStage = stages.mediation || {};
+    const conStage = stages.conciliation || {};
+    const isMediationCompletedOrReferred = isPaanyayaCompletedOrEscalated && (
+        conStage.is_locked === false ||
+        ['Completed', 'Referred to Pangkat', 'Unsuccessful', 'Settled'].includes(medStage.stage_status) ||
+        ['Conciliation', 'CFA', 'Arbitration'].includes(lifecycle) ||
+        ['Conciliation', 'Arbitration', 'Repudiated', 'CFA'].includes(cStatus) ||
+        Boolean(conStage.sessions_count > 0) ||
+        Boolean(conStage.stage_status && conStage.stage_status !== 'Locked' && conStage.stage_status !== 'Not Started')
+    );
+
+    if (tabId === 'tab-conciliation') {
+        if (!isPaanyayaCompletedOrEscalated) {
+            return {
+                allowed: false,
+                prerequisite: 'Paanyaya',
+                message: 'This stage is locked until Paanyaya is completed'
+            };
+        }
+        if (!isMediationCompletedOrReferred) {
+            return {
+                allowed: false,
+                prerequisite: 'Mediation',
+                message: 'This stage is locked until Mediation is completed'
+            };
+        }
+        return { allowed: true };
+    }
+
+    const isConciliationTerminated = isMediationCompletedOrReferred && (
+        ['Completed', 'Unsuccessful', 'Settled', 'Repudiated', 'CFA Issued'].includes(conStage.stage_status) ||
+        ['CFA', 'Arbitration', 'Resolution / Closed'].includes(lifecycle) ||
+        ['Arbitration', 'Repudiated', 'CFA', 'Settled', 'Closed'].includes(cStatus) ||
+        Boolean(stages.arbitration && !stages.arbitration.is_locked)
+    );
+
+    const arbStage = stages.arbitration || {};
+
+    if (tabId === 'tab-arbitration') {
+        const cId = complaint?.complaint_id || (window.complaintDetailsData && window.complaintDetailsData.complaint_id) || window.currentComplaintId;
+        const isSessionUnlocked = (cId && sessionStorage.getItem('agap_outcomes_unlocked_' + cId) === '1') ||
+                                  sessionStorage.getItem('agap_outcomes_unlocked_global') === '1' ||
+                                  window.agapOutcomesUnlocked === true;
+        const isSettledOrElevated = ['Settled', 'Repudiated', 'CFA Issued', 'Arbitration', 'Closed', 'Resolution / Closed'].includes(complaint?.complaint_status || '') ||
+                                    ['Settled', 'Repudiated', 'CFA Issued', 'Arbitration', 'Closed'].includes(complaint?.case_status || '') ||
+                                    ['Settled', 'Repudiated', 'CFA Issued', 'Arbitration'].includes(cStatus) ||
+                                    ['Settled', 'Repudiated', 'CFA Issued', 'Arbitration'].includes(medStage?.stage_status || '') ||
+                                    ['Settled', 'Repudiated', 'CFA Issued', 'Arbitration'].includes(conStage?.stage_status || '') ||
+                                    ['Settled', 'Repudiated', 'CFA Issued', 'Arbitration'].includes(arbStage?.stage_status || '');
+        if (isSessionUnlocked || isSettledOrElevated) {
+            return { allowed: true };
+        }
+        if (!isPaanyayaCompletedOrEscalated) {
+            return {
+                allowed: false,
+                prerequisite: 'Paanyaya',
+                message: 'This stage is locked until Paanyaya is completed'
+            };
+        }
+        if (!isMediationCompletedOrReferred) {
+            return {
+                allowed: false,
+                prerequisite: 'Mediation',
+                message: 'This stage is locked until Mediation is completed'
+            };
+        }
+        if (!isConciliationTerminated) {
+            return {
+                allowed: false,
+                prerequisite: 'Conciliation',
+                message: 'This stage is locked until Conciliation is completed'
+            };
+        }
+        return { allowed: true };
+    }
+
+    return { allowed: true };
+}
+window.canAccessTab = canAccessTab;
+
+function updateStageTabsLockState() {
+    const tabs = ['tab-mediation', 'tab-conciliation', 'tab-arbitration'];
+    tabs.forEach(tabId => {
+        const btn = document.querySelector(`.case-tab-item[data-tab="${tabId}"]`);
+        if (!btn) return;
+
+        const access = canAccessTab(tabId);
+        const lockIcon = btn.querySelector('.case-tab-lock-icon');
+
+        if (!access.allowed) {
+            btn.classList.add('tab-locked');
+            btn.classList.add('locked');
+            btn.setAttribute('aria-disabled', 'true');
+            btn.title = access.message;
+            if (lockIcon) lockIcon.style.display = 'inline-flex';
+            if (btn.classList.contains('active')) {
+                switchCaseTab('tab-overview');
+            }
+        } else {
+            btn.classList.remove('tab-locked');
+            btn.classList.remove('locked');
+            btn.removeAttribute('aria-disabled');
+            btn.title = '';
+            if (lockIcon) lockIcon.style.display = 'none';
+        }
+    });
+}
+window.updateStageTabsLockState = updateStageTabsLockState;
+
+function unlockOutcomesTab(cId) {
+    const compId = cId || (window.complaintDetailsData && window.complaintDetailsData.complaint_id) || window.currentComplaintId;
+    if (compId) {
+        sessionStorage.setItem('agap_outcomes_unlocked_' + compId, '1');
+    }
+    sessionStorage.setItem('agap_outcomes_unlocked_global', '1');
+    window.agapOutcomesUnlocked = true;
+    updateStageTabsLockState();
+}
+window.unlockOutcomesTab = unlockOutcomesTab;
+
 function initialiseCaseTabs() {
     document.querySelectorAll('.case-tab-item').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -193,7 +366,12 @@ function initialiseCaseTabs() {
         }
         const targetBtn = document.querySelector(`.case-tab-item[data-tab="${targetId}"]`);
         if (targetBtn) {
-            switchCaseTab(targetId);
+            const access = canAccessTab(targetId);
+            if (access.allowed) {
+                switchCaseTab(targetId);
+            } else {
+                switchCaseTab('tab-overview');
+            }
         }
     }
 }
@@ -201,6 +379,17 @@ function initialiseCaseTabs() {
 function switchCaseTab(tabId) {
     if (tabId === 'tab-parties') tabId = 'tab-mediation';
     if (tabId === 'tab-documents') tabId = 'tab-conciliation';
+
+    // Sequential stage locking verification
+    const access = canAccessTab(tabId);
+    if (!access.allowed) {
+        if (window.agapNotify) {
+            window.agapNotify(access.message, 'warning', 'Stage Locked');
+        } else {
+            alert(access.message);
+        }
+        return false;
+    }
 
     document.querySelectorAll('.case-tab-item').forEach(btn => {
         btn.classList.toggle('active', btn.getAttribute('data-tab') === tabId);
@@ -219,6 +408,14 @@ function switchCaseTab(tabId) {
     if (tabId === 'tab-overview' && window.complaintDetailMapInstance) {
         setTimeout(() => window.complaintDetailMapInstance.invalidateSize(), 150);
     }
+
+    if (tabId === 'tab-mediation') {
+        loadHearingSessions('Mediation');
+    } else if (tabId === 'tab-conciliation') {
+        loadHearingSessions('Conciliation');
+    }
+
+    return true;
 }
 window.switchCaseTab = switchCaseTab;
 
@@ -477,6 +674,9 @@ async function loadComplaintDetails() {
             const isClosed = ['Amicable Settlement', 'Arbitration Award', 'Settled', 'Closed', 'Resolved at Paanyaya / Closed'].includes(data.lifecycle_status) || data.status === 'Resolved at Paanyaya / Closed' || data.status === 'Settled';
             statusDot.style.background = isClosed ? '#10b981' : (data.status === 'Pre-Docketed (Paanyaya)' ? '#16a34a' : '#f59e0b');
         }
+
+        // Update stage tab lock state based on active complaint lifecycle
+        updateStageTabsLockState();
 
         // Hero Case Type Badge
         const heroTypeEl = document.getElementById('heroCaseTypeBadge');
@@ -1184,7 +1384,19 @@ function renderOfficialKpForms(workspace, complaint) {
         docs.push(doc);
     });
 
-    const totalCount = docs.length + (complaintId > 0 ? (hasPaanyayaDoc ? 2 : 1) : 0);
+    // Officer's Return details for Paanyaya 1 & 2
+    const stg1 = window.paanyayaStagesData?.stage_1 || activeComplaint.paanyaya_stages?.stage_1 || {};
+    const stg1Details = stg1.details || {};
+    const stg1Latest = stg1.latest_attempt || null;
+    const stg1Count = stg1.attempts_count || 0;
+
+    const stg2 = window.paanyayaStagesData?.stage_2 || activeComplaint.paanyaya_stages?.stage_2 || {};
+    const stg2Details = stg2.details || {};
+    const stg2Latest = stg2.latest_attempt || null;
+    const stg2Count = stg2.attempts_count || 0;
+    const hasP2Attempt = stg2Count > 0 || Boolean(stg2Details.issued_at && stg2Details.status !== 'Locked');
+
+    const totalCount = docs.length + (complaintId > 0 ? (hasPaanyayaDoc ? (hasP2Attempt ? 3 : 2) : 1) : 0) + 2;
     const countText = `${totalCount} Issued`;
     const formsCountText = `${totalCount} form${totalCount === 1 ? '' : 's'}`;
 
@@ -1194,28 +1406,64 @@ function renderOfficialKpForms(workspace, complaint) {
 
     let rowsHtml = '';
 
-    // 0. Paanyaya (Informal Invitation Letter) - Visible during Pre-Docketing phase
+    // 0. Paanyaya 1 (Informal Invitation Letter) - Visible during Pre-Docketing phase
     if (hasPaanyayaDoc && complaintId > 0) {
         const pSess = activeComplaint.paanyaya || {};
-        const pDate = pSess.invitation_date ? formatDateReadable(pSess.invitation_date) : 'Scheduled';
+        const pDate = pSess.invitation_date ? formatDateReadable(pSess.invitation_date) : (stg1Details.invitation_date ? formatDateReadable(stg1Details.invitation_date) : 'Scheduled');
         const pTime = pSess.invitation_time || '';
         const pStatus = pSess.status || activeComplaint.status || 'Active';
+
+        const isP1Delivered = Boolean(stg1.is_delivered || stg1Details.status === 'Successfully Delivered' || stg1Latest?.delivery_outcome === 'Successfully delivered');
+        let p1BadgeText = '';
+        let p1BadgeBg = '#f1f5f9';
+        let p1BadgeColor = '#475569';
+
+        if (isP1Delivered) {
+            p1BadgeText = 'Successfully Delivered';
+            p1BadgeBg = '#dcfce7';
+            p1BadgeColor = '#15803d';
+        } else if (stg1Latest?.delivery_outcome) {
+            p1BadgeText = stg1Latest.delivery_outcome;
+            p1BadgeBg = '#fee2e2';
+            p1BadgeColor = '#991b1b';
+        } else if (stg1Details.status && stg1Details.status !== 'Not Started') {
+            p1BadgeText = 'Pending Service';
+            p1BadgeBg = '#e0f2fe';
+            p1BadgeColor = '#0369a1';
+        }
+
+        const p1Officer = stg1Details.assigned_officer_name || stg1Latest?.server_name || '';
+
         rowsHtml += `
             <div class="kp-form-item-row" style="background: #f0fdf4; border-left: 4px solid #16a34a;">
                 <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
-                    
                     <div>
                         <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                             <span style="font-weight: 700; color: #0f172a;">Paanyaya (Informal Invitation Letter)</span>
                             <span style="font-size: 0.72rem; padding: 1px 7px; border-radius: 4px; background: #dcfce7; color: #15803d; font-weight: 700;">PRE-DOCKETING</span>
+                            ${p1BadgeText ? `
+                                <span style="display: inline-block; padding: 1px 7px; border-radius: 4px; font-weight: 700; font-size: 0.72rem; background: ${p1BadgeBg}; color: ${p1BadgeColor};">
+                                    ${escapeHtml(p1BadgeText)}
+                                </span>
+                            ` : ''}
                         </div>
                         <div class="kp-form-meta-text">
                             <span>Dialogue: ${escapeHtml(pDate)} ${escapeHtml(pTime)}</span>
                             <span>&bull; Status: ${escapeHtml(pStatus)}</span>
+                            ${p1Officer ? `<span>&bull; Officer: <strong>${escapeHtml(p1Officer)}</strong></span>` : ''}
+                            ${stg1Count > 0 ? `<span>&bull; Attempt: ${stg1Count} of 6</span>` : ''}
                         </div>
                     </div>
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <button type="button" class="btn-small-link" onclick="openRecordReturnModal('Paanyaya 1')" style="color: #2563eb; border-color: #bfdbfe; font-weight: 600;" title="Record Officer's Return for Paanyaya 1">
+                        Record / Return
+                    </button>
+                    ${stg1Latest?.proof_file_path ? `
+                        <a href="../../../${escapeHtml(stg1Latest.proof_file_path)}" target="_blank" class="btn-small-link" style="color: #16a34a; border-color: #bbf7d0; text-decoration: none;" title="View uploaded proof / receipt">
+                            View Proof
+                        </a>
+                    ` : ''}
                     <button type="button" class="btn-small-link" onclick="openPaanyayaPreviewModal()" style="color: #16a34a; border-color: #bbf7d0; font-weight: 600;">
                         Preview / Print
                     </button>
@@ -1228,13 +1476,71 @@ function renderOfficialKpForms(workspace, complaint) {
         `;
     }
 
+    // 0.2 Paanyaya 2 (Second Informal Invitation Letter) - Visible if unlocked/issued
+    if (hasP2Attempt && complaintId > 0) {
+        const p2Date = stg2Details.invitation_date ? formatDateReadable(stg2Details.invitation_date) : 'Scheduled';
+        const isP2Delivered = Boolean(stg2.is_delivered || stg2Details.status === 'Successfully Delivered' || stg2Latest?.delivery_outcome === 'Successfully delivered');
+        let p2BadgeText = 'For Service';
+        let p2BadgeBg = '#f1f5f9';
+        let p2BadgeColor = '#475569';
+
+        if (isP2Delivered) {
+            p2BadgeText = 'Successfully Delivered';
+            p2BadgeBg = '#dcfce7';
+            p2BadgeColor = '#15803d';
+        } else if (stg2Latest?.delivery_outcome) {
+            p2BadgeText = stg2Latest.delivery_outcome;
+            p2BadgeBg = '#fee2e2';
+            p2BadgeColor = '#991b1b';
+        } else if (stg2Details.status && stg2Details.status !== 'Not Started') {
+            p2BadgeText = 'Pending Service';
+            p2BadgeBg = '#e0f2fe';
+            p2BadgeColor = '#0369a1';
+        }
+
+        const p2Officer = stg2Details.assigned_officer_name || stg2Latest?.server_name || '';
+
+        rowsHtml += `
+            <div class="kp-form-item-row" style="background: #f0fdf4; border-left: 4px solid #16a34a;">
+                <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
+                    <div>
+                        <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <span style="font-weight: 700; color: #0f172a;">Paanyaya 2 (Second Informal Invitation Letter)</span>
+                            <span style="font-size: 0.72rem; padding: 1px 7px; border-radius: 4px; background: #e0f2fe; color: #0369a1; font-weight: 700;">2ND PAANYAYA</span>
+                            <span style="display: inline-block; padding: 1px 7px; border-radius: 4px; font-weight: 700; font-size: 0.72rem; background: ${p2BadgeBg}; color: ${p2BadgeColor};">
+                                ${escapeHtml(p2BadgeText)}
+                            </span>
+                        </div>
+                        <div class="kp-form-meta-text">
+                            <span>Date: ${escapeHtml(p2Date)}</span>
+                            ${p2Officer ? `<span>&bull; Officer: <strong>${escapeHtml(p2Officer)}</strong></span>` : ''}
+                            ${stg2Count > 0 ? `<span>&bull; Attempt: ${stg2Count} of 6</span>` : ''}
+                        </div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <button type="button" class="btn-small-link" onclick="openRecordReturnModal('Paanyaya 2')" style="color: #2563eb; border-color: #bfdbfe; font-weight: 600;" title="Record Officer's Return for Paanyaya 2">
+                        Record / Return
+                    </button>
+                    ${stg2Latest?.proof_file_path ? `
+                        <a href="../../../${escapeHtml(stg2Latest.proof_file_path)}" target="_blank" class="btn-small-link" style="color: #16a34a; border-color: #bbf7d0; text-decoration: none;" title="View uploaded proof / receipt">
+                            View Proof
+                        </a>
+                    ` : ''}
+                    <button type="button" class="btn-small-link" onclick="previewPaanyayaStageLetter('Paanyaya 2')" style="color: #16a34a; border-color: #bbf7d0; font-weight: 600;">
+                        Preview Notice
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
     // 1. Primary Complaint Form: KP Form 7 (Reklamo)
     if (complaintId > 0) {
         if (isPaanyaya) {
             rowsHtml += `
                 <div class="kp-form-item-row" style="background: #f8fafc; border-left: 4px solid #f59e0b;">
                     <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
-                        
                         <div>
                             <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                                 <span style="font-weight: 700; color: #64748b;">Pormularyo ng KP Blg. 7 (Reklamo / Formal Complaint)</span>
@@ -1258,7 +1564,6 @@ function renderOfficialKpForms(workspace, complaint) {
             rowsHtml += `
                 <div class="kp-form-item-row" style="background: #ffffff;">
                     <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
-                        
                         <div>
                             <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                                 <span style="font-weight: 700; color: #0f172a;">Pormularyo ng KP Blg. 7 (Reklamo / Formal Complaint)</span>
@@ -1293,7 +1598,7 @@ function renderOfficialKpForms(workspace, complaint) {
         }
     }
 
-    // 2. Subsequent Issued Documents (Summons, Notices, etc.)
+    // 2. Subsequent Issued Documents (Summons, Notices, Subpoenas, etc.)
     docs.forEach(doc => {
         const docStatus = doc.service_status || 'Issued';
         let statusBg = '#f1f5f9', statusColor = '#475569';
@@ -1309,6 +1614,16 @@ function renderOfficialKpForms(workspace, complaint) {
         const docId = Number(doc.document_id);
         const tplNameEscaped = String(doc.template_name || 'KP Form').replace(/'/g, "\\'");
 
+        // Check if this KP form needs an Officer's Return (Summons, Notices of Hearing, Subpoenas)
+        const tNameLower = (doc.template_name || '').toLowerCase();
+        const needsOfficerReturn = tNameLower.includes('summon') || 
+                                   tNameLower.includes('patawag') || 
+                                   tNameLower.includes('kp form 9') || 
+                                   tNameLower.includes('kp form 8') || 
+                                   tNameLower.includes('notice of hearing') || 
+                                   tNameLower.includes('subpoena') || 
+                                   tNameLower.includes('kp form 13');
+
         const previewOnClick = (isSummonOrKp9 && typeof openSummonsPreviewModal === 'function')
             ? `openSummonsPreviewModal(${Number(caseId)}, ${docId})`
             : `openKpDocumentPreviewModal(${docId}, '${tplNameEscaped}', '${caseNumber}')`;
@@ -1316,7 +1631,6 @@ function renderOfficialKpForms(workspace, complaint) {
         rowsHtml += `
             <div class="kp-form-item-row">
                 <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
-                    
                     <div>
                         <div class="kp-form-name-text">
                             ${escapeHtml(doc.template_name || 'KP Form Document')}
@@ -1330,6 +1644,11 @@ function renderOfficialKpForms(workspace, complaint) {
                     </div>
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    ${needsOfficerReturn ? `
+                        <button type="button" class="btn-small-link" onclick="openDocOfficerReturn(${docId}, ${caseId})" style="color: #2563eb; border-color: #bfdbfe; font-weight: 600;" title="Record Officer's Return for ${escapeHtml(doc.template_name || 'KP Form')}">
+                            Record / Return
+                        </button>
+                    ` : ''}
                     <button type="button" class="btn-small-link" onclick="${previewOnClick}" style="color: #4f46e5; border-color: #c7d2fe; font-weight: 600;" title="Preview and Print ${escapeHtml(doc.template_name || 'KP Form')}">
                         Preview / Print
                     </button>
@@ -1348,10 +1667,522 @@ function renderOfficialKpForms(workspace, complaint) {
         `;
     });
 
+    // Dynamic Outcome-Driven KP Forms Unlocking
+    const activeCaseId = activeComplaint?.case_id || workspace?.case?.case_id || 0;
+    const compStatus = (activeComplaint?.status || workspace?.case?.case_status || '').toLowerCase();
+    const compStage = (activeComplaint?.current_stage || workspace?.case?.current_stage || '').toLowerCase();
+    const medOutcome = (workspace?.mediation?.outcome || '').toLowerCase();
+    const concOutcome = (workspace?.conciliation?.outcome || '').toLowerCase();
+    const arbOutcome = (workspace?.arbitration?.outcome || '').toLowerCase();
+
+    // Check all recorded sessions outcomes
+    const allEmbeddedSessions = [
+        ...(window.embeddedHearingsState?.mediation_sessions || []),
+        ...(window.embeddedHearingsState?.conciliation_sessions || []),
+        ...(window.embeddedHearingsState?.arbitration_sessions || [])
+    ];
+    const sessionOutcomes = allEmbeddedSessions.map(s => (s.session_outcome || s.outcome || '').toLowerCase());
+
+    const isSettled = compStatus.includes('settle') || medOutcome.includes('settle') || concOutcome.includes('settle') ||
+                      sessionOutcomes.some(o => o.includes('settle')) || Boolean(activeComplaint?.settlement || workspace?.settlement);
+
+    const isArbitration = compStatus.includes('arbitrat') || compStage.includes('arbitrat') ||
+                          arbOutcome !== '' || medOutcome.includes('arbitrat') || concOutcome.includes('arbitrat') ||
+                          sessionOutcomes.some(o => o.includes('arbitrat')) || Boolean(activeComplaint?.arbitration || workspace?.arbitration);
+
+    const isRepudiated = compStatus.includes('repudiat') || sessionOutcomes.some(o => o.includes('repudiat')) ||
+                         Boolean(activeComplaint?.settlement?.repudiation_date || workspace?.settlement?.repudiation_date);
+
+    const isElevatedToPangkat = compStage.includes('conciliation') || compStatus.includes('conciliation') ||
+                                medOutcome.includes('pangkat') || sessionOutcomes.some(o => o.includes('pangkat') || o.includes('elevate')) ||
+                                Boolean(activeComplaint?.pangkat || workspace?.conciliation?.pangkat_id);
+
+    const isFailedConciliation = compStatus.includes('cfa') || concOutcome.includes('cfa') || concOutcome.includes('fail') ||
+                                sessionOutcomes.some(o => o.includes('cfa') || o.includes('fail of conciliation')) ||
+                                Boolean(activeComplaint?.cfa || workspace?.cfa);
+
+    const hasDocTpl = (tpl) => docs.some(d => (d.template_name || '').toLowerCase().includes(tpl.toLowerCase()));
+
+    // 1. When Outcome = "Amicably Settled (KP Form 16)"
+    if (isSettled && !hasDocTpl('KP Form 16') && activeCaseId > 0) {
+        rowsHtml += `
+            <div class="kp-form-item-row" style="background: #f0fdf4; border-left: 4px solid #16a34a;">
+                <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
+                    <div>
+                        <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <span style="font-weight: 700; color: #14532d;">Pormularyo ng KP Blg. 16 (Kasunduang Pag-aayos / Amicable Settlement)</span>
+                            <span style="display: inline-block; padding: 1px 7px; border-radius: 4px; font-weight: 700; font-size: 0.72rem; background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0;">
+                                AMICABLY SETTLED
+                            </span>
+                        </div>
+                        <div class="kp-form-meta-text">
+                            <span>Binding settlement agreement entered freely by parties &bull; Has the force of a final court judgment after 10 days</span>
+                        </div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <button type="button" class="btn-small-link" onclick="openKpFormModal(${Number(activeCaseId)}, 'KP Form 16')" style="color: #16a34a; border-color: #86efac; font-weight: 600;" title="Preview / Print KP Form 16">
+                        Preview / Print
+                    </button>
+                    <a href="../../../backend/api/documents/kp-form.php?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+16&pdf=1" class="btn-pdf-chip" download title="Download official PDF">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        <span>PDF</span>
+                    </a>
+                </div>
+            </div>
+        `;
+    }
+
+    // 2. When Outcome = "Arbitration" / "Voluntary Arbitration (KP Form 14)"
+    if (isArbitration && activeCaseId > 0) {
+        if (!hasDocTpl('KP Form 14')) {
+            rowsHtml += `
+                <div class="kp-form-item-row" style="background: #fffbeb; border-left: 4px solid #d97706;">
+                    <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
+                        <div>
+                            <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <span style="font-weight: 700; color: #78350f;">Pormularyo ng KP Blg. 14 (Kasunduan sa Pag-aarbitro / Agreement for Arbitration)</span>
+                                <span style="display: inline-block; padding: 1px 7px; border-radius: 4px; font-weight: 700; font-size: 0.72rem; background: #fef3c7; color: #b45309; border: 1px solid #fde68a;">
+                                    VOLUNTARY ARBITRATION
+                                </span>
+                            </div>
+                            <div class="kp-form-meta-text">
+                                <span>Parties' formal agreement in writing submitting dispute to binding arbitration under RA 7160 Sec. 413</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button type="button" class="btn-small-link" onclick="openKpFormModal(${Number(activeCaseId)}, 'KP Form 14')" style="color: #b45309; border-color: #fde68a; font-weight: 600;" title="Preview / Print KP Form 14">
+                            Preview / Print
+                        </button>
+                        <a href="../../../backend/api/documents/kp-form.php?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+14&pdf=1" class="btn-pdf-chip" download title="Download official PDF">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                            <span>PDF</span>
+                        </a>
+                    </div>
+                </div>
+            `;
+        }
+        if (!hasDocTpl('KP Form 15')) {
+            rowsHtml += `
+                <div class="kp-form-item-row" style="background: #fffbeb; border-left: 4px solid #d97706;">
+                    <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
+                        <div>
+                            <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <span style="font-weight: 700; color: #78350f;">Pormularyo ng KP Blg. 15 (Gawad ng Arbitrasyon / Arbitration Award)</span>
+                                <span style="display: inline-block; padding: 1px 7px; border-radius: 4px; font-weight: 700; font-size: 0.72rem; background: #fef3c7; color: #b45309; border: 1px solid #fde68a;">
+                                    ARBITRATION AWARD
+                                </span>
+                            </div>
+                            <div class="kp-form-meta-text">
+                                <span>Official binding award rendered by Lupon Presider / Pangkat Chairman</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button type="button" class="btn-small-link" onclick="openKpFormModal(${Number(activeCaseId)}, 'KP Form 15')" style="color: #b45309; border-color: #fde68a; font-weight: 600;" title="Preview / Print KP Form 15">
+                            Preview / Print
+                        </button>
+                        <a href="../../../backend/api/documents/kp-form.php?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+15&pdf=1" class="btn-pdf-chip" download title="Download official PDF">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                            <span>PDF</span>
+                        </a>
+                    </div>
+                </div>
+            `;
+        }
+    }
+
+    // 3. When Outcome = "Repudiated Settlement"
+    if (isRepudiated && activeCaseId > 0) {
+        if (!hasDocTpl('KP Form 17')) {
+            rowsHtml += `
+                <div class="kp-form-item-row" style="background: #fef2f2; border-left: 4px solid #ef4444;">
+                    <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
+                        <div>
+                            <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <span style="font-weight: 700; color: #7f1d1d;">Pormularyo ng KP Blg. 17 (Pagtatwa ng Kasunduan / Repudiation)</span>
+                                <span style="display: inline-block; padding: 1px 7px; border-radius: 4px; font-weight: 700; font-size: 0.72rem; background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5;">
+                                    REPUDIATED SETTLEMENT
+                                </span>
+                            </div>
+                            <div class="kp-form-meta-text">
+                                <span>Sworn statement repudiating settlement due to vitiated consent (fraud/violence/intimidation)</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button type="button" class="btn-small-link" onclick="openKpFormModal(${Number(activeCaseId)}, 'KP Form 17')" style="color: #991b1b; border-color: #fca5a5; font-weight: 600;" title="Preview / Print KP Form 17">
+                            Preview / Print
+                        </button>
+                        <a href="../../../backend/api/documents/kp-form.php?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+17&pdf=1" class="btn-pdf-chip" download title="Download official PDF">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                            <span>PDF</span>
+                        </a>
+                    </div>
+                </div>
+            `;
+        }
+        if (!hasDocTpl('KP Form 20')) {
+            rowsHtml += `
+                <div class="kp-form-item-row" style="background: #fef2f2; border-left: 4px solid #ef4444;">
+                    <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
+                        <div>
+                            <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <span style="font-weight: 700; color: #7f1d1d;">Pormularyo ng KP Blg. 20 (Katibayan Upang Makadulog sa Hukuman / CFA)</span>
+                                <span style="display: inline-block; padding: 1px 7px; border-radius: 4px; font-weight: 700; font-size: 0.72rem; background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5;">
+                                    CFA UNLOCKED
+                                </span>
+                            </div>
+                            <div class="kp-form-meta-text">
+                                <span>Certificate to File Action resulting from repudiated settlement</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button type="button" class="btn-small-link" onclick="openKpFormModal(${Number(activeCaseId)}, 'KP Form 20')" style="color: #991b1b; border-color: #fca5a5; font-weight: 600;" title="Preview / Print KP Form 20">
+                            Preview / Print
+                        </button>
+                        <a href="../../../backend/api/documents/kp-form.php?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+20&pdf=1" class="btn-pdf-chip" download title="Download official PDF">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                            <span>PDF</span>
+                        </a>
+                    </div>
+                </div>
+            `;
+        }
+    }
+
+    // 4. When Outcome = "Failure of Mediation / Endorse to Pangkat (KP Form 10)"
+    if (isElevatedToPangkat && activeCaseId > 0) {
+        if (!hasDocTpl('KP Form 10')) {
+            rowsHtml += `
+                <div class="kp-form-item-row" style="background: #f8fafc; border-left: 4px solid #6366f1;">
+                    <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
+                        <div>
+                            <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <span style="font-weight: 700; color: #1e1b4b;">Pormularyo ng KP Blg. 10 (Paabiso sa Pagbubuo ng Pangkat)</span>
+                                <span style="display: inline-block; padding: 1px 7px; border-radius: 4px; font-weight: 700; font-size: 0.72rem; background: #e0e7ff; color: #3730a3; border: 1px solid #c7d2fe;">
+                                    PANGKAT CONSTITUTION
+                                </span>
+                            </div>
+                            <div class="kp-form-meta-text">
+                                <span>Notice summoning parties to appear and agree upon 3 Lupon members for Pangkat</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button type="button" class="btn-small-link" onclick="openTriPanelPangkatModal(${Number(activeCaseId)})" style="color: #4338ca; border-color: #c7d2fe; font-weight: 600;" title="View in Tri-Panel Side-by-Side Pangkat Preview">
+                            Tri-Panel Notices
+                        </button>
+                        <button type="button" class="btn-small-link" onclick="openKpFormModal(${Number(activeCaseId)}, 'KP Form 10')" style="color: #4f46e5; border-color: #c7d2fe; font-weight: 600;">
+                            Preview / Print
+                        </button>
+                        <a href="../../../backend/api/documents/kp-form.php?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+10&pdf=1" class="btn-pdf-chip" download title="Download official PDF">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                            <span>PDF</span>
+                        </a>
+                    </div>
+                </div>
+            `;
+        }
+        if (!hasDocTpl('KP Form 11')) {
+            rowsHtml += `
+                <div class="kp-form-item-row" style="background: #f8fafc; border-left: 4px solid #6366f1;">
+                    <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
+                        <div>
+                            <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <span style="font-weight: 700; color: #1e1b4b;">Pormularyo ng KP Blg. 11 (Patalastas sa Piniling Miyembro ng Pangkat)</span>
+                                <span style="display: inline-block; padding: 1px 7px; border-radius: 4px; font-weight: 700; font-size: 0.72rem; background: #e0e7ff; color: #3730a3; border: 1px solid #c7d2fe;">
+                                    PANGKAT APPOINTMENT
+                                </span>
+                            </div>
+                            <div class="kp-form-meta-text">
+                                <span>Official notice served to chosen Pangkat members</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button type="button" class="btn-small-link" onclick="openTriPanelPangkatModal(${Number(activeCaseId)})" style="color: #4338ca; border-color: #c7d2fe; font-weight: 600;" title="View in Tri-Panel Side-by-Side Pangkat Preview">
+                            Tri-Panel Notices
+                        </button>
+                        <button type="button" class="btn-small-link" onclick="openKpFormModal(${Number(activeCaseId)}, 'KP Form 11')" style="color: #4f46e5; border-color: #c7d2fe; font-weight: 600;">
+                            Preview / Print
+                        </button>
+                        <a href="../../../backend/api/documents/kp-form.php?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+11&pdf=1" class="btn-pdf-chip" download title="Download official PDF">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                            <span>PDF</span>
+                        </a>
+                    </div>
+                </div>
+            `;
+        }
+        if (!hasDocTpl('KP Form 12')) {
+            rowsHtml += `
+                <div class="kp-form-item-row" style="background: #f8fafc; border-left: 4px solid #6366f1;">
+                    <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
+                        <div>
+                            <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <span style="font-weight: 700; color: #1e1b4b;">Pormularyo ng KP Blg. 12 (Paabiso ng Pagdinig sa Harap ng Pangkat)</span>
+                                <span style="display: inline-block; padding: 1px 7px; border-radius: 4px; font-weight: 700; font-size: 0.72rem; background: #e0e7ff; color: #3730a3; border: 1px solid #c7d2fe;">
+                                    CONCILIATION SUMMONS
+                                </span>
+                            </div>
+                            <div class="kp-form-meta-text">
+                                <span>Formal notice of hearing setting 1st Pangkat conciliation session &bull; Connected to Officer's Return</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <a href="../gps/proof-service.php?case_id=${encodeURIComponent(activeCaseId)}&complaint_id=${encodeURIComponent(complaintId)}&stage=Conciliation&form=KP12" class="btn-small-link" style="color: #2563eb; border-color: #bfdbfe; font-weight: 600;" title="Record Officer's Return for KP Form 12">
+                            Record / Return
+                        </a>
+                        <button type="button" class="btn-small-link" onclick="openTriPanelPangkatModal(${Number(activeCaseId)})" style="color: #4338ca; border-color: #c7d2fe; font-weight: 600;" title="View in Tri-Panel Side-by-Side Pangkat Preview">
+                            Tri-Panel Notices
+                        </button>
+                        <button type="button" class="btn-small-link" onclick="openKpFormModal(${Number(activeCaseId)}, 'KP Form 12')" style="color: #4f46e5; border-color: #c7d2fe; font-weight: 600;">
+                            Preview / Print
+                        </button>
+                        <a href="../../../backend/api/documents/kp-form.php?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+12&pdf=1" class="btn-pdf-chip" download title="Download official PDF">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                            <span>PDF</span>
+                        </a>
+                    </div>
+                </div>
+            `;
+        }
+    }
+
+    // 5. When Outcome = "Failure of Conciliation / Elevate to Court"
+    if (isFailedConciliation && !isRepudiated && !hasDocTpl('KP Form 20') && activeCaseId > 0) {
+        rowsHtml += `
+            <div class="kp-form-item-row" style="background: #fef2f2; border-left: 4px solid #ef4444;">
+                <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
+                    <div>
+                        <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <span style="font-weight: 700; color: #7f1d1d;">Pormularyo ng KP Blg. 20 (Katibayan Upang Makadulog sa Hukuman / CFA)</span>
+                            <span style="display: inline-block; padding: 1px 7px; border-radius: 4px; font-weight: 700; font-size: 0.72rem; background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5;">
+                                CFA READY
+                            </span>
+                        </div>
+                        <div class="kp-form-meta-text">
+                            <span>Certificate to File Action &bull; Signed by Pangkat Secretary/Chairman and endorsed by Punong Barangay</span>
+                        </div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <button type="button" class="btn-small-link" onclick="openKpFormModal(${Number(activeCaseId)}, 'KP Form 20')" style="color: #991b1b; border-color: #fca5a5; font-weight: 600;" title="Preview / Print KP Form 20">
+                        Preview / Print
+                    </button>
+                    <a href="../../../backend/api/documents/kp-form.php?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+20&pdf=1" class="btn-pdf-chip" download title="Download official PDF">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        <span>PDF</span>
+                    </a>
+                </div>
+            </div>
+        `;
+    }
+
+    // 3. Official Printable Blank Minutes Sheet
+    rowsHtml += `
+        <div class="kp-form-item-row" style="background: #ffffff; border-left: 4px solid #3b82f6;">
+            <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
+                <div>
+                    <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span style="font-weight: 700; color: #0f172a;">Katitikan ng Pagdinig (Blank / Ruled Minutes Sheet)</span>
+                        <span style="display: inline-block; padding: 1px 7px; border-radius: 4px; font-weight: 700; font-size: 0.72rem; background: #dbeafe; color: #1e40af;">
+                            STANDARD TEMPLATE
+                        </span>
+                    </div>
+                    <div class="kp-form-meta-text">
+                        <span>Official hearing template with ruled lines for taking handwritten minutes during live proceedings</span>
+                    </div>
+                </div>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <button type="button" class="btn-small-link" onclick="openPrintBlankMinutes(0, ${Number(complaintId)})" style="color: #1e40af; border-color: #bfdbfe; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;" title="Print blank ruled minutes sheet">
+                    🖨️ Print Blank Sheet
+                </button>
+            </div>
+        </div>
+    `;
+
+    // 4. Court Transmittal Letter (MTC Marikina City)
+    rowsHtml += `
+        <div class="kp-form-item-row" id="heroTransmittalRow" style="background: #ffffff; border-left: 4px solid #0f766e;">
+            <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
+                <div>
+                    <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span style="font-weight: 700; color: #0f172a;">Court Transmittal Letter (RA 7160 Sec. 411 / 416)</span>
+                        <span id="heroTransmittalBadge" style="display: inline-block; padding: 1px 7px; border-radius: 4px; font-weight: 700; font-size: 0.72rem; background: #f1f5f9; color: #475569;">
+                            Checking status...
+                        </span>
+                    </div>
+                    <div class="kp-form-meta-text" id="heroTransmittalMeta">
+                        <span>Formal endorsement to Clerk of Court, Metropolitan Trial Court (Branch Sta. Elena, Marikina)</span>
+                    </div>
+                </div>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;" id="heroTransmittalActions">
+                <button type="button" class="btn-small-link" disabled style="opacity: 0.55; cursor: not-allowed; color: #94a3b8; border-color: #cbd5e1;">
+                    Preview Letter
+                </button>
+            </div>
+        </div>
+    `;
+
     if (heroList) heroList.innerHTML = rowsHtml;
     if (docContainer) docContainer.innerHTML = rowsHtml;
+
+    if (complaintId > 0) {
+        loadHeroTransmittalStatus(complaintId);
+    }
 }
 
+async function loadHeroTransmittalStatus(complaintId) {
+    if (!complaintId) return;
+    try {
+        const res = await fetch(`../../../backend/api/transmittals/status.php?complaint_id=${encodeURIComponent(complaintId)}`);
+        const json = await res.json();
+        const badge = document.getElementById('heroTransmittalBadge');
+        const meta = document.getElementById('heroTransmittalMeta');
+        const actions = document.getElementById('heroTransmittalActions');
+        const banner = document.getElementById('statutoryTransmittalAlertBanner');
+
+        if (!res.ok || !json.success) {
+            if (badge) {
+                badge.textContent = 'Status Unavailable';
+                badge.style.background = '#f1f5f9';
+                badge.style.color = '#64748b';
+            }
+            if (banner) banner.style.display = 'none';
+            return;
+        }
+
+        const isResolved = Boolean(json.is_resolved);
+        const data = json.data || {};
+        const caseId = Number(data.case_id || json.case_id || window.complaintData?.case_id || 0);
+
+        if (!isResolved || !data.transmittal_id) {
+            if (badge) {
+                badge.textContent = '🔒 Pending Case Resolution';
+                badge.style.background = '#f1f5f9';
+                badge.style.color = '#64748b';
+                badge.title = 'Transmittal letter unlocks upon formal amicable settlement, arbitration award, or CFA issuance.';
+            }
+            if (meta) {
+                meta.innerHTML = '<span>Formal endorsement to Clerk of Court, MTC Marikina &bull; Unlocks after formal dispute resolution</span>';
+            }
+            if (actions) {
+                actions.innerHTML = `
+                    <button type="button" class="btn-small-link" disabled style="opacity: 0.55; cursor: not-allowed; color: #94a3b8; border-color: #cbd5e1;" title="Case has not reached formal resolution.">
+                        Locked
+                    </button>
+                `;
+            }
+            if (banner) banner.style.display = 'none';
+            return;
+        }
+
+        const isLocked = Boolean(data.is_locked);
+        const daysRemaining = Number(data.working_days_remaining || 0);
+        const unlockDate = data.unlock_date_formatted || data.ten_day_expiry_date_formatted || 'Soon';
+        const lockTitle = `Transmittal unlocks on ${unlockDate} pursuant to the 10-day repudiation period under RA 7160 Sec. 416.`;
+
+        if (isLocked) {
+            if (badge) {
+                badge.textContent = `🔒 Locked (${daysRemaining} business day${daysRemaining === 1 ? '' : 's'} remaining - Repudiation Window)`;
+                badge.style.background = '#fef3c7';
+                badge.style.color = '#92400e';
+                badge.style.border = '1px solid #fde68a';
+                badge.title = lockTitle;
+            }
+            if (meta) {
+                meta.innerHTML = `<span style="color: #b45309;">Mandatory statutory window active &bull; Unlocks on <strong>${escapeHtml(unlockDate)}</strong> (skips weekends/holidays)</span>`;
+            }
+            if (actions) {
+                actions.innerHTML = `
+                    <button type="button" class="btn-small-link" disabled style="opacity: 0.55; cursor: not-allowed; color: #94a3b8; border-color: #cbd5e1;" title="${escapeHtml(lockTitle)}">
+                        🔒 Locked
+                    </button>
+                `;
+            }
+            if (banner) banner.style.display = 'none';
+        } else {
+            // Unlocked & Ready!
+            if (badge) {
+                badge.textContent = '✓ Ready for Court Transmittal';
+                badge.style.background = '#dcfce7';
+                badge.style.color = '#15803d';
+                badge.style.border = '1px solid #86efac';
+            }
+            if (meta) {
+                meta.innerHTML = `<span style="color: #15803d; font-weight: 600;">10-business-day repudiation period completed &bull; Official endorsement ready for print &amp; submission</span>`;
+            }
+            if (actions) {
+                actions.innerHTML = `
+                    <button type="button" class="btn-small-link" onclick="openPreviewTransmittalModal(${caseId})" style="color: #0369a1; border-color: #bae6fd; font-weight: 600;" title="Preview transmittal letterhead">
+                        Preview Letter
+                    </button>
+                    <button type="button" class="btn-small-link" onclick="openPrintTransmittalLetter(${caseId})" style="color: #059669; border-color: #a7f3d0; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;" title="Print official transmittal letter">
+                        🖨️ Print Transmittal
+                    </button>
+                `;
+            }
+            if (banner) banner.style.display = 'flex';
+        }
+    } catch (err) {
+        console.error('Failed to load transmittal status:', err);
+    }
+}
+window.loadHeroTransmittalStatus = loadHeroTransmittalStatus;
+
+function openPrintTransmittalLetter(caseId) {
+    const csId = caseId || window.complaintData?.case_id || 0;
+    const cmpId = window.complaintData?.complaint_id || 0;
+    window.open(`../../../frontend/pages/cases/transmittal-print.php?case_id=${encodeURIComponent(csId)}&complaint_id=${encodeURIComponent(cmpId)}`, '_blank');
+}
+window.openPrintTransmittalLetter = openPrintTransmittalLetter;
+
+function openPrintBlankMinutes(caseId, complaintId) {
+    const csId = caseId || window.complaintData?.case_id || 0;
+    const cmpId = complaintId || window.complaintData?.complaint_id || 0;
+    window.open(`../../../frontend/pages/complaints/print-blank-minutes.php?case_id=${encodeURIComponent(csId)}&id=${encodeURIComponent(cmpId)}`, '_blank');
+}
+window.openPrintBlankMinutes = openPrintBlankMinutes;
+
+function openPreviewTransmittalModal(caseId) {
+    if (typeof unlockOutcomesTab === 'function') unlockOutcomesTab(caseId);
+    const modal = document.getElementById('previewTransmittalModal');
+    const iframe = document.getElementById('transmittalLetterPreviewIframe');
+    const downloadBtn = document.getElementById('btnDownloadTransmittalPdf');
+    if (!modal) return;
+
+    if (iframe) {
+        iframe.src = `../../../backend/api/transmittals/preview.php?case_id=${encodeURIComponent(caseId)}&html=1`;
+    }
+    if (downloadBtn) {
+        downloadBtn.href = `../../../backend/api/transmittals/preview.php?case_id=${encodeURIComponent(caseId)}&download=1`;
+    }
+
+    modal.style.display = 'flex';
+}
+window.openPreviewTransmittalModal = openPreviewTransmittalModal;
+
+function closePreviewTransmittalModal() {
+    const modal = document.getElementById('previewTransmittalModal');
+    if (modal) modal.style.display = 'none';
+}
+window.closePreviewTransmittalModal = closePreviewTransmittalModal;
+
+function printTransmittalIframe() {
+    const iframe = document.getElementById('transmittalLetterPreviewIframe');
+    if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+    }
+}
+window.printTransmittalIframe = printTransmittalIframe;
 function populatePaanyayaOfficersSelect(officers) {
     if (!officers || !Array.isArray(officers)) return;
     const select1 = document.getElementById('issueStageOfficer');
@@ -1381,9 +2212,7 @@ function renderPaanyayaStageCard(stageNum, stageData, caseNum, compNames, respNa
 
     if (isP2) {
         const lockedNotice = document.getElementById('p2LockedNotice');
-        const metricGrid = document.getElementById('p2MetricGrid');
-        const stepperWrap = document.getElementById('p2StepperWrap');
-        const partiesBox = document.getElementById('p2PartiesBox');
+        const p2Inline = document.getElementById('p2DialogueMinutesInline');
         const btnIssue = document.getElementById('btnIssueP2');
 
         const stage1 = window.paanyayaStagesData?.stage_1 || {};
@@ -1394,9 +2223,38 @@ function renderPaanyayaStageCard(stageNum, stageData, caseNum, compNames, respNa
                            (stage1.minutes?.outcome === 'Settled') ||
                            (stageData?.bypassed === true);
 
+        const hasMedHearings = (window.embeddedHearingsState?.mediation_sessions?.length > 0) ||
+                               (window.complaintData?.hearings?.some(h => (h.hearing_type || '').toLowerCase() === 'mediation'));
+        const isMediationGraduated = ['Mediation', 'Conciliation', 'Arbitration', 'Referred to Lupon'].includes(window.complaintData?.status || '') || hasMedHearings;
+
+        if (isMediationGraduated) {
+            if (lockedNotice) {
+                lockedNotice.style.display = 'flex';
+                lockedNotice.innerHTML = `
+                    <div style="font-size: 1.1rem;">🔒</div>
+                    <div>
+                        <strong style="display: block; font-size: 0.86rem; color: #92400e;">Paanyaya 2 Locked &amp; Closed</strong>
+                        <span style="font-size: 0.80rem; color: #b45309;">
+                            This case has graduated to formal Punong Barangay Mediation. Preliminary informal dialogue is concluded.
+                        </span>
+                    </div>
+                `;
+            }
+            if (p2Inline) p2Inline.style.display = 'none';
+            if (btnIssue) {
+                btnIssue.style.display = 'none';
+                btnIssue.disabled = true;
+            }
+            ['btnRecordReturnP2', 'btnPreviewP2', 'btnReviewP2', 'btnRecordMinutesP2', 'btnViewMinutesP2'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.style.display = 'none';
+            });
+            return;
+        }
+
         const p2WasIssued = !!(details.issued_at) || (count > 0);
 
-        // When the dispute is solved right from Paanyaya 1, hide Card 2 completely
+        // When dispute resolved at Paanyaya 1, hide Paanyaya 2 card
         const p2Card = document.getElementById('paanyaya2Card');
         if (isP1Solved && !p2WasIssued) {
             if (p2Card) p2Card.style.display = 'none';
@@ -1414,137 +2272,33 @@ function renderPaanyayaStageCard(stageNum, stageData, caseNum, compNames, respNa
 
         if (!isP2Unlocked) {
             if (lockedNotice) lockedNotice.style.display = 'flex';
-            if (metricGrid) metricGrid.style.display = 'none';
-            if (stepperWrap) stepperWrap.style.display = 'none';
-            if (partiesBox) partiesBox.style.display = 'none';
-            const badge = document.getElementById('p2StatusBadge');
-            if (badge) {
-                badge.textContent = 'Locked';
-                badge.className = 'paanyaya-status-badge status-locked';
-            }
+            if (p2Inline) p2Inline.style.display = 'none';
             if (btnIssue) {
-                btnIssue.style.display = 'none'; // Strictly hidden per spec
+                btnIssue.style.display = 'none';
                 btnIssue.disabled = true;
             }
             const btnRecord = document.getElementById('btnRecordReturnP2');
             const btnPreview = document.getElementById('btnPreviewP2');
             const btnReview = document.getElementById('btnReviewP2');
+            const btnRecMin = document.getElementById('btnRecordMinutesP2');
+            const btnViewMin = document.getElementById('btnViewMinutesP2');
             if (btnRecord) btnRecord.style.display = 'none';
             if (btnPreview) btnPreview.style.display = 'none';
             if (btnReview) btnReview.style.display = 'none';
-            const btnRecMin = document.getElementById('btnRecordMinutesP2');
-            const btnViewMin = document.getElementById('btnViewMinutesP2');
             if (btnRecMin) btnRecMin.style.display = 'none';
             if (btnViewMin) btnViewMin.style.display = 'none';
-
             return;
         } else {
             if (lockedNotice) lockedNotice.style.display = 'none';
-            if (metricGrid) metricGrid.style.display = 'grid';
-            if (stepperWrap) stepperWrap.style.display = 'block';
-            if (partiesBox) partiesBox.style.display = 'block';
-        }
-    }
-
-    // Status Badge
-    const badgeId = isP2 ? 'p2StatusBadge' : 'p1StatusBadge';
-    const badge = document.getElementById(badgeId);
-    if (badge) {
-        badge.textContent = status;
-        let badgeClass = 'status-not-started';
-        if (status === 'In Progress') badgeClass = 'status-in-progress';
-        else if (status === 'Successfully Delivered') badgeClass = 'status-delivered';
-        else if (status === 'Attempts Exhausted – For Review') badgeClass = 'status-exhausted';
-        else if (status === 'Completed') badgeClass = 'status-completed';
-        else if (status === 'Locked') badgeClass = 'status-locked';
-        badge.className = 'paanyaya-status-badge ' + badgeClass;
-    }
-
-    // Metric Grid
-    const attemptTextId = isP2 ? 'p2AttemptText' : 'p1AttemptText';
-    const serviceStatusId = isP2 ? 'p2ServiceStatus' : 'p1ServiceStatus';
-    const officerId = isP2 ? 'p2ServingOfficer' : 'p1ServingOfficer';
-    const dateInitId = isP2 ? 'p2DateInitiated' : 'p1DateInitiated';
-
-    setText(attemptTextId, `${count} of 6 used`);
-    const currentServiceOutcome = latest ? latest.delivery_outcome : (status === 'Not Started' ? 'Not Initiated' : 'Pending Service');
-    setText(serviceStatusId, currentServiceOutcome);
-    setText(officerId, details.assigned_officer_name || 'Unassigned');
-    setText(dateInitId, details.invitation_date ? formatDateReadable(details.invitation_date) : (details.created_at ? formatDateReadable(details.created_at) : '—'));
-
-    // Stepper Count & Dots
-    const stepperCountId = isP2 ? 'p2StepperCountText' : 'p1StepperCountText';
-    const stepperDotsId = isP2 ? 'p2StepperDots' : 'p1StepperDots';
-    const maxPAttempts = Number(window.AGAP_SETTINGS?.paanyaya_max_attempts || 3);
-    setText(stepperCountId, `${count} / ${maxPAttempts} Attempts`);
-
-    const stepperDots = document.getElementById(stepperDotsId);
-    if (stepperDots) {
-        const dots = stepperDots.querySelectorAll('.stepper-dot');
-        dots.forEach((dot, idx) => {
-            dot.className = 'stepper-dot';
-            if (idx < count) {
-                const att = attempts[idx];
-                if (att && att.delivery_outcome === 'Successfully delivered') {
-                    dot.classList.add('dot-served');
-                    dot.title = `Attempt ${idx + 1}: Delivered (${att.service_datetime || ''})`;
-                } else {
-                    dot.classList.add('dot-unserved');
-                    dot.title = `Attempt ${idx + 1}: Unsuccessful - ${att?.delivery_outcome || 'Unserved'}`;
-                }
-            } else if (idx === count && stageData?.can_record_attempt) {
-                dot.classList.add('dot-current');
-                dot.title = `Attempt ${idx + 1}: Ready to Record`;
-            } else {
-                dot.title = `Attempt ${idx + 1}: Not recorded`;
-            }
-        });
-    }
-
-    // Parties & Info Box
-    const caseNumId = isP2 ? 'p2CaseNumber' : 'p1CaseNumber';
-    const compNameId = isP2 ? 'p2ComplainantName' : 'p1ComplainantName';
-    const respNameId = isP2 ? 'p2RespondentName' : 'p1RespondentName';
-    const respAddrId = isP2 ? 'p2RespondentAddr' : 'p1RespondentAddr';
-
-    setText(caseNumId, caseNum || '—');
-    setText(compNameId, compNames || '—');
-    setText(respNameId, respNames || '—');
-    setText(respAddrId, respAddr || 'Barangay Tumana');
-
-    // Latest Outcome Row
-    const latestRowId = isP2 ? 'p2LatestOutcomeRow' : 'p1LatestOutcomeRow';
-    const latestBadgeId = isP2 ? 'p2LatestOutcomeBadge' : 'p1LatestOutcomeBadge';
-    const latestRemarksId = isP2 ? 'p2LatestRemarks' : 'p1LatestRemarks';
-    const latestRow = document.getElementById(latestRowId);
-    const latestBadge = document.getElementById(latestBadgeId);
-    const latestRemarks = document.getElementById(latestRemarksId);
-
-    if (latestRow && latestBadge && latestRemarks) {
-        if (latest) {
-            latestRow.style.display = 'block';
-            let outClass = 'outcome-other';
-            if (latest.delivery_outcome === 'Successfully delivered') outClass = 'outcome-delivered';
-            else if (latest.delivery_outcome === 'Recipient unavailable') outClass = 'outcome-unavailable';
-            else if (latest.delivery_outcome === 'Recipient refused to receive') outClass = 'outcome-refused';
-            else if (latest.delivery_outcome === 'Respondent not found at the address') outClass = 'outcome-not-found';
-            else if (latest.delivery_outcome === 'Incorrect or incomplete address') outClass = 'outcome-incorrect-addr';
-
-            latestBadge.innerHTML = `<span class="outcome-badge ${outClass}">${escapeHtml(latest.delivery_outcome)}</span>`;
-            const remText = latest.remarks || latest.unsuccessful_reason || '';
-            latestRemarks.textContent = remText ? `“${remText}”` : '';
-        } else {
-            latestRow.style.display = 'none';
+            if (p2Inline) p2Inline.style.display = 'block';
         }
     }
 
     // Action Buttons
     const btnIssueId = isP2 ? 'btnIssueP2' : 'btnIssueP1';
-    const btnRecordId = isP2 ? 'btnRecordReturnP2' : 'btnRecordReturnP1';
     const btnPreviewId = isP2 ? 'btnPreviewP2' : 'btnPreviewP1';
     const btnReviewId = isP2 ? 'btnReviewP2' : 'btnReviewP1';
     const btnIssue = document.getElementById(btnIssueId);
-    const btnRecord = document.getElementById(btnRecordId);
     const btnPreview = document.getElementById(btnPreviewId);
     const btnReview = document.getElementById(btnReviewId);
 
@@ -1554,9 +2308,6 @@ function renderPaanyayaStageCard(stageNum, stageData, caseNum, compNames, respNa
         btnIssue.style.opacity = '';
         btnIssue.style.cursor = '';
     }
-    if (btnRecord) {
-        btnRecord.style.display = stageData?.can_record_attempt ? 'inline-flex' : 'none';
-    }
     if (btnPreview) {
         btnPreview.style.display = (details.status && details.status !== 'Not Started') ? 'inline-flex' : 'none';
     }
@@ -1564,62 +2315,113 @@ function renderPaanyayaStageCard(stageNum, stageData, caseNum, compNames, respNa
         btnReview.style.display = stageData?.needs_review ? 'inline-flex' : 'none';
     }
 
-    const isDelivered = !!stageData?.is_delivered || (details.status === 'Successfully Delivered');
-    const isClosedOrDocketed = ['Settled', 'Closed', 'Resolved at Paanyaya / Closed'].includes(window.complaintData?.status) || !!window.complaintData?.case_id;
-    const p2Started = isP2 ? false : (window.paanyayaStagesData?.stage_2?.details?.status && window.paanyayaStagesData?.stage_2?.details?.status !== 'Not Started');
+    const isDelivered = Boolean(
+        stageData?.is_delivered || 
+        (details.status === 'Successfully Delivered') || 
+        (latest?.delivery_outcome === 'Successfully delivered') ||
+        String(details?.status || '').toLowerCase().includes('delivered') ||
+        String(latest?.delivery_outcome || '').toLowerCase().includes('delivered')
+    );
+    const p2Started = isP2 ? false : Boolean(window.paanyayaStagesData?.stage_2?.details?.status && window.paanyayaStagesData?.stage_2?.details?.status !== 'Not Started');
 
-    // Dialogue Minutes Bindings
+    // Inline Dialogue Minutes & Settlement Result
+    const inlineContainerId = isP2 ? 'p2DialogueMinutesInline' : 'p1DialogueMinutesInline';
+    const inlineContainer = document.getElementById(inlineContainerId);
     const btnRecordMinutesId = isP2 ? 'btnRecordMinutesP2' : 'btnRecordMinutesP1';
-    const btnViewMinutesId = isP2 ? 'btnViewMinutesP2' : 'btnViewMinutesP1';
-    const minutesRowId = isP2 ? 'p2MinutesRow' : 'p1MinutesRow';
-    const minutesBadgeId = isP2 ? 'p2MinutesBadge' : 'p1MinutesBadge';
-    const minutesSummaryId = isP2 ? 'p2MinutesSummary' : 'p1MinutesSummary';
-
     const btnRecordMinutes = document.getElementById(btnRecordMinutesId);
-    const btnViewMinutes = document.getElementById(btnViewMinutesId);
-    const minutesRow = document.getElementById(minutesRowId);
-    const minutesBadge = document.getElementById(minutesBadgeId);
-    const minutesSummary = document.getElementById(minutesSummaryId);
 
-    const hasMinutes = !!stageData?.minutes_recorded;
-    const minutesData = stageData?.minutes || null;
+    const hasMinutes = Boolean(stageData?.minutes_recorded && stageData?.minutes);
+    const minutes = stageData?.minutes || null;
 
-    if (minutesRow && minutesBadge && minutesSummary) {
-        if (hasMinutes && minutesData) {
-            minutesRow.style.display = 'block';
-            let bText = 'Minutes Recorded';
-            let bClass = 'outcome-delivered';
-            if (minutesData.outcome === 'Settled') {
-                bText = 'Settled Informally';
-                bClass = 'outcome-delivered';
-            } else if (minutesData.complainant_choice === 'Request_Paanyaya_2') {
-                bText = '2nd Paanyaya Requested';
-                bClass = 'outcome-unavailable';
-            } else if (minutesData.complainant_choice === 'Escalate_Mediation') {
-                bText = 'Escalated to Mediation';
-                bClass = 'outcome-refused';
+    if (inlineContainer) {
+        if (hasMinutes && minutes) {
+            let outcomeBadge = '<span class="outcome-badge outcome-other">Recorded</span>';
+            if (minutes.outcome === 'Settled') {
+                outcomeBadge = '<span class="outcome-badge outcome-delivered" style="background:#dcfce7; color:#15803d; font-weight:700; padding:3px 10px; border-radius:9999px;">Nagkasundo / Amicably Settled</span>';
+            } else if (minutes.complainant_choice === 'Request_Paanyaya_2') {
+                outcomeBadge = '<span class="outcome-badge outcome-unavailable" style="background:#fff7ed; color:#c2410c; font-weight:700; padding:3px 10px; border-radius:9999px;">Walang Kasunduan &bull; Humiling ng 2nd Paanyaya</span>';
+            } else if (minutes.complainant_choice === 'Escalate_Mediation') {
+                outcomeBadge = '<span class="outcome-badge outcome-refused" style="background:#fef2f2; color:#dc2626; font-weight:700; padding:3px 10px; border-radius:9999px;">Inakyat sa Pormal na Mediation</span>';
             }
-            minutesBadge.innerHTML = `<span class="outcome-badge ${bClass}">${bText}</span>`;
-            const notePreview = minutesData.agreed_terms || minutesData.discussion_summary || '';
-            let summaryText = notePreview ? `“${notePreview.substring(0, 90)}${notePreview.length > 90 ? '...' : ''}”` : '';
-            if (minutesData.session_remarks) {
-                summaryText += ` • Puna sa Simula: “${minutesData.session_remarks.substring(0, 60)}${minutesData.session_remarks.length > 60 ? '...' : ''}”`;
-            }
-            minutesSummary.textContent = summaryText;
+
+            inlineContainer.innerHTML = `
+                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin-top: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid #f1f5f9; padding-bottom: 10px; margin-bottom: 12px;">
+                        <div>
+                            <div style="font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #475569;">
+                                Dialogue Minutes &amp; Settlement Result
+                            </div>
+                            <div style="font-size: 0.76rem; color: #64748b; margin-top: 2px;">
+                                Itinala noong: <strong>${formatDateReadable(minutes.dialogue_date || minutes.created_at)}</strong>
+                                ${minutes.recorded_by_name ? ` &bull; Nagtala: <strong>${escapeHtml(minutes.recorded_by_name)}</strong>` : ''}
+                            </div>
+                        </div>
+                        <div>${outcomeBadge}</div>
+                    </div>
+
+                    <!-- Schedule & Attendance Breakdown -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; font-size: 0.82rem;">
+                        <div><strong>Takdang Oras:</strong> ${escapeHtml(minutes.dialogue_date ? formatDateReadable(minutes.dialogue_date) : 'N/A')}</div>
+                        <div><strong>Aktwal na Simula:</strong> ${escapeHtml(minutes.actual_start_time || 'Nasa oras')}</div>
+                        <div><strong>Nagpaanyaya:</strong> <span style="color: ${minutes.complainant_attended === 'Present' ? '#166534' : '#dc2626'}; font-weight: 700;">${minutes.complainant_attended === 'Present' ? 'Dumalo (Present)' : 'Hindi Dumalo'}</span></div>
+                        <div><strong>Inanyayahan:</strong> <span style="color: ${minutes.respondent_attended === 'Present' ? '#166534' : '#dc2626'}; font-weight: 700;">${minutes.respondent_attended === 'Present' ? 'Dumalo (Present)' : 'Hindi Dumalo'}</span></div>
+                    </div>
+
+                    ${minutes.session_remarks ? `
+                    <div style="background: #fffbeb; border: 1px solid #fef08a; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; font-size: 0.8rem; color: #854d0e;">
+                        <strong>Puna sa Oras ng Simula:</strong> <em>"${escapeHtml(minutes.session_remarks)}"</em>
+                    </div>
+                    ` : ''}
+
+                    <!-- Salaysay at Buod -->
+                    <div style="margin-bottom: 12px;">
+                        <strong style="font-size: 0.82rem; color: #1e293b; display: block; margin-bottom: 4px;">Salaysay at Buod ng Napag-usapan:</strong>
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 12px; font-size: 0.84rem; color: #334155; line-height: 1.5; white-space: pre-wrap;">${escapeHtml(minutes.discussion_summary || 'Walang nakatalang buod.')}</div>
+                    </div>
+
+                    <!-- Mga Mungkahi o Napagkasunduang Kondisyon -->
+                    <div style="margin-bottom: 12px;">
+                        <strong style="font-size: 0.82rem; color: #1e293b; display: block; margin-bottom: 4px;">Mga Mungkahi o Napagkasunduang Kondisyon:</strong>
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 12px; font-size: 0.84rem; color: #334155; line-height: 1.5; white-space: pre-wrap;">${escapeHtml(minutes.agreed_terms || 'Walang karagdagang kondisyon na itinala.')}</div>
+                    </div>
+
+                    <!-- Attached Document -->
+                    ${minutes.scanned_minutes_path ? `
+                    <div style="display: flex; align-items: center; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #e2e8f0;">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+                        <strong style="font-size: 0.82rem; color: #1e293b;">Naka-attach na Katitikan:</strong>
+                        <a href="../../../${escapeHtml(minutes.scanned_minutes_path)}" target="_blank" style="color: #2563eb; font-size: 0.82rem; font-weight: 600; text-decoration: underline;">Tingnan ang File / Larawan</a>
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+            inlineContainer.style.display = 'block';
         } else {
-            minutesRow.style.display = 'none';
+            inlineContainer.innerHTML = `
+                <div style="background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 10px; padding: 18px; text-align: center; margin-top: 10px;">
+                    <p style="margin: 0 0 6px 0; font-size: 0.88rem; color: #475569; font-weight: 600;">
+                        Dialogue Minutes not yet recorded.
+                    </p>
+                    <span style="font-size: 0.8rem; color: #64748b;">
+                        ${isDelivered ? 'Ang paanyaya ay naihatid na. I-click ang "Record Dialogue Minutes" upang itala ang katitikan.' : 'I-click ang "Record Dialogue Minutes" sa ibaba kapag isinagawa na ang pag-uusap.'}
+                    </span>
+                </div>
+            `;
+            inlineContainer.style.display = 'block';
         }
     }
 
     if (btnRecordMinutes) {
-        // Show prominent Record Minutes button once Delivered and not yet recorded
-        btnRecordMinutes.style.display = (isDelivered && !hasMinutes && !isClosedOrDocketed && !p2Started) ? 'inline-flex' : 'none';
+        if (hasMinutes) {
+            btnRecordMinutes.style.display = 'none';
+        } else {
+            btnRecordMinutes.style.display = (isDelivered && !p2Started) ? 'inline-flex' : 'none';
+            const cId = window.complaintData?.complaint_id || (new URLSearchParams(window.location.search)).get('id');
+            if (cId) {
+                btnRecordMinutes.href = `record-dialogue-minutes.php?id=${encodeURIComponent(cId)}&stage=${encodeURIComponent(isP2 ? 'Paanyaya 2' : 'Paanyaya 1')}`;
+            }
+        }
     }
-    if (btnViewMinutes) {
-        btnViewMinutes.style.display = hasMinutes ? 'inline-flex' : 'none';
-    }
-
-
 }
 
 function renderPaanyayaTab(data) {
@@ -1743,157 +2545,1091 @@ function renderPaanyayaTab(data) {
 }
 
 function renderMediationCard(stages, caseId, complaint, workspace) {
-    const med = stages?.mediation || {};
-    const badgeEl = document.getElementById('cwMediationStatusBadge');
-    const linkEl = document.getElementById('cwManageMediationLink');
-    const container = document.getElementById('cwMediationContainer');
-
-    const status = med.stage_status || 'Not Started';
-    if (badgeEl) {
-        badgeEl.textContent = status;
-        let bg = '#f1f5f9', color = '#475569';
-        if (status === 'Completed' || status === 'Settled') { bg = '#dcfce7'; color = '#15803d'; }
-        else if (status === 'In Progress') { bg = '#dbeafe'; color = '#1d4ed8'; }
-        else if (status === 'Awaiting Outcome' || status === 'Ready for Referral') { bg = '#fef3c7'; color = '#b45309'; }
-        else if (status === 'Referred to Pangkat') { bg = '#e0f2fe'; color = '#0369a1'; }
-        badgeEl.style.background = bg;
-        badgeEl.style.color = color;
-    }
-
-    if (linkEl && caseId) {
-        linkEl.href = `../cases/mediation-workspace.php?case_id=${encodeURIComponent(caseId)}&complaint_id=${encodeURIComponent(complaint.complaint_id || '')}`;
-    }
-
-    if (!container) return;
-
-    const cAtt = med.attendance_summary?.complainant || { present: 0, absent: 0, excused: 0, pending: 0 };
-    const rAtt = med.attendance_summary?.respondent || { present: 0, absent: 0, excused: 0, pending: 0 };
-    const nextH = med.next_hearing;
-    const actions = med.documents_and_actions || {};
-
-    const renderAction = (label, url, enabled, disabledReason) => {
-        if (enabled) {
-            return `<a href="${url}" class="btn-secondary" style="font-size: 0.74rem; padding: 4px 8px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; border-color: #cbd5e1; background: #fff;">${label} &rarr;</a>`;
-        }
-        return `<span title="${escapeHtml(disabledReason)}" style="font-size: 0.74rem; padding: 4px 8px; border-radius: 4px; background: #f8fafc; color: #94a3b8; border: 1px dashed #e2e8f0; cursor: not-allowed; display: inline-flex; align-items: center; gap: 4px;">${label}</span>`;
-    };
-
-    container.innerHTML = `
-        <div style="display: flex; flex-direction: column; gap: 10px;">
-            <div style="padding: 10px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                    <span style="font-size: 0.78rem; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.03em;">
-                        Hearings &amp; Attendance
-                    </span>
-                    <a href="../hearings/schedules.php?case_id=${encodeURIComponent(caseId || '')}&type=Mediation" class="btn-secondary" style="font-size: 0.72rem; padding: 2px 7px; text-decoration: none;">
-                        View Hearings &rarr;
-                    </a>
-                </div>
-                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 6px; font-size: 0.78rem;">
-                    <div style="background: #f8fafc; padding: 5px 8px; border-radius: 6px;">
-                        <span style="color: #64748b; font-size: 0.7rem; display: block;">Sessions</span>
-                        <strong style="color: #0f172a; font-size: 0.9rem;">${Number(med.sessions_count || 0)}</strong>
-                    </div>
-                    <div style="background: #f8fafc; padding: 5px 8px; border-radius: 6px;">
-                        <span style="color: #64748b; font-size: 0.7rem; display: block;">Next Session</span>
-                        <strong style="color: #0f172a; font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${nextH ? escapeHtml(formatDateReadable(nextH.hearing_date)) : 'None'}</strong>
-                    </div>
-                    <div style="background: #f8fafc; padding: 5px 8px; border-radius: 6px;">
-                        <span style="color: #64748b; font-size: 0.7rem; display: block;">Latest Date</span>
-                        <strong style="color: #0f172a; font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">${med.latest_hearing_date ? escapeHtml(formatDateReadable(med.latest_hearing_date)) : '—'}</strong>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
+    loadHearingSessions('Mediation');
 }
 
 function renderConciliationCard(stages, caseId, complaint) {
-    const con = stages?.conciliation || {};
-    const badgeEl = document.getElementById('cwConciliationStatusBadge');
-    const linkEl = document.getElementById('cwManageConciliationLink');
-    const container = document.getElementById('cwConciliationContainer');
+    loadHearingSessions('Conciliation');
+}
 
-    const status = con.stage_status || (con.is_locked ? 'Locked' : 'Not Started');
-    const isLocked = Boolean(con.is_locked);
+// =========================================================================
+// EMBEDDED HEARING SESSIONS MANAGEMENT (MEDIATION & PANGKAT CONCILIATION)
+// =========================================================================
 
-    if (badgeEl) {
-        badgeEl.textContent = status;
-        let bg = '#f1f5f9', color = '#64748b';
-        if (status === 'Completed' || status === 'Settled') { bg = '#dcfce7'; color = '#15803d'; }
-        else if (status === 'In Progress') { bg = '#dbeafe'; color = '#1d4ed8'; }
-        else if (status === 'Awaiting Outcome' || status === 'Ready for Referral') { bg = '#fef3c7'; color = '#b45309'; }
-        else if (status === 'Locked') { bg = '#f1f5f9'; color = '#64748b'; }
-        badgeEl.style.background = bg;
-        badgeEl.style.color = color;
-    }
+window.embeddedHearingsState = {
+    mediation_sessions: [],
+    conciliation_sessions: [],
+    activeStageType: 'Mediation',
+    luponMembers: []
+};
 
-    if (linkEl) {
-        if (isLocked) {
-            linkEl.href = '#';
-            linkEl.onclick = (e) => {
-                e.preventDefault();
-                if (window.agapNotify) {
-                    window.agapNotify('Pangkat Conciliation is locked. Complete the mediation stage and record an authorized referral to unlock this workspace.', 'warning', 'Conciliation Locked');
-                } else {
-                    alert('Pangkat Conciliation is locked. Complete the mediation stage and record an authorized referral to unlock this workspace.');
-                }
-            };
-            linkEl.style.opacity = '0.6';
-            linkEl.style.cursor = 'not-allowed';
-            linkEl.innerHTML = 'Manage Conciliation';
-        } else {
-            linkEl.href = `../cases/pangkat-workspace.php?case_id=${encodeURIComponent(caseId || '')}&complaint_id=${encodeURIComponent(complaint.complaint_id || '')}`;
-            linkEl.onclick = null;
-            linkEl.style.opacity = '1';
-            linkEl.style.cursor = 'pointer';
-            linkEl.innerHTML = 'Manage Conciliation &rarr;';
-        }
-    }
+async function loadHearingSessions(stageType = 'Mediation') {
+    const data = window.complaintData || {};
+    const comp = data.complaint || data;
+    const caseId = data.case_id || comp.case_id || (new URLSearchParams(window.location.search)).get('case_id');
+    const complaintId = data.complaint_id || comp.complaint_id || (new URLSearchParams(window.location.search)).get('id');
+
+    const containerId = stageType === 'Mediation' ? 'mediationSessionsListContainer' : 'conciliationSessionsListContainer';
+    const badgeId = stageType === 'Mediation' ? 'mediationSessionsCountBadge' : 'conciliationSessionsCountBadge';
+    const container = document.getElementById(containerId);
+    const badge = document.getElementById(badgeId);
 
     if (!container) return;
 
-    if (isLocked) {
-        const canRefer = stages?.mediation?.documents_and_actions?.can_proceed_to_pangkat;
-        container.innerHTML = `
-            <div style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 24px 16px; text-align: center; color: #64748b;">
-                
-                <div style="font-size: 0.92rem; font-weight: 700; color: #334155; margin-bottom: 4px;">
-                    Pangkat Conciliation is locked
+    if (!caseId) {
+        if (stageType === 'Mediation') {
+            container.innerHTML = `
+                <div class="empty-detail-state" style="text-align: center; padding: 28px 20px; background: #fff; border: 1px dashed #cbd5e1; border-radius: 8px;">
+                    <p style="margin: 0 0 10px; font-size: 0.88rem; color: #64748b;">
+                        Case is currently in the Paanyaya (Preliminary Dialogue) stage. Formal mediation sessions will unlock once Paanyaya concludes or escalates to Punong Barangay Mediation.
+                    </p>
+                    <button type="button" class="btn-create" onclick="switchCaseTab('tab-paanyaya')" style="font-size: 0.82rem; padding: 6px 14px;">
+                        Go to Paanyaya Dialogue &rarr;
+                    </button>
                 </div>
-                <p style="margin: 0; font-size: 0.82rem; color: #64748b; line-height: 1.5; max-width: 440px; margin: 0 auto;">
-                    Complete the mediation stage and record an authorized referral to unlock this workspace.
+            `;
+        } else {
+            container.innerHTML = `
+                <div class="empty-detail-state" style="text-align: center; padding: 28px 20px; background: #fff; border: 1px dashed #cbd5e1; border-radius: 8px;">
+                    <p style="margin: 0; font-size: 0.88rem; color: #64748b;">
+                        Pangkat Conciliation is locked until Punong Barangay Mediation concludes with a formal referral to Pangkat.
+                    </p>
+                </div>
+            `;
+        }
+        if (badge) badge.textContent = '0 sessions';
+        return;
+    }
+
+    try {
+        const res = await fetch(`../../../backend/api/stages/details.php?case_id=${encodeURIComponent(caseId)}&_t=${Date.now()}`, { cache: 'no-store' });
+        const json = await res.json();
+        if (!json.success || !json.data) {
+            throw new Error(json.message || 'Unable to load hearing session details.');
+        }
+
+        const stageData = json.data;
+        const sessions = stageType === 'Mediation' ? (stageData.mediation_sessions || []) : (stageData.conciliation_sessions || []);
+        if (stageType === 'Mediation') {
+            window.embeddedHearingsState.mediation_sessions = sessions;
+        } else {
+            window.embeddedHearingsState.conciliation_sessions = sessions;
+        }
+
+        renderHearingSessionCards(sessions, containerId, badgeId, stageType, caseId);
+    } catch (err) {
+        console.error('loadHearingSessions error:', err);
+        container.innerHTML = `
+            <div style="padding: 16px; border: 1px solid #fecaca; background: #fef2f2; border-radius: 8px; color: #991b1b; font-size: 0.85rem;">
+                <strong>Error loading ${escapeHtml(stageType.toLowerCase())} sessions:</strong> ${escapeHtml(err.message)}
+                <div style="margin-top: 8px;">
+                    <button type="button" class="btn-secondary" onclick="loadHearingSessions('${stageType}')" style="font-size: 0.78rem; padding: 4px 10px;">Retry</button>
+                </div>
+            </div>
+        `;
+    }
+}
+window.loadHearingSessions = loadHearingSessions;
+
+function renderHearingSessionCards(sessions, containerId, badgeId, stageType, caseId) {
+    const container = document.getElementById(containerId);
+    const badge = document.getElementById(badgeId);
+    if (!container) return;
+
+    if (badge) badge.textContent = `${sessions.length} session${sessions.length === 1 ? '' : 's'}`;
+
+    if (!sessions.length) {
+        container.innerHTML = `
+            <div class="empty-detail-state" style="text-align: center; padding: 32px 20px; background: #fff; border: 1px dashed #cbd5e1; border-radius: 8px;">
+                <p style="margin: 0 0 12px; font-size: 0.9rem; color: #64748b;">
+                    No ${escapeHtml(stageType.toLowerCase())} hearing sessions scheduled yet.
                 </p>
-                ${canRefer ? `
-                    <div style="margin-top: 12px;">
-                        <a href="../cases/mediation-workspace.php?case_id=${encodeURIComponent(caseId || '')}&action=referral" class="btn-create" style="font-size: 0.78rem; padding: 5px 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
-                            Proceed with Referral in Mediation &rarr;
-                        </a>
-                    </div>
-                ` : ''}
+                <button type="button" class="btn-create" onclick="openEmbeddedScheduleModal('${stageType}')" style="font-size: 0.84rem; padding: 7px 16px; display: inline-flex; align-items: center; gap: 6px;">
+                    + Schedule ${escapeHtml(stageType)} Session &rarr;
+                </button>
             </div>
         `;
         return;
     }
 
-    const pInfo = con.pangkat_assignment || {};
-    container.innerHTML = `
-        <div style="font-size: 0.84rem; color: #334155; display: flex; flex-direction: column; gap: 6px;">
-            <div><strong>Chairperson:</strong> ${escapeHtml(pInfo.chairperson?.member_name || 'Not assigned')}</div>
-            <div><strong>Secretary:</strong> ${escapeHtml(pInfo.secretary?.member_name || 'Not assigned')}</div>
-            <div><strong>Member:</strong> ${escapeHtml(pInfo.member?.member_name || 'Not assigned')}</div>
-            <div style="margin-top: 6px; font-size: 0.78rem; color: #64748b;">
-                <span>Constituted: ${pInfo.formation_date ? escapeHtml(formatDateReadable(pInfo.formation_date)) : 'N/A'}</span>
-                &bull; <span>Status: <strong>${escapeHtml(pInfo.assignment_status || 'Pending')}</strong></span>
+    let cardsHtml = '';
+    sessions.forEach((s, idx) => {
+        const sessionIndex = Number(s.session_index || (idx + 1));
+        const sessionLabel = getSessionOrdinalLabel(stageType, sessionIndex);
+        const targetWorkspace = stageType === 'Conciliation' ? '../cases/pangkat-workspace.php' : '../cases/mediation-workspace.php';
+        const complaintIdParam = new URLSearchParams(window.location.search).get('id') || (window.currentComplaintData ? window.currentComplaintData.complaint_id : '') || (window.complaintData ? window.complaintData.complaint_id : '') || '';
+        const openWorkspaceUrl = `${targetWorkspace}?case_id=${encodeURIComponent(caseId || '')}&complaint_id=${encodeURIComponent(complaintIdParam)}&hearing_id=${encodeURIComponent(s.hearing_id)}`;
+        const isCompleted = s.status === 'Completed';
+        const hasMinutes = s.minutes_id && s.minutes_status !== 'Not Recorded';
+        const isFinalized = s.minutes_status === 'Finalized';
+
+        const compIn = (s.complainant_attendance === 'Present' || s.complainant_attendance === 'Late');
+        const respIn = (s.respondent_attendance === 'Present' || s.respondent_attendance === 'Late');
+        const isReady = compIn && respIn;
+        const qStatus = s.queue_status || (isReady ? 'Ready' : 'Waiting');
+        const isInSession = (qStatus === 'In_Session');
+        const isStandby = (qStatus === 'Standby');
+        const isConcluded = (qStatus === 'Concluded' || isCompleted);
+
+        let queueBadgeHtml = '';
+        if (isInSession) {
+            queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe;">In Session (Started: ${formatTime12(s.actual_start_time || '10:00:00')})</span>`;
+        } else if (isReady) {
+            queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 800; padding: 2px 8px; border-radius: 4px; background: #dcfce7; color: #15803d; border: 1px solid #86efac;">Complete &amp; Ready</span>`;
+        } else if (isStandby) {
+            queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #fef3c7; color: #b45309; border: 1px solid #fde68a;">On Standby</span>`;
+        } else if (isConcluded) {
+            queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;">Concluded (${s.actual_duration_minutes || s.duration_minutes || 45} mins)</span>`;
+        } else {
+            queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0;">Waiting Room</span>`;
+        }
+
+        let partyAttHtml = '';
+        if (s.parties && s.parties.length) {
+            partyAttHtml = s.parties.map(p => {
+                let badgeStyle = 'background: #f1f5f9; color: #64748b;';
+                const st = p.attendance_status || 'Pending';
+                if (st === 'Present') badgeStyle = 'background: #dcfce7; color: #15803d;';
+                else if (st === 'Late') badgeStyle = 'background: #dbeafe; color: #1e40af;';
+                else if (st === 'Excused') badgeStyle = 'background: #fef3c7; color: #b45309;';
+                else if (st === 'Absent') badgeStyle = 'background: #fee2e2; color: #991b1b;';
+                const excuseText = p.justification_reason ? ` (${escapeHtml(p.justification_reason)})` : '';
+                return `<div style="font-size: 0.78rem; margin-top: 2px;">
+                    <span style="font-weight: 600; color: #475569;">${escapeHtml(p.party_type)}: ${escapeHtml(p.full_name)}</span> &rarr;
+                    <span style="display: inline-flex; align-items: center; gap: 3px; font-weight: 700; padding: 1px 6px; border-radius: 4px; font-size: 0.74rem; ${badgeStyle}">
+                        ${escapeHtml(st)}${excuseText}
+                    </span>
+                </div>`;
+            }).join('');
+        } else {
+            partyAttHtml = `
+                <div style="margin-top: 3px; color: #334155;">
+                    Complainant: <strong>${escapeHtml(s.complainant_attendance || 'Pending')}</strong> · Respondent: <strong>${escapeHtml(s.respondent_attendance || 'Pending')}</strong>
+                </div>
+            `;
+        }
+
+        cardsHtml += `
+            <div class="session-card" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
+                            <span style="font-size: 0.72rem; font-weight: 800; text-transform: uppercase; padding: 2px 7px; border-radius: 4px; background: #e0f2fe; color: #0369a1;">
+                                #${s.session_index || 1}
+                            </span>
+                            <h4 style="margin: 0; font-size: 1.05rem; color: #0f172a; font-weight: 700;">
+                                ${escapeHtml(sessionLabel)}
+                            </h4>
+                            ${queueBadgeHtml}
+                            <span class="status-pill status-${escapeHtml((s.status || 'scheduled').toLowerCase())}" style="font-size: 0.74rem; padding: 2px 8px; border-radius: 4px; font-weight: 700;">
+                                ${escapeHtml(s.status || 'Scheduled')}
+                            </span>
+                        </div>
+                        <div style="font-size: 0.84rem; color: #475569; display: flex; gap: 14px; flex-wrap: wrap;">
+                            <span>Call Time: <strong>${s.hearing_date ? formatDateTimeReadable(s.hearing_date) : 'Pending'}</strong></span>
+                            <span>Venue: <strong>${escapeHtml(s.venue || 'Lupon Court Room')}</strong></span>
+                            ${s.presiding_officer_name ? `<span>Presider: <strong>${escapeHtml(s.presiding_officer_name)}</strong></span>` : ''}
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
+                        ${!isConcluded && !isInSession ? `
+                            ${isReady ? `
+                            <button type="button" class="btn-create" onclick="handleHearingStartSession(${s.hearing_id})" style="font-size: 0.78rem; padding: 5px 12px; background: #16a34a; display: inline-flex; align-items: center; gap: 4px;" title="Call to session immediately">
+                                ▶️ Call to Session
+                            </button>
+                            ` : ''}
+                            <button type="button" class="btn-secondary" onclick="handleHearingStandby(${s.hearing_id}, ${isStandby ? 'false' : 'true'})" style="font-size: 0.78rem; padding: 5px 9px; display: inline-flex; align-items: center; gap: 4px; ${isStandby ? 'background: #fef3c7; color: #b45309; border-color: #fde68a; font-weight: 700;' : ''}">
+                                ${isStandby ? '▶️ Resume' : 'Put on Standby'}
+                            </button>
+                        ` : ''}
+                        ${isInSession ? `
+                            <button type="button" class="btn-create" onclick="handleHearingConcludeSession(${s.hearing_id})" style="font-size: 0.78rem; padding: 5px 12px; background: #b91c1c; display: inline-flex; align-items: center; gap: 4px;">
+                                Conclude Session
+                            </button>
+                        ` : ''}
+                        ${stageType === 'Mediation' && Number(s.session_index || 1) === 1 ? `
+                            <button type="button" class="btn-secondary" onclick="openSummonsPreviewModal(${Number(caseId)}, null, ${Number(s.hearing_id)})" style="font-size: 0.78rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 4px; border-color: #0284c7; color: #0284c7; background: #f0f9ff;" title="Preview KP Form No. 9">
+                                KP Form 9
+                            </button>
+                        ` : ''}
+                        <button type="button" class="btn-secondary" onclick="openEmbeddedAttendanceModal(${s.hearing_id})" style="font-size: 0.78rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 4px;">
+                            Detailed Attendance
+                        </button>
+                        <a href="${openWorkspaceUrl}" class="btn-create" style="font-size: 0.78rem; padding: 5px 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; background: #2563eb; border-color: #2563eb; color: #fff; font-weight: 700;" title="Open ${escapeHtml(sessionLabel)} workspace">
+                            Open ${escapeHtml(sessionLabel)} &rarr;
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Daily Docket Live Arrival / Readiness Tracking Bar -->
+                <div style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span style="font-size: 0.76rem; font-weight: 700; color: #475569; text-transform: uppercase;">Party Arrival Check-In:</span>
+                        ${(s.parties && s.parties.length > 2) ? s.parties.map(p => {
+                            const isPIn = (p.attendance_status === 'Present' || p.attendance_status === 'Late');
+                            return `
+                                <button type="button" onclick="handleHearingCheckIn(${s.hearing_id}, '${escapeHtml(p.party_type)}', '${isPIn ? 'Waiting' : 'Checked In'}', ${p.resident_id || 'null'})" style="font-size: 0.76rem; padding: 3px 8px; border-radius: 6px; border: 1px solid ${isPIn ? '#86efac' : '#cbd5e1'}; background: ${isPIn ? '#dcfce7' : '#fff'}; color: ${isPIn ? '#15803d' : '#475569'}; font-weight: 600; cursor: pointer;" title="Toggle arrival for ${escapeHtml(p.full_name)}">
+                                    ${escapeHtml(p.party_type)} (${escapeHtml(p.full_name)}): [ ${isPIn ? 'Checked In' : 'Waiting'} ]
+                                </button>
+                            `;
+                        }).join('') : `
+                            <button type="button" onclick="handleHearingCheckIn(${s.hearing_id}, 'Complainant', '${compIn ? 'Waiting' : 'Checked In'}')" style="font-size: 0.78rem; padding: 3px 10px; border-radius: 6px; border: 1px solid ${compIn ? '#86efac' : '#cbd5e1'}; background: ${compIn ? '#dcfce7' : '#fff'}; color: ${compIn ? '#15803d' : '#475569'}; font-weight: 600; cursor: pointer;">
+                                Complainant: [ ${compIn ? 'Checked In' : 'Waiting / In Transit'} ]
+                            </button>
+                            <button type="button" onclick="handleHearingCheckIn(${s.hearing_id}, 'Respondent', '${respIn ? 'Waiting' : 'Checked In'}')" style="font-size: 0.78rem; padding: 3px 10px; border-radius: 6px; border: 1px solid ${respIn ? '#86efac' : '#cbd5e1'}; background: ${respIn ? '#dcfce7' : '#fff'}; color: ${respIn ? '#15803d' : '#475569'}; font-weight: 600; cursor: pointer;">
+                                Respondent: [ ${respIn ? 'Checked In' : 'Waiting / In Transit'} ]
+                            </button>
+                        `}
+                    </div>
+                    <div style="font-size: 0.8rem; font-weight: 600;">
+                        ${isReady ? '<span style="color: #15803d;">Complete &amp; Ready for Hearing</span>' : '<span style="color: #64748b;">Waiting for parties to arrive</span>'}
+                    </div>
+                </div>
+
+                <!-- Session Sub-Grid -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; font-size: 0.82rem;">
+                    <div>
+                        <span style="color: #64748b; font-size: 0.74rem; display: block; font-weight: 600;">PROOF OF SERVICE</span>
+                        <div style="margin-top: 3px;">
+                            <span style="font-size: 0.76rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; ${s.proof_of_service_status === 'Served' ? 'background: #dcfce7; color: #15803d;' : 'background: #fef3c7; color: #b45309;'}">
+                                ${s.proof_of_service_status === 'Served' ? 'Notice Served' : 'Pending / Unserved'}
+                            </span>
+                        </div>
+                    </div>
+                    <div>
+                        <span style="color: #64748b; font-size: 0.74rem; display: block; font-weight: 600;">ATTENDANCE RECORD</span>
+                        ${partyAttHtml}
+                    </div>
+                    <div>
+                        <span style="color: #64748b; font-size: 0.74rem; display: block; font-weight: 600;">MINUTES OF THE MEETING</span>
+                        <div style="margin-top: 3px;">
+                            <span style="font-size: 0.76rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; ${isFinalized ? 'background: #dcfce7; color: #15803d;' : (hasMinutes ? 'background: #dbeafe; color: #1e40af;' : 'background: #f1f5f9; color: #64748b;')}">
+                                ${escapeHtml(s.minutes_status || 'Not Recorded')}
+                            </span>
+                            ${s.session_outcome && s.session_outcome !== 'Pending' ? `<span style="font-size: 0.74rem; color: #475569; margin-left: 4px;">(${escapeHtml(s.session_outcome)})</span>` : ''}
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div style="margin-top: 10px;">
-                <a href="../cases/pangkat-workspace.php?case_id=${encodeURIComponent(caseId || '')}&complaint_id=${encodeURIComponent(complaint.complaint_id || '')}" class="btn-small-link">
-                    Open Conciliation Workspace &rarr;
-                </a>
-            </div>
-        </div>
-    `;
+        `;
+    });
+
+    container.innerHTML = cardsHtml;
 }
+
+async function handleHearingCheckIn(hearingId, partyType, status, residentId = null) {
+    try {
+        const payload = {
+            hearing_id: Number(hearingId),
+            action: 'check_in',
+            party_type: partyType,
+            status: status
+        };
+        if (residentId) payload.resident_id = Number(residentId);
+
+        const res = await fetch('../../../backend/api/hearings/queue.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (json.success) {
+            window.agapNotify?.(`Recorded ${partyType} as ${status}.`, 'success', 'Party Arrival');
+            loadHearingSessions('Mediation');
+            loadHearingSessions('Conciliation');
+        } else {
+            window.agapNotify?.(json.message || 'Error updating arrival status.', 'warning', 'Check-In');
+        }
+    } catch (err) {
+        console.error('handleHearingCheckIn error:', err);
+        window.agapNotify?.('Network error updating check-in.', 'error', 'Check-In Error');
+    }
+}
+window.handleHearingCheckIn = handleHearingCheckIn;
+
+async function handleHearingStandby(hearingId, standby) {
+    try {
+        const res = await fetch('../../../backend/api/hearings/queue.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ hearing_id: Number(hearingId), action: 'standby', standby: Boolean(standby) })
+        });
+        const json = await res.json();
+        if (json.success) {
+            window.agapNotify?.(standby ? 'Session moved to standby.' : 'Session resumed.', 'info', 'Docket Queue');
+            loadHearingSessions('Mediation');
+            loadHearingSessions('Conciliation');
+        } else {
+            window.agapNotify?.(json.message || 'Error updating standby.', 'warning');
+        }
+    } catch (e) {
+        console.error(e);
+    }
+}
+window.handleHearingStandby = handleHearingStandby;
+
+async function handleHearingStartSession(hearingId) {
+    try {
+        const res = await fetch('../../../backend/api/hearings/queue.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ hearing_id: Number(hearingId), action: 'start' })
+        });
+        const json = await res.json();
+        if (json.success) {
+            window.agapNotify?.('Session called to order and officially in progress.', 'success', 'Session Started');
+            loadHearingSessions('Mediation');
+            loadHearingSessions('Conciliation');
+        } else {
+            window.agapNotify?.(json.message || 'Error starting session.', 'warning');
+        }
+    } catch (e) {
+        console.error(e);
+    }
+}
+window.handleHearingStartSession = handleHearingStartSession;
+
+async function handleHearingConcludeSession(hearingId) {
+    try {
+        const res = await fetch('../../../backend/api/hearings/queue.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ hearing_id: Number(hearingId), action: 'conclude' })
+        });
+        const json = await res.json();
+        if (json.success) {
+            window.agapNotify?.('Hearing session concluded successfully.', 'success', 'Session Concluded');
+            loadHearingSessions('Mediation');
+            loadHearingSessions('Conciliation');
+        } else {
+            window.agapNotify?.(json.message || 'Error concluding session.', 'warning');
+        }
+    } catch (e) {
+        console.error(e);
+    }
+}
+window.handleHearingConcludeSession = handleHearingConcludeSession;
+
+// Schedule Hearing Modal
+function openEmbeddedScheduleModal(stageType = 'Mediation') {
+    const modal = document.getElementById('wsScheduleModal');
+    if (!modal) return;
+
+    if (stageType === 'Mediation') {
+        const existing = window.embeddedHearingsState?.mediation_sessions || [];
+        if (existing.length >= 1) {
+            const s1 = existing[0];
+            const s1Status = s1.status || '';
+            const s1Queue = s1.queue_status || '';
+            const s1Outcome = (s1.session_outcome || s1.outcome || '').toLowerCase();
+            const isActive = ['Scheduled', 'Waiting Room', 'Waiting', 'In_Session', 'Standby'].includes(s1Queue) ||
+                             (['Scheduled', 'In_Session', 'Standby', 'Pending'].includes(s1Status) && s1Status !== 'Completed');
+            const isSettled = s1Outcome.includes('settle') || s1Outcome === 'amicable settlement';
+            const isConcluded = s1Status === 'Completed' || s1Queue === 'Concluded' || (s1.minutes_status === 'Finalized');
+            const isUnresolved = s1Outcome.includes('unresolved') || s1Outcome.includes('reset') || s1Outcome.includes('reschedule') || s1Outcome.includes('non-settlement');
+
+            if (isSettled) {
+                if (typeof showToast === 'function') {
+                    showToast('Cannot schedule 2nd Mediation: 1st Mediation concluded with an Amicable Settlement.', 'error');
+                } else {
+                    alert('Cannot schedule 2nd Mediation: 1st Mediation concluded with an Amicable Settlement.');
+                }
+                return;
+            }
+            if (isActive || !isConcluded || !isUnresolved) {
+                if (typeof showToast === 'function') {
+                    showToast('Cannot schedule 2nd Mediation until 1st Mediation has concluded with an unresolved outcome.', 'error');
+                } else {
+                    alert('Cannot schedule 2nd Mediation until 1st Mediation has concluded with an unresolved outcome.');
+                }
+                return;
+            }
+            if (existing.length >= 3) {
+                if (typeof showToast === 'function') {
+                    showToast('Mediation is limited to a maximum of 3 sessions under Katarungang Pambarangay guidelines.', 'error');
+                } else {
+                    alert('Mediation is limited to a maximum of 3 sessions under Katarungang Pambarangay guidelines.');
+                }
+                return;
+            }
+        }
+    }
+
+    window.embeddedHearingsState.activeStageType = stageType;
+
+    const data = window.complaintData || {};
+    const comp = data.complaint || data;
+    const caseId = data.case_id || comp.case_id || (new URLSearchParams(window.location.search)).get('case_id');
+    const complaintId = data.complaint_id || comp.complaint_id || (new URLSearchParams(window.location.search)).get('id');
+
+    const typeInput = document.getElementById('schedHearingType');
+    const compIdInput = document.getElementById('schedComplaintId');
+    const caseIdInput = document.getElementById('schedCaseId');
+    const titleEl = document.getElementById('wsSchedModalTitle');
+    const subTitleEl = document.getElementById('wsSchedModalSubtitle');
+    const dateLabel = document.getElementById('schedDateLabel');
+    const btnSubmit = document.getElementById('submitSchedBtn');
+
+    if (typeInput) typeInput.value = stageType;
+    if (compIdInput) compIdInput.value = complaintId || '';
+    if (caseIdInput) caseIdInput.value = caseId || '';
+
+    if (titleEl) titleEl.textContent = `Schedule ${stageType} Session`;
+    if (subTitleEl) {
+        subTitleEl.textContent = stageType === 'Mediation'
+            ? 'Enter date and time for Punong Barangay mediation session within the 15-day statutory window (RA 7160 Sec. 410b).'
+            : 'Enter date and time for Pangkat Conciliation session within the 15-day statutory conciliation window (RA 7160 Sec. 410c).';
+    }
+    if (dateLabel) dateLabel.textContent = `${stageType} Date`;
+    if (btnSubmit) btnSubmit.textContent = `Schedule ${stageType} Session`;
+
+    if (stageType === 'Arbitration') {
+        if (titleEl) titleEl.textContent = 'Schedule Arbitration Session';
+        if (subTitleEl) {
+            subTitleEl.textContent = 'Enter date and time for voluntary binding arbitration session under RA 7160 Sec. 413.';
+        }
+        if (dateLabel) dateLabel.textContent = 'Arbitration Date';
+        if (btnSubmit) btnSubmit.textContent = 'Schedule Arbitration Session';
+        const venueInput = document.getElementById('schedVenue');
+        if (venueInput && !venueInput.value) venueInput.value = 'Lupon Court Room';
+    }
+
+    // Initialize date constraints (min today)
+    const dateInput = document.getElementById('schedDate');
+    if (dateInput) {
+        const todayStr = (new Date()).toISOString().slice(0, 10);
+        dateInput.min = todayStr;
+        if (!dateInput.value) {
+            const nextDay = new Date();
+            nextDay.setDate(nextDay.getDate() + 2);
+            dateInput.value = nextDay.toISOString().slice(0, 10);
+        }
+    }
+
+    modal.style.display = 'flex';
+}
+window.openEmbeddedScheduleModal = openEmbeddedScheduleModal;
+window.openScheduleModal = openEmbeddedScheduleModal;
+
+function closeEmbeddedScheduleModal() {
+    const modal = document.getElementById('wsScheduleModal');
+    if (modal) modal.style.display = 'none';
+}
+window.closeEmbeddedScheduleModal = closeEmbeddedScheduleModal;
+window.closeScheduleModal = closeEmbeddedScheduleModal;
+// Outcome Change & Management for Embedded Stage Modals
+function handleEmbeddedStageOutcomeChange(val) {
+    const banner = document.getElementById('stageOutcomeArbitrationBanner');
+    if (!banner) return;
+    if (val === 'Arbitration') {
+        banner.style.display = 'block';
+    } else {
+        banner.style.display = 'none';
+    }
+}
+window.handleEmbeddedStageOutcomeChange = handleEmbeddedStageOutcomeChange;
+
+function openEmbeddedRecordOutcomeModal(stageType = 'Mediation') {
+    const modal = document.getElementById('wsRecordOutcomeModal');
+    if (!modal) return;
+    const typeInput = document.getElementById('stageOutcomeType');
+    if (typeInput) typeInput.value = stageType;
+    const titleEl = document.getElementById('wsOutcomeModalTitle');
+    if (titleEl) titleEl.textContent = `Record ${stageType || ''} Procedural Outcome`;
+    const sel = document.getElementById('stageOutcomeSelect');
+    if (sel) {
+        sel.value = 'Settled';
+        handleEmbeddedStageOutcomeChange('Settled');
+    }
+    const remarks = document.getElementById('stageOutcomeRemarks');
+    if (remarks) remarks.value = '';
+    modal.style.display = 'flex';
+}
+window.openEmbeddedRecordOutcomeModal = openEmbeddedRecordOutcomeModal;
+
+function closeEmbeddedRecordOutcomeModal() {
+    const modal = document.getElementById('wsRecordOutcomeModal');
+    if (modal) modal.style.display = 'none';
+}
+window.closeEmbeddedRecordOutcomeModal = closeEmbeddedRecordOutcomeModal;
+
+async function submitEmbeddedRecordOutcome(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    const btn = document.getElementById('submitOutcomeBtn');
+    if (btn) btn.disabled = true;
+
+    const stageType = document.getElementById('stageOutcomeType')?.value || 'Mediation';
+    const outcomeVal = document.getElementById('stageOutcomeSelect')?.value || '';
+    const remarksVal = document.getElementById('stageOutcomeRemarks')?.value || '';
+    
+    const data = window.complaintData || {};
+    const comp = data.complaint || data;
+    const caseId = data.case_id || comp.case_id || (new URLSearchParams(window.location.search)).get('case_id');
+
+    if (!caseId) {
+        if (typeof showToast === 'function') {
+            showToast('Case ID is required to record stage outcome.', 'error');
+        } else {
+            alert('Case ID is required to record stage outcome.');
+        }
+        if (btn) btn.disabled = false;
+        return;
+    }
+
+    try {
+        const res = await fetch('../../../backend/api/stages/outcome.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                case_id: Number(caseId),
+                stage_type: stageType,
+                outcome: outcomeVal,
+                remarks: remarksVal
+            })
+        });
+        const json = await res.json();
+        if (json.success) {
+            closeEmbeddedRecordOutcomeModal();
+            if (typeof showToast === 'function') {
+                showToast(json.message || `${stageType} outcome recorded successfully!`, 'success');
+            } else {
+                alert(json.message || `${stageType} outcome recorded successfully!`);
+            }
+
+            const currentComplaintId = data.complaint_id || comp.complaint_id || (new URLSearchParams(window.location.search)).get('id');
+            if (currentComplaintId && typeof loadComplaintDetails === 'function') {
+                await loadComplaintDetails(currentComplaintId);
+            }
+
+            // Outcome-driven action prompts:
+            if (outcomeVal === 'Arbitration') {
+                setTimeout(() => {
+                    if (confirm('Outcome recorded as Voluntary Arbitration. Would you like to schedule the Arbitration hearing session now?')) {
+                        openEmbeddedScheduleModal('Arbitration');
+                    }
+                }, 400);
+            } else if (outcomeVal === 'Settled') {
+                setTimeout(() => {
+                    openKpFormModal(Number(caseId), 'KP Form 16');
+                }, 400);
+            } else if (outcomeVal === 'Repudiated') {
+                setTimeout(() => {
+                    openKpFormModal(Number(caseId), 'KP Form 17');
+                }, 400);
+            }
+        } else {
+            if (typeof showToast === 'function') {
+                showToast(json.message || 'Unable to record stage outcome.', 'error');
+            } else {
+                alert(json.message || 'Unable to record stage outcome.');
+            }
+        }
+    } catch (err) {
+        console.error('submitEmbeddedRecordOutcome error:', err);
+        if (typeof showToast === 'function') {
+            showToast('Network error recording outcome.', 'error');
+        } else {
+            alert('Network error recording outcome.');
+        }
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+window.submitEmbeddedRecordOutcome = submitEmbeddedRecordOutcome;
+
+// Embedded Pangkat Referral Modal
+async function openEmbeddedReferPangkatModal() {
+    const modal = document.getElementById('wsReferPangkatModal');
+    if (!modal) return;
+
+    const dateInput = document.getElementById('referDate');
+    if (dateInput && !dateInput.value) {
+        dateInput.value = (new Date()).toISOString().slice(0, 10);
+    }
+
+    // Populate Lupon dropdowns if empty
+    const chSelect = document.getElementById('referChairmanId');
+    if (chSelect && (!chSelect.options || chSelect.options.length <= 1)) {
+        try {
+            const res = await fetch('../../../backend/api/assignments/lupon-members.php');
+            const json = await res.json();
+            const members = Array.isArray(json) ? json : (json.data || []);
+            window.embeddedHearingsState.luponMembers = members;
+            const selects = ['referChairmanId', 'referSecretaryId', 'referMemberId'];
+            selects.forEach(id => {
+                const sel = document.getElementById(id);
+                if (!sel) return;
+                let opts = '<option value="">-- Select Lupon Member --</option>';
+                members.forEach(m => {
+                    const name = `${m.last_name}, ${m.first_name} ${m.middle_name || ''}`.trim();
+                    opts += `<option value="${Number(m.member_id)}">${escapeHtml(name)}</option>`;
+                });
+                sel.innerHTML = opts;
+            });
+        } catch (e) {
+            console.warn('Could not load lupon members:', e);
+        }
+    }
+
+    goEmbeddedReferralStep(1);
+    modal.style.display = 'flex';
+}
+window.openEmbeddedReferPangkatModal = openEmbeddedReferPangkatModal;
+
+function closeEmbeddedReferPangkatModal() {
+    const modal = document.getElementById('wsReferPangkatModal');
+    if (modal) modal.style.display = 'none';
+}
+window.closeEmbeddedReferPangkatModal = closeEmbeddedReferPangkatModal;
+
+function goEmbeddedReferralStep(step) {
+    if (step === 2) {
+        const reason = document.getElementById('referReason')?.value.trim();
+        const date = document.getElementById('referDate')?.value;
+        if (!date || !reason) {
+            alert('Enter the referral date and authorized referral justification before continuing.');
+            return;
+        }
+    }
+    if (step === 3) {
+        const ids = ['referChairmanId', 'referSecretaryId', 'referMemberId'].map(id => document.getElementById(id)?.value);
+        if (ids.some(id => !id) || new Set(ids).size !== 3) {
+            alert('Choose three different active Lupon Members before reviewing the referral.');
+            return;
+        }
+        const nameFor = (id) => document.getElementById(id)?.selectedOptions?.[0]?.textContent || 'Not selected';
+        const summary = document.getElementById('referReviewSummary');
+        if (summary) {
+            summary.innerHTML = `<strong>Step 3 of 3: Review and Confirm Referral</strong><br><br><strong>Referral Date:</strong> ${escapeHtml(document.getElementById('referDate')?.value || '')}<br><strong>Pangkat Chairman:</strong> ${escapeHtml(nameFor('referChairmanId'))}<br><strong>Pangkat Secretary:</strong> ${escapeHtml(nameFor('referSecretaryId'))}<br><strong>Regular Member:</strong> ${escapeHtml(nameFor('referMemberId'))}<br><br>The system will record the statutory Pangkat convening deadline and generate KP Form 10, 11, and 12.`;
+        }
+    }
+
+    const s1 = document.getElementById('refStep1');
+    const s2 = document.getElementById('refStep2');
+    const s3 = document.getElementById('refStep3');
+    if (s1) s1.style.display = (step === 1 ? 'block' : 'none');
+    if (s2) s2.style.display = (step === 2 ? 'block' : 'none');
+    if (s3) s3.style.display = (step === 3 ? 'block' : 'none');
+}
+window.goEmbeddedReferralStep = goEmbeddedReferralStep;
+
+async function submitEmbeddedReferPangkat(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    const btn = document.getElementById('submitReferBtn');
+    if (btn) btn.disabled = true;
+
+    const chairmanId = document.getElementById('referChairmanId')?.value;
+    const secretaryId = document.getElementById('referSecretaryId')?.value;
+    const memberId = document.getElementById('referMemberId')?.value;
+
+    if (!chairmanId || !secretaryId || !memberId) {
+        alert('Please nominate all 3 distinct active Lupon Members for Chairperson, Secretary, and Member.');
+        if (btn) btn.disabled = false;
+        return;
+    }
+
+    if (new Set([chairmanId, secretaryId, memberId]).size !== 3) {
+        alert('Chairperson, Secretary, and Member must be different Lupon members.');
+        if (btn) btn.disabled = false;
+        return;
+    }
+
+    const data = window.complaintData || {};
+    const comp = data.complaint || data;
+    const caseId = data.case_id || comp.case_id || (new URLSearchParams(window.location.search)).get('case_id');
+
+    if (!caseId) {
+        alert('Case ID is required to execute referral.');
+        if (btn) btn.disabled = false;
+        return;
+    }
+
+    const payload = {
+        case_id: Number(caseId),
+        referral_date: document.getElementById('referDate')?.value || (new Date()).toISOString().slice(0, 10),
+        referral_reason: document.getElementById('referReason')?.value || 'Mediation before the Punong Barangay failed. Elevated to Pangkat Conciliation.',
+        selection_method: document.getElementById('referSelectionMethod')?.value || 'Party Agreement',
+        selection_notes: '',
+        quorum_size: 3,
+        chairman_id: Number(chairmanId),
+        secretary_id: Number(secretaryId),
+        member_id: Number(memberId)
+    };
+
+    try {
+        const res = await fetch('../../../backend/api/stages/refer-pangkat.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (json.success) {
+            closeEmbeddedReferPangkatModal();
+            if (typeof showToast === 'function') {
+                showToast('Case successfully referred to Pangkat ng Tagapagkasundo! KP Form 10, 11, and 12 generated.', 'success');
+            } else {
+                alert('Case successfully referred to Pangkat ng Tagapagkasundo! KP Form 10, 11, and 12 generated.');
+            }
+            const currentComplaintId = data.complaint_id || comp.complaint_id || (new URLSearchParams(window.location.search)).get('id');
+            if (currentComplaintId && typeof loadComplaintDetails === 'function') {
+                await loadComplaintDetails(currentComplaintId);
+            }
+            // Prompt side-by-side preview
+            setTimeout(() => {
+                openTriPanelPangkatModal(Number(caseId));
+            }, 500);
+        } else {
+            alert(json.message || 'Unable to refer case to Pangkat.');
+        }
+    } catch (err) {
+        console.error('submitEmbeddedReferPangkat error:', err);
+        alert('Network error during referral.');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+window.submitEmbeddedReferPangkat = submitEmbeddedReferPangkat;
+
+
+function handleSchedDateChange(val) {
+    // Optional schedule conflict hook
+}
+window.handleSchedDateChange = handleSchedDateChange;
+
+function handleSchedTimeChange() {
+    // Optional schedule conflict hook
+}
+window.handleSchedTimeChange = handleSchedTimeChange;
+
+async function submitEmbeddedSchedule(e) {
+    if (e && e.preventDefault) e.preventDefault();
+
+    const form = document.getElementById('wsScheduleForm');
+    if (!form) return;
+
+    const data = window.complaintData || {};
+    const comp = data.complaint || data;
+    const caseId = Number(document.getElementById('schedCaseId')?.value || data.case_id || comp.case_id);
+    const complaintId = Number(document.getElementById('schedComplaintId')?.value || data.complaint_id || comp.complaint_id);
+    const hearingType = document.getElementById('schedHearingType')?.value || 'Mediation';
+    const dateVal = document.getElementById('schedDate')?.value;
+    const timeVal = document.getElementById('schedTime')?.value;
+    const venueVal = document.getElementById('schedVenue')?.value || 'Lupon Court Room';
+    const remarksVal = document.getElementById('schedRemarks')?.value || '';
+    const pastReason = document.getElementById('schedPastDateExceptionReason')?.value || '';
+
+    if (!dateVal || !timeVal) {
+        window.agapNotify?.('Please select both a hearing date and time.', 'warning', 'Required');
+        return;
+    }
+
+    const submitBtn = document.getElementById('submitSchedBtn');
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Scheduling...'; }
+
+    try {
+        const payload = {
+            case_id: caseId,
+            complaint_id: complaintId,
+            hearing_type: hearingType,
+            hearing_date: dateVal,
+            hearing_time: timeVal,
+            venue: venueVal,
+            remarks: remarksVal
+        };
+        if (pastReason) payload.past_date_exception_reason = pastReason;
+
+        const res = await fetch('../../../backend/api/hearings/create.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (json.success) {
+            closeEmbeddedScheduleModal();
+            window.agapNotify?.(`${hearingType} session scheduled successfully.`, 'success', 'Session Scheduled');
+            await loadComplaintDetails();
+            loadHearingSessions(hearingType);
+        } else {
+            window.agapNotify?.(json.message || 'Unable to schedule hearing session.', 'warning', 'Scheduling Error');
+        }
+    } catch (err) {
+        console.error('submitEmbeddedSchedule error:', err);
+        window.agapNotify?.('Network error while scheduling hearing.', 'error', 'Error');
+    } finally {
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = `Schedule ${hearingType} Session`; }
+    }
+}
+window.submitEmbeddedSchedule = submitEmbeddedSchedule;
+window.submitSchedule = submitEmbeddedSchedule;
+
+function setEmbeddedAttendanceActualStartTimeNow() {
+    const input = document.getElementById('embAttActualStartTime');
+    if (!input) return;
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    input.value = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+}
+window.setEmbeddedAttendanceActualStartTimeNow = setEmbeddedAttendanceActualStartTimeNow;
+
+function appendEmbeddedDelayRemark(remark) {
+    const textarea = document.getElementById('embAttDelayRemarks');
+    if (!textarea) return;
+    const current = textarea.value.trim();
+    if (!current) {
+        textarea.value = remark;
+    } else if (!current.includes(remark)) {
+        textarea.value = current.replace(/[.,;]?$/, '') + '. ' + remark;
+    }
+    textarea.focus();
+}
+window.appendEmbeddedDelayRemark = appendEmbeddedDelayRemark;
+
+// Streamlined Attendance Modal (matching mediation workspace)
+async function openEmbeddedAttendanceModal(hearingId) {
+    const modal = document.getElementById('wsAttendanceModal');
+    const body = document.getElementById('wsAttModalBody');
+    if (!modal || !body) return;
+
+    modal.style.display = 'flex';
+    body.innerHTML = '<div class="empty-detail-state" style="text-align: center; padding: 24px 16px;">Loading attendance records...</div>';
+
+    try {
+        const res = await fetch(`../../../backend/api/hearings/attendance.php?hearing_id=${encodeURIComponent(hearingId)}`);
+        const json = await res.json();
+        if (!json.success || !json.data) {
+            throw new Error(json.message || 'Failed to load attendance.');
+        }
+
+        window._lastEmbeddedAttendanceData = json.data;
+        const hearing = json.data.hearing || json.data || {};
+        const parties = json.data.parties || [];
+
+        const titleEl = document.getElementById('wsAttModalTitle');
+        if (titleEl) {
+            const hType = hearing.hearing_type || 'Mediation';
+            titleEl.textContent = `Record Hearing Attendance: ${hType}`;
+        }
+
+        const formatForDatetimeLocal = (dtString) => {
+            if (!dtString) return '';
+            try {
+                const d = new Date(dtString.replace(' ', 'T'));
+                if (isNaN(d.getTime())) return '';
+                const pad = (n) => String(n).padStart(2, '0');
+                return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+            } catch { return ''; }
+        };
+
+        const formatForTimeInput = (timeString) => {
+            if (!timeString) return '';
+            const match = timeString.match(/(\d{1,2}):(\d{2})/);
+            if (!match) return '';
+            let hours = parseInt(match[1], 10);
+            const mins = match[2];
+            if (/pm/i.test(timeString) && hours < 12) hours += 12;
+            if (/am/i.test(timeString) && hours === 12) hours = 0;
+            return `${String(hours).padStart(2, '0')}:${mins}`;
+        };
+
+        const scheduledVal = formatForDatetimeLocal(hearing.hearing_date);
+        const actualStartVal = formatForTimeInput(hearing.actual_start_time || '');
+        const delayRemarksVal = hearing.attendance_notes || '';
+
+        let compIsPresent = true;
+        let respIsPresent = true;
+        if (hearing.complainant_attendance) {
+            compIsPresent = (hearing.complainant_attendance !== 'Absent');
+        }
+        if (hearing.respondent_attendance) {
+            respIsPresent = (hearing.respondent_attendance !== 'Absent');
+        }
+
+        const isSaved = Boolean(hearing.attendance_recorded_at);
+
+        body.innerHTML = `
+            <form id="embAttendanceForm" onsubmit="submitEmbeddedAttendance(event, ${Number(hearingId)})" class="streamlined-attendance-container" style="display: flex; flex-direction: column; gap: 16px;">
+                ${isSaved ? `
+                    <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 6px; padding: 8px 14px; font-size: 0.84rem; color: #166534; display: flex; align-items: center; justify-content: space-between;">
+                        <span style="font-weight: 600;">✓ Attendance details recorded and saved in database</span>
+                        <span style="font-size: 0.78rem; background: #dcfce7; padding: 2px 8px; border-radius: 9999px; font-weight: 700;">STATUS: ${escapeHtml(hearing.status || 'Attendance Recorded')}</span>
+                    </div>
+                ` : ''}
+
+                <!-- Row 1: Scheduled Date/Time & Actual Start Time -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div>
+                        <label for="embAttScheduledDateTime" style="display: block; font-weight: 600; color: #0f172a; font-size: 0.88rem; margin-bottom: 6px;">
+                            Petsa at Takdang Oras (Scheduled Date &amp; Time) <span style="color: #dc2626;">*</span>
+                        </label>
+                        <input type="datetime-local" id="embAttScheduledDateTime" value="${escapeHtml(scheduledVal)}" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; font-size: 0.88rem; box-sizing: border-box; background: #fff; font-family: inherit; color: #1e293b;">
+                    </div>
+                    <div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <label for="embAttActualStartTime" style="font-weight: 600; color: #0f172a; font-size: 0.88rem;">
+                                Aktwal na Oras ng Simula (Actual Start Time)
+                            </label>
+                            <a href="javascript:void(0)" onclick="setEmbeddedAttendanceActualStartTimeNow()" class="time-now-link" style="color: #2563eb; font-weight: 600; font-size: 0.84rem; text-decoration: none;">
+                                Oras Ngayon (Now)
+                            </a>
+                        </div>
+                        <input type="time" id="embAttActualStartTime" value="${escapeHtml(actualStartVal)}" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; font-size: 0.88rem; box-sizing: border-box; background: #fff; font-family: inherit; color: #1e293b;">
+                    </div>
+                </div>
+
+                <!-- Row 2: Session Delay Remarks -->
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label for="embAttDelayRemarks" style="font-weight: 600; color: #0f172a; font-size: 0.88rem;">
+                            Puna sa Oras ng Simula / Dahilan ng Pagkaantala (Session Delay Remarks)
+                        </label>
+                        <span style="color: #64748b; font-size: 0.8rem;">
+                            (Kung sakaling late nag-umpisa ang session)
+                        </span>
+                    </div>
+                    <textarea id="embAttDelayRemarks" rows="2" placeholder="Halimbawa: Naantala ang simula dahil may naunang kaso sa Lupon Court Room. Present ang mga partido." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 12px; font-size: 0.86rem; box-sizing: border-box; font-family: inherit; resize: vertical; line-height: 1.45; color: #1e293b;">${escapeHtml(delayRemarksVal)}</textarea>
+                    
+                    <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
+                        <span style="font-size: 0.8rem; color: #64748b; font-weight: 500;">I-click para ilagay:</span>
+                        <button type="button" class="delay-helper-pill" onclick="appendEmbeddedDelayRemark('Naunang kaso sa Court Room')">
+                            • Naunang kaso sa Court Room
+                        </button>
+                        <button type="button" class="delay-helper-pill pill-warning" onclick="appendEmbeddedDelayRemark('Nahuli ang panig')">
+                            • Nahuli ang panig
+                        </button>
+                        <button type="button" class="delay-helper-pill pill-success" onclick="appendEmbeddedDelayRemark('Nasa oras')">
+                            • Nasa oras
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Row 3: Party Attendance (Pagdalo ng Magkabilang Panig) -->
+                <div class="party-attendance-box" style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 16px 20px; background: #fff; margin-top: 4px;">
+                    <h4 style="margin: 0 0 14px; font-size: 0.95rem; font-weight: 700; color: #0f172a;">
+                        Pagdalo ng Magkabilang Panig (Party Attendance) <span style="color: #dc2626;">*</span>
+                    </h4>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div>
+                            <span class="party-att-col-title" style="font-weight: 600; color: #334155; font-size: 0.86rem; margin-bottom: 8px; display: block;">Nagpaanyaya (Complainant):</span>
+                            <div style="display: flex; gap: 16px; align-items: center;">
+                                <label class="party-att-radio-label present" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 0.85rem; cursor: pointer; color: #15803d;">
+                                    <input type="radio" name="emb_att_comp_attendance" value="Present" ${compIsPresent ? 'checked' : ''} style="accent-color: #16a34a; width: 16px; height: 16px;">
+                                    <span>Dumalo (Present)</span>
+                                </label>
+                                <label class="party-att-radio-label absent" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 0.85rem; cursor: pointer; color: #b91c1c;">
+                                    <input type="radio" name="emb_att_comp_attendance" value="Absent" ${!compIsPresent ? 'checked' : ''} style="accent-color: #dc2626; width: 16px; height: 16px;">
+                                    <span>Hindi Dumalo (Absent)</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div>
+                            <span class="party-att-col-title" style="font-weight: 600; color: #334155; font-size: 0.86rem; margin-bottom: 8px; display: block;">Inanyayahan (Respondent):</span>
+                            <div style="display: flex; gap: 16px; align-items: center;">
+                                <label class="party-att-radio-label present" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 0.85rem; cursor: pointer; color: #15803d;">
+                                    <input type="radio" name="emb_att_resp_attendance" value="Present" ${respIsPresent ? 'checked' : ''} style="accent-color: #16a34a; width: 16px; height: 16px;">
+                                    <span>Dumalo (Present)</span>
+                                </label>
+                                <label class="party-att-radio-label absent" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 0.85rem; cursor: pointer; color: #b91c1c;">
+                                    <input type="radio" name="emb_att_resp_attendance" value="Absent" ${!respIsPresent ? 'checked' : ''} style="accent-color: #dc2626; width: 16px; height: 16px;">
+                                    <span>Hindi Dumalo (Absent)</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;">
+                    <button type="button" class="btn-secondary" onclick="closeEmbeddedAttendanceModal()">Cancel</button>
+                    <button type="submit" class="btn-create" id="btnSaveAttendance" style="padding: 8px 22px; font-size: 0.88rem; font-weight: 600; background: #0f172a; color: #fff; border-radius: 6px; cursor: pointer;">
+                        ${isSaved ? 'Update Attendance' : 'Save Attendance'}
+                    </button>
+                </div>
+            </form>
+        `;
+    } catch (err) {
+        body.innerHTML = `<p style="color: #dc2626; padding: 14px;">Error: ${escapeHtml(err.message)}</p>`;
+    }
+}
+window.openEmbeddedAttendanceModal = openEmbeddedAttendanceModal;
+window.openAttendanceModal = openEmbeddedAttendanceModal;
+
+function closeEmbeddedAttendanceModal() {
+    const modal = document.getElementById('wsAttendanceModal');
+    if (modal) modal.style.display = 'none';
+}
+window.closeEmbeddedAttendanceModal = closeEmbeddedAttendanceModal;
+window.closeAttendanceModal = closeEmbeddedAttendanceModal;
+
+async function submitEmbeddedAttendance(e, hearingId) {
+    if (e && e.preventDefault) e.preventDefault();
+
+    const saveBtn = document.getElementById('btnSaveAttendance');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
+
+    try {
+        const schedDate = document.getElementById('embAttScheduledDateTime')?.value;
+        const actualStart = document.getElementById('embAttActualStartTime')?.value;
+        const delayRemarks = document.getElementById('embAttDelayRemarks')?.value.trim() || '';
+        const compAtt = document.querySelector('input[name="emb_att_comp_attendance"]:checked')?.value || 'Present';
+        const respAtt = document.querySelector('input[name="emb_att_resp_attendance"]:checked')?.value || 'Present';
+
+        const currentData = window._lastEmbeddedAttendanceData || {};
+        const parties = currentData.parties || [];
+
+        const partyRecords = parties.map(p => {
+            const isComp = (p.party_type === 'Complainant');
+            const st = isComp ? compAtt : respAtt;
+            return {
+                resident_id: p.resident_id,
+                party_type: p.party_type,
+                attendance_status: st,
+                is_justified: st === 'Present' ? 0 : (delayRemarks ? 1 : 0),
+                justification_reason: st === 'Present' ? null : (delayRemarks || null),
+                verification_status: st === 'Present' ? 'Verified Served' : 'Pending'
+            };
+        });
+
+        const payload = {
+            hearing_id: Number(hearingId),
+            scheduled_datetime: schedDate ? schedDate.replace('T', ' ') + ':00' : null,
+            actual_start_time: actualStart || null,
+            delay_remarks: delayRemarks,
+            attendance_notes: delayRemarks,
+            presider_attendance: 'Present',
+            complainant_attendance: compAtt,
+            complainant_explanation: compAtt === 'Absent' ? delayRemarks : '',
+            respondent_attendance: respAtt,
+            respondent_explanation: respAtt === 'Absent' ? delayRemarks : '',
+            parties: partyRecords
+        };
+
+        const res = await fetch('../../../backend/api/hearings/attendance.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (json.success) {
+            closeEmbeddedAttendanceModal();
+            window.agapNotify?.('Attendance recorded successfully.', 'success', 'Attendance Saved');
+            if (typeof loadComplaintDetails === 'function') loadComplaintDetails();
+            if (typeof loadHearingSessions === 'function') {
+                loadHearingSessions('Mediation');
+                loadHearingSessions('Conciliation');
+                loadHearingSessions('Arbitration');
+            }
+        } else {
+            window.agapNotify?.(json.message || 'Unable to save attendance.', 'warning', 'Attendance Error');
+        }
+    } catch (err) {
+        console.error('submitEmbeddedAttendance error:', err);
+        window.agapNotify?.('Network error saving attendance.', 'error', 'Error');
+    } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Attendance'; }
+    }
+}
+window.submitEmbeddedAttendance = submitEmbeddedAttendance;
+window.submitAttendance = submitEmbeddedAttendance;
 
 function renderArbitrationCard(stages, caseId, complaint) {
     const arb = stages?.arbitration || {};
@@ -2542,6 +4278,7 @@ async function loadCaseProgress(complaintId) {
 
         // Render Status Tracker
         renderStatusTracker(progress);
+        updateStageTabsLockState();
     } catch (err) {
         console.error('Error loading case progress:', err);
     }
@@ -4788,7 +6525,8 @@ window.openPaanyayaScheduleModal = function() {
         salaysayInput.value = p.salaysay || window.complaintData?.narrative || '';
     }
     if (sigInput) {
-        sigInput.checked = (p.has_e_signature !== undefined && p.has_e_signature !== null) ? Number(p.has_e_signature) === 1 : true;
+        sigInput.value = '1';
+        sigInput.checked = true;
     }
 
     const errBox = document.getElementById('paanyayaScheduleError');
@@ -5098,6 +6836,19 @@ window.renderPaanyayaDeliveryHistoryTable = function(stageType) {
 };
 
 window.openIssuePaanyayaModal = function(stageType) {
+    if (stageType === 'Paanyaya 2') {
+        const hasMedHearings = (window.embeddedHearingsState?.mediation_sessions?.length > 0) ||
+                               (window.complaintData?.hearings?.some(h => (h.hearing_type || '').toLowerCase() === 'mediation'));
+        const isMediationGraduated = ['Mediation', 'Conciliation', 'Arbitration', 'Referred to Lupon'].includes(window.complaintData?.status || '') || hasMedHearings;
+        if (isMediationGraduated) {
+            if (typeof showToast === 'function') {
+                showToast('Cannot issue Paanyaya 2: Case has already graduated to formal Mediation proceedings.', 'error');
+            } else {
+                alert('Cannot issue Paanyaya 2: Case has already graduated to formal Mediation proceedings.');
+            }
+            return;
+        }
+    }
     const modal = document.getElementById('issuePaanyayaStageModal');
     if (!modal) return;
 
@@ -5195,16 +6946,29 @@ window.submitIssuePaanyayaStage = async function(event) {
     }
 };
 
-window.openRecordReturnModal = function(stageType) {
-    const params = new URLSearchParams(window.location.search);
-    const complaintId = params.get('id') || params.get('complaint_id') || window.complaintData?.complaint_id;
-    if (complaintId) {
-        window.location.href = `../gps/proof-service.php?complaint_id=${encodeURIComponent(complaintId)}&stage=${encodeURIComponent(stageType || 'Paanyaya 1')}&open_return=1`;
+
+window.openDocOfficerReturn = function(docId, caseId) {
+    const cId = caseId || window.complaintData?.case_id || (new URLSearchParams(window.location.search)).get('case_id');
+    const compId = window.complaintData?.complaint_id || (new URLSearchParams(window.location.search)).get('id');
+    if (cId) {
+        window.location.href = `../gps/proof-service.php?case_id=${encodeURIComponent(cId)}` + (docId ? `&doc_id=${encodeURIComponent(docId)}` : '');
+    } else if (compId) {
+        window.location.href = `../gps/proof-service.php?complaint_id=${encodeURIComponent(compId)}`;
+    } else {
+        window.location.href = '../gps/proof-service.php';
+    }
+};
+
+window.openRecordReturnModal = function(stageType = 'Paanyaya 1') {
+    const modal = document.getElementById('recordOfficersReturnModal');
+    if (!modal) {
+        const params = new URLSearchParams(window.location.search);
+        const complaintId = params.get('id') || params.get('complaint_id') || window.complaintData?.complaint_id;
+        if (complaintId) {
+            window.location.href = `../gps/proof-service.php?complaint_id=${encodeURIComponent(complaintId)}&stage=${encodeURIComponent(stageType || 'Paanyaya 1')}&open_return=1`;
+        }
         return;
     }
-
-    const modal = document.getElementById('recordOfficersReturnModal');
-    if (!modal) return;
 
     const stages = window.paanyayaStagesData || window.complaintData?.paanyaya_stages || {};
     const targetStage = (stageType === 'Paanyaya 2') ? stages.stage_2 : stages.stage_1;
@@ -6106,3 +7870,95 @@ window.submitReopenForCfa = async function() {
         if (cancelBtn) cancelBtn.disabled = false;
     }
 };
+
+
+// Modal Helpers & Aliases for KP Forms & Multi-Panel Pangkat Preview
+function openKpFormModal(caseId, formCode, hearingId = null) {
+    const modal = document.getElementById('kpDocumentPreviewModal');
+    const iframe = document.getElementById('kpDocPreviewIframe');
+    const heading = document.getElementById('kpDocModalHeading');
+    const sub = document.getElementById('kpDocModalSub');
+    const dlBtn = document.getElementById('btnDownloadKpDocPdf');
+
+    if (heading) heading.textContent = `${formCode} Preview`;
+    if (sub && caseId) sub.textContent = `Barangay Tumana Lupong Tagapamayapa Â· Case #${caseId}`;
+
+    const baseApi = `../../../backend/api/documents/kp-form.php`;
+    let src = `${baseApi}?case_id=${encodeURIComponent(caseId)}&form_code=${encodeURIComponent(formCode)}&preview=1&bare=1`;
+    let dl = `${baseApi}?case_id=${encodeURIComponent(caseId)}&form_code=${encodeURIComponent(formCode)}&pdf=1`;
+    if (hearingId) {
+        src += `&hearing_id=${encodeURIComponent(hearingId)}`;
+        dl += `&hearing_id=${encodeURIComponent(hearingId)}`;
+    }
+
+    if (iframe) iframe.src = src;
+    if (dlBtn) dlBtn.href = dl;
+    if (modal) modal.style.display = 'flex';
+}
+window.openKpFormModal = openKpFormModal;
+window.openKPFormPreview = openKpFormModal;
+
+function openTriPanelPangkatModal(caseId) {
+    const activeCaseId = caseId || (window.complaintData ? (window.complaintData.case_id || window.complaintData.complaint?.case_id) : '');
+    const modal = document.getElementById('pangkatNoticesModal');
+    if (!modal) {
+        console.warn('pangkatNoticesModal element not found in DOM.');
+        return;
+    }
+
+    const complaintId = (window.complaintData ? (window.complaintData.complaint_id || window.complaintData.complaint?.complaint_id) : '') || '';
+    const frame10 = document.getElementById('pangkatPreviewFrameKp10');
+    const frame11 = document.getElementById('pangkatPreviewFrameKp11');
+    const frame12 = document.getElementById('pangkatPreviewFrameKp12');
+    const dl10 = document.getElementById('btnDownloadPangkatKp10');
+    const dl11 = document.getElementById('btnDownloadPangkatKp11');
+    const dl12 = document.getElementById('btnDownloadPangkatKp12');
+    const retComp = document.getElementById('btnPangkatOfficersReturnComp');
+    const retResp = document.getElementById('btnPangkatOfficersReturnResp');
+    const retFull = document.getElementById('btnPangkatOfficerReturnFull');
+
+    const baseApi = `../../../backend/api/documents/kp-form.php`;
+
+    if (frame10) frame10.src = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+10&preview=1&bare=1`;
+    if (frame11) frame11.src = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+11&preview=1&bare=1`;
+    if (frame12) frame12.src = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+12&preview=1&bare=1`;
+
+    if (dl10) dl10.href = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+10&pdf=1`;
+    if (dl11) dl11.href = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+11&pdf=1`;
+    if (dl12) dl12.href = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+12&pdf=1`;
+
+    const gpsUrl = (party) => `../gps/proof-service.php?case_id=${encodeURIComponent(activeCaseId)}&complaint_id=${encodeURIComponent(complaintId)}&stage=Conciliation&form=KP12${party ? `&party=${encodeURIComponent(party)}` : ''}`;
+    if (retComp) retComp.href = gpsUrl('Complainant');
+    if (retResp) retResp.href = gpsUrl('Respondent');
+    if (retFull) retFull.href = gpsUrl();
+
+    modal.style.display = 'flex';
+}
+window.openTriPanelPangkatModal = openTriPanelPangkatModal;
+
+function closeTriPanelPangkatModal() {
+    const modal = document.getElementById('pangkatNoticesModal');
+    if (modal) modal.style.display = 'none';
+}
+window.closeTriPanelPangkatModal = closeTriPanelPangkatModal;
+
+function printPangkatFrame(which) {
+    let frameId = 'pangkatPreviewFrameKp10';
+    if (which === 'kp11') frameId = 'pangkatPreviewFrameKp11';
+    else if (which === 'kp12') frameId = 'pangkatPreviewFrameKp12';
+    const iframe = document.getElementById(frameId);
+    if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+    }
+}
+window.printPangkatFrame = printPangkatFrame;
+
+function printAllPangkatNotices() {
+    ['kp10', 'kp11', 'kp12'].forEach((which, i) => {
+        setTimeout(() => printPangkatFrame(which), i * 1500);
+    });
+}
+window.printAllPangkatNotices = printAllPangkatNotices;
+
+window.renderHeroKpFormsList = renderOfficialKpForms;

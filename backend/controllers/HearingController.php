@@ -621,7 +621,7 @@ class HearingController
         $rawDate = trim((string) ($data['hearing_date'] ?? ''));
         $types = $allowExistingTypes
             ? ['Initial Hearing', 'Mediation', 'Conciliation', 'Arbitration']
-            : ['Mediation', 'Conciliation'];
+            : ['Mediation', 'Conciliation', 'Arbitration'];
 
         if (($data['schedule_reviewed'] ?? '') !== '1') {
             return ['success' => false, 'message' => 'Review the hearing details before final scheduling.'];
@@ -733,6 +733,92 @@ class HearingController
                 ];
             }
         }
+        if ($type === 'Mediation' && !$allowExistingTypes) {
+            $db = (new Database())->connect();
+            $medStmt = $db->prepare("
+                SELECT h.hearing_id, h.status, h.mediation_attempt, m.status AS minutes_status, m.session_outcome
+                FROM hearings h
+                LEFT JOIN hearing_minutes m ON m.hearing_id = h.hearing_id
+                WHERE h.case_id = ? AND h.hearing_type IN ('Initial Hearing', 'Mediation') AND h.status NOT IN ('Cancelled', 'Office Cancelled')
+                ORDER BY h.hearing_date ASC, h.hearing_id ASC
+            ");
+            $medStmt->execute([(int)$caseId]);
+            $prevHearings = $medStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            if (!empty($prevHearings)) {
+                $lastMed = end($prevHearings);
+                $lastStatus = $lastMed['status'] ?? '';
+                $lastOutcome = strtolower(trim((string)($lastMed['session_outcome'] ?? '')));
+
+                $isSettled = strpos($lastOutcome, 'settle') !== false;
+
+                if ($isSettled) {
+                    return [
+                        'success' => false,
+                        'message' => 'Cannot schedule 2nd Mediation: The previous mediation concluded with an Amicable Settlement.'
+                    ];
+                }
+                if (count($prevHearings) >= 2) {
+                    return [
+                        'success' => false,
+                        'message' => 'Two mediation sessions (Mediation 1 and 2) have already been conducted or scheduled for this case. Under Barangay Tumana policy (RA 7160), refer the dispute to the Pangkat Tagapagkasundo.'
+                    ];
+                }
+            }
+        }
+
+        if ($type === 'Conciliation' && !$allowExistingTypes) {
+            $db = (new Database())->connect();
+            $conStmt = $db->prepare("
+                SELECT h.hearing_id, h.status, h.hearing_date, m.status AS minutes_status, m.session_outcome
+                FROM hearings h
+                LEFT JOIN hearing_minutes m ON m.hearing_id = h.hearing_id
+                WHERE h.case_id = ? AND h.hearing_type = 'Conciliation' AND h.status NOT IN ('Cancelled', 'Office Cancelled')
+                ORDER BY h.hearing_date ASC, h.hearing_id ASC
+            ");
+            $conStmt->execute([(int)$caseId]);
+            $prevConciliations = $conStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            if (!empty($prevConciliations)) {
+                $count = count($prevConciliations);
+                $nextSeq = $count + 1;
+                $nextOrdinal = $nextSeq === 2 ? '2nd' : ($nextSeq === 3 ? '3rd' : "{$nextSeq}th");
+                $curOrdinal = $count === 1 ? '1st' : ($count === 2 ? '2nd' : "{$count}th");
+
+                $lastCon = end($prevConciliations);
+                $lastOutcome = strtolower(trim((string)($lastCon['session_outcome'] ?? '')));
+                $lastMinutesStatus = $lastCon['minutes_status'] ?? '';
+
+                if (strpos($lastOutcome, 'settle') !== false) {
+                    return [
+                        'success' => false,
+                        'message' => "Cannot schedule {$nextOrdinal} Conciliation: The previous conciliation concluded with an Amicable Settlement."
+                    ];
+                }
+                if (strpos($lastOutcome, 'arbitrat') !== false) {
+                    return [
+                        'success' => false,
+                        'message' => "Cannot schedule {$nextOrdinal} Conciliation: The dispute has already been submitted to Arbitration."
+                    ];
+                }
+
+                $isUnfinished = (empty($lastOutcome) || $lastOutcome === 'pending') && ($lastMinutesStatus === 'Not Recorded');
+                if ($isUnfinished && strtotime($lastCon['hearing_date']) > time()) {
+                    return [
+                        'success' => false,
+                        'message' => "Cannot schedule {$nextOrdinal} Conciliation: The {$curOrdinal} Conciliation session is currently ongoing. Please conduct the {$curOrdinal} session and record its proceedings/outcome before booking the {$nextOrdinal} session."
+                    ];
+                }
+
+                if ($count >= 3) {
+                    return [
+                        'success' => false,
+                        'message' => 'Three conciliation sessions (Conciliation 1, 2, and 3) have already been conducted or scheduled for this case. Under Katarungang Pambarangay guidelines, conciliation before the Pangkat is limited to a maximum of 3 sessions. Proceed to Certificate to File Action (KP Form 20) or Arbitration.'
+                    ];
+                }
+            }
+        }
+
 
         if (!$allowExistingTypes) {
             $dateProgression = $this->hearing->validateHearingDateProgression((int) $caseId, $date->format('Y-m-d H:i:s'));

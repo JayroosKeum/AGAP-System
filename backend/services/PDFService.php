@@ -96,6 +96,75 @@ class PDFService
         }
     }
 
+    public function getFormHtml(string $formCode, array $data, bool $forPdf = false): string
+    {
+        $code = trim($formCode);
+        if ($code === 'KP Form 8' || str_contains($code, 'KP Form 8') || str_contains($code, 'Blg. 8')) {
+            return $this->kp8Html($data, $forPdf);
+        }
+        if ($code === 'KP Form 9' || str_contains($code, 'KP Form 9') || str_contains($code, 'Blg. 9')) {
+            return $this->kp9Html($data, $forPdf);
+        }
+        if ($code === 'KP Form 10' || str_contains($code, 'KP Form 10') || str_contains($code, 'Blg. 10')) {
+            return $this->kp10Html($data, $forPdf);
+        }
+        if ($code === 'KP Form 11' || str_contains($code, 'KP Form 11') || str_contains($code, 'Blg. 11')) {
+            return $this->kp11Html($data, $forPdf);
+        }
+        if ($code === 'KP Form 12' || str_contains($code, 'KP Form 12') || str_contains($code, 'Blg. 12')) {
+            return $this->kp12Html($data, $forPdf);
+        }
+        if ($code === 'KP Form 13' || str_contains($code, 'KP Form 13') || str_contains($code, 'Blg. 13')) {
+            return $this->kp13Html($data, $forPdf);
+        }
+        if ($code === 'KP Form 14' || str_contains($code, 'KP Form 14') || str_contains($code, 'Blg. 14')) {
+            return $this->kp14Html($data, $forPdf);
+        }
+        if ($code === 'KP Form 15' || str_contains($code, 'KP Form 15') || str_contains($code, 'Blg. 15')) {
+            return $this->kp15Html($data, $forPdf);
+        }
+        if ($code === 'KP Form 16' || str_contains($code, 'KP Form 16') || str_contains($code, 'Blg. 16')) {
+            return $this->kp16Html($data, $forPdf);
+        }
+        if ($code === 'KP Form 17' || str_contains($code, 'KP Form 17') || str_contains($code, 'Blg. 17')) {
+            return $this->kp17Html($data, $forPdf);
+        }
+        if ($code === 'KP Form 18' || str_contains($code, 'KP Form 18') || str_contains($code, 'Blg. 18')) {
+            return $this->kp18Html($data, $forPdf);
+        }
+        if ($code === 'KP Form 19' || str_contains($code, 'KP Form 19') || str_contains($code, 'Blg. 19')) {
+            return $this->kp19Html($data, $forPdf);
+        }
+        if ($code === 'KP Form 20-A' || str_contains($code, '20-A') || str_contains($code, '20A')) {
+            return $this->kp20AHtml($data, $forPdf);
+        }
+        if ($code === 'KP Form 20-B' || str_contains($code, '20-B') || str_contains($code, '20B')) {
+            return $this->kp20BHtml($data, $forPdf);
+        }
+        if ($code === 'KP Form 20' || str_contains($code, 'KP Form 20') || str_contains($code, 'Blg. 20')) {
+            return $this->kp20Html($data, $forPdf);
+        }
+        if ($code === 'KP Form 21' || str_contains($code, 'KP Form 21') || str_contains($code, 'Blg. 21')) {
+            return $this->kp21Html($data, $forPdf);
+        }
+        if ($code === 'KP Form 22' || str_contains($code, 'KP Form 22') || str_contains($code, 'Blg. 22')) {
+            return $this->kp22Html($data, $forPdf);
+        }
+        if ($code === 'KP Form 23' || str_contains($code, 'KP Form 23') || str_contains($code, 'Blg. 23')) {
+            return $this->kp23Html($data, $forPdf);
+        }
+        if ($code === 'KP Form 24' || str_contains($code, 'KP Form 24') || str_contains($code, 'Blg. 24')) {
+            return $this->kp24Html($data, $forPdf);
+        }
+        if ($code === 'KP Form 25' || str_contains($code, 'KP Form 25') || str_contains($code, 'Blg. 25')) {
+            return $this->kp25Html($data, $forPdf);
+        }
+        if ($code === 'KP Form 7' || str_contains($code, 'KP Form 7') || str_contains($code, 'Blg. 7')) {
+            return $this->kp7Html($data, $forPdf);
+        }
+        return $this->noticeHtml($formCode, $data);
+    }
+
     public function generateNotice(
         string $formCode,
         array $data,
@@ -108,49 +177,7 @@ class PDFService
 
         $dompdf = new Dompdf($options);
         $dompdf->setPaper('A4', 'portrait');
-                if ($formCode === 'KP Form 8') {
-            $htmlToLoad = $this->kp8Html($data, true);
-        } elseif ($formCode === 'KP Form 9') {
-            $htmlToLoad = $this->kp9Html($data, true);
-        } elseif ($formCode === 'KP Form 10') {
-            $htmlToLoad = $this->kp10Html($data, true);
-        } elseif ($formCode === 'KP Form 11') {
-            $htmlToLoad = $this->kp11Html($data, true);
-        } elseif ($formCode === 'KP Form 12') {
-            $htmlToLoad = $this->kp12Html($data, true);
-        } elseif ($formCode === 'KP Form 13') {
-            $htmlToLoad = $this->kp13Html($data, true);
-        } elseif ($formCode === 'KP Form 14') {
-            $htmlToLoad = $this->kp14Html($data, true);
-        } elseif ($formCode === 'KP Form 15') {
-            $htmlToLoad = $this->kp15Html($data, true);
-        } elseif ($formCode === 'KP Form 16') {
-            $htmlToLoad = $this->kp16Html($data, true);
-        } elseif ($formCode === 'KP Form 17') {
-            $htmlToLoad = $this->kp17Html($data, true);
-        } elseif ($formCode === 'KP Form 18') {
-            $htmlToLoad = $this->kp18Html($data, true);
-        } elseif ($formCode === 'KP Form 19' || $formCode === 'Pormularyo ng KP Blg. 19') {
-            $htmlToLoad = $this->kp19Html($data, true);
-        } elseif ($formCode === 'KP Form 20' || $formCode === 'Pormularyo ng KP Blg. 20') {
-            $htmlToLoad = $this->kp20Html($data, true);
-        } elseif ($formCode === 'KP Form 20-A' || $formCode === 'Pormularyo ng KP Blg. 20-A') {
-            $htmlToLoad = $this->kp20AHtml($data, true);
-        } elseif ($formCode === 'KP Form 20-B' || $formCode === 'Pormularyo ng KP Blg. 20-B') {
-            $htmlToLoad = $this->kp20BHtml($data, true);
-        } elseif ($formCode === 'KP Form 21' || $formCode === 'Pormularyo ng KP Blg. 21') {
-            $htmlToLoad = $this->kp21Html($data, true);
-        } elseif ($formCode === 'KP Form 22' || $formCode === 'Pormularyo ng KP Blg. 22') {
-            $htmlToLoad = $this->kp22Html($data, true);
-        } elseif ($formCode === 'KP Form 23' || $formCode === 'Pormularyo ng KP Blg. 23') {
-            $htmlToLoad = $this->kp23Html($data, true);
-        } elseif ($formCode === 'KP Form 24' || $formCode === 'Pormularyo ng KP Blg. 24') {
-            $htmlToLoad = $this->kp24Html($data, true);
-        } elseif ($formCode === 'KP Form 25' || $formCode === 'Pormularyo ng KP Blg. 25') {
-            $htmlToLoad = $this->kp25Html($data, true);
-        } else {
-            $htmlToLoad = $this->noticeHtml($formCode, $data);
-        }
+$htmlToLoad = $this->getFormHtml($formCode, $data, true);
         $dompdf->loadHtml($htmlToLoad, 'UTF-8');
         $dompdf->render();
 
@@ -3765,50 +3792,64 @@ class PDFService
     public function transmittalLetterHtml(array $data, bool $forPdf = true): string
     {
         $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
-        $marikinaPath = __DIR__ . '/../../frontend/assets/images/marikina_logo.jpg';
+        $bagongPath = __DIR__ . '/../../frontend/assets/images/bagong_pilipinas_logo.png';
+        $signaturePath = __DIR__ . '/../../frontend/assets/images/captain_signature.png';
+
         $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
-        $marikinaLogo = file_exists($marikinaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($marikinaPath)) : '';
+        $bagongLogo = file_exists($bagongPath) ? 'data:image/png;base64,' . base64_encode(file_get_contents($bagongPath)) : '';
+        $captainSignature = file_exists($signaturePath) ? 'data:image/png;base64,' . base64_encode(file_get_contents($signaturePath)) : '';
 
         $case = $data['case'] ?? [];
         $transmittal = $data['transmittal'] ?? [];
         $settlement = $data['settlement'] ?? [];
 
         $caseNumber = $this->escape((string) ($case['case_number'] ?? '_________'));
-        $complaintTitle = $this->escape((string) ($case['complaint_title'] ?? 'Amicable Settlement'));
-        $category = !empty($case['category_name']) ? ' (' . $this->escape((string) $case['category_name']) . ')' : '';
-
-        $complainants = !empty($data['complainants']) ? implode(', ', array_map([$this, 'escape'], $data['complainants'])) : '_________________________';
-        $respondents = !empty($data['respondents']) ? implode(', ', array_map([$this, 'escape'], $data['respondents'])) : '_________________________';
-
-        $transmittalNumber = $this->escape((string) ($transmittal['transmittal_number'] ?? 'TR-' . date('Y') . '-0001'));
+        $complaintTitle = $this->escape((string) ($case['complaint_title'] ?? 'Dispute Resolution Record'));
 
         $transmittalDateRaw = !empty($transmittal['transmittal_date']) ? $transmittal['transmittal_date'] : date('Y-m-d');
         $transmittalDateFormatted = date('F j, Y', strtotime($transmittalDateRaw));
 
         $settlementDateRaw = !empty($transmittal['settlement_date']) ? $transmittal['settlement_date'] : (!empty($settlement['settlement_date']) ? $settlement['settlement_date'] : date('Y-m-d'));
-        $settlementDateFormatted = date('F j, Y', strtotime($settlementDateRaw));
+        
+        $ts = strtotime($settlementDateRaw);
+        if ($ts) {
+            $day = date('j', $ts);
+            $suffix = strtoupper(date('S', $ts));
+            $monthYear = date('F, Y', $ts);
+            $resolutionDateLegal = "{$day}{$suffix} day of {$monthYear}";
+        } else {
+            $resolutionDateLegal = $this->escape($settlementDateRaw);
+        }
 
-        $expiryDateRaw = !empty($transmittal['ten_day_expiry_date']) ? $transmittal['ten_day_expiry_date'] : (!empty($settlement['repudiation_deadline']) ? $settlement['repudiation_deadline'] : date('Y-m-d', strtotime('+10 weekdays')));
-        $expiryDateFormatted = date('F j, Y', strtotime($expiryDateRaw));
+        $resTypeRaw = strtoupper((string) ($data['resolution_type'] ?? 'AMICABLE SETTLEMENT'));
+        if (strpos($resTypeRaw, 'CFA') !== false || strpos($resTypeRaw, 'CERTIFICATE') !== false) {
+            $resolutionDocName = 'CERTIFICATE TO FILE ACTION';
+        } elseif (strpos($resTypeRaw, 'ARBITRATION') !== false) {
+            $resolutionDocName = 'ARBITRATION AWARD';
+        } else {
+            $resolutionDocName = 'AMICABLE SETTLEMENT';
+        }
 
-        $secName = $this->escape((string) ($data['secretary_name'] ?? 'Lupon Secretary'));
-        $pbName = $this->escape((string) ($data['punong_barangay_name'] ?? 'Punong Barangay'));
+        $complainantsWithAddress = $this->escape((string) ($data['complainants_with_address'] ?? '_________________________'));
+        $respondentsWithAddress = $this->escape((string) ($data['respondents_with_address'] ?? '_________________________'));
+
+        $pbName = 'AKIKO LYNNE CENTENO';
 
         return '<!DOCTYPE html>
 <html lang="fil">
 <head>
     <meta charset="UTF-8">
-    <title>Transmittal Letter - ' . $caseNumber . '</title>
+    <title>Court Transmittal Letter - ' . $caseNumber . '</title>
     <style>
         @page {
             size: A4 portrait;
-            margin: 12mm 14mm 12mm 14mm;
+            margin: 15mm 20mm 15mm 20mm;
         }
         body {
             font-family: DejaVu Sans, Arial, Helvetica, sans-serif;
-            font-size: 9.5pt;
+            font-size: 10pt;
             color: #0f172a;
-            line-height: 1.45;
+            line-height: 1.5;
             background: #ffffff;
             margin: 0;
             padding: 0;
@@ -3816,355 +3857,171 @@ class PDFService
         .header-table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 2mm;
+            margin-bottom: 5mm;
         }
-        .header-logo-left { width: 85px; text-align: left; vertical-align: middle; }
-        .header-logo-right { width: 85px; text-align: right; vertical-align: middle; }
-        .header-logo-img { width: 75px; height: 75px; object-fit: contain; }
+        .header-logo-left { width: 80px; text-align: left; vertical-align: top; }
+        .header-logo-right { width: 80px; text-align: right; vertical-align: top; }
+        .header-logo-img { width: 72px; height: 72px; object-fit: contain; }
         .header-center-text {
             text-align: center;
             line-height: 1.25;
-            font-size: 8.5pt;
-            vertical-align: middle;
+            vertical-align: top;
         }
-        .header-center-text .gov-title { font-size: 9pt; }
-        .header-center-text .office-title {
-            font-size: 11pt;
+        .header-center-text .rep-title {
+            font-size: 9.5pt;
+            letter-spacing: 0.5px;
+            color: #1e293b;
+        }
+        .header-center-text .brgy-title {
+            font-size: 13pt;
             font-weight: bold;
             color: #0f172a;
-            margin-top: 2px;
             letter-spacing: 0.5px;
-        }
-        .header-center-text .sec-title {
-            font-size: 9pt;
-            font-weight: bold;
-            color: #1e3a8a;
             margin-top: 1px;
         }
-        .meta-bar {
-            width: 100%;
-            border-top: 1.5px solid #0f172a;
-            border-bottom: 0.5px solid #64748b;
-            padding: 2.5mm 0;
-            margin-top: 2mm;
-            margin-bottom: 4mm;
-        }
-        .meta-bar td { font-size: 9pt; }
-        .addr-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 3.5mm;
+        .header-center-text .city-title {
             font-size: 9.5pt;
-        }
-        .addr-table td {
-            vertical-align: top;
-            padding: 1.5mm 0;
-        }
-        .addr-lbl {
-            width: 75px;
             font-weight: bold;
-            color: #0f172a;
+            color: #1e293b;
+            margin-top: 1px;
         }
-        .subject-box {
-            background: #f8fafc;
-            border-left: 3.5px solid #1e3a8a;
-            padding: 2.5mm 3.5mm;
+        .header-center-text .addr-title {
+            font-size: 8pt;
+            color: #475569;
+            margin-top: 1px;
+        }
+        .header-center-text .tel-title {
+            font-size: 8pt;
+            color: #475569;
+            margin-top: 1px;
+        }
+        .header-center-text .pb-office-title {
+            font-size: 9.5pt;
             font-weight: bold;
-            font-size: 9pt;
-            line-height: 1.35;
-            color: #0f172a;
+            color: #1e3a8a;
+            margin-top: 2px;
         }
-        .dispute-box {
-            width: 100%;
-            border: 1px solid #cbd5e1;
-            border-collapse: collapse;
-            margin: 3mm 0 3mm;
-            background: #f8fafc;
-        }
-        .dispute-box td {
-            padding: 1.8mm 3mm;
+        .header-center-text .ooo {
             font-size: 8.5pt;
-            border-bottom: 1px solid #e2e8f0;
-            vertical-align: top;
+            color: #64748b;
+            margin-top: 1px;
         }
-        .dispute-lbl {
-            width: 28%;
-            font-weight: bold;
-            color: #334155;
-        }
-        .dispute-val {
-            width: 72%;
+        .date-line {
+            margin: 6mm 0 5mm 0;
+            font-size: 10.5pt;
             color: #0f172a;
         }
-        .statutory-cert {
-            background: #eff6ff;
-            border: 1px solid #bfdbfe;
-            border-left: 3.5px solid #2563eb;
-            padding: 2.5mm 3.5mm;
-            margin: 2.5mm 0;
-            font-size: 9pt;
-            font-weight: bold;
-            color: #1e3a8a;
-            line-height: 1.4;
-        }
-        .body-p {
-            text-align: justify;
-            margin: 2.5mm 0;
-            font-size: 9.2pt;
+        .addressee-block {
             line-height: 1.45;
+            margin-bottom: 6mm;
+            font-size: 10.5pt;
+            color: #0f172a;
         }
-        .inventory-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 1.5mm;
-            font-size: 8.8pt;
+        .salutation {
+            margin-bottom: 5mm;
+            font-size: 10.5pt;
+            color: #0f172a;
         }
-        .inventory-table td {
-            padding: 1mm 0;
-            vertical-align: top;
+        .letter-body {
+            text-align: justify;
+            text-indent: 0.5in;
+            font-size: 10.5pt;
+            line-height: 1.65;
+            margin-bottom: 6mm;
+            color: #0f172a;
         }
-        .chk-box {
-            width: 22px;
-            font-weight: bold;
-            color: #1e3a8a;
+        .closing-text {
+            margin-bottom: 4mm;
+            font-size: 10.5pt;
+            color: #0f172a;
+        }
+        .thank-you {
+            margin-bottom: 8mm;
+            font-size: 10.5pt;
+            color: #0f172a;
+        }
+        .signoff-block {
+            margin-top: 8mm;
             font-size: 10.5pt;
         }
-        .sig-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 5mm;
+        .sincerely-line {
+            margin-bottom: 2mm;
+            color: #0f172a;
         }
-        .sig-col {
-            width: 50%;
-            vertical-align: top;
+        .sig-space {
+            height: 48px;
+            margin: 2mm 0;
         }
-        .sig-line {
+        .sig-img {
+            max-height: 48px;
+            max-width: 170px;
+            object-fit: contain;
+        }
+        .pb-name {
             font-weight: bold;
-            font-size: 9.5pt;
+            font-size: 11pt;
             text-transform: uppercase;
             color: #0f172a;
-            border-bottom: 1px solid #0f172a;
-            display: inline-block;
-            min-width: 65%;
-            padding-bottom: 1px;
-            margin-top: 12mm;
         }
-        .sig-role {
-            font-size: 8.5pt;
-            color: #475569;
-            margin-top: 1mm;
-        }
-        .stamp-section {
-            margin-top: 5mm;
-            border-top: 1px dashed #94a3b8;
-            padding-top: 2.5mm;
-        }
-        .stamp-title {
-            font-size: 8pt;
-            font-weight: bold;
-            text-transform: uppercase;
-            color: #475569;
-            margin-bottom: 2mm;
-            text-align: center;
-            letter-spacing: 0.5px;
-        }
-        .stamp-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        .stamp-box {
-            width: 50%;
-            border: 1.5px solid #475569;
-            padding: 2.5mm 3.5mm;
-            vertical-align: top;
-            font-size: 8pt;
-            background: #fafafa;
-        }
-        .stamp-heading {
-            font-size: 8pt;
-            font-weight: bold;
-            color: #0f172a;
-            text-decoration: underline;
-            margin-bottom: 2mm;
-        }
-        .stamp-field {
-            margin-top: 1.8mm;
+        .pb-title {
+            font-size: 10pt;
             color: #334155;
+            margin-top: 1px;
         }
     </style>
 </head>
 <body>
 
-    <!-- Header with Official Barangay Tumana & City of Marikina Logos -->
+    <!-- Official Barangay Tumana Banner Head -->
     <table class="header-table">
         <tr>
             <td class="header-logo-left">
                 ' . ($tumanaLogo !== '' ? '<img src="' . $tumanaLogo . '" class="header-logo-img" alt="Barangay Tumana">' : '') . '
             </td>
             <td class="header-center-text">
-                <div class="gov-title">Republika ng Pilipinas</div>
-                <div class="gov-title">Lalawigan ng NCR &bull; Lungsod ng Marikina</div>
-                <div class="gov-title"><strong>BARANGAY TUMANA</strong></div>
-                <div style="font-size: 8pt; color: #475569;">Telephone Nos. 8-238-4208 &bull; Email: barangaytumana2023@gmail.com</div>
-                <div class="office-title">TANGGAPAN NG LUPONG TAGAPAMAYAPA</div>
-                <div class="sec-title">OFFICE OF THE BARANGAY SECRETARY</div>
+                <div class="rep-title">Republika ng Pilipinas</div>
+                <div class="brgy-title">BARANGAY TUMANA</div>
+                <div class="city-title">CITY OF MARIKINA</div>
+                <div class="addr-title">ROAD 1 EXTENSION DOÑA PETRA , BARANGAY TUMANA,</div>
+                <div class="addr-title">MARIKINA CITY</div>
+                <div class="tel-title">Tel. No. 02-8457-2818</div>
+                <div class="pb-office-title">TANGGAPAN NG PUNONGBARANGAY</div>
+                <div class="ooo">— oOo —</div>
             </td>
             <td class="header-logo-right">
-                ' . ($marikinaLogo !== '' ? '<img src="' . $marikinaLogo . '" class="header-logo-img" alt="Lungsod ng Marikina">' : '') . '
+                ' . ($bagongLogo !== '' ? '<img src="' . $bagongLogo . '" class="header-logo-img" alt="Bagong Pilipinas">' : '') . '
             </td>
         </tr>
     </table>
 
-    <!-- Reference & Date Meta Bar -->
-    <table class="meta-bar">
-        <tr>
-            <td style="width: 55%; font-weight: bold; color: #1e3a8a;">
-                TRANSMITTAL REF. NO.: <span style="font-family: monospace; font-size: 9.5pt;">' . $transmittalNumber . '</span>
-            </td>
-            <td style="width: 45%; text-align: right; font-weight: bold;">
-                DATE OF TRANSMITTAL: ' . $transmittalDateFormatted . '
-            </td>
-        </tr>
-    </table>
+    <!-- Transmittal Date -->
+    <div class="date-line">' . $transmittalDateFormatted . '</div>
 
-    <!-- Addressees -->
-    <table class="addr-table">
-        <tr>
-            <td class="addr-lbl">TO:</td>
-            <td style="line-height: 1.4;">
-                <strong>THE OFFICE OF THE CLERK OF COURT</strong><br>
-                Municipal Trial Court in Cities (MTCC)<br>
-                Marikina City, Metro Manila<br><br>
-                <strong>THE CITY DIRECTOR</strong><br>
-                Department of the Interior and Local Government (DILG)<br>
-                Marikina Field Office, Marikina City
-            </td>
-        </tr>
-        <tr>
-            <td class="addr-lbl" style="padding-top: 2.5mm;">FROM:</td>
-            <td style="padding-top: 2.5mm; line-height: 1.35;">
-                <strong>THE OFFICE OF THE LUPONG TAGAPAMAYAPA / BARANGAY SECRETARY</strong><br>
-                Barangay Tumana, Marikina City
-            </td>
-        </tr>
-        <tr>
-            <td class="addr-lbl" style="padding-top: 2.5mm;">SUBJECT:</td>
-            <td style="padding-top: 2.5mm;">
-                <div class="subject-box">
-                    FORMAL TRANSMITTAL OF AMICABLE SETTLEMENT (KP FORM NO. 16) &amp; DISPUTE RESOLUTION RECORDS FOR BARANGAY CASE NO. ' . $caseNumber . '
-                </div>
-            </td>
-        </tr>
-    </table>
-
-    <!-- Body -->
-    <p class="body-p">
-        Sir / Madam:
-    </p>
-    <p class="body-p">
-        Pursuant to <strong>Section 411 of Republic Act No. 7160</strong> (The Local Government Code of 1991) and the Katarungang Pambarangay Rules, the Office of the Lupong Tagapamayapa and the Barangay Secretary of Barangay Tumana, Marikina City, respectfully transmit herewith certified true copies of the Amicable Settlement agreement and the dispute resolution case records for:
-    </p>
-
-    <!-- Dispute Particulars Box -->
-    <table class="dispute-box">
-        <tr>
-            <td class="dispute-lbl">Barangay Case No.:</td>
-            <td class="dispute-val"><strong>' . $caseNumber . '</strong></td>
-        </tr>
-        <tr>
-            <td class="dispute-lbl">Title / Subject Matter:</td>
-            <td class="dispute-val"><strong>' . $complaintTitle . '</strong>' . $category . '</td>
-        </tr>
-        <tr>
-            <td class="dispute-lbl">Complainant(s):</td>
-            <td class="dispute-val"><strong>' . $complainants . '</strong> <em>(May-sumbong)</em></td>
-        </tr>
-        <tr>
-            <td class="dispute-lbl">Respondent(s):</td>
-            <td class="dispute-val"><strong>' . $respondents . '</strong> <em>(Ipinagsusumbong)</em></td>
-        </tr>
-        <tr>
-            <td class="dispute-lbl">Date Settlement Signed:</td>
-            <td class="dispute-val"><strong>' . $settlementDateFormatted . '</strong></td>
-        </tr>
-        <tr>
-            <td class="dispute-lbl">10-Day Repudiation Expiry:</td>
-            <td class="dispute-val"><strong>' . $expiryDateFormatted . '</strong> <em>(Excluding weekends &amp; statutory Philippine holidays)</em></td>
-        </tr>
-    </table>
-
-    <!-- Statutory Certification -->
-    <div class="statutory-cert">
-        STATUTORY CERTIFICATION (R.A. 7160 SEC. 411):<br>
-        This is to further certify that the mandatory ten (10) working-day repudiation period under Section 411 of RA 7160 has officially elapsed with no repudiation filed by either party.
+    <!-- Addressee -->
+    <div class="addressee-block">
+        <strong>THE CLERK OF COURT</strong><br>
+        Metropolitan Trial Court<br>
+        3rd Floor, New Justice Hall Building,<br>
+        Brgy. Sta. Elena, Marikina City
     </div>
 
-    <p class="body-p">
-        In accordance with Section 411 of RA 7160, the attached Amicable Settlement carries the full force and effect of a final judgment of a court upon the expiration of ten (10) days from the date thereof. It is therefore respectfully transmitted for official court archiving, administrative monitoring, and future judicial execution as provided by law in case of non-compliance.
-    </p>
+    <!-- Salutation -->
+    <div class="salutation">Dear Sir/Madam:</div>
 
-    <!-- Inventory Checklist -->
-    <div style="margin-top: 2.5mm;">
-        <strong style="font-size: 8.8pt; color: #1e293b;">INVENTORY OF ATTACHED DISPUTE RESOLUTION RECORDS:</strong>
-        <table class="inventory-table">
-            <tr>
-                <td class="chk-box">&#9745;</td>
-                <td>Certified True Copy of KP Form No. 7 (Complaint / Sumbong)</td>
-            </tr>
-            <tr>
-                <td class="chk-box">&#9745;</td>
-                <td>Certified True Copy of Minutes of Mediation / Conciliation Proceedings</td>
-            </tr>
-            <tr>
-                <td class="chk-box">&#9745;</td>
-                <td>Original / Certified True Copy of KP Form No. 16 (Amicable Settlement / Kasunduang Pag-aayos)</td>
-            </tr>
-        </table>
+    <!-- Letter Body (Template-Aligned) -->
+    <div class="letter-body">
+        This is to formally Transmit the copy of <strong>' . $resolutionDocName . '</strong> made and entered last <strong>' . $resolutionDateLegal . '</strong> between the complainant, <strong>' . $complainantsWithAddress . '</strong> and the respondent <strong>' . $respondentsWithAddress . '</strong>, regarding <strong>' . $complaintTitle . '</strong>
     </div>
 
-    <!-- Signatories -->
-    <table class="sig-table">
-        <tr>
-            <td class="sig-col" style="padding-right: 10mm;">
-                <div>Prepared &amp; Transmitted by:</div>
-                <div class="sig-line">' . $secName . '</div>
-                <div class="sig-role">Barangay Secretary / Kalihim ng Lupon</div>
-            </td>
-            <td class="sig-col" style="padding-left: 10mm;">
-                <div>Noted &amp; Attested by:</div>
-                <div class="sig-line">' . $pbName . '</div>
-                <div class="sig-role">Punong Barangay / Tagapangulo ng Lupon</div>
-            </td>
-        </tr>
-    </table>
+    <div class="closing-text">For your information.</div>
+    <div class="thank-you">Thank you.</div>
 
-    <!-- Receiving Copy Stamp Blocks -->
-    <div class="stamp-section">
-        <div class="stamp-title">
-            Official Receiving Copy Stamp Blocks (To be accomplished by receiving agency)
-        </div>
-        <table class="stamp-table">
-            <tr>
-                <td class="stamp-box" style="margin-right: 4mm;">
-                    <div class="stamp-heading">
-                        MUNICIPAL TRIAL COURT IN CITIES (MTCC) &bull; MARIKINA CITY
-                    </div>
-                    <div class="stamp-field">Received by: _____________________________________________</div>
-                    <div class="stamp-field">Signature: _______________________________________________</div>
-                    <div class="stamp-field">Date Received: ____________________ Time: _________________</div>
-                    <div class="stamp-field">Receiving Action: [ &nbsp; ] Docketed / Filed &nbsp;&nbsp; [ &nbsp; ] Certified Entry</div>
-                </td>
-                <td class="stamp-box" style="margin-left: 4mm;">
-                    <div class="stamp-heading">
-                        DILG FIELD OFFICE &bull; MARIKINA CITY
-                    </div>
-                    <div class="stamp-field">Received by: _____________________________________________</div>
-                    <div class="stamp-field">Signature: _______________________________________________</div>
-                    <div class="stamp-field">Date Received: ____________________ Time: _________________</div>
-                    <div class="stamp-field">Receiving Action: [ &nbsp; ] Logged in KP Registry &nbsp;&nbsp; [ &nbsp; ] Archived</div>
-                </td>
-            </tr>
-        </table>
+    <!-- Sign-off -->
+    <div class="signoff-block">
+        <div class="sincerely-line">Sincerely,</div>
+        ' . (!empty($captainSignature) ? '<div class="sig-space"><img src="' . $captainSignature . '" class="sig-img" alt="Signature"></div>' : '<div style="height: 38px;"></div>') . '
+        <div class="pb-name">' . $pbName . '</div>
+        <div class="pb-title">Punong Barangay</div>
     </div>
 
 </body>

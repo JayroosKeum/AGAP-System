@@ -454,28 +454,30 @@ function renderCaseRow(item, isSelected = false) {
     const hasImpasse = ['unsuccessful', 'referred to pangkat', 'impasse'].includes(String(item.stage_outcome || item.latest_outcome || item.outcome || '').toLowerCase());
     const showElevateBtn = isMediation && (isLapsed || hasImpasse);
 
-    const activeCaseActions = archived
+    let stageWorkspaceUrl = '';
+    let stageWorkspaceLabel = '';
+    if (item.case_status === 'Mediation') {
+        stageWorkspaceUrl = `mediation-workspace.php?case_id=${caseId}`;
+        stageWorkspaceLabel = 'Mediation';
+    } else if (item.case_status === 'Conciliation') {
+        stageWorkspaceUrl = `pangkat-workspace.php?case_id=${caseId}`;
+        stageWorkspaceLabel = 'Conciliation';
+    } else if (item.case_status === 'Arbitration') {
+        stageWorkspaceUrl = `arbitration-workspace.php?case_id=${caseId}`;
+        stageWorkspaceLabel = 'Arbitration';
+    }
+
+    const activeCaseActions = archived || !stageWorkspaceUrl
         ? ''
         : `
-            <button
-                type="button"
-                class="btn-table-assign"
-                onclick="openCaseAssignments(${caseId})"
-                title="Select case and assign/manage team above"
+            <a
+                href="${stageWorkspaceUrl}"
+                class="btn-table-action"
+                style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 4px; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; text-decoration: none; font-size: 0.78rem; font-weight: 600; margin-left: 4px;"
+                title="Open ${stageWorkspaceLabel} Workspace"
             >
-                Assign
-            </button>
-            ${showElevateBtn ? `
-            <button
-                type="button"
-                class="btn-table-assign"
-                onclick="openCaseAssignments(${caseId}, true, true)"
-                title="Elevate case to Conciliation and constitute 3-member Pangkat team"
-                style="background: #0284c7; margin-left: 4px;"
-            >
-                Elevate
-            </button>
-            ` : ''}
+                ${stageWorkspaceLabel} &rarr;
+            </a>
         `;
 
     return `

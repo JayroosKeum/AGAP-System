@@ -28,8 +28,8 @@ $docketMessages = [
 
         <div class="page-header">
             <div>
-                <h1>Cases &amp; Team Assignments</h1>
-                <p>Manage docketed barangay cases, search records, and assign Lupon teams.</p>
+                <h1>Docketed Cases</h1>
+                <p>Manage and search docketed barangay cases, complaints, and proceedings records.</p>
             </div>
         </div>
 
@@ -73,145 +73,38 @@ $docketMessages = [
             </form>
         </section>
 
-        <section class="case-assignment-panel" id="caseAssignments">
-            <div class="section-heading">
-                <div>
-                    <h2>Team assignment for selected case</h2>
-                    <p>Select or assign the required Lupon mediation/conciliation officers.</p>
-                </div>
+                <section class="cases-table-card stage-section-card" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); margin-top: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+                <div id="caseResultSummary" class="case-result-summary" style="font-weight: 600; color: #1e293b;">Loading cases...</div>
+                <small id="caseTableTip" style="color: #64748b; font-size: 0.82rem;">Select any case to view its proceedings, sessions, and stage workspace.</small>
             </div>
 
-            <div class="assignment-grid">
-                <form id="teamForm" class="assignment-form">
-                    <div class="form-group">
-                        <label for="caseId">Case <span class="required-mark" aria-hidden="true">*</span></label>
-                        <select id="caseId" name="case_id" required><option value="">Select a case</option></select>
-                    </div>
-                    <p id="assignmentHelp" class="form-hint">All three roles are required and must be assigned to different active Lupon Members.</p>
-                    <p id="assignmentRuleMessage" class="form-hint" role="status" hidden></p>
-                    <div id="pangkatElevationNotice" class="elevation-notice" style="display: none; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 10px 14px; margin-bottom: 14px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
-                            <div>
-                                <strong style="color: #1e40af; font-size: 0.88rem; display: block;">Pangkat Tagapagkasundo Constitution Mode</strong>
-                                <span id="pangkatElevationReason" style="color: #1d4ed8; font-size: 0.78rem;">Elevate this mediation case to conciliation by constituting a 3-member Lupon team.</span>
-                            </div>
-                            <button type="button" id="btnCancelElevation" class="btn-secondary" style="font-size: 0.75rem; padding: 4px 10px; border-radius: 4px; cursor: pointer; border: 1px solid #cbd5e1; background: #ffffff; color: #475569;">
-                                ↩ Revert to Mediation View
-                            </button>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="headId">Head <span class="required-mark" aria-hidden="true">*</span></label>
-                        <select id="headId" name="head_id" required>
-                            <option value="">Select a Lupon Member</option>
-                        </select>
-                        <div id="automaticHeadDisplay" class="automatic-head-display" hidden>
-                            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap;">
-                                <div>
-                                    <strong id="automaticHeadName">Barangay Captain</strong>
-                                    <small style="display: block; margin-top: 2px;">Barangay Captain and Lupon Head. Automatically assigned at Docketed/Mediation stage.</small>
-                                </div>
-                                <div style="display: flex; gap: 6px; flex-shrink: 0; align-items: center;">
-                                    <button type="button" onclick="openSubstitutePresiderForCase()" style="background: #2563eb; color: #fff; border: none; padding: 4px 10px; border-radius: 5px; font-size: 0.75rem; font-weight: 600; cursor: pointer; white-space: nowrap;" title="Assign a substitute mediator if the Punong Barangay cannot preside">
-                                        Substitute Presider
-                                    </button>
-                                    <button type="button" id="btnTriggerElevation" style="background: #0284c7; color: #fff; border: none; padding: 4px 10px; border-radius: 5px; font-size: 0.75rem; font-weight: 600; cursor: pointer; white-space: nowrap;" title="Constitute 3-member Pangkat team to elevate case to Conciliation">
-                                        Elevate to Pangkat
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="form-group"><label for="secretaryId">Secretary <span class="required-mark" aria-hidden="true">*</span></label><select id="secretaryId" name="secretary_id" required></select></div>
-                    <div class="form-group"><label for="teamMemberId">Member <span class="required-mark" aria-hidden="true">*</span></label><select id="teamMemberId" name="member_id" required></select></div>
-                    <!-- Pangkat Tagapagkasundo Configuration (Section C) -->
-                    <div id="pangkatConfigSection" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; margin-bottom: 12px;">
-                        <div class="form-group">
-                            <label for="selectionMethod">Pangkat Selection Method</label>
-                            <select id="selectionMethod" name="selection_method">
-                                <option value="Party Agreement">Agreement by the Parties</option>
-                                <option value="PB Assignment">Punong Barangay Assignment (Parties Failed to Agree)</option>
-                                <option value="Raffle Draw">Raffle / Drawing of Lots</option>
-                            </select>
-                            <small style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 2px;">Sec. 404, LGC: Parties choose 3 members; PB assigns or draws lots if no agreement.</small>
-                        </div>
-                        <div class="form-group">
-                            <label for="selectionNotes">Selection Notes / Remarks</label>
-                            <input type="text" id="selectionNotes" name="selection_notes" placeholder="e.g. Parties selected from Lupon pool; or PB lot drawing record">
-                        </div>
-                        <div class="form-group">
-                            <label for="quorumSize">Quorum Size</label>
-                            <select id="quorumSize" name="quorum_size" onchange="toggleQuorumReason(this.value)">
-                                <option value="3" selected>3 Members (Standard Pangkat)</option>
-                                <option value="2">2 Members (Permitted Exception Quorum)</option>
-                            </select>
-                        </div>
-                        <div class="form-group" id="quorumReasonGroup" style="display: none;">
-                            <label for="quorumExceptionReason" style="color: #b45309;">Quorum Exception Justification <span class="required-mark">*</span></label>
-                            <input type="text" id="quorumExceptionReason" name="quorum_exception_reason" placeholder="State valid reason / parties consent to proceed with 2 members">
-                        </div>
-                    </div>
+            <div class="table-container integrated-cases-table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Case No.</th>
+                            <th>Complainant</th>
+                            <th>Respondent</th>
+                            <th>Case Type</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
 
-                    <button class="btn-create" type="submit" id="btnSaveTeam">Save Case Team</button>
-                    <p id="teamMessage" role="status"></p>
-                </form>
-                <div class="assignment-history">
-                    <h3>Assigned members</h3>
-                    <div class="assignment-table-wrap"><table>
-                        <thead>
-                            <tr>
-                                <th>Lupon Member</th>
-                                <th>Role</th>
-                                <th>Status</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody id="assignmentTable"><tr><td colspan="4" class="empty-state">Select a case to view assignments.</td></tr></tbody>
-                    </table></div>
-                </div>
+                    <tbody id="caseTable">
+                        <tr>
+                            <td colspan="6" class="empty-state">
+                                Loading cases...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
 
-            <div class="section-heading" style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #e2e8f0;">
-                <div>
-                    <h3 style="margin: 0; font-size: 1.15rem; color: #1e293b;">Case team assignment &amp; details</h3>
-                    <p style="margin: 4px 0 0; color: #64748b; font-size: 0.88rem;">Search a case to view its details in the table and assign the required Head, Secretary, and Member together.</p>
-                </div>
-            </div>
-
-            <!-- Integrated Case Details / Records Table -->
-            <div class="integrated-case-table-section" style="margin-bottom: 0;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
-                    <div id="caseResultSummary" class="case-result-summary">Loading cases...</div>
-                    <small id="caseTableTip" style="color: #64748b; font-size: 0.82rem;">Click <strong>Assign</strong> or search to load a case into the assignment form above.</small>
-                </div>
-
-                <div class="table-container integrated-cases-table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Case No.</th>
-                                <th>Complainant</th>
-                                <th>Respondent</th>
-                                <th>Case Type</th>
-                                <th>Status</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-
-                        <tbody id="caseTable">
-                            <tr>
-                                <td colspan="6" class="empty-state">
-                                    Loading cases...
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-
-                <div id="casePagination" class="case-pagination" aria-label="Cases pagination" hidden style="margin: 12px 0 0; padding: 10px 14px;">
-                    <span id="casePaginationSummary" class="case-pagination-summary" aria-live="polite"></span>
-                    <div id="casePaginationControls" class="case-pagination-controls"></div>
-                </div>
+            <div id="casePagination" class="case-pagination" aria-label="Cases pagination" hidden style="margin: 12px 0 0; padding: 10px 14px;">
+                <span id="casePaginationSummary" class="case-pagination-summary" aria-live="polite"></span>
+                <div id="casePaginationControls" class="case-pagination-controls"></div>
             </div>
         </section>
 
@@ -406,6 +299,4 @@ $docketMessages = [
 </div>
 
 <script src="../../assets/js/cases.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/cases.js'); ?>"></script>
-<script src="../../assets/js/assignments.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/assignments.js'); ?>"></script>
-
 <?php include '../../layouts/footer.php'; ?>

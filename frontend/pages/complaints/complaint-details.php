@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 session_start();
 
@@ -8,6 +8,9 @@ if (
 ) {
     die('Access Denied');
 }
+
+$roleId = (int) ($_SESSION['role_id'] ?? 0);
+$canAuthorizePastDate = $roleId === 1;
 
 if (!isset($_GET['id']) || empty($_GET['id'])) {
     header('Location: complaint-list.php');
@@ -41,6 +44,7 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
 <link rel="stylesheet" href="../../assets/css/complaints.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/complaints.css'); ?>">
 <link rel="stylesheet" href="../../assets/css/cases.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/cases.css'); ?>">
 <link rel="stylesheet" href="../../assets/css/case-details-modern.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/case-details-modern.css'); ?>">
+<link rel="stylesheet" href="../../assets/css/hearings.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/hearings.css'); ?>">
 
 <div class="dashboard-layout">
 
@@ -113,14 +117,17 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
             <button type="button" class="case-tab-item <?php echo $activeTab === 'tab-mediation' ? 'active' : ''; ?>" data-tab="tab-mediation" onclick="switchCaseTab('tab-mediation')">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
                 <span>Mediation</span>
+                <span class="case-tab-lock-icon" id="tabLockMediation" style="display: none;" title="Locked stage">🔒</span>
             </button>
             <button type="button" class="case-tab-item <?php echo $activeTab === 'tab-conciliation' ? 'active' : ''; ?>" data-tab="tab-conciliation" onclick="switchCaseTab('tab-conciliation')">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v1"></path><path d="M18 8h4a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-4"></path><circle cx="8" cy="12" r="2"></circle><circle cx="18" cy="13" r="1.5"></circle></svg>
                 <span>Conciliation</span>
+                <span class="case-tab-lock-icon" id="tabLockConciliation" style="display: none;" title="Locked stage">🔒</span>
             </button>
             <button type="button" class="case-tab-item <?php echo $activeTab === 'tab-arbitration' ? 'active' : ''; ?>" data-tab="tab-arbitration" onclick="switchCaseTab('tab-arbitration')">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
-                <span>Arbitration / CFA</span>
+                <span>Outcomes</span>
+                <span class="case-tab-lock-icon" id="tabLockArbitration" style="display: none;" title="Locked stage">🔒</span>
             </button>
         </nav>
 
@@ -181,6 +188,26 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
              TAB PANE 1: OVERVIEW & WORKFLOW (Default Active Tab)
              =================================================================== -->
         <div id="tab-overview" class="case-tab-pane <?php echo $activeTab === 'tab-overview' ? 'active' : ''; ?>">
+
+            <!-- Celebratory Statutory Countdown Completion Alert Banner -->
+            <div id="statutoryTransmittalAlertBanner" style="display: none; margin-bottom: 16px; background: #ecfdf5; border: 1px solid #6ee7b7; border-left: 5px solid #10b981; border-radius: 8px; padding: 14px 18px; color: #065f46; font-size: 0.9rem; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 1.4rem; line-height: 1;">ℹ️</span>
+                    <div>
+                        <strong style="display: block; font-size: 0.95rem; color: #064e3b; margin-bottom: 2px;">
+                            10-Business-Day Statutory Period Completed: Court Transmittal Letter is now ready to print.
+                        </strong>
+                        <span style="font-size: 0.82rem; color: #047857;">
+                            The mandatory repudiation window under RA 7160 Sec. 416 has elapsed. You may now print and transmit the official endorsement to the Metropolitan Trial Court (MTCC Marikina City).
+                        </span>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; flex-shrink: 0;">
+                    <button type="button" class="btn-create" onclick="openPrintTransmittalLetter()" style="background: #059669; font-size: 0.82rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; color: #fff;">
+                        🖨️ Print Transmittal Letter
+                    </button>
+                </div>
+            </div>">
 
             <!-- Top Hero Section: Primary Case Info & Immediate Context -->
             <div class="case-hero-card">
@@ -328,116 +355,27 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
              TAB PANE: PAANYAYA (STAGE 0: PRE-DOCKETING)
              =================================================================== -->
         <div id="tab-paanyaya" class="case-tab-pane <?php echo $activeTab === 'tab-paanyaya' ? 'active' : ''; ?>">
-            <!-- Stage 0 Banner: Paanyaya Preliminary Process -->
-            <div style="margin: 0 30px 20px;">
-                <div id="stage0Card" class="stage-card-item active" style="background: linear-gradient(135deg, #15803d, #166534); border-color: #86efac; color: #ffffff;">
-                    <div class="stage-card-top">
-                        <span class="stage-label-num" style="background: rgba(255,255,255,0.2); color: #ffffff;">PRELIMINARY STAGE &bull; PAANYAYA PROCESS (BEFORE MEDIATION)</span>
-                        <span id="stage0Icon" style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: rgba(255,255,255,0.25); font-size: 0.75rem;">0</span>
-                    </div>
-                    <h3 class="stage-card-title" style="font-size: 1.15rem; margin: 4px 0 4px; color: #ffffff;">Paanyaya (Preliminary Invitations &amp; Officer's Return Tracking)</h3>
-                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                        <span id="stage0StatusText" class="stage-sub-status" style="font-weight: 700; background: #fef08a; color: #854d0e; padding: 3px 10px; border-radius: 9999px;">Paanyaya In Progress</span>
-                        <span style="font-size: 0.78rem; color: #dcfce7;">Two Independent Stages (Paanyaya 1 &amp; Paanyaya 2) &bull; Up to 6 Delivery Attempts Each with Officer's Return Documentation</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Side-by-Side Context Grid: Nagpaanyaya & Inanyayahan -->
-            <div class="case-context-grid" style="margin-bottom: 24px;">
-                <!-- LEFT COLUMN: Nagpaanyaya (Complainant / s) -->
-                <div class="context-box-card">
-                    <div class="context-box-header">
-                        <h3 style="display: flex; align-items: center; gap: 6px;">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle></svg>
-                            <span>NAGPAANYAYA (COMPLAINANT / S)</span>
-                        </h3>
-                        <span class="context-subtitle" id="tabPaaComplainantsCountBadge">0 Party(ies)</span>
-                    </div>
-                    <div id="tabPaaComplainantsList" style="margin-top: 10px;">
-                        <p class="empty-detail-state" style="padding: 12px; margin: 0; font-size: 0.85rem;">Loading complainants...</p>
-                    </div>
-                </div>
-
-                <!-- RIGHT COLUMN: Inanyayahan (Respondent / s) -->
-                <div class="context-box-card">
-                    <div class="context-box-header">
-                        <h3 style="display: flex; align-items: center; gap: 6px;">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-                            <span>INANYAYAHAN (RESPONDENT / S)</span>
-                        </h3>
-                        <span class="context-subtitle" id="tabPaaRespondentsCountBadge">0 Party(ies)</span>
-                    </div>
-                    <div id="tabPaaRespondentsList" style="margin-top: 10px;">
-                        <p class="empty-detail-state" style="padding: 12px; margin: 0; font-size: 0.85rem;">Loading respondents...</p>
-                    </div>
-                </div>
-            </div>
 
             <!-- TWO PAANYAYA STAGES: SIDE BY SIDE SUMMARY CARDS -->
-            <div class="paanyaya-stages-grid">
+            <div class="paanyaya-stages-grid" style="margin-top: 6px;">
                 <!-- CARD 1: PAANYAYA 1 (First Preliminary Invitation) -->
                 <div class="paanyaya-card" id="paanyaya1Card">
                     <div>
                         <div class="paanyaya-card-header">
                             <div class="paanyaya-stage-title-wrap">
-                                <span class="paanyaya-stage-tag">Stage 0.1 &bull; Officer's Return (Respondent Only)</span>
-                                <h3 class="paanyaya-card-title">Paanyaya 1 – Preliminary Invitation Delivery (Respondent)</h3>
-                            </div>
-                            <span id="p1StatusBadge" class="paanyaya-status-badge status-not-started">Not Started</span>
-                        </div>
-
-                        <!-- 4 Metric KPI Box -->
-                        <div class="paanyaya-metric-grid">
-                            <div class="paanyaya-metric-item">
-                                <span class="paanyaya-metric-label">Delivery Attempts</span>
-                                <span id="p1AttemptText" class="paanyaya-metric-val">0 of 6 used</span>
-                            </div>
-                            <div class="paanyaya-metric-item">
-                                <span class="paanyaya-metric-label">Latest Service Status</span>
-                                <span id="p1ServiceStatus" class="paanyaya-metric-val">—</span>
-                            </div>
-                            <div class="paanyaya-metric-item">
-                                <span class="paanyaya-metric-label">Assigned Serving Officer</span>
-                                <span id="p1ServingOfficer" class="paanyaya-metric-val">Unassigned</span>
-                            </div>
-                            <div class="paanyaya-metric-item">
-                                <span class="paanyaya-metric-label">Date Initiated</span>
-                                <span id="p1DateInitiated" class="paanyaya-metric-val">—</span>
+                                <h3 class="paanyaya-card-title">Paanyaya 1 &ndash; Preliminary Invitation</h3>
                             </div>
                         </div>
 
-                        <!-- 6-Attempt Progress Stepper Indicator -->
-                        <div class="paanyaya-attempts-stepper">
-                            <div class="paanyaya-stepper-label">
-                                <span>Service Attempts Tracking (Max <?php echo $maxPaanyayaSetting; ?>)</span>
-                                <span id="p1StepperCountText">0 / <?php echo $maxPaanyayaSetting; ?> Attempts</span>
-                            </div>
-                            <div class="paanyaya-stepper-dots" id="p1StepperDots">
-                                <?php for ($sDot = 1; $sDot <= $maxPaanyayaSetting; $sDot++): ?>
-                                    <div class="stepper-dot" title="Attempt <?php echo $sDot; ?>"></div>
-                                <?php endfor; ?>
-
-
-
-
-
-                            </div>
-                        </div>
-
-                        <!-- Case Details & Intended Recipient Info -->
-                        <div class="paanyaya-parties-box">
-                            <div class="party-row"><strong>Case / Tracking:</strong> <span id="p1CaseNumber">—</span></div>
-                            <div class="party-row"><strong>Complainant:</strong> <span id="p1ComplainantName">—</span></div>
-                            <div class="party-row"><strong>Respondent:</strong> <span id="p1RespondentName">—</span></div>
-                            <div class="party-row"><strong>Service Address:</strong> <span id="p1RespondentAddr">—</span></div>
-                            <div class="party-row" id="p1LatestOutcomeRow" style="display:none; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #e2e8f0;">
-                                <strong>Latest Outcome:</strong> <span id="p1LatestOutcomeBadge">None</span>
-                                <div id="p1LatestRemarks" style="font-size: 0.78rem; color: #64748b; margin-top: 2px;"></div>
-                            </div>
-                            <div class="party-row" id="p1MinutesRow" style="display:none; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #e2e8f0;">
-                                <strong>Dialogue Minutes:</strong> <span id="p1MinutesBadge">None</span>
-                                <div id="p1MinutesSummary" style="font-size: 0.78rem; color: #64748b; margin-top: 2px;"></div>
+                        <!-- Inline Dialogue Minutes & Settlement Result (Paanyaya 1) -->
+                        <div id="p1DialogueMinutesInline" class="paanyaya-minutes-inline-container" style="margin-top: 10px;">
+                            <div style="background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 10px; padding: 18px; text-align: center;">
+                                <p style="margin: 0 0 6px 0; font-size: 0.88rem; color: #475569; font-weight: 600;">
+                                    Dialogue Minutes not yet recorded.
+                                </p>
+                                <span style="font-size: 0.8rem; color: #64748b;">
+                                    Click "Record Dialogue Minutes" below to proceed.
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -447,15 +385,9 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
                         <button type="button" class="btn-create" id="btnIssueP1" onclick="openIssuePaanyayaModal('Paanyaya 1')">
                             Issue Paanyaya 1
                         </button>
-                        <button type="button" class="btn-create" id="btnRecordReturnP1" onclick="openRecordReturnModal('Paanyaya 1')" style="background: #2563eb; border-color: #2563eb; display: none;">
-                            Record Officer's Return
-                        </button>
-                        <button type="button" class="btn-create" id="btnRecordMinutesP1" onclick="openPaanyayaMinutesModal('Paanyaya 1')" style="background: #2563eb; border-color: #2563eb; display: none;">
+                        <a href="record-dialogue-minutes.php?id=<?= $complaintId ?>&stage=Paanyaya+1" class="btn-create" id="btnRecordMinutesP1" style="background: #2563eb; border-color: #2563eb; text-decoration: none; display: none;">
                             Record Dialogue Minutes
-                        </button>
-                        <button type="button" class="btn-sess-white" id="btnViewMinutesP1" onclick="viewPaanyayaMinutes('Paanyaya 1')" style="display: none;">
-                            View Dialogue Minutes
-                        </button>
+                        </a>
                         <button type="button" class="btn-sess-indigo" id="btnPreviewP1" onclick="previewPaanyayaStageLetter('Paanyaya 1')" style="display: none;">
                             Preview Letter
                         </button>
@@ -470,87 +402,36 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
                     <div>
                         <div class="paanyaya-card-header">
                             <div class="paanyaya-stage-title-wrap">
-                                <span class="paanyaya-stage-tag tag-p2">Stage 0.2 &bull; Officer's Return (Respondent Only)</span>
-                                <h3 class="paanyaya-card-title">Paanyaya 2 – Second Preliminary Delivery (Respondent)</h3>
+                                <h3 class="paanyaya-card-title">Paanyaya 2 &ndash; Second Preliminary Invitation</h3>
                             </div>
-                            <span id="p2StatusBadge" class="paanyaya-status-badge status-locked">Locked</span>
                         </div>
 
                         <!-- Locked State Alert Banner (when Paanyaya 1 is still incomplete) -->
                         <div id="p2LockedNotice" style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 14px; margin-bottom: 16px; font-size: 0.85rem; color: #64748b; display: flex; align-items: center; gap: 10px;">
-                            
                             <span>Paanyaya 2 is locked. It unlocks ONLY if Paanyaya 1 concludes with 'No Agreement' and the complainant requests a second invitation.</span>
                         </div>
 
-                        <!-- 4 Metric KPI Box -->
-                        <div class="paanyaya-metric-grid" id="p2MetricGrid" style="display: none;">
-                            <div class="paanyaya-metric-item">
-                                <span class="paanyaya-metric-label">Delivery Attempts</span>
-                                <span id="p2AttemptText" class="paanyaya-metric-val">0 of 6 used</span>
-                            </div>
-                            <div class="paanyaya-metric-item">
-                                <span class="paanyaya-metric-label">Latest Service Status</span>
-                                <span id="p2ServiceStatus" class="paanyaya-metric-val">—</span>
-                            </div>
-                            <div class="paanyaya-metric-item">
-                                <span class="paanyaya-metric-label">Assigned Serving Officer</span>
-                                <span id="p2ServingOfficer" class="paanyaya-metric-val">Unassigned</span>
-                            </div>
-                            <div class="paanyaya-metric-item">
-                                <span class="paanyaya-metric-label">Date Initiated</span>
-                                <span id="p2DateInitiated" class="paanyaya-metric-val">—</span>
-                            </div>
-                        </div>
-
-                        <!-- 6-Attempt Progress Stepper Indicator (Paanyaya 2) -->
-                        <div class="paanyaya-attempts-stepper" id="p2StepperWrap" style="display: none;">
-                            <div class="paanyaya-stepper-label">
-                                <span>Independent Service Attempts Tracking (Max <?php echo $maxPaanyayaSetting; ?>)</span>
-                                <span id="p2StepperCountText">0 / <?php echo $maxPaanyayaSetting; ?> Attempts</span>
-                            </div>
-                            <div class="paanyaya-stepper-dots" id="p2StepperDots">
-                                <?php for ($sDot = 1; $sDot <= $maxPaanyayaSetting; $sDot++): ?>
-                                    <div class="stepper-dot" title="Attempt <?php echo $sDot; ?>"></div>
-                                <?php endfor; ?>
-
-
-
-
-
-                            </div>
-                        </div>
-
-                        <!-- Case Details & Party Info (Paanyaya 2) -->
-                        <div class="paanyaya-parties-box" id="p2PartiesBox" style="display: none;">
-                            <div class="party-row"><strong>Case / Tracking:</strong> <span id="p2CaseNumber">—</span></div>
-                            <div class="party-row"><strong>Complainant:</strong> <span id="p2ComplainantName">—</span></div>
-                            <div class="party-row"><strong>Respondent:</strong> <span id="p2RespondentName">—</span></div>
-                            <div class="party-row"><strong>Service Address:</strong> <span id="p2RespondentAddr">—</span></div>
-                            <div class="party-row" id="p2LatestOutcomeRow" style="display:none; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #e2e8f0;">
-                                <strong>Latest Outcome:</strong> <span id="p2LatestOutcomeBadge">None</span>
-                                <div id="p2LatestRemarks" style="font-size: 0.78rem; color: #64748b; margin-top: 2px;"></div>
-                            </div>
-                            <div class="party-row" id="p2MinutesRow" style="display:none; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #e2e8f0;">
-                                <strong>Dialogue Minutes:</strong> <span id="p2MinutesBadge">None</span>
-                                <div id="p2MinutesSummary" style="font-size: 0.78rem; color: #64748b; margin-top: 2px;"></div>
+                        <!-- Inline Dialogue Minutes & Settlement Result (Paanyaya 2) -->
+                        <div id="p2DialogueMinutesInline" class="paanyaya-minutes-inline-container" style="margin-top: 10px; display: none;">
+                            <div style="background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 10px; padding: 18px; text-align: center;">
+                                <p style="margin: 0 0 6px 0; font-size: 0.88rem; color: #475569; font-weight: 600;">
+                                    Dialogue Minutes not yet recorded.
+                                </p>
+                                <span style="font-size: 0.8rem; color: #64748b;">
+                                    Click "Record Dialogue Minutes" below to proceed.
+                                </span>
                             </div>
                         </div>
                     </div>
 
                     <!-- Action Buttons -->
                     <div class="paanyaya-card-actions">
-                        <button type="button" class="btn-create" id="btnIssueP2" onclick="openIssuePaanyayaModal('Paanyaya 2')" disabled style="opacity: 0.55; cursor: not-allowed;">
+                        <button type="button" class="btn-create" id="btnIssueP2" onclick="openIssuePaanyayaModal('Paanyaya 2')" disabled style="opacity: 0.55; cursor: not-allowed; display: none;">
                             Issue Paanyaya 2
                         </button>
-                        <button type="button" class="btn-create" id="btnRecordReturnP2" onclick="openRecordReturnModal('Paanyaya 2')" style="background: #2563eb; border-color: #2563eb; display: none;">
-                            Record Officer's Return
-                        </button>
-                        <button type="button" class="btn-create" id="btnRecordMinutesP2" onclick="openPaanyayaMinutesModal('Paanyaya 2')" style="background: #2563eb; border-color: #2563eb; display: none;">
+                        <a href="record-dialogue-minutes.php?id=<?= $complaintId ?>&stage=Paanyaya+2" class="btn-create" id="btnRecordMinutesP2" style="background: #2563eb; border-color: #2563eb; text-decoration: none; display: none;">
                             Record Dialogue Minutes
-                        </button>
-                        <button type="button" class="btn-sess-white" id="btnViewMinutesP2" onclick="viewPaanyayaMinutes('Paanyaya 2')" style="display: none;">
-                            View Dialogue Minutes
-                        </button>
+                        </a>
                         <button type="button" class="btn-sess-indigo" id="btnPreviewP2" onclick="previewPaanyayaStageLetter('Paanyaya 2')" style="display: none;">
                             Preview Letter
                         </button>
@@ -560,7 +441,6 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
                     </div>
                 </div>
             </div>
-
 
         </div>
 
@@ -583,78 +463,24 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
                 </div>
             </div>
 
-            <!-- Session #1 Schedule & Attendance Card -->
-            <div class="session-schedule-box" style="margin: 0 30px 24px;">
-                <div class="session-box-header">
+                        <!-- Embedded Mediation Hearing Sessions Management -->
+            <div class="stage-section-card" id="mediationSessionsSection" style="margin: 0 30px 24px;">
+                <div class="stage-section-header">
                     <div>
-                        <h4 id="sessionTitleHeading">Session #1 Schedule &amp; Attendance</h4>
-                        <p id="sessionSubtitleHeading" class="session-lead-text">Next Session: Oct 19, 2026 at 10:00 AM (Barangay Hall)</p>
+                        <h3>Mediation Hearing Sessions</h3>
+                        <p>Scheduled sessions, party appearances, service verification, and minutes status</p>
                     </div>
-                    <a id="cwManageScheduleLink" href="#" class="btn-manage-sched" style="display: none;">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                        <span>Manage Schedule</span>
-                    </a>
-                </div>
-
-                <!-- 3 Metrics KPI Grid -->
-                <div class="session-kpi-grid">
-                    <div class="session-kpi-item">
-                        <span class="kpi-label">Complainant Attendance</span>
-                        <div class="kpi-val-row">
-                            <span class="dot-status-green"></span>
-                            <span id="complainantAttendanceText">Present (0), Absent (0)</span>
-                        </div>
-                    </div>
-                    <div class="session-kpi-item">
-                        <span class="kpi-label">Respondent Attendance</span>
-                        <div class="kpi-val-row">
-                            <span class="dot-status-green"></span>
-                            <span id="respondentAttendanceText">Present (0), Absent (0)</span>
-                        </div>
-                    </div>
-                    <div class="session-kpi-item">
-                        <span class="kpi-label">Saved Minutes</span>
-                        <div class="kpi-val-row">
-                            <span id="savedMinutesIcon"></span>
-                            <span id="savedMinutesText">Not Recorded Yet</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Bottom Action Buttons Row -->
-                <div class="session-action-bar-row">
-                    <div class="session-btn-group-left">
-                        <button type="button" id="previewKp9Btn" class="btn-sess-indigo" onclick="handlePreviewKp9()">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>
-                            <span>Preview KP Form 9</span>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span id="mediationSessionsCountBadge" style="font-size: 0.78rem; background: #e2e8f0; color: #475569; padding: 2px 8px; border-radius: 9999px; font-weight: 600;">0 sessions</span>
+                        <button type="button" class="btn-create" onclick="openEmbeddedScheduleModal('Mediation')" style="font-size: 0.78rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
+                            + Schedule Session
                         </button>
                     </div>
-                    <div class="session-btn-group-right">
-                        <a id="openMediationBtn" href="#" onclick="handleOpenMediationWorkspace(event)" class="btn-sess-green">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
-                            <span>Record Open mediation</span>
-                        </a>
-                    </div>
                 </div>
-            </div>
-
-            <!-- Mediation Hearings & Workspace Navigation Card -->
-            <div class="hearings-schedule-card">
-                <div class="operational-card-header">
-                    <div>
-                        <h3 style="font-size: 1rem; font-weight: 800; color: #0f172a; margin: 0;">Mediation Proceedings &amp; Workspace</h3>
-                        <span class="card-subtitle">Detailed session records, show-cause notices, and mediation history</span>
-                    </div>
-                    <span id="cwMediationStatusBadge" class="status-pill status-mediation" style="font-size:0.75rem;">In Progress</span>
+                <div id="mediationSessionsListContainer" style="padding: 18px 20px;">
+                    <div class="empty-detail-state">Loading mediation hearing sessions...</div>
                 </div>
-                <div id="cwMediationContainer" style="margin-top: 10px;">
-                    <div class="empty-detail-state">Loading mediation proceedings...</div>
-                </div>
-                <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                    <span style="font-size: 0.82rem; color: #64748b;">
-                        Under RA 7160 Sec. 410(b), mediation is conducted by the Punong Barangay for up to 3 sessions or 15 days before Pangkat referral.
-                    </span>
-                </div>
+                
             </div>
         </div>
 
@@ -677,42 +503,32 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
                 </div>
             </div>
 
-            <!-- Card: Pangkat Conciliation State -->
-            <div class="hearings-schedule-card">
-                <div class="operational-card-header">
+                        <!-- Embedded Pangkat Conciliation Hearing Sessions Management -->
+            <div class="stage-section-card" id="conciliationSessionsSection" style="margin: 0 30px 24px;">
+                <div class="stage-section-header">
                     <div>
-                        <h3 style="font-size: 1rem; font-weight: 800; color: #0f172a; margin: 0;">Pangkat Conciliation Workspace &amp; State</h3>
-                        <span class="card-subtitle">Pangkat ng Tagapagkasundo &bull; Formal conciliation proceedings</span>
+                        <h3>Pangkat Conciliation Hearing Sessions</h3>
+                        <p>Pangkat ng Tagapagkasundo &bull; Scheduled conciliation sessions, party appearances, and amicable settlement records</p>
                     </div>
-                    <span id="cwConciliationStatusBadge" class="status-pill status-locked" style="font-size:0.75rem;">Locked</span>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span id="conciliationSessionsCountBadge" style="font-size: 0.78rem; background: #e2e8f0; color: #475569; padding: 2px 8px; border-radius: 9999px; font-weight: 600;">0 sessions</span>
+                        <button type="button" class="btn-create" id="btnSchedConciliation" onclick="openEmbeddedScheduleModal('Conciliation')" style="font-size: 0.78rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
+                            + Schedule Conciliation Session
+                        </button>
+                    </div>
                 </div>
-                <div id="cwConciliationContainer" style="margin-top: 14px;">
-                    <div class="empty-detail-state">Loading conciliation state...</div>
+                <div id="conciliationSessionsListContainer" style="padding: 18px 20px;">
+                    <div class="empty-detail-state">Loading conciliation hearing sessions...</div>
                 </div>
-                <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div style="padding: 14px 20px; border-top: 1px solid #f1f5f9; background: #fafafa; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                     <span style="font-size: 0.82rem; color: #64748b;">
                         Pangkat is constituted from Lupon members chosen by the parties (KP Form 10/11) to conduct formal conciliation within 15 days.
                     </span>
-                    <a id="cwManageConciliationLink" href="#" class="btn-case-outline" style="font-size: 0.84rem; padding: 6px 14px;">
-                        Manage Conciliation &rarr;
-                    </a>
-                </div>
-            </div>
-
-            <!-- Pangkat Conciliation Guidelines Card -->
-            <div class="operational-card" style="margin: 0 30px 24px;">
-                <div class="operational-card-header">
-                    <div>
-                        <h3 style="font-size: 0.95rem; font-weight: 800; color: #0f172a; margin: 0;">Conciliation Legal Guidelines (RA 7160 Sec. 410)</h3>
-                        <span class="card-subtitle">Procedural gates and requirements for Pangkat conciliation</span>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button type="button" class="btn-secondary" onclick="openEmbeddedRecordOutcomeModal('Conciliation')" style="font-size: 0.82rem; padding: 6px 12px;">
+                            Record Conciliation Outcome
+                        </button>
                     </div>
-                </div>
-                <div style="padding: 16px 20px; font-size: 0.86rem; color: #475569; line-height: 1.6;">
-                    <ul style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px;">
-                        <li><strong>Pangkat Constitution:</strong> The parties choose 3 members from the Lupon. If they fail to agree, the Punong Barangay draws lots.</li>
-                        <li><strong>15-Day Resolution Period:</strong> The Pangkat shall meet within 3 days from constitution and has fifteen (15) days to conciliate the dispute, extendable by another 15 days in clearly meritorious cases.</li>
-                        <li><strong>Outcomes:</strong> A successful session produces an <em>Amicable Settlement</em> (KP Form 16). If conciliation fails, a <em>Certificate to File Action</em> (KP Form 20) is issued.</li>
-                    </ul>
                 </div>
             </div>
         </div>
@@ -728,7 +544,7 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
                         <span class="stage-label-num">STAGE 3 &bull; KATARUNGANG PAMBARANGAY</span>
                         <span id="stage3Icon" style="display: inline-flex; align-items: center; justify-content: center; font-size: 0.85rem;">3</span>
                     </div>
-                    <h3 class="stage-card-title" style="font-size: 1.15rem; margin: 4px 0 4px;">Arbitration / Court Referral</h3>
+                    <h3 class="stage-card-title" style="font-size: 1.15rem; margin: 4px 0 4px;">Dispute Resolution Outcomes</h3>
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                         <span id="stage3StatusText" class="stage-sub-status" style="font-weight: 600;">Pending</span>
                         <span style="font-size: 0.78rem; opacity: 0.9;">Binding Arbitration (RA 7160 Sec. 413) &bull; Certification to File Action (CFA)</span>
@@ -740,7 +556,7 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
             <div class="hearings-schedule-card">
                 <div class="operational-card-header">
                     <div>
-                        <h3 style="font-size: 1rem; font-weight: 800; color: #0f172a; margin: 0;">Arbitration / Court Referral Workspace</h3>
+                        <h3 style="font-size: 1rem; font-weight: 800; color: #0f172a; margin: 0;">Dispute Resolution &amp; Court Referral Outcomes</h3>
                         <span class="card-subtitle">Voluntary binding arbitration proceedings or formal elevation to court</span>
                     </div>
                     <span id="cwArbitrationStatusBadge" class="status-pill status-locked" style="font-size:0.75rem;">Pending</span>
@@ -1127,12 +943,7 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
                 <label for="modalPaanyayaSalaysay" style="font-weight: 600; font-size: 0.85rem;">Salaysay / Reason for Invitation (Optional override)</label>
                 <textarea id="modalPaanyayaSalaysay" name="salaysay" rows="2" placeholder="Leave blank to use complaint narrative..." style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;"></textarea>
             </div>
-            <div class="form-group" style="margin-bottom: 18px;">
-                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.88rem; color: #1e293b;">
-                    <input type="checkbox" id="modalPaanyayaHasSig" name="has_e_signature" value="1" checked style="width: 16px; height: 16px;">
-                    <span>Embed Punong Barangay (Hon. Akiko Lynne Centeno) calligraphic e-signature</span>
-                </label>
-            </div>
+            <input type="hidden" id="modalPaanyayaHasSig" name="has_e_signature" value="1">
             <div id="paanyayaScheduleError" class="alert alert-danger" style="display:none; margin-bottom: 14px; font-size: 0.84rem; padding: 8px 12px;"></div>
             <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 0;">
                 <button type="button" class="btn-secondary" onclick="closePaanyayaScheduleModal()">Cancel</button>
@@ -1201,191 +1012,6 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
             <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 0;">
                 <button type="button" class="btn-secondary" onclick="closePaanyayaOutcomeModal()">Cancel</button>
                 <button type="submit" class="btn-create" id="btnSubmitPaanyayaOutcome">Confirm Outcome</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- Modal: Record Paanyaya Dialogue Minutes & Outcome -->
-<div id="paanyayaMinutesModal" class="modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="minutesModalHeading">
-    <div class="modal-content" style="max-width: 640px; padding: 24px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15); max-height: 90vh; overflow-y: auto;">
-        <div class="modal-header" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 0;">
-            <div style="display: flex; align-items: center; gap: 10px;">
-                
-                <div>
-                    <h2 id="minutesModalHeading" style="font-size: 1.18rem; font-weight: 800; color: #0f172a; margin: 0;">Record Paanyaya Dialogue Minutes</h2>
-                    <span id="minutesModalSub" style="font-size: 0.8rem; color: #64748b;">Salaysay at Napag-usapan sa Harapan ng Barangay</span>
-                </div>
-            </div>
-            <button type="button" class="close-btn" onclick="closePaanyayaMinutesModal()">&times;</button>
-        </div>
-        <form id="paanyayaMinutesForm" onsubmit="submitPaanyayaMinutes(event)" enctype="multipart/form-data">
-            <input type="hidden" id="minutesComplaintId" name="complaint_id" value="">
-            <input type="hidden" id="minutesStageType" name="stage_type" value="Paanyaya 1">
-
-            <!-- Dialogue Date & Time and Actual Start Time -->
-            <div style="margin-bottom: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                <div class="form-group" style="margin-bottom: 0;">
-                    <label for="minutesDialogueDate" style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 4px;">Petsa at Takdang Oras (Scheduled Date &amp; Time) <span class="required-mark">*</span></label>
-                    <input type="datetime-local" id="minutesDialogueDate" name="dialogue_date" required style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%; box-sizing: border-box;">
-                </div>
-                <div class="form-group" style="margin-bottom: 0;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                        <label for="minutesActualStartTime" style="font-weight: 600; font-size: 0.84rem; margin: 0;">Aktwal na Oras ng Simula (Actual Start Time)</label>
-                        <button type="button" onclick="setMinutesActualStartNow()" style="background: none; border: none; color: #2563eb; font-size: 0.76rem; font-weight: 600; cursor: pointer; padding: 0;">Oras Ngayon (Now)</button>
-                    </div>
-                    <input type="time" id="minutesActualStartTime" name="actual_start_time" style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%; box-sizing: border-box;">
-                </div>
-            </div>
-
-            <!-- Session Delay Remarks / Dahilan ng Pagkaantala -->
-            <div class="form-group" style="margin-bottom: 14px;">
-                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
-                    <label for="minutesSessionRemarks" style="font-weight: 600; font-size: 0.84rem; margin: 0;">Puna sa Oras ng Simula / Dahilan ng Pagkaantala (Session Delay Remarks)</label>
-                    <span style="font-size: 0.74rem; color: #64748b;">(Kung sakaling late nag-umpisa ang session)</span>
-                </div>
-                <textarea id="minutesSessionRemarks" name="session_remarks" rows="2" placeholder="Halimbawa: Naantala ang simula dahil may naunang kaso sa Lupon Court Room. Present ang mga partido." style="padding: 8px 10px; font-size: 0.86rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%; box-sizing: border-box;"></textarea>
-                <!-- Quick Preset Chips -->
-                <div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
-                    <span style="font-size: 0.74rem; color: #64748b; font-weight: 600;">I-click para ilagay:</span>
-                    <button type="button" onclick="applyDelayRemark('Naantala ang simula dahil may naunang kaso sa Lupon Court Room. Present ang mga partido.')" style="font-size: 0.74rem; padding: 4px 9px; border-radius: 9999px; border: 1px solid #cbd5e1; background: #eff6ff; color: #1e40af; cursor: pointer; font-weight: 500;">
-                        📌 Naunang kaso sa Court Room
-                    </button>
-                    <button type="button" onclick="applyDelayRemark('Naantala dahil nahuli sa pagdating ang isa o magkabilang panig.')" style="font-size: 0.74rem; padding: 4px 9px; border-radius: 9999px; border: 1px solid #cbd5e1; background: #fff7ed; color: #c2410c; cursor: pointer; font-weight: 500;">
-                        📌 Nahuli ang panig
-                    </button>
-                    <button type="button" onclick="applyDelayRemark('Nagsimula sa takdang oras nang walang pagkaantala.')" style="font-size: 0.74rem; padding: 4px 9px; border-radius: 9999px; border: 1px solid #cbd5e1; background: #f0fdf4; color: #166534; cursor: pointer; font-weight: 500;">
-                        📌 Nasa oras
-                    </button>
-                </div>
-            </div>
-
-            <!-- Party Attendance -->
-            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px;">
-                <div style="font-weight: 700; font-size: 0.85rem; color: #0f172a; margin-bottom: 8px;">Pagdalo ng Magkabilang Panig (Party Attendance) <span class="required-mark">*</span></div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                    <div>
-                        <span style="font-size: 0.8rem; color: #475569; font-weight: 600; display: block; margin-bottom: 4px;">Nagpaanyaya (Complainant):</span>
-                        <div style="display: flex; gap: 12px; font-size: 0.85rem;">
-                            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
-                                <input type="radio" name="complainant_attended" value="Present" checked>
-                                <span style="color: #166534; font-weight: 600;">Dumalo (Present)</span>
-                            </label>
-                            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
-                                <input type="radio" name="complainant_attended" value="Absent">
-                                <span style="color: #991b1b;">Hindi Dumalo</span>
-                            </label>
-                        </div>
-                    </div>
-                    <div>
-                        <span style="font-size: 0.8rem; color: #475569; font-weight: 600; display: block; margin-bottom: 4px;">Inanyayahan (Respondent):</span>
-                        <div style="display: flex; gap: 12px; font-size: 0.85rem;">
-                            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
-                                <input type="radio" name="respondent_attended" value="Present" checked onchange="handleMinutesAttendanceChange()">
-                                <span style="color: #166534; font-weight: 600;">Dumalo (Present)</span>
-                            </label>
-                            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
-                                <input type="radio" name="respondent_attended" value="Absent" onchange="handleMinutesAttendanceChange()">
-                                <span style="color: #991b1b;">Hindi Dumalo</span>
-                            </label>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Temporary Minutes: Discussion Summary -->
-            <div class="form-group" style="margin-bottom: 14px;">
-                <label for="minutesDiscussionSummary" style="font-weight: 600; font-size: 0.84rem;">Salaysay at Buod ng Napag-usapan (Summary of Statements & Discussion) <span class="required-mark">*</span></label>
-                <textarea id="minutesDiscussionSummary" name="discussion_summary" rows="3" required placeholder="Ibuod ang mga pahayag, sagot, at mga puntong napag-usapan ng magkabilang panig habang isinasagawa ang dialogue..." style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;"></textarea>
-            </div>
-
-            <!-- Agreed Terms / Compromise -->
-            <div class="form-group" style="margin-bottom: 14px;">
-                <label for="minutesAgreedTerms" style="font-weight: 600; font-size: 0.84rem;">Mga Mungkahi o Napagkasunduang Kondisyon (Proposals / Agreed Terms)</label>
-                <textarea id="minutesAgreedTerms" name="agreed_terms" rows="2" placeholder="Kondisyon ng bayaran, pagsasaayos, o pangako ng magkabilang panig (kung mayroon)..." style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;"></textarea>
-            </div>
-
-            <!-- Optional Scanned Minutes Upload -->
-            <div class="form-group" style="margin-bottom: 14px;">
-                <label for="minutesScannedFile" style="font-weight: 600; font-size: 0.84rem;">Kopya ng Sulat-Kamay na Katitikan / Minutes (Optional Photo or Scan)</label>
-                <input type="file" id="minutesScannedFile" name="scanned_minutes" accept=".jpg,.jpeg,.png,.pdf,.webp" style="padding: 6px 8px; font-size: 0.84rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
-                <span style="font-size: 0.75rem; color: #64748b; margin-top: 2px; display: block;">Maaaring mag-attach ng litrato ng sulat-kamay na katitikan na may lagda ng mga panig (JPG, PNG, PDF hanggang 10MB).</span>
-            </div>
-
-            <!-- Dialogue Determination (Procedural Result) -->
-            <div style="margin-bottom: 14px;">
-                <label style="font-weight: 700; font-size: 0.85rem; color: #0f172a; display: block; margin-bottom: 6px;">Kinalabasan ng Pag-uusap (Dialogue Procedural Result) <span class="required-mark">*</span></label>
-                <div style="display: flex; flex-direction: column; gap: 8px;">
-                    <label id="optMinutesSettledWrap" style="display: flex; align-items: flex-start; gap: 8px; background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 8px; padding: 10px 12px; cursor: pointer;">
-                        <input type="radio" name="outcome" value="Settled" checked onchange="toggleMinutesOutcomeViews()" style="margin-top: 3px;">
-                        <div>
-                            <strong style="color: #166534; font-size: 0.88rem;">Nagkasundo / Amicably Settled (Informal Settlement)</strong>
-                            <p style="margin: 2px 0 0; font-size: 0.78rem; color: #166534;">Nalutas ang usapin sa impormal na pag-uusap. Isasara ang complaint nang hindi na kailangang i-docket sa pormal na korte (LTIA performance win).</p>
-                        </div>
-                    </label>
-
-                    <label id="optMinutesNoAgreementWrap" style="display: flex; align-items: flex-start; gap: 8px; background: #fef2f2; border: 1.5px solid #fecaca; border-radius: 8px; padding: 10px 12px; cursor: pointer;">
-                        <input type="radio" name="outcome" value="No_Agreement" onchange="toggleMinutesOutcomeViews()" style="margin-top: 3px;">
-                        <div>
-                            <strong style="color: #991b1b; font-size: 0.88rem;">Walang Kasunduan / No Agreement Reached (or Respondent No-Show)</strong>
-                            <p style="margin: 2px 0 0; font-size: 0.78rem; color: #991b1b;">Hindi nagkasundo ang mga panig, tumanggi ang inanyayahan, o hindi sumipot. Piliin ang desisyon ng nagrereklamo sa ibaba.</p>
-                        </div>
-                    </label>
-                </div>
-            </div>
-
-            <!-- Complainant Choice Selector (Visible ONLY on No_Agreement) -->
-            <div id="minutesComplainantChoiceSection" style="display: none; background: #fff7ed; border: 1.5px solid #fed7aa; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px;">
-                <label style="font-weight: 700; font-size: 0.85rem; color: #9a3412; display: block; margin-bottom: 6px;">
-                    Ano ang nais ng nagrereklamo? (Complainant's Decision) <span class="required-mark">*</span>
-                </label>
-                <div style="display: flex; flex-direction: column; gap: 8px;">
-                    <label id="optChoiceP2Wrap" style="display: flex; align-items: flex-start; gap: 8px; background: #ffffff; border: 1px solid #fdba74; border-radius: 6px; padding: 8px 10px; cursor: pointer;">
-                        <input type="radio" name="complainant_choice" value="Request_Paanyaya_2" checked onchange="toggleComplainantChoiceViews()" style="margin-top: 3px;">
-                        <div>
-                            <strong style="color: #c2410c; font-size: 0.84rem;">Choice A: Humiling ng Ikalawang Paanyaya (Give another chance / Request 2nd Paanyaya)</strong>
-                            <p style="margin: 2px 0 0; font-size: 0.77rem; color: #7c2d12;">I-unlock ang Paanyaya 2 card upang makapag-isyu ng pangalawang paanyaya sa inanyayahan.</p>
-                        </div>
-                    </label>
-                    <label id="optChoiceEscalateWrap" style="display: flex; align-items: flex-start; gap: 8px; background: #ffffff; border: 1px solid #fdba74; border-radius: 6px; padding: 8px 10px; cursor: pointer;">
-                        <input type="radio" name="complainant_choice" value="Escalate_Mediation" onchange="toggleComplainantChoiceViews()" style="margin-top: 3px;">
-                        <div>
-                            <strong style="color: #dc2626; font-size: 0.84rem;">Choice B: I-akyat na sa Pormal na Mediation / Punong Barangay (Escalate immediately)</strong>
-                            <p style="margin: 2px 0 0; font-size: 0.77rem; color: #991b1b;">Laktawan ang Paanyaya 2. Magtatalaga ng official Case Docket Number, KP Form 7 (Complaint), at KP Form 9 (Summons).</p>
-                        </div>
-                    </label>
-                </div>
-            </div>
-
-            <!-- Escalation 1st Mediation Hearing Schedule (Visible ONLY when Choice B is active) -->
-            <div id="minutesEscalationScheduleSection" style="display: none; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 14px; margin-bottom: 14px;">
-                <h4 style="margin: 0 0 10px; font-size: 0.92rem; color: #0f172a; font-weight: 700;">1st Formal Mediation Hearing Schedule (Tumana Rules)</h4>
-                <div class="form-row-2">
-                    <div class="form-group">
-                        <label for="minutesMedDate" style="font-weight: 600; font-size: 0.82rem;">Mediation Date (Tuesdays ONLY) <span class="required-mark">*</span></label>
-                        <input type="date" id="minutesMedDate" name="mediation_date" style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
-                    </div>
-                    <div class="form-group">
-                        <label for="minutesMedTime" style="font-weight: 600; font-size: 0.82rem;">Mediation Slot (1:00 PM - 5:00 PM) <span class="required-mark">*</span></label>
-                        <select id="minutesMedTime" name="mediation_time" style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
-                            <option value="13:00">1:00 PM - 2:00 PM</option>
-                            <option value="14:00">2:00 PM - 3:00 PM</option>
-                            <option value="15:00">3:00 PM - 4:00 PM</option>
-                            <option value="16:00">4:00 PM - 5:00 PM</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="form-group" style="margin-top: 8px;">
-                    <label for="minutesMedVenue" style="font-weight: 600; font-size: 0.82rem;">Hearing Venue</label>
-                    <input type="text" id="minutesMedVenue" name="venue" value="Lupon Court Room" readonly style="padding: 8px 10px; font-size: 0.88rem; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
-                </div>
-            </div>
-
-            <div id="paanyayaMinutesError" class="alert alert-danger" style="display:none; margin-bottom: 14px; font-size: 0.84rem; padding: 8px 12px;"></div>
-
-            <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 0;">
-                <button type="button" class="btn-secondary" onclick="closePaanyayaMinutesModal()">Cancel</button>
-                <button type="submit" class="btn-create" id="btnSubmitPaanyayaMinutes" style="background: #2563eb; border-color: #2563eb;">Save Minutes &amp; Confirm Result</button>
             </div>
         </form>
     </div>
@@ -1466,12 +1092,7 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
                 <textarea id="issueStageSalaysay" name="salaysay" rows="2" placeholder="Leave blank to use complaint narrative..." style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;"></textarea>
             </div>
 
-            <div class="form-group" style="margin-bottom: 16px;">
-                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.86rem; color: #1e293b;">
-                    <input type="checkbox" id="issueStageHasSig" name="has_e_signature" value="1" checked style="width: 16px; height: 16px;">
-                    <span>Embed Punong Barangay (Hon. Akiko Lynne Centeno) calligraphic e-signature</span>
-                </label>
-            </div>
+            <input type="hidden" id="issueStageHasSig" name="has_e_signature" value="1">
 
             <div id="issueStageError" class="alert alert-danger" style="display:none; margin-bottom: 14px; font-size: 0.84rem; padding: 8px 12px;"></div>
 
@@ -1743,6 +1364,245 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
 </div>
 
 <?php include __DIR__ . '/../../layouts/summons-preview-modal.php'; ?>
+
+<!-- ========================================== -->
+<!-- MODAL: Schedule Hearing Session (Mediation / Conciliation) -->
+<!-- ========================================== -->
+<div id="wsScheduleModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 580px; max-height: 90vh; display: flex; flex-direction: column; padding: 0; border-radius: 10px; overflow: hidden;">
+        <div class="modal-header" style="padding: 16px 24px; border-bottom: 1px solid #e2e8f0; background: #fff; margin-bottom: 0; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center;">
+            <h2 id="wsSchedModalTitle" style="font-size: 1.15rem; font-weight: 700; color: #0f172a; margin: 0;">Schedule Hearing Session</h2>
+            <button type="button" class="close-btn" onclick="closeEmbeddedScheduleModal()">&times;</button>
+        </div>
+        <form id="wsScheduleForm" onsubmit="submitEmbeddedSchedule(event)" style="display: flex; flex-direction: column; overflow: hidden; margin: 0;">
+            <input type="hidden" id="schedHearingType" value="Mediation">
+            <input type="hidden" id="schedComplaintId" value="<?php echo (int) $complaintId; ?>">
+            <input type="hidden" id="schedCaseId" value="">
+            <div class="modal-body" style="padding: 18px 24px; overflow-y: auto; flex: 1;">
+                <p id="wsSchedModalSubtitle" style="color: #64748b; font-size: 0.85rem; margin-top: 0; margin-bottom: 14px; line-height: 1.45;">
+                    Enter the date and time to schedule the hearing session. Regular Lupon hearing hours are 8:00 AM to 5:00 PM (Monday to Friday).
+                </p>
+
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                        <label for="schedDate" style="margin-bottom: 0; font-weight: 700; color: #1e293b;">
+                            <span id="schedDateLabel">Hearing Date</span> <span class="required-mark" aria-hidden="true">*</span>
+                        </label>
+                        <span id="schedWindowStatutoryBadge" style="font-size: 0.72rem; background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; padding: 2px 8px; border-radius: 9999px; font-weight: 600;">
+                            15-Working-Day Window (RA 7160 Sec. 410)
+                        </span>
+                    </div>
+
+                    <input type="date" id="schedDate" name="hearing_date" required onchange="handleSchedDateChange(this.value)" style="margin-bottom: 8px; width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.88rem; box-sizing: border-box; background: #fff;">
+
+                    <!-- Visual 15-Working-Day Calendar & Capacity Strip -->
+                    <div id="schedVisualDatePickerContainer" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-top: 6px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.78rem; flex-wrap: wrap; gap: 6px;">
+                            <span style="font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.03em; font-size: 0.74rem;">
+                                AVAILABLE HEARING DAYS (MAX 8 HEARINGS/DAY):
+                            </span>
+                            <div style="display: flex; gap: 10px; font-size: 0.72rem; flex-wrap: wrap;">
+                                <span style="display: inline-flex; align-items: center; gap: 4px; color: #166534;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e;"></span> Available</span>
+                                <span style="display: inline-flex; align-items: center; gap: 4px; color: #991b1b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #ef4444;"></span> 8/8 Full</span>
+                                <span style="display: inline-flex; align-items: center; gap: 4px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #94a3b8;"></span> Outside 15d</span>
+                            </div>
+                        </div>
+
+                        <!-- Scrollable Day Cards Grid -->
+                        <div id="schedVisualDayGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; max-height: 155px; overflow-y: auto; padding: 4px 2px;">
+                            <div style="text-align: center; color: #64748b; font-size: 0.78rem; padding: 12px; grid-column: 1 / -1;">
+                                Loading statutory 15-working-day availability &amp; capacity...
+                            </div>
+                        </div>
+                        <div id="schedVisualDateStatusNotice" style="margin-top: 6px; font-size: 0.75rem; color: #64748b; line-height: 1.4;"></div>
+                    </div>
+                </div>
+
+                <!-- Existing Sessions on selected date -->
+                <div id="schedDaySchedulesWrap" style="display: none; margin-bottom: 14px; padding: 10px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.84rem;">
+                    <div style="font-weight: 600; color: #334155; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
+                        <span>Scheduled Hearings on this Date:</span>
+                        <span id="schedDaySlotsCount" style="font-size: 0.72rem; background: #e2e8f0; color: #475569; padding: 2px 7px; border-radius: 9999px; font-weight: 600;">0</span>
+                    </div>
+                    <div id="schedDaySlotsList" style="color: #64748b; font-size: 0.82rem; line-height: 1.5;">
+                        No other hearings scheduled on this day.
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <label for="schedTime"><span id="schedTimeLabel">Hearing Time</span> <span class="required-mark" aria-hidden="true">*</span></label>
+                    <input type="time" id="schedTime" name="hearing_time" value="09:00" min="08:00" max="17:00" step="1800" required onchange="handleSchedTimeChange()" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.88rem; box-sizing: border-box; background: #fff;">
+                    <small class="field-hint" style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Regular Lupon hearing hours are 8:00 AM to 5:00 PM (Monday to Friday). Standard duration is 1 hour.</small>
+                </div>
+
+                <!-- Conflict Alert Box -->
+                <div id="schedScheduleConflictAlert" class="alert alert-danger" style="display: none; margin: 0 0 14px; padding: 10px 12px; font-size: 0.84rem; border-radius: 6px; background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; line-height: 1.4;">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <label for="schedVenue">Venue <span class="required-mark" aria-hidden="true">*</span></label>
+                    <input type="text" id="schedVenue" name="venue" maxlength="255" value="Lupon Court Room" readonly required style="background: #f8fafc; cursor: not-allowed; width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.88rem; box-sizing: border-box;">
+                    <small style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Hearing sessions are conducted in the Lupon Court Room.</small>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 6px;">
+                    <label for="schedRemarks">Remarks <span class="optional-label">Optional</span></label>
+                    <textarea id="schedRemarks" name="remarks" maxlength="5000" rows="2" placeholder="Optional hearing instructions or notes..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.84rem; box-sizing: border-box;"></textarea>
+                </div>
+
+                <?php if ($canAuthorizePastDate): ?>
+                <div class="form-group" style="margin-top: 10px;">
+                    <label for="schedPastDateExceptionReason">Administrator past-date exception reason</label>
+                    <textarea id="schedPastDateExceptionReason" rows="2" maxlength="2000" placeholder="Required only when scheduling a past date or time (10–2,000 characters)." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.84rem; box-sizing: border-box;"></textarea>
+                    <small style="color: #64748b; font-size: 0.75rem;">The reason is saved with the hearing and audit history.</small>
+                </div>
+                <?php endif; ?>
+            </div>
+            <div class="modal-actions" style="padding: 12px 24px; border-top: 1px solid #e2e8f0; background: #f8fafc; margin-top: 0; flex-shrink: 0; display: flex; justify-content: flex-end; gap: 10px;">
+                <button type="button" class="btn-secondary" onclick="closeEmbeddedScheduleModal()">Cancel</button>
+                <button type="submit" class="btn-create" id="submitSchedBtn">Schedule Session</button>
+            </div>
+            <p id="schedMessage" role="status" style="margin: 0; padding: 0 24px 8px; font-size: 0.84rem;"></p>
+        </form>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- MODAL: Detailed Hearing Session Attendance -->
+<!-- ========================================== -->
+<div id="wsAttendanceModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 650px; max-height: 90vh; display: flex; flex-direction: column; padding: 0; border-radius: 10px; overflow: hidden;">
+        <div class="modal-header" style="padding: 16px 24px; border-bottom: 1px solid #e2e8f0; background: #fff; margin-bottom: 0; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center;">
+            <h2 id="wsAttModalTitle" style="font-size: 1.15rem; font-weight: 700; color: #0f172a; margin: 0;">Record Hearing Attendance</h2>
+            <button type="button" class="close-btn" onclick="closeEmbeddedAttendanceModal()">&times;</button>
+        </div>
+        <div id="wsAttModalBody" style="padding: 18px 24px; overflow-y: auto; flex: 1;">
+            <div class="empty-detail-state">Loading attendance records...</div>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- MODAL: Record Stage Procedural Outcome    -->
+<!-- ========================================== -->
+<div id="wsRecordOutcomeModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 520px; border-radius: 10px; padding: 24px;">
+        <div class="modal-header" style="margin-bottom: 16px;">
+            <h2 id="wsOutcomeModalTitle" style="font-size: 1.15rem; font-weight: 700; color: #0f172a; margin: 0;">Record Stage Outcome</h2>
+            <button type="button" class="close-btn" onclick="closeEmbeddedRecordOutcomeModal()">&times;</button>
+        </div>
+        <form onsubmit="submitEmbeddedRecordOutcome(event)">
+            <input type="hidden" id="stageOutcomeType" value="Mediation">
+            <p style="margin: 0 0 16px; font-size: 0.86rem; color: #475569; line-height: 1.5;">
+                Select the formal procedural determination for this stage.
+            </p>
+            <div class="form-group" style="margin-bottom: 14px;">
+                <label for="stageOutcomeSelect" style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Procedural Outcome <span class="required-mark" style="color: #dc2626;">*</span></label>
+                <select id="stageOutcomeSelect" required onchange="handleEmbeddedStageOutcomeChange(this.value)" style="width: 100%; padding: 9px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem;">
+                    <option value="Settled">Settled — Parties Reached Amicable Settlement (KP Form 16)</option>
+ <option value="Arbitration">Arbitration — Parties Agreed to Binding Arbitration (KP Form 14)</option>
+                    <option value="Unsuccessful">Unsuccessful — Impasse / Referred to Next Stage</option>
+                    <option value="Dismissed">Dismissed — Complainant Wilfully Failed to Appear</option>
+                    <option value="Repudiated">Repudiated — Settlement Repudiated by Party</option>
+                </select>
+            </div>
+                        <div id="stageOutcomeArbitrationBanner" style="display: none; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px;">
+                <strong style="color: #92400e; font-size: 0.88rem; display: block;">Parties Agreed to Voluntary Arbitration (KP Form 14)</strong>
+                <p style="margin: 4px 0 0; font-size: 0.82rem; color: #78350f;">
+                    Recording Arbitration unlocks KP Form 14 and KP Form 15 and enables scheduling an Arbitration hearing session.
+                </p>
+            </div>
+<div class="form-group" style="margin-bottom: 18px;">
+                <label for="stageOutcomeRemarks" style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Determination Notes / Remarks <span class="optional-label" style="color: #64748b; font-weight: 400;">Optional</span></label>
+                <textarea id="stageOutcomeRemarks" rows="3" placeholder="Summary of agreements reached, reasons for failure, or basis of determination..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.84rem; box-sizing: border-box;"></textarea>
+            </div>
+            <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px;">
+                <button type="button" class="btn-secondary" onclick="closeEmbeddedRecordOutcomeModal()">Cancel</button>
+                <button type="submit" class="btn-create" id="submitOutcomeBtn">Confirm &amp; Record Outcome</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- MODAL: Refer to Pangkat Tagapagkasundo    -->
+<!-- ========================================== -->
+<div id="wsReferPangkatModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 620px; border-radius: 10px; padding: 24px;">
+        <div class="modal-header" style="margin-bottom: 16px;">
+            <h2 style="font-size: 1.15rem; font-weight: 700; color: #0f172a; margin: 0;">Refer Case to Pangkat ng Tagapagkasundo</h2>
+            <button type="button" class="close-btn" onclick="closeEmbeddedReferPangkatModal()">&times;</button>
+        </div>
+        <form onsubmit="submitEmbeddedReferPangkat(event)">
+            <p style="margin: 0 0 16px; font-size: 0.86rem; color: #475569; line-height: 1.5;">
+                In accordance with <strong>RA 7160 Section 410(b)</strong>, when mediation before the Punong Barangay fails or the 15-day limit expires, the case is elevated to formal conciliation by constituting the 3-member <strong>Pangkat ng Tagapagkasundo</strong>. This automatically generates <strong>KP Form 10</strong>.
+            </p>
+
+            <div class="embedded-referral-step" id="refStep1">
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <label for="referDate" style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Referral / Formation Date <span class="required-mark" style="color: #dc2626;">*</span></label>
+                    <input type="date" id="referDate" required style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.88rem; box-sizing: border-box;">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label for="referReason" style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Referral Justification / Impasse Notes <span class="required-mark" style="color: #dc2626;">*</span></label>
+                    <textarea id="referReason" rows="2" required placeholder="Mediation before the Punong Barangay failed to produce an amicable settlement. Referred for formal conciliation before the Pangkat." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.84rem; box-sizing: border-box;"></textarea>
+                </div>
+
+                <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button type="button" class="btn-secondary" onclick="closeEmbeddedReferPangkatModal()">Cancel</button>
+                    <button type="button" class="btn-create" onclick="goEmbeddedReferralStep(2)">Continue to panel selection &rarr;</button>
+                </div>
+            </div>
+
+            <div class="embedded-referral-step" id="refStep2" style="display:none;">
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <label for="referSelectionMethod" style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Pangkat Selection Method</label>
+                    <select id="referSelectionMethod" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem;">
+                        <option value="Party Agreement">Party Agreement (Parties chose from Lupon)</option>
+                        <option value="PB Assignment">Punong Barangay Assignment</option>
+                        <option value="Raffle Draw">Raffle Draw (Lots drawn by PB)</option>
+                    </select>
+                </div>
+
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                    <span style="font-size: 0.82rem; font-weight: 700; color: #1e293b; text-transform: uppercase; display: block; margin-bottom: 10px;">
+                        Nominate 3 Active Lupon Members
+                    </span>
+                    <div class="form-group" style="margin-bottom: 10px;">
+                        <label for="referChairmanId" style="font-size: 0.82rem; font-weight: 600; display: block; margin-bottom: 4px;">1. Chairperson / Head <span class="required-mark" style="color: #dc2626;">*</span></label>
+                        <select id="referChairmanId" required style="width: 100%; padding: 7px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.84rem;"></select>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 10px;">
+                        <label for="referSecretaryId" style="font-size: 0.82rem; font-weight: 600; display: block; margin-bottom: 4px;">2. Pangkat Secretary <span class="required-mark" style="color: #dc2626;">*</span></label>
+                        <select id="referSecretaryId" required style="width: 100%; padding: 7px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.84rem;"></select>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="referMemberId" style="font-size: 0.82rem; font-weight: 600; display: block; margin-bottom: 4px;">3. Regular Member <span class="required-mark" style="color: #dc2626;">*</span></label>
+                        <select id="referMemberId" required style="width: 100%; padding: 7px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.84rem;"></select>
+                    </div>
+                </div>
+                <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button type="button" class="btn-secondary" onclick="goEmbeddedReferralStep(1)">&larr; Back</button>
+                    <button type="button" class="btn-create" onclick="goEmbeddedReferralStep(3)">Review referral &rarr;</button>
+                </div>
+            </div>
+
+            <div class="embedded-referral-step" id="refStep3" style="display:none;">
+                <div id="referReviewSummary" style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:14px; margin-bottom:16px; font-size:.85rem; color:#1e3a8a;"></div>
+                <p style="margin:0 0 16px; font-size:.84rem; color:#475569; line-height:1.5;">Confirming creates the Pangkat panel, records the 3-day convening deadline, and generates KP Form 10. You will then continue directly in the Conciliation tab to schedule its first hearing.</p>
+                <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button type="button" class="btn-secondary" onclick="goEmbeddedReferralStep(2)">&larr; Back</button>
+                    <button type="button" class="btn-secondary" onclick="closeEmbeddedReferPangkatModal()">Cancel</button>
+                    <button type="submit" class="btn-create" id="submitReferBtn" style="background: #0369a1; border-color: #0369a1;">Execute Referral &amp; Generate KP Form 10</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+<?php include __DIR__ . '/../../layouts/transmittal-modal.php'; ?>
+<?php include __DIR__ . '/../../layouts/kp-form-preview-modal.php'; ?>
+
 
 <!-- =====================================================================
      MODAL: Reopen Settled Case for CFA (RA 7160 Sec. 417 Non-Compliance)

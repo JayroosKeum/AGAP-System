@@ -1,4 +1,4 @@
-# Katarungang Pambarangay (KP) Management System
+﻿# Katarungang Pambarangay (KP) Management System
 ## System Enhancement Specifications & Implementation Checklist
 
 > **Note:** This document consolidates all operational feedback, statutory procedures, and functional requirements gathered during stakeholder consultations with the Barangay Secretary and Lupon representatives (**Barangay Tumana, Marikina City**).
@@ -48,18 +48,18 @@ flowchart TD
 ## 2. Actionable Implementation Checklist
 
 ### Phase 1: Pre-Docketing & Complaint Intake
-- [ ] `[High]` **Implement "Paanyaya" (Invitation) Workflow**
+- [x] `[High]` **Implement "Paanyaya" (Invitation) Workflow**
   - Add pre-docketing status where no official case docket number is assigned.
   - Implement a counter for Paanyaya attempts (maximum 2 attempts allowed).
   - Add close action: `"Settled via Paanyaya"` (increments LTIA amicable resolution metrics without generating formal case bloat).
   - Add 1-click escalation button: `"Escalate to Formal Docketing"`, transferring all party and narrative details into a formal docketed case.
-- [ ] `[Medium]` **Punong Barangay E-Signature Integration for Paanyaya**
+- [x] `[Medium]` **Punong Barangay E-Signature Integration for Paanyaya**
   - Enable digital signature embedding for the Barangay Captain on Paanyaya notices.
   - Store and link a digital copy of the Captain's authorization letter authorizing the Secretary/Lupon to issue signed Paanyaya notices during off-site duties.
 - [ ] `[High]` **Bilingual Case Categorization (English / Tagalog)**
   - Update complaint nature dropdowns to display side-by-side English and Tagalog definitions (*e.g., Malicious Mischief / Sadya at Masamang Paninira, Slander / Paninirang-Puri*).
   - Add Tagalog subtitles/tooltips to legal screening questions.
-- [ ] `[Medium]` **Narrative AI Clarification & Evidence Intake**
+- [x] `[Medium]` **Narrative AI Clarification & Evidence Intake**
   - Connect text enhancement pipeline to clean up and structure informal or fragmented narratives provided by walk-in complainants.
   - Retain raw input alongside the enhanced narrative for audit and validation.
   - Enable multiple photo and document attachments for incident evidence.
@@ -84,9 +84,9 @@ flowchart TD
   - Enable Punong Barangay mediation scheduling across all regular working days (Monday through Friday, 8:00 AM to 5:00 PM) within the statutory 15-working-day window.
   - Hard cap daily sessions at 8 mediation hearings per day with Lupon Court Room collision detection.
   - Parameterize working days and daily capacity in Barangay Settings so Lupon administrators can tailor hearing slots.
-- [ ] `[High]` **Maximum 2 Mediation Sessions Limit**
+- [x] `[High]` **Maximum 2 Mediation Sessions Limit**
   - Hard cap mediation at exactly 2 sessions (1st and 2nd Mediation). Remove any 3rd mediation stage; case must automatically transition to Pangkat formation if unresolved after the 2nd session.
-- [ ] `[High]` **Dynamic / Flexible Queue Management**
+- [x] `[High]` **Dynamic / Flexible Queue Management**
   - Allow reordering and calling waiting cases ahead of schedule if both parties are marked present, preventing idle courtroom time when scheduled morning parties are delayed.
   - Provide an *Arrived / In Attendance* toggle per party.
 - [ ] `[Medium]` **Emergency Session Postponement**
@@ -100,25 +100,36 @@ flowchart TD
   - Block Tuesdays for Conciliation hearings to avoid courtroom and staff conflict with Captain's mediations.
 - [ ] `[Medium]` **Lupon Daily Duty Roster**
   - Create a management interface to assign groups of Lupon members to specific weekdays (*e.g., 3 Lupon members on duty per day*).
-- [ ] `[Medium]` **Pangkat Selection Mechanism**
+- [x] `[Medium]` **Pangkat Selection Mechanism**
   - Allow selecting 3 Pangkat members (Chairperson, Secretary, Member) filtered by:
     1. Assigned duty roster on the chosen conciliation day.
     2. Mutual agreement of complainant and respondent.
     3. Chairman appointment / draw lots.
+- [x] `[High]` **Tri-Panel Side-by-Side Pangkat Preview (KP Forms 10, 11, and 12)**
+  - Multi-form preview modal (`#pangkatNoticesModal`) displaying KP Form 10 (Notice for Constitution), KP Form 11 (Notice to Chosen Members), and KP Form 12 (Notice of Hearing) side-by-side.
+  - Dedicated individual Print and Download PDF controls for each panel, alongside bulk `Print All 3 Forms` action with staggered iframe printing.
+- [x] `[High]` **KP Form 12 Officer's Return Tracking Linkage**
+  - Connects KP Form 12 notices directly to the Officer's Return proof of service tracking system for both Complainant and Respondent (`gps/proof-service.php?complaint_id=[id]&stage=Conciliation&form=KP12`).
+- [x] `[High]` **Binding Arbitration Workflow & Scheduling (RA 7160 Sec. 413)**
+  - Selecting Arbitration in session outcomes renders an action callout banner with `📅 Schedule Arbitration Session →`.
+  - Integrates unified arbitration scheduling modal (`openEmbeddedScheduleModal('Arbitration')`) pre-filled with Lupon Court Room venue and presider.
+- [x] `[High]` **Dynamic Outcome-Driven KP Forms Unlocking (KP Forms 14, 15, 16, 17, 20, 20-A, 20-B)**
+  - Dynamically surfaces corresponding official KP forms in the Official KP Forms table based on recorded outcomes (Amicably Settled, Voluntary Arbitration, Repudiated Settlement, CFA).
+  - Clicking `Open Amicable Settlement →` opens the live preview for KP Form 16 immediately.
 
 ---
 
 ### Phase 5: Amicable Settlement, Transmittals & Case Reopening
-- [ ] `[High]` **KP Form 16 (Amicable Settlement) Generation**
+- [x] `[High]` **KP Form 16 (Amicable Settlement) Generation**
   - Automatically populate the agreement body from hearing minutes.
   - Ensure the settlement execution date is prominently printed at the bottom of the form.
-- [ ] `[High]` **Automated 10-Working-Day Transmittal Calculator**
+- [x] `[High]` **Automated 10-Working-Day Transmittal Calculator**
   - Count exactly 10 working days (excluding Saturdays, Sundays, and public holidays) from the date of amicable settlement execution.
   - Generate automated reminder alerts on the Secretary's dashboard when transmittal deadlines approach.
-- [ ] `[High]` **Official DILG/MTC Transmittal Letter Template**
+- [x] `[High]` **Official DILG/MTC Transmittal Letter Template**
   - Integrate the official DILG transmittal template addressed to the local Municipal Trial Court (MTC) and the DILG Field Office.
   - Set the signature block specifically for the Barangay Secretary.
-- [ ] `[High]` **Case Reopening Workflow for Breach (Certificate to File Action)**
+- [x] `[High]` **Case Reopening Workflow for Breach (Certificate to File Action)**
   - Remove permanent lock on settled cases.
   - Add action: `"Reopen Case: Non-Compliance / Breach of Settlement"`.
   - Flag record status as: `"For CFA"`.
@@ -130,7 +141,7 @@ flowchart TD
 - [ ] `[High]` **Top-Navigation Reports Hub**
   - Relocate Reports to the primary top navigation bar for one-click access.
   - Add filtered views for: Monthly Summaries, Quarterly Settled Cases, and Annual Performance Reports.
-- [ ] `[High]` **Master Case Register Excel Export**
+- [x] `[High]` **Master Case Register Excel Export**
   - One-click export including:
     - Case Docket Number (e.g., 2026-001)
     - Complainant Name(s)
@@ -151,11 +162,11 @@ flowchart TD
   - Selecting "No Settlement → Set Another Meeting" (`Continue Mediation`) automatically launches the high-fidelity 2nd Mediation Scheduling modal with the interactive 15-working-day calendar.
   - Universal operating hours: Mediation sessions can be booked on all working days (Monday to Friday, 8:00 AM – 5:00 PM), fully lifting old Tuesday-only locks.
   - Displays statutory notice exemption under RA 7160 Sec. 410 (bypassing KP Form 9 summons since parties sign minutes in person).
-- [ ] `[Medium]` **Blank KP Forms Repository**
+- [x] `[Medium]` **Blank KP Forms Repository & Ruled Minutes Template**
   - Add a dedicated repository tab containing clean, printable blank PDF templates of standard DILG KP Forms (Forms 7, 8, 9, 10, 11, 16, etc.) for manual standby use.
 - [ ] `[Medium]` **KP Form 7 Layout Correction**
   - Adjust print CSS / document template to move the Punong Barangay signature block lower, ensuring it is not horizontally parallel with the Complainant signature line.
-- [ ] `[Medium]` **Dual-Mode Hearing Minutes**
+- [x] `[Medium]` **Dual-Mode Hearing Minutes & Separated Session Cards**
   - Support both direct typing of hearing minutes into rich-text fields and uploading scanned/photographed physical minute sheets.
 
 ---

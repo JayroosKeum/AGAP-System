@@ -88,9 +88,14 @@ class HearingMinutes
         $caseId = (int) $hearing['case_id'];
 
         // 2. Normalize and validate session_type
-        $rawSessionType = trim((string) ($data['session_type'] ?? $hearing['hearing_type'] ?? '1st Mediation'));
-        $allowedSessionTypes = ['1st Mediation', '2nd Mediation', '3rd Mediation', 'Conciliation', 'Arbitration', 'Show Cause'];
-        $sessionType = in_array($rawSessionType, $allowedSessionTypes, true) ? $rawSessionType : '1st Mediation';
+        $defaultType = ($hearing['hearing_type'] === 'Conciliation') ? '1st Conciliation' : '1st Mediation';
+        $rawSessionType = trim((string) ($data['session_type'] ?? $hearing['hearing_type'] ?? $defaultType));
+        $allowedSessionTypes = [
+            '1st Mediation', '2nd Mediation', '3rd Mediation',
+            '1st Conciliation', '2nd Conciliation', '3rd Conciliation',
+            'Conciliation', 'Arbitration', 'Show Cause'
+        ];
+        $sessionType = in_array($rawSessionType, $allowedSessionTypes, true) ? $rawSessionType : $defaultType;
 
         // 3. Normalize and validate checkboxes (0 or 1)
         $opening = !empty($data['opening_conducted']) ? 1 : 0;
@@ -265,6 +270,11 @@ class HearingMinutes
                 $this->conn->commit();
             }
 
+            // Workflow transition if 2nd Mediation elevated to Pangkat
+            if ($outcome === 'Elevate to Pangkat' && $status === 'Finalized') {
+                $this->transitionToConciliationOnMediationFailure($caseId, $userId);
+            }
+
             // Direct Next Hearing Booking from Minutes of Meeting (RA 7160 Sec. 410)
             // When "No Settlement -> Set Another Meeting" is selected and date/time are provided,
             // immediately schedule the 2nd/3rd mediation session.
@@ -402,7 +412,14 @@ class HearingMinutes
             ");
             $stmt->execute([$userId, $hearingId]);
 
-            $this->logCaseHistory((int) $minutes['case_id'], $minutes['case_status'] ?? 'Mediation', "Session minutes for hearing #{$hearingId} ({$minutes['session_type']}) finalized and approved.", $userId);
+            $caseId = (int) $minutes['case_id'];
+            $outcome = $minutes['session_outcome'] ?? '';
+
+            if ($outcome === 'Elevate to Pangkat') {
+                $this->transitionToConciliationOnMediationFailure($caseId, $userId);
+            }
+
+            $this->logCaseHistory($caseId, ($outcome === 'Elevate to Pangkat' ? 'Conciliation' : ($minutes['case_status'] ?? 'Mediation')), "Session minutes for hearing #{$hearingId} ({$minutes['session_type']}) finalized and approved.", $userId);
 
             return [
                 'success' => true,
@@ -412,6 +429,62 @@ class HearingMinutes
             ];
         } catch (Throwable $e) {
             return ['success' => false, 'message' => 'Unable to finalize session minutes: ' . $e->getMessage()];
+        }
+    }
+
+    private function transitionToConciliationOnMediationFailure(int $caseId, int $userId): void
+    {
+        try {
+            // 1. Update cases and complaints status to Conciliation
+            $this->conn->prepare("UPDATE cases SET case_status = 'Conciliation', updated_at = NOW() WHERE case_id = ?")->execute([$caseId]);
+            $this->conn->prepare("UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = 'Conciliation', co.updated_at = NOW() WHERE c.case_id = ?")->execute([$caseId]);
+
+            // 2. Update case_stages: Mediation to 'Referred to Pangkat', Conciliation to 'In Progress'
+            $medStmt = $this->conn->prepare("
+                INSERT INTO case_stages (case_id, stage_type, stage_status, outcome, referral_date, referring_officer_id, referral_reason, records_transmitted, completed_at)
+                VALUES (?, 'Mediation', 'Referred to Pangkat', 'Referred to Pangkat', CURDATE(), ?, 'Mediation failed; elevated to Pangkat Conciliation.', 1, NOW())
+                ON DUPLICATE KEY UPDATE
+                    stage_status = 'Referred to Pangkat',
+                    outcome = 'Referred to Pangkat',
+                    referral_date = COALESCE(referral_date, VALUES(referral_date)),
+                    referring_officer_id = COALESCE(referring_officer_id, VALUES(referring_officer_id)),
+                    referral_reason = COALESCE(referral_reason, VALUES(referral_reason)),
+                    records_transmitted = 1,
+                    completed_at = COALESCE(completed_at, NOW()),
+                    updated_at = CURRENT_TIMESTAMP
+            ");
+            $medStmt->execute([$caseId, $userId]);
+
+            $conStmt = $this->conn->prepare("
+                INSERT INTO case_stages (case_id, stage_type, stage_status, started_at)
+                VALUES (?, 'Conciliation', 'In Progress', NOW())
+                ON DUPLICATE KEY UPDATE
+                    stage_status = 'In Progress',
+                    started_at = COALESCE(started_at, NOW()),
+                    updated_at = CURRENT_TIMESTAMP
+            ");
+            $conStmt->execute([$caseId]);
+
+            // 3. Set 3-Day Statutory Convening Deadline (RA 7160 Sec. 410(c))
+            require_once __DIR__ . '/../services/MediationDeadlineService.php';
+            $conveningDeadline = MediationDeadlineService::calculateDeadline(date('Y-m-d'), 3);
+            $dlStmt = $this->conn->prepare("
+                INSERT INTO case_deadlines (case_id, deadline_type, due_date, status)
+                VALUES (?, 'Pangkat Convening', ?, 'Pending')
+                ON DUPLICATE KEY UPDATE
+                    due_date = VALUES(due_date),
+                    updated_at = CURRENT_TIMESTAMP
+            ");
+            $dlStmt->execute([$caseId, $conveningDeadline]);
+
+            // 4. Generate KP Form 10
+            require_once __DIR__ . '/../services/PDFService.php';
+            (new PDFService())->generateKp10($caseId, $userId, [
+                'venue' => 'Lupon Court Room',
+                'constitution_date' => date('Y-m-d')
+            ], $this->conn);
+        } catch (Throwable $e) {
+            error_log('transitionToConciliationOnMediationFailure error: ' . $e->getMessage());
         }
     }
 

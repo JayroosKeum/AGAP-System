@@ -211,6 +211,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $result = (new ShowCauseService())->recordAttendance((int) $hearingId, $inputData, (int) $_SESSION['user_id']);
 
     if (!empty($result['success'])) {
+        // Update actual_start_time and scheduled_datetime if provided
+        try {
+            $db = (new Database())->connect();
+            if (!empty($inputData['actual_start_time'])) {
+                $timeVal = trim((string) $inputData['actual_start_time']);
+                $dateVal = !empty($inputData['scheduled_datetime']) ? date('Y-m-d', strtotime($inputData['scheduled_datetime'])) : date('Y-m-d');
+                if (strlen($timeVal) <= 8 && !str_contains($timeVal, '-')) {
+                    $actualDateTime = $dateVal . ' ' . (strlen($timeVal) === 5 ? $timeVal . ':00' : $timeVal);
+                } else {
+                    $actualDateTime = $timeVal;
+                }
+                $stmtActual = $db->prepare("UPDATE hearings SET actual_start_time = ? WHERE hearing_id = ?");
+                $stmtActual->execute([$actualDateTime, $hearingId]);
+            }
+            if (!empty($inputData['scheduled_datetime'])) {
+                $stmtDate = $db->prepare("UPDATE hearings SET hearing_date = ? WHERE hearing_id = ?");
+                $stmtDate->execute([$inputData['scheduled_datetime'], $hearingId]);
+            }
+        } catch (Throwable $e) {
+            error_log('Error saving start time / schedule date: ' . $e->getMessage());
+        }
         // Sync resident-level attendance records if provided
         if (!empty($parties)) {
             try {

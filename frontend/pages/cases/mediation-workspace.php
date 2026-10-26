@@ -57,9 +57,18 @@ include '../../layouts/header.php';
     }
     .overview-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-        gap: 14px;
-        margin-bottom: 24px;
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(0, 1fr);
+        gap: 10px;
+        margin-bottom: 20px;
+        width: 100%;
+    }
+    @media (max-width: 1100px) {
+        .overview-grid {
+            overflow-x: auto;
+            grid-auto-columns: minmax(150px, 1fr);
+            padding-bottom: 6px;
+        }
     }
     .overview-stat-card {
         background: #fff;
@@ -136,28 +145,24 @@ include '../../layouts/header.php';
 
             <!-- Page Header -->
             <div class="page-header" style="padding: 0 0 20px 0; margin-bottom: 20px; border-bottom: 1px solid #e2e8f0;">
-                <div>
-                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
-                        <span style="font-size: 0.74rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; background: #dbeafe; color: #1e40af; padding: 3px 8px; border-radius: 4px;">
-                            STAGE 1 OF 2
-                        </span>
-                        <h1 id="wsStageTitle" style="margin: 0; font-size: 1.45rem; color: #0f172a; font-weight: 800;">
-                            Mediation
-                        </h1>
-                        <span id="wsStageStatusBadge" class="badge-stage" style="font-size: 0.78rem; padding: 3px 9px; border-radius: 9999px; font-weight: 700;">
-                            Loading...
-                        </span>
-                    </div>
-                    <p id="wsCaseSubtext" style="margin: 0; font-size: 0.86rem; color: #64748b;">
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <span style="font-size: 0.74rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; background: #dbeafe; color: #1e40af; padding: 3px 8px; border-radius: 4px;">
+                        STAGE 1 OF 2
+                    </span>
+                    <h1 id="wsStageTitle" style="margin: 0; font-size: 1.45rem; color: #0f172a; font-weight: 800;">
+                        Mediation
+                    </h1>
+                    <span id="wsStageStatusBadge" class="badge-stage" style="font-size: 0.78rem; padding: 3px 9px; border-radius: 9999px; font-weight: 700;">
+                        Loading...
+                    </span>
+                    <span id="wsDraftIndicator" class="agap-draft-indicator state-idle">✓ Saved</span>
+                    <span style="color: #cbd5e1; margin: 0 2px;">•</span>
+                    <p id="wsCaseSubtext" style="margin: 0; font-size: 0.86rem; color: #64748b; display: inline-flex; align-items: center; gap: 4px;">
                         Case Loading...
                     </p>
                 </div>
                 <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
                     <div id="wsPrimaryAction"></div>
-                    <details id="wsMoreActions" style="position: relative;">
-                        <summary class="btn-secondary" style="font-size: 0.82rem; padding: 7px 12px; cursor: pointer; list-style: none;">More actions</summary>
-                        <div id="wsMoreActionsMenu" style="position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; min-width: 220px; padding: 8px; background: #fff; border: 1px solid #cbd5e1; border-radius: 8px; box-shadow: 0 8px 18px rgba(15,23,42,.14);"></div>
-                    </details>
                 </div>
             </div>
 
@@ -168,26 +173,7 @@ include '../../layouts/header.php';
                     <div class="overview-stat-card"><span class="stat-label">Loading Overview...</span></div>
                 </div>
 
-                <!-- Section 2: Mediation Session List -->
-                <div class="stage-section-card" id="sessionsSection">
-                    <div class="stage-section-header">
-                        <div>
-                            <h3>Mediation Hearing Sessions</h3>
-                            <p>Scheduled sessions, party appearances, service verification, and minutes status</p>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                            <span id="wsSessionsCountBadge" style="font-size: 0.78rem; background: #e2e8f0; color: #475569; padding: 2px 8px; border-radius: 9999px; font-weight: 600;">0 sessions</span>
-                            <button type="button" class="btn-secondary" onclick="openScheduleModal()" style="font-size: 0.78rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 4px;">
-                                + Schedule Session
-                            </button>
-                        </div>
-                    </div>
-                    <div id="wsSessionsListContainer">
-                        <div class="empty-detail-state">Loading mediation sessions...</div>
-                    </div>
-                </div>
-
-                                <!-- Section 2.5: Hearing Session Attendance Card -->
+                <!-- Section 2.5: Hearing Session Attendance Card -->
                 <div class="stage-section-card" id="attendanceSection">
                     <div class="stage-section-header">
                         <div>
@@ -205,7 +191,7 @@ include '../../layouts/header.php';
                     <div class="stage-section-header">
                         <div>
                             <h3>Hearing Session Minutes &amp; Proceedings</h3>
-                            <p>Official records of preliminaries, discussion &amp; statements, agreed terms, and procedural outcome</p>
+                            <p>Separated 1st &amp; 2nd Mediation Minutes &amp; Proceedings · Official records of preliminaries, discussion &amp; statements, agreed terms, and procedural outcome</p>
                         </div>
                     </div>
                     <div id="wsMinutesSectionContainer">
@@ -360,7 +346,7 @@ include '../../layouts/header.php';
 <div id="wsReferPangkatModal" class="modal" style="display: none;">
     <div class="modal-content" style="max-width: 620px;">
         <div class="modal-header">
-            <h2>Refer Case to Pangkat ng Tagapagkasundo</h2>
+            <h2>Team Assignment for Selected Case (Refer to Pangkat ng Tagapagkasundo)</h2>
             <button type="button" class="close-btn" onclick="closeReferPangkatModal()">&times;</button>
         </div>
         <form onsubmit="submitReferPangkat(event)">
@@ -407,9 +393,24 @@ include '../../layouts/header.php';
                     <label for="referSecretaryId" style="font-size: 0.82rem;">2. Pangkat Secretary <span class="required-mark">*</span></label>
                     <select id="referSecretaryId" required style="padding: 7px;"></select>
                 </div>
-                <div class="form-group" style="margin-bottom: 0;">
+                <div class="form-group" style="margin-bottom: 10px;">
                     <label for="referMemberId" style="font-size: 0.82rem;">3. Regular Member <span class="required-mark">*</span></label>
                     <select id="referMemberId" required style="padding: 7px;"></select>
+                </div>
+                <div class="form-group" style="margin-bottom: 10px;">
+                    <label for="referSelectionNotes" style="font-size: 0.82rem;">Selection Notes / Remarks</label>
+                    <input type="text" id="referSelectionNotes" placeholder="e.g. Parties selected from Lupon pool; or PB lot drawing record" style="padding: 7px; width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; font-size: 0.84rem;">
+                </div>
+                <div class="form-group" style="margin-bottom: 10px;">
+                    <label for="referQuorumSize" style="font-size: 0.82rem;">Quorum Size</label>
+                    <select id="referQuorumSize" onchange="document.getElementById('referQuorumReasonGroup').style.display = this.value === '2' ? 'block' : 'none';" style="padding: 7px; width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.84rem;">
+                        <option value="3" selected>3 Members (Standard Pangkat)</option>
+                        <option value="2">2 Members (Permitted Exception Quorum)</option>
+                    </select>
+                </div>
+                <div class="form-group" id="referQuorumReasonGroup" style="display: none; margin-bottom: 0;">
+                    <label for="referQuorumReason" style="font-size: 0.82rem; color: #b45309;">Quorum Exception Justification <span class="required-mark">*</span></label>
+                    <input type="text" id="referQuorumReason" placeholder="State valid reason / parties consent to proceed with 2 members" style="padding: 7px; width: 100%; border: 1px solid #fde68a; border-radius: 6px; box-sizing: border-box; font-size: 0.84rem; background: #fffbeb;">
                 </div>
             </div>
             <div class="modal-actions">
@@ -431,6 +432,7 @@ include '../../layouts/header.php';
     </div>
 </div>
 <?php include __DIR__ . '/../../layouts/summons-preview-modal.php'; ?>
+<?php include __DIR__ . '/../../layouts/kp-form-preview-modal.php'; ?>
 <?php include __DIR__ . '/../../layouts/transmittal-modal.php'; ?>
 
 <script src="../../assets/js/summons-preview.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/summons-preview.js'); ?>"></script>

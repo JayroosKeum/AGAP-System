@@ -52,14 +52,21 @@ class GPSController
         require_once __DIR__ . '/../config/database.php';
         $db = (new Database())->connect();
 
-        $stmt = $db->prepare("
-            SELECT hearing_id, hearing_type, hearing_date, venue, status
-            FROM hearings
-            WHERE case_id = ?
-            ORDER BY hearing_date DESC, hearing_id DESC
-        ");
-        $stmt->execute([$caseId]);
-        $hearings = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $requestedStage = trim((string)($_GET['stage'] ?? $_GET['stage_type'] ?? ''));
+        $isPaanyayaParam = (!empty($_GET['is_paanyaya']) && $_GET['is_paanyaya'] != '0') ||
+                           strpos($requestedStage, 'Paanyaya') === 0;
+
+        $hearings = [];
+        if (!$isPaanyayaParam) {
+            $stmt = $db->prepare("
+                SELECT hearing_id, hearing_type, hearing_date, venue, status
+                FROM hearings
+                WHERE case_id = ?
+                ORDER BY hearing_date DESC, hearing_id DESC
+            ");
+            $stmt->execute([$caseId]);
+            $hearings = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
 
         if (empty($hearings)) {
             // Check if this caseId corresponds to an active Paanyaya preliminary stage
@@ -84,7 +91,15 @@ class GPSController
             $maxPaanyaya = (int) Setting::getSetting('paanyaya_max_attempts', 3, $db);
                 $twoStages = $paaModel->getTwoStagesData($complaintId);
                 
-                $activeStageKey = ($twoStages['stage_2']['details']['status'] !== 'Not Started') ? 'stage_2' : 'stage_1';
+                // Scope to requested stage if specified (Paanyaya 1 vs Paanyaya 2)
+                $activeStageKey = 'stage_1';
+                if ($requestedStage === 'Paanyaya 2' || $requestedStage === 'stage_2') {
+                    $activeStageKey = 'stage_2';
+                } elseif ($requestedStage === 'Paanyaya 1' || $requestedStage === 'stage_1') {
+                    $activeStageKey = 'stage_1';
+                } else {
+                    $activeStageKey = ($twoStages['stage_2']['details']['status'] !== 'Not Started') ? 'stage_2' : 'stage_1';
+                }
                 $activeStage = $twoStages[$activeStageKey];
                 $stageDetails = $activeStage['details'];
                 $stageAttempts = $activeStage['attempts'];
@@ -271,60 +286,73 @@ class GPSController
         $caseId = filter_var($input['case_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
         $deliveryId = filter_var($input['delivery_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
 
-        // Check whether this return belongs to a formal summons delivery (summon_deliveries) or formal hearing (hearings)
+        // Check whether this return belongs to Paanyaya or formal summons delivery
+        $requestedStage = trim((string)($input['stage_type'] ?? ''));
+        $isExplicitPaanyaya = (!empty($input['is_paanyaya']) && $input['is_paanyaya'] != '0') ||
+                              strpos($requestedStage, 'Paanyaya') === 0;
+
         $isFormal = false;
-        if ($deliveryId) {
-            $chkDeliv = $db->prepare("SELECT delivery_id, hearing_id, case_id FROM summon_deliveries WHERE delivery_id = ?");
-            $chkDeliv->execute([$deliveryId]);
-            $delivRow = $chkDeliv->fetch(PDO::FETCH_ASSOC);
-            if ($delivRow) {
-                $isFormal = true;
-                if (!$hearingId && !empty($delivRow['hearing_id'])) {
-                    $hearingId = (int)$delivRow['hearing_id'];
+        if (!$isExplicitPaanyaya) {
+            if ($deliveryId) {
+                $delivStmt = $db->prepare("SELECT delivery_id, hearing_id, case_id FROM summon_deliveries WHERE delivery_id = ?");
+                $delivStmt->execute([$deliveryId]);
+                $delivRow = $delivStmt->fetch(PDO::FETCH_ASSOC);
+                if ($delivRow) {
+                    $isFormal = true;
+                    if (!$hearingId && !empty($delivRow['hearing_id'])) {
+                        $hearingId = (int)$delivRow['hearing_id'];
+                    }
+                    if (!$caseId && !empty($delivRow['case_id'])) {
+                        $caseId = (int)$delivRow['case_id'];
+                    }
                 }
-                if (!$caseId && !empty($delivRow['case_id'])) {
-                    $caseId = (int)$delivRow['case_id'];
+            }
+
+            if (!$isFormal && $hearingId) {
+                $chkH = $db->prepare("SELECT hearing_id, case_id FROM hearings WHERE hearing_id = ?");
+                $chkH->execute([$hearingId]);
+                $hRow = $chkH->fetch(PDO::FETCH_ASSOC);
+                if ($hRow) {
+                    $isFormal = true;
+                    if (!$caseId && !empty($hRow['case_id'])) {
+                        $caseId = (int)$hRow['case_id'];
+                    }
+                }
+            }
+
+            if (!$isFormal && $caseId) {
+                $chkHC = $db->prepare("SELECT COUNT(*) FROM hearings WHERE case_id = ?");
+                $chkHC->execute([$caseId]);
+                if ((int)$chkHC->fetchColumn() > 0) {
+                    $isFormal = true;
                 }
             }
         }
 
-        if (!$isFormal && $hearingId) {
-            $chkH = $db->prepare("SELECT hearing_id, case_id FROM hearings WHERE hearing_id = ?");
-            $chkH->execute([$hearingId]);
-            $hRow = $chkH->fetch(PDO::FETCH_ASSOC);
-            if ($hRow) {
-                $isFormal = true;
-                if (!$caseId && !empty($hRow['case_id'])) {
-                    $caseId = (int)$hRow['case_id'];
-                }
-            }
-        }
-
-        if (!$isFormal && $caseId) {
-            $chkHC = $db->prepare("SELECT COUNT(*) FROM hearings WHERE case_id = ?");
-            $chkHC->execute([$caseId]);
-            if ((int)$chkHC->fetchColumn() > 0) {
-                $isFormal = true;
-            }
-        }
-
-        // Only evaluate as Paanyaya if this is strictly not a formal summons delivery or formal hearing
+        // Only evaluate as Paanyaya if this is explicitly Paanyaya or not a formal summons delivery
         $isPaanyaya = false;
         $paaStage = null;
-        if (!$isFormal) {
-            if (!empty($input['is_paanyaya'])) {
+        if ($isExplicitPaanyaya || !$isFormal) {
+            if ($isExplicitPaanyaya) {
                 $isPaanyaya = true;
             }
-            if (!$isPaanyaya && $hearingId) {
+            if ($hearingId) {
                 $chkStage = $db->prepare("SELECT * FROM paanyaya_stages WHERE id = ?");
                 $chkStage->execute([$hearingId]);
                 $paaStage = $chkStage->fetch(PDO::FETCH_ASSOC);
                 if ($paaStage) $isPaanyaya = true;
             }
-            if (!$isPaanyaya && $caseId) {
-                $chkStage = $db->prepare("SELECT * FROM paanyaya_stages WHERE complaint_id = ? ORDER BY id DESC LIMIT 1");
-                $chkStage->execute([$caseId]);
-                $paaStage = $chkStage->fetch(PDO::FETCH_ASSOC);
+            if (!$paaStage && $caseId) {
+                if ($requestedStage !== '') {
+                    $chkStage = $db->prepare("SELECT * FROM paanyaya_stages WHERE complaint_id = ? AND stage_type = ? ORDER BY id DESC LIMIT 1");
+                    $chkStage->execute([$caseId, $requestedStage]);
+                    $paaStage = $chkStage->fetch(PDO::FETCH_ASSOC);
+                }
+                if (!$paaStage) {
+                    $chkStage = $db->prepare("SELECT * FROM paanyaya_stages WHERE complaint_id = ? ORDER BY id DESC LIMIT 1");
+                    $chkStage->execute([$caseId]);
+                    $paaStage = $chkStage->fetch(PDO::FETCH_ASSOC);
+                }
                 if ($paaStage) $isPaanyaya = true;
             }
         }

@@ -386,18 +386,10 @@ include '../../layouts/header.php';
                                     </div>
                                 </div>
 
-                                <div class="form-row-2" style="margin-top: 10px;">
-                                    <div class="form-group">
-                                        <label for="paanyayaVenue" style="color: #166534; font-weight: 700; font-size: 0.85rem;">Dialogue Venue</label>
-                                        <input type="text" id="paanyayaVenue" name="paanyaya_venue" value="Tanggapan ng Barangay Tumana" style="border-color: #86efac;">
-                                    </div>
-                                    <div class="form-group" style="display: flex; flex-direction: column; justify-content: center;">
-                                        <label style="color: #166534; font-weight: 700; font-size: 0.85rem; margin-bottom: 6px;">Punong Barangay E-Signature</label>
-                                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.88rem; color: #1e293b; background: #ffffff; padding: 7px 12px; border-radius: 6px; border: 1px solid #86efac;">
-                                            <input type="checkbox" name="paanyaya_has_e_signature" value="1" checked style="width: 16px; height: 16px;">
-                                            <span style="font-size: 0.85rem; font-weight: 600;">Embed Hon. Akiko Lynne Centeno calligraphic e-signature</span>
-                                        </label>
-                                    </div>
+                                <div class="form-group" style="margin-top: 10px;">
+                                    <label for="paanyayaVenue" style="color: #166534; font-weight: 700; font-size: 0.85rem;">Dialogue Venue</label>
+                                    <input type="text" id="paanyayaVenue" name="paanyaya_venue" value="Tanggapan ng Barangay Tumana" style="border-color: #86efac;">
+                                    <input type="hidden" name="paanyaya_has_e_signature" value="1">
                                 </div>
 
                                 <div class="form-group" style="margin-top: 10px;">

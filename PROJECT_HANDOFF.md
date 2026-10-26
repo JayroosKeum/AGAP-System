@@ -1628,3 +1628,229 @@ A series of key refinements were implemented to conform strictly to Barangay Tum
   - **Photo Upload Field Name Fix**: In `GPSController.php`, fixed the column update from `attachment_path` (non-existent) to `proof_file_path` in `summon_deliveries`.
   - **Frontend State Isolation**: In `frontend/assets/js/gps.js` (`openOfficerReturnModal()`), ensured `isPaanyaya` strictly checks `caseItem.is_paanyaya` rather than inheriting stale global state from `window.activeExpandedHearingData`, ensuring formal mediation cases display KP Form No. 9 / KP Form No. 8 headers and badges accurately.
 
+---
+
+## Late October 2026 — Separated Session Minutes, Court Transmittal & Ruled Minutes Template, Pangkat Referral Consolidation, and Outcomes Dynamic Unlocking
+
+### 1. Separated Hearing Session Minutes & Proceedings (Mediation & Conciliation)
+- **Multi-Card Independent Session Architecture (`mediation-workspace.php`, `pangkat-workspace.php`, `stage-workspace.js`)**:
+  - Replaced the single-form in-place pill switching design with **distinct, physically separated section cards** for each scheduled hearing session on the page.
+  - **1st Mediation Session Card**: Displays the complete records of the 1st Mediation hearing (attendance, dispute focus, discussion notes, evidence attachments, agreed terms, and session outcome). Includes its own independent action buttons (`Save #1 Draft`, `Finalize & Lock #1`, `Print Minutes`, `Preview Letterhead`).
+  - **2nd Mediation Session Card**: Stacked directly beneath the 1st Mediation card with its own isolated form inputs, upload dropzones, and outcome options (`Save #2 Draft`, `Finalize & Lock #2`). Clerks can review previous session notes in Card 1 while recording Card 2 simultaneously without context switching or tab flipping.
+  - **Conciliation Support (Up to 3 Sessions)**: In `pangkat-workspace.php`, supports up to 3 separate session cards (`#1 1st Conciliation`, `#2 2nd Conciliation`, `#3 3rd Conciliation`), each retaining its own proceedings and finalized records.
+  - **Quick Jump Navigation Bar**: Rendered at the top of the container with session pills (`#1 1st Mediation`, `#2 2nd Mediation`) that smoothly scroll directly to the corresponding card.
+  - **Dynamic Next Session Booking Prompt**: If the previous session concludes without an amicable settlement and the next session is not yet scheduled, a clean booking card appears directly below the last session card allowing clerks to schedule the next hearing immediately under RA 7160 Sec. 410.
+
+- **Session-Specific Outcome Logic (RA 7160 Sec. 410 / Sec. 412)**:
+  - **1st Mediation (`session_index = 1`)**:
+    - Includes `Unresolved / Book 2nd Mediation` (primary pathway when parties fail to agree in 1st session; summons bypassed as parties are notified in person).
+    - Blocks premature elevation to Pangkat because 1st mediation must first proceed to 2nd mediation under statutory Tumana policy.
+  - **2nd Mediation (`session_index = 2`)**:
+    - Removes `Unresolved / Book 2nd Mediation`.
+    - Unlocks `Failure of Mediation / Endorse to Pangkat (KP Form 10)` to immediately constitute the 3-member Pangkat panel.
+  - **1st Conciliation**: Includes `Unresolved / Book 2nd Conciliation`.
+  - **2nd Conciliation**: Includes `Unresolved / Book 3rd Conciliation` and `Conciliation Failed — Ready for CFA (KP Form 20)`.
+  - **3rd Conciliation**: Reaches statutory ceiling; outcome strictly offers `Amicably Settled (KP Form 16)` or `Conciliation Failed — Ready for CFA (KP Form 20)`.
+  - Both Mediation and Conciliation include `Arbitration Award (Submit to Arbitration — KP Form 14/15)`.
+
+- **Client-Side Draft Manager Isolation & Auto-Cleanup (`AgapDraftManager`)**:
+  - Form inputs are keyed and isolated per session: `minDisputeSummary_${hId}`, `session_minutes_${hId}`, `minAgreements_${hId}`, `minOutcome_${hId}`, etc.
+  - Local device drafts (`localStorage`) are bound strictly to `document.getElementById('inlineMinutesForm_' + hId)` and keyed by `agap_draft_${mode}_case_${caseId}_hearing_${hId}`.
+  - Switching between sessions cleanly destroys previous listeners and removes lingering recovery banners so text from Session 1 can never bleed into or overwrite Session 2.
+  - Saving a draft or finalizing a session automatically clears and marks the localStorage draft as submitted (`AgapDraftManager.markSubmitted()` and `AgapDraftManager.clear()`).
+
+- **Database Model & Migration (`backend/models/HearingMinutes.php`)**:
+  - Expanded MySQL `hearing_minutes.session_type` ENUM to include:
+    `'1st Mediation', '2nd Mediation', '3rd Mediation', '1st Conciliation', '2nd Conciliation', '3rd Conciliation', 'Conciliation', 'Arbitration', 'Show Cause'`.
+  - Updated `HearingMinutes::createMinutes()` to accept and persist conciliation session ordinals (`1st Conciliation`, `2nd Conciliation`, `3rd Conciliation`) without defaulting to mediation.
+
+---
+
+### 2. Official Court Transmittal Letter & 10-Business-Day Statutory Countdown Engine
+- **Printable Official Metropolitan Trial Court Transmittal Letter (`transmittal-print.php`)**:
+  - Full-page printable transmittal matching the official Barangay Tumana letterhead, design banner, and exact Metropolitan Trial Court (MTC) Branch address in Marikina City.
+  - Displays formal case caption: `[Complainant Name(s)] vs. [Respondent Name(s)]`, Case Docket Number, Case Nature, and Resolution Disposition.
+  - Certified records transmission checklist:
+    - `[x] KP Form 7 (Complaint)`
+    - `[x] KP Form 8/9 (Notice of Hearing & Summons)`
+    - `[x] Hearing Minutes & Attendance Sheets`
+    - `[x] Settlement Agreement / Arbitration Award / Certificate to File Action (CFA)`
+  - Statutory certification attestation signed by the Lupon Secretary and attested by the Punong Barangay / Lupon Chairman.
+  - Print-specific CSS (`@media print`) configured for standard Folio/Legal (8.5" x 13") and Letter bond paper with zero browser header/footer clutter.
+
+- **10-Business-Day Statutory Countdown Engine (RA 7160 Sec. 416/417)**:
+  - **Statutory Window Calculation**: Calculated from the execution date of the Amicable Settlement (KP Form 16), Arbitration Award (KP Form 15), or CFA (KP Form 20).
+  - Business day counting engine excludes Saturdays, Sundays, and statutory non-working Philippine holidays.
+  - **Print & Transmission Gating**:
+    - Transmittal status API (`backend/api/transmittals/status.php`) computes `elapsed_business_days`, `days_remaining`, and `is_locked`.
+    - Previewing and printing the Court Transmittal Letter is locked with a real-time countdown badge (`🔒 Locked — X Business Days Remaining`) until the mandatory 10 business working days have elapsed.
+    - Once 10 business days pass, the badge turns green (`✓ Ready for Transmission`) and printing unlocks.
+  - **Automatic System Notification Alert**: When the countdown reaches 0 remaining business days, the system automatically dispatches an alert notification to clerks indicating that the transmittal is ready for printing and court submission.
+
+- **Printable Blank Ruled Minutes Sheet (`print-blank-minutes.php`)**:
+  - Official, high-fidelity blank minutes template accessible across Mediation, Conciliation, and the Overview & Workflow Official KP Forms card via `🖨️ Print Blank Minutes Sheet`.
+  - Layout includes Barangay Tumana Lupong Tagapamayapa letterhead, case particulars (`MINUTES OF: [Respondent] vs. [Complainant]`, `CASE NO.`, `CASE FILED`, `CASE TITLE`, `DATE/TIME`, `HEARING NO.`, `LUPON`, `PAHINA`), 24 evenly spaced horizontal ruled writing lines for handwritten live notes, and formal signature lines for the Lupon Secretary and Presiding Officer.
+
+---
+
+### 3. Stage Tab Gating & Outcomes Tab Dynamic Unlocking
+- **Dynamic Outcomes Tab Unlocking (`tab-arbitration` → Outcomes)**:
+  - Renamed the tab from *"Arbitration / CFA"* to **"Outcomes"** to better reflect the final disposition of cases (Amicable Settlement, Arbitration Award, or CFA).
+  - **Live Unlock Trigger**: Whenever an Amicable Settlement (KP Form 16), CFA (KP Form 20), Arbitration Agreement (KP Form 14/15), or Transmittal is previewed or printed in Mediation or Conciliation workspaces, the Outcomes tab automatically unlocks immediately and persists for the case (`sessionStorage.setItem('agap_outcomes_unlocked_' + compId, '1')`).
+  - Cross-window communication synchronizes the unlocked state to parent and opener browser tabs (`window.opener.updateStageTabsLockState()`).
+
+- **Resolved Uncaught ReferenceError in `complaints.js`**:
+  - **Root Cause**: Inside `canAccessTab('tab-arbitration')`, variable `arbStage` was referenced before declaration, and `data?.` was referenced instead of `complaint?.`. Calling `updateStageTabsLockState()` during page load threw an uncaught `ReferenceError: arbStage is not defined`.
+  - **Impact**: This runtime exception halted `loadComplaintDetails()` mid-execution, preventing `renderParties(complaint.parties)` and `renderPaanyayaTab(complaint)` from running. This caused the party list container to remain permanently stuck on *"Loading parties..."* and left Paanyaya dialogue minutes buttons uninitialized (`btnRecordMinutesP1` hidden, `btnIssueP1` visible).
+  - **Resolution**: Properly declared `const arbStage = stages.arbitration || {};` and safe optional chaining on `complaint`. Complaint details, party listings, and Paanyaya dialogue minutes buttons now initialize immediately.
+
+---
+
+### 4. Pangkat Constitution & Referral Consolidation
+- **Consolidated "Team Assignment for Selected Case" Modal (`mediation-workspace.php`)**:
+  - Moved Pangkat constitution and member assignment directly into the **"Refer Case to Pangkat ng Tagapagkasundo"** modal (`#wsReferPangkatModal`) accessible upon 2nd Mediation conclusion.
+  - Retired the redundant standalone Cases & Team Assignments page (`frontend/pages/assignments/case-assignment.php`).
+  - Supports 3-member Pangkat panel selection (Pangkat Chairperson, Pangkat Secretary, Pangkat Member) with validation ensuring no duplicate member assignments.
+  - Automatically transitions case status to `Conciliation`, sets the statutory 3-day Pangkat convening deadline (RA 7160 Sec. 410(c)), and generates KP Form 10 (Notice for Constitution of Pangkat), KP Form 11 (Notice to Chosen Pangkat Members), and KP Form 12 (Subpoena).
+
+---
+
+### 5. Dashboard "Today's Hearings" Status Badges & Attendance Sync
+- **Status Badge Parity on Dashboard (`dashboard.js`)**:
+  - Updated Today's Hearings table and cards on the dashboard to display the exact live queue status matching the Case Details view: `Scheduled`, `Waiting`, `In Progress`, `Concluded`, `Attendance Recorded`.
+  - Color-coded badges with dynamic action buttons allowing clerks to jump directly into the live hearing workspace or record attendance in one click.
+- **Live Attendance Cards (`stage-workspace.js`)**:
+  - In Mediation and Conciliation workspaces, the Section 2.5 Hearing Session Attendance card dynamically renders recorded party attendance (`Present`, `Absent`, `Excused`), presider attendance/substitute details, and justified absence reasons.
+  - Changes made in the attendance modal immediately reflect in the workspace card without requiring full page reloads.
+
+---
+
+### 6. Official KP Forms Document Generator, Side-by-Side Pangkat Preview, Officer's Return Linkage & Dynamic Outcomes Integration (October 2026)
+
+- **Comprehensive KP Forms Data Layer & PDF Engine (`backend/services/KpFormService.php` & `backend/services/PDFService.php`)**:
+  - Implemented `KpFormService` providing comprehensive data aggregation across `cases`, `complaints`, `complaint_parties`, `residents`, `system_settings` (Punong Barangay and Secretary details), `pangkat_groups`, `pangkat_members`, `hearings`, `hearing_minutes`, `settlements`, `arbitration_records`, `cfa_records`, and `show_cause_evaluations`.
+  - Added public `getFormHtml(string $formCode, array $data, bool $forPdf = false): string` to `PDFService.php`, exposing HTML rendering for all Katarungang Pambarangay forms (KP Forms 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 20-A, 20-B, 21, 22, 23, 24, 25).
+  - Standardized Dompdf rendering pipeline (`PDFService::generateNotice`) with standard Folio/Legal (8.5" x 13") and Letter bond paper styles, zero-margin headers, and official Barangay Tumana letterheads.
+  - Refactored `backend/api/documents/kp-form.php` to serve bare HTML previews (`bare=1`) for clean iframe embedding and binary PDF downloads (`pdf=1` or `download=1`).
+
+- **Tri-Panel Side-by-Side Pangkat Notices Preview Modal (`#pangkatNoticesModal`)**:
+  - Created reusable modal component `frontend/layouts/kp-form-preview-modal.php`, included globally in `complaint-details.php`, `mediation-workspace.php`, `pangkat-workspace.php`, and `arbitration-workspace.php`.
+  - Displays a responsive 3-column side-by-side grid (`width: 95vw; max-width: 1400px`):
+    - **Panel 1: KP Form 10** (*Paabiso sa Pagbubuo ng Pangkat / Notice for Constitution of Pangkat*) — summons both parties to appear and agree upon 3 Lupon members.
+    - **Panel 2: KP Form 11** (*Patalastas sa Piniling Miyembro ng Pangkat / Notice to Chosen Pangkat Members*) — official appointment notice served to the 3 chosen Lupon members.
+    - **Panel 3: KP Form 12** (*Paabiso ng Pagdinig sa Harap ng Pangkat / Notice of Hearing - Conciliation*) — formal notice setting the first Pangkat conciliation hearing session.
+  - Each panel features dedicated `🖨️ Print` and `Download PDF` controls.
+  - Header features a `🖨️ Print All 3 Forms` bulk printing action with staggered frame triggers.
+
+- **Officer's Return Tracking Integration for KP Form 12**:
+  - Panel 3 directly links KP Form 12 conciliation summons to the Officer's Return proof of service tracking system for both Complainant and Respondent.
+  - Embedded quick actions link directly to `frontend/pages/gps/proof-service.php?complaint_id=[id]&stage=Conciliation&form=KP12&party_type=[Complainant|Respondent]`.
+
+- **Dynamic Outcome-Driven KP Forms Unlocking in Official KP Forms Table (`tab-overview`)**:
+  - Updated `renderOfficialKpForms` in `frontend/assets/js/complaints.js` to inspect case status, current stage, and recorded hearing minutes outcomes:
+    - **Amicably Settled:** Surfaces **KP Form 16** (*Kasunduang Pag-aayos*) with an active **`Open Amicable Settlement →`** launcher immediately opening the populated preview modal.
+    - **Voluntary Arbitration:** Surfaces **KP Form 14** (*Agreement for Arbitration / Kasunduan sa Pag-aarbitro*) and **KP Form 15** (*Arbitration Award / Gawad ng Arbitrasyon*), unlocked for preview and PDF export.
+    - **Repudiated Settlement:** Surfaces **KP Form 17** (*Pagtatwa / Repudiation*) alongside eligible Certificate to File Action forms (**KP Form 20**, **20-A**, **20-B**).
+    - **Failure of Mediation / Endorse to Pangkat:** Surfaces **KP Forms 10, 11, and 12** with a direct shortcut to launch the Tri-Panel side-by-side preview.
+    - **Failure of Conciliation:** Surfaces **KP Form 20** (*Certificate to File Action*).
+
+- **Binding Arbitration Booking & Scheduling Modal (RA 7160 Sec. 413)**:
+  - Updated `backend/controllers/HearingController.php` to include `'Arbitration'` in allowable hearing types during creation and validation.
+  - Selecting "Arbitration" or "Submit to Voluntary Arbitration" in session outcomes immediately renders an active callout banner with **`📅 Schedule Arbitration Session →`**.
+  - Re-uses the unified booking modal (`openEmbeddedScheduleModal('Arbitration')`) pre-filled with the Lupon Court Room venue, PB/Pangkat presider, and date/time pickers. Submitting schedules the arbitration session and unlocks the Outcomes tab.
+
+- **Embedded Procedural Determination & Pangkat Referral Modals (`complaint-details.php`)**:
+  - Implemented `openEmbeddedRecordOutcomeModal`, `closeEmbeddedRecordOutcomeModal`, and `submitEmbeddedRecordOutcome` wired to `backend/api/stages/outcome.php`.
+  - Added option for **Arbitration (KP Form 14)** in `#stageOutcomeSelect` with dynamic arbitration guidance banner.
+  - Implemented `openEmbeddedReferPangkatModal`, `closeEmbeddedReferPangkatModal`, `goEmbeddedReferralStep`, and `submitEmbeddedReferPangkat` wired to `backend/api/stages/refer-pangkat.php` with Lupon member loading (`assignments/lupon-members.php`), 3-step wizard validation, and auto-opening of the Tri-Panel Pangkat preview upon referral completion.
+
+---
+
+## Detailed Summary of Changes (October 26, 2026 – October 27, 2026)
+
+### A. Yesterday (October 26, 2026)
+
+- **Report Generation & Master Case Register (Excel / XLSX)**:
+  - Developed native OpenXML spreadsheet generator `backend/services/XlsxService.php` enabling `.xlsx` exports without external Composer dependencies.
+  - Built Katarungang Pambarangay Monitoring endpoint `backend/api/reports/kp_monitoring.php` and unified report generation `backend/api/reports/generate.php`.
+  - Added migration `database/migrations/20261026_001_allow_case_register_report_type.sql` allowing `'Case Register'` in `reports.report_type` ENUM.
+  - Implemented report management UI in `frontend/pages/reports/report-list.php` and `frontend/assets/js/reports.js` supporting preview, print, export, and download.
+  - Updated dashboard overview, analytics charts, and sidebar links (`frontend/assets/css/dashboard.css`, `frontend/assets/js/dashboard.js`, `frontend/layouts/dashboard-overview.php`).
+
+- **Settings Functionality Update & Diagnostic Testing**:
+  - Refactored and stabilized settings API routes: Database Backup (`backend/api/settings/backup-db.php`), Case Categories (`categories.php`), Password Change (`change-password.php`), System Diagnostics (`diagnostics.php`), Profile (`profile.php`), AI test (`test-ai.php`), SMS test (`test-sms.php`), and Barangay Seal upload (`upload-seal.php`).
+  - Updated settings UI in `frontend/pages/settings/index.php` and `frontend/assets/js/settings.js`.
+  - Upgraded GPS delivery tracking for summons and Paanyaya notices (`backend/controllers/GPSController.php`, `frontend/assets/js/gps.js`, `frontend/pages/gps/proof-service.php`).
+
+- **Dialogue Minutes Delay & Remarks Tracking**:
+  - Added `actual_start_time` and `session_remarks` to `paanyaya_dialogue_minutes` via migration `database/migrations/20261026_002_add_session_remarks_and_actual_start_time.sql`.
+  - Updated `backend/models/Paanyaya.php` to persist arrival times, late starts, and officer delay remarks.
+  - Added delay remark quick-tags in `complaint-details.php` and `complaints.js`.
+
+- **KP Form Preview & Attendance Recording Bug Fixes**:
+  - Resolved attendance recording exception in `backend/api/hearings/attendance.php` when updating existing attendance rows.
+  - Fixed summons preview error in `backend/api/summons/preview.php` to handle missing template variables gracefully.
+  - Fixed party attendance rendering and checkbox synchronization in `frontend/assets/js/complaints.js`.
+
+- **Multi-Stage Mediation Workspace UI & Navigation Updates**:
+  - Improved stage transitions and status persistence in `backend/models/CaseStage.php`.
+  - Cleaned up top action toolbar and navigation links across `complaint-create.php`, `complaint-details.php`, and `complaint-edit.php`.
+  - Initiated separated section cards for hearing proceedings in `stage-workspace.js` and `mediation-workspace.php`.
+
+---
+
+### B. Today (October 27, 2026)
+
+- **Official KP Forms Generator & PDF Engine (Forms 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 20-A, 20-B, 21, 22, 23, 24, 25)**:
+  - Created `backend/services/KpFormService.php`: Centralized data aggregation layer querying cases, complaints, parties, residents, hearing minutes, arbitration awards, settlements, and barangay officer settings (`captain_name`, `secretary_name`).
+  - Updated `backend/services/PDFService.php`: Implemented public `getFormHtml(string $formCode, array $data, bool $forPdf = false): string`, routing dynamically to official HTML templates with Folio/Legal and Letter CSS styling and Dompdf PDF streaming.
+  - Refactored `backend/api/documents/kp-form.php`: Serves bare HTML previews (`bare=1`) for clean iframe rendering and binary PDF downloads (`pdf=1` or `download=1`).
+
+- **Tri-Panel Side-by-Side Pangkat Preview Modal (`#pangkatNoticesModal`)**:
+  - Created `frontend/layouts/kp-form-preview-modal.php`: Built a wide 3-panel modal (`width: 95vw; max-width: 1400px`) displaying:
+    - **Panel 1: KP Form 10** (*Notice for Constitution of Pangkat*)
+    - **Panel 2: KP Form 11** (*Notice to Chosen Pangkat Members*)
+    - **Panel 3: KP Form 12** (*Notice of Hearing - Conciliation Proceedings*)
+  - Added dedicated `🖨️ Print` and `Download PDF` controls for each panel.
+  - Added `🖨️ Print All 3 Forms` bulk printing with sequential iframe printing.
+  - Included globally in `complaint-details.php`, `mediation-workspace.php`, `pangkat-workspace.php`, and `arbitration-workspace.php`.
+
+- **Officer's Return Tracking Linkage for KP Form 12**:
+  - Integrated Panel 3 with the Officer's Return system: added buttons to record service of KP Form 12 for both Complainant and Respondent, linking directly to `gps/proof-service.php?complaint_id=[id]&stage=Conciliation&form=KP12&party_type=[Complainant|Respondent]`.
+
+- **Dynamic Outcome-Driven KP Forms Unlocking in Official KP Forms Table (`tab-overview`)**:
+  - Updated `renderOfficialKpForms` in `frontend/assets/js/complaints.js` to dynamically inspect case status and recorded hearing minutes outcomes:
+    - **Amicably Settled:** Surfaces **KP Form 16** (*Kasunduang Pag-aayos*) with `Open Amicable Settlement →` direct modal launcher.
+    - **Voluntary Arbitration:** Surfaces **KP Form 14** (*Agreement for Arbitration*) & **KP Form 15** (*Arbitration Award*).
+    - **Repudiated Settlement:** Surfaces **KP Form 17** (*Pagtatwa*) & CFA (**KP Form 20, 20-A, 20-B**).
+    - **Failure of Mediation / Endorse to Pangkat:** Surfaces **KP Forms 10, 11, and 12** with Tri-Panel preview shortcut.
+    - **Failure of Conciliation:** Surfaces **KP Form 20** (*Certificate to File Action*).
+
+- **Binding Arbitration Booking & Scheduling Modal (RA 7160 Sec. 413)**:
+  - Updated `backend/controllers/HearingController.php` to permit `'Arbitration'` as an allowable hearing type in `validate()`.
+  - Selecting "Arbitration" or "Submit to Voluntary Arbitration" in session outcomes triggers an amber callout banner prompting `📅 Schedule Arbitration Session →`.
+  - Integrated with the unified scheduling modal (`openEmbeddedScheduleModal('Arbitration')`) pre-filled with Lupon Court Room venue and presider.
+
+- **Embedded Case Details Modal & Referral Handlers (`complaint-details.php` & `complaints.js`)**:
+  - Added `openEmbeddedRecordOutcomeModal`, `closeEmbeddedRecordOutcomeModal`, and `submitEmbeddedRecordOutcome` wired to `backend/api/stages/outcome.php`.
+  - Added Arbitration option to `#stageOutcomeSelect` with dynamic arbitration guidance banner.
+  - Added `openEmbeddedReferPangkatModal`, `closeEmbeddedReferPangkatModal`, `goEmbeddedReferralStep`, and `submitEmbeddedReferPangkat` wired to `backend/api/stages/refer-pangkat.php` with 3-member Lupon nominations and automatic opening of the Tri-Panel Pangkat preview upon referral completion.
+  - Added action buttons under Mediation stage card: `Record Mediation Outcome` and `Refer to Pangkat (KP Form 10)`.
+
+- **Separated Hearing Session Minutes & Proceedings Cards (`stage-workspace.js`)**:
+  - Converted single-form in-place toggle into physically separated, concurrent section cards for `1st Mediation` & `2nd Mediation`, as well as `1st Conciliation`, `2nd Conciliation`, and `3rd Conciliation`.
+  - Implemented client-side draft isolation (`AgapDraftManager`) using `localStorage` keyed by `hearing_id` to eliminate draft collisions across sessions.
+  - Added top quick-jump navigation bar with live status badges (`Draft`, `Finalized`, `Not Recorded`).
+
+- **Official Metropolitan Trial Court Transmittal Letter & 10-Business-Day Statutory Countdown Engine**:
+  - Built full-page printable MTC transmittal letter (`frontend/pages/cases/transmittal-print.php`) with official Barangay Tumana letterhead, Marikina MTC address, certified records transmission checklist, and Secretary attestation.
+  - Built 10-business-day calculation engine (`backend/api/transmittals/status.php` and `CaseTransmittal.php`) excluding weekends and official Philippine holidays.
+  - Gated transmittal printing with a real-time countdown badge (`🔒 Locked — X Business Days Remaining`), turning green (`✓ Ready for Transmission`) once 10 business days have elapsed.
+
+- **Printable Blank Ruled Minutes Sheet (`frontend/pages/complaints/print-blank-minutes.php`)**:
+  - High-fidelity blank minutes template accessible across Mediation, Conciliation, and the Official KP Forms table via `🖨️ Print Blank Minutes Sheet`.
+  - Styled with official letterhead, case caption fields, and 24 ruled horizontal lines for live handwritten notes.
+
+- **Dynamic Outcomes Tab Unlocking**:
+  - Renamed `tab-arbitration` to **Outcomes** with dynamic live unlock upon previewing/printing Amicable Settlement, Arbitration Award, or CFA.
+  - Fixed uncaught `ReferenceError: arbStage is not defined` in `complaints.js` which previously halted party rendering.

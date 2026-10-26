@@ -149,14 +149,24 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
     1. *Preliminaries* (Quorum, identity verification, presider/substitute confirmation, attendance check).
     2. *Proceedings & Discussion* (Complainant statement, respondent response, dispute issues, caucuses, proposals).
     3. *Agreed Terms & Outcome* (Session outcome, agreed settlement terms, and document generation).
-- **Case & Team Assignments (`case-list.php`)**:
-  - Live search bar positioned directly above the case team assignment table.
-  - Filtered to display ongoing cases only (settled, dismissed, and archived cases are excluded).
-  - Simplified 3-column table: Case No. (clickable link to Complaint Details), Status, and Action.
-  - Integrated Substitute Presider assignment modal.
-- **Unified Case Teams**:
-  - Mediation stages assign the active `Administrator` as Punong Barangay/Head.
-  - Conciliation stages require a three-member team (Head, Secretary, Member) selected from active users with the `Lupon Member` role, atomically validated and stored in `case_assignments`.
+- **Separated Hearing Session Minutes & Proceedings Cards (`stage-workspace.js`)**:
+  - **Independent Multi-Card Architecture**: Replaced single-form in-place toggling with distinct, physically separated cards for each session in both Mediation (`1st Mediation` & `2nd Mediation`) and Conciliation (`1st`, `2nd`, and `3rd Conciliation`) workspaces.
+  - **Simultaneous Cross-Session Review**: Clerks can review previous session notes, proposals, and agreements in Card 1 while taking live minutes in Card 2 without losing context or switching tabs.
+  - **Session-Specific Outcome Logic**: Tailors available outcomes dynamically (1st Mediation offers `Unresolved / Book 2nd Mediation` with summons bypassed; 2nd Mediation unlocks `Failure of Mediation / Endorse to Pangkat (KP Form 10)`).
+  - **Isolated Auto-Save Engine (`AgapDraftManager`)**: Client-side drafts are scoped strictly to `#inlineMinutesForm_${hId}` and keyed by `hearing_id`, completely preventing draft collisions or accidental overwrites across sessions.
+  - **Quick Jump Navigation Bar**: Top navigation bar with status badges (`Draft`, `Finalized`, `Not Recorded`) that smooth-scrolls directly to the selected session card.
+  - **Dynamic Next Session Booking Prompt**: Automatically displays a scheduling card beneath completed sessions allowing clerks to book the next hearing immediately under RA 7160 Sec. 410.
+- **Consolidated Pangkat Formation & Team Assignment**:
+  - Integrated 3-member Pangkat panel selection (Chairperson, Secretary, Member) directly into the **"Refer Case to Pangkat ng Tagapagkasundo"** modal (`#wsReferPangkatModal`) on 2nd Mediation, retiring the redundant standalone team assignment page.
+  - Validates active Lupon membership, prevents duplicate selections, automatically transitions case status to `Conciliation`, sets the 3-day Pangkat convening deadline, and generates KP Forms 10, 11, and 12.
+- **Dynamic Outcomes Tab Unlocking**:
+  - The final disposition tab (`tab-arbitration`) is renamed **Outcomes**. Previewing or printing an Amicable Settlement (KP Form 16), CFA (KP Form 20), Arbitration Agreement (KP Form 14/15), or Transmittal Letter automatically unlocks the Outcomes tab immediately across sessions.
+- **Court Transmittal Letter & 10-Business-Day Statutory Countdown Gating (RA 7160 Sec. 416/417)**:
+  - **Official MTC Transmittal Letter (`transmittal-print.php`)**: Full-page printable transmittal with official Barangay Tumana letterhead, Metropolitan Trial Court (MTC) Marikina address, certified records checklist, and Secretary attestation.
+  - **10-Business-Day Gating Engine (`backend/api/transmittals/status.php`)**: Calculates business working days (excluding weekends and statutory holidays) from settlement or CFA execution. Locks transmittal printing with a live countdown badge until 10 business days have passed, automatically triggering an alert notification once ready for court submission.
+- **Printable Blank Ruled Minutes Sheet (`print-blank-minutes.php`)**:
+  - Accessible across Mediation and Conciliation workspaces via `🖨️ Print Blank Minutes Sheet` and the Official KP Forms table.
+  - Formatted with official Barangay Tumana header, case caption particulars, and 24 ruled writing lines for handwritten minutes during live hearings.
 
 ### 5. KP Document Generation & Master Document Center
 
@@ -167,6 +177,19 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
   - **Automatic Paper Size Scaling**: Automatically adjusts and scales template layouts cleanly for Legal (`8.5in x 14in`) and A4 bond paper sizes.
   - **Customizable Official Letterheads**: Dynamic logo replacement for Barangay and City seals, with the obsolete Office Name Banner removed for a cleaner presentation.
   - **Standardized Modal Previews**: Clean modal titles displaying strictly the canonical form number (e.g. `KP FORM 7`, `KP FORM 8`, `KP FORM 20`) without clutter.
+- **Tri-Panel Side-by-Side Pangkat Preview (`kp-form-preview-modal.php`)**:
+  - **Tri-Panel Responsive Grid**: Displays **KP Form 10** (Notice for Constitution), **KP Form 11** (Notice to Chosen Members), and **KP Form 12** (Notice of Hearing) side-by-side in a wide 3-panel modal.
+  - **Individual & Bulk Print Controls**: Individual `Print` and `Download PDF` actions per panel, plus `Print All 3 Forms` bulk printing with sequential iframe rendering.
+  - **Officer's Return Service Tracking**: Direct integration under KP Form 12 linking to proof of service logging for both Complainant and Respondent (`proof-service.php`).
+- **Dynamic Outcome-Driven KP Forms Unlocking**:
+  - **Real-Time Table Unlocking**: The Official KP Forms card dynamically inspects recorded stage and hearing minutes outcomes to unlock corresponding forms:
+    - *Amicably Settled* → **KP Form 16** (*Kasunduang Pag-aayos*) with immediate modal launcher `Open Amicable Settlement →`.
+    - *Voluntary Arbitration* → **KP Form 14** (*Agreement for Arbitration*) & **KP Form 15** (*Arbitration Award*).
+    - *Repudiated Settlement* → **KP Form 17** (*Pagtatwa*) & CFA (**KP Form 20 / 20-A / 20-B**).
+    - *Endorse to Pangkat* → **KP Forms 10, 11, and 12** with Tri-Panel preview shortcuts.
+- **Binding Arbitration Scheduling (RA 7160 Sec. 413)**:
+  - Selecting Arbitration outcome dynamically renders an amber action banner prompting `📅 Schedule Arbitration Session →`.
+  - Integrated with the standard scheduling modal (`openEmbeddedScheduleModal('Arbitration')`) and backend validation in `HearingController.php`.
 - **Official Katarungang Pambarangay (KP) Forms**:
   - **KP Form 7**: Pormularyo ng KP Blg. 7 (Reklamo / Formal Complaint) — formatted strictly for standard **Legal Size Bondpaper** (`8.5in x 14in`) with Barangay Tumana Seal (Left) and City of Marikina Seal (Right), generous signature clearances (`48px`), zero-watermark browser printing, and interactive modal preview.
   - **KP Form 8**: Notice of Hearing (Complainant).

@@ -25,7 +25,7 @@ class Report
             )->fetchAll(PDO::FETCH_ASSOC);
 
             $todayHearings = $this->conn->prepare(
-                "SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.venue, h.status,
+                "SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.venue, h.status, h.queue_status,
                         c.case_id, c.case_number, co.complaint_id, co.complaint_title
                  FROM hearings h
                  INNER JOIN cases c ON c.case_id = h.case_id
@@ -96,7 +96,7 @@ class Report
             $casesList = $casesStmt->fetchAll(PDO::FETCH_ASSOC);
 
             $calendarHearingsStmt = $this->conn->query(
-                "SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.venue, h.status,
+                "SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.venue, h.status, h.queue_status,
                         c.case_id, c.case_number, co.complaint_id, co.complaint_title
                  FROM hearings h
                  INNER JOIN cases c ON c.case_id = h.case_id
@@ -140,8 +140,8 @@ class Report
         $statusRows = $statusStmt->fetchAll(PDO::FETCH_ASSOC);
 
         $hearingsStmt = $this->conn->prepare(
-            "SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.venue, h.status,
-                    c.case_id, c.case_number, co.complaint_id, co.complaint_title
+            "SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.venue, h.status, h.queue_status,
+                        c.case_id, c.case_number, co.complaint_id, co.complaint_title
              FROM hearings h
              INNER JOIN cases c ON c.case_id = h.case_id
              INNER JOIN complaints co ON co.complaint_id = c.complaint_id
@@ -254,8 +254,8 @@ class Report
         $casesList = $casesStmt->fetchAll(PDO::FETCH_ASSOC);
 
         $calendarHearingsStmt = $this->conn->query(
-            "SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.venue, h.status,
-                    c.case_id, c.case_number, co.complaint_id, co.complaint_title
+            "SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.venue, h.status, h.queue_status,
+                        c.case_id, c.case_number, co.complaint_id, co.complaint_title
              FROM hearings h
              INNER JOIN cases c ON c.case_id = h.case_id
              INNER JOIN complaints co ON co.complaint_id = c.complaint_id

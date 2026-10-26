@@ -2079,3 +2079,84 @@
     }
 }
 
+/* ==========================================================================
+   STAGE-BASED TAB LOCKING & EMBEDDED HEARING SESSIONS STYLES
+   ========================================================================== */
+.case-tab-item.tab-locked,
+.case-tab-item.locked,
+.case-tab-item[disabled],
+.case-tab-item[aria-disabled="true"] {
+    color: #94a3b8 !important;
+    cursor: not-allowed !important;
+    opacity: 0.65;
+    border-bottom-color: transparent !important;
+    pointer-events: auto !important;
+}
+
+.case-tab-item.tab-locked:hover,
+.case-tab-item.locked:hover,
+.case-tab-item[aria-disabled="true"]:hover {
+    color: #94a3b8 !important;
+    background: transparent !important;
+    border-bottom-color: transparent !important;
+}
+
+.case-tab-lock-icon {
+    font-size: 0.78rem;
+    line-height: 1;
+    margin-left: 4px;
+    display: inline-flex;
+    align-items: center;
+    vertical-align: middle;
+    filter: grayscale(100%);
+    opacity: 0.75;
+}
+
+.stage-section-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    margin-bottom: 24px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+    overflow: hidden;
+}
+
+.stage-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 18px 24px;
+    border-bottom: 1px solid #f1f5f9;
+    background: #ffffff;
+}
+
+.stage-section-header h3 {
+    margin: 0;
+    font-size: 1.08rem;
+    color: #0f172a;
+    font-weight: 700;
+}
+
+.stage-section-header p {
+    margin: 3px 0 0;
+    font-size: 0.82rem;
+    color: #64748b;
+}
+
+.session-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 14px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.session-card:hover {
+    border-color: #cbd5e1;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
