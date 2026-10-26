@@ -120,7 +120,7 @@ document.addEventListener('DOMContentLoaded', () => {
         payload['configured_holidays'] = JSON.stringify(window.currentHolidaysList || []);
 
         try {
-            const res = await fetch('../../backend/api/settings/index.php', {
+            const res = await fetch('../../../backend/api/settings/index.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -162,7 +162,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (statusEl) statusEl.textContent = 'Uploading...';
 
         try {
-            const res = await fetch('../../backend/api/settings/upload-seal.php', {
+            const res = await fetch('../../../backend/api/settings/upload-seal.php', {
                 method: 'POST',
                 headers: {
                     'X-CSRF-Token': csrfToken
@@ -236,7 +236,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            const res = await fetch('../../backend/api/settings/test-ai.php', {
+            const res = await fetch('../../../backend/api/settings/test-ai.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -300,7 +300,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            const res = await fetch('../../backend/api/settings/test-sms.php', {
+            const res = await fetch('../../../backend/api/settings/test-sms.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -361,7 +361,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            const res = await fetch('../../backend/api/settings/categories.php', {
+            const res = await fetch('../../../backend/api/settings/categories.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -394,7 +394,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!confirm(`Are you sure you want to delete or deactivate category "${catName}"?`)) return;
 
         try {
-            const res = await fetch('../../backend/api/settings/categories.php', {
+            const res = await fetch('../../../backend/api/settings/categories.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -417,7 +417,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function reloadCategoriesTable() {
         try {
-            const res = await fetch('../../backend/api/settings/categories.php');
+            const res = await fetch('../../../backend/api/settings/categories.php');
             const data = await res.json();
             if (data.success && data.categories) {
                 const tbody = document.getElementById('categoriesTableTbody');
@@ -514,7 +514,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const lang = document.getElementById('profileLangSelect')?.value || 'fil';
 
         try {
-            const res = await fetch('../../backend/api/settings/profile.php', {
+            const res = await fetch('../../../backend/api/settings/profile.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -564,7 +564,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (btn) btn.disabled = true;
 
         try {
-            const res = await fetch('../../backend/api/settings/change-password.php', {
+            const res = await fetch('../../../backend/api/settings/change-password.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

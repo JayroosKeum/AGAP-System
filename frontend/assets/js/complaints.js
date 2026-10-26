@@ -1426,7 +1426,8 @@ function renderPaanyayaStageCard(stageNum, stageData, caseNum, compNames, respNa
     // Stepper Count & Dots
     const stepperCountId = isP2 ? 'p2StepperCountText' : 'p1StepperCountText';
     const stepperDotsId = isP2 ? 'p2StepperDots' : 'p1StepperDots';
-    setText(stepperCountId, `${count} / 6 Attempts`);
+    const maxPAttempts = Number(window.AGAP_SETTINGS?.paanyaya_max_attempts || 3);
+    setText(stepperCountId, `${count} / ${maxPAttempts} Attempts`);
 
     const stepperDots = document.getElementById(stepperDotsId);
     if (stepperDots) {

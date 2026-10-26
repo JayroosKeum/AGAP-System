@@ -8,7 +8,18 @@ if (!isset($_SESSION['user_id']) || !in_array($roleId, [1, 2, 4], true)) {
 }
 
 include '../../layouts/header.php';
+require_once __DIR__ . '/../../../backend/models/Setting.php';
+$sysSettings = Setting::all();
 ?>
+<script>
+window.AGAP_SETTINGS = <?php echo json_encode([
+    'paanyaya_max_attempts' => (int) ($sysSettings['paanyaya_max_attempts'] ?? 3),
+    'summons_max_attempts' => (int) ($sysSettings['summons_max_attempts'] ?? 3),
+    'mediation_max_sessions' => (int) ($sysSettings['mediation_max_sessions'] ?? 2),
+    'conciliation_max_sessions' => (int) ($sysSettings['conciliation_max_sessions'] ?? 3),
+    'mediation_day_of_week' => (string) ($sysSettings['mediation_day_of_week'] ?? 'Tue'),
+], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
+</script>
 <link rel="stylesheet" href="../../assets/css/dashboard.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/dashboard.css'); ?>">
 <link rel="stylesheet" href="../../assets/css/gps.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/gps.css'); ?>">
 

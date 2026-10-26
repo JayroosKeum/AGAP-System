@@ -25,6 +25,14 @@ $complaintFlash = $_SESSION['complaint_flash'] ?? null;
 unset($_SESSION['complaint_flash']);
 
 include '../../layouts/header.php';
+require_once __DIR__ . '/../../../backend/models/Setting.php';
+$maxPaanyayaSetting = (int) Setting::getSetting('paanyaya_max_attempts', 3);
+?>
+<script>
+window.AGAP_SETTINGS = window.AGAP_SETTINGS || {};
+window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
+</script>
+<?php
 
 ?>
 
@@ -402,16 +410,18 @@ include '../../layouts/header.php';
                         <!-- 6-Attempt Progress Stepper Indicator -->
                         <div class="paanyaya-attempts-stepper">
                             <div class="paanyaya-stepper-label">
-                                <span>Service Attempts Tracking (Max 6)</span>
-                                <span id="p1StepperCountText">0 / 6 Attempts</span>
+                                <span>Service Attempts Tracking (Max <?php echo $maxPaanyayaSetting; ?>)</span>
+                                <span id="p1StepperCountText">0 / <?php echo $maxPaanyayaSetting; ?> Attempts</span>
                             </div>
                             <div class="paanyaya-stepper-dots" id="p1StepperDots">
-                                <div class="stepper-dot" title="Attempt 1"></div>
-                                <div class="stepper-dot" title="Attempt 2"></div>
-                                <div class="stepper-dot" title="Attempt 3"></div>
-                                <div class="stepper-dot" title="Attempt 4"></div>
-                                <div class="stepper-dot" title="Attempt 5"></div>
-                                <div class="stepper-dot" title="Attempt 6"></div>
+                                <?php for ($sDot = 1; $sDot <= $maxPaanyayaSetting; $sDot++): ?>
+                                    <div class="stepper-dot" title="Attempt <?php echo $sDot; ?>"></div>
+                                <?php endfor; ?>
+
+
+
+
+
                             </div>
                         </div>
 
@@ -495,16 +505,18 @@ include '../../layouts/header.php';
                         <!-- 6-Attempt Progress Stepper Indicator (Paanyaya 2) -->
                         <div class="paanyaya-attempts-stepper" id="p2StepperWrap" style="display: none;">
                             <div class="paanyaya-stepper-label">
-                                <span>Independent Service Attempts Tracking (Max 6)</span>
-                                <span id="p2StepperCountText">0 / 6 Attempts</span>
+                                <span>Independent Service Attempts Tracking (Max <?php echo $maxPaanyayaSetting; ?>)</span>
+                                <span id="p2StepperCountText">0 / <?php echo $maxPaanyayaSetting; ?> Attempts</span>
                             </div>
                             <div class="paanyaya-stepper-dots" id="p2StepperDots">
-                                <div class="stepper-dot" title="Attempt 1"></div>
-                                <div class="stepper-dot" title="Attempt 2"></div>
-                                <div class="stepper-dot" title="Attempt 3"></div>
-                                <div class="stepper-dot" title="Attempt 4"></div>
-                                <div class="stepper-dot" title="Attempt 5"></div>
-                                <div class="stepper-dot" title="Attempt 6"></div>
+                                <?php for ($sDot = 1; $sDot <= $maxPaanyayaSetting; $sDot++): ?>
+                                    <div class="stepper-dot" title="Attempt <?php echo $sDot; ?>"></div>
+                                <?php endfor; ?>
+
+
+
+
+
                             </div>
                         </div>
 

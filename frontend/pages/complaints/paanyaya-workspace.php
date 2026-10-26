@@ -736,11 +736,11 @@ function openPaanyayaPreview(attemptNum) {
     }
     const dlBtn = document.getElementById('btnDownloadPdf');
     if (dlBtn) {
-        dlBtn.href = `../../backend/api/paanyaya/preview.php?id=${COMPLAINT_ID}&attempt_number=${attemptNum}&download=1`;
+        dlBtn.href = `../../../backend/api/paanyaya/preview.php?id=${COMPLAINT_ID}&attempt_number=${attemptNum}&download=1`;
     }
     const iframe = document.getElementById('previewIframe');
     if (iframe) {
-        iframe.src = `../../backend/api/paanyaya/preview.php?id=${COMPLAINT_ID}&attempt_number=${attemptNum}&format=html`;
+        iframe.src = `../../../backend/api/paanyaya/preview.php?id=${COMPLAINT_ID}&attempt_number=${attemptNum}&format=html`;
     }
     const modal = document.getElementById('previewModal');
     if (modal) modal.style.display = 'flex';
@@ -810,7 +810,7 @@ async function submitOutcome(e) {
     const payload = Object.fromEntries(formData.entries());
 
     try {
-        const res = await fetch('../../backend/api/paanyaya/record-outcome.php', {
+        const res = await fetch('../../../backend/api/paanyaya/record-outcome.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -866,7 +866,7 @@ async function submitScheduleSecond(e) {
     const payload = Object.fromEntries(formData.entries());
 
     try {
-        const res = await fetch('../../backend/api/paanyaya/schedule.php', {
+        const res = await fetch('../../../backend/api/paanyaya/schedule.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -900,7 +900,7 @@ async function triggerEscalation() {
     }
 
     try {
-        const res = await fetch('../../backend/api/paanyaya/record-outcome.php', {
+        const res = await fetch('../../../backend/api/paanyaya/record-outcome.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

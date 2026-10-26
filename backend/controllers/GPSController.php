@@ -76,8 +76,12 @@ class GPSController
             $compRow = $compStmt->fetch(PDO::FETCH_ASSOC);
 
             if ($compRow) {
+                require_once __DIR__ . '/../models/Setting.php';
+                $maxPaanyaya = (int) Setting::getSetting('paanyaya_max_attempts', 3, $db);
                 $complaintId = (int) $compRow['complaint_id'];
                 $paaModel = new Paanyaya($db);
+            require_once __DIR__ . '/../models/Setting.php';
+            $maxPaanyaya = (int) Setting::getSetting('paanyaya_max_attempts', 3, $db);
                 $twoStages = $paaModel->getTwoStagesData($complaintId);
                 
                 $activeStageKey = ($twoStages['stage_2']['details']['status'] !== 'Not Started') ? 'stage_2' : 'stage_1';
@@ -138,7 +142,7 @@ class GPSController
 
                 $anyServed = $activeStage['is_delivered'];
                 $attemptsCount = count($respondentAttempts);
-                if (!$anyServed && $attemptsCount < 6 && $stageDetails['status'] === 'In Progress') {
+                if (!$anyServed && $attemptsCount < $maxPaanyaya && $stageDetails['status'] === 'In Progress') {
                     // Append next pending attempt so the officer can click to record return
                     $respondentAttempts[] = [
                         'attempt_number' => $attemptsCount + 1,
@@ -174,7 +178,8 @@ class GPSController
                         'stage_type' => $stageDetails['stage_type'],
                         'complaint_id' => $complaintId,
                         'can_initiate_next_attempt' => false,
-                        'next_attempt_number' => min(6, $attemptsCount + 1),
+                        'next_attempt_number' => min($maxPaanyaya, $attemptsCount + 1),
+                        'max_attempts' => $maxPaanyaya,
                         'deliveries' => [
                             [
                                 'party_type' => 'Complainant',
@@ -195,7 +200,7 @@ class GPSController
                             'eligible' => false,
                             'failed_count' => $failedCount,
                             'attempts_count' => count($stageAttempts),
-                            'reason' => 'Paanyaya preliminary stage (Summons unlocked after service or 6 attempts).'
+                            'reason' => "Paanyaya preliminary stage (Summons unlocked after service or {$maxPaanyaya} attempts)."
                         ]
                     ]
                 ];
@@ -372,6 +377,8 @@ class GPSController
             }
 
             $paaModel = new Paanyaya($db);
+            require_once __DIR__ . '/../models/Setting.php';
+            $maxPaanyaya = (int) Setting::getSetting('paanyaya_max_attempts', 3, $db);
             $returnId = filter_var($input['delivery_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
 
             if ($returnId) {
@@ -395,14 +402,14 @@ class GPSController
 
                 $stagesData = $paaModel->getTwoStagesData($complaintId);
                 $targetStage = ($stageType === 'Paanyaya 2') ? $stagesData['stage_2'] : $stagesData['stage_1'];
-                $isExhausted = $targetStage['is_exhausted'] || ($targetStage['attempts_count'] >= 6 && !$targetStage['is_delivered']);
+                $isExhausted = $targetStage['is_exhausted'] || ($targetStage['attempts_count'] >= $maxPaanyaya && !$targetStage['is_delivered']);
 
                 return [
                     'success' => true,
                     'message' => "Officer's Return updated successfully for {$stageType}.",
                     'delivery_id' => $returnId,
                     'max_attempts_reached' => $isExhausted,
-                    'escalation_prompt' => $isExhausted ? "6 Paanyaya delivery attempts completed without service. Issue Summon 1st Attempt is now unlocked." : null
+                    'escalation_prompt' => $isExhausted ? "{$maxPaanyaya} Paanyaya delivery attempts completed without service. Issue Summon 1st Attempt is now unlocked." : null
                 ];
             }
 
@@ -425,15 +432,15 @@ class GPSController
 
             $stagesData = $paaModel->getTwoStagesData($complaintId);
             $targetStage = ($stageType === 'Paanyaya 2') ? $stagesData['stage_2'] : $stagesData['stage_1'];
-            $isExhausted = $targetStage['is_exhausted'] || ($targetStage['attempts_count'] >= 6 && !$targetStage['is_delivered']);
+            $isExhausted = $targetStage['is_exhausted'] || ($targetStage['attempts_count'] >= $maxPaanyaya && !$targetStage['is_delivered']);
 
             return [
                 'success' => true,
-                'message' => "Officer's Return recorded for {$stageType} (Attempt {$retResult['attempt_number']} of 6).",
+                'message' => "Officer's Return recorded for {$stageType} (Attempt {$retResult['attempt_number']} of {$maxPaanyaya}).",
                 'delivery_id' => $retResult['return_id'] ?? null,
                 'attempt_number' => $retResult['attempt_number'],
                 'max_attempts_reached' => $isExhausted,
-                'escalation_prompt' => $isExhausted ? "6 Paanyaya delivery attempts completed without service. Issue Summon 1st Attempt is now unlocked." : null
+                'escalation_prompt' => $isExhausted ? "{$maxPaanyaya} Paanyaya delivery attempts completed without service. Issue Summon 1st Attempt is now unlocked." : null
             ];
         }
 

@@ -428,11 +428,12 @@ function renderTableServiceStatus(item) {
         if (respServed) {
             return `<span class="service-status-pill badge-served-mini" style="font-weight:700;">Delivered (${stageLabel})</span>`;
         }
-        if (respFailCount >= 6) {
-            return `<span class="service-status-pill badge-failed-mini">6 Attempts Exhausted (${stageLabel})</span>`;
+        const maxPaanyayaAtt = Number(window.AGAP_SETTINGS?.paanyaya_max_attempts || 3);
+        if (respFailCount >= maxPaanyayaAtt) {
+            return `<span class="service-status-pill badge-failed-mini">${maxPaanyayaAtt} Attempts Exhausted (${stageLabel})</span>`;
         }
-        const currentAtt = Math.min(6, respFailCount + 1);
-        return `<span class="service-status-pill badge-pending-mini">Pending (${stageLabel} - Att. ${currentAtt} of 6)</span>`;
+        const currentAtt = Math.min(maxPaanyayaAtt, respFailCount + 1);
+        return `<span class="service-status-pill badge-pending-mini">Pending (${stageLabel} - Att. ${currentAtt} of ${maxPaanyayaAtt})</span>`;
     }
 
     const compStatus = String(item.complainant_service_status || 'Pending');
@@ -655,7 +656,7 @@ async function renderExpandedCaseView(caseId) {
             eligible: false,
             failed_count: 0,
             attempts_count: 0,
-            reason: 'CFA is locked until all 6 summons attempts have failed.'
+            reason: 'CFA is locked until all ${maxAllowedAttempts} summons attempts have failed.'
         };
         const failedCount = Number(cfaElig.failed_count || 0);
         const isCfaEligible = Boolean(cfaElig.eligible);
@@ -698,11 +699,15 @@ async function renderExpandedCaseView(caseId) {
         const activePendingResp = respAttempts.find(a => a.is_pending) || null;
         const targetRespAttemptForReturn = activePendingResp;
 
+        const maxAllowedAttempts = isPaanyayaCase
+            ? Number(activeHearing.max_attempts || window.AGAP_SETTINGS?.paanyaya_max_attempts || 3)
+            : Number(activeHearing.max_attempts || window.AGAP_SETTINGS?.summons_max_attempts || 3);
+
         let respBadgeHtml = '';
         if (anyRespServed) {
             respBadgeHtml = `<span class="service-result-badge badge-served">Served</span>`;
-        } else if (respAttempts.length >= 6 && failedCount >= 6) {
-            respBadgeHtml = `<span class="service-result-badge badge-not-served">6 Attempts Failed - Max Reached (Unserved)</span>`;
+        } else if (respAttempts.length >= maxAllowedAttempts && failedCount >= maxAllowedAttempts) {
+            respBadgeHtml = `<span class="service-result-badge badge-not-served">${maxAllowedAttempts} Attempts Failed - Max Reached (Unserved)</span>`;
         } else if (failedCount > 0) {
             respBadgeHtml = `<span class="service-result-badge badge-not-served">Attempt #${failedCount} Failed</span>`;
         } else {
@@ -760,10 +765,10 @@ async function renderExpandedCaseView(caseId) {
             let circleClass = isCfaEligible ? 'cfa-ready' : 'cfa-locked';
             let iconText = isCfaEligible ? 'CFA' : '—';
             let statusText = isCfaEligible ? 'CFA Ready' : 'CFA Locked';
-            let subText = isCfaEligible ? 'Eligible' : `${failedCount}/6 Failed`;
+            let subText = isCfaEligible ? 'Eligible' : `${failedCount}/${maxAllowedAttempts} Failed`;
             let clickAction = isCfaEligible
                 ? `onclick="window.location.href='../documents/cfa.php?case_id=${encodeURIComponent(caseId)}'"`
-                : `onclick="window.agapNotify ? window.agapNotify('${escapeGpsHtml(cfaElig.reason || 'CFA is locked until all 6 summons attempts have failed.')}', 'warning', 'CFA Locked') : alert('${escapeGpsHtml(cfaElig.reason || 'CFA is locked until all 6 summons attempts have failed.')}')"`;
+                : `onclick="window.agapNotify ? window.agapNotify('${escapeGpsHtml(cfaElig.reason || 'CFA is locked until all ${maxAllowedAttempts} summons attempts have failed.')}', 'warning', 'CFA Locked') : alert('${escapeGpsHtml(cfaElig.reason || 'CFA is locked until all ${maxAllowedAttempts} summons attempts have failed.')}')"`;
 
             return `
                 <button type="button" class="stepper-step" ${clickAction} title="${statusText} — ${escapeGpsHtml(cfaElig.reason || '')}" style="${!isCfaEligible ? 'cursor: not-allowed;' : ''}">
@@ -878,8 +883,8 @@ async function renderExpandedCaseView(caseId) {
             `;
         } else if (anyRespServed) {
             respActionBtnHtml = `<span style="background: #dcfce7; color: #166534; font-weight: 700; font-size: 0.8rem; padding: 6px 12px; border-radius: 6px; border: 1px solid #bbf7d0; display: inline-flex; align-items: center; gap: 4px;">✓ Successfully Served</span>`;
-        } else if (respAttempts.length >= 6 && failedCount >= 6) {
-            respActionBtnHtml = `<span style="background: #fee2e2; color: #991b1b; font-weight: 700; font-size: 0.8rem; padding: 6px 12px; border-radius: 6px; border: 1px solid #fecaca; display: inline-flex; align-items: center; gap: 4px;">6 Attempts Failed - Max Reached (Unserved)</span>`;
+        } else if (respAttempts.length >= maxAllowedAttempts && failedCount >= maxAllowedAttempts) {
+            respActionBtnHtml = `<span style="background: #fee2e2; color: #991b1b; font-weight: 700; font-size: 0.8rem; padding: 6px 12px; border-radius: 6px; border: 1px solid #fecaca; display: inline-flex; align-items: center; gap: 4px;">${maxAllowedAttempts} Attempts Failed - Max Reached (Unserved)</span>`;
         }
 
         let cfaBtnHtml = '';
@@ -985,7 +990,7 @@ async function renderExpandedCaseView(caseId) {
                                 <div class="delivery-party-name">
                                     <span>${escapeGpsHtml(respName)}</span>
                                 </div>
-                                <span class="delivery-form-type">${isPaanyayaCase ? `${escapeGpsHtml(activeHearing.hearing_type || 'Paanyaya')} – Preliminary Invitation Tracking (6 Attempts Max)` : 'KP Form No. 9 – Summons Delivery Tracking'}</span>
+                                <span class="delivery-form-type">${isPaanyayaCase ? `${escapeGpsHtml(activeHearing.hearing_type || 'Paanyaya')} – Preliminary Invitation Tracking (${maxAllowedAttempts} Attempts Max)` : `KP Form No. 9 – Summons Delivery Tracking (${maxAllowedAttempts} Attempts Max)`}</span>
                             </div>
                             <div>
                                 ${respBadgeHtml}
@@ -996,21 +1001,21 @@ async function renderExpandedCaseView(caseId) {
                             <!-- Task 5: Horizontal Stepper Tracker -->
                             <div class="summon-stepper-wrap">
                                 <div class="summon-stepper">
-                                    ${renderStepperNode(1)}
-                                    ${renderStepperNode(2)}
-                                    ${renderStepperNode(3)}
-                                    ${renderStepperNode(4)}
-                                    ${renderStepperNode(5)}
-                                    ${renderStepperNode(6)}
+                                    ${Array.from({length: maxAllowedAttempts}, (_, i) => renderStepperNode(i + 1)).join('')}
+
+
+
+
+
                                     ${renderCfaStepperNode()}
                                 </div>
                             </div>
 
-                            ${(respAttempts.length >= 6 && failedCount >= 6) ? `
+                            ${(respAttempts.length >= maxAllowedAttempts && failedCount >= maxAllowedAttempts) ? `
                                 <div style="background: #fef2f2; border: 1px solid #f87171; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; color: #991b1b; font-size: 0.82rem; line-height: 1.45; display: flex; align-items: flex-start; gap: 8px;">
                                     <span style="font-size: 1rem;">⚠️</span>
                                     <div>
-                                        <strong>6 Attempts Failed - Max Reached (Unserved):</strong> The hearing schedule has been halted. Please verify the respondent's address with the complainant or refer the case for lack of jurisdiction / non-residence.
+                                        <strong>${maxAllowedAttempts} Attempts Failed - Max Reached (Unserved):</strong> The hearing schedule has been halted. Please verify the respondent's address with the complainant or refer the case for lack of jurisdiction / non-residence.
                                     </div>
                                 </div>
                             ` : ''}
@@ -1434,7 +1439,7 @@ async function submitOfficerReturn(event) {
         }
 
         if (result.max_attempts_reached) {
-            window.agapNotify?.(result.escalation_prompt || "6 Attempts Failed - Max Reached (Unserved). The hearing schedule has been halted. Please verify the respondent's address with the complainant or refer the case for lack of jurisdiction / non-residence.", 'warning', 'Max Attempts Reached (6/6 Failed)', 12000);
+            window.agapNotify?.(result.escalation_prompt || "${maxAllowedAttempts} Attempts Failed - Max Reached (Unserved). The hearing schedule has been halted. Please verify the respondent's address with the complainant or refer the case for lack of jurisdiction / non-residence.", 'warning', 'Max Attempts Reached (6/6 Failed)', 12000);
         } else {
             window.agapNotify?.(result.message || 'Officer return recorded successfully.', 'success');
         }

@@ -15,6 +15,12 @@ class Paanyaya
     public const STAGE_2 = 'Paanyaya 2';
     public const MAX_STAGE_ATTEMPTS = 6;
 
+    public function getMaxStageAttempts(): int
+    {
+        require_once __DIR__ . '/Setting.php';
+        return (int) Setting::getSetting('paanyaya_max_attempts', 3, $this->conn);
+    }
+
     public const VALID_DELIVERY_OUTCOMES = [
         'Successfully delivered',
         'Recipient unavailable',
@@ -1017,6 +1023,7 @@ class Paanyaya
         ");
         $countStmt->execute([(int)$stage1['id']]);
         $stats1 = $countStmt->fetch(PDO::FETCH_ASSOC);
+        $maxAttempts = $this->getMaxStageAttempts();
         $count1 = (int)($stats1['total_count'] ?? 0);
         $isDelivered1 = ((int)($stats1['delivered_count'] ?? 0) > 0) || ($stage1['status'] === 'Successfully Delivered');
         $isExhausted1 = ($count1 >= self::MAX_STAGE_ATTEMPTS && !$isDelivered1) || ($stage1['status'] === 'Attempts Exhausted – For Review');
@@ -1045,7 +1052,7 @@ class Paanyaya
             $stats2 = $countStmt->fetch(PDO::FETCH_ASSOC);
             $count2 = (int)($stats2['total_count'] ?? 0);
             $isDelivered2 = ((int)($stats2['delivered_count'] ?? 0) > 0) || ($stage2['status'] === 'Successfully Delivered');
-            $isExhausted2 = ($count2 >= self::MAX_STAGE_ATTEMPTS && !$isDelivered2) || ($stage2['status'] === 'Attempts Exhausted – For Review');
+            $isExhausted2 = ($count2 >= $maxAttempts && !$isDelivered2) || ($stage2['status'] === 'Attempts Exhausted – For Review');
 
             // 1. If Paanyaya 2 was served -> UNLOCKED!
             if ($isDelivered2 || $stage2['status'] === 'Completed') {
@@ -1056,10 +1063,10 @@ class Paanyaya
             }
 
             // 2. If 6 attempts failed on Paanyaya 2 -> UNLOCKED!
-            if ($isExhausted2 || $count2 >= self::MAX_STAGE_ATTEMPTS) {
+            if ($isExhausted2 || $count2 >= $maxAttempts) {
                 return [
                     'allowed' => true,
-                    'message' => '6 Paanyaya 2 delivery attempts completed without service. Formal summons unlocked to proceed with formal docketing.'
+                    'message' => "{$maxAttempts} Paanyaya 2 delivery attempts completed without service. Formal summons unlocked to proceed with formal docketing."
                 ];
             }
 
@@ -1067,7 +1074,7 @@ class Paanyaya
             return [
                 'allowed' => false,
                 'reason' => 'paanyaya_2_in_progress',
-                'message' => 'Paanyaya 2 delivery attempt ' . $count2 . ' of 6 recorded. Must be served or complete 6 failed attempts before issuing summons.'
+                'message' => 'Paanyaya 2 delivery attempt ' . $count2 . ' of ' . $maxAttempts . ' recorded. Must be served or complete ' . $maxAttempts . ' failed attempts before issuing summons.'
             ];
         }
 
@@ -1080,10 +1087,10 @@ class Paanyaya
         }
 
         // 2. If 6 attempts failed on Paanyaya 1 -> UNLOCKED!
-        if ($isExhausted1 || $count1 >= self::MAX_STAGE_ATTEMPTS) {
+        if ($isExhausted1 || $count1 >= $maxAttempts) {
             return [
                 'allowed' => true,
-                'message' => '6 Paanyaya delivery attempts completed without service. Formal summons unlocked to proceed with formal docketing.'
+                'message' => "{$maxAttempts} Paanyaya delivery attempts completed without service. Formal summons unlocked to proceed with formal docketing."
             ];
         }
 
@@ -1091,7 +1098,7 @@ class Paanyaya
         return [
             'allowed' => false,
             'reason' => 'paanyaya_in_progress',
-            'message' => 'Paanyaya delivery attempt ' . $count1 . ' of 6 recorded. Must be served or complete 6 failed attempts before issuing formal summons.'
+            'message' => 'Paanyaya delivery attempt ' . $count1 . ' of ' . $maxAttempts . ' recorded. Must be served or complete ' . $maxAttempts . ' failed attempts before issuing formal summons.'
         ];
     }
 
@@ -1351,10 +1358,11 @@ class Paanyaya
         $countStmt->execute([$stageId]);
         $existingCount = (int) $countStmt->fetchColumn();
 
-        if ($existingCount >= self::MAX_STAGE_ATTEMPTS) {
+        $maxAttempts = $this->getMaxStageAttempts();
+        if ($existingCount >= $maxAttempts) {
             return [
                 'success' => false,
-                'message' => "Maximum 6 delivery attempts have already been recorded for {$stageType}. No further attempts may be added."
+                'message' => "Maximum {$maxAttempts} delivery attempts have already been recorded for {$stageType}. No further attempts may be added."
             ];
         }
 
@@ -1483,7 +1491,7 @@ class Paanyaya
             if ($userId) {
                 $this->audit->log(
                     $userId,
-                    "Recorded Officer's Return: {$stageType} Attempt {$attemptNumber}/6 — Outcome: {$deliveryOutcome}",
+                    "Recorded Officer's Return: {$stageType} Attempt {$attemptNumber}/{$maxAttempts} — Outcome: {$deliveryOutcome}",
                     'Paanyaya',
                     $complaintId
                 );
@@ -1499,12 +1507,12 @@ class Paanyaya
                 'delivery_outcome' => $deliveryOutcome,
                 'stage_status' => $newStageStatus,
                 'is_delivered' => $isDelivered,
-                'is_exhausted' => ($attemptNumber >= self::MAX_STAGE_ATTEMPTS && !$isDelivered),
+                'is_exhausted' => ($attemptNumber >= $maxAttempts && !$isDelivered),
                 'message' => $isDelivered
                     ? "Officer's Return recorded: {$stageType} successfully delivered!"
-                    : ($attemptNumber >= self::MAX_STAGE_ATTEMPTS
-                        ? "Officer's Return recorded. All 6 attempts for {$stageType} are exhausted. Case flagged for review."
-                        : "Officer's Return recorded for Attempt {$attemptNumber} of 6.")
+                    : ($attemptNumber >= $maxAttempts
+                        ? "Officer's Return recorded. All {$maxAttempts} attempts for {$stageType} are exhausted. Case flagged for review."
+                        : "Officer's Return recorded for Attempt {$attemptNumber} of {$maxAttempts}.")
             ];
         } catch (Throwable $e) {
             if ($this->conn->inTransaction()) {

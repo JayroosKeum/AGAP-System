@@ -75,7 +75,7 @@ include '../../layouts/header.php';
                 </div>
                 <?php if ($isAdmin): ?>
                     <div>
-                        <a href="../../backend/api/settings/backup-db.php" class="btn-secondary" title="Export complete database backup">
+                        <a href="../../../backend/api/settings/backup-db.php" class="btn-secondary" title="Export complete database backup">
                             💾 Database Backup (.sql)
                         </a>
                     </div>
@@ -668,7 +668,7 @@ include '../../layouts/header.php';
                                             <p class="settings-card-subtitle">Download an immediate SQL database snapshot and inspect active storage volume metrics.</p>
                                         </div>
                                         <div>
-                                            <a href="../../backend/api/settings/backup-db.php" class="btn-primary btn-sm">
+                                            <a href="../../../backend/api/settings/backup-db.php" class="btn-primary btn-sm">
                                                 💾 Download Full Database Backup (.sql)
                                             </a>
                                         </div>
