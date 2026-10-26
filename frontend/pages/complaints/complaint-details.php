@@ -628,19 +628,11 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>
                             <span>Preview KP Form 9</span>
                         </button>
-                        <a id="recordAttendanceBtn" href="#" class="btn-sess-white">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><polyline points="17 11 19 13 23 9"></polyline></svg>
-                            <span>Record Attendance</span>
-                        </a>
-                        <a id="addMinutesBtn" href="#" class="btn-sess-white">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
-                            <span>Add Minutes</span>
-                        </a>
                     </div>
                     <div class="session-btn-group-right">
-                        <a id="recordOutcomeBtn" href="#" class="btn-sess-green">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                            <span>Record Outcome</span>
+                        <a id="openMediationBtn" href="#" onclick="handleOpenMediationWorkspace(event)" class="btn-sess-green">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                            <span>Record Open mediation</span>
                         </a>
                     </div>
                 </div>
@@ -662,9 +654,6 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
                     <span style="font-size: 0.82rem; color: #64748b;">
                         Under RA 7160 Sec. 410(b), mediation is conducted by the Punong Barangay for up to 3 sessions or 15 days before Pangkat referral.
                     </span>
-                    <a id="cwManageMediationLink" href="#" class="btn-case-outline" style="font-size: 0.84rem; padding: 6px 14px;">
-                        Open Mediation Workspace &rarr;
-                    </a>
                 </div>
             </div>
         </div>

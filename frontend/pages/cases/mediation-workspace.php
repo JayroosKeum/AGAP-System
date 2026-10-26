@@ -187,7 +187,20 @@ include '../../layouts/header.php';
                     </div>
                 </div>
 
-                <!-- Section 3: Hearing Session Minutes & Proceedings -->
+                                <!-- Section 2.5: Hearing Session Attendance Card -->
+                <div class="stage-section-card" id="attendanceSection">
+                    <div class="stage-section-header">
+                        <div>
+                            <h3 id="wsAttCardTitle">Hearing Session Attendance</h3>
+                            <p id="wsAttCardSubtitle">Record presider availability, party appearance verification, and statutory attendance rules</p>
+                        </div>
+                    </div>
+                    <div id="wsAttCardBody" style="padding: 18px 24px;">
+                        <div class="empty-detail-state">Loading attendance records...</div>
+                    </div>
+                </div>
+
+<!-- Section 3: Hearing Session Minutes & Proceedings -->
                 <div class="stage-section-card" id="minutesSection">
                     <div class="stage-section-header">
                         <div>
@@ -304,21 +317,6 @@ include '../../layouts/header.php';
             </div>
             <p id="schedMessage" role="status" style="margin: 0; padding: 0 24px 8px; font-size: 0.84rem;"></p>
         </form>
-    </div>
-</div>
-
-<!-- ========================================== -->
-<!-- MODAL 2: Record Attendance                -->
-<!-- ========================================== -->
-<div id="wsAttendanceModal" class="modal" style="display: none;">
-    <div class="modal-content" style="max-width: 650px;">
-        <div class="modal-header">
-            <h2 id="wsAttModalTitle">Record Hearing Attendance</h2>
-            <button type="button" class="close-btn" onclick="closeAttendanceModal()">&times;</button>
-        </div>
-        <div id="wsAttModalBody">
-            <div class="empty-detail-state">Loading party records...</div>
-        </div>
     </div>
 </div>
 

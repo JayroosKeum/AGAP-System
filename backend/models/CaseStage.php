@@ -856,6 +856,7 @@ class CaseStage
 
         $stmt = $this->conn->prepare("
             SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.venue, h.status,
+                   h.queue_status, h.actual_start_time, h.actual_end_time, h.actual_duration_minutes,
                    h.mediation_attempt, h.attempt_exception_reason, h.cancellation_category, h.rescheduled_from_id,
                    h.complainant_attendance, h.respondent_attendance, h.remarks,
                    h.presiding_officer_id, h.substitute_presider_id, h.substitute_reason, h.parties_consent_to_substitute,
@@ -941,6 +942,10 @@ class CaseStage
                 'venue' => $h['venue'],
                 'parties' => $parties,
                 'status' => $h['status'],
+                'queue_status' => $h['queue_status'] ?? 'Waiting',
+                'actual_start_time' => $h['actual_start_time'] ?? null,
+                'actual_end_time' => $h['actual_end_time'] ?? null,
+                'actual_duration_minutes' => $h['actual_duration_minutes'] ? (int) $h['actual_duration_minutes'] : null,
                 'complainant_attendance' => $h['complainant_attendance'] ?: 'Pending',
                 'respondent_attendance' => $h['respondent_attendance'] ?: 'Pending',
                 'presiding_officer_id' => $h['presiding_officer_id'] ? (int) $h['presiding_officer_id'] : null,

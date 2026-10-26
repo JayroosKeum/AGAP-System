@@ -262,6 +262,23 @@ function handlePreviewKp9() {
 }
 window.handlePreviewKp9 = handlePreviewKp9;
 
+function handleOpenMediationWorkspace(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    const data = window.complaintData || {};
+    const comp = data.complaint || data;
+    const stageCaseId = data.case_id || comp.case_id || comp.stage_case_id || (new URLSearchParams(window.location.search)).get('case_id');
+    const complaintId = data.complaint_id || comp.complaint_id || (new URLSearchParams(window.location.search)).get('id');
+
+    if (stageCaseId) {
+        window.location.href = `../cases/mediation-workspace.php?case_id=${encodeURIComponent(stageCaseId)}&complaint_id=${encodeURIComponent(complaintId || '')}`;
+    } else if (complaintId) {
+        window.location.href = `../cases/mediation-workspace.php?complaint_id=${encodeURIComponent(complaintId)}`;
+    } else {
+        window.location.href = '../cases/mediation-workspace.php';
+    }
+}
+window.handleOpenMediationWorkspace = handleOpenMediationWorkspace;
+
 function initialiseDropzone() {
     const dropzone = document.getElementById('evidenceDropzone');
     if (!dropzone) return;
@@ -970,14 +987,13 @@ function renderCaseWorkspace(workspace, complaint) {
     }
 
     // Session Action Buttons
-    const recAttBtn = document.getElementById('recordAttendanceBtn');
-    const addMinBtn = document.getElementById('addMinutesBtn');
-    const recOutBtn = document.getElementById('recordOutcomeBtn');
-
-    if (stageCaseId) {
-        if (recAttBtn) recAttBtn.href = `../cases/mediation-workspace.php?case_id=${encodeURIComponent(stageCaseId)}&action=attendance`;
-        if (addMinBtn) addMinBtn.href = `../cases/mediation-workspace.php?case_id=${encodeURIComponent(stageCaseId)}&action=minutes`;
-        if (recOutBtn) recOutBtn.href = `../cases/mediation-workspace.php?case_id=${encodeURIComponent(stageCaseId)}&action=outcome`;
+    const openMedBtn = document.getElementById('openMediationBtn');
+    if (openMedBtn) {
+        if (stageCaseId) {
+            openMedBtn.href = `../cases/mediation-workspace.php?case_id=${encodeURIComponent(stageCaseId)}&complaint_id=${encodeURIComponent(complaint.complaint_id || '')}`;
+        } else if (complaint.complaint_id) {
+            openMedBtn.href = `../cases/mediation-workspace.php?complaint_id=${encodeURIComponent(complaint.complaint_id)}`;
+        }
     }
 
     // 3. Case Team Assignment

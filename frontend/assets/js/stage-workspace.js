@@ -254,8 +254,23 @@ function renderWorkspaceUI() {
         renderPangkatPanelSection(data, stage);
     }
     renderSessionsList(data, stage);
+    renderAttendanceSection(data, stage);
     renderMinutesSection(data, stage);
     renderOutcomeAndReferralSection(data, stage);
+}
+
+function renderAttendanceSection(data, stage) {
+    const cardBody = document.getElementById('wsAttCardBody');
+    if (!cardBody) return;
+
+    const sessions = stageWorkspaceState.sessions || [];
+    if (!sessions.length) {
+        cardBody.innerHTML = '<div class="empty-detail-state" style="text-align: center; padding: 24px 16px; color: #64748b;">No hearing sessions scheduled yet. Please schedule a session above to record attendance.</div>';
+        return;
+    }
+
+    const targetHearingId = stageWorkspaceState.currentHearingId || stageWorkspaceState.activeSessionHearingId || sessions[0].hearing_id;
+    openAttendanceModal(targetHearingId, false);
 }
 
 /**
@@ -611,8 +626,8 @@ function renderSessionsList(data, stage) {
                                 ▶️ Call to Session / Start Hearing
                             </button>
                             ` : ''}
-                            <button type="button" class="btn-secondary" onclick="handleDocketStandby(${s.hearing_id}, ${isStandby ? 'false' : 'true'})" style="font-size: 0.78rem; padding: 5px 9px; display: inline-flex; align-items: center; gap: 4px;" title="Put on standby to keep room available for other ready cases">
-                                ${isStandby ? 'Resume from Standby' : 'Put on Standby'}
+                            <button type="button" class="btn-secondary" onclick="handleDocketStandby(${s.hearing_id}, ${isStandby ? 'false' : 'true'})" style="font-size: 0.78rem; padding: 5px 9px; display: inline-flex; align-items: center; gap: 4px; ${isStandby ? 'background: #fef3c7; color: #b45309; border-color: #fde68a; font-weight: 700;' : ''}" title="Put on standby to keep room available for other ready cases">
+                                ${isStandby ? '▶️ Resume from Standby' : 'Put on Standby'}
                             </button>
                         ` : ''}
                         ${isInSession ? `
@@ -720,6 +735,12 @@ function formatTimeOnly(dateStr) {
     }
 }
 
+async function reloadWorkspace() {
+    if (typeof loadStageData === 'function') {
+        await loadStageData();
+    }
+}
+
 async function handleDocketCheckIn(hearingId, partyType, status, residentId = null) {
     try {
         const payload = {
@@ -737,7 +758,7 @@ async function handleDocketCheckIn(hearingId, partyType, status, residentId = nu
         const data = await res.json();
         if (data.success) {
             window.agapNotify?.(data.message, 'success');
-            reloadWorkspace();
+            await reloadWorkspace();
         } else {
             notifyUser(data.message || 'Could not update party check-in.', 'error');
         }
@@ -761,7 +782,7 @@ async function handleDocketStandby(hearingId, standby) {
         const data = await res.json();
         if (data.success) {
             window.agapNotify?.(data.message, 'info');
-            reloadWorkspace();
+            await reloadWorkspace();
         } else {
             notifyUser(data.message || 'Could not update standby status.', 'error');
         }
@@ -787,7 +808,7 @@ async function handleDocketStartSession(hearingId) {
         const data = await res.json();
         if (data.success) {
             window.agapNotify?.(data.message, 'success');
-            reloadWorkspace();
+            await reloadWorkspace();
         } else {
             notifyUser(data.message || 'Could not start session.', 'error');
         }
@@ -813,7 +834,7 @@ async function handleDocketConcludeSession(hearingId) {
         const data = await res.json();
         if (data.success) {
             window.agapNotify?.(data.message, 'success');
-            reloadWorkspace();
+            await reloadWorkspace();
         } else {
             notifyUser(data.message || 'Could not conclude session.', 'error');
         }
@@ -823,6 +844,7 @@ async function handleDocketConcludeSession(hearingId) {
     }
 }
 
+window.reloadWorkspace = reloadWorkspace;
 window.handleDocketCheckIn = handleDocketCheckIn;
 window.handleDocketStandby = handleDocketStandby;
 window.handleDocketStartSession = handleDocketStartSession;
@@ -1208,7 +1230,11 @@ function renderMinutesSection(data, stage) {
                             </div>
                         </div>
                         ${!isFinalized ? `
-                            <div style="display: flex; gap: 6px; align-items: center;">
+                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <label style="font-size: 0.74rem; color: #475569; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; background: #f8fafc; border: 1px solid #cbd5e1; padding: 4px 8px; border-radius: 6px;" title="Confirm that this recording or image may be sent to Google Gemini for AI processing">
+                                    <input type="checkbox" id="stageAiConsentCheckbox" checked style="accent-color: #2563eb; cursor: pointer; margin: 0;">
+                                    <span>Consent to Google Gemini AI</span>
+                                </label>
                                 <button type="button" class="btn-secondary" id="btnStageRecordVoice" onclick="toggleStageVoiceRecording()" style="font-size: 0.76rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
                                     <span id="stageRecordVoiceText">Record Voice (STT)</span>
                                 </button>
@@ -1539,8 +1565,12 @@ window.handleMinutesOutcomeChange = handleMinutesOutcomeChange;
  */
 function selectInlineMinutesSession(hearingId) {
     stageWorkspaceState.activeSessionHearingId = Number(hearingId);
+    stageWorkspaceState.currentHearingId = Number(hearingId);
     const stage = (stageWorkspaceState.mode === 'Conciliation') ? stageWorkspaceState.stageData?.conciliation : ((stageWorkspaceState.mode === 'Arbitration') ? stageWorkspaceState.stageData?.arbitration : stageWorkspaceState.stageData?.mediation);
     renderMinutesSection(stageWorkspaceState.stageData, stage || {});
+    if (document.getElementById('wsAttCardBody')) {
+        openAttendanceModal(hearingId, false);
+    }
     const minCard = document.getElementById('minutesSection');
     if (minCard) {
         minCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2416,34 +2446,57 @@ async function submitSchedule(e) {
  * MODAL: Attendance Recording & Proof of Service Verification
  * -----------------------------------------------------------------------------
  */
-async function openAttendanceModal(hearingId) {
+async function openAttendanceModal(hearingId, shouldScroll = true) {
+    const cardBody = document.getElementById('wsAttCardBody');
     const modal = document.getElementById('wsAttendanceModal');
-    if (!modal) return;
-    stageWorkspaceState.currentHearingId = hearingId;
+    if (!cardBody && !modal) return;
+    stageWorkspaceState.currentHearingId = Number(hearingId);
 
     const session = stageWorkspaceState.sessions.find(s => Number(s.hearing_id) === Number(hearingId));
-    const titleEl = document.getElementById('wsAttModalTitle');
-    if (titleEl) {
-        titleEl.textContent = `Record Attendance: ${session ? session.session_number : `Hearing #${hearingId}`}`;
-    }
 
-    const bodyEl = document.getElementById('wsAttModalBody');
-    if (!bodyEl) return;
-    bodyEl.innerHTML = '<div style="text-align: center; padding: 20px;">Loading parties and service records...</div>';
-    modal.style.display = 'flex';
+    if (cardBody) {
+        const titleEl = document.getElementById('wsAttCardTitle');
+        const subTitleEl = document.getElementById('wsAttCardSubtitle');
+        if (titleEl) {
+            titleEl.textContent = `Hearing Session Attendance: ${session ? (session.attempt_label || session.session_number) : `Hearing #${hearingId}`}`;
+        }
+        if (subTitleEl && session) {
+            subTitleEl.textContent = `Scheduled: ${formatDateTimeReadable(session.hearing_date)} · Venue: ${escapeHtml(session.venue || 'Barangay Hall')}`;
+        }
+        cardBody.innerHTML = '<div style="text-align: center; padding: 20px; color: #64748b;">Loading parties and service records...</div>';
+        if (shouldScroll) {
+            document.getElementById('attendanceSection')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    } else if (modal) {
+        const titleEl = document.getElementById('wsAttModalTitle');
+        if (titleEl) {
+            titleEl.textContent = `Record Attendance: ${session ? session.session_number : `Hearing #${hearingId}`}`;
+        }
+        const bodyEl = document.getElementById('wsAttModalBody');
+        if (bodyEl) {
+            bodyEl.innerHTML = '<div style="text-align: center; padding: 20px;">Loading parties and service records...</div>';
+        }
+        modal.style.display = 'flex';
+    }
 
     try {
         const res = await fetch(getStageApiUrl(`hearings/attendance.php?hearing_id=${encodeURIComponent(hearingId)}`));
         const json = await res.json();
+        const targetBody = cardBody || document.getElementById('wsAttModalBody');
         if (!json.success || !json.data) {
-            bodyEl.innerHTML = `<div class="alert alert-danger">${escapeHtml(json.message || 'Could not load attendance details.')}</div>`;
+            if (targetBody) {
+                targetBody.innerHTML = `<div class="alert alert-danger" style="margin: 10px 0;">${escapeHtml(json.message || 'Could not load attendance details.')}</div>`;
+            }
             return;
         }
 
         renderAttendanceModalForm(json.data);
     } catch (err) {
         console.error('openAttendanceModal error:', err);
-        bodyEl.innerHTML = '<div class="alert alert-danger">Network error loading attendance.</div>';
+        const targetBody = cardBody || document.getElementById('wsAttModalBody');
+        if (targetBody) {
+            targetBody.innerHTML = '<div class="alert alert-danger" style="margin: 10px 0;">Network error loading attendance.</div>';
+        }
     }
 }
 
@@ -2453,7 +2506,8 @@ function closeAttendanceModal() {
 }
 
 function renderAttendanceModalForm(data) {
-    const bodyEl = document.getElementById('wsAttModalBody');
+    const isCard = !!document.getElementById('wsAttCardBody');
+    const bodyEl = document.getElementById('wsAttCardBody') || document.getElementById('wsAttModalBody');
     if (!bodyEl) return;
 
     const hearing = data.hearing || data;
@@ -2737,8 +2791,8 @@ function renderAttendanceModalForm(data) {
                 </div>
                 ${rowsHtml}
                 <div class="modal-actions" style="margin-top: 16px; border-top: 1px solid #e2e8f0; padding-top: 14px; display: flex; justify-content: flex-end; gap: 8px;">
-                    <button type="button" class="btn-secondary" onclick="closeAttendanceModal()">Cancel</button>
-                    <button type="submit" class="btn-create" id="submitAttBtn" style="padding: 7px 18px;">Save Attendance Record</button>
+                    ${isCard ? `<button type="button" class="btn-secondary" onclick="openAttendanceModal(${hearingId}, false)">Reset Changes</button>` : `<button type="button" class="btn-secondary" onclick="closeAttendanceModal()">Cancel</button>`}
+                    <button type="submit" class="btn-create" id="submitAttBtn" style="padding: 7px 18px; font-weight: 700;">Save Attendance Record</button>
                 </div>
             </div>
         </form>
@@ -2877,7 +2931,7 @@ async function executeEmergencyReschedule(hearingId, caseId) {
 
         const json = await res.json();
         if (json.success) {
-            const bodyEl = document.getElementById('wsAttModalBody');
+            const bodyEl = document.getElementById('wsAttCardBody') || document.getElementById('wsAttModalBody');
             const newHearingId = json.new_hearing_id || hearingId;
 
             if (bodyEl) {
@@ -3084,8 +3138,21 @@ async function toggleStageVoiceRecording() {
     const btn = document.getElementById('btnStageRecordVoice');
     const textSpan = document.getElementById('stageRecordVoiceText');
     const statusBanner = document.getElementById('stageAiStatusBanner');
+    const consentBox = document.getElementById('stageAiConsentCheckbox');
 
     if (!isStageVoiceRecording) {
+        if (consentBox && !consentBox.checked) {
+            if (confirm('Google Gemini AI is used to transcribe this voice recording. Do you confirm consent to send the audio to Google Gemini?')) {
+                consentBox.checked = true;
+            } else {
+                if (statusBanner) {
+                    statusBanner.style.display = 'block';
+                    statusBanner.innerHTML = '<span style="color:#b91c1c;">Please check the confirmation box "Consent to Google Gemini AI" before recording.</span>';
+                }
+                return;
+            }
+        }
+
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             alert('Microphone recording is not supported in this browser environment.');
             return;
@@ -3159,10 +3226,13 @@ async function sendStageAudioToGemini(audioBlob) {
     const btn = document.getElementById('btnStageRecordVoice');
     const textSpan = document.getElementById('stageRecordVoiceText');
     const statusBanner = document.getElementById('stageAiStatusBanner');
+    const consentBox = document.getElementById('stageAiConsentCheckbox');
 
     try {
         const formData = new FormData();
         formData.append('audio', audioBlob, 'stage_session_recording.webm');
+        const hasConsent = (consentBox ? consentBox.checked : true);
+        formData.append('external_ai_consent', hasConsent ? '1' : '0');
 
         const response = await fetch(getStageApiUrl('ai/transcribe-audio.php'), {
             method: 'POST',
@@ -3205,6 +3275,21 @@ async function handleStageNotesFileSelected(input) {
     const file = input.files[0];
     const statusBanner = document.getElementById('stageAiStatusBanner');
     const uploadBtn = document.getElementById('btnStageUploadNotes');
+    const consentBox = document.getElementById('stageAiConsentCheckbox');
+
+    if (consentBox && !consentBox.checked) {
+        if (confirm('Google Gemini AI is used to extract text from handwritten/printed notes. Do you confirm consent to send this document to Google Gemini?')) {
+            consentBox.checked = true;
+        } else {
+            input.value = '';
+            if (uploadBtn) uploadBtn.disabled = false;
+            if (statusBanner) {
+                statusBanner.style.display = 'block';
+                statusBanner.innerHTML = '<span style="color:#b91c1c;">Please check the confirmation box "Consent to Google Gemini AI" before uploading notes.</span>';
+            }
+            return;
+        }
+    }
 
     if (uploadBtn) uploadBtn.disabled = true;
     if (statusBanner) {
@@ -3215,6 +3300,8 @@ async function handleStageNotesFileSelected(input) {
     try {
         const formData = new FormData();
         formData.append('image', file);
+        const hasConsent = (consentBox ? consentBox.checked : true);
+        formData.append('external_ai_consent', hasConsent ? '1' : '0');
 
         const response = await fetch(getStageApiUrl('ai/ocr-notes.php'), {
             method: 'POST',

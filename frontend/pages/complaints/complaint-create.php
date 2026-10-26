@@ -4022,6 +4022,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const formData = new FormData();
             formData.append('image', file, file.name);
+            formData.append('external_ai_consent', '1');
 
             const resp = await fetch('../../../backend/api/ai/ocr-notes.php', {
                 method: 'POST',
