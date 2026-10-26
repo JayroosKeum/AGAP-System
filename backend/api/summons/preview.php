@@ -214,16 +214,6 @@ if (!$docKp8 || empty($docKp8['file_path'])) {
     $fullKp8Path = $root . '/' . $docKp8['file_path'];
     if (!is_file($fullKp8Path)) {
         $needsKp8Regen = true;
-    } else {
-        $docTime = strtotime($docKp8['generated_at']);
-        if ($hTime && $docTime && $docTime < strtotime($hearing['updated_at'] ?? '')) {
-            $needsKp8Regen = true;
-        } else {
-            $rawPdf = @file_get_contents($fullKp8Path);
-            if ($rawPdf && (str_contains($rawPdf, 'Admin User') || !str_contains($rawPdf, 'AKIKO LYNNE CENTENO'))) {
-                $needsKp8Regen = true;
-            }
-        }
     }
 }
 
@@ -244,17 +234,30 @@ if ($needsKp8Regen) {
         $templateId8 = (int) $tStmt8->fetchColumn() ?: 2;
 
         $userId = (int) ($_SESSION['user_id'] ?? 1);
-        $insDoc8 = $db->prepare("
-            INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
-            VALUES (?, ?, ?, ?, 'For Service', 'Synchronized with current saved hearing schedule')
-        ");
-        $insDoc8->execute([$caseId, $templateId8, $userId, $kp8FilePath]);
-        $newDocId8 = (int) $db->lastInsertId();
+
+        if ($docKp8 && !empty($docKp8['document_id'])) {
+            // Update existing record, NEVER insert a duplicate
+            $updDoc8 = $db->prepare("
+                UPDATE generated_documents
+                SET file_path = ?, service_status = 'Served', regeneration_reason = 'Synchronized with current saved hearing schedule'
+                WHERE document_id = ?
+            ");
+            $updDoc8->execute([$kp8FilePath, $docKp8['document_id']]);
+            $newDocId8 = (int) $docKp8['document_id'];
+        } else {
+            // Initial insert: KP Form 8 (Notice of Hearing to Complainant) is ALWAYS Served upon filing fee payment
+            $insDoc8 = $db->prepare("
+                INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
+                VALUES (?, ?, ?, ?, 'Served', 'Synchronized with current saved hearing schedule')
+            ");
+            $insDoc8->execute([$caseId, $templateId8, $userId, $kp8FilePath]);
+            $newDocId8 = (int) $db->lastInsertId();
+        }
 
         $updDeliv8 = $db->prepare("
             UPDATE summon_deliveries
-            SET document_id = ?
-            WHERE case_id = ? AND party_type = 'Complainant' AND delivery_status = 'Pending'
+            SET document_id = ?, delivery_status = 'Served'
+            WHERE case_id = ? AND party_type = 'Complainant'
         ");
         $updDeliv8->execute([$newDocId8, $caseId]);
 
@@ -262,7 +265,7 @@ if ($needsKp8Regen) {
             'document_id' => $newDocId8,
             'case_id' => $caseId,
             'file_path' => $kp8FilePath,
-            'service_status' => 'For Service',
+            'service_status' => 'Served',
             'template_name' => 'KP Form 8'
         ];
     } catch (Throwable $e) {
@@ -283,16 +286,6 @@ if (!$doc || empty($doc['file_path'])) {
     $fullPath = $root . '/' . $doc['file_path'];
     if (!is_file($fullPath)) {
         $needsRegeneration = true;
-    } else {
-        $docTime = strtotime($doc['generated_at']);
-        if ($hTime && $docTime && $docTime < strtotime($hearing['updated_at'] ?? '')) {
-            $needsRegeneration = true;
-        } else {
-            $rawPdf = @file_get_contents($fullPath);
-            if ($rawPdf && (str_contains($rawPdf, 'Admin User') || !str_contains($rawPdf, 'AKIKO LYNNE CENTENO'))) {
-                $needsRegeneration = true;
-            }
-        }
     }
 }
 
@@ -319,12 +312,24 @@ if ($needsRegeneration) {
         }
 
         $userId = (int) ($_SESSION['user_id'] ?? 1);
-        $insDoc = $db->prepare("
-            INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
-            VALUES (?, ?, ?, ?, 'For Service', 'Synchronized with current saved hearing schedule')
-        ");
-        $insDoc->execute([$caseId, $templateId, $userId, $kp9FilePath]);
-        $newDocId = (int) $db->lastInsertId();
+
+        if ($doc && !empty($doc['document_id'])) {
+            // Update existing record, NEVER insert a duplicate
+            $updDoc = $db->prepare("
+                UPDATE generated_documents
+                SET file_path = ?, regeneration_reason = 'Synchronized with current saved hearing schedule'
+                WHERE document_id = ?
+            ");
+            $updDoc->execute([$kp9FilePath, $doc['document_id']]);
+            $newDocId = (int) $doc['document_id'];
+        } else {
+            $insDoc = $db->prepare("
+                INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
+                VALUES (?, ?, ?, ?, 'For Service', 'Synchronized with current saved hearing schedule')
+            ");
+            $insDoc->execute([$caseId, $templateId, $userId, $kp9FilePath]);
+            $newDocId = (int) $db->lastInsertId();
+        }
 
         // Update summon_deliveries for Respondent
         $updDeliv = $db->prepare("
@@ -340,7 +345,7 @@ if ($needsRegeneration) {
             'document_id' => $newDocId,
             'case_id' => $caseId,
             'file_path' => $kp9FilePath,
-            'service_status' => 'For Service',
+            'service_status' => $doc['service_status'] ?? 'For Service',
             'template_name' => 'KP Form 9'
         ];
     } catch (Throwable $e) {

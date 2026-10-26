@@ -213,19 +213,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!empty($result['success'])) {
         // Sync resident-level attendance records if provided
         if (!empty($parties)) {
-            $hearingAttendance->recordAttendance((int) $hearingId, $parties, (int) $_SESSION['user_id']);
+            try {
+                $hearingAttendance->recordAttendance((int) $hearingId, $parties, (int) $_SESSION['user_id']);
+            } catch (Throwable $e) {
+                error_log('HearingAttendance sync notice: ' . $e->getMessage());
+            }
         }
 
         // Mediation Commencement Service
-        $commencementInput = $inputData;
-        if (!empty($parties)) {
-            $commencementInput['parties'] = $parties;
+        try {
+            $commencementInput = $inputData;
+            if (!empty($parties)) {
+                $commencementInput['parties'] = $parties;
+            }
+            $result['mediation_commencement'] = (new MediationCommencementService())->recordFromAttendance(
+                (int) $hearingId,
+                $commencementInput,
+                (int) $_SESSION['user_id']
+            );
+        } catch (Throwable $e) {
+            error_log('MediationCommencementService notice: ' . $e->getMessage());
         }
-        $result['mediation_commencement'] = (new MediationCommencementService())->recordFromAttendance(
-            (int) $hearingId,
-            $commencementInput,
-            (int) $_SESSION['user_id']
-        );
     }
 
     http_response_code(!empty($result['success']) ? 200 : 422);

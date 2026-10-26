@@ -1122,7 +1122,7 @@ function renderOfficialKpForms(workspace, complaint) {
     const hasScan = Boolean(scanDoc && scanDoc.file_path);
     const filedDate = activeComplaint.created_at ? formatDateReadable(activeComplaint.created_at) : 'N/A';
 
-    const docs = workspace?.documents || [];
+    const rawDocs = workspace?.documents || [];
     const paanyayaStatuses = [
         'Pre-Docketed (Paanyaya)',
         '1st Paanyaya Failed (No-Show)',
@@ -1134,6 +1134,39 @@ function renderOfficialKpForms(workspace, complaint) {
                        Boolean(activeComplaint.resolved_without_docketing) ||
                        (typeof activeComplaint.status === 'string' && activeComplaint.status.toLowerCase().includes('paanyaya'));
     const hasPaanyayaDoc = isPaanyaya || Boolean(activeComplaint.paanyaya);
+
+    // Filter and deduplicate documents:
+    // 1. Skip KP Form 7 because Section 1 explicitly renders the primary complaint form.
+    // 2. Deduplicate duplicate KP Form 8 and KP Form 9 records, favoring 'Served' over 'For Service'.
+    const docs = [];
+    rawDocs.forEach(doc => {
+        const tName = doc.template_name || '';
+        // Skip KP Form 7 as it is already rendered by Section 1
+        if (tName.includes('KP Form 7') || tName.toLowerCase().includes('complaint')) {
+            return;
+        }
+        // Deduplicate KP Form 8 (Notice of Hearing) - Complainant receives personal notice upon filing/fee payment
+        if (tName.includes('KP Form 8') || tName.includes('Notice of Hearing')) {
+            const existing8Idx = docs.findIndex(d => d.template_name?.includes('KP Form 8') || d.template_name?.includes('Notice of Hearing'));
+            if (existing8Idx !== -1) {
+                if (docs[existing8Idx].service_status !== 'Served' && doc.service_status === 'Served') {
+                    docs[existing8Idx] = doc;
+                }
+                return;
+            }
+        }
+        // Deduplicate redundant KP Form 9 preview entries
+        if (tName.includes('KP Form 9') || tName.includes('Summon')) {
+            const existing9Idx = docs.findIndex(d => (d.template_name?.includes('KP Form 9') || d.template_name?.includes('Summon')) && (d.file_path === doc.file_path || (d.service_status === 'Served' && doc.service_status === 'For Service')));
+            if (existing9Idx !== -1) {
+                if (docs[existing9Idx].service_status !== 'Served' && doc.service_status === 'Served') {
+                    docs[existing9Idx] = doc;
+                }
+                return;
+            }
+        }
+        docs.push(doc);
+    });
 
     const totalCount = docs.length + (complaintId > 0 ? (hasPaanyayaDoc ? 2 : 1) : 0);
     const countText = `${totalCount} Issued`;
