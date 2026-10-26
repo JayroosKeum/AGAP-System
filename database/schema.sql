@@ -1154,7 +1154,7 @@ CREATE TABLE ai_logs (
 
 CREATE TABLE generated_reports (
     report_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    report_type ENUM('Monthly', 'Quarterly', 'Annual', 'DILG') NOT NULL,
+    report_type VARCHAR(50) NOT NULL,
     generated_by INT UNSIGNED NULL,
     file_path VARCHAR(1024) NOT NULL,
     generated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -34,12 +34,11 @@ $dashboardLink = [1 => '../dashboard/admin-dashboard.php', 2 => '../dashboard/cl
                     <a href="../cases/case-list.php"<?php echo $isActive(['case-list.php', 'create-case.php', 'case-assignment.php']); ?>><span class="nav-icon" aria-hidden="true"><img src="../../assets/icons/casesandassignments.svg" alt=""></span><span class="nav-link-label">Cases and assignments</span></a>
                 </div>
             </details>
-            <details class="nav-group"<?php echo $isGroupActive(['document-center.php', 'summons.php', 'settlements.php', 'cfa.php', 'kp-form-9.php', 'proof-service.php', 'report-list.php']) ? ' open' : ''; ?> data-nav-group="operations">
+            <details class="nav-group"<?php echo $isGroupActive(['document-center.php', 'summons.php', 'settlements.php', 'cfa.php', 'kp-form-9.php', 'proof-service.php']) ? ' open' : ''; ?> data-nav-group="operations">
                 <summary>Operations</summary>
                 <div class="nav-group-links">
                     <a href="../documents/document-center.php"<?php echo $isActive(['document-center.php', 'summons.php', 'settlements.php', 'cfa.php', 'kp-form-9.php']); ?>><span class="nav-icon" aria-hidden="true"><img src="../../assets/icons/kpdocuments.svg" alt=""></span><span class="nav-link-label">KP Documents and Forms</span></a>
                     <a href="../gps/proof-service.php"<?php echo $isActive(['proof-service.php']); ?>><span class="nav-icon" aria-hidden="true"><img src="../../assets/icons/proofofservice.svg" alt=""></span><span class="nav-link-label">Proof of service</span></a>
-                    <a href="../reports/report-list.php"<?php echo $isActive(['report-list.php']); ?>><span class="nav-icon" aria-hidden="true"><img src="../../assets/icons/reportsandexports.svg" alt=""></span><span class="nav-link-label">Reports and export</span></a>
                 </div>
             </details>
         <?php endif; ?>

@@ -284,9 +284,25 @@ class Report
         ];
     }
 
-    public function getReport(string $startDate, string $endDate): array
+    public function getReport(?string $startDate = null, ?string $endDate = null): array
     {
-        $params = [$startDate, $endDate];
+        $whereCases = '';
+        $whereFiled = '';
+        $params = [];
+        if (!empty($startDate) && !empty($endDate)) {
+            $whereCases = 'WHERE c.docket_date BETWEEN ? AND ?';
+            $whereFiled = 'WHERE DATE(created_at) BETWEEN ? AND ?';
+            $params = [$startDate, $endDate];
+        } elseif (!empty($startDate)) {
+            $whereCases = 'WHERE c.docket_date >= ?';
+            $whereFiled = 'WHERE DATE(created_at) >= ?';
+            $params = [$startDate];
+        } elseif (!empty($endDate)) {
+            $whereCases = 'WHERE c.docket_date <= ?';
+            $whereFiled = 'WHERE DATE(created_at) <= ?';
+            $params = [$endDate];
+        }
+
         $cases = $this->conn->prepare(
             "SELECT c.case_id, c.case_number, c.case_type, c.case_status, c.docket_date,
                     c.archived_date, co.complaint_number, co.complaint_title, co.incident_date,
@@ -300,14 +316,14 @@ class Report
              LEFT JOIN settlements s ON s.case_id = c.case_id
              LEFT JOIN arbitration_records ar ON ar.case_id = c.case_id
              LEFT JOIN cfa_records cf ON cf.case_id = c.case_id
-             WHERE c.docket_date BETWEEN ? AND ?
+             $whereCases
              ORDER BY c.docket_date ASC, c.case_number ASC"
         );
         $cases->execute($params);
         $caseRows = $cases->fetchAll(PDO::FETCH_ASSOC);
 
         $filed = $this->conn->prepare(
-            'SELECT COUNT(*) FROM complaints WHERE DATE(created_at) BETWEEN ? AND ?'
+            "SELECT COUNT(*) FROM complaints $whereFiled"
         );
         $filed->execute($params);
 
@@ -316,7 +332,7 @@ class Report
              FROM cases c
              INNER JOIN complaints co ON co.complaint_id = c.complaint_id
              INNER JOIN complaint_categories cat ON cat.category_id = co.category_id
-             WHERE c.docket_date BETWEEN ? AND ?
+             $whereCases
              GROUP BY cat.category_id, cat.category_name
              ORDER BY total DESC, cat.category_name ASC"
         );
@@ -456,7 +472,7 @@ class Report
 
             FROM cases c
             INNER JOIN complaints co ON co.complaint_id = c.complaint_id
-            LEFT JOIN categories cat ON cat.category_id = co.category_id
+            LEFT JOIN complaint_categories cat ON cat.category_id = co.category_id
             LEFT JOIN complaint_parties cp ON cp.complaint_id = co.complaint_id
                 AND cp.party_type IN ('Complainant','Respondent')
             LEFT JOIN residents r ON r.resident_id = cp.resident_id

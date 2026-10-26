@@ -5,6 +5,7 @@ include '../../layouts/header.php';
 ?>
 
 <link rel="stylesheet" href="../../assets/css/dashboard.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/dashboard.css'); ?>">
+<link rel="stylesheet" href="../../assets/css/reports.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/reports.css'); ?>">
 
 <div class="dashboard-layout">
 

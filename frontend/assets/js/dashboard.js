@@ -743,6 +743,19 @@ document.addEventListener('DOMContentLoaded', () => {
             })
             .then((data) => {
                 const periodLabel = data.period_label || 'Selected Period';
+                state.activePeriodData = {
+                    period: state.period,
+                    periodLabel: periodLabel,
+                    periodSublabel: data.period_sublabel || '',
+                    startDate: data.start_date || null,
+                    endDate: data.end_date || null,
+                    year: data.year || new Date().getFullYear(),
+                    month: data.month || (new Date().getMonth() + 1),
+                    quarter: data.quarter || Math.ceil((new Date().getMonth() + 1) / 3),
+                    cases: data.cases || [],
+                    statusTotals: data.status_totals || {},
+                    todayHearings: data.today_hearings || []
+                };
 
                 setText('totalCases', data.total_cases);
                 setText('pendingReview', data.pending_review);
@@ -904,6 +917,613 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.classList.toggle('active', isActive);
         btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
     });
+
+    // =========================================================================
+    // Reports and Export Dropdown & Modal Logic
+    // =========================================================================
+    const dropdownGenToggle = document.getElementById('btnGenerateReportToggle');
+    const menuGenerate = document.getElementById('menuGenerateReport');
+    const dropdownExportToggle = document.getElementById('btnExportToggle');
+    const menuExport = document.getElementById('menuExport');
+
+    const closeAllDropdowns = () => {
+        if (menuGenerate) menuGenerate.classList.remove('is-open');
+        if (menuExport) menuExport.classList.remove('is-open');
+        if (dropdownGenToggle) {
+            dropdownGenToggle.setAttribute('aria-expanded', 'false');
+            dropdownGenToggle.closest('.dash-dropdown')?.classList.remove('is-open');
+        }
+        if (dropdownExportToggle) {
+            dropdownExportToggle.setAttribute('aria-expanded', 'false');
+            dropdownExportToggle.closest('.dash-dropdown')?.classList.remove('is-open');
+        }
+    };
+
+    if (dropdownGenToggle && menuGenerate) {
+        dropdownGenToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = menuGenerate.classList.contains('is-open');
+            closeAllDropdowns();
+            if (!isOpen) {
+                menuGenerate.classList.add('is-open');
+                dropdownGenToggle.setAttribute('aria-expanded', 'true');
+                dropdownGenToggle.closest('.dash-dropdown')?.classList.add('is-open');
+            }
+        });
+    }
+
+    if (dropdownExportToggle && menuExport) {
+        dropdownExportToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = menuExport.classList.contains('is-open');
+            closeAllDropdowns();
+            if (!isOpen) {
+                menuExport.classList.add('is-open');
+                dropdownExportToggle.setAttribute('aria-expanded', 'true');
+                dropdownExportToggle.closest('.dash-dropdown')?.classList.add('is-open');
+            }
+        });
+    }
+
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.dash-dropdown')) {
+            closeAllDropdowns();
+        }
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closeAllDropdowns();
+            closeReportModal();
+            closeKpModal();
+        }
+    });
+
+    const getReportTypeForActivePeriod = () => {
+        switch (state.period) {
+            case 'weekly': return 'Weekly';
+            case 'monthly': return 'Monthly';
+            case 'quarterly': return 'Quarterly';
+            case 'annual': return 'Annual';
+            case 'all': default: return 'All Time';
+        }
+    };
+
+    const getActiveReportParams = (overrideType = null) => {
+        const ap = state.activePeriodData || {};
+        const type = overrideType || getReportTypeForActivePeriod();
+        return {
+            type,
+            year: ap.year || new Date().getFullYear(),
+            month: ap.month || (new Date().getMonth() + 1),
+            quarter: ap.quarter || Math.ceil((new Date().getMonth() + 1) / 3),
+            start_date: ap.startDate || '',
+            end_date: ap.endDate || '',
+            period_label: ap.periodLabel || 'Report'
+        };
+    };
+
+    // Modal elements for Report Preview
+    const reportModal = document.getElementById('reportPreviewModal');
+    const modalCloseBtn = document.getElementById('modalCloseBtn');
+    const modalCloseFooterBtn = document.getElementById('modalCloseFooterBtn');
+    const modalPrintBtn = document.getElementById('modalPrintBtn');
+    const modalLoading = document.getElementById('modalLoading');
+    const modalContent = document.getElementById('modalContent');
+
+    const openReportModal = () => {
+        if (reportModal) {
+            reportModal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+    };
+
+    const closeReportModal = () => {
+        if (reportModal) {
+            reportModal.style.display = 'none';
+            document.body.style.overflow = '';
+        }
+    };
+
+    if (modalCloseBtn) modalCloseBtn.addEventListener('click', closeReportModal);
+    if (modalCloseFooterBtn) modalCloseFooterBtn.addEventListener('click', closeReportModal);
+    if (reportModal) {
+        reportModal.addEventListener('click', (e) => {
+            if (e.target === reportModal) closeReportModal();
+        });
+    }
+
+    const renderReportPreview = (report) => {
+        const titleEl = document.getElementById('modalReportTitle');
+        const subEl = document.getElementById('modalReportSubtitle');
+        const badgeEl = document.getElementById('modalPeriodBadge');
+
+        if (titleEl) titleEl.textContent = `${report.type} Report: ${report.period_label}`;
+        if (subEl) {
+            const count = (report.cases || []).length;
+            subEl.textContent = `${count} case record${count === 1 ? '' : 's'} included · Docketed activity and status overview`;
+        }
+        if (badgeEl) badgeEl.textContent = report.type;
+
+        // Render Summary Cards
+        const cardsContainer = document.getElementById('modalSummaryCards');
+        if (cardsContainer) {
+            cardsContainer.replaceChildren();
+            const totals = report.totals || {};
+            const keyMetrics = [
+                { key: 'cases_docketed', label: 'Cases Docketed' },
+                { key: 'complaints_filed', label: 'Complaints Filed' },
+                { key: 'settled_cases', label: 'Settled Cases' },
+                { key: 'arbitration_cases', label: 'Arbitration Cases' },
+                { key: 'cfa_issued_cases', label: 'CFA Issued' },
+                { key: 'archived_cases', label: 'Archived Cases' },
+                { key: 'hearings_scheduled', label: 'Hearings' }
+            ];
+            keyMetrics.forEach(({ key, label }) => {
+                const card = document.createElement('div');
+                card.className = 'summary-card';
+                const count = document.createElement('strong');
+                count.textContent = Number(totals[key] ?? 0).toLocaleString();
+                const text = document.createElement('span');
+                text.textContent = label;
+                card.append(count, text);
+                cardsContainer.appendChild(card);
+            });
+        }
+
+        // Render Status Totals
+        const statusEl = document.getElementById('modalStatusTotals');
+        if (statusEl) {
+            statusEl.replaceChildren();
+            const statuses = Object.entries(report.status_totals || {});
+            if (!statuses.length) {
+                statusEl.textContent = 'No cases recorded in this period.';
+            } else {
+                const list = document.createElement('ul');
+                list.className = 'totals-list';
+                statuses.forEach(([name, count]) => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `<span>${escapeHtml(name)}</span><strong>${Number(count).toLocaleString()}</strong>`;
+                    list.appendChild(li);
+                });
+                statusEl.appendChild(list);
+            }
+        }
+
+        // Render Categories
+        const catEl = document.getElementById('modalCategoryTotals');
+        if (catEl) {
+            catEl.replaceChildren();
+            const categories = report.categories || [];
+            if (!categories.length) {
+                catEl.textContent = 'No complaint categories recorded in this period.';
+            } else {
+                const list = document.createElement('ul');
+                list.className = 'totals-list';
+                categories.forEach(item => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `<span>${escapeHtml(item.category_name)}</span><strong>${Number(item.total).toLocaleString()}</strong>`;
+                    list.appendChild(li);
+                });
+                catEl.appendChild(list);
+            }
+        }
+
+        // Render Cases Details Table
+        const casesBody = document.getElementById('modalReportCases');
+        if (casesBody) {
+            casesBody.replaceChildren();
+            const cases = report.cases || [];
+            if (!cases.length) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td colspan="8" class="dashboard-empty-row" style="text-align:center; padding:24px; color:#64748b;">No cases docketed in this period.</td>`;
+                casesBody.appendChild(tr);
+            } else {
+                cases.forEach(item => {
+                    const tr = document.createElement('tr');
+                    const resolution = item.cfa_issuance_date ? `CFA: ${item.cfa_issuance_date}` : item.award_date ? `Award: ${item.award_date}` : item.settlement_date ? `Settlement: ${item.settlement_date}` : item.archived_date ? `Archived: ${item.archived_date}` : '—';
+                    tr.innerHTML = `
+                        <td><strong>${escapeHtml(item.case_number)}</strong></td>
+                        <td>${escapeHtml(item.complaint_title || item.complaint_number || '—')}</td>
+                        <td>${escapeHtml(item.category_name || '—')}</td>
+                        <td>${escapeHtml(item.case_type || '—')}</td>
+                        <td><span class="badge ${getStatusClass(item.case_status)}">${escapeHtml(item.case_status || '—')}</span></td>
+                        <td>${formatDateOnly(item.docket_date)}</td>
+                        <td>${Number(item.hearing_count || 0)}</td>
+                        <td>${escapeHtml(resolution)}</td>
+                    `;
+                    casesBody.appendChild(tr);
+                });
+            }
+        }
+    };
+
+    // Action 1: Preview Report
+    const previewBtn = document.getElementById('itemPreviewReport');
+    if (previewBtn) {
+        previewBtn.addEventListener('click', async () => {
+            closeAllDropdowns();
+            openReportModal();
+            if (modalLoading) {
+                modalLoading.innerHTML = '<div class="dash-spinner"></div><span>Generating report preview...</span>';
+                modalLoading.style.display = 'flex';
+            }
+            if (modalContent) modalContent.style.display = 'none';
+
+            const params = getActiveReportParams();
+            try {
+                const query = new URLSearchParams(params);
+                const res = await fetch(`../../../backend/api/reports/generate.php?${query.toString()}`);
+                const result = await res.json().catch(() => ({}));
+                if (!res.ok || !result.success) {
+                    throw new Error(result.message || 'Unable to generate report preview.');
+                }
+                renderReportPreview(result.data);
+                if (modalLoading) modalLoading.style.display = 'none';
+                if (modalContent) modalContent.style.display = 'block';
+            } catch (err) {
+                if (modalLoading) {
+                    modalLoading.innerHTML = `<p style="color:#ef4444; font-weight:600;">Failed to load preview: ${escapeHtml(err.message)}</p>`;
+                    modalLoading.style.display = 'flex';
+                }
+            }
+        });
+    }
+
+    // Action 2: Print Report
+    const printAction = () => {
+        const params = getActiveReportParams();
+        const query = new URLSearchParams(params);
+        window.open(`../../../backend/api/reports/print.php?${query.toString()}`, '_blank', 'width=950,height=750,noopener,noreferrer');
+    };
+
+    const printItemBtn = document.getElementById('itemPrintReport');
+    if (printItemBtn) {
+        printItemBtn.addEventListener('click', () => {
+            closeAllDropdowns();
+            printAction();
+        });
+    }
+    if (modalPrintBtn) {
+        modalPrintBtn.addEventListener('click', printAction);
+    }
+
+    // Action 3: DILG Report
+    const dilgItemBtn = document.getElementById('itemDilgReport');
+    if (dilgItemBtn) {
+        dilgItemBtn.addEventListener('click', () => {
+            closeAllDropdowns();
+            const ap = state.activePeriodData || {};
+            const query = new URLSearchParams({
+                type: 'DILG',
+                year: ap.year || new Date().getFullYear()
+            });
+            window.open(`../../../backend/api/reports/print.php?${query.toString()}`, '_blank', 'width=950,height=750,noopener,noreferrer');
+        });
+    }
+
+    // Action 4: Export Case Register (Excel .xlsx)
+    const exportRegBtn = document.getElementById('itemExportRegister');
+    if (exportRegBtn) {
+        exportRegBtn.addEventListener('click', async () => {
+            closeAllDropdowns();
+            const ap = state.activePeriodData || {};
+            const payload = {
+                format: 'register_excel',
+                start_date: ap.startDate || '',
+                end_date: ap.endDate || ''
+            };
+            if (window.agapNotify) window.agapNotify('Generating Case Register .xlsx export...', 'info', 'Export');
+            try {
+                const res = await fetch('../../../backend/api/reports/export.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await res.json().catch(() => ({}));
+                if (!res.ok || !result.success) {
+                    throw new Error(result.message || 'Unable to generate Case Register.');
+                }
+                if (window.agapNotify) window.agapNotify(result.message || 'Case Register exported successfully.', 'success', 'Export Complete');
+                window.location.assign(result.download_url);
+            } catch (err) {
+                if (window.agapNotify) window.agapNotify(err.message, 'error', 'Export Failed');
+            }
+        });
+    }
+
+    // =========================================================================
+    // KP Monitoring Form Modal Logic
+    // =========================================================================
+    const kpModal = document.getElementById('kpMonitoringModal');
+    const kpCloseBtn = document.getElementById('kpCloseBtn');
+    const kpCloseFooterBtn = document.getElementById('kpCloseFooterBtn');
+    const kpPrintBtn = document.getElementById('kpPrintBtn');
+    const kpExportExcelBtn = document.getElementById('kpExportExcelBtn');
+    const kpLoading = document.getElementById('kpLoading');
+    const kpPrintableArea = document.getElementById('kpPrintableArea');
+
+    let kpCurrentCases = [];
+
+    const openKpModal = () => {
+        if (kpModal) {
+            kpModal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+    };
+
+    const closeKpModal = () => {
+        if (kpModal) {
+            kpModal.style.display = 'none';
+            document.body.style.overflow = '';
+        }
+    };
+
+    if (kpCloseBtn) kpCloseBtn.addEventListener('click', closeKpModal);
+    if (kpCloseFooterBtn) kpCloseFooterBtn.addEventListener('click', closeKpModal);
+    if (kpModal) {
+        kpModal.addEventListener('click', (e) => {
+            if (e.target === kpModal) closeKpModal();
+        });
+    }
+
+    // Dynamic auto-recalculation for KP Monitoring Form
+    const recalculateKpTotals = () => {
+        const crim = Number(document.getElementById('kpInCriminal')?.value) || 0;
+        const civ = Number(document.getElementById('kpInCivil')?.value) || 0;
+        const oth = Number(document.getElementById('kpInOthers')?.value) || 0;
+        const totalFiled = crim + civ + oth;
+        const elTotalFiled = document.getElementById('kpTotalFiledDisplay');
+        if (elTotalFiled) elTotalFiled.textContent = totalFiled.toLocaleString();
+
+        const med = Number(document.getElementById('kpInMediation')?.value) || 0;
+        const con = Number(document.getElementById('kpInConciliation')?.value) || 0;
+        const arb = Number(document.getElementById('kpInArbitration')?.value) || 0;
+        const totalSettled = med + con + arb;
+        const elTotalSettled = document.getElementById('kpTotalSettledDisplay');
+        if (elTotalSettled) elTotalSettled.textContent = totalSettled.toLocaleString();
+
+        const rep = Number(document.getElementById('kpInRepudiated')?.value) || 0;
+        const drp = Number(document.getElementById('kpInDropped')?.value) || 0;
+        const pnd = Number(document.getElementById('kpInPending')?.value) || 0;
+        const dsm = Number(document.getElementById('kpInDismissed')?.value) || 0;
+        const crt = Number(document.getElementById('kpInCertified')?.value) || 0;
+        const ref = Number(document.getElementById('kpInReferred')?.value) || 0;
+        const totalUnsettled = rep + drp + pnd + dsm + crt + ref;
+        const elTotalUnsettled = document.getElementById('kpTotalUnsettledDisplay');
+        if (elTotalUnsettled) elTotalUnsettled.textContent = totalUnsettled.toLocaleString();
+
+        const savings = totalSettled * 9500;
+        const elSavings = document.getElementById('kpSavingsDisplay');
+        if (elSavings) {
+            elSavings.textContent = `PHP ${savings.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        }
+    };
+
+    // Attach listeners on cell number inputs
+    document.querySelectorAll('.kp-cell-num').forEach(inp => {
+        inp.addEventListener('input', recalculateKpTotals);
+        inp.addEventListener('change', recalculateKpTotals);
+    });
+
+    const populateKpMonitoringData = (data) => {
+        const meta = data.meta || {};
+        const summary = data.summary || {};
+        const cases = data.cases || [];
+        kpCurrentCases = cases;
+
+        const setVal = (id, val) => {
+            const el = document.getElementById(id);
+            if (el && val !== undefined && val !== null) el.value = val;
+        };
+        const setText = (id, txt) => {
+            const el = document.getElementById(id);
+            if (el && txt !== undefined && txt !== null) el.textContent = txt;
+        };
+
+        setVal('kpRegionInput', meta.region || 'NCR');
+        setVal('kpCityInput', meta.city || 'MARIKINA');
+        setVal('kpBarangayInput', meta.barangay || 'TUMANA');
+        setVal('kpQuarterInput', meta.quarter_label || 'Quarter 1');
+        setVal('kpCyInput', meta.cy || new Date().getFullYear());
+        setVal('kpDateAccomplishedInput', meta.date_accomplished || '');
+        setText('kpMonthDisplay', meta.month_label || '');
+
+        setVal('kpInCriminal', summary.criminal ?? 0);
+        setVal('kpInCivil', summary.civil ?? 0);
+        setVal('kpInOthers', summary.others ?? 0);
+
+        setVal('kpInMediation', summary.mediation ?? 0);
+        setVal('kpInConciliation', summary.conciliation ?? 0);
+        setVal('kpInArbitration', summary.arbitration ?? 0);
+
+        setVal('kpInRepudiated', summary.repudiated ?? 0);
+        setVal('kpInDropped', summary.dropped ?? 0);
+        setVal('kpInPending', summary.pending ?? 0);
+        setVal('kpInDismissed', summary.dismissed ?? 0);
+        setVal('kpInCertified', summary.certified ?? 0);
+        setVal('kpInReferred', summary.referred ?? 0);
+
+        setVal('kpPreparedByInput', meta.prepared_by || 'LUPON MEMBER / SECRETARY');
+        setVal('kpNotedByInput', meta.noted_by || 'HON. AKIKO LYNNE CENTENO');
+        setVal('kpAttestedByInput', meta.attested_by || 'PAMELA CONSULTA');
+
+        setText('kpEntriesCount', `Showing ${cases.length} entries`);
+        const tbody = document.getElementById('kpCasesTbody');
+        if (tbody) {
+            tbody.replaceChildren();
+            if (!cases.length) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td colspan="21" class="dashboard-empty-row" style="text-align:center; padding:24px; color:#64748b;">No cases docketed in this period.</td>`;
+                tbody.appendChild(tr);
+            } else {
+                cases.forEach(c => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td><strong>${escapeHtml(c.case_number || '—')}</strong></td>
+                        <td>${escapeHtml(c.complaint_number || '—')}</td>
+                        <td>${escapeHtml(c.case_type || '—')}</td>
+                        <td>${escapeHtml(c.category_name || '—')}</td>
+                        <td>${escapeHtml(c.complaint_title || '—')}</td>
+                        <td>${escapeHtml(c.complainant_name || '—')}</td>
+                        <td>${escapeHtml(c.respondent_name || '—')}</td>
+                        <td>${formatDateOnly(c.incident_date)}</td>
+                        <td>${formatDateOnly(c.docket_date)}</td>
+                        <td>${formatDateOnly(c.summons_issue_date)}</td>
+                        <td>${formatDateOnly(c.summons_serve_date)}</td>
+                        <td>${escapeHtml(c.officer_name || '—')}</td>
+                        <td>${escapeHtml(c.summons_status || '—')}</td>
+                        <td>${escapeHtml(c.summons_sla || '—')}</td>
+                        <td>${Number(c.mediation_sessions || 0)}</td>
+                        <td>${Number(c.conciliation_sessions || 0)}</td>
+                        <td>${formatDateOnly(c.settlement_date)}</td>
+                        <td>${escapeHtml(c.compliance_status || '—')}</td>
+                        <td>${formatDateOnly(c.cfa_issuance_date)}</td>
+                        <td>${escapeHtml(c.cfa_reason || '—')}</td>
+                        <td><span class="badge ${getStatusClass(c.case_status)}">${escapeHtml(c.case_status || '—')}</span></td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+        }
+
+        recalculateKpTotals();
+    };
+
+    // Action 5: KP Monitoring Form Click
+    const kpItemBtn = document.getElementById('itemKpMonitoring');
+    if (kpItemBtn) {
+        kpItemBtn.addEventListener('click', async () => {
+            closeAllDropdowns();
+            openKpModal();
+
+            if (kpLoading) {
+                kpLoading.innerHTML = '<div class="dash-spinner"></div><span>Loading KP Monitoring Form data...</span>';
+                kpLoading.style.display = 'flex';
+            }
+            if (kpPrintableArea) kpPrintableArea.style.display = 'none';
+
+            const ap = state.activePeriodData || {};
+            const query = new URLSearchParams({
+                year: ap.year || new Date().getFullYear(),
+                month: ap.month || (new Date().getMonth() + 1),
+                start_date: ap.startDate || '',
+                end_date: ap.endDate || ''
+            });
+
+            try {
+                const res = await fetch(`../../../backend/api/reports/kp_monitoring.php?${query.toString()}`);
+                const result = await res.json().catch(() => ({}));
+                if (!res.ok || !result.success) {
+                    throw new Error(result.message || 'Unable to load KP Monitoring data.');
+                }
+                populateKpMonitoringData(result);
+                if (kpLoading) kpLoading.style.display = 'none';
+                if (kpPrintableArea) kpPrintableArea.style.display = 'block';
+            } catch (err) {
+                if (kpLoading) {
+                    kpLoading.innerHTML = `<p style="color:#ef4444; font-weight:600;">Failed to load KP Monitoring Form: ${escapeHtml(err.message)}</p>`;
+                    kpLoading.style.display = 'flex';
+                }
+            }
+        });
+    }
+
+    // Print KP Monitoring Form
+    if (kpPrintBtn) {
+        kpPrintBtn.addEventListener('click', () => {
+            window.print();
+        });
+    }
+
+    // Export KP Monitoring Form to Excel (.xlsx)
+    if (kpExportExcelBtn) {
+        kpExportExcelBtn.addEventListener('click', async () => {
+            const getVal = (id) => (document.getElementById(id)?.value ?? '');
+            const getNum = (id) => (Number(document.getElementById(id)?.value) || 0);
+
+            const crim = getNum('kpInCriminal');
+            const civ = getNum('kpInCivil');
+            const oth = getNum('kpInOthers');
+            const totalFiled = crim + civ + oth;
+
+            const med = getNum('kpInMediation');
+            const con = getNum('kpInConciliation');
+            const arb = getNum('kpInArbitration');
+            const totalSettled = med + con + arb;
+
+            const rep = getNum('kpInRepudiated');
+            const drp = getNum('kpInDropped');
+            const pnd = getNum('kpInPending');
+            const dsm = getNum('kpInDismissed');
+            const crt = getNum('kpInCertified');
+            const ref = getNum('kpInReferred');
+            const totalUnsettled = rep + drp + pnd + dsm + crt + ref;
+
+            const savings = totalSettled * 9500;
+
+            const meta = {
+                region: getVal('kpRegionInput') || 'NCR',
+                city: getVal('kpCityInput') || 'MARIKINA',
+                barangay: getVal('kpBarangayInput') || 'TUMANA',
+                quarter_label: getVal('kpQuarterInput') || 'Quarter 1',
+                cy: getVal('kpCyInput') || new Date().getFullYear(),
+                date_accomplished: getVal('kpDateAccomplishedInput') || '',
+                month_label: document.getElementById('kpMonthDisplay')?.textContent || 'KP-Report',
+                prepared_by: getVal('kpPreparedByInput') || 'LUPON MEMBER / SECRETARY',
+                noted_by: getVal('kpNotedByInput') || 'HON. AKIKO LYNNE CENTENO',
+                attested_by: getVal('kpAttestedByInput') || 'PAMELA CONSULTA'
+            };
+
+            const summary = {
+                civil: civ,
+                criminal: crim,
+                others: oth,
+                total_filed: totalFiled,
+                mediation: med,
+                conciliation: con,
+                arbitration: arb,
+                total_settled: totalSettled,
+                repudiated: rep,
+                dropped: drp,
+                pending: pnd,
+                dismissed: dsm,
+                certified: crt,
+                referred: ref,
+                total_unsettled: totalUnsettled,
+                savings: savings.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            };
+
+            const ap = state.activePeriodData || {};
+            const payload = {
+                format: 'kp_monitoring_excel',
+                start_date: ap.startDate || '',
+                end_date: ap.endDate || '',
+                meta,
+                summary,
+                cases: kpCurrentCases
+            };
+
+            if (window.agapNotify) window.agapNotify('Generating KP Monitoring Excel workbook (.xlsx)...', 'info', 'Export');
+            try {
+                const res = await fetch('../../../backend/api/reports/export.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await res.json().catch(() => ({}));
+                if (!res.ok || !result.success) {
+                    throw new Error(result.message || 'Unable to generate KP Monitoring Excel workbook.');
+                }
+                if (window.agapNotify) window.agapNotify(result.message || 'KP Monitoring Excel workbook exported successfully.', 'success', 'Export Complete');
+                window.location.assign(result.download_url);
+            } catch (err) {
+                if (window.agapNotify) window.agapNotify(err.message, 'error', 'Export Failed');
+            }
+        });
+    }
+
+
 
     // Initial load
     fetchDashboardData();

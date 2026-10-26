@@ -40,9 +40,6 @@ document.addEventListener('DOMContentLoaded', () => {
  * without throwing unhandled SyntaxErrors.
  */
 async function safeParseJson(response, fallbackMsg = 'Failed to process server response.') {
-    if (typeof window.safeParseJson === 'function') {
-        return window.safeParseJson(response, fallbackMsg);
-    }
 
     let rawText = '';
     try {

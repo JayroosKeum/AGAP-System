@@ -185,6 +185,30 @@ class ReportController
         }
     }
 
+    public function exportKpMonitoring(array $payload, int $userId): array
+    {
+        $meta = $payload['meta'] ?? [];
+        $summary = $payload['summary'] ?? [];
+        $startDate = !empty($payload['start_date']) ? $payload['start_date'] : null;
+        $endDate   = !empty($payload['end_date'])   ? $payload['end_date']   : null;
+
+        try {
+            $cases = $this->getReportModel()->getCaseRegister($startDate, $endDate);
+            $filePath = $this->service->createKpMonitoringXlsx($meta, $summary, $cases);
+            $reportId = $this->getReportModel()->createGeneratedReport('KP Monitoring Form', $userId, $filePath);
+            $this->getAuditService()->log($userId, 'Exported KP Monitoring Form (Excel)', 'Reports', $reportId);
+            return [
+                'success'      => true,
+                'message'      => 'KP Monitoring Form exported to Excel successfully (' . count($cases) . ' case(s)).',
+                'report_id'    => $reportId,
+                'download_url' => '../../../backend/api/reports/download.php?id=' . $reportId,
+            ];
+        } catch (Throwable $e) {
+            error_log('[exportKpMonitoring] ' . $e->getMessage());
+            return ['success' => false, 'message' => 'Unable to generate KP Monitoring Form Excel. Please try again.'];
+        }
+    }
+
     public function getDownload(int $reportId): ?array
     {
         return $this->getReportModel()->getGeneratedReport($reportId);
@@ -192,35 +216,92 @@ class ReportController
 
     private function validateFilters(array $filters): array
     {
-        $type = trim((string) ($filters['type'] ?? ''));
-        $allowed = ['Monthly', 'Quarterly', 'Annual', 'DILG'];
-        if (!in_array($type, $allowed, true)) {
+        $rawType = trim((string) ($filters['type'] ?? ''));
+        $norm = strtolower($rawType);
+        $typeMap = [
+            'monthly' => 'Monthly',
+            'quarterly' => 'Quarterly',
+            'annual' => 'Annual',
+            'dilg' => 'DILG',
+            'weekly' => 'Weekly',
+            'all' => 'All Time',
+            'all time' => 'All Time',
+        ];
+
+        if (!isset($typeMap[$norm])) {
             return ['success' => false, 'message' => 'Choose a valid report type.'];
         }
-        $year = filter_var($filters['year'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 2000, 'max_range' => (int) date('Y') + 1]]);
+        $type = $typeMap[$norm];
+
+        $now = new DateTime('now');
+        $year = filter_var($filters['year'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 2000, 'max_range' => (int) date('Y') + 5]]);
         if ($year === false) {
-            return ['success' => false, 'message' => 'Choose a valid report year.'];
+            $year = (int) $now->format('Y');
         }
+
+        $start = !empty($filters['start_date']) ? $filters['start_date'] : null;
+        $end = !empty($filters['end_date']) ? $filters['end_date'] : null;
+        $label = !empty($filters['period_label']) ? $filters['period_label'] : null;
         $month = null;
         $quarter = null;
+
         if ($type === 'Monthly') {
             $month = filter_var($filters['month'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 12]]);
-            if ($month === false) return ['success' => false, 'message' => 'Choose a valid month.'];
-            $start = sprintf('%04d-%02d-01', $year, $month);
-            $end = date('Y-m-t', strtotime($start));
-            $label = date('F Y', strtotime($start));
+            if ($month === false && $start) {
+                $month = (int) date('n', strtotime($start));
+            } elseif ($month === false) {
+                $month = (int) $now->format('n');
+            }
+            if (!$start || !$end) {
+                $start = sprintf('%04d-%02d-01', $year, $month);
+                $end = date('Y-m-t', strtotime($start));
+            }
+            if (!$label) {
+                $label = date('F Y', strtotime($start));
+            }
         } elseif ($type === 'Quarterly') {
             $quarter = filter_var($filters['quarter'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 4]]);
-            if ($quarter === false) return ['success' => false, 'message' => 'Choose a valid quarter.'];
-            $firstMonth = (($quarter - 1) * 3) + 1;
-            $start = sprintf('%04d-%02d-01', $year, $firstMonth);
-            $end = date('Y-m-t', strtotime($year . '-' . ($firstMonth + 2) . '-01'));
-            $label = 'Quarter ' . $quarter . ' ' . $year;
+            if ($quarter === false && $start) {
+                $quarter = (int) ceil(date('n', strtotime($start)) / 3);
+            } elseif ($quarter === false) {
+                $quarter = (int) ceil(((int) $now->format('n')) / 3);
+            }
+            if (!$start || !$end) {
+                $firstMonth = (($quarter - 1) * 3) + 1;
+                $start = sprintf('%04d-%02d-01', $year, $firstMonth);
+                $end = date('Y-m-t', strtotime($year . '-' . ($firstMonth + 2) . '-01'));
+            }
+            if (!$label) {
+                $label = 'Quarter ' . $quarter . ' ' . $year;
+            }
+        } elseif ($type === 'Weekly') {
+            if (!$start || !$end) {
+                $dayOfWeek = (int) $now->format('N');
+                $refStart = clone $now;
+                $refStart->modify('-' . ($dayOfWeek - 1) . ' days');
+                $refEnd = clone $refStart;
+                $refEnd->modify('+6 days');
+                $start = $refStart->format('Y-m-d');
+                $end = $refEnd->format('Y-m-d');
+            }
+            if (!$label) {
+                $label = 'Week of ' . date('M j', strtotime($start)) . ' – ' . date('M j, Y', strtotime($end));
+            }
+        } elseif ($type === 'All Time') {
+            $start = null;
+            $end = null;
+            $label = $label ?: 'All Time';
         } else {
-            $start = $year . '-01-01';
-            $end = $year . '-12-31';
-            $label = ($type === 'DILG' ? 'DILG Annual Report ' : 'Annual Report ') . $year;
+            // Annual or DILG
+            if (!$start || !$end) {
+                $start = $year . '-01-01';
+                $end = $year . '-12-31';
+            }
+            if (!$label) {
+                $label = ($type === 'DILG' ? 'DILG Annual Report ' : 'Annual Report ') . $year;
+            }
         }
+
         return ['success' => true, 'start_date' => $start, 'end_date' => $end, 'data' => [
             'type' => $type, 'year' => (int) $year, 'month' => $month, 'quarter' => $quarter,
             'period_label' => $label, 'start_date' => $start, 'end_date' => $end,

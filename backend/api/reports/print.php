@@ -24,8 +24,8 @@ if (!in_array($roleId, [1, 2], true)) {
 require_once __DIR__ . '/../../controllers/ReportController.php';
 
 // ── Parse & validate parameters ──────────────────────────────────────────────
-$type    = in_array($_GET['type'] ?? '', ['Monthly', 'Quarterly', 'Annual', 'DILG'], true)
-           ? $_GET['type'] : 'Monthly';
+$allowedTypes = ['Monthly', 'Quarterly', 'Annual', 'DILG', 'Weekly', 'All Time', 'All'];
+$type    = in_array($_GET['type'] ?? '', $allowedTypes, true) ? $_GET['type'] : 'Monthly';
 $year    = filter_var($_GET['year']    ?? date('Y'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 2000, 'max_range' => 2100]])
            ?: (int) date('Y');
 $month   = filter_var($_GET['month']   ?? date('n'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 12]])
@@ -35,7 +35,15 @@ $quarter = filter_var($_GET['quarter'] ?? ceil(date('n') / 3), FILTER_VALIDATE_I
 
 // ── Fetch report data via controller ─────────────────────────────────────────
 $controller = new ReportController();
-$filters = ['type' => $type, 'year' => $year, 'month' => $month, 'quarter' => $quarter];
+$filters = [
+    'type' => $type,
+    'year' => $year,
+    'month' => $month,
+    'quarter' => $quarter,
+    'start_date' => !empty($_GET['start_date']) ? $_GET['start_date'] : null,
+    'end_date' => !empty($_GET['end_date']) ? $_GET['end_date'] : null,
+    'period_label' => !empty($_GET['period_label']) ? $_GET['period_label'] : null,
+];
 $generated = $controller->generate($filters);
 
 if (!$generated['success']) {
@@ -440,7 +448,12 @@ $printedAt = date('F j, Y \a\t h:i A');
 
 <script>
     // Auto-focus the page for keyboard shortcut Ctrl+P
-    window.addEventListener('load', () => window.focus());
+    window.addEventListener('load', () => {
+        window.focus();
+        <?php if (!empty($_GET['autoprint'])): ?>
+        setTimeout(() => window.print(), 350);
+        <?php endif; ?>
+    });
 </script>
 </body>
 </html>

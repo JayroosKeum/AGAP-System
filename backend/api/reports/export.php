@@ -24,12 +24,12 @@ $userId = (int) $_SESSION['user_id'];
 // Route by format parameter
 $format = strtolower(trim((string) ($input['format'] ?? '')));
 
-if ($format === 'register_excel') {
-    // Case Register Excel export (1-row-per-case with summons timeliness)
-    $result = $controller->exportCaseRegister($input, $userId);
+if ($format === 'kp_monitoring_excel') {
+    // KP Monitoring Form Excel (.xlsx) export
+    $result = $controller->exportKpMonitoring($input, $userId);
 } else {
-    // Default: standard summary CSV
-    $result = $controller->export($input, $userId);
+    // Default: 1-row-per-case Excel (.xlsx) register with the requested 21 columns
+    $result = $controller->exportCaseRegister($input, $userId);
 }
 
 http_response_code($result['success'] ? 201 : 422);
