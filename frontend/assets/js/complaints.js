@@ -1614,19 +1614,29 @@ function renderOfficialKpForms(workspace, complaint) {
         const docId = Number(doc.document_id);
         const tplNameEscaped = String(doc.template_name || 'KP Form').replace(/'/g, "\\'");
 
-        // Check if this KP form needs an Officer's Return (Summons, Notices of Hearing, Subpoenas)
+        // Check if this KP form requires an Officer's Return proof of service
         const tNameLower = (doc.template_name || '').toLowerCase();
+        const isKp12 = tNameLower.includes('kp form 12') 
+            || tNameLower.includes('blg. 12') 
+            || tNameLower.includes('pangkat hearing') 
+            || tNameLower.includes('conciliation hearing');
+
         const needsOfficerReturn = tNameLower.includes('summon') || 
                                    tNameLower.includes('patawag') || 
                                    tNameLower.includes('kp form 9') || 
                                    tNameLower.includes('kp form 8') || 
+                                   tNameLower.includes('kp form 18') || 
+                                   tNameLower.includes('kp form 19') || 
                                    tNameLower.includes('notice of hearing') || 
                                    tNameLower.includes('subpoena') || 
-                                   tNameLower.includes('kp form 13');
+                                   tNameLower.includes('kp form 13') ||
+                                   isKp12;
+
+        const isPangkatNotice = tNameLower.includes('kp form 10') || tNameLower.includes('kp form 11') || tNameLower.includes('kp form 12');
 
         const previewOnClick = (isSummonOrKp9 && typeof openSummonsPreviewModal === 'function')
             ? `openSummonsPreviewModal(${Number(caseId)}, ${docId})`
-            : `openKpDocumentPreviewModal(${docId}, '${tplNameEscaped}', '${caseNumber}')`;
+            : `openKpDocumentPreviewModal(${docId}, '${tplNameEscaped}', '${caseNumber}', ${Number(caseId) || 'null'})`;
 
         rowsHtml += `
             <div class="kp-form-item-row">
@@ -1645,13 +1655,22 @@ function renderOfficialKpForms(workspace, complaint) {
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                     ${needsOfficerReturn ? `
-                        <button type="button" class="btn-small-link" onclick="openDocOfficerReturn(${docId}, ${caseId})" style="color: #2563eb; border-color: #bfdbfe; font-weight: 600;" title="Record Officer's Return for ${escapeHtml(doc.template_name || 'KP Form')}">
+                        <button type="button" 
+                                class="btn-small-link" 
+                                onclick="openDocOfficerReturn(${docId}, ${caseId}, '${tplNameEscaped}')" 
+                                style="color: #2563eb; border-color: #bfdbfe; font-weight: 600;" 
+                                title="Record Officer's Return for ${escapeHtml(doc.template_name || 'KP Form')}">
                             Record / Return
                         </button>
                     ` : ''}
                     <button type="button" class="btn-small-link" onclick="${previewOnClick}" style="color: #4f46e5; border-color: #c7d2fe; font-weight: 600;" title="Preview and Print ${escapeHtml(doc.template_name || 'KP Form')}">
                         Preview / Print
                     </button>
+                    ${isPangkatNotice ? `
+                        <button type="button" class="btn-small-link" onclick="openTriPanelPangkatModal(${caseId})" style="color: #7c3aed; border-color: #ddd6fe; font-weight: 600;" title="Preview All Pangkat Notices (KP 10, 11, 12)">
+                            All Pangkat Notices
+                        </button>
+                    ` : ''}
                     ${doc.file_path ? `
                         <a href="../../../backend/api/documents/download.php?id=${encodeURIComponent(doc.document_id)}&download=1" class="btn-pdf-chip" download title="Download official PDF">
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
@@ -5998,7 +6017,7 @@ function printKp7Iframe() {
 }
 window.printKp7Iframe = printKp7Iframe;
 
-function openKpDocumentPreviewModal(documentId, templateName, caseNumber) {
+function openKpDocumentPreviewModal(documentId, templateName, caseNumber, caseId = null) {
     const modal = document.getElementById('kpDocumentPreviewModal');
     const iframe = document.getElementById('kpDocPreviewIframe');
     const heading = document.getElementById('kpDocModalHeading');
@@ -6006,20 +6025,106 @@ function openKpDocumentPreviewModal(documentId, templateName, caseNumber) {
     const dlBtn = document.getElementById('btnDownloadKpDocPdf');
     if (!modal || !iframe) return;
 
+    const tName = String(templateName || 'KP Form').trim();
     if (heading) {
-        heading.textContent = templateName ? `${templateName} Preview` : 'Official KP Form Preview';
+        heading.textContent = `${tName} Preview`;
     }
     if (sub && caseNumber) {
         sub.textContent = `Barangay Tumana Lupong Tagapamayapa · Case #${caseNumber}`;
     }
-    const pdfUrl = `../../../backend/api/documents/download.php?id=${encodeURIComponent(documentId)}&_t=${Date.now()}`;
-    const dlUrl = `../../../backend/api/documents/download.php?id=${encodeURIComponent(documentId)}&download=1`;
 
-    iframe.src = pdfUrl;
-    if (dlBtn) dlBtn.href = dlUrl;
+    // Use kp-form.php: checks physical file first; if missing, dynamically renders clean, printable HTML
+    let previewUrl = `../../../backend/api/documents/kp-form.php?document_id=${encodeURIComponent(documentId)}&preview=1&bare=1&_t=${Date.now()}`;
+    let downloadUrl = `../../../backend/api/documents/kp-form.php?document_id=${encodeURIComponent(documentId)}&pdf=1`;
+
+    // Fallback using case_id and form_code if document_id is missing
+    const resolvedCaseId = caseId || window.complaintData?.case_id || (new URLSearchParams(window.location.search)).get('case_id');
+    if ((!documentId || Number(documentId) <= 0) && resolvedCaseId) {
+        previewUrl = `../../../backend/api/documents/kp-form.php?case_id=${encodeURIComponent(resolvedCaseId)}&form_code=${encodeURIComponent(tName)}&preview=1&bare=1&_t=${Date.now()}`;
+        downloadUrl = `../../../backend/api/documents/kp-form.php?case_id=${encodeURIComponent(resolvedCaseId)}&form_code=${encodeURIComponent(tName)}&pdf=1`;
+    }
+
+    iframe.src = previewUrl;
+
+    if (dlBtn) {
+        dlBtn.href = downloadUrl;
+        dlBtn.style.display = 'inline-flex';
+    }
+
     modal.style.display = 'flex';
 }
 window.openKpDocumentPreviewModal = openKpDocumentPreviewModal;
+
+function openTriPanelPangkatModal(caseId) {
+    const activeCaseId = caseId || window.complaintData?.case_id || (new URLSearchParams(window.location.search)).get('case_id') || 0;
+    if (!activeCaseId) {
+        if (typeof notifyUser === 'function') {
+            notifyUser('Case ID is required for Pangkat notices preview.', 'warning');
+        } else {
+            alert('Case ID is required for Pangkat notices preview.');
+        }
+        return;
+    }
+    const modal = document.getElementById('pangkatNoticesModal');
+    if (!modal) {
+        console.warn('pangkatNoticesModal element not found in DOM.');
+        return;
+    }
+
+    const complaintId = window.complaintData?.complaint_id || (new URLSearchParams(window.location.search)).get('id') || '';
+    const frame10 = document.getElementById('pangkatPreviewFrameKp10');
+    const frame11 = document.getElementById('pangkatPreviewFrameKp11');
+    const frame12 = document.getElementById('pangkatPreviewFrameKp12');
+    const dl10 = document.getElementById('btnDownloadPangkatKp10');
+    const dl11 = document.getElementById('btnDownloadPangkatKp11');
+    const dl12 = document.getElementById('btnDownloadPangkatKp12');
+    const retComp = document.getElementById('btnPangkatOfficersReturnComp');
+    const retResp = document.getElementById('btnPangkatOfficersReturnResp');
+    const retFull = document.getElementById('btnPangkatOfficerReturnFull');
+
+    const baseApi = `../../../backend/api/documents/kp-form.php`;
+
+    if (frame10) frame10.src = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+10&preview=1&bare=1&_t=${Date.now()}`;
+    if (frame11) frame11.src = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+11&preview=1&bare=1&_t=${Date.now()}`;
+    if (frame12) frame12.src = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+12&preview=1&bare=1&_t=${Date.now()}`;
+
+    if (dl10) dl10.href = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+10&pdf=1`;
+    if (dl11) dl11.href = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+11&pdf=1`;
+    if (dl12) dl12.href = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+12&pdf=1`;
+
+    const gpsUrl = (party) => `../gps/proof-service.php?case_id=${encodeURIComponent(activeCaseId)}&complaint_id=${encodeURIComponent(complaintId)}&stage=Conciliation&form=KP12${party ? `&party=${encodeURIComponent(party)}` : ''}`;
+    if (retComp) retComp.href = gpsUrl('Complainant');
+    if (retResp) retResp.href = gpsUrl('Respondent');
+    if (retFull) retFull.href = gpsUrl();
+
+    modal.style.display = 'flex';
+}
+window.openTriPanelPangkatModal = openTriPanelPangkatModal;
+
+function closeTriPanelPangkatModal() {
+    const modal = document.getElementById('pangkatNoticesModal');
+    if (modal) modal.style.display = 'none';
+}
+window.closeTriPanelPangkatModal = closeTriPanelPangkatModal;
+
+function printPangkatFrame(which) {
+    let frameId = 'pangkatPreviewFrameKp10';
+    if (which === 'kp11') frameId = 'pangkatPreviewFrameKp11';
+    else if (which === 'kp12') frameId = 'pangkatPreviewFrameKp12';
+    const iframe = document.getElementById(frameId);
+    if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+    }
+}
+window.printPangkatFrame = printPangkatFrame;
+
+function printAllPangkatNotices() {
+    ['kp10', 'kp11', 'kp12'].forEach((which, i) => {
+        setTimeout(() => printPangkatFrame(which), i * 1500);
+    });
+}
+window.printAllPangkatNotices = printAllPangkatNotices;
 
 function closeKpDocumentPreviewModal() {
     const modal = document.getElementById('kpDocumentPreviewModal');
@@ -6982,15 +7087,25 @@ window.submitIssuePaanyayaStage = async function(event) {
 };
 
 
-window.openDocOfficerReturn = function(docId, caseId) {
+window.openDocOfficerReturn = function(docId, caseId, templateName = '') {
     const cId = caseId || window.complaintData?.case_id || (new URLSearchParams(window.location.search)).get('case_id');
     const compId = window.complaintData?.complaint_id || (new URLSearchParams(window.location.search)).get('id');
+    const tNameLower = String(templateName || '').toLowerCase();
+
+    const isConciliation = tNameLower.includes('kp form 12') 
+        || tNameLower.includes('blg. 12') 
+        || tNameLower.includes('pangkat');
+
+    const stageParam = isConciliation ? '&stage=Conciliation&form=KP12' : '';
+
     if (cId) {
-        window.location.href = `../gps/proof-service.php?case_id=${encodeURIComponent(cId)}` + (docId ? `&doc_id=${encodeURIComponent(docId)}` : '');
+        window.location.href = `../gps/proof-service.php?case_id=${encodeURIComponent(cId)}${stageParam}` 
+            + (docId ? `&document_id=${encodeURIComponent(docId)}` : '');
     } else if (compId) {
-        window.location.href = `../gps/proof-service.php?complaint_id=${encodeURIComponent(compId)}`;
+        window.location.href = `../gps/proof-service.php?complaint_id=${encodeURIComponent(compId)}${stageParam}`
+            + (docId ? `&document_id=${encodeURIComponent(docId)}` : '');
     } else {
-        window.location.href = '../gps/proof-service.php';
+        window.location.href = `../gps/proof-service.php?${stageParam.replace('&', '')}`;
     }
 };
 

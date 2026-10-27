@@ -675,14 +675,14 @@ class Summons
             ];
         }
 
-        // Conciliation Tuesday afternoon restriction (Barangay Tumana Rule)
-        if ($hearingType === 'Conciliation' && $dow === 2 && $hour >= 12) {
+        // Conciliation Tuesday restriction (Barangay Tumana Rule - Mediation exclusively on Tuesdays)
+        if ($hearingType === 'Conciliation' && $dow === 2) {
             return [
-                'hearing_type' => 'Tuesday Afternoon Restriction',
+                'hearing_type' => 'Tuesday Restriction',
                 'hearing_date' => $hearingDateTime,
                 'venue' => $venue,
                 'case_number' => '',
-                'message' => 'Conciliation hearings on Tuesdays are permitted only in the morning (8:00 AM – 12:00 PM). Tuesday afternoons (1:00 PM – 5:00 PM) are exclusively reserved for Formal Mediation in the Lupon Court Room.'
+                'message' => 'Tuesdays reserved exclusively for Punong Barangay Mediation. Conciliation hearings must be scheduled on non-Tuesday weekdays (Mondays, Wednesdays, Thursdays, or Fridays).'
             ];
         }
 
@@ -829,10 +829,10 @@ class Summons
                 LEFT JOIN complaints co ON co.complaint_id = c.complaint_id
                 WHERE h.case_id = ?
                   AND DATE(h.hearing_date) > ?
-                  AND h.hearing_type = 'Mediation'
-                  AND h.status NOT IN ('Cancelled', 'Office Cancelled')
-            ";
-            $priorParams = [$excludeCaseId, $date];
+                  AND h.hearing_type = ?
+                    AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Completed')
+              ";
+              $priorParams = [$excludeCaseId, $date, ($hearingType === 'Conciliation' ? 'Conciliation' : 'Mediation')];
             if ($excludeHearingId !== null && $excludeHearingId > 0) {
                 $priorCaseSql .= " AND h.hearing_id <> ?";
                 $priorParams[] = $excludeHearingId;

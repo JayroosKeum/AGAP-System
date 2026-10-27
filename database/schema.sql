@@ -682,6 +682,7 @@ CREATE TABLE hearings (
     duration_exceed_reason TEXT NULL,
     venue VARCHAR(255) NOT NULL,
     remarks TEXT NULL,
+    kp12_document_id INT UNSIGNED NULL DEFAULT NULL,
     presiding_officer_id INT UNSIGNED NULL,
     substitute_presider_id INT UNSIGNED NULL,
     substitute_reason TEXT NULL,
@@ -706,6 +707,8 @@ CREATE TABLE hearings (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     KEY idx_hearings_case_id_date (case_id, hearing_date),
     KEY idx_hearings_presiding (presiding_officer_id),
+    KEY idx_hearings_kp12_document (kp12_document_id),
+    CONSTRAINT fk_hearings_kp12_document FOREIGN KEY (kp12_document_id) REFERENCES generated_documents (document_id) ON DELETE SET NULL,
     CONSTRAINT fk_hearings_case
         FOREIGN KEY (case_id) REFERENCES cases (case_id) ON DELETE CASCADE,
     CONSTRAINT fk_hearings_rescheduled_from FOREIGN KEY (rescheduled_from_id) REFERENCES hearings (hearing_id) ON DELETE RESTRICT,
@@ -772,10 +775,10 @@ CREATE TABLE summon_deliveries (
     delivery_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     hearing_id INT UNSIGNED NULL,
     case_id INT UNSIGNED NULL,
-    party_type ENUM('Complainant', 'Respondent') NOT NULL,
+    party_type VARCHAR(50) NOT NULL DEFAULT 'Respondent',
     resident_id INT UNSIGNED NULL,
     party_id INT NULL,
-    form_type ENUM('Notice of Hearing', 'Summon', 'KP Form 18', 'KP Form 19') NOT NULL,
+    form_type VARCHAR(100) NOT NULL DEFAULT 'Notice of Hearing',
     attempt_number TINYINT UNSIGNED NOT NULL DEFAULT 1,
     delivery_status VARCHAR(50) NOT NULL DEFAULT 'Pending',
     service_method VARCHAR(50) NULL,
@@ -790,7 +793,7 @@ CREATE TABLE summon_deliveries (
     remarks TEXT NULL,
     service_address TEXT NULL,
     proof_file_path VARCHAR(500) NULL,
-    document_id INT NULL,
+    document_id INT UNSIGNED NULL DEFAULT NULL,
     created_by INT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -802,7 +805,9 @@ CREATE TABLE summon_deliveries (
     KEY idx_summon_deliveries_case_attempt (case_id, attempt_number),
     CONSTRAINT fk_summon_deliveries_hearing FOREIGN KEY (hearing_id) REFERENCES hearings (hearing_id) ON DELETE CASCADE,
     CONSTRAINT fk_summon_deliveries_resident FOREIGN KEY (resident_id) REFERENCES residents (resident_id) ON DELETE SET NULL,
-    CONSTRAINT fk_summon_deliveries_served_by FOREIGN KEY (served_by) REFERENCES users (user_id) ON DELETE SET NULL
+    CONSTRAINT fk_summon_deliveries_served_by FOREIGN KEY (served_by) REFERENCES users (user_id) ON DELETE SET NULL,
+    CONSTRAINT fk_summon_deliveries_document FOREIGN KEY (document_id) REFERENCES generated_documents (document_id) ON DELETE SET NULL,
+    CONSTRAINT fk_summon_deliveries_case FOREIGN KEY (case_id) REFERENCES cases (case_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 CREATE TABLE show_cause_evaluations (
@@ -1286,7 +1291,46 @@ INSERT INTO system_settings (setting_key, setting_value, description) VALUES
     ('conciliation_max_duration_min', '90', 'Maximum duration before logged justification is required for conciliation'),
     ('mediation_session_interval_days', '3', 'Recommended minimum calendar days between mediation sessions (3-5)'),
     ('party_reschedule_limit', '2', 'Maximum allowed reschedules per party before authorized review is required (1-2)'),
-    ('summons_max_attempts', '3', 'Maximum service attempts before escalation (2-3)'),
+    ('summons_max_attempts', '6', 'Standard cap for summons and officer return delivery attempts before CFA eligibility (1-6)'),
     ('summons_attempt_interval_days', '1', 'Minimum days between summons service attempts (1-3)')
 ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value);
 
+
+
+CREATE OR REPLACE VIEW view_conciliation_hearing_returns AS
+SELECT 
+    h.hearing_id,
+    h.case_id,
+    c.case_number,
+    c.complaint_id,
+    h.hearing_type,
+    h.hearing_date,
+    h.venue,
+    h.status AS hearing_status,
+    h.kp12_document_id,
+    gd.file_path AS kp12_file_path,
+    gd.service_status AS kp12_service_status,
+    gd.generated_at AS kp12_generated_at,
+    sd.delivery_id,
+    sd.party_type AS delivery_party_type,
+    sd.resident_id AS delivery_resident_id,
+    sd.recipient_name,
+    sd.delivery_status,
+    sd.served_at,
+    sd.served_by,
+    sd.service_method,
+    sd.proof_file_path,
+    sd.remarks AS delivery_remarks,
+    hps.service_id AS officer_return_service_id,
+    hps.service_date AS officer_return_service_date,
+    hps.service_result AS officer_return_result,
+    hps.officer_return,
+    hps.serving_officer,
+    TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS serving_officer_name
+FROM hearings h
+INNER JOIN cases c ON c.case_id = h.case_id
+LEFT JOIN generated_documents gd ON gd.document_id = h.kp12_document_id
+LEFT JOIN summon_deliveries sd ON sd.hearing_id = h.hearing_id OR (sd.case_id = h.case_id AND sd.document_id = h.kp12_document_id)
+LEFT JOIN hearing_party_services hps ON hps.hearing_id = h.hearing_id OR (h.kp12_document_id IS NOT NULL AND hps.document_id = h.kp12_document_id)
+LEFT JOIN users u ON u.user_id = COALESCE(hps.serving_officer, sd.served_by, sd.served_by_user_id)
+WHERE h.hearing_type = 'Conciliation';

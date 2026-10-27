@@ -240,7 +240,7 @@ include '../../layouts/header.php';
 
             <div style="padding: 16px 24px 20px; flex: 1;">
                 <p id="wsSchedModalSubtitle" style="margin: 0 0 12px; font-size: 0.85rem; color: #475569; line-height: 1.5;">
-                    In accordance with KP rules, scheduling a conciliation hearing registers the session in the central calendar and generates <strong>KP Form 11 (Notice of Hearing before the Pangkat)</strong>.
+                    In accordance with KP rules, scheduling a conciliation hearing registers the session in the central calendar and generates <strong>KP Form 12 (Notice of Hearing before the Pangkat)</strong>.
                 </p>
 
                 <div id="schedStageRuleHint" style="padding: 10px 14px; border-radius: 6px; font-size: 0.82rem; margin-bottom: 14px; background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; display: flex; align-items: flex-start; gap: 8px;">

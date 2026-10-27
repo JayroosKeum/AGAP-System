@@ -723,6 +723,33 @@ class CaseStage
         $groupStmt->execute([$caseId]);
         $group = $groupStmt->fetch(PDO::FETCH_ASSOC);
 
+        // Resolve KP Forms 10, 11, 12 document IDs for this case
+        $kp10DocId = null;
+        $kp11DocId = null;
+        $kp12DocId = null;
+        try {
+            $docsStmt = $this->conn->prepare("
+                SELECT gd.document_id, dt.template_name
+                FROM generated_documents gd
+                INNER JOIN document_templates dt ON dt.template_id = gd.template_id
+                WHERE gd.case_id = ? AND dt.template_name IN ('KP Form 10', 'KP Form 11', 'KP Form 12')
+                ORDER BY gd.document_id DESC
+            ");
+            $docsStmt->execute([$caseId]);
+            $kpDocs = $docsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($kpDocs as $kd) {
+                if ($kd['template_name'] === 'KP Form 10' && !$kp10DocId) $kp10DocId = (int)$kd['document_id'];
+                elseif ($kd['template_name'] === 'KP Form 11' && !$kp11DocId) $kp11DocId = (int)$kd['document_id'];
+                elseif ($kd['template_name'] === 'KP Form 12' && !$kp12DocId) $kp12DocId = (int)$kd['document_id'];
+            }
+            if (!$kp12DocId) {
+                $hDocStmt = $this->conn->prepare("SELECT kp12_document_id FROM hearings WHERE case_id = ? AND kp12_document_id IS NOT NULL ORDER BY hearing_id DESC LIMIT 1");
+                $hDocStmt->execute([$caseId]);
+                $kp12DocId = (int)$hDocStmt->fetchColumn() ?: null;
+            }
+        } catch (Throwable $e) {}
+
         // Fetch members from pangkat_members joined with users
         $members = [];
         if ($group) {
@@ -836,6 +863,9 @@ class CaseStage
             'member' => $regularMember,
             'challenges' => $challenges,
             'extensions' => $extensions,
+            'kp10_document_id' => $kp10DocId,
+            'kp11_document_id' => $kp11DocId,
+            'kp12_document_id' => $kp12DocId,
             'assignment_status' => $isConstituted ? sprintf('Constituted (%d Members)', count($activeMembers)) : 'Pending Formation'
         ];
     }
@@ -1160,6 +1190,23 @@ class CaseStage
         $selectionNotes = trim((string) ($data['selection_notes'] ?? ''));
         $quorumSize = !empty($data['quorum_size']) ? (int) $data['quorum_size'] : 3;
 
+        $conciliationDate = !empty($data['conciliation_date']) ? date('Y-m-d', strtotime($data['conciliation_date'])) : null;
+        $conciliationTime = !empty($data['conciliation_time']) ? trim($data['conciliation_time']) : null;
+        $venue = !empty($data['venue']) ? trim($data['venue']) : 'Lupon Court Room';
+
+        if ($conciliationDate) {
+            $hearingTimeStr = $conciliationTime ? date('H:i', strtotime($conciliationTime)) : '09:00';
+            require_once __DIR__ . '/Summons.php';
+            $summonsModel = new Summons($this->conn);
+            $conflict = $summonsModel->findMediationConflict("{$conciliationDate} {$hearingTimeStr}", $venue, $caseId, null, 'Conciliation');
+            if ($conflict !== null) {
+                return [
+                    'success' => false,
+                    'message' => $conflict['message'] ?? 'Schedule conflict detected for conciliation hearing.'
+                ];
+            }
+        }
+
         $manageTx = false;
         try {
             if (!$this->conn->inTransaction()) {
@@ -1277,48 +1324,56 @@ class CaseStage
                 }
             }
 
-            // 6. Generate KP Form 10 (Notice to Constitute the Pangkat Tagapagkasundo)
-            require_once __DIR__ . '/../services/PDFService.php';
-            $pdfService = new PDFService();
-            $kp10Result = $pdfService->generateKp10($caseId, $userId, [
-                'venue' => 'Lupon Court Room',
-                'constitution_date' => $referralDate
-            ], $this->conn);
+            // 5.5 Book 1st Conciliation Hearing if conciliation_date provided
+            $conciliationHearingId = null;
+            if ($conciliationDate) {
+                $hearingDateTime = $conciliationDate . ' ' . ($conciliationTime ? date('H:i:s', strtotime($conciliationTime)) : '09:00:00');
+                $insHearing = $this->conn->prepare("
+                    INSERT INTO hearings (
+                        case_id, hearing_type, hearing_date, venue, status,
+                        presiding_officer_id, remarks
+                    ) VALUES (
+                        ?, 'Conciliation', ?, ?, 'Scheduled',
+                        ?, '1st Conciliation Hearing before Pangkat ng Tagapagkasundo'
+                    )
+                ");
+                $insHearing->execute([
+                    $caseId,
+                    $hearingDateTime,
+                    $venue,
+                    $chairmanId ?: null
+                ]);
+                $conciliationHearingId = (int) $this->conn->lastInsertId();
+            }
 
-            // KP Form 12 must be trackable for both parties as soon as the
-            // Pangkat is constituted. The first hearing date may be set later,
-            // so these are deliberately unassigned, pending-service returns.
-            $partiesStmt = $this->conn->prepare("
-                SELECT cp.resident_id, cp.party_type,
-                       TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS recipient_name
-                FROM complaint_parties cp
-                INNER JOIN cases c ON c.complaint_id = cp.complaint_id
-                INNER JOIN residents r ON r.resident_id = cp.resident_id
-                WHERE c.case_id = ? AND cp.party_type IN ('Complainant', 'Respondent')
-            ");
-            $partiesStmt->execute([$caseId]);
-            $kp12DeliveryExists = $this->conn->prepare("
-                SELECT delivery_id FROM summon_deliveries
-                WHERE case_id = ? AND resident_id = ? AND party_type = ?
-                  AND remarks = 'KP Form 12 — Notice of Pangkat Conciliation Hearing'
-                LIMIT 1
-            ");
-            $createKp12Delivery = $this->conn->prepare("
-                INSERT INTO summon_deliveries
-                    (hearing_id, case_id, party_type, resident_id, form_type, delivery_status, recipient_name, created_by, remarks)
-                VALUES (NULL, ?, ?, ?, 'Notice of Hearing', 'Pending', ?, ?, 'KP Form 12 — Notice of Pangkat Conciliation Hearing')
-            ");
-            foreach ($partiesStmt->fetchAll(PDO::FETCH_ASSOC) as $party) {
-                $kp12DeliveryExists->execute([$caseId, $party['resident_id'], $party['party_type']]);
-                if (!$kp12DeliveryExists->fetchColumn()) {
-                    $createKp12Delivery->execute([
-                        $caseId,
-                        $party['party_type'],
-                        $party['resident_id'],
-                        $party['recipient_name'],
-                        $userId
-                    ]);
-                }
+            // 6. Generate and Persist KP Forms 10, 11, and 12
+            require_once __DIR__ . '/../services/KpFormService.php';
+            $kpFormService = new KpFormService($this->conn);
+
+            $kp10Result = $kpFormService->generateAndPersistKp10($caseId, $userId, [
+                'bypass_prerequisites' => true,
+                'venue' => $venue,
+                'constitution_date' => $referralDate
+            ]);
+            $kp10DocId = !empty($kp10Result['document_id']) ? (int) $kp10Result['document_id'] : null;
+
+            $kp11Result = $kpFormService->generateAndPersistKp11($caseId, $userId, [
+                'bypass_prerequisites' => true,
+
+            ]);
+            $kp11DocId = !empty($kp11Result['document_id']) ? (int) $kp11Result['document_id'] : null;
+
+            $kp12Result = $kpFormService->generateAndPersistKp12($caseId, $userId, [
+                'bypass_prerequisites' => true,
+
+                'hearing_id' => $conciliationHearingId,
+                'venue' => $venue
+            ]);
+            $kp12DocId = !empty($kp12Result['document_id']) ? (int) $kp12Result['document_id'] : null;
+
+            if ($conciliationHearingId && $kp12DocId) {
+                $this->conn->prepare("UPDATE hearings SET kp12_document_id = ? WHERE hearing_id = ?")
+                    ->execute([$kp12DocId, $conciliationHearingId]);
             }
 
             // 7. Record Stage Transition Audit
@@ -1349,9 +1404,14 @@ class CaseStage
 
             return [
                 'success' => true,
-                'message' => 'Case successfully referred to Pangkat ng Tagapagkasundo. Conciliation workspace unlocked and KP Form 10 generated.',
+                'message' => 'Case successfully referred to Pangkat ng Tagapagkasundo. Conciliation workspace unlocked, 1st conciliation hearing booked, and KP Forms 10, 11, and 12 generated.',
                 'case_id' => $caseId,
-                'kp10' => $kp10Result
+                'hearing_id' => $conciliationHearingId,
+                'kp10_document_id' => $kp10DocId,
+                'kp11_document_id' => $kp11DocId,
+                'kp12_document_id' => $kp12DocId,
+                'kp10' => $kp10Result,
+                'open_notices_modal' => true
             ];
         } catch (Throwable $e) {
             if ($manageTx && $this->conn->inTransaction()) {
@@ -1384,19 +1444,36 @@ class CaseStage
             ['options' => ['min_range' => 1]]
         );
 
-        if (!$chairmanId || !$secretaryId || !$memberId) {
-            return [
-                'valid' => false,
-                'message' => 'Choose a Head, Secretary, and Member before referring the case to Pangkat.'
-            ];
-        }
+        $quorumSize = !empty($data['quorum_size']) ? (int) $data['quorum_size'] : 3;
+        if ($quorumSize === 2) {
+            if (!$chairmanId || !$secretaryId) {
+                return [
+                    'valid' => false,
+                    'message' => 'Choose a Head and Secretary before referring the case to Pangkat.'
+                ];
+            }
+            if ($chairmanId === $secretaryId) {
+                return [
+                    'valid' => false,
+                    'message' => 'The Pangkat Head and Secretary must be two different active Lupon Members.'
+                ];
+            }
+            $memberIds = array_filter([(int) $chairmanId, (int) $secretaryId, $memberId ? (int) $memberId : null]);
+        } else {
+            if (!$chairmanId || !$secretaryId || !$memberId) {
+                return [
+                    'valid' => false,
+                    'message' => 'Choose a Head, Secretary, and Member before referring the case to Pangkat.'
+                ];
+            }
 
-        $memberIds = [(int) $chairmanId, (int) $secretaryId, (int) $memberId];
-        if (count(array_unique($memberIds)) !== 3) {
-            return [
-                'valid' => false,
-                'message' => 'The Pangkat Head, Secretary, and Member must be three different active Lupon Members.'
-            ];
+            $memberIds = [(int) $chairmanId, (int) $secretaryId, (int) $memberId];
+            if (count(array_unique($memberIds)) !== 3) {
+                return [
+                    'valid' => false,
+                    'message' => 'The Pangkat Head, Secretary, and Member must be three different active Lupon Members.'
+                ];
+            }
         }
 
         require_once __DIR__ . '/Assignment.php';

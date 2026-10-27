@@ -75,6 +75,7 @@ async function openSummonsPreviewModal(caseId, documentId = null, hearingId = nu
     if (gridEl) gridEl.style.display = 'none';
     if (frameKp8) frameKp8.srcdoc = '';
     if (frameKp9) frameKp9.srcdoc = '';
+
     if (errorEl) errorEl.style.display = 'none';
 
     [btnPrintBoth, btnPrint, btnContinue].forEach(btn => {
@@ -222,12 +223,16 @@ async function openSummonsPreviewModal(caseId, documentId = null, hearingId = nu
 }
 
 function closeSummonsPreviewModal() {
+    if (typeof window.onSummonsPreviewClosed === 'function') {
+        window.onSummonsPreviewClosed();
+    }
     const modal = document.getElementById('summonsPreviewModal');
     if (modal) modal.style.display = 'none';
     const frameKp8 = document.getElementById('summonsPreviewFrameKp8');
     const frameKp9 = document.getElementById('summonsPreviewFrameKp9');
     if (frameKp8) frameKp8.srcdoc = '';
     if (frameKp9) frameKp9.srcdoc = '';
+
 }
 
 function retrySummonsPreview() {

@@ -375,6 +375,65 @@ function printAllPangkatNotices() {
 }
 window.printAllPangkatNotices = printAllPangkatNotices;
 
+function openKpDocumentPreviewModal(documentId, templateName, caseNumber, caseId = null) {
+    const modal = document.getElementById('kpDocumentPreviewModal');
+    const iframe = document.getElementById('kpDocPreviewIframe');
+    const heading = document.getElementById('kpDocModalHeading');
+    const sub = document.getElementById('kpDocModalSub');
+    const dlBtn = document.getElementById('btnDownloadKpDocPdf');
+    if (!modal || !iframe) return;
+
+    const tName = String(templateName || 'KP Form').trim();
+    if (heading) {
+        heading.textContent = `${tName} Preview`;
+    }
+    if (sub && caseNumber) {
+        sub.textContent = `Barangay Tumana Lupong Tagapamayapa · Case #${caseNumber}`;
+    }
+
+    const baseApi = (typeof getStageApiUrl === 'function')
+        ? getStageApiUrl('documents/kp-form.php')
+        : `../../../backend/api/documents/kp-form.php`;
+
+    // Use kp-form.php: checks physical file first; if missing, dynamically renders clean, printable HTML
+    let previewUrl = `${baseApi}?document_id=${encodeURIComponent(documentId)}&preview=1&bare=1&_t=${Date.now()}`;
+    let downloadUrl = `${baseApi}?document_id=${encodeURIComponent(documentId)}&pdf=1`;
+
+    // Fallback using case_id and form_code if document_id is missing
+    const resolvedCaseId = caseId || stageWorkspaceState?.caseId || (new URLSearchParams(window.location.search)).get('case_id');
+    if ((!documentId || Number(documentId) <= 0) && resolvedCaseId) {
+        previewUrl = `${baseApi}?case_id=${encodeURIComponent(resolvedCaseId)}&form_code=${encodeURIComponent(tName)}&preview=1&bare=1&_t=${Date.now()}`;
+        downloadUrl = `${baseApi}?case_id=${encodeURIComponent(resolvedCaseId)}&form_code=${encodeURIComponent(tName)}&pdf=1`;
+    }
+
+    iframe.src = previewUrl;
+
+    if (dlBtn) {
+        dlBtn.href = downloadUrl;
+        dlBtn.style.display = 'inline-flex';
+    }
+
+    modal.style.display = 'flex';
+}
+window.openKpDocumentPreviewModal = openKpDocumentPreviewModal;
+
+function closeKpDocumentPreviewModal() {
+    const modal = document.getElementById('kpDocumentPreviewModal');
+    const iframe = document.getElementById('kpDocPreviewIframe');
+    if (iframe) iframe.src = 'about:blank';
+    if (modal) modal.style.display = 'none';
+}
+window.closeKpDocumentPreviewModal = closeKpDocumentPreviewModal;
+
+function printKpDocIframe() {
+    const iframe = document.getElementById('kpDocPreviewIframe');
+    if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+    }
+}
+window.printKpDocIframe = printKpDocIframe;
+
 function legacyOpenKPFormPreview(caseId, formCode, hearingId = null) {
     if (!caseId) {
         notifyUser('Case ID is required to preview document.', 'warning');
@@ -3871,6 +3930,262 @@ async function submitRecordOutcome(e) {
  * MODAL: Refer to Pangkat ng Tagapagkasundo (KP Form 10)
  * -----------------------------------------------------------------------------
  */
+let referCalendarWindowMeta = null;
+
+function initReferCalendar() {
+    const dateInput = document.getElementById('referConciliationDate');
+    const today = new Date();
+    
+    // Set min date to tomorrow
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const minDateStr = tomorrow.toISOString().split('T')[0];
+    if (dateInput) {
+        dateInput.min = minDateStr;
+        if (!dateInput.value) {
+            // Pick next non-Tuesday weekday (Mon=1, Wed=3, Thu=4, Fri=5)
+            let cur = new Date(tomorrow);
+            while (cur.getDay() === 0 || cur.getDay() === 6 || cur.getDay() === 2) {
+                cur.setDate(cur.getDate() + 1);
+            }
+            dateInput.value = cur.toISOString().split('T')[0];
+        }
+    }
+
+    const timeInput = document.getElementById('referConciliationTime');
+    if (timeInput && !timeInput.value) {
+        timeInput.value = '09:00';
+    }
+
+    checkReferScheduleConflict();
+}
+
+function handleReferDateInputChange() {
+    const dateInput = document.getElementById('referConciliationDate');
+    const conflictAlert = document.getElementById('referScheduleConflictAlert');
+    if (!dateInput || !dateInput.value) return;
+
+    const selectedDate = new Date(dateInput.value + 'T00:00:00');
+    const dow = selectedDate.getDay();
+
+    if (dow === 0 || dow === 6) {
+        if (conflictAlert) {
+            conflictAlert.textContent = 'Conciliation hearings cannot be scheduled on weekends.';
+            conflictAlert.style.display = 'block';
+        }
+        return;
+    }
+
+    if (dow === 2) {
+        if (conflictAlert) {
+            conflictAlert.textContent = 'Tuesdays reserved exclusively for Punong Barangay Mediation. Conciliation hearings must be scheduled on non-Tuesday weekdays (Mondays, Wednesdays, Thursdays, or Fridays).';
+            conflictAlert.style.display = 'block';
+        }
+        return;
+    }
+
+    if (conflictAlert) conflictAlert.style.display = 'none';
+
+    if (referCalendarWindowMeta) {
+        renderReferVisualDays(referCalendarWindowMeta, dateInput.value);
+    }
+    checkReferScheduleConflict();
+}
+
+function selectReferConciliationSlot(timeStr) {
+    const timeInput = document.getElementById('referConciliationTime');
+    if (timeInput) timeInput.value = timeStr;
+
+    document.querySelectorAll('#referSlotBtnGroup .refer-slot-btn').forEach(btn => {
+        if (btn.dataset.time === timeStr) {
+            btn.classList.add('active');
+            btn.style.borderColor = '#0284c7';
+            btn.style.background = '#e0f2fe';
+            btn.style.color = '#0369a1';
+            btn.style.borderWidth = '1.5px';
+        } else {
+            btn.classList.remove('active');
+            btn.style.borderColor = '#cbd5e1';
+            btn.style.background = '#ffffff';
+            btn.style.color = '#334155';
+            btn.style.borderWidth = '1px';
+        }
+    });
+
+    checkReferScheduleConflict();
+}
+
+function selectReferVisualDate(dateStr) {
+    const dateInput = document.getElementById('referConciliationDate');
+    if (!dateInput) return;
+    dateInput.value = dateStr;
+
+    if (referCalendarWindowMeta) {
+        renderReferVisualDays(referCalendarWindowMeta, dateStr);
+    }
+    checkReferScheduleConflict();
+}
+
+function renderReferVisualDays(windowMeta, selectedDate) {
+    const gridEl = document.getElementById('referVisualDayGrid');
+    const noticeEl = document.getElementById('referVisualDateStatusNotice');
+    const monthLabelEl = document.getElementById('referCalendarMonthLabel');
+    const capacityBadge = document.getElementById('referCourtroomCapacityBadge');
+    if (!gridEl) return;
+
+    const days = windowMeta?.daily_slots ? Object.values(windowMeta.daily_slots) : [];
+    if (!days.length) {
+        gridEl.innerHTML = '<div style="color: #64748b; font-size: 0.78rem; grid-column: 1 / -1; text-align: center; padding: 12px;">No available conciliation slots.</div>';
+        return;
+    }
+
+    if (monthLabelEl && days.length > 0) {
+        const firstDay = days[0];
+        monthLabelEl.textContent = `· ${firstDay.month_name || ''} ${new Date(firstDay.date).getFullYear()}`;
+    }
+
+    gridEl.innerHTML = days.map(d => {
+        const isSelected = (d.date === selectedDate);
+        const dayDate = new Date(d.date + 'T00:00:00');
+        const isTuesday = (dayDate.getDay() === 2);
+        const isWeekend = (d.is_weekend || dayDate.getDay() === 0 || dayDate.getDay() === 6);
+
+        let badgeText = `${d.available ?? 4} open`;
+        let badgeBg = '#dcfce7';
+        let badgeColor = '#15803d';
+        let cardStyle = 'border: 1px solid #cbd5e1; background: #ffffff; color: #1e293b; cursor: pointer;';
+        let disabledAttr = '';
+        let tooltip = `${d.date}: ${d.available ?? 4} of ${d.max ?? 4} conciliation slots open.`;
+
+        if (d.is_past) {
+            badgeText = 'Past';
+            badgeBg = '#f1f5f9';
+            badgeColor = '#94a3b8';
+            cardStyle = 'border: 1px solid #e2e8f0; background: #f8fafc; color: #94a3b8; cursor: not-allowed; opacity: 0.5;';
+            disabledAttr = 'disabled';
+            tooltip = `${d.date}: Past date cannot be scheduled.`;
+        } else if (isWeekend || d.is_non_working_day) {
+            badgeText = d.is_non_working_day ? 'Holiday' : 'Weekend';
+            badgeBg = '#f1f5f9';
+            badgeColor = '#64748b';
+            cardStyle = 'border: 1px dashed #cbd5e1; background: #f8fafc; color: #64748b; cursor: not-allowed; opacity: 0.5;';
+            disabledAttr = 'disabled';
+            tooltip = `${d.date}: ${d.is_non_working_day ? 'Holiday' : 'Weekend'}. Closed for conciliation.`;
+        } else if (isTuesday) {
+            badgeText = 'PB Only';
+            badgeBg = '#fee2e2';
+            badgeColor = '#991b1b';
+            cardStyle = 'border: 1px solid #fecaca; background: #fef2f2; color: #991b1b; cursor: not-allowed; opacity: 0.7;';
+            disabledAttr = 'disabled';
+            tooltip = `${d.date}: Tuesdays reserved exclusively for Punong Barangay Mediation. Conciliation hearings must be scheduled on non-Tuesday weekdays (Mondays, Wednesdays, Thursdays, or Fridays).`;
+        } else if (d.is_fully_booked || (d.available !== undefined && d.available <= 0)) {
+            badgeText = 'Full';
+            badgeBg = '#fee2e2';
+            badgeColor = '#b91c1c';
+            cardStyle = 'border: 1px solid #fecaca; background: #fff1f2; color: #881337; cursor: not-allowed; opacity: 0.65;';
+            disabledAttr = 'disabled';
+            tooltip = `${d.date}: Fully booked.`;
+        }
+
+        if (isSelected && !disabledAttr) {
+            cardStyle = 'border: 2px solid #0284c7; background: #e0f2fe; color: #0369a1; box-shadow: 0 0 0 2px rgba(2,132,199,0.25); font-weight: 700; cursor: pointer;';
+            badgeBg = '#0284c7';
+            badgeColor = '#ffffff';
+        }
+
+        return `
+            <div class="refer-day-card ${isSelected ? 'active' : ''}"
+                 onclick="${disabledAttr ? '' : `selectReferVisualDate('${d.date}')`}"
+                 title="${escapeHtml(tooltip)}"
+                 style="border-radius: 6px; padding: 6px 4px; text-align: center; transition: all 0.15s; user-select: none; ${cardStyle}">
+                <div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em;">
+                    ${escapeHtml(d.day_name || '')}
+                </div>
+                <div style="font-size: 0.85rem; font-weight: 800; margin: 2px 0;">
+                    ${d.day_num ?? ''} ${escapeHtml(d.month_name || '')}
+                </div>
+                <div style="font-size: 0.65rem; font-weight: 700; padding: 1px 4px; border-radius: 4px; background: ${badgeBg}; color: ${badgeColor}; display: inline-block;">
+                    ${badgeText}
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    if (noticeEl && selectedDate) {
+        const selDay = days.find(d => d.date === selectedDate);
+        if (selDay) {
+            const dayDate = new Date(selectedDate + 'T00:00:00');
+            if (dayDate.getDay() === 2) {
+                noticeEl.innerHTML = `<span style="color: #dc2626; font-weight: 600;">Tuesdays are reserved exclusively for PB Mediation. Select Mon, Wed, Thu, or Fri.</span>`;
+            } else if (selDay.is_fully_booked || selDay.available <= 0) {
+                noticeEl.innerHTML = `<span style="color: #dc2626; font-weight: 600;">Selected date is fully booked. Choose another conciliation day.</span>`;
+            } else {
+                noticeEl.innerHTML = `<span style="color: #15803d; font-weight: 600;">Conciliation date selected: ${selDay.available ?? 4} slots open.</span>`;
+            }
+        }
+    }
+}
+
+async function checkReferScheduleConflict() {
+    const dateInput = document.getElementById('referConciliationDate');
+    const timeInput = document.getElementById('referConciliationTime');
+    const venueInput = document.getElementById('referConciliationVenue');
+    const conflictAlert = document.getElementById('referScheduleConflictAlert');
+    const capacityBadge = document.getElementById('referCourtroomCapacityBadge');
+    const caseId = stageWorkspaceState.caseId;
+
+    if (!dateInput || !dateInput.value) return;
+
+    const dateVal = dateInput.value;
+    const timeVal = timeInput ? timeInput.value : '09:00';
+    const venueVal = venueInput ? venueInput.value : 'Lupon Court Room';
+
+    const params = new URLSearchParams();
+    params.set('date', dateVal);
+    params.set('time', timeVal);
+    params.set('venue', venueVal);
+    if (caseId) params.set('case_id', caseId);
+    params.set('hearing_type', 'Conciliation');
+    params.set('get_window', '1');
+
+    try {
+        const response = await fetch(getStageApiUrl(`summons/check-schedule.php?${params.toString()}`));
+        const result = await response.json();
+
+        if (result.window) {
+            referCalendarWindowMeta = result.window;
+            renderReferVisualDays(result.window, dateVal);
+        }
+
+        if (!response.ok || !result.success) {
+            if (conflictAlert && result.message) {
+                conflictAlert.textContent = `Schedule Notice: ${result.message}`;
+                conflictAlert.style.display = 'block';
+            }
+            if (capacityBadge) {
+                capacityBadge.style.background = '#fee2e2';
+                capacityBadge.style.color = '#991b1b';
+                capacityBadge.textContent = 'Conflict / Blocked';
+            }
+            return;
+        }
+
+        if (conflictAlert) {
+            conflictAlert.style.display = 'none';
+        }
+
+        if (capacityBadge) {
+            const avail = result.available_slots !== undefined ? result.available_slots : (4 - (result.total_booked || 0));
+            const max = result.max_slots || 4;
+            capacityBadge.style.background = avail > 0 ? '#dcfce7' : '#fee2e2';
+            capacityBadge.style.color = avail > 0 ? '#15803d' : '#991b1b';
+            capacityBadge.textContent = `${avail} of ${max} slots available`;
+        }
+    } catch (err) {
+        console.warn('checkReferScheduleConflict error:', err);
+    }
+}
+
 function openReferPangkatModal() {
     const modal = document.getElementById('wsReferPangkatModal');
     if (!modal) return;
@@ -3879,6 +4194,7 @@ function openReferPangkatModal() {
         dateInput.value = new Date().toISOString().split('T')[0];
     }
     populateLuponDropdowns();
+    initReferCalendar();
     goReferralStep(1);
     modal.style.display = 'flex';
 }
@@ -3892,16 +4208,124 @@ function goReferralStep(step) {
     if (step === 2) {
         const reason = document.getElementById('referReason')?.value.trim();
         const date = document.getElementById('referDate')?.value;
-        if (!date || !reason) { alert('Enter the referral date and authorized referral justification before continuing.'); return; }
+        const concDate = document.getElementById('referConciliationDate')?.value;
+        const concTime = document.getElementById('referConciliationTime')?.value;
+        const venue = document.getElementById('referConciliationVenue')?.value.trim();
+
+        if (!date || !reason) {
+            alert('Enter the referral date and authorized referral justification before continuing.');
+            return;
+        }
+        if (!concDate) {
+            alert('Please select a 1st Conciliation Hearing date.');
+            return;
+        }
+        const dObj = new Date(concDate + 'T00:00:00');
+        const dow = dObj.getDay();
+        if (dow === 0 || dow === 6) {
+            alert('Conciliation hearings cannot be scheduled on weekends.');
+            return;
+        }
+        if (dow === 2) {
+            alert('Tuesdays reserved exclusively for Punong Barangay Mediation. Conciliation hearings must be scheduled on non-Tuesday weekdays (Mondays, Wednesdays, Thursdays, or Fridays).');
+            return;
+        }
+        if (!concTime) {
+            alert('Please select a Conciliation time slot.');
+            return;
+        }
+        if (!venue) {
+            alert('Please provide a hearing venue.');
+            return;
+        }
     }
+
     if (step === 3) {
-        const ids = ['referChairmanId', 'referSecretaryId', 'referMemberId'].map((id) => document.getElementById(id)?.value);
-        if (ids.some((id) => !id) || new Set(ids).size !== 3) { alert('Choose three different active Lupon Members before reviewing the referral.'); return; }
+        const quorumSize = Number(document.getElementById('referQuorumSize')?.value || 3);
+        const chairmanId = document.getElementById('referChairmanId')?.value;
+        const secretaryId = document.getElementById('referSecretaryId')?.value;
+        const memberId = document.getElementById('referMemberId')?.value;
+        const quorumReason = document.getElementById('referQuorumReason')?.value.trim();
+
+        if (quorumSize === 2) {
+            if (!chairmanId || !secretaryId) {
+                alert('Choose both a Chairperson and a Secretary for the 2-member quorum.');
+                return;
+            }
+            if (chairmanId === secretaryId) {
+                alert('Chairperson and Secretary must be different Lupon members.');
+                return;
+            }
+            if (!quorumReason) {
+                alert('Please provide a justification for the 2-member quorum exception.');
+                return;
+            }
+        } else {
+            const ids = [chairmanId, secretaryId, memberId];
+            if (ids.some(id => !id) || new Set(ids).size !== 3) {
+                alert('Choose three different active Lupon Members before reviewing the referral.');
+                return;
+            }
+        }
+
         const nameFor = (id) => document.getElementById(id)?.selectedOptions?.[0]?.textContent || 'Not selected';
         const summary = document.getElementById('referReviewSummary');
-        if (summary) summary.innerHTML = `<strong>Step 3 of 3: Review and confirm</strong><br><br><strong>Referral date:</strong> ${escapeHtml(document.getElementById('referDate')?.value || '')}<br><strong>Head:</strong> ${escapeHtml(nameFor('referChairmanId'))}<br><strong>Secretary:</strong> ${escapeHtml(nameFor('referSecretaryId'))}<br><strong>Member:</strong> ${escapeHtml(nameFor('referMemberId'))}<br><br>The system will record the statutory Pangkat convening deadline and generate KP Form 10.`;
+        const concDate = document.getElementById('referConciliationDate')?.value || '';
+        const concTime = document.getElementById('referConciliationTime')?.value || '';
+        const venue = document.getElementById('referConciliationVenue')?.value || 'Lupon Court Room';
+        const refDate = document.getElementById('referDate')?.value || '';
+        const refReason = document.getElementById('referReason')?.value || '';
+        const selMethod = document.getElementById('referSelectionMethod')?.value || 'Party Agreement';
+
+        if (summary) {
+            summary.innerHTML = `
+                <div style="font-weight: 800; font-size: 0.95rem; margin-bottom: 8px; color: #1e3a8a;">
+                    Step 3 of 3: Review Referral &amp; 1st Conciliation Booking
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                    <div>
+                        <div style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; font-weight: 700;">1st Conciliation Hearing</div>
+                        <div style="font-weight: 700; color: #0f172a;">📅 ${escapeHtml(concDate)} at ${escapeHtml(concTime)}</div>
+                        <div style="font-size: 0.8rem; color: #475569;">📍 ${escapeHtml(venue)}</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; font-weight: 700;">Referral Parameters</div>
+                        <div style="font-weight: 600; color: #0f172a;">Date: ${escapeHtml(refDate)}</div>
+                        <div style="font-size: 0.8rem; color: #475569;">Method: ${escapeHtml(selMethod)}</div>
+                    </div>
+                </div>
+                <div style="border-top: 1px solid #bfdbfe; padding-top: 8px; margin-top: 6px;">
+                    <div style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; font-weight: 700;">Pangkat Tagapagkasundo Panel (${quorumSize} Members)</div>
+                    <div><strong>Head / Chair:</strong> ${escapeHtml(nameFor('referChairmanId'))}</div>
+                    <div><strong>Secretary:</strong> ${escapeHtml(nameFor('referSecretaryId'))}</div>
+                    <div><strong>Member:</strong> ${memberId ? escapeHtml(nameFor('referMemberId')) : '<em style="color:#64748b;">(Quorum Exception — 2 members)</em>'}</div>
+                    ${quorumSize === 2 ? `<div style="font-size: 0.78rem; color: #b45309; margin-top: 3px;"><strong>Exception Justification:</strong> ${escapeHtml(quorumReason)}</div>` : ''}
+                </div>
+                <div style="font-size: 0.78rem; color: #475569; margin-top: 8px; font-style: italic;">
+                    <strong>Statutory Note:</strong> Upon confirmation, case advances to Conciliation, KP Forms 10, 11, and 12 are generated, and Officer's Return records are registered for KP Form 12.
+                </div>
+            `;
+        }
     }
-    document.querySelectorAll('.referral-step').forEach((element) => { element.style.display = Number(element.dataset.referralStep) === Number(step) ? 'block' : 'none'; });
+
+    [1, 2, 3].forEach(pStep => {
+        const pill = document.getElementById(`referStepPill${pStep}`);
+        if (!pill) return;
+        if (pStep === step) {
+            pill.style.background = '#0284c7';
+            pill.style.color = '#ffffff';
+        } else if (pStep < step) {
+            pill.style.background = '#e0f2fe';
+            pill.style.color = '#0369a1';
+        } else {
+            pill.style.background = '#f1f5f9';
+            pill.style.color = '#64748b';
+        }
+    });
+
+    document.querySelectorAll('.referral-step').forEach((element) => {
+        element.style.display = Number(element.dataset.referralStep) === Number(step) ? 'block' : 'none';
+    });
 }
 window.goReferralStep = goReferralStep;
 
@@ -3913,17 +4337,49 @@ async function submitReferPangkat(e) {
     const chairmanId = document.getElementById('referChairmanId')?.value;
     const secretaryId = document.getElementById('referSecretaryId')?.value;
     const memberId = document.getElementById('referMemberId')?.value;
+    const quorumSize = Number(document.getElementById('referQuorumSize')?.value || 3);
+    const quorumReason = document.getElementById('referQuorumReason')?.value.trim();
 
-    if (!chairmanId || !secretaryId || !memberId) {
-        alert('Please nominate all 3 distinct active Lupon Members for Chairperson, Secretary, and Member.');
-        if (btn) btn.disabled = false;
-        return;
+    if (quorumSize === 2) {
+        if (!chairmanId || !secretaryId) {
+            alert('Please select both Chairperson and Secretary.');
+            if (btn) btn.disabled = false;
+            return;
+        }
+        if (chairmanId === secretaryId) {
+            alert('Chairperson and Secretary must be different Lupon members.');
+            if (btn) btn.disabled = false;
+            return;
+        }
+    } else {
+        if (!chairmanId || !secretaryId || !memberId) {
+            alert('Please nominate all 3 distinct active Lupon Members for Chairperson, Secretary, and Member.');
+            if (btn) btn.disabled = false;
+            return;
+        }
+        if (new Set([chairmanId, secretaryId, memberId]).size !== 3) {
+            alert('Chairperson, Secretary, and Member must be different Lupon members.');
+            if (btn) btn.disabled = false;
+            return;
+        }
     }
 
-    if (new Set([chairmanId, secretaryId, memberId]).size !== 3) {
-        alert('Chairperson, Secretary, and Member must be different Lupon members.');
-        if (btn) btn.disabled = false;
-        return;
+    const concDate = document.getElementById('referConciliationDate')?.value;
+    const concTime = document.getElementById('referConciliationTime')?.value;
+    const venue = document.getElementById('referConciliationVenue')?.value || 'Lupon Court Room';
+
+    if (concDate) {
+        const dObj = new Date(concDate + 'T00:00:00');
+        if (dObj.getDay() === 2) {
+            alert('Tuesdays reserved exclusively for Punong Barangay Mediation. Conciliation hearings must be scheduled on non-Tuesday weekdays (Mondays, Wednesdays, Thursdays, or Fridays).');
+            if (btn) btn.disabled = false;
+            return;
+        }
+        if (dObj.getDay() === 0 || dObj.getDay() === 6) {
+            alert('Conciliation hearings cannot be scheduled on weekends.');
+            if (btn) btn.disabled = false;
+            return;
+        }
     }
 
     const payload = {
@@ -3932,10 +4388,14 @@ async function submitReferPangkat(e) {
         referral_reason: document.getElementById('referReason')?.value || 'Mediation before the Punong Barangay failed. Elevated to Pangkat Conciliation.',
         selection_method: document.getElementById('referSelectionMethod')?.value || 'Party Agreement',
         selection_notes: document.getElementById('referSelectionNotes')?.value || '',
-        quorum_size: 3,
+        quorum_size: quorumSize,
+        quorum_exception_reason: quorumReason,
         chairman_id: Number(chairmanId),
         secretary_id: Number(secretaryId),
-        member_id: Number(memberId)
+        member_id: memberId ? Number(memberId) : null,
+        conciliation_date: concDate || null,
+        conciliation_time: concTime || null,
+        venue: venue
     };
 
     try {
@@ -3946,11 +4406,14 @@ async function submitReferPangkat(e) {
         });
         const json = await res.json();
         if (json.success) {
-            notifyUser('Case successfully referred to Pangkat ng Tagapagkasundo. KP Forms 10, 11, and 12 are ready for review.', 'success');
+            notifyUser('Case successfully referred to Pangkat ng Tagapagkasundo. 1st Conciliation booked & KP Forms 10, 11, and 12 generated.', 'success');
             closeReferPangkatModal();
             setTimeout(() => {
-                openTriPanelPangkatModal(stageWorkspaceState.caseId);
-            }, 250);
+                if (typeof openTriPanelPangkatModal === 'function') {
+                    openTriPanelPangkatModal(stageWorkspaceState.caseId);
+                }
+                loadStageData();
+            }, 300);
         } else {
             notifyUser(json.message || 'Unable to refer case to Pangkat.', 'error');
         }
@@ -3972,6 +4435,8 @@ function renderPangkatPanelSection(data, stage) {
     if (!container) return;
 
     const pInfo = stage.pangkat_assignment || {};
+    const caseId = stageWorkspaceState?.caseId || data?.case?.case_id || (new URLSearchParams(window.location.search)).get('case_id') || 0;
+    const caseNumber = stageWorkspaceState?.caseNumber || data?.case?.case_number || (data?.case?.complaint_number || '');
     const members = pInfo.members || [];
     const challenges = pInfo.challenges || [];
     const extensions = pInfo.extensions || [];
@@ -4110,6 +4575,26 @@ function renderPangkatPanelSection(data, stage) {
         </div>
 
         ${extensionsHtml}
+
+        <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                <span style="font-size: 0.74rem; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.04em;">Official Notices:</span>
+                <button type="button" class="btn-secondary" onclick="openKpDocumentPreviewModal(${pInfo.kp10_document_id || 'null'}, 'KP Form 10', '${escapeHtml(caseNumber)}', ${caseId})" style="font-size: 0.74rem; padding: 4px 10px;" title="Preview KP Form 10 (Notice for Constitution of Pangkat)">
+                    Preview KP Form 10
+                </button>
+                <button type="button" class="btn-secondary" onclick="openKpDocumentPreviewModal(${pInfo.kp11_document_id || 'null'}, 'KP Form 11', '${escapeHtml(caseNumber)}', ${caseId})" style="font-size: 0.74rem; padding: 4px 10px;" title="Preview KP Form 11 (Notice to Chosen Pangkat Members)">
+                    Preview KP Form 11
+                </button>
+                <button type="button" class="btn-secondary" onclick="openKpDocumentPreviewModal(${pInfo.kp12_document_id || 'null'}, 'KP Form 12', '${escapeHtml(caseNumber)}', ${caseId})" style="font-size: 0.74rem; padding: 4px 10px;" title="Preview KP Form 12 (Notice of Conciliation Hearing)">
+                    Preview KP Form 12
+                </button>
+            </div>
+            <div>
+                <button type="button" class="btn-secondary" onclick="openTriPanelPangkatModal(${caseId})" style="font-size: 0.74rem; padding: 4px 12px; font-weight: 600; color: #4f46e5; border-color: #c7d2fe; display: inline-flex; align-items: center; gap: 4px;">
+                    Preview All Pangkat Notices (KP 10, 11, 12)
+                </button>
+            </div>
+        </div>
     `;
 }
 
@@ -4543,6 +5028,14 @@ window.openRecordOutcomeModal = openRecordOutcomeModal;
 window.closeRecordOutcomeModal = closeRecordOutcomeModal;
 window.openReferPangkatModal = openReferPangkatModal;
 window.closeReferPangkatModal = closeReferPangkatModal;
+window.initReferCalendar = initReferCalendar;
+window.handleReferDateInputChange = handleReferDateInputChange;
+window.selectReferConciliationSlot = selectReferConciliationSlot;
+window.selectReferVisualDate = selectReferVisualDate;
+window.renderReferVisualDays = renderReferVisualDays;
+window.checkReferScheduleConflict = checkReferScheduleConflict;
+window.goReferralStep = goReferralStep;
+window.submitReferPangkat = submitReferPangkat;
 
 // Pangkat statutory extensions and challenges exposure
 window.openPangkatExtensionModal = openPangkatExtensionModal;

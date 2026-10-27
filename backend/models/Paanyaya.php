@@ -18,7 +18,7 @@ class Paanyaya
     public function getMaxStageAttempts(): int
     {
         require_once __DIR__ . '/Setting.php';
-        return (int) Setting::getSetting('paanyaya_max_attempts', 3, $this->conn);
+        return (int) Setting::getSetting('summons_max_attempts', (int) Setting::getSetting('paanyaya_max_attempts', 6, $this->conn), $this->conn);
     }
 
     public const VALID_DELIVERY_OUTCOMES = [
@@ -822,7 +822,13 @@ class Paanyaya
                 'success' => true,
                 'escalated' => true,
                 'case_id' => $caseId,
+                'action' => 'escalate_mediation',
                 'case_number' => $caseNumber,
+
+                'hearing_id' => (int) ($summonsResult['hearing_id'] ?? 0),
+                'document_id' => $summonsResult['document_id'] ?? null,
+                'kp8_document_id' => $summonsResult['kp8_document_id'] ?? null,
+                'kp9_document_id' => $summonsResult['kp9_document_id'] ?? ($summonsResult['document_id'] ?? null),
                 'complaint_id' => $complaintId,
                 'hearing_date' => $medDate,
                 'hearing_time' => $medTime,
@@ -1959,8 +1965,10 @@ class Paanyaya
             $escResult = $this->escalateToFormalDocketing($complaintId, $userId, $discussionSummary, $data);
             $escResult['minutes_id'] = $minutesId;
             $escResult['action'] = 'escalate_mediation';
+            $escResult['stage_type'] = $stageType;
             $escResult['outcome'] = $outcome;
             $escResult['complainant_choice'] = 'Escalate_Mediation';
+            $escResult['message'] = 'Dialogue minutes recorded and dispute escalated to Mediation.';
 
             try {
                 require_once __DIR__ . '/../services/NotificationService.php';

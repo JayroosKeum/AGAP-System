@@ -337,26 +337,78 @@ include '../../layouts/header.php';
                     </div>
 
                     <!-- Escalation 1st Mediation Hearing Schedule (Visible ONLY when Choice B is active) -->
-                    <div id="minutesEscalationScheduleSection" style="display: none; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-                        <h4 style="margin: 0 0 12px; font-size: 0.94rem; color: #0f172a; font-weight: 700;">1st Formal Mediation Hearing Schedule (Tumana Rules)</h4>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
-                            <div class="form-group" style="margin-bottom: 0;">
-                                <label for="minutesMedDate" style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 5px;">Mediation Date (Tuesdays ONLY) <span class="required-mark" style="color: #dc2626;">*</span></label>
-                                <input type="date" id="minutesMedDate" name="mediation_date" style="padding: 9px 12px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box;">
+                    <div id="minutesEscalationScheduleSection" style="display: none; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 18px; margin-bottom: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                            <h4 style="margin: 0; font-size: 0.96rem; color: #0f172a; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+                                <span>⚖️</span> 1st Formal Mediation Hearing Schedule (Tumana Rules)
+                            </h4>
+                            <span style="font-size: 0.72rem; background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; padding: 3px 10px; border-radius: 9999px; font-weight: 700;">
+                                Tuesdays ONLY · Lupon Court Room (Max 8/Day)
+                            </span>
+                        </div>
+
+                        <!-- Date input and Visual Tuesday Picker -->
+                        <div class="form-group" style="margin-bottom: 14px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                <label for="minutesMedDate" style="margin-bottom: 0; font-weight: 700; font-size: 0.85rem; color: #1e293b;">
+                                    Mediation Date (Tuesdays ONLY) <span class="required-mark" style="color: #dc2626;">*</span>
+                                </label>
+                                <span style="font-size: 0.74rem; color: #64748b;">Punong Barangay Mediation Day</span>
                             </div>
+                            <input type="date" id="minutesMedDate" name="mediation_date" onchange="checkMinutesScheduleConflict()" required style="padding: 9px 12px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box; margin-bottom: 8px;">
+
+                            <!-- Visual Tuesday Picker Container -->
+                            <div id="minutesVisualDatePickerContainer" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-top: 6px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.78rem; flex-wrap: wrap; gap: 6px;">
+                                    <span style="font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.03em; font-size: 0.74rem;">
+                                        Available Tuesday Slots (Max 8 Hearings/Day):
+                                    </span>
+                                    <div style="display: flex; gap: 10px; font-size: 0.72rem; flex-wrap: wrap;">
+                                        <span style="display: inline-flex; align-items: center; gap: 4px; color: #166534;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e;"></span> Available</span>
+                                        <span style="display: inline-flex; align-items: center; gap: 4px; color: #991b1b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #ef4444;"></span> 8/8 Full</span>
+                                    </div>
+                                </div>
+                                <div id="minutesVisualDayGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 6px; padding: 4px 2px;">
+                                    <div style="text-align: center; color: #64748b; font-size: 0.78rem; padding: 8px; grid-column: 1 / -1;">
+                                        Loading Tuesday availability...
+                                    </div>
+                                </div>
+                                <div id="minutesVisualDateStatusNotice" style="margin-top: 6px; font-size: 0.75rem; color: #64748b; line-height: 1.4;"></div>
+                            </div>
+                        </div>
+
+                        <!-- Existing Scheduled Mediations on selected date -->
+                        <div id="minutesDaySchedulesWrap" style="display: none; margin-bottom: 14px; padding: 10px 12px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.84rem;">
+                            <div style="font-weight: 600; color: #334155; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
+                                <span>Scheduled Mediations on this Date:</span>
+                                <span id="minutesDaySlotsCount" style="font-size: 0.72rem; background: #e2e8f0; color: #475569; padding: 2px 7px; border-radius: 9999px; font-weight: 600;">0</span>
+                            </div>
+                            <div id="minutesDaySlotsList" style="color: #64748b; font-size: 0.82rem; line-height: 1.5;">
+                                No other mediations scheduled on this day.
+                            </div>
+                        </div>
+
+                        <!-- Slot Selector & Venue Grid -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px;">
                             <div class="form-group" style="margin-bottom: 0;">
-                                <label for="minutesMedTime" style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 5px;">Mediation Slot (1:00 PM - 5:00 PM) <span class="required-mark" style="color: #dc2626;">*</span></label>
-                                <select id="minutesMedTime" name="mediation_time" style="padding: 9px 12px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box;">
+                                <label for="minutesMedTime" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 5px; color: #1e293b;">
+                                    Mediation Afternoon Slot (1:00 PM - 5:00 PM) <span class="required-mark" style="color: #dc2626;">*</span>
+                                </label>
+                                <select id="minutesMedTime" name="mediation_time" onchange="checkMinutesScheduleConflict()" style="padding: 9px 12px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box;">
                                     <option value="13:00">1:00 PM - 2:00 PM</option>
                                     <option value="14:00">2:00 PM - 3:00 PM</option>
                                     <option value="15:00">3:00 PM - 4:00 PM</option>
                                     <option value="16:00">4:00 PM - 5:00 PM</option>
                                 </select>
                             </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="minutesMedVenue" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 5px; color: #1e293b;">Hearing Venue</label>
+                                <input type="text" id="minutesMedVenue" name="venue" value="Lupon Court Room" readonly style="padding: 9px 12px; font-size: 0.88rem; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box; cursor: not-allowed;">
+                            </div>
                         </div>
-                        <div class="form-group" style="margin-top: 12px; margin-bottom: 0;">
-                            <label for="minutesMedVenue" style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 5px;">Hearing Venue</label>
-                            <input type="text" id="minutesMedVenue" name="venue" value="Lupon Court Room" readonly style="padding: 9px 12px; font-size: 0.88rem; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box;">
+
+                        <!-- Real-Time Conflict Alert Banner -->
+                        <div id="minutesScheduleConflictAlert" class="alert alert-danger" style="display: none; margin: 0; padding: 10px 12px; font-size: 0.84rem; border-radius: 6px; background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; line-height: 1.4;">
                         </div>
                     </div>
 
@@ -403,6 +455,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         medDateInput.value = d.toISOString().slice(0, 10);
         medDateInput.min = new Date().toISOString().slice(0, 10);
+        checkMinutesScheduleConflict();
     }
 
     // For Paanyaya 2, Choice A is not applicable ("Dalawang Beses Lang" rule)
@@ -508,13 +561,228 @@ function toggleComplainantChoiceViews() {
             submitBtn.style.background = '#dc2626';
             submitBtn.style.borderColor = '#dc2626';
         }
+        checkMinutesScheduleConflict();
     } else {
         if (escSec) escSec.style.display = 'none';
         if (submitBtn) {
             submitBtn.textContent = 'Save Minutes & Unlock Paanyaya 2';
             submitBtn.style.background = '#2563eb';
             submitBtn.style.borderColor = '#2563eb';
+            submitBtn.disabled = false;
         }
+    }
+}
+
+let conflictCheckDebounceTimer = null;
+let currentMinutesWindowMeta = null;
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m]));
+}
+
+function enforceTuesdayDate(inputEl) {
+    if (!inputEl || !inputEl.value) return;
+    const parts = inputEl.value.split('-');
+    if (parts.length === 3) {
+        const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        if (d.getDay() !== 2) {
+            while (d.getDay() !== 2) {
+                d.setDate(d.getDate() + 1);
+            }
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            inputEl.value = `${y}-${m}-${day}`;
+        }
+    }
+}
+
+function renderMinutesVisualDayPicker(windowMeta, selectedDate) {
+    const gridEl = document.getElementById('minutesVisualDayGrid');
+    const noticeEl = document.getElementById('minutesVisualDateStatusNotice');
+    if (!gridEl || !windowMeta || !windowMeta.daily_slots) return;
+
+    const allDays = Object.values(windowMeta.daily_slots);
+    const tuesdayDays = allDays.filter(d => {
+        const parts = d.date.split('-');
+        const dt = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        return dt.getDay() === 2 && !d.is_past;
+    });
+
+    if (!tuesdayDays.length) {
+        gridEl.innerHTML = '<div style="color: #64748b; font-size: 0.78rem; grid-column: 1 / -1; text-align: center;">No upcoming Tuesday dates found in window.</div>';
+        return;
+    }
+
+    gridEl.innerHTML = tuesdayDays.slice(0, 6).map(d => {
+        const isSelected = (d.date === selectedDate);
+        let badgeText = `${d.available} open`;
+        let badgeBg = '#dcfce7';
+        let badgeColor = '#15803d';
+        let cardStyle = 'border: 1px solid #cbd5e1; background: #ffffff; color: #1e293b; cursor: pointer;';
+        let disabledAttr = '';
+        let tooltip = `${d.date}: ${d.available} of ${d.max} slots available.`;
+
+        if (d.is_fully_booked) {
+            badgeText = '8/8 FULL';
+            badgeBg = '#fee2e2';
+            badgeColor = '#b91c1c';
+            cardStyle = 'border: 1px solid #fecaca; background: #fff1f2; color: #881337; cursor: not-allowed; opacity: 0.65;';
+            disabledAttr = 'disabled';
+            tooltip = `${d.date}: Fully booked! Maximum 8 mediation sessions reached for this date.`;
+        } else if (d.is_non_working_day) {
+            badgeText = 'Holiday';
+            badgeBg = '#f1f5f9';
+            badgeColor = '#64748b';
+            cardStyle = 'border: 1px dashed #cbd5e1; background: #f8fafc; color: #64748b; cursor: pointer;';
+            tooltip = `${d.date}: Official Holiday. Allowed for emergency scheduling, but standard working days preferred.`;
+        }
+
+        if (isSelected) {
+            cardStyle = 'border: 2px solid #2563eb; background: #eff6ff; color: #1e3a8a; box-shadow: 0 0 0 2px rgba(37,99,235,0.25); font-weight: 700; cursor: pointer;';
+            badgeBg = '#2563eb';
+            badgeColor = '#ffffff';
+        }
+
+        return `
+            <div class="minutes-tue-card ${isSelected ? 'active' : ''}"
+                 onclick="${disabledAttr ? '' : `selectMinutesVisualDate('${d.date}')`}"
+                 title="${escapeHtml(tooltip)}"
+                 style="border-radius: 6px; padding: 8px 6px; text-align: center; transition: all 0.15s; user-select: none; ${cardStyle}">
+                <div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; color: #475569;">
+                    ${escapeHtml(d.day_name || 'Tue')}
+                </div>
+                <div style="font-size: 0.88rem; font-weight: 800; margin: 3px 0;">
+                    ${d.day_num} ${escapeHtml(d.month_name || '')}
+                </div>
+                <div style="font-size: 0.68rem; font-weight: 700; padding: 2px 5px; border-radius: 4px; background: ${badgeBg}; color: ${badgeColor}; display: inline-block;">
+                    ${badgeText}
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    if (noticeEl) {
+        if (selectedDate) {
+            const selectedDayData = windowMeta.daily_slots[selectedDate];
+            if (selectedDayData) {
+                if (selectedDayData.is_fully_booked) {
+                    noticeEl.innerHTML = `<span style="color: #dc2626; font-weight: 600;">Selected Tuesday is fully booked (8 of 8 daily mediation sessions).</span>`;
+                } else {
+                    noticeEl.innerHTML = `<span style="color: #15803d; font-weight: 600;">Tuesday selected (${selectedDate}): ${selectedDayData.available} slots remaining.</span>`;
+                }
+            }
+        } else {
+            noticeEl.textContent = `Click any available Tuesday above to select.`;
+        }
+    }
+}
+
+function selectMinutesVisualDate(dateStr) {
+    const dateInput = document.getElementById('minutesMedDate');
+    if (!dateInput) return;
+    dateInput.value = dateStr;
+    checkMinutesScheduleConflict();
+}
+
+async function checkMinutesScheduleConflict() {
+    const dateInput = document.getElementById('minutesMedDate');
+    const timeInput = document.getElementById('minutesMedTime');
+    const conflictAlert = document.getElementById('minutesScheduleConflictAlert');
+    const submitBtn = document.getElementById('btnSubmitMinutes');
+    const schedulesWrap = document.getElementById('minutesDaySchedulesWrap');
+    const slotsCount = document.getElementById('minutesDaySlotsCount');
+    const slotsList = document.getElementById('minutesDaySlotsList');
+
+    if (!dateInput) return;
+    enforceTuesdayDate(dateInput);
+
+    const dateVal = dateInput.value;
+    const timeVal = timeInput ? timeInput.value : '13:00';
+    const venueVal = 'Lupon Court Room';
+
+    if (!dateVal) return;
+
+    try {
+        const params = new URLSearchParams({
+            date: dateVal,
+            time: timeVal,
+            venue: venueVal,
+            complaint_id: String(complaintId),
+            get_window: '1'
+        });
+
+        const res = await fetch(`../../../backend/api/summons/check-schedule.php?${params.toString()}`);
+        const result = await res.json();
+
+        if (result.window) {
+            currentMinutesWindowMeta = result.window;
+            renderMinutesVisualDayPicker(result.window, dateVal);
+        }
+
+        const bookedCount = result.total_booked ?? (result.scheduled_mediations ? result.scheduled_mediations.length : 0);
+        const maxSlots = result.max_slots || 8;
+        const availSlots = result.available_slots ?? Math.max(0, maxSlots - bookedCount);
+
+        if (schedulesWrap && slotsList && slotsCount) {
+            schedulesWrap.style.display = 'block';
+            slotsCount.textContent = `${availSlots} of ${maxSlots} slots available`;
+            slotsCount.style.background = availSlots > 2 ? '#dcfce7' : (availSlots > 0 ? '#fef3c7' : '#fee2e2');
+            slotsCount.style.color = availSlots > 2 ? '#15803d' : (availSlots > 0 ? '#92400e' : '#b91c1c');
+
+            const scheduled = result.scheduled_mediations || [];
+            if (scheduled.length === 0) {
+                slotsList.innerHTML = `<span style="color: #166534; font-weight: 500;">All 8 session slots available on this date (${dateVal}).</span>`;
+            } else {
+                slotsList.innerHTML = `
+                    <div style="margin-bottom: 6px; font-weight: 600; color: #475569;">${availSlots} of ${maxSlots} slots available for this date:</div>
+                ` + scheduled.map(s => `
+                    <div style="margin-top: 4px; padding: 4px 8px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                        <div>
+                            <strong style="color: #1e293b;">${escapeHtml(s.start_time || '')} – ${escapeHtml(s.end_time || '')}</strong>
+                            <span style="color: #64748b; font-size: 0.8rem; margin-left: 6px;">Case ${escapeHtml(s.case_number || 'N/A')}</span>
+                        </div>
+                        <span style="font-size: 0.72rem; color: #475569; background: #f1f5f9; padding: 1px 6px; border-radius: 4px;">${escapeHtml(s.venue || 'Lupon Court Room')}</span>
+                    </div>
+                `).join('');
+            }
+        }
+
+        if (result.is_fully_booked || bookedCount >= maxSlots) {
+            if (conflictAlert) {
+                conflictAlert.textContent = `Date Fully Booked: All ${maxSlots} daily mediation slots on this date are occupied. Please select another Tuesday.`;
+                conflictAlert.style.display = 'block';
+            }
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.title = 'Cannot submit: Maximum daily capacity of 8 mediation sessions reached for this date.';
+            }
+            return;
+        }
+
+        if (result.has_conflict && result.conflict) {
+            const conflictMsg = result.conflict.message || 'The selected time overlaps with an existing scheduled mediation.';
+            if (conflictAlert) {
+                conflictAlert.textContent = `Schedule Conflict: ${conflictMsg}`;
+                conflictAlert.style.display = 'block';
+            }
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.title = 'Cannot submit: Schedule conflict with an existing mediation on this day.';
+            }
+        } else {
+            if (conflictAlert) {
+                conflictAlert.textContent = '';
+                conflictAlert.style.display = 'none';
+            }
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.title = '';
+            }
+        }
+    } catch (err) {
+        console.warn('Failed to check schedule conflict:', err);
     }
 }
 
@@ -523,6 +791,20 @@ async function handleDialogueMinutesSubmit(event) {
     const form = event.target;
     const btn = document.getElementById('btnSubmitMinutes');
     const errBox = document.getElementById('minutesErrorMessage');
+    const conflictAlert = document.getElementById('minutesScheduleConflictAlert');
+
+    const outcome = form.querySelector('input[name="outcome"]:checked')?.value;
+    const choice = form.querySelector('input[name="complainant_choice"]:checked')?.value;
+
+    if (outcome !== 'Settled' && choice === 'Escalate_Mediation') {
+        if (conflictAlert && conflictAlert.style.display !== 'none' && conflictAlert.textContent.trim() !== '') {
+            if (errBox) {
+                errBox.textContent = 'Please resolve the mediation schedule conflict before proceeding.';
+                errBox.style.display = 'block';
+            }
+            return;
+        }
+    }
 
     const formData = new FormData(form);
 
@@ -545,11 +827,14 @@ async function handleDialogueMinutesSubmit(event) {
                 window.AgapDraftManager.setIndicator('paanyayaDraftIndicator', 'synced', '✓ All changes submitted');
             }
             window.minutesDraftManager?.markSubmitted();
-            let targetUrl = `complaint-details.php?id=${encodeURIComponent(formData.get('complaint_id'))}&tab=paanyaya`;
+
             if (data.action === 'escalate_mediation') {
-                targetUrl = `complaint-details.php?id=${encodeURIComponent(formData.get('complaint_id'))}&tab=mediation`;
+                window.pendingEscalationData = data;
+                openPaanyayaPreviewModal(data.complaint_id || complaintId, data.stage_type || currentStage);
+            } else {
+                let targetUrl = `complaint-details.php?id=${encodeURIComponent(formData.get('complaint_id'))}&tab=paanyaya`;
+                window.location.href = targetUrl;
             }
-            window.location.href = targetUrl;
         } else {
             throw new Error(data.message || 'Failed to record dialogue minutes.');
         }
@@ -567,6 +852,106 @@ async function handleDialogueMinutesSubmit(event) {
         }
     }
 }
+
+function openPaanyayaPreviewModal(compId, stType) {
+    const modal = document.getElementById('paanyayaPreviewModal');
+    const iframe = document.getElementById('paanyayaPreviewIframe');
+    const dlBtn = document.getElementById('btnDownloadPaanyayaPdf');
+    if (!modal) return;
+
+    if (iframe) {
+        iframe.src = `../../../backend/api/paanyaya/preview.php?id=${encodeURIComponent(compId)}&stage_type=${encodeURIComponent(stType)}&type=minutes&format=html&_t=${Date.now()}`;
+    }
+    if (dlBtn) {
+        dlBtn.href = `../../../backend/api/paanyaya/preview.php?id=${encodeURIComponent(compId)}&stage_type=${encodeURIComponent(stType)}&type=minutes&download=1`;
+    }
+
+    modal.style.display = 'flex';
+}
+
+function closePaanyayaPreviewModal() {
+    const modal = document.getElementById('paanyayaPreviewModal');
+    if (modal) modal.style.display = 'none';
+    if (window.pendingEscalationData && !window.summonsModalOpened) {
+        proceedToSummonsDualPreview();
+    }
+}
+
+function proceedToSummonsDualPreview() {
+    const modal = document.getElementById('paanyayaPreviewModal');
+    if (modal) modal.style.display = 'none';
+    window.summonsModalOpened = true;
+
+    if (window.pendingEscalationData) {
+        const d = window.pendingEscalationData;
+        if (typeof openSummonsPreviewModal === 'function') {
+            openSummonsPreviewModal(d.case_id, d.document_id, d.hearing_id, true);
+        } else {
+            window.location.href = `complaint-details.php?id=${encodeURIComponent(d.complaint_id)}&tab=mediation`;
+        }
+    }
+}
+
+function printPaanyayaIframe() {
+    const iframe = document.getElementById('paanyayaPreviewIframe');
+    if (iframe && iframe.contentWindow) {
+        try {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+        } catch (e) {
+            console.warn('Print iframe failed:', e);
+        }
+    }
+}
+
+window.onSummonsPreviewClosed = function() {
+    if (window.pendingEscalationData?.complaint_id) {
+        window.location.href = `complaint-details.php?id=${encodeURIComponent(window.pendingEscalationData.complaint_id)}&tab=mediation`;
+    }
+};
 </script>
+
+<!-- Step 1: Paanyaya Dialogue Minutes Preview Modal -->
+<div id="paanyayaPreviewModal" class="modal" style="display:none; padding: 12px; box-sizing: border-box; align-items: center; justify-content: center; z-index: 9998;" role="dialog" aria-modal="true" aria-labelledby="paanyayaPreviewModalTitle">
+    <div class="modal-content" style="max-width: 960px; width: 95%; height: 90vh; display: flex; flex-direction: column; padding: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); background: #fff;">
+        <div class="modal-header" style="padding: 14px 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #ffffff; flex-shrink: 0;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 1.3rem;">📄</span>
+                <div>
+                    <h2 id="paanyayaPreviewModalTitle" style="font-size: 1.15rem; font-weight: 700; color: #0f172a; margin: 0;">Official Paanyaya Dialogue Minutes Preview</h2>
+                    <p id="paanyayaPreviewModalSubtitle" style="margin: 2px 0 0; font-size: 0.8rem; color: #64748b;">
+                        Review recorded dialogue minutes before proceeding to KP Form 8 &amp; KP Form 9 summons.
+                    </p>
+                </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <button type="button" class="btn-secondary" onclick="printPaanyayaIframe()" style="padding: 6px 12px; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 6px;" title="Print Dialogue Minutes">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                    Print Minutes
+                </button>
+                <a href="#" id="btnDownloadPaanyayaPdf" class="btn-secondary" style="padding: 6px 12px; font-size: 0.82rem; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;" title="Download PDF">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    Download PDF
+                </a>
+                <button type="button" class="close-btn" onclick="closePaanyayaPreviewModal()">&times;</button>
+            </div>
+        </div>
+        <div style="flex: 1 1 auto; background: #475569; position: relative; min-height: 0;">
+            <iframe id="paanyayaPreviewIframe" src="about:blank" style="width: 100%; height: 100%; border: none; background: #ffffff;"></iframe>
+        </div>
+        <div class="modal-actions" style="padding: 12px 20px; border-top: 1px solid #e2e8f0; background: #f8fafc; margin-top: 0; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
+            <button type="button" class="btn-secondary" onclick="closePaanyayaPreviewModal()" style="font-size: 0.84rem; padding: 7px 14px;">
+                Close
+            </button>
+            <button type="button" class="btn-create" id="btnProceedToSummonsPreview" onclick="proceedToSummonsDualPreview()" style="background: #2563eb; border-color: #2563eb; color: #fff; padding: 8px 20px; font-weight: 700; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 2px 4px rgba(37,99,235,0.25); cursor: pointer;">
+                Proceed to KP Form 8 &amp; 9 (Summons) &rarr;
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Step 2: Dual KP Form 8 & 9 Preview Modal -->
+<?php include '../../layouts/summons-preview-modal.php'; ?>
+<script src="../../assets/js/summons-preview.js"></script>
 
 <?php include '../../layouts/footer.php'; ?>

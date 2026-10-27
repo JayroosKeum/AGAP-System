@@ -20,13 +20,19 @@ $asPdf = isset($_GET['pdf']) && $_GET['pdf'] == '1';
 $isPreview = isset($_GET['preview']) && in_array((string) $_GET['preview'], ['1', 'true'], true);
 
 if ($documentId) {
-    // If document_id is specified, lookup document
+    // If document_id is specified, lookup document joined with cases, pangkat_groups, and hearings
     $docStmt = $conn->prepare("
-        SELECT gd.*, dt.template_name, c.case_id, c.case_number, c.complaint_id
+        SELECT gd.*, dt.template_name, c.case_id, c.case_number, c.complaint_id,
+               pg.pangkat_id, pg.formation_date, pg.selection_method,
+               h.hearing_id AS linked_hearing_id, h.hearing_date, h.venue AS hearing_venue
         FROM generated_documents gd
         INNER JOIN document_templates dt ON dt.template_id = gd.template_id
         INNER JOIN cases c ON c.case_id = gd.case_id
+        LEFT JOIN pangkat_groups pg ON pg.case_id = c.case_id
+        LEFT JOIN hearings h ON (h.kp12_document_id = gd.document_id OR (h.case_id = c.case_id AND h.hearing_type = 'Conciliation'))
         WHERE gd.document_id = ?
+        ORDER BY (h.kp12_document_id = gd.document_id) DESC, h.hearing_date ASC, h.hearing_id ASC
+        LIMIT 1
     ");
     $docStmt->execute([$documentId]);
     $doc = $docStmt->fetch(PDO::FETCH_ASSOC);
@@ -34,15 +40,29 @@ if ($documentId) {
     if ($doc) {
         $caseId = (int) $doc['case_id'];
         $formCode = $doc['template_name'];
+        if (!$hearingId && !empty($doc['linked_hearing_id'])) {
+            $hearingId = (int) $doc['linked_hearing_id'];
+        }
 
-        // If file exists, serve it
+        // If physical PDF file exists on disk, serve it if requested as PDF or direct download
         $root = realpath(dirname(__DIR__, 3));
-        $filePath = realpath($root . '/' . $doc['file_path']);
+        $rawPath = !empty($doc['file_path']) ? ltrim($doc['file_path'], '/\\') : '';
+        $filePath = false;
+        if ($root && $rawPath) {
+            $candidate = $root . DIRECTORY_SEPARATOR . $rawPath;
+            if (is_file($candidate)) {
+                $filePath = realpath($candidate);
+            }
+        }
+
         if ($filePath && is_file($filePath)) {
-            header('Content-Type: application/pdf');
-            header('Content-Disposition: inline; filename="' . basename($filePath) . '"');
-            readfile($filePath);
-            exit;
+            // Serve physical file immediately when PDF is requested or in standalone preview
+            if ($asPdf || (!$isPreview && empty($_GET['bare']))) {
+                header('Content-Type: application/pdf');
+                header('Content-Disposition: inline; filename="' . basename($filePath) . '"');
+                readfile($filePath);
+                exit;
+            }
         }
     }
 }
@@ -50,6 +70,21 @@ if ($documentId) {
 if (!$caseId) {
     http_response_code(404);
     exit('Valid case ID or document ID required.');
+}
+
+// For KP Forms 10, 11, and 12, ensure 1st Conciliation hearing is linked if hearingId is not yet specified
+if (!$hearingId && (str_contains($formCode, '10') || str_contains($formCode, '11') || str_contains($formCode, '12'))) {
+    $hStmt = $conn->prepare("
+        SELECT hearing_id FROM hearings
+        WHERE case_id = ? AND hearing_type = 'Conciliation'
+        ORDER BY hearing_date ASC, hearing_id ASC
+        LIMIT 1
+    ");
+    $hStmt->execute([$caseId]);
+    $resolvedHId = $hStmt->fetchColumn();
+    if ($resolvedHId) {
+        $hearingId = (int) $resolvedHId;
+    }
 }
 
 $kpFormService = new KpFormService($conn);

@@ -13,8 +13,8 @@ $sysSettings = Setting::all();
 ?>
 <script>
 window.AGAP_SETTINGS = <?php echo json_encode([
-    'paanyaya_max_attempts' => (int) ($sysSettings['paanyaya_max_attempts'] ?? 3),
-    'summons_max_attempts' => (int) ($sysSettings['summons_max_attempts'] ?? 3),
+    'paanyaya_max_attempts' => (int) ($sysSettings['paanyaya_max_attempts'] ?? 6),
+    'summons_max_attempts' => (int) ($sysSettings['summons_max_attempts'] ?? 6),
     'mediation_max_sessions' => (int) ($sysSettings['mediation_max_sessions'] ?? 2),
     'conciliation_max_sessions' => (int) ($sysSettings['conciliation_max_sessions'] ?? 3),
     'mediation_day_of_week' => (string) ($sysSettings['mediation_day_of_week'] ?? 'Tue'),
@@ -131,6 +131,35 @@ window.AGAP_SETTINGS = <?php echo json_encode([
             <div id="summonPagination" class="complaints-pagination" aria-label="Proof of service pagination" style="display: none; padding: 14px 20px; border-top: 1px solid #e2e8f0; border-radius: 0 0 12px 12px;">
                 <span id="summonPaginationSummary" class="complaints-pagination-summary" aria-live="polite">Showing 0 cases</span>
                 <div id="summonPaginationControls" class="complaints-pagination-controls"></div>
+            </div>
+        </section>
+
+        <!-- Case Service History & Delivered Forms Timeline Section -->
+        <section class="gps-card proof-timeline-section" id="caseServiceTimelineSection" style="margin-bottom: 24px; padding: 0; overflow: hidden; display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; flex-wrap: wrap; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 8px; background: #e0f2fe; color: #0284c7; font-size: 16px;">
+                        📜
+                    </span>
+                    <div>
+                        <h3 style="margin: 0; font-size: 1.05rem; font-weight: 700; color: #0f172a;">
+                            Case Service History &amp; Delivered Forms Timeline
+                        </h3>
+                        <p id="timelineCaseSubtitle" style="margin: 2px 0 0; font-size: 0.82rem; color: #64748b;">
+                            Chronological stream of all statutory invitations, notices, summons, and officer returns across the case lifecycle
+                        </p>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button type="button" id="toggleTimelineBtn" class="btn-secondary" onclick="toggleTimelineVisibility()" style="font-size: 0.78rem; padding: 5px 12px; border-radius: 6px; cursor: pointer; background: #fff;">
+                        Collapse Timeline
+                    </button>
+                </div>
+            </div>
+            <div id="caseServiceTimelineContainer" style="padding: 20px; background: #fff;">
+                <div style="text-align: center; color: #94a3b8; padding: 20px; font-size: 0.88rem;">
+                    Select or expand a case above to review its full statutory service history timeline.
+                </div>
             </div>
         </section>
 

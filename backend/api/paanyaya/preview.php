@@ -46,13 +46,21 @@ if (!empty($_GET['stage_type'])) {
 if (!empty($_GET['attempt_number'])) {
     $options['attempt_number'] = (int) $_GET['attempt_number'];
 }
+if (!empty($_GET['type'])) {
+    $options['type'] = trim((string) $_GET['type']);
+}
 
 try {
     $pdfService = new PDFService();
 
     if ($download || $format === 'pdf') {
-        $pdf = $pdfService->generatePaanyaya($complaintId, $options);
-        $filename = sprintf('Paanyaya-Complaint-%d.pdf', $complaintId);
+        if (($options['type'] ?? '') === 'minutes') {
+            $pdf = $pdfService->generatePaanyayaMinutes($complaintId, $options);
+            $filename = sprintf('Paanyaya-Minutes-Complaint-%d.pdf', $complaintId);
+        } else {
+            $pdf = $pdfService->generatePaanyaya($complaintId, $options);
+            $filename = sprintf('Paanyaya-Complaint-%d.pdf', $complaintId);
+        }
 
         header('Content-Type: application/pdf');
         header('Content-Disposition: ' . ($download ? 'attachment' : 'inline') . '; filename="' . $filename . '"');
@@ -62,7 +70,11 @@ try {
         exit;
     }
 
-    $html = $pdfService->renderPaanyayaHtml($complaintId, $options);
+    if (($options['type'] ?? '') === 'minutes') {
+        $html = $pdfService->renderPaanyayaMinutesHtml($complaintId, $options);
+    } else {
+        $html = $pdfService->renderPaanyayaHtml($complaintId, $options);
+    }
     header('Content-Type: text/html; charset=UTF-8');
     echo $html;
     exit;

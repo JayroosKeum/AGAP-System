@@ -54,6 +54,32 @@ class PDFService
         return 'HON. AKIKO LYNNE CENTENO';
     }
 
+    public function generateKp11(
+        array $data,
+        string $absolutePath
+    ): void {
+        $options = new Options();
+        $options->set('isRemoteEnabled', false);
+        $options->set('isHtml5ParserEnabled', true);
+        $options->set('defaultFont', 'DejaVu Sans');
+
+        $dompdf = new Dompdf($options);
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->loadHtml(
+            $this->kp11Html($data, true),
+            'UTF-8'
+        );
+        $dompdf->render();
+
+        $pdf = $dompdf->output();
+        if ($pdf === '') {
+            throw new RuntimeException('The PDF renderer returned an empty document.');
+        }
+        if (file_put_contents($absolutePath, $pdf, LOCK_EX) === false) {
+            throw new RuntimeException('Unable to save the generated PDF.');
+        }
+    }
+
     public function generateKp12(
         array $data,
         string $absolutePath
@@ -332,6 +358,36 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
         ");
         $insDoc->execute([$caseId, $templateId, $userId, $relativePath]);
         $docId = (int) $db->lastInsertId();
+
+        // Create associated Delivery Records in summon_deliveries
+        try {
+            $partiesStmt = $db->prepare("
+                SELECT cp.party_type, cp.resident_id,
+                       TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS full_name
+                FROM complaint_parties cp
+                INNER JOIN residents r ON r.resident_id = cp.resident_id
+                WHERE cp.complaint_id = ? AND cp.party_type IN ('Complainant', 'Respondent')
+            ");
+            $partiesStmt->execute([$case['complaint_id']]);
+            $delivIns = $db->prepare("
+                INSERT INTO summon_deliveries (
+                    case_id, party_type, resident_id, form_type, delivery_status,
+                    recipient_name, document_id, created_by, remarks
+                ) VALUES (?, ?, ?, 'KP Form 10', 'Pending', ?, ?, ?, 'KP Form 10 — Notice to Constitute Pangkat Tagapagkasundo')
+            ");
+            foreach ($partiesStmt->fetchAll(PDO::FETCH_ASSOC) as $p) {
+                $delivIns->execute([
+                    $caseId,
+                    $p['party_type'],
+                    $p['resident_id'],
+                    $p['full_name'],
+                    $docId,
+                    $userId
+                ]);
+            }
+        } catch (Throwable $delivErr) {
+            error_log('Delivery record creation note: ' . $delivErr->getMessage());
+        }
 
         return [
             'success' => true,
@@ -4077,6 +4133,225 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
             $data = $this->loadPaanyayaData($complaintId, $options);
         }
         return $this->paanyayaLetterHtml($data, false);
+    }
+
+    public function generatePaanyayaMinutes(int $complaintId, array $options = []): string
+    {
+        $html = $this->renderPaanyayaMinutesHtml($complaintId, $options);
+        $dompdfOptions = new Options();
+        $dompdfOptions->set('isRemoteEnabled', false);
+        $dompdfOptions->set('isHtml5ParserEnabled', true);
+        $dompdfOptions->set('defaultFont', 'Times-Roman');
+
+        $dompdf = new Dompdf($dompdfOptions);
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->loadHtml($html, 'UTF-8');
+        $dompdf->render();
+
+        $pdf = $dompdf->output();
+        if ($pdf === '') {
+            throw new RuntimeException('The PDF renderer returned an empty document.');
+        }
+
+        return $pdf;
+    }
+
+    public function renderPaanyayaMinutesHtml(int $complaintId, array $options = []): string
+    {
+        if ($this->conn === null) {
+            require_once __DIR__ . '/../config/database.php';
+            $this->conn = (new Database())->connect();
+        }
+
+        $cStmt = $this->conn->prepare('SELECT * FROM complaints WHERE complaint_id = ? LIMIT 1');
+        $cStmt->execute([$complaintId]);
+        $complaint = $cStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$complaint) {
+            throw new RuntimeException('Complaint not found.');
+        }
+
+        $pStmt = $this->conn->prepare("
+            SELECT cp.party_type,
+                   TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name, r.suffix)) AS full_name,
+                   r.address, r.purok
+            FROM complaint_parties cp
+            INNER JOIN residents r ON r.resident_id = cp.resident_id
+            WHERE cp.complaint_id = ?
+            ORDER BY FIELD(cp.party_type, 'Complainant', 'Respondent', 'Witness'), r.last_name, r.first_name
+        ");
+        $pStmt->execute([$complaintId]);
+        $parties = $pStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $complainants = [];
+        $respondents = [];
+        foreach ($parties as $p) {
+            $addr = trim((string)($p['address'] ?? ''));
+            if ($addr === '' && !empty($p['purok'])) {
+                $addr = 'Purok ' . $p['purok'] . ', Barangay Tumana, Marikina City';
+            } elseif ($addr === '') {
+                $addr = 'Barangay Tumana, Marikina City';
+            }
+            if ($p['party_type'] === 'Complainant') {
+                $complainants[] = ['full_name' => $p['full_name'], 'address' => $addr];
+            } elseif ($p['party_type'] === 'Respondent') {
+                $respondents[] = ['full_name' => $p['full_name'], 'address' => $addr];
+            }
+        }
+
+        $stageType = $options['stage_type'] ?? 'Paanyaya 1';
+        $mStmt = $this->conn->prepare("
+            SELECT pm.*, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS recorded_by_name
+            FROM paanyaya_minutes pm
+            LEFT JOIN users u ON u.user_id = pm.recorded_by
+            WHERE pm.complaint_id = ? AND pm.stage_type = ?
+            ORDER BY pm.minutes_id DESC LIMIT 1
+        ");
+        $mStmt->execute([$complaintId, $stageType]);
+        $minutes = $mStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$minutes) {
+            $mStmt2 = $this->conn->prepare("
+                SELECT pm.*, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS recorded_by_name
+                FROM paanyaya_minutes pm
+                LEFT JOIN users u ON u.user_id = pm.recorded_by
+                WHERE pm.complaint_id = ?
+                ORDER BY pm.minutes_id DESC LIMIT 1
+            ");
+            $mStmt2->execute([$complaintId]);
+            $minutes = $mStmt2->fetch(PDO::FETCH_ASSOC) ?: [];
+        }
+
+        $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
+        $bagongPath = __DIR__ . '/../../frontend/assets/images/bagong_pilipinas_logo.png';
+        $signaturePath = __DIR__ . '/../../frontend/assets/images/captain_signature.png';
+
+        $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
+        $bagongLogo = file_exists($bagongPath) ? 'data:image/png;base64,' . base64_encode(file_get_contents($bagongPath)) : '';
+        $sigLogo = file_exists($signaturePath) ? 'data:image/png;base64,' . base64_encode(file_get_contents($signaturePath)) : '';
+
+        $compNames = array_column($complainants, 'full_name');
+        $respNames = array_column($respondents, 'full_name');
+        $compStr = !empty($compNames) ? implode(' / ', $compNames) : 'NAGPAANYAYA';
+        $respStr = !empty($respNames) ? implode(' / ', $respNames) : 'INANYAYAHAN';
+        $caseNo = $complaint['complaint_number'] ?: ('CMP-' . $complaintId);
+
+        $dialogueDate = !empty($minutes['dialogue_date']) ? date('F j, Y g:i A', strtotime($minutes['dialogue_date'])) : date('F j, Y');
+        $actualStart = !empty($minutes['actual_start_time']) ? date('g:i A', strtotime($minutes['actual_start_time'])) : 'N/A';
+        $sessionRemarks = !empty($minutes['session_remarks']) ? $this->escape($minutes['session_remarks']) : 'Nagsimula nang maayos.';
+        $compAtt = $minutes['complainant_attended'] ?? 'Present';
+        $respAtt = $minutes['respondent_attended'] ?? 'Present';
+        $summary = !empty($minutes['discussion_summary']) ? nl2br($this->escape($minutes['discussion_summary'])) : 'Walang naitalang buod.';
+        $terms = !empty($minutes['agreed_terms']) ? nl2br($this->escape($minutes['agreed_terms'])) : 'Walang napagkasunduang kondisyon.';
+        $outcome = $minutes['outcome'] ?? 'No_Agreement';
+        $choice = $minutes['complainant_choice'] ?? 'Escalate_Mediation';
+        $recorder = $minutes['recorded_by_name'] ?? 'Lupon Clerk';
+
+        $outcomeLabel = ($outcome === 'Settled')
+            ? 'NAGKASUNDO (Amicably Settled - Closed)'
+            : 'WALANG KASUNDUAN (No Agreement Reached)';
+        $choiceLabel = ($outcome === 'Settled')
+            ? 'Naayos sa impormal na dialogue nang hindi na docket sa korte.'
+            : (($choice === 'Request_Paanyaya_2') ? 'Humiling ng Ikalawang Paanyaya (Paanyaya 2)' : 'Inakyat sa Pormal na Mediation / Punong Barangay (Escalate to Mediation)');
+
+        return '
+        <!DOCTYPE html>
+        <html lang="tl">
+        <head>
+            <meta charset="UTF-8">
+            <title>Katitikan ng Usapang Paanyaya</title>
+            <style>
+                body { font-family: "Times New Roman", Times, serif; font-size: 13px; line-height: 1.5; color: #1e293b; background: #fff; margin: 0; padding: 24px; box-sizing: border-box; }
+                .header-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; border-bottom: 2px solid #0f172a; padding-bottom: 12px; }
+                .header-table td { vertical-align: middle; }
+                .header-title { text-align: center; font-size: 11px; text-transform: uppercase; color: #334155; line-height: 1.3; }
+                .header-title strong { font-size: 14px; color: #0f172a; display: block; margin: 2px 0; }
+                .doc-title { text-align: center; font-size: 16px; font-weight: bold; text-transform: uppercase; margin: 16px 0 4px; color: #0f172a; letter-spacing: 0.05em; }
+                .doc-subtitle { text-align: center; font-size: 12px; color: #64748b; margin-bottom: 20px; font-style: italic; }
+                .section-box { border: 1px solid #cbd5e1; border-radius: 6px; padding: 12px 14px; margin-bottom: 14px; background: #fafafa; }
+                .section-header { font-weight: bold; font-size: 12px; text-transform: uppercase; color: #0f172a; margin-bottom: 6px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }
+                .field-row { margin-bottom: 6px; display: flex; font-size: 12px; }
+                .field-label { width: 190px; font-weight: bold; color: #475569; flex-shrink: 0; }
+                .field-val { flex: 1; color: #0f172a; }
+                .narrative-text { background: #fff; border: 1px solid #e2e8f0; padding: 10px; border-radius: 4px; font-size: 12px; line-height: 1.6; color: #1e293b; }
+                .signatories-table { width: 100%; margin-top: 30px; border-collapse: collapse; page-break-inside: avoid; }
+                .signatories-table td { width: 50%; vertical-align: top; padding: 12px 20px; text-align: center; }
+                .sig-line { border-top: 1px solid #0f172a; margin-top: 40px; padding-top: 4px; font-weight: bold; font-size: 12px; }
+                .sig-role { font-size: 11px; color: #64748b; font-style: italic; }
+            </style>
+        </head>
+        <body>
+            <table class="header-table">
+                <tr>
+                    <td style="width: 80px; text-align: center;">' . ($tumanaLogo ? '<img src="' . $tumanaLogo . '" style="width: 70px; height: auto;" alt="Logo">' : '') . '</td>
+                    <td class="header-title">
+                        Republika ng Pilipinas &bull; Lungsod ng Marikina<br>
+                        <strong>BARANGAY TUMANA</strong><br>
+                        TANGGAPAN NG LUPONG TAGAPAMAYAPA &bull; KATARUNGANG PAMBARANGAY
+                    </td>
+                    <td style="width: 80px; text-align: center;">' . ($bagongLogo ? '<img src="' . $bagongLogo . '" style="width: 65px; height: auto;" alt="Bagong Pilipinas">' : '') . '</td>
+                </tr>
+            </table>
+
+            <div class="doc-title">KATITIKAN NG USAPANG PAANYAYA (DIALOGUE MINUTES)</div>
+            <div class="doc-subtitle">' . htmlspecialchars($stageType) . ' &mdash; Salaysay at Buod ng Usapan sa Harap ng Barangay &bull; Blg. <strong>' . htmlspecialchars($caseNo) . '</strong></div>
+
+            <div class="section-box">
+                <div class="section-header">1. Mga Partido sa Usapin (Parties)</div>
+                <div class="field-row"><span class="field-label">Nagpaanyaya (Complainant):</span><span class="field-val"><strong>' . htmlspecialchars($compStr) . '</strong></span></div>
+                <div class="field-row"><span class="field-label">Inanyayahan (Respondent):</span><span class="field-val"><strong>' . htmlspecialchars($respStr) . '</strong></span></div>
+            </div>
+
+            <div class="section-box">
+                <div class="section-header">2. Takdang Oras, Pagsisimula, at Pagdalo (Schedule &amp; Attendance)</div>
+                <div class="field-row"><span class="field-label">Takdang Petsa at Oras:</span><span class="field-val">' . htmlspecialchars($dialogueDate) . '</span></div>
+                <div class="field-row"><span class="field-label">Aktwal na Simula:</span><span class="field-val">' . htmlspecialchars($actualStart) . '</span></div>
+                <div class="field-row"><span class="field-label">Puna sa Pagsisimula:</span><span class="field-val">' . $sessionRemarks . '</span></div>
+                <div class="field-row"><span class="field-label">Pagdalo ng Nagpaanyaya:</span><span class="field-val"><strong>' . htmlspecialchars($compAtt) . '</strong></span></div>
+                <div class="field-row"><span class="field-label">Pagdalo ng Inanyayahan:</span><span class="field-val"><strong>' . htmlspecialchars($respAtt) . '</strong></span></div>
+            </div>
+
+            <div class="section-box">
+                <div class="section-header">3. Salaysay at Buod ng Napag-usapan (Summary of Statements &amp; Discussion)</div>
+                <div class="narrative-text">' . $summary . '</div>
+            </div>
+
+            <div class="section-box">
+                <div class="section-header">4. Mga Mungkahi o Napagkasunduang Kondisyon (Agreed Terms / Proposals)</div>
+                <div class="narrative-text">' . $terms . '</div>
+            </div>
+
+            <div class="section-box">
+                <div class="section-header">5. Kinalabasan at Desisyon ng Nagreklamo (Outcome &amp; Decision)</div>
+                <div class="field-row"><span class="field-label">Kinalabasan (Outcome):</span><span class="field-val"><strong>' . htmlspecialchars($outcomeLabel) . '</strong></span></div>
+                <div class="field-row"><span class="field-label">Desisyon ng Nagreklamo:</span><span class="field-val"><strong>' . htmlspecialchars($choiceLabel) . '</strong></span></div>
+            </div>
+
+            <table class="signatories-table">
+                <tr>
+                    <td>
+                        <div class="sig-line">' . htmlspecialchars($compStr) . '</div>
+                        <div class="sig-role">Nagpaanyaya (Complainant)</div>
+                    </td>
+                    <td>
+                        <div class="sig-line">' . htmlspecialchars($respStr) . '</div>
+                        <div class="sig-role">Inanyayahan (Respondent)</div>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <div class="sig-line">' . htmlspecialchars($recorder) . '</div>
+                        <div class="sig-role">Tagapagtala / Lupon Clerk</div>
+                    </td>
+                    <td>
+                        <div style="position: relative; display: inline-block; width: 100%;">' . ($sigLogo ? '<img src="' . $sigLogo . '" style="position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); width: 110px; height: auto;" alt="Signature">' : '') . '</div>
+                        <div class="sig-line">HON. AKIKO LYNNE CENTENO</div>
+                        <div class="sig-role">Punong Barangay</div>
+                    </td>
+                </tr>
+            </table>
+        </body>
+        </html>
+        ';
     }
 
     /**
