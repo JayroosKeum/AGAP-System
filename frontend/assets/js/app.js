@@ -191,34 +191,87 @@ document.addEventListener('DOMContentLoaded', () => {
     }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['required'] });
 
     const sidebar = document.getElementById('appSidebar');
-    const mobileToggle = document.querySelector('[data-sidebar-toggle]');
-    if (!sidebar) return;
+    const collapseBtn = document.getElementById('sidebarCollapseBtn');
+    const navToggle = document.querySelector('[data-sidebar-toggle]');
+    const storageCollapseKey = 'agap_sidebar_collapsed';
 
-    const closeMobileSidebar = () => {
-        sidebar.classList.remove('is-open');
-        mobileToggle?.setAttribute('aria-expanded', 'false');
-        document.querySelector('.sidebar-overlay')?.remove();
-    };
-    mobileToggle?.addEventListener('click', () => {
-        const open = sidebar.classList.toggle('is-open');
-        mobileToggle.setAttribute('aria-expanded', String(open));
-        if (open) {
-            const overlay = document.createElement('div');
-            overlay.className = 'sidebar-overlay';
-            overlay.addEventListener('click', closeMobileSidebar);
-            document.body.appendChild(overlay);
-        } else {
-            closeMobileSidebar();
+    if (sidebar) {
+        // Restore desktop collapsed state
+        const isCollapsedInitially = localStorage.getItem(storageCollapseKey) === 'true';
+        if (isCollapsedInitially && window.innerWidth > 900) {
+            sidebar.classList.add('is-collapsed');
+            document.documentElement.classList.add('sidebar-collapsed');
+            if (collapseBtn) {
+                collapseBtn.setAttribute('title', 'Expand sidebar');
+                collapseBtn.setAttribute('aria-label', 'Expand sidebar');
+            }
         }
-    });
 
-    sidebar.querySelectorAll('[data-nav-group]').forEach((group) => {
-        const key = `agap-nav-group-${group.dataset.navGroup}`;
-        const saved = localStorage.getItem(key);
-        if (saved !== null) group.open = saved === 'true';
-        group.addEventListener('toggle', () => localStorage.setItem(key, String(group.open)));
-    });
-    sidebar.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeMobileSidebar));
+        const toggleDesktopSidebar = () => {
+            const willCollapse = !sidebar.classList.contains('is-collapsed');
+            sidebar.classList.toggle('is-collapsed', willCollapse);
+            document.documentElement.classList.toggle('sidebar-collapsed', willCollapse);
+            try {
+                localStorage.setItem(storageCollapseKey, String(willCollapse));
+            } catch (e) {}
+            if (collapseBtn) {
+                collapseBtn.setAttribute('title', willCollapse ? 'Expand sidebar' : 'Collapse sidebar');
+                collapseBtn.setAttribute('aria-label', willCollapse ? 'Expand sidebar' : 'Collapse sidebar');
+            }
+        };
+
+        const closeMobileSidebar = () => {
+            sidebar.classList.remove('is-open');
+            navToggle?.setAttribute('aria-expanded', 'false');
+            document.querySelector('.sidebar-overlay')?.remove();
+        };
+
+        const toggleMobileSidebar = () => {
+            const open = sidebar.classList.toggle('is-open');
+            navToggle?.setAttribute('aria-expanded', String(open));
+            if (open) {
+                const overlay = document.createElement('div');
+                overlay.className = 'sidebar-overlay';
+                overlay.addEventListener('click', closeMobileSidebar);
+                document.body.appendChild(overlay);
+            } else {
+                closeMobileSidebar();
+            }
+        };
+
+        navToggle?.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (window.innerWidth <= 900) {
+                toggleMobileSidebar();
+            } else {
+                toggleDesktopSidebar();
+            }
+        });
+
+        collapseBtn?.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (window.innerWidth <= 900) {
+                closeMobileSidebar();
+            } else {
+                toggleDesktopSidebar();
+            }
+        });
+
+        sidebar.querySelectorAll('[data-nav-group]').forEach((group) => {
+            const key = `agap-nav-group-${group.dataset.navGroup}`;
+            const saved = localStorage.getItem(key);
+            if (saved !== null) group.open = saved === 'true';
+            group.addEventListener('toggle', () => localStorage.setItem(key, String(group.open)));
+        });
+
+        sidebar.querySelectorAll('a').forEach((link) => {
+            link.addEventListener('click', () => {
+                if (window.innerWidth <= 900) {
+                    closeMobileSidebar();
+                }
+            });
+        });
+    }
 
     const recentlyDisplayed = new Set();
     const showMessagePopup = (element) => {
