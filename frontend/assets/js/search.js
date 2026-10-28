@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('recordsSearchForm');
-    const results = document.getElementById('complaintTable') || document.getElementById('searchResults');
+    const results = document.getElementById('complaintTable');
     const summary = document.getElementById('resultSummary');
     if (!form || !results) return;
 
@@ -677,7 +677,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (summary) summary.textContent = 'Showing 0 complaint records';
             return;
         }
-        results.innerHTML = rows.map(row => complaintView ? renderComplaintRow(row) : renderSearchRow(row)).join('');
+        results.innerHTML = rows.map(row => renderComplaintRow(row)).join('');
     }
 
     function renderComplaintRow(row) {
@@ -824,29 +824,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${partiesHtml}</td>
                 <td>${statusHtml}</td>
                 <td style="text-align: right;">${actionsHtml}</td>
-            </tr>
-        `;
-    }
-
-    function renderSearchRow(row) {
-        const isPaanyaya = (row.status === 'Pre-Docketed (Paanyaya)' || row.lifecycle_status === 'Paanyaya' || (Array.isArray(row.status_labels) && row.status_labels.some(l => String(l).includes('Paanyaya'))) || (!row.case_id && String(row.complaint_number || row.case_number || '').startsWith('P-')));
-        let caseDisplay = row.case_number || 'Not docketed';
-        if (isPaanyaya) {
-            const d = row.incident_date ? new Date(row.incident_date) : new Date();
-            const mm = String(d.getMonth() + 1).padStart(2, '0');
-            const ss = String(row.complaint_id || 1).padStart(2, '0');
-            const yy = d.getFullYear() || 2026;
-            caseDisplay = (row.complaint_number && String(row.complaint_number).startsWith('P-')) ? row.complaint_number : `P-${mm}-${ss}-${yy}`;
-        }
-        return `
-            <tr>
-                <td>${escapeHtml(caseDisplay)}<small>${escapeHtml(row.case_type || '')}</small></td>
-                <td>${escapeHtml(row.complaint_number)}<small>${escapeHtml(row.complaint_title)}</small></td>
-                <td>${escapeHtml(row.category_name || 'Uncategorized')}</td>
-                <td>${escapeHtml(row.parties || 'No parties linked')}</td>
-                <td>${escapeHtml(row.record_status || (isPaanyaya ? 'Paanyaya' : (row.case_status || '')))}</td>
-                <td>${escapeHtml(row.incident_date || '')}</td>
-                <td>${Number(row.repeat_party_count || 0) > 1 ? `<span class="repeat-flag">Repeat party (${Number(row.repeat_party_count)} records)</span>` : 'No repeat record'}</td>
             </tr>
         `;
     }

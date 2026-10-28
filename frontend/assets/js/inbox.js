@@ -783,18 +783,18 @@ function formatNotificationTime(dateString) {
  * Resolve target action URL
  */
 function resolveActionUrl(item) {
-    if (item.action_url) return item.action_url;
+    if (item.action_url && !item.action_url.includes('records.php')) return item.action_url;
     if (item.case_id) return `../cases/case-details.php?id=${encodeURIComponent(item.case_id)}`;
     if (item.complaint_id) return `../complaints/complaint-details.php?id=${encodeURIComponent(item.complaint_id)}`;
 
-    // Fallback: search in message text
+    // Fallback: search in message text and redirect directly to case details
     const match = `${item.title} ${item.message}`.match(/(?:Case|case)\s*(?:#|No\.\s*|number\s*)?([0-9A-Za-z\-_]+)/i);
     if (match && match[1]) {
-        return `../cases/case-list.php?search=${encodeURIComponent(match[1])}`;
+        return `../cases/case-details.php?case_number=${encodeURIComponent(match[1])}`;
     }
     const compMatch = `${item.title} ${item.message}`.match(/(?:Complaint|P-)\s*(?:#|No\.\s*|number\s*)?([0-9A-Za-z\-_]+)/i);
     if (compMatch && compMatch[1]) {
-        return `../complaints/complaint-list.php?search=${encodeURIComponent(compMatch[1])}`;
+        return `../complaints/complaint-details.php?id=${encodeURIComponent(compMatch[1])}`;
     }
     return '';
 }

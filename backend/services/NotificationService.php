@@ -25,8 +25,9 @@ class NotificationService
     public function notifyCaseMembers(int $caseId, string $title, string $message, ?int $excludeUserId = null, ?string $severity = null, ?string $actionUrl = null): void
     {
         try {
+            $url = $actionUrl ?: ("../cases/case-details.php?id=" . $caseId);
             foreach ($this->notification->getCaseRecipients($caseId) as $userId) {
-                $this->notifyUser($userId, $title, $message, $excludeUserId, $severity, $actionUrl, $caseId);
+                $this->notifyUser($userId, $title, $message, $excludeUserId, $severity, $url, $caseId);
             }
         } catch (Throwable $exception) {
             error_log('Notification recipient lookup failed: ' . $exception->getMessage());
@@ -222,25 +223,26 @@ class NotificationService
                 $hearing['venue'],
                 $reason
             );
+            $actionUrl = "../cases/case-details.php?id=" . $caseId;
 
             // 1. Notify case assigned officers
-            $this->notifyCaseMembers($caseId, $title, $msg, $actorUserId);
+            $this->notifyCaseMembers($caseId, $title, $msg, $actorUserId, 'urgent', $actionUrl);
 
             // 2. Notify presider
             if (!empty($hearing['presiding_officer_id'])) {
-                $this->notifyUser((int) $hearing['presiding_officer_id'], $title, $msg, $actorUserId);
+                $this->notifyUser((int) $hearing['presiding_officer_id'], $title, $msg, $actorUserId, 'urgent', $actionUrl, $caseId);
             }
             if (!empty($hearing['substitute_presider_id'])) {
-                $this->notifyUser((int) $hearing['substitute_presider_id'], $title, $msg, $actorUserId);
+                $this->notifyUser((int) $hearing['substitute_presider_id'], $title, $msg, $actorUserId, 'urgent', $actionUrl, $caseId);
             }
 
             // 3. Notify encoder/clerk
             if (!empty($hearing['encoded_by'])) {
-                $this->notifyUser((int) $hearing['encoded_by'], $title, $msg, $actorUserId);
+                $this->notifyUser((int) $hearing['encoded_by'], $title, $msg, $actorUserId, 'urgent', $actionUrl, $caseId);
             }
 
             // 4. Notify registered complainant and respondent user accounts
-            $this->notifyParties($caseId, $title, $msg, $actorUserId);
+            $this->notifyParties($caseId, $title, $msg, $actorUserId, 'urgent', $actionUrl);
         } catch (Throwable $e) {
             error_log('Failed to dispatch hearing cancellation notifications: ' . $e->getMessage());
         }
@@ -278,33 +280,34 @@ class NotificationService
                 $hearing['venue'],
                 $reason
             );
+            $actionUrl = "../cases/case-details.php?id=" . $caseId;
 
             // 1. Notify case assigned officers
-            $this->notifyCaseMembers($caseId, $title, $msg, $actorUserId);
+            $this->notifyCaseMembers($caseId, $title, $msg, $actorUserId, 'warning', $actionUrl);
 
             // 2. Notify new presider
             if (!empty($hearing['presiding_officer_id'])) {
-                $this->notifyUser((int) $hearing['presiding_officer_id'], $title, $msg, $actorUserId);
+                $this->notifyUser((int) $hearing['presiding_officer_id'], $title, $msg, $actorUserId, 'warning', $actionUrl, $caseId);
             }
 
             // 3. Notify original presider if different
             if (!empty($hearing['orig_presiding_officer_id']) && (int) $hearing['orig_presiding_officer_id'] !== (int) $hearing['presiding_officer_id']) {
-                $this->notifyUser((int) $hearing['orig_presiding_officer_id'], $title, $msg, $actorUserId);
+                $this->notifyUser((int) $hearing['orig_presiding_officer_id'], $title, $msg, $actorUserId, 'warning', $actionUrl, $caseId);
             }
 
             // 4. Notify encoder/clerk
             if (!empty($hearing['encoded_by'])) {
-                $this->notifyUser((int) $hearing['encoded_by'], $title, $msg, $actorUserId);
+                $this->notifyUser((int) $hearing['encoded_by'], $title, $msg, $actorUserId, 'warning', $actionUrl, $caseId);
             }
 
             // 5. Notify registered complainant and respondent user accounts
-            $this->notifyParties($caseId, $title, $msg, $actorUserId);
+            $this->notifyParties($caseId, $title, $msg, $actorUserId, 'warning', $actionUrl);
         } catch (Throwable $e) {
             error_log('Failed to dispatch hearing rescheduled notifications: ' . $e->getMessage());
         }
     }
 
-    public function notifyParties(int $caseId, string $title, string $message, ?int $excludeUserId = null): void
+    public function notifyParties(int $caseId, string $title, string $message, ?int $excludeUserId = null, ?string $severity = null, ?string $actionUrl = null): void
     {
         try {
             $db = (new Database())->connect();
@@ -320,8 +323,9 @@ class NotificationService
             ");
             $stmt->execute([$caseId]);
             $partyUserIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $url = $actionUrl ?: ("../cases/case-details.php?id=" . $caseId);
             foreach ($partyUserIds as $pUid) {
-                $this->notifyUser((int) $pUid, $title, $message, $excludeUserId);
+                $this->notifyUser((int) $pUid, $title, $message, $excludeUserId, $severity, $url, $caseId);
             }
         } catch (Throwable $e) {
             error_log('Failed to dispatch party notifications: ' . $e->getMessage());
