@@ -88,13 +88,14 @@ class Summons
                 WHERE DATE(h.hearing_date) = ?
                   AND h.hearing_type = 'Mediation'
                   AND c.case_status NOT IN ('Dismissed', 'Settled')
+                  AND h.status NOT IN ('Cancelled', 'Office Cancelled')
             ");
             $capacityStmt->execute([$medDate]);
             if ((int) $capacityStmt->fetchColumn() >= 8) {
                 $this->conn->rollBack();
                 return [
                     'success' => false,
-                    'message' => 'Daily capacity limit reached: All 8 mediation slots for this date are fully booked. Please select another date.'
+                    'message' => 'Daily capacity limit reached: All 8 mediation slots are fully booked for this date. Please select another date.'
                 ];
             }
 
@@ -184,14 +185,14 @@ class Summons
 
             if (!$hearingId) {
                 $insertHearing = $this->conn->prepare(
-                    "INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, remarks)
-                     VALUES (?, 'Mediation', ?, ?, ?)"
+                    "INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, remarks, queue_status)
+                     VALUES (?, 'Mediation', ?, ?, ?, 'Waiting')"
                 );
                 $insertHearing->execute([$caseId, $hearingDateTime, $venue, $remarks ?: '1st Mediation scheduled upon issuance of 1st Summons.']);
                 $hearingId = (int) $this->conn->lastInsertId();
             } else {
                 $updateHearing = $this->conn->prepare(
-                    "UPDATE hearings SET hearing_date = ?, venue = ?, remarks = COALESCE(?, remarks) WHERE hearing_id = ?"
+                    "UPDATE hearings SET hearing_date = ?, venue = ?, remarks = COALESCE(?, remarks), queue_status = COALESCE(queue_status, 'Waiting') WHERE hearing_id = ?"
                 );
                 $updateHearing->execute([$hearingDateTime, $venue, $remarks, $hearingId]);
             }
@@ -709,9 +710,9 @@ class Summons
             ];
         }
 
-        // Check for time overlap with any active hearing at the same venue on this date (60-minute duration)
+        // Check for time overlap with any active hearing at the same venue on this date (Elastic Duration: 45-min buffer)
         $proposedStart = $hearingDateTime;
-        $proposedEnd = date('Y-m-d H:i:s', strtotime($hearingDateTime . ' +60 minutes'));
+        $proposedEnd = date('Y-m-d H:i:s', strtotime($hearingDateTime . ' +45 minutes'));
 
         $overlapSql = "
             SELECT h.hearing_id, h.case_id, h.hearing_date, h.venue, h.hearing_type,
@@ -728,9 +729,9 @@ class Summons
                     WHEN (h.status = 'Completed' OR h.queue_status = 'Concluded') THEN
                       (h.actual_start_time IS NOT NULL AND h.actual_end_time IS NOT NULL AND h.actual_start_time < ? AND h.actual_end_time > ?)
                     WHEN h.queue_status = 'In_Session' AND h.actual_start_time IS NOT NULL THEN
-                      (h.actual_start_time < ? AND DATE_ADD(h.actual_start_time, INTERVAL COALESCE(h.duration_minutes, 45) MINUTE) > ?)
+                      (h.actual_start_time < ? AND DATE_ADD(h.actual_start_time, INTERVAL GREATEST(TIMESTAMPDIFF(MINUTE, h.actual_start_time, NOW()), COALESCE(h.duration_minutes, 45)) MINUTE) > ?)
                     ELSE
-                      (h.hearing_date < ? AND DATE_ADD(h.hearing_date, INTERVAL 60 MINUTE) > ?)
+                      (h.hearing_date < ? AND DATE_ADD(h.hearing_date, INTERVAL COALESCE(h.duration_minutes, 45) MINUTE) > ?)
                   END
               )
         ";
@@ -760,26 +761,32 @@ class Summons
                 ? $overlapConflict['actual_start_time']
                 : $overlapConflict['hearing_date'];
             $cStart = date('g:i A', strtotime($effectiveStart));
-            $cEnd = !empty($overlapConflict['actual_end_time'])
-                ? date('g:i A', strtotime($overlapConflict['actual_end_time']))
-                : date('g:i A', strtotime($effectiveStart . ' +60 minutes'));
+            $effectiveEnd = !empty($overlapConflict['actual_end_time'])
+                ? $overlapConflict['actual_end_time']
+                : (($overlapConflict['queue_status'] === 'In_Session' && !empty($overlapConflict['actual_start_time']))
+                    ? date('Y-m-d H:i:s', strtotime($overlapConflict['actual_start_time'] . ' +' . max(45, (int)ceil((time() - strtotime($overlapConflict['actual_start_time'])) / 60)) . ' minutes'))
+                    : date('Y-m-d H:i:s', strtotime($effectiveStart . ' +45 minutes')));
+            $cEnd = date('g:i A', strtotime($effectiveEnd));
             $cDate = date('M j, Y', strtotime($effectiveStart));
-            $caseRef = !empty($overlapConflict['case_number']) ? ' for Case ' . $overlapConflict['case_number'] : '';
+            $cCase = !empty($overlapConflict['case_number']) ? $overlapConflict['case_number'] : 'N/A';
+            $statusLabel = (($overlapConflict['queue_status'] ?? '') === 'In_Session') ? 'currently in-session' : 'currently scheduled';
+            $venueName = $overlapConflict['venue'] ?? $venue;
             return [
                 'hearing_id' => $overlapConflict['hearing_id'],
                 'case_id' => $overlapConflict['case_id'],
                 'hearing_date' => $overlapConflict['hearing_date'],
-                'venue' => $overlapConflict['venue'],
+                'venue' => $venueName,
                 'hearing_type' => $overlapConflict['hearing_type'] ?? 'Mediation',
                 'case_number' => $overlapConflict['case_number'] ?? '',
+                'queue_status' => $overlapConflict['queue_status'] ?? '',
+                'status' => $overlapConflict['status'] ?? '',
                 'message' => sprintf(
-                    'Schedule conflict: A %s is already scheduled%s from %s to %s on %s (%s).',
-                    $overlapConflict['hearing_type'] ?? 'Hearing',
-                    $caseRef,
+                    '⚠️ Schedule Conflict: Case %s is %s in the %s from %s to %s.',
+                    $cCase,
+                    $statusLabel,
+                    $venueName,
                     $cStart,
-                    $cEnd,
-                    $cDate,
-                    $overlapConflict['venue'] ?? $venue
+                    $cEnd
                 )
             ];
         }
@@ -869,6 +876,7 @@ class Summons
             : "h.hearing_type = 'Mediation'";
         $sql = "
             SELECT h.hearing_id, h.case_id, h.hearing_date, h.venue, h.hearing_type,
+                   h.status, h.queue_status, h.duration_minutes, h.actual_start_time, h.actual_end_time,
                    c.case_number, co.complaint_title
             FROM hearings h
             INNER JOIN cases c ON c.case_id = h.case_id
@@ -876,6 +884,7 @@ class Summons
             WHERE DATE(h.hearing_date) = ?
               AND {$typeCondition}
               AND c.case_status NOT IN ('Dismissed', 'Settled')
+              AND h.status NOT IN ('Cancelled', 'Office Cancelled')
         ";
         $params = [$dateOnly];
 
@@ -894,7 +903,15 @@ class Summons
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         return array_map(function ($row) {
-            $ts = strtotime($row['hearing_date']);
+            $effectiveStart = (!empty($row['actual_start_time']) && (in_array($row['status'], ['Completed', 'Attendance Recorded'], true) || ($row['queue_status'] ?? '') === 'Concluded'))
+                ? $row['actual_start_time']
+                : $row['hearing_date'];
+            $ts = strtotime($effectiveStart);
+            $dur = (int) ($row['duration_minutes'] ?: 45);
+            $effectiveEnd = !empty($row['actual_end_time'])
+                ? $row['actual_end_time']
+                : date('Y-m-d H:i:s', strtotime($effectiveStart . " +{$dur} minutes"));
+
             return [
                 'hearing_id' => (int) $row['hearing_id'],
                 'case_id' => (int) $row['case_id'],
@@ -902,9 +919,13 @@ class Summons
                 'complaint_title' => $row['complaint_title'],
                 'hearing_date' => $row['hearing_date'],
                 'start_time' => date('g:i A', $ts),
-                'end_time' => date('g:i A', strtotime('+60 minutes', $ts)),
+                'end_time' => date('g:i A', strtotime($effectiveEnd)),
                 'time_24' => date('H:i', $ts),
-                'venue' => $row['venue']
+                'venue' => $row['venue'],
+                'status' => $row['status'],
+                'queue_status' => $row['queue_status'] ?: 'Waiting',
+                'actual_start_time' => $row['actual_start_time'],
+                'actual_end_time' => $row['actual_end_time']
             ];
         }, $rows);
     }

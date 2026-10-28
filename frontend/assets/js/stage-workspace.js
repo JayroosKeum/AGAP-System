@@ -157,7 +157,7 @@ function getStageSessionOrdinalLabel(stageType, index) {
     const s = ["th", "st", "nd", "rd"];
     const v = idx % 100;
     const ord = idx + (s[(v - 20) % 10] || s[v] || s[0]);
-    const stage = (stageType === 'Conciliation') ? 'Conciliation' : 'Mediation';
+    const stage = (stageType === 'Conciliation') ? 'Conciliation' : ((stageType === 'Arbitration') ? 'Arbitration Hearing' : 'Mediation');
     return `${ord} ${stage}`;
 }
 
@@ -1334,7 +1334,7 @@ window.getOutcomeOptionsForSession = getOutcomeOptionsForSession;
 function renderSingleSessionMinutesCard(session, mode, allSessions) {
     const hId = session.hearing_id;
     const sessionIndex = Number(session.session_index || 1);
-    const sessionLabel = `#${sessionIndex} ${getStageSessionOrdinalLabel(mode || stageWorkspaceState.stageType, sessionIndex)}`;
+    const sessionLabel = getStageSessionOrdinalLabel(mode || stageWorkspaceState.mode || stageWorkspaceState.stageType, sessionIndex);
     const isFinalized = (session.minutes_status === 'Finalized');
     const readonlyAttr = isFinalized ? 'readonly disabled' : '';
     let curOutcome = session.session_outcome || 'Pending';
@@ -1446,9 +1446,6 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
                             Minutes of the Meeting &amp; Hearing: ${escapeHtml(sessionLabel)}
                         </h3>
                     </div>
-                    <p style="margin: 4px 0 0; font-size: 0.83rem; color: #64748b;">
-                        Record formal proceedings, statements, agreed terms, and disposition for <strong>${escapeHtml(sessionLabel)}</strong> (${formatDateTimeReadable(session.hearing_date)}).
-                    </p>
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                     <span style="font-size: 0.78rem; padding: 4px 10px; border-radius: 9999px; font-weight: 700; ${badgeColor}">
@@ -1868,14 +1865,14 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false, hearingId 
         bannerEl.innerHTML = `
             <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                 <div style="color: #166534; font-size: 0.85rem;">
-                    <strong style="font-size: 0.92rem; display: block; color: #14532d;">Amicable Settlement Reached (Kasunduan)</strong>
-                    Parties have agreed on settlement terms. Finalize the minutes, then preview or print the formal Amicable Settlement (KP Form 16).
+                    <strong style="font-size: 0.95rem; color: #14532d; display: block;">Amicable Settlement Reached (Kasunduan)</strong>
+                    <div style="font-size: 0.82rem; color: #15803d; margin-top: 3px;">Parties agreed on settlement terms. Click below to record settlement and proceed to KP Form 16.</div>
                 </div>
                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <button type="button" class="btn-create" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 16', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
+                    <button type="button" class="btn-create" onclick="issueSettledOutcome(${Number(activeHearingId || 0)})" style="font-size: 0.82rem; padding: 7px 16px; display: inline-flex; align-items: center; gap: 5px; background: #16a34a; border-color: #16a34a; color: #ffffff; border-radius: 6px; font-weight: 700; cursor: pointer;">
                         Open Amicable Settlement &rarr;
                     </button>
-                    <button type="button" class="btn-secondary" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 16', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #86efac; color: #166534; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+                    <button type="button" class="btn-secondary" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 16', ${Number(activeHearingId || 0)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #86efac; color: #166534; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
                         Preview / Print KP Form 16
                     </button>
                 </div>
@@ -1950,14 +1947,8 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false, hearingId 
                     Both parties have voluntarily agreed in writing to submit their dispute to binding arbitration under RA 7160 Sec. 413.
                 </p>
                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <button type="button" class="btn-create" onclick="openEmbeddedScheduleModal('Arbitration')" style="background: #d97706; border-color: #d97706; font-size: 0.82rem; padding: 7px 14px;">
-                        Schedule Arbitration Session &rarr;
-                    </button>
-                    <button type="button" class="btn-secondary" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 14', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #fde68a; color: #92400e; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
-                        Preview KP Form 14
-                    </button>
-                    <button type="button" class="btn-secondary" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 15', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #fde68a; color: #92400e; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
-                        Preview KP Form 15
+                    <button type="button" class="btn-create" onclick="issueArbitrationOutcome(${Number(activeHearingId || 0)})" style="background: #d97706; border-color: #d97706; font-size: 0.82rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+                        Issue Arbitration &rarr;
                     </button>
                 </div>
             </div>
@@ -2034,7 +2025,7 @@ window.selectInlineMinutesSession = selectInlineMinutesSession;
 window.openMinutesModal = selectInlineMinutesSession;
 window.closeMinutesModal = function() {};
 
-async function saveHearingMinutes(status = 'Draft', targetHearingId = null) {
+async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skipConfirm = false) {
     const hearingId = targetHearingId || document.getElementById('minHearingId')?.value || stageWorkspaceState.activeSessionHearingId;
     if (!hearingId) {
         notifyUser('No hearing session selected.', 'warning');
@@ -2055,7 +2046,7 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null) {
         return;
     }
 
-    if (status === 'Finalized') {
+    if (status === 'Finalized' && !skipConfirm) {
         const confirmLock = confirm(
             'Are you sure you want to FINALIZE this session minutes?\n\n' +
             'Once finalized, this official Lupong Tagapamayapa record will be locked and protected from further modification.'
@@ -3952,6 +3943,136 @@ function handleEmbeddedStageOutcomeChange(outcome) {
 }
 window.handleEmbeddedStageOutcomeChange = handleEmbeddedStageOutcomeChange;
 
+
+/**
+ * Issue Arbitration from Mediation or Conciliation Hearing Minutes
+ * Automatically records/saves the hearing outcome as Voluntary Arbitration,
+ * unlocks the Outcomes / Arbitration Tab, and immediately redirects the user.
+ */
+async function issueArbitrationOutcome(hearingId = null) {
+    const hId = hearingId || stageWorkspaceState.activeSessionHearingId;
+    const caseId = stageWorkspaceState.caseId;
+    let complaintId = stageWorkspaceState.complaintId;
+    const mode = stageWorkspaceState.mode || 'Mediation';
+    const remarks = (document.getElementById(`minOutcomeRemarks_${hId}`) || document.getElementById('minOutcomeRemarks') || document.getElementById('stageOutcomeRemarks'))?.value || 'Parties voluntarily agreed in writing to submit their dispute to binding arbitration under RA 7160 Sec. 413.';
+
+    try {
+        const payload = {
+            case_id: Number(caseId),
+            stage_type: mode,
+            outcome: 'Arbitration',
+            remarks: remarks
+        };
+        const res = await fetch(getStageApiUrl('stages/outcome.php'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (!json.success) {
+            notifyUser(json.message || 'Unable to record arbitration outcome.', 'error');
+            return;
+        }
+
+        if (json.complaint_id) {
+            complaintId = json.complaint_id;
+        }
+
+        // Also save hearing minutes if session is active
+        if (hId) {
+            const outcomeEl = getMinutesField('minOutcome', hId);
+            if (outcomeEl) outcomeEl.value = 'Arbitration';
+            try {
+                if (typeof saveHearingMinutes === 'function') {
+                    await saveHearingMinutes('Finalized', hId, true);
+                }
+            } catch (minErr) {
+                console.warn('saveHearingMinutes note:', minErr);
+            }
+        }
+
+        // Unlock Outcomes tab
+        unlockOutcomesTab(caseId);
+
+        // Redirect immediately to the Outcomes / Arbitration tab (tab-arbitration)
+        if (complaintId) {
+            window.location.href = `../complaints/complaint-details.php?id=${encodeURIComponent(complaintId)}&tab=tab-arbitration#caseWorkspaceSection`;
+        } else {
+            window.location.href = `../complaints/complaint-details.php?tab=tab-arbitration`;
+        }
+    } catch (err) {
+        console.error('issueArbitrationOutcome error:', err);
+        notifyUser('A network error occurred while issuing arbitration.', 'error');
+    }
+}
+window.issueArbitrationOutcome = issueArbitrationOutcome;
+
+/**
+ * Issue Settled Outcome from Mediation or Conciliation Hearing Minutes
+ * Automatically records/saves the hearing outcome as Settled,
+ * unlocks the Outcomes Tab, and immediately redirects the user to Amicable Settlement.
+ */
+async function issueSettledOutcome(hearingId = null) {
+    const hId = hearingId || stageWorkspaceState.activeSessionHearingId;
+    const caseId = stageWorkspaceState.caseId;
+    let complaintId = stageWorkspaceState.complaintId || new URLSearchParams(window.location.search).get('complaint_id');
+    const mode = stageWorkspaceState.mode || 'Mediation';
+    const remarks = (document.getElementById(`minOutcomeRemarks_${hId}`) || document.getElementById('minOutcomeRemarks') || document.getElementById('stageOutcomeRemarks'))?.value || 'Parties reached an amicable settlement (Kasunduan).';
+
+    try {
+        const payload = {
+            case_id: Number(caseId),
+            stage_type: mode,
+            outcome: 'Settled',
+            remarks: remarks
+        };
+        const res = await fetch(getStageApiUrl('stages/outcome.php'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (!json.success) {
+            notifyUser(json.message || 'Unable to record amicable settlement outcome.', 'error');
+            return;
+        }
+
+        if (json.complaint_id) {
+            complaintId = json.complaint_id;
+        }
+
+        // Also save hearing minutes if session is active
+        if (hId) {
+            const outcomeEl = getMinutesField('minOutcome', hId);
+            if (outcomeEl) outcomeEl.value = 'Settled';
+            try {
+                if (typeof saveHearingMinutes === 'function') {
+                    await saveHearingMinutes('Finalized', hId, true);
+                }
+            } catch (minErr) {
+                console.warn('saveHearingMinutes note:', minErr);
+            }
+        }
+
+        // Unlock Outcomes tab in session
+        unlockOutcomesTab(caseId);
+        if (complaintId) {
+            sessionStorage.setItem('agap_outcomes_unlocked_' + complaintId, '1');
+        }
+
+        // Redirect immediately to the Outcomes tab (tab-arbitration)
+        if (complaintId) {
+            window.location.href = `../complaints/complaint-details.php?id=${encodeURIComponent(complaintId)}&tab=tab-arbitration#caseWorkspaceSection`;
+        } else {
+            window.location.href = `../complaints/complaint-details.php?tab=tab-arbitration`;
+        }
+    } catch (err) {
+        console.error('issueSettledOutcome error:', err);
+        notifyUser('A network error occurred while opening amicable settlement.', 'error');
+    }
+}
+window.issueSettledOutcome = issueSettledOutcome;
+
 async function submitRecordOutcome(e) {
     e.preventDefault();
     const btn = document.getElementById('submitOutcomeBtn');
@@ -3979,9 +4100,13 @@ async function submitRecordOutcome(e) {
             closeRecordOutcomeModal();
             await loadStageData();
             if (outcomeVal === 'Arbitration') {
-                // Use the same in-workspace booking interface as mediation and
-                // conciliation, now configured for voluntary arbitration.
-                openScheduleModal(null, 'Arbitration');
+                unlockOutcomesTab(stageWorkspaceState.caseId);
+                const compId = json.complaint_id || stageWorkspaceState.complaintId;
+                if (compId) {
+                    window.location.href = `../complaints/complaint-details.php?id=${encodeURIComponent(compId)}&tab=tab-arbitration#caseWorkspaceSection`;
+                } else {
+                    window.location.href = `../complaints/complaint-details.php?tab=tab-arbitration`;
+                }
             } else if (outcomeVal === 'Settled') {
                 openKpFormModal(stageWorkspaceState.caseId, 'KP Form 16');
             } else if (outcomeVal === 'Repudiated') {
@@ -5088,13 +5213,13 @@ window.closePreviewMinutesModal = closePreviewMinutesModal;
 window.printHearingMinutes = printHearingMinutes;
 window.openScheduleModal = openScheduleModal;
 window.closeScheduleModal = closeScheduleModal;
-window.initWorkspaceScheduleModal = initWorkspaceScheduleModal;
-window.loadStageSlots = loadStageSlots;
+if (typeof initWorkspaceScheduleModal !== 'undefined') window.initWorkspaceScheduleModal = initWorkspaceScheduleModal;
+if (typeof loadStageSlots !== 'undefined') window.loadStageSlots = loadStageSlots;
 window.openAttendanceModal = openAttendanceModal;
 window.closeAttendanceModal = closeAttendanceModal;
-window.openMinutesModal = openMinutesModal;
-window.closeMinutesModal = closeMinutesModal;
-window.saveMinutes = saveMinutes;
+if (typeof openMinutesModal !== 'undefined') window.openMinutesModal = openMinutesModal;
+if (typeof closeMinutesModal !== 'undefined') window.closeMinutesModal = closeMinutesModal;
+if (typeof saveMinutes !== 'undefined') window.saveMinutes = saveMinutes;
 window.saveHearingMinutes = saveHearingMinutes;
 window.saveInlineMinutes = saveHearingMinutes;
 window.openRecordOutcomeModal = openRecordOutcomeModal;
@@ -5130,11 +5255,11 @@ window.submitPangkatSelection = submitPangkatSelection;
 
 // Attendance & Form preview exposure
 window.openKPFormPreview = openKpFormModal;
-window.togglePresiderSubstituteSection = togglePresiderSubstituteSection;
-window.handlePresiderAbsenceChoiceChange = handlePresiderAbsenceChoiceChange;
-window.executeEmergencyReschedule = executeEmergencyReschedule;
-window.getSuggestedRescheduleDateTime = getSuggestedRescheduleDateTime;
-window.submitAttendance = submitAttendance;
+if (typeof togglePresiderSubstituteSection !== 'undefined') window.togglePresiderSubstituteSection = togglePresiderSubstituteSection;
+if (typeof handlePresiderAbsenceChoiceChange !== 'undefined') window.handlePresiderAbsenceChoiceChange = handlePresiderAbsenceChoiceChange;
+if (typeof executeEmergencyReschedule !== 'undefined') window.executeEmergencyReschedule = executeEmergencyReschedule;
+if (typeof getSuggestedRescheduleDateTime !== 'undefined') window.getSuggestedRescheduleDateTime = getSuggestedRescheduleDateTime;
+if (typeof submitAttendance !== 'undefined') window.submitAttendance = submitAttendance;
 
 // ========================================================
 // COURT & DILG TRANSMITTAL MODULE (RA 7160 SEC. 411)

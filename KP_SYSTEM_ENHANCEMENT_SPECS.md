@@ -110,19 +110,27 @@ flowchart TD
   - Dedicated individual Print and Download PDF controls for each panel, alongside bulk `Print All 3 Forms` action with staggered iframe printing.
 - [x] `[High]` **KP Form 12 Officer's Return Tracking Linkage**
   - Connects KP Form 12 notices directly to the Officer's Return proof of service tracking system for both Complainant and Respondent (`gps/proof-service.php?complaint_id=[id]&stage=Conciliation&form=KP12`).
-- [x] `[High]` **Binding Arbitration Workflow & Scheduling (RA 7160 Sec. 413)**
-  - Selecting Arbitration in session outcomes renders an action callout banner with `📅 Schedule Arbitration Session →`.
-  - Integrates unified arbitration scheduling modal (`openEmbeddedScheduleModal('Arbitration')`) pre-filled with Lupon Court Room venue and presider.
+- [x] `[High]` **Voluntary Arbitration End-to-End Workflow & 4-Step Progressive Timeline (RA 7160 Sec. 413)**
+  - In Mediation/Conciliation session minutes outcome determination, selecting "Submit to Voluntary Arbitration (KP Form 14)" provides a direct `Issue Arbitration →` action button (removing preliminary KP 14 & 15 preview buttons from minutes banner).
+  - Automatically records stage outcome as `Arbitration`, finalizes hearing minutes, unlocks Outcomes tab, and transitions directly to `#arbitrationProgressiveWorkspace`.
+  - **4-Step Progressive Timeline Workspace** on the Outcomes tab:
+    - **Step 1: Agreement to Arbitrate (KP Form 14)** with Day 0 date display, Preview, Print, and PDF download.
+    - **Step 2: 5-Day Statutory Repudiation Window** with live visual badge indicator (`Day [X] of 5 (Active)` vs `Window Closed`) and full preview/print accessibility for KP Form 17 (*Katibayan ng Pagsalungat*).
+    - **Step 3: Segregated Arbitration Hearing Scheduler**: Enables scheduling arbitration sessions (same day or succeeding days) strictly classified as `Arbitration Hearing` (e.g., `1st Arbitration Hearing`), segregated from mediation/conciliation.
+    - **Step 4: Statutory Day 6–15 Arbitration Award Modal & Issuance (KP Form 15)**: Client-side and server-side date validation enforcing that KP Form 15 cannot be issued earlier than Day 6 (post 5-day repudiation window) and cannot exceed Day 15 (`Date Signed + 15 days`). Once rendered, unlocks KP Form 15 preview and printing.
+  - `KpFormService.php`: Auto-populates `arbitration_hearing_dates` into KP Form 15 and allows KP Form 17 during active arbitration stage.
 - [x] `[High]` **Dynamic Outcome-Driven KP Forms Unlocking (KP Forms 14, 15, 16, 17, 20, 20-A, 20-B)**
   - Dynamically surfaces corresponding official KP forms in the Official KP Forms table based on recorded outcomes (Amicably Settled, Voluntary Arbitration, Repudiated Settlement, CFA).
-  - Clicking `Open Amicable Settlement →` opens the live preview for KP Form 16 immediately.
+  - Clicking `Open Amicable Settlement →` automatically records/finalizes minutes as `Settled`, unlocks the Outcomes tab, and transitions directly to `#amicableSettlementWorkspace`.
 
 ---
 
 ### Phase 5: Amicable Settlement, Transmittals & Case Reopening
-- [x] `[High]` **KP Form 16 (Amicable Settlement) Generation**
+- [x] `[High]` **KP Form 16 (Amicable Settlement) Generation & Automated Outcome Persistence**
   - Automatically populate the agreement body from hearing minutes.
   - Ensure the settlement execution date is prominently printed at the bottom of the form.
+  - In session minutes, clicking `Open Amicable Settlement →` executes `issueSettledOutcome()`, auto-saving `case_stages` and `hearing_minutes` as `Settled` and opening the Amicable Settlement workspace.
+  - `HearingMinutes.php` synchronizes `cases.case_status = 'Settled'` and `complaints.status = 'Settled'` whenever minutes are finalized with `Settled`.
 - [x] `[High]` **Automated 10-Working-Day Transmittal Calculator**
   - Count exactly 10 working days (excluding Saturdays, Sundays, and public holidays) from the date of amicable settlement execution.
   - Generate automated reminder alerts on the Secretary's dashboard when transmittal deadlines approach.
@@ -132,8 +140,8 @@ flowchart TD
 - [x] `[High]` **Case Reopening Workflow for Breach (Certificate to File Action)**
   - Remove permanent lock on settled cases.
   - Add action: `"Reopen Case: Non-Compliance / Breach of Settlement"`.
-  - Flag record status as: `"For CFA"`.
-  - Enable direct generation of the Certificate to File Action (CFA) referencing the violated settlement terms.
+  - Fixed `backend/api/cases/reopen.php` session initialization and role authorization checks (`$_SESSION['role_id']`).
+  - Flag record status as: `"Violated"`, log non-compliance in case history, and redirect to `cfa.php` with pre-filled case and breach narrative.
 
 ---
 

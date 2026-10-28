@@ -1101,6 +1101,29 @@ class CaseStage
                 $updCase->execute([$caseId]);
                 $updComp = $this->conn->prepare("UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = 'Arbitration', co.updated_at = NOW() WHERE c.case_id = ?");
                 $updComp->execute([$caseId]);
+
+                if ($outcome === 'Arbitration') {
+                    $chkArb = $this->conn->prepare("SELECT arbitration_id FROM arbitration_records WHERE case_id = ? LIMIT 1");
+                    $chkArb->execute([$caseId]);
+                    $arbId = $chkArb->fetchColumn();
+                    if (!$arbId) {
+                        $insArb = $this->conn->prepare("
+                            INSERT INTO arbitration_records (case_id, agreement_date, award_details)
+                            VALUES (?, CURDATE(), ?)
+                        ");
+                        $insArb->execute([
+                            $caseId,
+                            $remarks ?: 'Both parties voluntarily agreed in writing to submit their dispute to binding arbitration under RA 7160 Sec. 413 (KP Form 14).'
+                        ]);
+                    } else {
+                        $updArb = $this->conn->prepare("
+                            UPDATE arbitration_records
+                            SET agreement_date = COALESCE(agreement_date, CURDATE())
+                            WHERE arbitration_id = ?
+                        ");
+                        $updArb->execute([$arbId]);
+                    }
+                }
             }
 
             // Case history entry
@@ -1122,7 +1145,9 @@ class CaseStage
                 'success' => true,
                 'message' => "{$stageType} outcome successfully recorded as {$outcome}.",
                 'stage_status' => $newStatus,
-                'outcome' => $outcome
+                'outcome' => $outcome,
+                'case_id' => $caseId,
+                'complaint_id' => (int) ($overview['case']['complaint_id'] ?? 0)
             ];
         } catch (Throwable $e) {
             if ($manageTx && $this->conn->inTransaction()) {

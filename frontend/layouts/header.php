@@ -53,8 +53,12 @@ if (!empty($_SESSION['flash']) && is_array($_SESSION['flash']) && !empty($_SESSI
     <script>
         (function() {
             try {
-                if (localStorage.getItem('agap_sidebar_collapsed') === 'true' && window.innerWidth > 900) {
+                var saved = localStorage.getItem('agap_sidebar_collapsed');
+                var isMedium = window.innerWidth > 900 && window.innerWidth <= 1200;
+                if (saved === 'true' || (saved === null && isMedium)) {
                     document.documentElement.classList.add('sidebar-collapsed');
+                } else if (saved === 'false') {
+                    document.documentElement.classList.add('sidebar-expanded');
                 }
             } catch (e) {}
         })();

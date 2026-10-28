@@ -45,13 +45,16 @@ Complaint → Reviewed → Pre-Docketed (Paanyaya 1: up to 6 delivery attempts)
                      → Summons issued (KP Form 8 & 9) → Service recorded
                      → Mediation (1st → 2nd → 3rd) → approved outcome
                          ├─ Settled (KP Form 16) / dismissed / final outcome
+                         ├─ Voluntary Arbitration (KP Form 14) → Hearings → Award (KP Form 15)
                          └─ Referred to Pangkat → Conciliation (1st → 2nd → 3rd) → approved outcome
-                                                           ├─ Settled
+                                                           ├─ Settled (KP Form 16)
+                                                           ├─ Voluntary Arbitration (KP Form 14) → Hearings → Award (KP Form 15)
                                                            └─ CFA review → CFA issued (KP Form 20)
 ```
 
 - Scheduling a hearing is not an outcome.
 - Issuing a document is not proof of service.
+- **Voluntary Arbitration Workflow (RA 7160 Sec. 413)**: Parties may agree to submit to binding arbitration at any time during mediation or conciliation via KP Form 14. This opens a 5-day statutory repudiation window (KP Form 17), allows scheduling segregated Arbitration hearings, and mandates rendering an Arbitration Award (KP Form 15) strictly between Day 6 and Day 15 from signing KP Form 14.
 - **Mandatory Preliminary Paanyaya Process**: Before formal court-annexed summons (KP Form 8 & 9) are issued, cases undergo preliminary invitation dialogue. Paanyaya 1 and Paanyaya 2 each allow up to six (6) delivery attempts with recorded Officer's Returns before authorized case escalation.
 - **Officer's Return Editing**: Recorded returns can be edited/corrected by authorized officers; all edits are captured in the Lupon audit trail.
 - Initial summons (KP Form 9) serves for the 1st Mediation; 2nd and subsequent mediations do not require summons re-issuance and inherit prior service notice.
@@ -69,7 +72,7 @@ Complaint → Reviewed → Pre-Docketed (Paanyaya 1: up to 6 delivery attempts)
 Use `cases.case_status` only for broad stages and final outcomes:
 
 ```text
-Pre-Docketed (Paanyaya) → Docketed → Mediation → Conciliation → Settled | Dismissed | CFA Issued | Archived
+Pre-Docketed (Paanyaya) → Docketed → Mediation → Conciliation → Settled | Arbitration | Dismissed | CFA Issued | Archived
 ```
 
 Do not use case status for UI hints such as “ready,” “attempt 2,” or “needs review.” Store a specific fact on the relevant record or calculate it for display.

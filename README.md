@@ -187,9 +187,17 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
     - *Voluntary Arbitration* → **KP Form 14** (*Agreement for Arbitration*) & **KP Form 15** (*Arbitration Award*).
     - *Repudiated Settlement* → **KP Form 17** (*Pagtatwa*) & CFA (**KP Form 20 / 20-A / 20-B**).
     - *Endorse to Pangkat* → **KP Forms 10, 11, and 12** with Tri-Panel preview shortcuts.
-- **Binding Arbitration Scheduling (RA 7160 Sec. 413)**:
-  - Selecting Arbitration outcome dynamically renders an amber action banner prompting `📅 Schedule Arbitration Session →`.
-  - Integrated with the standard scheduling modal (`openEmbeddedScheduleModal('Arbitration')`) and backend validation in `HearingController.php`.
+- **Voluntary Arbitration End-to-End Workflow & 4-Step Progressive Timeline (RA 7160 Sec. 413)**:
+  - **Hearing Minutes Outcome Action Transformation**: When selecting "Submit to Voluntary Arbitration (KP Form 14)" in Mediation or Conciliation session minutes, the banner displays a single direct action button: `Issue Arbitration →` (removing preliminary preview buttons to preserve sequential progression).
+  - Clicking `Issue Arbitration →` atomically saves the stage outcome via `stages/outcome.php`, finalizes minutes, unlocks the Outcomes tab, and transitions directly to the 4-step progressive timeline interface (`#arbitrationProgressiveWorkspace`):
+    1. **Step 1: Agreement to Arbitrate (KP Form 14)**: Highlights the recorded Day 0 agreement/signing date with accessible `Preview KP Form 14`, `Print KP Form 14`, and PDF export actions.
+    2. **Step 2: 5-Day Statutory Repudiation / Withdrawal Window**: Live indicator tracking the 5-calendar-day withdrawal window under RA 7160 Sec. 413 (`Repudiation Window: Day [X] of 5 (Active)` vs `5-Day Repudiation Window Closed (Award Eligible)`), alongside accessible `Preview KP Form 17` and `Print KP Form 17 (Katibayan ng Pagsalungat)` actions.
+    3. **Step 3: Segregated Arbitration Hearing Scheduler**: In-workspace interface allowing the Punong Barangay / Presider to schedule arbitration hearing sessions for the same day or succeeding days, strictly segregated from mediation/conciliation and labeled as `Arbitration Hearing` (e.g., `1st Arbitration Hearing`, `2nd Arbitration Hearing`) across logs, calendar, and session history.
+    4. **Step 4: Statutory Day 6–15 Arbitration Award Modal & Issuance (KP Form 15)**: Integrated award issuance with statutory date validation (minimum Day 6 to enforce repudiation window expiration; maximum Day 15 from signing KP Form 14). Submitting enables `Preview KP Form 15` and `Print KP Form 15`.
+- **Automated Amicable Settlement Persistence & Outcomes Transformation**:
+  - In Mediation and Conciliation hearing minutes, selecting "Amicably Settled / Nagkasundo (KP Form 16)" provides `Open Amicable Settlement →` which automatically commits the stage outcome as `Settled`, finalizes minutes, marks `cases.case_status = 'Settled'`, unlocks the Outcomes tab, and transitions directly to `#amicableSettlementWorkspace`.
+- **Reopen Settled Case for CFA Stabilization (RA 7160 Sec. 417)**:
+  - Streamlined workflow allowing Lupon officers to reopen a settled case when a party fails or repudiates settlement compliance, validating authorization via `role_id` and cleanly transitioning to Certificate to File Action (CFA) issuance.
 - **Official Katarungang Pambarangay (KP) Forms**:
   - **KP Form 7**: Pormularyo ng KP Blg. 7 (Reklamo / Formal Complaint) — formatted strictly for standard **Legal Size Bondpaper** (`8.5in x 14in`) with Barangay Tumana Seal (Left) and City of Marikina Seal (Right), generous signature clearances (`48px`), zero-watermark browser printing, and interactive modal preview.
   - **KP Form 8**: Notice of Hearing (Complainant).
@@ -349,6 +357,7 @@ For development and testing, `database/schema.sql` seeds the following local acc
 
 - `database/schema.sql` is the authoritative definition for fresh database installations.
 - For updating existing databases that predate specific increments, refer to the step-by-step instructions in [database/README.md](database/README.md). Recent migrations include:
+  - `database/migrations/20261029_001_voluntary_arbitration_outcomes.sql` for extending case stage outcomes and hearing minutes session outcomes to support Voluntary Arbitration, Arbitration Awards, and Repudiation.
   - `database/migrations/20261020_001_create_paanyaya_stages_and_returns.sql` for the mandatory preliminary Paanyaya workflow and independent Officer's Return tracking.
   - `database/migrations/20261017_002_scheduling_conflict_and_mediation_improvements.sql` for scheduling capacity, holiday calendars, and venue conflict detection.
   - `database/migrations/20261016_001_enhance_file_complaint_kp7.sql` for the File Complaint module, versioned scanned KP Form 7 uploads, and demographic/guardian fields.

@@ -57,18 +57,20 @@
         overflow-x: hidden;
         position: sticky;
         top: 0;
+        z-index: 25;
         transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
                     flex-basis 0.22s cubic-bezier(0.4, 0, 0.2, 1),
                     min-width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
                     max-width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
-                    padding 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+                    padding 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+                    box-shadow 0.22s cubic-bezier(0.4, 0, 0.2, 1);
         padding: 20px 12px 14px;
         box-sizing: border-box;
     }
 
-    /* Minimized / Collapsed Sidebar (72px) */
-    html.sidebar-collapsed #appSidebar,
-    #appSidebar.is-collapsed {
+    /* Minimized / Collapsed Sidebar (72px) when not hovered */
+    html.sidebar-collapsed #appSidebar:not(:hover):not(:focus-within),
+    #appSidebar.is-collapsed:not(:hover):not(:focus-within) {
         flex: 0 0 72px !important;
         flex-basis: 72px !important;
         width: 72px !important;
@@ -78,8 +80,8 @@
         padding-right: 10px !important;
     }
 
-    html.sidebar-collapsed #appSidebar .sidebar-brand,
-    #appSidebar.is-collapsed .sidebar-brand {
+    html.sidebar-collapsed #appSidebar:not(:hover):not(:focus-within) .sidebar-brand,
+    #appSidebar.is-collapsed:not(:hover):not(:focus-within) .sidebar-brand {
         flex-direction: column;
         align-items: center;
         justify-content: center;
@@ -87,50 +89,50 @@
         gap: 8px;
     }
 
-    html.sidebar-collapsed #appSidebar .sidebar-brand-main,
-    #appSidebar.is-collapsed .sidebar-brand-main {
+    html.sidebar-collapsed #appSidebar:not(:hover):not(:focus-within) .sidebar-brand-main,
+    #appSidebar.is-collapsed:not(:hover):not(:focus-within) .sidebar-brand-main {
         justify-content: center;
     }
 
-    html.sidebar-collapsed #appSidebar .sidebar-brand-text,
-    #appSidebar.is-collapsed .sidebar-brand-text,
-    html.sidebar-collapsed #appSidebar .sidebar-footer,
-    #appSidebar.is-collapsed .sidebar-footer,
-    html.sidebar-collapsed #appSidebar .nav-group summary,
-    #appSidebar.is-collapsed .nav-group summary,
-    html.sidebar-collapsed #appSidebar .nav-link-label,
-    #appSidebar.is-collapsed .nav-link-label {
+    html.sidebar-collapsed #appSidebar:not(:hover):not(:focus-within) .sidebar-brand-text,
+    #appSidebar.is-collapsed:not(:hover):not(:focus-within) .sidebar-brand-text,
+    html.sidebar-collapsed #appSidebar:not(:hover):not(:focus-within) .sidebar-footer,
+    #appSidebar.is-collapsed:not(:hover):not(:focus-within) .sidebar-footer,
+    html.sidebar-collapsed #appSidebar:not(:hover):not(:focus-within) .nav-group summary,
+    #appSidebar.is-collapsed:not(:hover):not(:focus-within) .nav-group summary,
+    html.sidebar-collapsed #appSidebar:not(:hover):not(:focus-within) .nav-link-label,
+    #appSidebar.is-collapsed:not(:hover):not(:focus-within) .nav-link-label {
         display: none !important;
     }
 
-    html.sidebar-collapsed #appSidebar .sidebar-collapse-icon,
-    #appSidebar.is-collapsed .sidebar-collapse-icon {
+    html.sidebar-collapsed #appSidebar:not(:hover):not(:focus-within) .sidebar-collapse-icon,
+    #appSidebar.is-collapsed:not(:hover):not(:focus-within) .sidebar-collapse-icon {
         transform: rotate(180deg);
     }
 
-    html.sidebar-collapsed #appSidebar .nav-group,
-    #appSidebar.is-collapsed .nav-group {
+    html.sidebar-collapsed #appSidebar:not(:hover):not(:focus-within) .nav-group,
+    #appSidebar.is-collapsed:not(:hover):not(:focus-within) .nav-group {
         display: block !important;
     }
 
-    html.sidebar-collapsed #appSidebar .nav-group-links,
-    #appSidebar.is-collapsed .nav-group-links,
-    html.sidebar-collapsed #appSidebar .nav-group:not([open]) > .nav-group-links,
-    #appSidebar.is-collapsed .nav-group:not([open]) > .nav-group-links {
+    html.sidebar-collapsed #appSidebar:not(:hover):not(:focus-within) .nav-group-links,
+    #appSidebar.is-collapsed:not(:hover):not(:focus-within) .nav-group-links,
+    html.sidebar-collapsed #appSidebar:not(:hover):not(:focus-within) .nav-group:not([open]) > .nav-group-links,
+    #appSidebar.is-collapsed:not(:hover):not(:focus-within) .nav-group:not([open]) > .nav-group-links {
         display: flex !important;
         flex-direction: column !important;
         gap: 6px;
     }
 
-    html.sidebar-collapsed #appSidebar .nav-group + .nav-group .nav-group-links,
-    #appSidebar.is-collapsed .nav-group + .nav-group .nav-group-links {
-        border-top: 1px solid #27272a;
+    html.sidebar-collapsed #appSidebar:not(:hover):not(:focus-within) .nav-group + .nav-group .nav-group-links,
+    #appSidebar.is-collapsed:not(:hover):not(:focus-within) .nav-group + .nav-group .nav-group-links {
+        border-top: 1px solid rgba(212, 234, 220, .16);
         margin-top: 6px;
         padding-top: 6px;
     }
 
-    html.sidebar-collapsed #appSidebar .sidebar-nav a,
-    #appSidebar.is-collapsed .sidebar-nav a {
+    html.sidebar-collapsed #appSidebar:not(:hover):not(:focus-within) .sidebar-nav a,
+    #appSidebar.is-collapsed:not(:hover):not(:focus-within) .sidebar-nav a {
         width: 44px;
         height: 42px;
         padding: 0;
@@ -140,9 +142,236 @@
         border-radius: 8px;
     }
 
-    html.sidebar-collapsed #appSidebar .nav-icon,
-    #appSidebar.is-collapsed .nav-icon {
+    html.sidebar-collapsed #appSidebar:not(:hover):not(:focus-within) .nav-icon,
+    #appSidebar.is-collapsed:not(:hover):not(:focus-within) .nav-icon {
         margin: 0;
+    }
+
+    /* Expand sidebar on Hover / Focus-Within when Collapsed */
+    html.sidebar-collapsed #appSidebar:hover,
+    html.sidebar-collapsed #appSidebar:focus-within,
+    #appSidebar.is-collapsed:hover,
+    #appSidebar.is-collapsed:focus-within {
+        flex: 0 0 258px !important;
+        flex-basis: 258px !important;
+        width: 258px !important;
+        min-width: 258px !important;
+        max-width: 258px !important;
+        padding-left: 12px !important;
+        padding-right: 12px !important;
+        box-shadow: 12px 0 32px rgba(16, 43, 45, .28);
+    }
+
+    html.sidebar-collapsed #appSidebar:hover .sidebar-brand,
+    html.sidebar-collapsed #appSidebar:focus-within .sidebar-brand,
+    #appSidebar.is-collapsed:hover .sidebar-brand,
+    #appSidebar.is-collapsed:focus-within .sidebar-brand {
+        flex-direction: row !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        padding: 4px 6px 20px !important;
+        gap: 8px !important;
+    }
+
+    html.sidebar-collapsed #appSidebar:hover .sidebar-brand-main,
+    html.sidebar-collapsed #appSidebar:focus-within .sidebar-brand-main,
+    #appSidebar.is-collapsed:hover .sidebar-brand-main,
+    #appSidebar.is-collapsed:focus-within .sidebar-brand-main {
+        justify-content: flex-start !important;
+    }
+
+    html.sidebar-collapsed #appSidebar:hover .sidebar-brand-text,
+    html.sidebar-collapsed #appSidebar:focus-within .sidebar-brand-text,
+    #appSidebar.is-collapsed:hover .sidebar-brand-text,
+    #appSidebar.is-collapsed:focus-within .sidebar-brand-text {
+        display: block !important;
+        white-space: nowrap;
+    }
+
+    html.sidebar-collapsed #appSidebar:hover .sidebar-footer,
+    html.sidebar-collapsed #appSidebar:focus-within .sidebar-footer,
+    #appSidebar.is-collapsed:hover .sidebar-footer,
+    #appSidebar.is-collapsed:focus-within .sidebar-footer {
+        display: grid !important;
+    }
+
+    html.sidebar-collapsed #appSidebar:hover .nav-group summary,
+    html.sidebar-collapsed #appSidebar:focus-within .nav-group summary,
+    #appSidebar.is-collapsed:hover .nav-group summary,
+    #appSidebar.is-collapsed:focus-within .nav-group summary {
+        display: flex !important;
+    }
+
+    html.sidebar-collapsed #appSidebar:hover .nav-link-label,
+    html.sidebar-collapsed #appSidebar:focus-within .nav-link-label,
+    #appSidebar.is-collapsed:hover .nav-link-label,
+    #appSidebar.is-collapsed:focus-within .nav-link-label {
+        display: inline !important;
+        white-space: nowrap;
+    }
+
+    html.sidebar-collapsed #appSidebar:hover .sidebar-collapse-icon,
+    html.sidebar-collapsed #appSidebar:focus-within .sidebar-collapse-icon,
+    #appSidebar.is-collapsed:hover .sidebar-collapse-icon,
+    #appSidebar.is-collapsed:focus-within .sidebar-collapse-icon {
+        transform: rotate(0deg) !important;
+    }
+
+    html.sidebar-collapsed #appSidebar:hover .sidebar-nav a,
+    html.sidebar-collapsed #appSidebar:focus-within .sidebar-nav a,
+    #appSidebar.is-collapsed:hover .sidebar-nav a,
+    #appSidebar.is-collapsed:focus-within .sidebar-nav a {
+        width: 100% !important;
+        height: auto !important;
+        padding: 9px 11px !important;
+        margin: 0 !important;
+        justify-content: flex-start !important;
+        align-items: center !important;
+    }
+
+    html.sidebar-collapsed #appSidebar:hover .nav-group + .nav-group .nav-group-links,
+    html.sidebar-collapsed #appSidebar:focus-within .nav-group + .nav-group .nav-group-links,
+    #appSidebar.is-collapsed:hover .nav-group + .nav-group .nav-group-links,
+    #appSidebar.is-collapsed:focus-within .nav-group + .nav-group .nav-group-links {
+        border-top: none !important;
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+        gap: 3px !important;
+    }
+}
+
+/* Responsive Desktop Sidebar (901px to 1200px): default compact, expands on hover */
+@media (min-width: 901px) and (max-width: 1200px) {
+    html:not(.sidebar-expanded) #appSidebar:not(:hover):not(:focus-within) {
+        flex: 0 0 72px !important;
+        flex-basis: 72px !important;
+        width: 72px !important;
+        min-width: 72px !important;
+        max-width: 72px !important;
+        padding-left: 10px !important;
+        padding-right: 10px !important;
+    }
+
+    html:not(.sidebar-expanded) #appSidebar:not(:hover):not(:focus-within) .sidebar-brand {
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 4px 0 16px !important;
+        gap: 8px !important;
+    }
+
+    html:not(.sidebar-expanded) #appSidebar:not(:hover):not(:focus-within) .sidebar-brand-main {
+        justify-content: center !important;
+    }
+
+    html:not(.sidebar-expanded) #appSidebar:not(:hover):not(:focus-within) .sidebar-brand-text,
+    html:not(.sidebar-expanded) #appSidebar:not(:hover):not(:focus-within) .sidebar-footer,
+    html:not(.sidebar-expanded) #appSidebar:not(:hover):not(:focus-within) .nav-group summary,
+    html:not(.sidebar-expanded) #appSidebar:not(:hover):not(:focus-within) .nav-link-label {
+        display: none !important;
+    }
+
+    html:not(.sidebar-expanded) #appSidebar:not(:hover):not(:focus-within) .sidebar-collapse-icon {
+        transform: rotate(180deg) !important;
+    }
+
+    html:not(.sidebar-expanded) #appSidebar:not(:hover):not(:focus-within) .nav-group-links,
+    html:not(.sidebar-expanded) #appSidebar:not(:hover):not(:focus-within) .nav-group:not([open]) > .nav-group-links {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 6px !important;
+    }
+
+    html:not(.sidebar-expanded) #appSidebar:not(:hover):not(:focus-within) .nav-group + .nav-group .nav-group-links {
+        border-top: 1px solid rgba(212, 234, 220, .16) !important;
+        margin-top: 6px !important;
+        padding-top: 6px !important;
+    }
+
+    html:not(.sidebar-expanded) #appSidebar:not(:hover):not(:focus-within) .sidebar-nav a {
+        width: 44px !important;
+        height: 42px !important;
+        padding: 0 !important;
+        margin: 0 auto !important;
+        justify-content: center !important;
+        align-items: center !important;
+        border-radius: 8px !important;
+    }
+
+    html:not(.sidebar-expanded) #appSidebar:not(:hover):not(:focus-within) .nav-icon {
+        margin: 0 !important;
+    }
+
+    /* Expand when hovered in responsive range */
+    html:not(.sidebar-expanded) #appSidebar:hover,
+    html:not(.sidebar-expanded) #appSidebar:focus-within {
+        flex: 0 0 258px !important;
+        flex-basis: 258px !important;
+        width: 258px !important;
+        min-width: 258px !important;
+        max-width: 258px !important;
+        padding-left: 12px !important;
+        padding-right: 12px !important;
+        box-shadow: 12px 0 32px rgba(16, 43, 45, .28);
+    }
+
+    html:not(.sidebar-expanded) #appSidebar:hover .sidebar-brand,
+    html:not(.sidebar-expanded) #appSidebar:focus-within .sidebar-brand {
+        flex-direction: row !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        padding: 4px 6px 20px !important;
+        gap: 8px !important;
+    }
+
+    html:not(.sidebar-expanded) #appSidebar:hover .sidebar-brand-main,
+    html:not(.sidebar-expanded) #appSidebar:focus-within .sidebar-brand-main {
+        justify-content: flex-start !important;
+    }
+
+    html:not(.sidebar-expanded) #appSidebar:hover .sidebar-brand-text,
+    html:not(.sidebar-expanded) #appSidebar:focus-within .sidebar-brand-text {
+        display: block !important;
+        white-space: nowrap;
+    }
+
+    html:not(.sidebar-expanded) #appSidebar:hover .sidebar-footer,
+    html:not(.sidebar-expanded) #appSidebar:focus-within .sidebar-footer {
+        display: grid !important;
+    }
+
+    html:not(.sidebar-expanded) #appSidebar:hover .nav-group summary,
+    html:not(.sidebar-expanded) #appSidebar:focus-within .nav-group summary {
+        display: flex !important;
+    }
+
+    html:not(.sidebar-expanded) #appSidebar:hover .nav-link-label,
+    html:not(.sidebar-expanded) #appSidebar:focus-within .nav-link-label {
+        display: inline !important;
+        white-space: nowrap;
+    }
+
+    html:not(.sidebar-expanded) #appSidebar:hover .sidebar-collapse-icon,
+    html:not(.sidebar-expanded) #appSidebar:focus-within .sidebar-collapse-icon {
+        transform: rotate(0deg) !important;
+    }
+
+    html:not(.sidebar-expanded) #appSidebar:hover .sidebar-nav a,
+    html:not(.sidebar-expanded) #appSidebar:focus-within .sidebar-nav a {
+        width: 100% !important;
+        height: auto !important;
+        padding: 9px 11px !important;
+        margin: 0 !important;
+        justify-content: flex-start !important;
+        align-items: center !important;
+    }
+
+    html:not(.sidebar-expanded) #appSidebar:hover .nav-group + .nav-group .nav-group-links,
+    html:not(.sidebar-expanded) #appSidebar:focus-within .nav-group + .nav-group .nav-group-links {
+        border-top: none !important;
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+        gap: 3px !important;
     }
 }
 

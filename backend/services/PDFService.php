@@ -1996,6 +1996,8 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
         $title = !empty($data['complaint_title']) ? $this->escape((string) $data['complaint_title']) : '__________';
         $reason = !empty($data['repudiation_reason']) ? $this->escape((string) $data['repudiation_reason']) : '';
 
+        $repudiatingParty = !empty($data['repudiating_party']) ? $this->escape((string) $data['repudiating_party']) : (!empty($data['repudiating_party_name']) ? $this->escape((string) $data['repudiating_party_name']) : (!empty($data['target_party_name']) ? $this->escape((string) $data['target_party_name']) : ''));
+
         $compList = [];
         if (!empty($data['complainants']) && is_array($data['complainants'])) {
             foreach ($data['complainants'] as $c) {
@@ -2019,6 +2021,27 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
         foreach ($respList as $r) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($r) . '</div>'; }
         for ($i = 0; $i < max(0, 3 - count($respList)); $i++) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
 
+        // Grounds detection: Pandaraya (Fraud), Karahasan (Violence), Pananakot (Intimidation)
+        $rawGrounds = (string)($data['repudiation_grounds'] ?? $data['repudiation_reason'] ?? $data['grounds'] ?? '');
+        $isFraud = stripos($rawGrounds, 'pandaraya') !== false || stripos($rawGrounds, 'fraud') !== false;
+        $isViolence = stripos($rawGrounds, 'karahasan') !== false || stripos($rawGrounds, 'violence') !== false;
+        $isIntimidation = stripos($rawGrounds, 'pananakot') !== false || stripos($rawGrounds, 'intimidation') !== false;
+
+        if (!$isFraud && !$isViolence && !$isIntimidation && $rawGrounds !== '') {
+            $isFraud = true;
+        }
+
+        // Determine which side is repudiating
+        $isCompRepudiating = false;
+        if (!empty($repudiatingParty)) {
+            foreach ($compList as $comp) {
+                if (stripos($comp, $repudiatingParty) !== false || stripos($repudiatingParty, $comp) !== false) {
+                    $isCompRepudiating = true;
+                    break;
+                }
+            }
+        }
+
         $noticeTs = !empty($data['repudiation_date']) ? strtotime($data['repudiation_date']) : (!empty($data['notice_date']) ? strtotime($data['notice_date']) : time());
         $noticeDay = date('j', $noticeTs);
         $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
@@ -2026,7 +2049,7 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
 
         $officialName = $this->escape($this->getAuthorizedCaptainName($data['official_name'] ?? $data['captain_name'] ?? null));
 
-        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 100%; max-width: 760px; min-height: 960px; padding: 14mm 16mm; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperStart = $forPdf ? '' : '<div style="background: #334155; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div class="printable-document-sheet" style="background: #fff; width: 100%; max-width: 8.5in; min-height: 14in; padding: 18mm 20mm; box-shadow: 0 10px 25px rgba(0,0,0,0.3); border-radius: 4px; box-sizing: border-box;">';
         $wrapperEnd = $forPdf ? '' : '</div></div>';
 
         return '<!DOCTYPE html>
@@ -2035,12 +2058,32 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
     <meta charset="UTF-8">
     <title>Pormularyo ng KP Blg. 17 - PAGTANGGI</title>
     <style>
-        @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
+        @page { size: 8.5in 14in portrait; margin: 15mm 15mm 15mm 15mm; }
         * { box-sizing: border-box; }
         body { font-family: Arial, "DejaVu Sans", Helvetica, sans-serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
         .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
         .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
         .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
+        .printable-document-sheet { width: 100%; max-width: 8.5in; min-height: 14in; margin: 0 auto; }
+        @media print {
+            body * { visibility: hidden !important; }
+            .printable-document-sheet, .printable-document-sheet * {
+                visibility: visible !important;
+            }
+            .printable-document-sheet {
+                position: absolute !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                box-shadow: none !important;
+                border: none !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+            .modal-header, .modal-toolbar, .no-print, .countdown-badge {
+                display: none !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -2089,55 +2132,69 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
         <div style="font-size: 11.5pt; font-weight: bold;">(Repudiation)</div>
     </div>
 
-    <div style="font-size: 11pt; line-height: 2; text-align: justify; margin-bottom: 14px;">
-        Aking/Aming tinatanggihan ang pag-aayos/kasunduan para sa paghahatol sa dahilan na ang aking pagpayag ay pinawalang-bisa ng:
+    <div style="font-size: 11pt; line-height: 1.8; text-align: justify; margin-bottom: 14px;">
+        Aking/Aming tinatanggihan ang pag-aayos/kasunduan para sa paghahatol sa dahilang ang aking pagpayag ay pinawalang-bisa ng:
     </div>
 
-    <div style="font-size: 10.5pt; line-height: 1.8; margin-bottom: 16px;">
-        <div style="margin-bottom: 6px;">(Lagyan ng tsek kung alin ang angkop)</div>
-        <div style="margin-bottom: 8px;">
-            ( &nbsp; ) Pandaraya (Isaad ang detalye)<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 450px;">&nbsp;</span>
+    <div style="font-size: 10.5pt; line-height: 1.8; margin-bottom: 18px;">
+        <div style="margin-bottom: 8px; font-style: italic;">(Lagyan ng tsek kung alin ang angkop)</div>
+        <div style="margin-bottom: 10px;">
+            <span style="font-family: monospace; font-size: 12pt; font-weight: bold;">( ' . ($isFraud ? '&#10003;' : '&nbsp;&nbsp;') . ' )</span> Pandaraya (Isaad ang detalye):
+            <div style="border-bottom: 1px solid #111; min-height: 24px; margin-top: 4px; padding: 2px 6px; font-weight: bold; color: #0f172a;">
+                ' . ($isFraud && $reason !== '' ? $reason : '&nbsp;') . '
+            </div>
         </div>
-        <div style="margin-bottom: 8px;">
-            ( &nbsp; ) Karahasan (Isaad ang detalye)<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 450px;">&nbsp;</span>
+        <div style="margin-bottom: 10px;">
+            <span style="font-family: monospace; font-size: 12pt; font-weight: bold;">( ' . ($isViolence ? '&#10003;' : '&nbsp;&nbsp;') . ' )</span> Karahasan (Isaad ang detalye):
+            <div style="border-bottom: 1px solid #111; min-height: 24px; margin-top: 4px; padding: 2px 6px; font-weight: bold; color: #0f172a;">
+                ' . ($isViolence && $reason !== '' ? $reason : '&nbsp;') . '
+            </div>
         </div>
-        <div style="margin-bottom: 8px;">
-            ( &nbsp; ) Pananakot (Isaad ang detalye)<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 450px;">&nbsp;</span>
-        </div>
-    </div>
-
-    <div style="font-size: 10.5pt; margin-bottom: 18px;">
-        Ngayong <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> araw ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 120px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, 20<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 40px; font-weight: bold; text-align: center;">' . substr($noticeYear, -2) . '</span>.
-    </div>
-
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-        <tr>
-            <td style="width: 45%; text-align: center;">
-                <div style="border-top: 1px solid #111; min-height: 2px; margin-bottom: 4px;"></div>
-                <div>(Mga) Nagrereklamo</div>
-            </td>
-            <td style="width: 10%;"></td>
-            <td style="width: 45%; text-align: center;">
-                <div style="border-top: 1px solid #111; min-height: 2px; margin-bottom: 4px;"></div>
-                <div>(Mga) Inirereklamo</div>
-            </td>
-        </tr>
-    </table>
-
-    <div style="font-size: 10pt; line-height: 1.7; margin-bottom: 22px;">
-        Tinanggap at pinanumpaan sa harap ko ngayong ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 50px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 100px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, 20<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 40px; font-weight: bold; text-align: center;">' . substr($noticeYear, -2) . '</span> sa Barangay Tumana, Marikina City.
-    </div>
-
-    <div style="text-align: right; margin-bottom: 20px;">
-        <div style="display: inline-block; text-align: center; min-width: 280px;">
-            <div style="border-top: 1px solid #111; padding-top: 4px; font-size: 10pt; margin-bottom: 18px;">Tagapangulo ng Pangkat/Kasapi</div>
-            <div style="border-top: 1px solid #111; padding-top: 4px; font-weight: bold; font-size: 10.5pt;">' . $officialName . '</div>
-            <div style="font-size: 9.5pt;">Punong Barangay</div>
+        <div style="margin-bottom: 10px;">
+            <span style="font-family: monospace; font-size: 12pt; font-weight: bold;">( ' . ($isIntimidation ? '&#10003;' : '&nbsp;&nbsp;') . ' )</span> Pananakot (Isaad ang detalye):
+            <div style="border-bottom: 1px solid #111; min-height: 24px; margin-top: 4px; padding: 2px 6px; font-weight: bold; color: #0f172a;">
+                ' . ($isIntimidation && $reason !== '' ? $reason : '&nbsp;') . '
+            </div>
         </div>
     </div>
 
-    <div style="font-size: 8pt; color: #475569; line-height: 1.35; border-top: 1px dashed #cbd5e1; padding-top: 8px;">
-        *Ang pagkabigong tanggihan ang pag-aayos o kasunduan ng paghahatol na nalolooban sa itinakdang sampung (10) araw mula sa petsa ng pag-aayos at limang (5) araw mula sa petsa ng kasunduan ng paghahatol ayon sa pag-kakasunud-sunod ay ipapalagay na tinalikdan na niya ang karapatang tumutol sa nasabing mga dahilan.
+    <div style="font-size: 10.5pt; margin-bottom: 22px;">
+        Ngayong ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> araw ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 120px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, 20<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 40px; font-weight: bold; text-align: center;">' . substr($noticeYear, -2) . '</span>.
+    </div>
+
+    <div style="page-break-inside: avoid;">
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
+            <tr>
+                <td style="width: 45%; text-align: center; vertical-align: bottom;">
+                    <div style="border-bottom: 1px solid #111; min-height: 22px; margin-bottom: 4px; padding-bottom: 2px; font-weight: bold; font-size: 10.5pt;">
+                        ' . ($isCompRepudiating ? $repudiatingParty : '&nbsp;') . '
+                    </div>
+                    <div style="font-size: 10pt;">(Mga) Nagrereklamo</div>
+                </td>
+                <td style="width: 10%;"></td>
+                <td style="width: 45%; text-align: center; vertical-align: bottom;">
+                    <div style="border-bottom: 1px solid #111; min-height: 22px; margin-bottom: 4px; padding-bottom: 2px; font-weight: bold; font-size: 10.5pt;">
+                        ' . (!$isCompRepudiating && $repudiatingParty !== '' ? $repudiatingParty : '&nbsp;') . '
+                    </div>
+                    <div style="font-size: 10pt;">(Mga) Inirereklamo</div>
+                </td>
+            </tr>
+        </table>
+
+        <div style="font-size: 10pt; line-height: 1.7; margin-bottom: 22px; text-align: justify;">
+            Tinanggap at pinanumpaan sa harap ko ngayong ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 50px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 100px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, 20<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 40px; font-weight: bold; text-align: center;">' . substr($noticeYear, -2) . '</span> sa Barangay Tumana, Marikina City.
+        </div>
+
+        <div style="text-align: right; margin-bottom: 20px;">
+            <div style="display: inline-block; text-align: center; min-width: 280px;">
+                <div style="border-top: 1px solid #111; padding-top: 4px; font-weight: bold; font-size: 10.5pt;">' . $officialName . '</div>
+                <div style="font-size: 9.5pt;">Punong Barangay / Tagapangulo ng Lupon</div>
+            </div>
+        </div>
+
+        <div style="font-size: 8pt; color: #475569; line-height: 1.35; border-top: 1px dashed #cbd5e1; padding-top: 8px;">
+            *Ang pagkabigong tanggihan ang pag-aayos o kasunduan ng paghahatol na nalolooban sa itinakdang sampung (10) araw mula sa petsa ng pag-aayos at limang (5) araw mula sa petsa ng kasunduan ng paghahatol ayon sa pag-kakasunud-sunod ay ipapalagay na tinalikdan na niya ang karapatang tumutol sa nasabing mga dahilan (RA 7160 Sec. 418).
+        </div>
     </div>
 ' . $wrapperEnd . '
 </body>
@@ -2465,8 +2522,11 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
 
         $caseNumber = !empty($data['case_number']) ? $this->escape((string) $data['case_number']) : '__________';
         $title = !empty($data['complaint_title']) ? $this->escape((string) $data['complaint_title']) : '__________';
-        $repudiatingParty = !empty($data['repudiating_party']) ? $this->escape((string) $data['repudiating_party']) : (!empty($data['target_party_name']) ? $this->escape((string) $data['target_party_name']) : '______________________________');
+        
+        $isRepudiated = !empty($data['is_repudiated']) || !empty($data['repudiation_date']) || (!empty($data['repudiation_grounds']) && $data['repudiation_grounds'] !== '');
+        $repudiatingParty = !empty($data['repudiating_party']) ? $this->escape((string) $data['repudiating_party']) : (!empty($data['repudiating_party_name']) ? $this->escape((string) $data['repudiating_party_name']) : (!empty($data['target_party_name']) ? $this->escape((string) $data['target_party_name']) : '______________________________'));
         $grounds = !empty($data['repudiation_grounds']) ? $this->escape((string) $data['repudiation_grounds']) : (!empty($data['grounds']) ? $this->escape((string) $data['grounds']) : '');
+        $cfaReason = !empty($data['cfa_reason']) ? $this->escape((string) $data['cfa_reason']) : '';
 
         $compList = [];
         if (!empty($data['complainants']) && is_array($data['complainants'])) {
@@ -2491,12 +2551,16 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
         foreach ($respList as $r) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($r) . '</div>'; }
         for ($i = 0; $i < max(0, 3 - count($respList)); $i++) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
 
-        $noticeTs = !empty($data['notice_date']) ? strtotime($data['notice_date']) : (!empty($data['hearing_date']) ? strtotime($data['hearing_date']) : time());
+        $secretaryName = $this->escape($data['pangkat_secretary_name'] ?? $data['secretary_name'] ?? 'MARILOU P. CRUZ');
+        $chairmanName = $this->escape($data['pangkat_chairman_name'] ?? 'Tagapangulo ng Pangkat');
+        $captainName = $this->escape($this->getAuthorizedCaptainName($data['official_name'] ?? $data['captain_name'] ?? null));
+
+        $noticeTs = !empty($data['issuance_date']) ? strtotime($data['issuance_date']) : (!empty($data['repudiation_date']) ? strtotime($data['repudiation_date']) : (!empty($data['notice_date']) ? strtotime($data['notice_date']) : time()));
         $noticeDay = date('j', $noticeTs);
         $noticeMonth = $this->filipinoMonth((int) date('n', $noticeTs));
         $noticeYear = date('Y', $noticeTs);
 
-        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 100%; max-width: 760px; min-height: 960px; padding: 14mm 16mm; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperStart = $forPdf ? '' : '<div style="background: #334155; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div class="printable-document-sheet" style="background: #fff; width: 100%; max-width: 8.5in; min-height: 14in; padding: 18mm 20mm; box-shadow: 0 10px 25px rgba(0,0,0,0.3); border-radius: 4px; box-sizing: border-box;">';
         $wrapperEnd = $forPdf ? '' : '</div></div>';
 
         return '<!DOCTYPE html>
@@ -2505,12 +2569,32 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
     <meta charset="UTF-8">
     <title>Pormularyo ng KP Blg. 20 - KATIBAYAN NA MAKAPAGHAIN NG SAKDAL</title>
     <style>
-        @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
+        @page { size: 8.5in 14in portrait; margin: 15mm 15mm 15mm 15mm; }
         * { box-sizing: border-box; }
         body { font-family: Arial, "DejaVu Sans", Helvetica, sans-serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
         .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
         .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
         .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
+        .printable-document-sheet { width: 100%; max-width: 8.5in; min-height: 14in; margin: 0 auto; }
+        @media print {
+            body * { visibility: hidden !important; }
+            .printable-document-sheet, .printable-document-sheet * {
+                visibility: visible !important;
+            }
+            .printable-document-sheet {
+                position: absolute !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                box-shadow: none !important;
+                border: none !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+            .modal-header, .modal-toolbar, .no-print, .countdown-badge {
+                display: none !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -2561,22 +2645,52 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
 
     <div style="font-size: 11pt; line-height: 1.8; margin-bottom: 20px;">
         <div style="font-weight: bold; margin-bottom: 8px;">ITO AY NAGPAPATUNAY NA:</div>
+        ' . ($isRepudiated ? '
         <ol style="margin: 0; padding-left: 24px; text-align: justify;">
-            <li style="margin-bottom: 10px;">Nagkaroon ng personal na paghaharap sa pagitan ng mga panig sa harap ng Punong Barangay/Pangkat ng Tagapagkasundo;</li>
+            <li style="margin-bottom: 10px;">Nagkaroon ng personal na paghaharap sa pagitan ng mga panig sa harap ng Punong Barangay / Pangkat ng Tagapagkasundo;</li>
             <li style="margin-bottom: 10px;">Na nagkaroon ng pag-aayos;</li>
-            <li style="margin-bottom: 10px;">Na ang pag-aayos ay tinanggihan sa isang sinumpaang salaysay sa harap ng Punong Barangay sa pamamagitan ni <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 250px; font-weight: bold; text-align: center;">' . $repudiatingParty . '</span> sa dahilan ng ' . ($grounds !== '' ? '<span style="border-bottom: 1px solid #111; font-weight: bold;">' . $grounds . '</span>' : '<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 250px;">&nbsp;</span><div style="border-bottom: 1px solid #111; min-height: 18px; margin-top: 8px;">&nbsp;</div><div style="border-bottom: 1px solid #111; min-height: 18px; margin-top: 8px;">&nbsp;</div>') . ';</li>
-            <li style="margin-bottom: 10px;">Dahil dito, ang nasabing sigalot ay maaari nang ihain sa hukuman/tanggapan ng pamahalaan.</li>
+            <li style="margin-bottom: 10px;">Na ang pag-aayos ay tinanggihan sa isang sinumpaang salaysay sa harap ng Punong Barangay sa pamamagitan ni <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 250px; font-weight: bold; text-align: center;">' . $repudiatingParty . '</span> sa dahilan ng ' . ($grounds !== '' ? '<span style="border-bottom: 1px solid #111; font-weight: bold;">' . $grounds . '</span>' : '<span style="border-bottom: 1px solid #111; font-weight: bold;">Pandaraya, Karahasan, o Pananakot (RA 7160 Sec. 416)</span>') . '; at</li>
+            <li style="margin-bottom: 10px;">Dahil dito, ang kaukulang sakdal para sa nasabing usapin ay maaari nang ihain sa hukuman / tanggapan ng pamahalaan.</li>
         </ol>
+        ' : '
+        <ol style="margin: 0; padding-left: 24px; text-align: justify;">
+            <li style="margin-bottom: 10px;">Nagkaroon ng personal na paghaharap sa pagitan ng mga panig sa harap ng Punong Barangay / Pangkat ng Tagapagkasundo;</li>
+            <li style="margin-bottom: 10px;">Ngunit hindi nagkaroon ng anumang pag-aayos / kasunduan sa pagitan ng mga panig matapos ang mga itinakdang pagdinig alinsunod sa batas' . ($cfaReason !== '' ? ' (' . $cfaReason . ')' : '') . '; at</li>
+            <li style="margin-bottom: 10px;">Dahil dito, ang kaukulang sakdal para sa nasabing usapin ay maaari nang ihain sa hukuman / tanggapan ng pamahalaan.</li>
+        </ol>
+        ') . '
     </div>
 
-    <div style="font-size: 11pt; margin-top: 25px; margin-bottom: 35px; text-indent: 40px;">
-        Ngayong ika- <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 120px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, ' . $noticeYear . '.
+    <div style="font-size: 11pt; margin-top: 25px; margin-bottom: 25px; text-indent: 40px;">
+        Ngayong ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 120px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, 20<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 40px; font-weight: bold; text-align: center;">' . substr($noticeYear, -2) . '</span>.
     </div>
 
-    <div style="text-align: right; margin-top: 40px;">
-        <div style="display: inline-block; text-align: center;">
-            <div style="border-top: 1px solid #111; width: 240px; margin-bottom: 4px;"></div>
-            <div style="font-size: 10.5pt;">Tagapangulo ng Pangkat</div>
+    <div style="page-break-inside: avoid;">
+        <table style="width: 100%; border-collapse: collapse; margin-top: 30px; margin-bottom: 25px;">
+            <tr>
+                <td style="width: 50%;"></td>
+                <td style="width: 50%; text-align: center;">
+                    <div style="font-weight: bold; font-size: 10.5pt; border-bottom: 1px solid #111; padding-bottom: 2px;">' . $secretaryName . '</div>
+                    <div style="font-size: 9.5pt; margin-top: 4px;">Kalihim ng Pangkat / Kalihim ng Lupon</div>
+                </td>
+            </tr>
+        </table>
+
+        <div style="margin-top: 25px;">
+            <div style="font-size: 10pt; margin-bottom: 8px;">Pinatutunayan:</div>
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                    <td style="width: 48%; text-align: center; vertical-align: top;">
+                        <div style="font-weight: bold; font-size: 10.5pt; border-bottom: 1px solid #111; padding-bottom: 2px;">' . $chairmanName . '</div>
+                        <div style="font-size: 9.5pt; margin-top: 4px;">Tagapangulo ng Pangkat</div>
+                    </td>
+                    <td style="width: 4%;"></td>
+                    <td style="width: 48%; text-align: center; vertical-align: top;">
+                        <div style="font-weight: bold; font-size: 10.5pt; border-bottom: 1px solid #111; padding-bottom: 2px;">' . $captainName . '</div>
+                        <div style="font-size: 9.5pt; margin-top: 4px;">Punong Barangay / Tagapangulo ng Lupon</div>
+                    </td>
+                </tr>
+            </table>
         </div>
     </div>
 ' . $wrapperEnd . '

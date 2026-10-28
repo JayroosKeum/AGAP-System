@@ -197,20 +197,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (sidebar) {
         // Restore desktop collapsed state
-        const isCollapsedInitially = localStorage.getItem(storageCollapseKey) === 'true';
-        if (isCollapsedInitially && window.innerWidth > 900) {
-            sidebar.classList.add('is-collapsed');
-            document.documentElement.classList.add('sidebar-collapsed');
-            if (collapseBtn) {
-                collapseBtn.setAttribute('title', 'Expand sidebar');
-                collapseBtn.setAttribute('aria-label', 'Expand sidebar');
+        const savedState = localStorage.getItem(storageCollapseKey);
+        const isMediumScreen = window.innerWidth > 900 && window.innerWidth <= 1200;
+        const shouldBeCollapsed = savedState === 'true' || (savedState === null && isMediumScreen);
+
+        if (window.innerWidth > 900) {
+            if (shouldBeCollapsed) {
+                sidebar.classList.add('is-collapsed');
+                document.documentElement.classList.add('sidebar-collapsed');
+                document.documentElement.classList.remove('sidebar-expanded');
+                if (collapseBtn) {
+                    collapseBtn.setAttribute('title', 'Expand sidebar');
+                    collapseBtn.setAttribute('aria-label', 'Expand sidebar');
+                }
+            } else {
+                sidebar.classList.remove('is-collapsed');
+                document.documentElement.classList.remove('sidebar-collapsed');
+                document.documentElement.classList.add('sidebar-expanded');
+                if (collapseBtn) {
+                    collapseBtn.setAttribute('title', 'Collapse sidebar');
+                    collapseBtn.setAttribute('aria-label', 'Collapse sidebar');
+                }
             }
         }
 
         const toggleDesktopSidebar = () => {
-            const willCollapse = !sidebar.classList.contains('is-collapsed');
+            const isCurrentlyCollapsed = sidebar.classList.contains('is-collapsed') || document.documentElement.classList.contains('sidebar-collapsed');
+            const willCollapse = !isCurrentlyCollapsed;
             sidebar.classList.toggle('is-collapsed', willCollapse);
             document.documentElement.classList.toggle('sidebar-collapsed', willCollapse);
+            document.documentElement.classList.toggle('sidebar-expanded', !willCollapse);
             try {
                 localStorage.setItem(storageCollapseKey, String(willCollapse));
             } catch (e) {}
@@ -254,6 +270,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 closeMobileSidebar();
             } else {
                 toggleDesktopSidebar();
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            if (window.innerWidth <= 900) {
+                document.documentElement.classList.remove('sidebar-collapsed', 'sidebar-expanded');
+                sidebar.classList.remove('is-collapsed');
+            } else {
+                const currentSaved = localStorage.getItem(storageCollapseKey);
+                const isMed = window.innerWidth <= 1200;
+                const coll = currentSaved === 'true' || (currentSaved === null && isMed);
+                sidebar.classList.toggle('is-collapsed', coll);
+                document.documentElement.classList.toggle('sidebar-collapsed', coll);
+                document.documentElement.classList.toggle('sidebar-expanded', !coll);
+                if (collapseBtn) {
+                    collapseBtn.setAttribute('title', coll ? 'Expand sidebar' : 'Collapse sidebar');
+                    collapseBtn.setAttribute('aria-label', coll ? 'Expand sidebar' : 'Collapse sidebar');
+                }
+                closeMobileSidebar();
             }
         });
 

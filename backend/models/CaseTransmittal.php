@@ -184,6 +184,29 @@ class CaseTransmittal
      */
     private function enrichTransmittalData(array $row): array
     {
+        $caseId = (int) $row['case_id'];
+
+        // Check if settlement was repudiated
+        $settleCheck = $this->conn->prepare("SELECT repudiation_status, repudiation_reason, repudiation_date FROM settlements WHERE case_id = ? ORDER BY settlement_id DESC LIMIT 1");
+        $settleCheck->execute([$caseId]);
+        $settleData = $settleCheck->fetch(PDO::FETCH_ASSOC);
+
+        if ($settleData && ($settleData['repudiation_status'] === 'Repudiated' || !empty($settleData['repudiation_date']))) {
+            $row['is_locked'] = true;
+            $row['is_repudiated'] = true;
+            $row['is_ready_for_transmittal'] = false;
+            $row['working_days_remaining'] = 0;
+            $row['badge_class'] = 'badge-red';
+            $row['badge_label'] = '⚠️ Settlement Repudiated — Transmittal Cancelled';
+            $row['repudiation_reason'] = $settleData['repudiation_reason'];
+            $row['repudiation_date'] = $settleData['repudiation_date'];
+            $row['settlement_date_formatted'] = !empty($row['settlement_date']) ? date('M j, Y', strtotime($row['settlement_date'])) : '';
+            $row['ten_day_expiry_date_formatted'] = !empty($row['ten_day_expiry_date']) ? date('M j, Y', strtotime($row['ten_day_expiry_date'])) : '';
+            $row['unlock_date_formatted'] = $row['ten_day_expiry_date_formatted'];
+            return $row;
+        }
+
+        $row['is_repudiated'] = false;
         $settlementDate = $row['settlement_date'];
         $expiryDate = $row['ten_day_expiry_date'];
         $daysRemaining = $this->calculateWorkingDaysRemaining($expiryDate);
@@ -213,7 +236,7 @@ class CaseTransmittal
             $badgeLabel = sprintf('🔒 Locked (%d business day%s remaining - Repudiation Window)', $daysRemaining, $daysRemaining === 1 ? '' : 's');
         } else {
             $badgeClass = 'badge-green';
-            $badgeLabel = '✓ Ready for Court Transmittal';
+            $badgeLabel = '🔓 Ready for MTC / DILG Transmittal';
         }
 
         // Automatic in-app notification when 10 business days elapse

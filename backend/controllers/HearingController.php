@@ -129,7 +129,7 @@ class HearingController
             if (!$result['success']) {
                 return $result;
             }
-            $label = $this->ordinal($result['sequence']) . ' ' . $result['hearing_type'];
+            $label = $this->ordinal($result['sequence']) . ' ' . ($result['hearing_type'] === 'Arbitration' ? 'Arbitration Hearing' : $result['hearing_type']);
             $auditAction = 'Scheduled ' . $label;
             if (!empty($values['past_date_exception_reason'])) {
                 $auditAction .= ' with Administrator-approved past-date exception';
@@ -821,7 +821,7 @@ class HearingController
 
 
         if (!$allowExistingTypes) {
-            $dateProgression = $this->hearing->validateHearingDateProgression((int) $caseId, $date->format('Y-m-d H:i:s'));
+            $dateProgression = $this->hearing->validateHearingDateProgression((int) $caseId, $date->format('Y-m-d H:i:s'), null, $type);
             if (!$dateProgression['valid']) {
                 return [
                     'success' => false,
@@ -829,7 +829,7 @@ class HearingController
                 ];
             }
         } else {
-            $dateProgression = $this->hearing->validateHearingDateProgression((int) $caseId, $date->format('Y-m-d H:i:s'), $excludeHearingId);
+            $dateProgression = $this->hearing->validateHearingDateProgression((int) $caseId, $date->format('Y-m-d H:i:s'), $excludeHearingId, $type);
             if (!$dateProgression['valid'] && !empty($dateProgression['same_day'])) {
                 return [
                     'success' => false,

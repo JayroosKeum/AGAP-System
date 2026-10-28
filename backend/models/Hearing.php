@@ -319,7 +319,7 @@ class Hearing
      * @param int|null $excludeHearingId Optional hearing ID to exclude (e.g., during rescheduling)
      * @return array ['valid' => bool, 'same_day' => bool, 'prior_date' => bool, 'message' => string, 'latest_hearing' => ?array]
      */
-    public function validateHearingDateProgression(int $caseId, string $hearingDate, ?int $excludeHearingId = null): array
+    public function validateHearingDateProgression(int $caseId, string $hearingDate, ?int $excludeHearingId = null, ?string $hearingType = null): array
     {
         try {
             $targetDateObj = new DateTimeImmutable($hearingDate);
@@ -335,15 +335,28 @@ class Hearing
 
         $targetDay = $targetDateObj->format('Y-m-d');
 
-        $sql = "SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.status,
-                       DATE(h.hearing_date) AS hearing_day, c.case_number
-                FROM hearings h
-                INNER JOIN cases c ON c.case_id = h.case_id
-                WHERE h.case_id = ?
-                  AND h.status != 'Cancelled'
-                  AND NOT EXISTS (
-                      SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
-                  )";
+        if ($hearingType === 'Arbitration') {
+            $sql = "SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.status,
+                           DATE(h.hearing_date) AS hearing_day, c.case_number
+                    FROM hearings h
+                    INNER JOIN cases c ON c.case_id = h.case_id
+                    WHERE h.case_id = ?
+                      AND h.hearing_type = 'Arbitration'
+                      AND h.status != 'Cancelled'
+                      AND NOT EXISTS (
+                          SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
+                      )";
+        } else {
+            $sql = "SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.status,
+                           DATE(h.hearing_date) AS hearing_day, c.case_number
+                    FROM hearings h
+                    INNER JOIN cases c ON c.case_id = h.case_id
+                    WHERE h.case_id = ?
+                      AND h.status != 'Cancelled'
+                      AND NOT EXISTS (
+                          SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
+                      )";
+        }
         $params = [$caseId];
 
         if ($excludeHearingId !== null) {
@@ -461,21 +474,18 @@ class Hearing
             }
 
             $counts = $this->conn->prepare(
-                "SELECT hearing_type, COUNT(*) AS total FROM hearings WHERE case_id = ? AND hearing_type IN ('Mediation', 'Conciliation') GROUP BY hearing_type"
+                "SELECT hearing_type, COUNT(*) AS total FROM hearings WHERE case_id = ? AND hearing_type IN ('Mediation', 'Conciliation', 'Arbitration') GROUP BY hearing_type"
             );
             $counts->execute([$data['case_id']]);
-            $scheduled = ['Mediation' => 0, 'Conciliation' => 0];
+            $scheduled = ['Mediation' => 0, 'Conciliation' => 0, 'Arbitration' => 0];
             foreach ($counts->fetchAll(PDO::FETCH_ASSOC) as $row) {
                 $scheduled[$row['hearing_type']] = (int) $row['total'];
             }
 
-            // A Conciliation hearing is available only after an authorized
-            // transition has moved the case to Conciliation (for example, an
-            // approved failed-mediation referral or a lapsed-period referral).
-            // The number of mediation schedules must never infer that outcome.
-            $expectedType = ($caseRecord['case_status'] === 'Conciliation')
-                ? 'Conciliation'
-                : 'Mediation';
+            // A Conciliation or Arbitration hearing is determined by authorized stage transition
+            $expectedType = ($data['hearing_type'] === 'Arbitration' || $caseRecord['case_status'] === 'Arbitration')
+                ? 'Arbitration'
+                : (($caseRecord['case_status'] === 'Conciliation') ? 'Conciliation' : 'Mediation');
 
             // Active mediation attempt count for this case (excluding cancelled/superseded)
             $medQuery = $this->conn->prepare("
@@ -560,7 +570,7 @@ class Hearing
             }
 
             // Progression date validation: cannot schedule on the same day or any prior date relative to already booked hearings.
-            $dateProgression = $this->validateHearingDateProgression((int) $data['case_id'], $data['hearing_date']);
+            $dateProgression = $this->validateHearingDateProgression((int) $data['case_id'], $data['hearing_date'], null, $data['hearing_type'] ?? null);
             if (!$dateProgression['valid']) {
                 $this->conn->rollBack();
                 return [
@@ -730,6 +740,13 @@ class Hearing
                 $complaintStatus->execute([$data['case_id']]);
                 $history = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, 'Conciliation', ?, ?)");
                 $history->execute([$data['case_id'], 'Case moved to conciliation when the 1st Conciliation was scheduled.', $userId]);
+            } elseif ($expectedType === 'Arbitration' && $scheduled['Arbitration'] === 0) {
+                $status = $this->conn->prepare("UPDATE cases SET case_status = 'Arbitration' WHERE case_id = ?");
+                $status->execute([$data['case_id']]);
+                $complaintStatus = $this->conn->prepare("UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = 'Arbitration' WHERE c.case_id = ?");
+                $complaintStatus->execute([$data['case_id']]);
+                $history = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, 'Arbitration', ?, ?)");
+                $history->execute([$data['case_id'], 'Case moved to Arbitration when the 1st Arbitration Hearing was scheduled.', $userId]);
             }
 
             $this->conn->commit();
@@ -761,7 +778,8 @@ class Hearing
                 }
             }
 
-            return ['success' => true, 'hearing_id' => $hearingId, 'sequence' => $scheduled[$expectedType] + 1, 'hearing_type' => $expectedType];
+            $seq = ($expectedType === 'Arbitration') ? ($scheduled['Arbitration'] + 1) : (($expectedType === 'Mediation') ? ($mediationAttempt ?: ($scheduled['Mediation'] + 1)) : ($scheduled['Conciliation'] + 1));
+            return ['success' => true, 'hearing_id' => $hearingId, 'sequence' => $seq, 'hearing_type' => $expectedType];
         } catch (Throwable $exception) {
             if ($this->conn->inTransaction()) {
                 $this->conn->rollBack();

@@ -510,6 +510,43 @@ class CaseModel
         $stageModel = new CaseStage($this->conn);
         $stageOverview = $stageModel->getStageOverview($id);
 
+        require_once __DIR__ . '/Settlement.php';
+        $settlementModel = new Settlement($this->conn);
+        $settlement = $settlementModel->getByCase($id);
+
+        // If case is marked Settled but no settlement record exists yet, auto-populate from latest hearing minutes
+        if (!$settlement && (($case['case_status'] ?? '') === 'Settled' || ($stageOverview['mediation']['outcome'] ?? '') === 'Settled' || ($stageOverview['conciliation']['outcome'] ?? '') === 'Settled')) {
+            $minStmt = $this->conn->prepare("
+                SELECT hm.* FROM hearing_minutes hm
+                INNER JOIN hearings h ON h.hearing_id = hm.hearing_id
+                WHERE h.case_id = ?
+                ORDER BY hm.created_at DESC LIMIT 1
+            ");
+            $minStmt->execute([$id]);
+            $latestMin = $minStmt->fetch(PDO::FETCH_ASSOC);
+            $agrText = !empty($latestMin['agreements_action_items']) ? $latestMin['agreements_action_items'] : (!empty($latestMin['settlement_discussion_notes']) ? $latestMin['settlement_discussion_notes'] : 'Ang mga panig ay pormal na nagkasundo sa harap ng Lupon.');
+            $settleRes = $settlementModel->saveSettlement([
+                'case_id' => $id,
+                'settlement_date' => date('Y-m-d'),
+                'agreement_details' => $agrText,
+                'compliance_status' => 'Pending'
+            ], 1);
+            if (!empty($settleRes['success'])) {
+                $settlement = $settlementModel->getByCase($id);
+            }
+        }
+
+        require_once __DIR__ . '/CaseTransmittal.php';
+        $transmittalModel = new CaseTransmittal($this->conn);
+        $transmittal = $transmittalModel->getByCaseId($id);
+        if (!$transmittal && ($settlement || ($case['case_status'] ?? '') === 'Settled')) {
+            $transmittal = $transmittalModel->createOrGetTransmittal($id);
+        }
+
+        require_once __DIR__ . '/Arbitration.php';
+        $arbitrationModel = new Arbitration();
+        $arbitration = $arbitrationModel->getByCase($id);
+
         return [
             'case' => $case,
             'assignments' => $assignments->fetchAll(PDO::FETCH_ASSOC),
@@ -518,8 +555,12 @@ class CaseModel
             'proofs' => $proofs->fetchAll(PDO::FETCH_ASSOC),
             'stages' => $stageOverview ? [
                 'mediation' => $stageOverview['mediation'],
-                'conciliation' => $stageOverview['conciliation']
-            ] : null
+                'conciliation' => $stageOverview['conciliation'],
+                'arbitration' => $stageOverview['arbitration'] ?? null
+            ] : null,
+            'settlement' => $settlement ?: null,
+            'arbitration' => $arbitration ?: null,
+            'transmittal' => $transmittal ?: null
         ];
     }
 

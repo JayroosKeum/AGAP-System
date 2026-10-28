@@ -129,7 +129,7 @@ class HearingMinutes
         $allowedOutcomes = [
             'Settled', 'Continue Mediation', 'Continue Conciliation', 'Continue Arbitration',
             'Failed', 'Party Absent', 'Rescheduled', 'Elevate to Pangkat',
-            'Pending CFA', 'Arbitration Award', 'Dismissed', 'Pending'
+            'Pending CFA', 'Arbitration', 'Arbitration Award', 'Repudiated', 'Dismissed', 'Pending'
         ];
         if (!$rawOutcome || !in_array($rawOutcome, $allowedOutcomes, true)) {
             return ['success' => false, 'message' => 'Please select a valid session outcome (Settled, Continue Mediation, Continue Conciliation, Continue Arbitration, Failed, Party Absent, Rescheduled, Elevate to Pangkat, Pending CFA, or Arbitration Award).'];
@@ -248,8 +248,27 @@ class HearingMinutes
 
             // Outcome workflow triggers
             if ($outcome === 'Settled') {
+                $updCase = $this->conn->prepare("UPDATE cases SET case_status = 'Settled', updated_at = NOW() WHERE case_id = ?");
+                $updCase->execute([$caseId]);
+
+                $updComp = $this->conn->prepare("UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = 'Settled', co.updated_at = NOW() WHERE c.case_id = ?");
+                $updComp->execute([$caseId]);
+
+                $stageType = ($hearing['hearing_type'] === 'Conciliation') ? 'Conciliation' : 'Mediation';
+                $updStage = $this->conn->prepare("
+                    INSERT INTO case_stages (case_id, stage_type, stage_status, outcome, outcome_remarks, completed_at)
+                    VALUES (?, ?, 'Completed', 'Settled', ?, NOW())
+                    ON DUPLICATE KEY UPDATE
+                        stage_status = 'Completed',
+                        outcome = 'Settled',
+                        outcome_remarks = VALUES(outcome_remarks),
+                        completed_at = NOW(),
+                        updated_at = CURRENT_TIMESTAMP
+                ");
+                $updStage->execute([$caseId, $stageType, $remarks ?: 'Amicable settlement reached']);
+
                 $histMsg = sprintf('%s session concluded: Settlement reached. Proceed to prepare Amicable Settlement.', $sessionType);
-                $this->logCaseHistory($caseId, $hearing['case_status'], $histMsg, $userId);
+                $this->logCaseHistory($caseId, 'Settled', $histMsg, $userId);
             } elseif ($outcome === 'Dismissed') {
                 $updCase = $this->conn->prepare("UPDATE cases SET case_status = 'Dismissed', updated_at = NOW() WHERE case_id = ?");
                 $updCase->execute([$caseId]);
@@ -281,6 +300,40 @@ class HearingMinutes
             } elseif ($outcome === 'Pending CFA') {
                 $histMsg = sprintf('%s session concluded: Conciliation unsuccessful. Eligible for Certificate to File Action (KP Form 20).', $sessionType);
                 $this->logCaseHistory($caseId, $hearing['case_status'], $histMsg, $userId);
+            } elseif ($outcome === 'Arbitration') {
+                $histMsg = sprintf('%s session concluded: Parties voluntarily agreed in writing to submit their dispute to binding arbitration under RA 7160 Sec. 413 (KP Form 14).', $sessionType);
+                $this->logCaseHistory($caseId, 'Arbitration', $histMsg, $userId);
+
+                $updCase = $this->conn->prepare("UPDATE cases SET case_status = 'Arbitration', updated_at = NOW() WHERE case_id = ?");
+                $updCase->execute([$caseId]);
+                $updComp = $this->conn->prepare("UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = 'Arbitration', co.updated_at = NOW() WHERE c.case_id = ?");
+                $updComp->execute([$caseId]);
+
+                $chkArb = $this->conn->prepare("SELECT arbitration_id FROM arbitration_records WHERE case_id = ? LIMIT 1");
+                $chkArb->execute([$caseId]);
+                $arbId = $chkArb->fetchColumn();
+                if (!$arbId) {
+                    $insArb = $this->conn->prepare("
+                        INSERT INTO arbitration_records (case_id, agreement_date, award_details)
+                        VALUES (?, CURDATE(), ?)
+                    ");
+                    $insArb->execute([
+                        $caseId,
+                        $remarks ?: 'Both parties voluntarily agreed in writing to submit their dispute to binding arbitration under RA 7160 Sec. 413.'
+                    ]);
+                }
+
+                $upsertStage = $this->conn->prepare("
+                    INSERT INTO case_stages (case_id, stage_type, stage_status, outcome, outcome_remarks, completed_at)
+                    VALUES (?, ?, 'Completed', 'Arbitration', ?, NOW())
+                    ON DUPLICATE KEY UPDATE
+                        stage_status = 'Completed',
+                        outcome = 'Arbitration',
+                        outcome_remarks = VALUES(outcome_remarks),
+                        completed_at = VALUES(completed_at),
+                        updated_at = CURRENT_TIMESTAMP
+                ");
+                $upsertStage->execute([$caseId, $hearing['hearing_type'], $remarks ?: 'Agreed to voluntary arbitration']);
             } elseif ($outcome === 'Arbitration Award') {
                 $histMsg = sprintf('%s session concluded: Arbitration proceedings concluded. Ready for Arbitration Award.', $sessionType);
                 $this->logCaseHistory($caseId, 'Arbitration', $histMsg, $userId);

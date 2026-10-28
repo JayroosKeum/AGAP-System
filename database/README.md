@@ -195,5 +195,15 @@ For existing databases updating to the mandatory preliminary Paanyaya process be
     - Stores failure reason (`unsuccessful_reason`), serving notes/witness info (`remarks`), proof attachments (`proof_file_path`), GPS coordinates (`latitude`, `longitude`, `service_location`), and audit actors (`recorded_by`, `submitted_at`).
     - Enforces sequential attempt numbering and duplicate prevention via unique constraint `uq_stage_attempt (paanyaya_stage_id, attempt_number)`.
 
+## Voluntary Arbitration Outcomes & Session Enums (October 2026)
+
+For existing databases updating to the Voluntary Arbitration end-to-end workflow (RA 7160 Sec. 413), apply:
+- `database/migrations/20261029_001_voluntary_arbitration_outcomes.sql`:
+  - **`case_stages` Table**:
+    - Modifies `outcome` ENUM to include `'Arbitration'` and `'Arbitration Award'` alongside `'Settled'`, `'Unsuccessful'`, `'Repudiated'`, `'Dismissed'`, `'Referred to Pangkat'`, and `'Pending'`.
+  - **`hearing_minutes` Table**:
+    - Modifies `session_outcome` ENUM to include `'Arbitration'`, `'Arbitration Award'`, and `'Repudiated'` alongside existing session outcomes (`'Settled'`, `'Continue Mediation'`, `'Continue Conciliation'`, `'Continue Arbitration'`, `'Failed'`, `'Party Absent'`, `'Rescheduled'`, `'Elevate to Pangkat'`, `'Pending CFA'`, `'Pending'`).
+
+
 
 

@@ -191,12 +191,9 @@ include '../../layouts/header.php';
                 </a>
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
                     <div>
-                        <h1 style="font-size: 1.6rem; font-weight: 800; color: #0f172a; margin: 0 0 4px 0; letter-spacing: -0.02em;">
+                        <h1 style="font-size: 1.6rem; font-weight: 800; color: #0f172a; margin: 0; letter-spacing: -0.02em;">
                             Record Dialogue Minutes &amp; Result (<?= htmlspecialchars($stageType) ?>)
                         </h1>
-                        <p style="margin: 0; color: #64748b; font-size: 0.92rem;">
-                            Salaysay at Buod ng Usapan sa Harap ng Barangay &mdash; <strong>Case #<?= htmlspecialchars($caseNum) ?></strong>
-                        </p>
                     </div>
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <span class="paanyaya-stage-tag" style="font-size: 0.82rem; padding: 4px 12px; border-radius: 9999px; background: #e0f2fe; color: #0369a1; font-weight: 700;">
@@ -257,7 +254,7 @@ include '../../layouts/header.php';
                                     <label for="minutesActualStartTime" style="font-weight: 600; font-size: 0.86rem; margin: 0; color: #0f172a;">
                                         Aktwal na Oras ng Simula (Actual Start Time)
                                     </label>
-                                    <button type="button" onclick="setMinutesActualStartNow()" style="background: none; border: none; color: #2563eb; font-size: 0.78rem; font-weight: 700; cursor: pointer; padding: 0;">
+                                    <button type="button" id="btnActualStartNow" onclick="setMinutesActualStartNow(event)" style="background: none; border: none; color: #2563eb; font-size: 0.78rem; font-weight: 700; cursor: pointer; padding: 0;">
                                         Oras Ngayon (Now)
                                     </button>
                                 </div>
@@ -400,6 +397,7 @@ include '../../layouts/header.php';
                                 </div>
                             </div>
                         </div>
+                        <div id="minutesAttendanceNotice" style="display: none; margin-top: 14px; padding: 10px 14px; border-radius: 8px; font-size: 0.84rem; line-height: 1.4;"></div>
                     </div>
 
                     <!-- SECTION 3: Salaysay at Buod ng Usapan -->
@@ -465,12 +463,13 @@ include '../../layouts/header.php';
                         <!-- Settled: Proposals / Agreed Terms Section -->
                         <div id="minutesAgreedTermsSection" style="background: #f0fdf4; border: 1.5px solid #bbf7d0; border-radius: 8px; padding: 14px 16px; margin-bottom: 10px;">
                             <label for="minutesAgreedTerms" style="font-weight: 700; font-size: 0.88rem; color: #166534; display: block; margin-bottom: 6px;">
-                                🤝 Mga Mungkahi o Napagkasunduang Kondisyon (Proposals / Agreed Terms)
+                                🤝 Mga Mungkahi o Napagkasunduang Kondisyon (Proposals / Agreed Terms) <span class="required-mark" style="color: #dc2626;">*</span>
                             </label>
                             <p style="margin: 0 0 8px 0; font-size: 0.78rem; color: #15803d;">
                                 Itala rito ang naging pinal na kasunduan, kondisyon sa bayaran, takdang araw ng pagtupad, o anumang pangako ng magkabilang panig upang pormal na maipasara ang reklamo.
                             </p>
-                            <textarea id="minutesAgreedTerms" name="agreed_terms" rows="3" placeholder="Kondisyon ng bayaran, pagsasaayos, o pangako ng magkabilang panig (kung mayroon)..." style="padding: 9px 12px; font-size: 0.88rem; border: 1px solid #86efac; border-radius: 7px; width: 100%; box-sizing: border-box; background: #ffffff;"></textarea>
+                            <textarea id="minutesAgreedTerms" name="agreed_terms" rows="3" placeholder="Kondisyon ng bayaran, pagsasaayos, o pangako ng magkabilang panig..." style="padding: 9px 12px; font-size: 0.88rem; border: 1px solid #86efac; border-radius: 7px; width: 100%; box-sizing: border-box; background: #ffffff;"></textarea>
+                            <small id="minutesAgreedTermsError" style="display: none; color: #dc2626; font-size: 0.75rem; font-weight: 600; margin-top: 4px; display: none;"></small>
                         </div>
 
                         <!-- No Agreement: Complainant Choice Section -->
@@ -506,13 +505,15 @@ include '../../layouts/header.php';
                                                 <label for="minutesP2Date" style="font-weight: 700; font-size: 0.82rem; display: block; margin-bottom: 4px; color: #1e293b;">
                                                     2nd Dialogue Date <span class="required-mark" style="color: #dc2626;">*</span>
                                                 </label>
-                                                <input type="date" id="minutesP2Date" name="p2_scheduled_date" style="padding: 8px 10px; font-size: 0.86rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%; box-sizing: border-box;">
+                                                <input type="date" id="minutesP2Date" name="p2_scheduled_date" onchange="validateP2Schedule()" style="padding: 8px 10px; font-size: 0.86rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%; box-sizing: border-box;">
+                                                <small id="minutesP2DateError" style="display: none; color: #dc2626; font-size: 0.75rem; font-weight: 600; margin-top: 3px;"></small>
                                             </div>
                                             <div class="form-group" style="margin-bottom: 0;">
                                                 <label for="minutesP2Time" style="font-weight: 700; font-size: 0.82rem; display: block; margin-bottom: 4px; color: #1e293b;">
                                                     2nd Dialogue Time (08:00 - 17:00) <span class="required-mark" style="color: #dc2626;">*</span>
                                                 </label>
-                                                <input type="time" id="minutesP2Time" name="p2_scheduled_time" value="14:00" min="08:00" max="17:00" style="padding: 8px 10px; font-size: 0.86rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%; box-sizing: border-box;">
+                                                <input type="time" id="minutesP2Time" name="p2_scheduled_time" value="14:00" min="08:00" max="17:00" onchange="validateP2Schedule()" style="padding: 8px 10px; font-size: 0.86rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%; box-sizing: border-box;">
+                                                <small id="minutesP2TimeError" style="display: none; color: #dc2626; font-size: 0.75rem; font-weight: 600; margin-top: 3px;"></small>
                                             </div>
                                         </div>
                                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
@@ -565,9 +566,12 @@ include '../../layouts/header.php';
                                     <label for="minutesMedDate" style="margin-bottom: 0; font-weight: 700; font-size: 0.85rem; color: #1e293b;">
                                         Mediation Date (Tuesdays ONLY) <span class="required-mark" style="color: #dc2626;">*</span>
                                     </label>
-                                    <span style="font-size: 0.74rem; color: #64748b;">Punong Barangay Mediation Day</span>
+                                    <span id="minutesCapacityBadge" class="badge-capacity" style="font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 9999px; background: #e2e8f0; color: #475569;">
+                                        Checking capacity...
+                                    </span>
                                 </div>
-                                <input type="date" id="minutesMedDate" name="mediation_date" onchange="checkMinutesScheduleConflict()" required style="padding: 9px 12px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box; margin-bottom: 8px;">
+                                <input type="date" id="minutesMedDate" name="mediation_date" onchange="handleMinutesMedDateChange(this)" required style="padding: 9px 12px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box; margin-bottom: 4px;">
+                                <small id="minutesMedDateError" style="display: none; color: #dc2626; font-size: 0.75rem; font-weight: 600; margin-bottom: 6px;"></small>
 
                                 <!-- Visual Tuesday Picker Container -->
                                 <div id="minutesVisualDatePickerContainer" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-top: 6px;">
@@ -589,33 +593,41 @@ include '../../layouts/header.php';
                                 </div>
                             </div>
 
-                            <!-- Existing Scheduled Mediations on selected date -->
-                            <div id="minutesDaySchedulesWrap" style="display: none; margin-bottom: 14px; padding: 10px 12px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.84rem;">
-                                <div style="font-weight: 600; color: #334155; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
-                                    <span>Scheduled Mediations on this Date:</span>
-                                    <span id="minutesDaySlotsCount" style="font-size: 0.72rem; background: #e2e8f0; color: #475569; padding: 2px 7px; border-radius: 9999px; font-weight: 600;">0</span>
-                                </div>
-                                <div id="minutesDaySlotsList" style="color: #64748b; font-size: 0.82rem; line-height: 1.5;">
-                                    No other mediations scheduled on this day.
-                                </div>
-                            </div>
-
-                            <!-- Slot Selector & Venue Grid -->
+                            <!-- Slot Selector & Venue Grid (Elastic Target Call Time) -->
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px;">
                                 <div class="form-group" style="margin-bottom: 0;">
-                                    <label for="minutesMedTime" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 5px; color: #1e293b;">
-                                        Mediation Afternoon Slot (1:00 PM - 5:00 PM) <span class="required-mark" style="color: #dc2626;">*</span>
-                                    </label>
-                                    <select id="minutesMedTime" name="mediation_time" onchange="checkMinutesScheduleConflict()" style="padding: 9px 12px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box;">
-                                        <option value="13:00">1:00 PM - 2:00 PM</option>
-                                        <option value="14:00">2:00 PM - 3:00 PM</option>
-                                        <option value="15:00">3:00 PM - 4:00 PM</option>
-                                        <option value="16:00">4:00 PM - 5:00 PM</option>
-                                    </select>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                                        <label for="minutesMedTime" style="font-weight: 700; font-size: 0.84rem; margin: 0; color: #1e293b;">
+                                            Target Call Time (1:00 PM - 4:30 PM) <span class="required-mark" style="color: #dc2626;">*</span>
+                                        </label>
+                                        <span style="font-size: 0.72rem; color: #64748b;">15-min intervals</span>
+                                    </div>
+                                    <input type="time" id="minutesMedTime" name="mediation_time" min="13:00" max="16:30" step="900" value="13:00" onchange="handleMinutesMedTimeChange(this)" style="padding: 9px 12px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box;">
+                                    <small id="minutesMedTimeError" style="display: none; color: #dc2626; font-size: 0.75rem; font-weight: 600; margin-top: 3px;"></small>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px;">
+                                        <button type="button" class="btn-slot-chip" onclick="document.getElementById('minutesMedTime').value='13:00'; checkMinutesScheduleConflict();" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:00 PM</button>
+                                        <button type="button" class="btn-slot-chip" onclick="document.getElementById('minutesMedTime').value='13:15'; checkMinutesScheduleConflict();" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:15 PM</button>
+                                        <button type="button" class="btn-slot-chip" onclick="document.getElementById('minutesMedTime').value='13:30'; checkMinutesScheduleConflict();" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:30 PM</button>
+                                        <button type="button" class="btn-slot-chip" onclick="document.getElementById('minutesMedTime').value='13:45'; checkMinutesScheduleConflict();" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:45 PM</button>
+                                        <button type="button" class="btn-slot-chip" onclick="document.getElementById('minutesMedTime').value='14:00'; checkMinutesScheduleConflict();" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">2:00 PM</button>
+                                        <button type="button" class="btn-slot-chip" onclick="document.getElementById('minutesMedTime').value='14:30'; checkMinutesScheduleConflict();" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">2:30 PM</button>
+                                        <button type="button" class="btn-slot-chip" onclick="document.getElementById('minutesMedTime').value='15:00'; checkMinutesScheduleConflict();" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">3:00 PM</button>
+                                    </div>
                                 </div>
                                 <div class="form-group" style="margin-bottom: 0;">
                                     <label for="minutesMedVenue" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 5px; color: #1e293b;">Hearing Venue</label>
                                     <input type="text" id="minutesMedVenue" name="venue" value="Lupon Court Room" readonly style="padding: 9px 12px; font-size: 0.88rem; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box; cursor: not-allowed;">
+                                </div>
+                            </div>
+
+                            <!-- Live Day Docket Peek (Existing Scheduled Mediations on selected date) -->
+                            <div id="minutesDaySchedulesWrap" style="display: none; margin-bottom: 12px; padding: 10px 12px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.84rem;">
+                                <div style="font-weight: 700; color: #334155; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
+                                    <span>📋 Tuesday Mediation Docket Call (Lupon Court Room):</span>
+                                    <span id="minutesDaySlotsCount" style="font-size: 0.72rem; background: #e2e8f0; color: #475569; padding: 2px 7px; border-radius: 9999px; font-weight: 600;">0</span>
+                                </div>
+                                <div id="minutesDaySlotsList" style="color: #64748b; font-size: 0.82rem; line-height: 1.5;">
+                                    No other mediations scheduled on this day.
                                 </div>
                             </div>
 
@@ -708,6 +720,41 @@ window.renderPresiderChips = renderPresiderChips;
 const complaintId = <?= (int)$complaintId ?>;
 const currentStage = <?= json_encode($stageType) ?>;
 
+function setMinutesActualStartNow(e) {
+    if (e && typeof e.preventDefault === 'function') {
+        e.preventDefault();
+    }
+    const actualStart = document.getElementById('minutesActualStartTime');
+    const btn = document.getElementById('btnActualStartNow') || (e && e.target);
+    if (actualStart) {
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        actualStart.value = `${hh}:${mm}`;
+        actualStart.dispatchEvent(new Event('input', { bubbles: true }));
+        actualStart.dispatchEvent(new Event('change', { bubbles: true }));
+        actualStart.focus();
+
+        actualStart.style.transition = 'border-color 0.2s, box-shadow 0.2s';
+        actualStart.style.borderColor = '#16a34a';
+        actualStart.style.boxShadow = '0 0 0 3px rgba(22, 163, 74, 0.2)';
+
+        if (btn) {
+            const originalText = btn.getAttribute('data-orig-text') || btn.innerHTML;
+            btn.setAttribute('data-orig-text', originalText);
+            btn.innerHTML = `✓ Naitala (${hh}:${mm})`;
+            btn.style.color = '#16a34a';
+            setTimeout(() => {
+                btn.innerHTML = originalText;
+                btn.style.color = '#2563eb';
+                actualStart.style.borderColor = '#cbd5e1';
+                actualStart.style.boxShadow = 'none';
+            }, 1800);
+        }
+    }
+}
+window.setMinutesActualStartNow = setMinutesActualStartNow;
+
 document.addEventListener('DOMContentLoaded', () => {
     // Render initial presider chips
     renderPresiderChips();
@@ -754,11 +801,16 @@ document.addEventListener('DOMContentLoaded', () => {
             storageKey: `agap_draft_paanyaya_${currentStage}_comp_${complaintId}`,
             indicatorId: 'paanyayaDraftIndicator',
             onRestore: () => {
+                const actStart = document.getElementById('minutesActualStartTime');
+                if (actStart && !actStart.value) {
+                    setMinutesActualStartNow();
+                }
                 handleMinutesAttendanceChange();
                 initP2ScheduleDefaults();
                 toggleMinutesOutcomeViews();
             },
             onClear: () => {
+                setMinutesActualStartNow();
                 initP2ScheduleDefaults();
                 toggleMinutesOutcomeViews();
             }
@@ -766,23 +818,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-function setMinutesActualStartNow() {
-    const actualStart = document.getElementById('minutesActualStartTime');
-    if (actualStart) {
-        const now = new Date();
-        const hh = String(now.getHours()).padStart(2, '0');
-        const mm = String(now.getMinutes()).padStart(2, '0');
-        actualStart.value = `${hh}:${mm}`;
-    }
-}
-
 function applyDelayRemark(text) {
     const ta = document.getElementById('minutesSessionRemarks');
     if (ta) {
         ta.value = text;
         ta.focus();
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
     }
 }
+window.applyDelayRemark = applyDelayRemark;
 
 function updateOverallAttendance() {
     const compRadios = document.querySelectorAll('.comp-party-attendance:checked');
@@ -819,28 +863,42 @@ window.updateOverallAttendance = updateOverallAttendance;
 function handleMinutesAttendanceChange() {
     const form = document.getElementById('recordDialogueMinutesForm');
     if (!form) return;
-    const compAttended = document.getElementById('overallComplainantAttended')?.value ||
-        form.querySelector('input[name="complainant_attended"]:checked')?.value || 'Present';
-    const respAttended = document.getElementById('overallRespondentAttended')?.value ||
-        form.querySelector('input[name="respondent_attended"]:checked')?.value || 'Present';
+    const compAttended = document.getElementById('overallComplainantAttended')?.value || 'Present';
+    const respAttended = document.getElementById('overallRespondentAttended')?.value || 'Present';
     const optSettledWrap = document.getElementById('optMinutesSettledWrap');
+    const optNoAgreeWrap = document.getElementById('optMinutesNoAgreementWrap');
     const optDismissedWrap = document.getElementById('optMinutesDismissedWrap');
     const dismissRadio = form.querySelector('input[name="outcome"][value="Dismissed"]');
     const settledRadio = form.querySelector('input[name="outcome"][value="Settled"]');
     const noAgreeRadio = form.querySelector('input[name="outcome"][value="No_Agreement"]');
+    const attendanceNotice = document.getElementById('minutesAttendanceNotice');
 
     if (compAttended === 'Absent') {
+        // Complainant is Absent -> Case must be Dismissed under KP law
         if (optDismissedWrap) {
             optDismissedWrap.style.display = 'flex';
         }
         if (dismissRadio) {
             dismissRadio.checked = true;
         }
+        // Lock out Settled and No Agreement
         if (optSettledWrap) {
-            optSettledWrap.style.opacity = '0.5';
+            optSettledWrap.style.opacity = '0.35';
             optSettledWrap.style.pointerEvents = 'none';
         }
+        if (optNoAgreeWrap) {
+            optNoAgreeWrap.style.opacity = '0.35';
+            optNoAgreeWrap.style.pointerEvents = 'none';
+        }
+        if (attendanceNotice) {
+            attendanceNotice.style.display = 'block';
+            attendanceNotice.style.background = '#fef2f2';
+            attendanceNotice.style.border = '1px solid #fca5a5';
+            attendanceNotice.style.color = '#991b1b';
+            attendanceNotice.innerHTML = '<strong>⚠️ Batas Katarungang Pambarangay (Sec. 410b):</strong> Dahil hindi humarap ang nagpaanyaya (Complainant), ang reklamo ay awtomatikong ididismis sa Seksyon 4 nang hindi maaaring i-akyat o i-settle.';
+        }
     } else {
+        // Complainant is Present -> Dismissed is hidden
         if (optDismissedWrap) {
             optDismissedWrap.style.display = 'none';
         }
@@ -851,24 +909,138 @@ function handleMinutesAttendanceChange() {
                 if (settledRadio) settledRadio.checked = true;
             }
         }
+        if (optNoAgreeWrap) {
+            optNoAgreeWrap.style.opacity = '1';
+            optNoAgreeWrap.style.pointerEvents = '';
+        }
+
         if (respAttended === 'Absent') {
-            if (noAgreeRadio && (!dismissRadio || !dismissRadio.checked)) {
+            // Respondent is Absent -> Cannot settle! Must be No Agreement / Respondent No-Show
+            if (noAgreeRadio) {
                 noAgreeRadio.checked = true;
             }
             if (optSettledWrap) {
-                optSettledWrap.style.opacity = '0.5';
+                optSettledWrap.style.opacity = '0.35';
                 optSettledWrap.style.pointerEvents = 'none';
             }
+            if (attendanceNotice) {
+                attendanceNotice.style.display = 'block';
+                attendanceNotice.style.background = '#eff6ff';
+                attendanceNotice.style.border = '1px solid #bfdbfe';
+                attendanceNotice.style.color = '#1e40af';
+                attendanceNotice.innerHTML = '<strong>ℹ️ Batas Katarungang Pambarangay:</strong> Hindi maaaring magkasundo kung walang respondent (Respondent No-Show). Awtomatikong pinili ang <em>Walang Kasunduan</em> sa Seksyon 4 upang makapili ng susunod na hakbang (Paanyaya 2 o Mediation).';
+            }
         } else {
+            // Both are Present -> Both Settled and No Agreement available
             if (optSettledWrap) {
                 optSettledWrap.style.opacity = '1';
                 optSettledWrap.style.pointerEvents = '';
+            }
+            if (attendanceNotice) {
+                attendanceNotice.style.display = 'none';
+                attendanceNotice.innerHTML = '';
             }
         }
     }
     initP2ScheduleDefaults();
     toggleMinutesOutcomeViews();
 }
+window.handleMinutesAttendanceChange = handleMinutesAttendanceChange;
+
+function validateP2Schedule() {
+    const dateInput = document.getElementById('minutesP2Date');
+    const timeInput = document.getElementById('minutesP2Time');
+    const dateErr = document.getElementById('minutesP2DateError');
+    const timeErr = document.getElementById('minutesP2TimeError');
+    let valid = true;
+
+    if (dateInput && dateInput.value) {
+        const val = dateInput.value;
+        const today = new Date().toISOString().slice(0, 10);
+        const parts = val.split('-');
+        const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+
+        if (val <= today) {
+            if (dateErr) {
+                dateErr.textContent = 'Ang petsa ng Ikalawang Paanyaya ay hindi maaaring lumipas na o ngayong araw.';
+                dateErr.style.display = 'block';
+            }
+            valid = false;
+        } else if (d.getDay() === 0 || d.getDay() === 6) {
+            if (dateErr) {
+                dateErr.textContent = 'Ang iskedyul ay dapat pumatak sa regular na araw ng trabaho (Lunes hanggang Biyernes).';
+                dateErr.style.display = 'block';
+            }
+            valid = false;
+        } else {
+            if (dateErr) dateErr.style.display = 'none';
+        }
+    }
+
+    if (timeInput && timeInput.value) {
+        const tVal = timeInput.value;
+        if (tVal < '08:00' || tVal > '17:00') {
+            if (timeErr) {
+                timeErr.textContent = 'Ang oras ay dapat nasa pagitan ng 8:00 AM at 5:00 PM (operating hours).';
+                timeErr.style.display = 'block';
+            }
+            valid = false;
+        } else {
+            if (timeErr) timeErr.style.display = 'none';
+        }
+    }
+
+    return valid;
+}
+window.validateP2Schedule = validateP2Schedule;
+
+function handleMinutesMedDateChange(inputEl) {
+    const errEl = document.getElementById('minutesMedDateError');
+    if (!inputEl || !inputEl.value) {
+        if (errEl) errEl.style.display = 'none';
+        return;
+    }
+    const val = inputEl.value;
+    const today = new Date().toISOString().slice(0, 10);
+    const parts = val.split('-');
+    const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+
+    if (val <= today) {
+        if (errEl) {
+            errEl.textContent = 'Ang petsa ng Mediation ay dapat pumatak sa darating na Martes (future Tuesday).';
+            errEl.style.display = 'block';
+        }
+    } else if (d.getDay() !== 2) {
+        if (errEl) {
+            errEl.textContent = 'Alinsunod sa Tumana rules, ang pormal na Mediation ay tuwing Martes (Tuesday) lamang.';
+            errEl.style.display = 'block';
+        }
+        enforceTuesdayDate(inputEl);
+    } else {
+        if (errEl) errEl.style.display = 'none';
+    }
+    checkMinutesScheduleConflict();
+}
+window.handleMinutesMedDateChange = handleMinutesMedDateChange;
+
+function handleMinutesMedTimeChange(inputEl) {
+    const errEl = document.getElementById('minutesMedTimeError');
+    if (!inputEl || !inputEl.value) {
+        if (errEl) errEl.style.display = 'none';
+        return;
+    }
+    const val = inputEl.value;
+    if (val < '13:00' || val > '16:30') {
+        if (errEl) {
+            errEl.textContent = 'Ang Target Call Time ng Mediation ay dapat nasa pagitan ng 1:00 PM at 4:30 PM (Tuesday Docket Call).';
+            errEl.style.display = 'block';
+        }
+    } else {
+        if (errEl) errEl.style.display = 'none';
+    }
+    checkMinutesScheduleConflict();
+}
+window.handleMinutesMedTimeChange = handleMinutesMedTimeChange;
 
 function toggleMinutesOutcomeViews() {
     const form = document.getElementById('recordDialogueMinutesForm');
@@ -1142,6 +1314,24 @@ async function checkMinutesScheduleConflict() {
         const maxSlots = result.max_slots || 8;
         const availSlots = result.available_slots ?? Math.max(0, maxSlots - bookedCount);
 
+        const capBadge = document.getElementById('minutesCapacityBadge');
+        if (capBadge) {
+            capBadge.textContent = result.capacity_badge_text || `${bookedCount} of 8 daily mediation slots booked`;
+            if (result.is_fully_booked || bookedCount >= 8) {
+                capBadge.style.background = '#fee2e2';
+                capBadge.style.color = '#991b1b';
+                capBadge.style.border = '1px solid #fca5a5';
+            } else if (bookedCount >= 5) {
+                capBadge.style.background = '#fef3c7';
+                capBadge.style.color = '#92400e';
+                capBadge.style.border = '1px solid #fcd34d';
+            } else {
+                capBadge.style.background = '#dcfce7';
+                capBadge.style.color = '#166534';
+                capBadge.style.border = '1px solid #86efac';
+            }
+        }
+
         if (schedulesWrap && slotsList && slotsCount) {
             schedulesWrap.style.display = 'block';
             slotsCount.textContent = `${availSlots} of ${maxSlots} slots available`;
@@ -1150,19 +1340,30 @@ async function checkMinutesScheduleConflict() {
 
             const scheduled = result.scheduled_mediations || [];
             if (scheduled.length === 0) {
-                slotsList.innerHTML = `<span style="color: #166534; font-weight: 500;">All 8 session slots available on this date (${dateVal}).</span>`;
+                slotsList.innerHTML = `<span style="color: #166534; font-weight: 500;">✓ No other sessions scheduled on ${escapeHtml(dateVal)}. All 8 slots available.</span>`;
             } else {
                 slotsList.innerHTML = `
-                    <div style="margin-bottom: 6px; font-weight: 600; color: #475569;">${availSlots} of ${maxSlots} slots available for this date:</div>
-                ` + scheduled.map(s => `
-                    <div style="margin-top: 4px; padding: 4px 8px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                    <div style="margin-bottom: 6px; font-weight: 600; color: #475569;">Tuesday Mediation Docket Call (${bookedCount} of ${maxSlots} booked):</div>
+                ` + scheduled.map(s => {
+                    const qStatus = s.queue_status || s.status || 'Waiting';
+                    let pillBg = '#eff6ff', pillColor = '#1e40af', pillBorder = '#bfdbfe';
+                    if (qStatus === 'In_Session') {
+                        pillBg = '#ecfdf5'; pillColor = '#047857'; pillBorder = '#6ee7b7';
+                    } else if (qStatus === 'Concluded' || qStatus === 'Completed') {
+                        pillBg = '#f1f5f9'; pillColor = '#475569'; pillBorder = '#cbd5e1';
+                    }
+                    return `
+                    <div style="margin-top: 4px; padding: 5px 8px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                         <div>
-                            <strong style="color: #1e293b;">${escapeHtml(s.start_time || '')} – ${escapeHtml(s.end_time || '')}</strong>
+                            <strong style="color: #1e293b;">${escapeHtml(s.start_time || '')}</strong>
                             <span style="color: #64748b; font-size: 0.8rem; margin-left: 6px;">Case ${escapeHtml(s.case_number || 'N/A')}</span>
                         </div>
-                        <span style="font-size: 0.72rem; color: #475569; background: #f1f5f9; padding: 1px 6px; border-radius: 4px;">${escapeHtml(s.venue || 'Lupon Court Room')}</span>
+                        <span style="font-size: 0.72rem; color: ${pillColor}; background: ${pillBg}; border: 1px solid ${pillBorder}; padding: 1px 7px; border-radius: 9999px; font-weight: 700;">
+                            ${escapeHtml(qStatus)}
+                        </span>
                     </div>
-                `).join('');
+                `;
+                }).join('');
             }
         }
 
@@ -1181,7 +1382,7 @@ async function checkMinutesScheduleConflict() {
         if (result.has_conflict && result.conflict) {
             const conflictMsg = result.conflict.message || 'The selected time overlaps with an existing scheduled mediation.';
             if (conflictAlert) {
-                conflictAlert.textContent = `Schedule Conflict: ${conflictMsg}`;
+                conflictAlert.textContent = conflictMsg.startsWith('⚠️') ? conflictMsg : `⚠️ Schedule Conflict: ${conflictMsg}`;
                 conflictAlert.style.display = 'block';
             }
             if (submitBtn) {
@@ -1209,7 +1410,7 @@ async function handleDialogueMinutesSubmit(event) {
     const btn = document.getElementById('btnSubmitMinutes');
     const errBox = document.getElementById('minutesErrorMessage');
 
-    // Validate at least one Presiding Officer is selected
+    // 1. Validate at least one Presiding Officer is selected
     const presidersInput = document.getElementById('minutesPresidingOfficerIds');
     let presiderIds = [];
     try {
@@ -1226,21 +1427,97 @@ async function handleDialogueMinutesSubmit(event) {
         return;
     }
 
-    const conflictAlert = document.getElementById('minutesScheduleConflictAlert');
-    const outcome = form.querySelector('input[name="outcome"]:checked')?.value;
-    const choice = form.querySelector('input[name="complainant_choice"]:checked')?.value;
+    // 2. Attendance & Outcome Consistency Validation
+    const compAttended = document.getElementById('overallComplainantAttended')?.value || 'Present';
+    const respAttended = document.getElementById('overallRespondentAttended')?.value || 'Present';
+    const outcome = form.querySelector('input[name="outcome"]:checked')?.value || 'Settled';
+    const choice = form.querySelector('input[name="complainant_choice"]:checked')?.value || 'Request_Paanyaya_2';
 
-    if (outcome !== 'Settled') {
+    if (compAttended === 'Absent' && outcome !== 'Dismissed') {
+        if (errBox) {
+            errBox.textContent = 'Dahil Absent ang nagpaanyaya (Complainant), ang reklamo ay dapat i-dismiss alinsunod sa Katarungang Pambarangay rules. Piliin ang "I-dismiss ang Reklamo".';
+            errBox.style.display = 'block';
+        }
+        return;
+    }
+
+    if (respAttended === 'Absent' && outcome === 'Settled') {
+        if (errBox) {
+            errBox.textContent = 'Hindi maaaring magkasundo kung Absent ang inanyayahan (Respondent). Piliin ang "Walang Kasunduan" upang maitakda ang susunod na hakbang.';
+            errBox.style.display = 'block';
+        }
+        return;
+    }
+
+    // 3. Discussion Summary Validation
+    const discussionSummary = form.querySelector('textarea[name="discussion_summary"]')?.value?.trim();
+    if (!discussionSummary) {
+        if (errBox) {
+            errBox.textContent = 'Paki-lagay ang Salaysay at Buod ng Napag-usapan (Summary of Statements & Discussion).';
+            errBox.style.display = 'block';
+        }
+        document.getElementById('minutesDiscussionSummary')?.focus();
+        return;
+    }
+
+    // 4. Settled Outcome: Agreed Terms Validation
+    if (outcome === 'Settled') {
+        const termsInput = document.getElementById('minutesAgreedTerms');
+        const termsVal = termsInput?.value?.trim() || '';
+        if (!termsVal) {
+            if (errBox) {
+                errBox.textContent = 'Paki-lagay ang mga napagkasunduang kondisyon (Proposals / Agreed Terms) bago i-save ang kasunduan.';
+                errBox.style.display = 'block';
+            }
+            termsInput?.focus();
+            return;
+        }
+    } else {
         const termsInput = document.getElementById('minutesAgreedTerms');
         if (termsInput) termsInput.value = '';
     }
 
+    // 5. Booking Schedule Validation (Seksyon 4)
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const conflictAlert = document.getElementById('minutesScheduleConflictAlert');
+
     if (outcome === 'No_Agreement' && choice === 'Request_Paanyaya_2') {
         const p2Date = form.querySelector('input[name="p2_scheduled_date"]')?.value?.trim();
         const p2Time = form.querySelector('input[name="p2_scheduled_time"]')?.value?.trim();
+        const p2Officer = form.querySelector('select[name="p2_assigned_officer_id"]')?.value?.trim();
+
         if (!p2Date || !p2Time) {
             if (errBox) {
-                errBox.textContent = 'Please specify the scheduled date and time for the 2nd Paanyaya dialogue.';
+                errBox.textContent = 'Paki-lagay ang petsa at oras para sa Ikalawang Paanyaya.';
+                errBox.style.display = 'block';
+            }
+            return;
+        }
+        if (p2Date <= todayStr) {
+            if (errBox) {
+                errBox.textContent = 'Ang petsa ng Ikalawang Paanyaya ay hindi maaaring lumipas na o ngayong araw. Pumili ng darating na araw.';
+                errBox.style.display = 'block';
+            }
+            return;
+        }
+        const p2Dt = new Date(p2Date + 'T00:00:00');
+        if (p2Dt.getDay() === 0 || p2Dt.getDay() === 6) {
+            if (errBox) {
+                errBox.textContent = 'Ang iskedyul ng Ikalawang Paanyaya ay dapat pumatak sa regular na araw ng trabaho (Lunes hanggang Biyernes).';
+                errBox.style.display = 'block';
+            }
+            return;
+        }
+        if (p2Time < '08:00' || p2Time > '17:00') {
+            if (errBox) {
+                errBox.textContent = 'Ang oras ng Ikalawang Paanyaya ay dapat nasa pagitan ng 8:00 AM at 5:00 PM (operating hours).';
+                errBox.style.display = 'block';
+            }
+            return;
+        }
+        if (!p2Officer) {
+            if (errBox) {
+                errBox.textContent = 'Paki-pili ang The Serving Officer para sa Ikalawang Paanyaya.';
                 errBox.style.display = 'block';
             }
             return;
@@ -1248,9 +1525,41 @@ async function handleDialogueMinutesSubmit(event) {
     }
 
     if (outcome === 'No_Agreement' && choice === 'Escalate_Mediation') {
+        const medDate = form.querySelector('input[name="mediation_date"]')?.value?.trim();
+        const medTime = form.querySelector('input[name="mediation_time"]')?.value?.trim();
+
+        if (!medDate || !medTime) {
+            if (errBox) {
+                errBox.textContent = 'Paki-lagay ang petsa at Target Call Time para sa pormal na Mediation.';
+                errBox.style.display = 'block';
+            }
+            return;
+        }
+        if (medDate <= todayStr) {
+            if (errBox) {
+                errBox.textContent = 'Ang petsa ng Mediation ay dapat pumatak sa darating na Martes (future Tuesday).';
+                errBox.style.display = 'block';
+            }
+            return;
+        }
+        const medDt = new Date(medDate + 'T00:00:00');
+        if (medDt.getDay() !== 2) {
+            if (errBox) {
+                errBox.textContent = 'Alinsunod sa Tumana rules, ang pormal na Mediation ay tuwing Martes (Tuesday) lamang maaaring itakda.';
+                errBox.style.display = 'block';
+            }
+            return;
+        }
+        if (medTime < '13:00' || medTime > '16:30') {
+            if (errBox) {
+                errBox.textContent = 'Ang Target Call Time ng Mediation ay dapat nasa pagitan ng 1:00 PM at 4:30 PM (Tuesday Docket Call).';
+                errBox.style.display = 'block';
+            }
+            return;
+        }
         if (conflictAlert && conflictAlert.style.display !== 'none' && conflictAlert.textContent.trim() !== '') {
             if (errBox) {
-                errBox.textContent = 'Please resolve the mediation schedule conflict before proceeding.';
+                errBox.textContent = 'May schedule conflict o puno na ang mga slots sa napiling Mediation schedule. Paki-pili ang ibang Martes o oras bago magpatuloy.';
                 errBox.style.display = 'block';
             }
             return;

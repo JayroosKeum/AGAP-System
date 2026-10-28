@@ -147,7 +147,88 @@ if ($asPdf) {
 }
 
 // Render HTML Preview
-$htmlBody = $kpFormService->renderHtml($formCode, $caseId, $hearingId, false);
+// Master Document Standard: Parse & Render through DocxTemplateService when template exists
+require_once __DIR__ . '/../../services/DocxTemplateService.php';
+
+$formKeyMap = [
+    'KP Form 20-A' => 'kp_20_a',
+    'KP Form 20-B' => 'kp_20_b',
+    'KP Form 20' => 'kp_20',
+    'KP Form 23' => 'kp_23',
+    'KP Form 22' => 'kp_22',
+    'KP Form 21' => 'kp_21',
+    'KP Form 16' => 'kp_16',
+    'KP Form 17' => 'kp_17',
+    'KP Form 14' => 'kp_14',
+    'KP Form 15' => 'kp_15',
+    'KP Form 10' => 'kp_10',
+    'KP Form 11' => 'kp_11',
+    'KP Form 12' => 'kp_12',
+    'KP Form 13' => 'kp_13',
+    'KP Form 7'  => 'kp_7',
+    'KP Form 8'  => 'kp_8',
+    'KP Form 9'  => 'kp_9',
+];
+
+$matchedKey = null;
+foreach ($formKeyMap as $prefix => $key) {
+    if (str_contains($formCode, $prefix) || str_contains($formCode, str_replace('KP Form', 'Blg.', $prefix))) {
+        $matchedKey = $key;
+        break;
+    }
+}
+
+$compNames = [];
+if (!empty($formData['complainants'])) {
+    foreach ($formData['complainants'] as $c) {
+        $compNames[] = is_array($c) ? ($c['full_name'] ?? '') : (string)$c;
+    }
+}
+$respNames = [];
+if (!empty($formData['respondents'])) {
+    foreach ($formData['respondents'] as $r) {
+        $respNames[] = is_array($r) ? ($r['full_name'] ?? '') : (string)$r;
+    }
+}
+
+$masterData = array_merge($formData, [
+    'case_number' => $formData['case_number'] ?? "KP-{$caseId}",
+    'complaint_title' => $formData['complaint_title'] ?? '',
+    'complainants' => implode(', ', array_filter($compNames)) ?: ($formData['complainants_names'] ?? 'May-Sumbong'),
+    'respondents' => implode(', ', array_filter($respNames)) ?: ($formData['respondents_names'] ?? 'Ipinagsusumbong'),
+    'settlement_terms' => $formData['agreement_details'] ?? '',
+    'minutes_agreement_body' => $formData['agreement_details'] ?? '',
+    'agreement_details' => $formData['agreement_details'] ?? '',
+    'settlement_date' => !empty($formData['settlement_date']) ? date('F j, Y', strtotime($formData['settlement_date'])) : date('F j, Y'),
+    'execution_date' => !empty($formData['execution_date']) ? date('F j, Y', strtotime($formData['execution_date'])) : date('F j, Y'),
+    'date_today' => date('F j, Y'),
+    'docket_date' => !empty($formData['docket_date']) ? date('F j, Y', strtotime($formData['docket_date'])) : date('F j, Y'),
+    'hearing_date' => !empty($formData['hearing_date']) ? date('F j, Y', strtotime($formData['hearing_date'])) : date('F j, Y'),
+    'punong_barangay' => 'HON. AKIKO LYNNE CENTENO',
+    'lupon_secretary' => 'MARIA CRISTINA SANTOS',
+    'barangay_name' => 'BARANGAY TUMANA',
+    'city_municipality' => 'LUNGSOD NG MARIKINA',
+    'province' => 'LALAWIGAN NG RIZAL'
+]);
+
+$dedicatedForms = ['7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25'];
+$useDedicatedPdfHtml = false;
+foreach ($dedicatedForms as $df) {
+    if (str_contains($formCode, $df)) {
+        $useDedicatedPdfHtml = true;
+        break;
+    }
+}
+
+if ($useDedicatedPdfHtml) {
+    $htmlBody = $kpFormService->renderHtml($formCode, $caseId, $hearingId, false);
+} elseif ($matchedKey) {
+    $registry = DocxTemplateService::getRegistry();
+    $templateConfig = $registry[$matchedKey] ?? [];
+    $htmlBody = DocxTemplateService::renderDocxHtmlPreview($matchedKey, $templateConfig, [], [], $masterData);
+} else {
+    $htmlBody = $kpFormService->renderHtml($formCode, $caseId, $hearingId, false);
+}
 
 // Check if this request is loaded in an iframe or wants the bare official form
 $isBare = isset($_GET['bare']) && $_GET['bare'] == '1';

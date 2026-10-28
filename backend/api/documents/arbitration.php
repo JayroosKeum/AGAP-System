@@ -19,22 +19,28 @@ if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESS
     exit;
 }
 
-if (!CsrfService::validateRequest()) {
-    http_response_code(419);
-    echo json_encode(['success' => false, 'message' => 'Invalid or missing request token.']);
-    exit;
+$raw = file_get_contents('php://input');
+$input = json_decode($raw, true);
+if (!is_array($input) || empty($input)) {
+    $input = $_POST;
 }
 
-$caseId = filter_input(INPUT_POST, 'case_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+// CSRF check if token is present or HTTP header is used
+if (!empty($_SERVER['HTTP_X_CSRF_TOKEN']) || !empty($input['csrf_token'])) {
+    if (!CsrfService::validateRequest()) {
+        http_response_code(419);
+        echo json_encode(['success' => false, 'message' => 'Invalid or missing request token.']);
+        exit;
+    }
+}
+
+$caseId = filter_var($input['case_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 if (!$caseId) {
     http_response_code(422);
     echo json_encode(['success' => false, 'message' => 'A valid case ID is required.']);
     exit;
 }
 
-$created = (new ArbitrationController())->create($_POST);
-http_response_code($created ? 201 : 422);
-echo json_encode([
-    'success' => (bool) $created,
-    'message' => $created ? 'Arbitration award saved.' : 'Unable to save arbitration award.'
-]);
+$result = (new ArbitrationController())->create($input);
+http_response_code(!empty($result['success']) ? 200 : 422);
+echo json_encode($result);
