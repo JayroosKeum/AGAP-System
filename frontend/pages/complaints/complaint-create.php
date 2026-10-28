@@ -944,6 +944,14 @@ include '../../layouts/header.php';
                         </div>
                     </div>
 
+                    <!-- In-Modal Validation Error Banner -->
+                    <div id="modalPartyValidationError" class="party-validation-error-box" style="display:none;">
+                        <div style="font-weight:700; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
+                            <span>⚠️ Pakikumpleto ang mga kinakailangang impormasyon bago i-save:</span>
+                        </div>
+                        <ul id="modalPartyValidationList" style="margin:0; padding-left:20px; font-size:0.82rem; line-height:1.6;"></ul>
+                    </div>
+
                     <!-- Personal Information Grid -->
                     <div class="party-section-heading">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
@@ -1035,6 +1043,16 @@ include '../../layouts/header.php';
                             <label for="modalPurok">Purok / Area (Barangay Tumana) <span class="required-mark">*</span></label>
                             <select id="modalPurok" required>
                                 <option value="">Select Purok...</option>
+                                <optgroup label="Numbered Puroks">
+                                    <option value="Purok 1">Purok 1</option>
+                                    <option value="Purok 2">Purok 2</option>
+                                    <option value="Purok 3">Purok 3</option>
+                                    <option value="Purok 4">Purok 4</option>
+                                    <option value="Purok 5">Purok 5</option>
+                                    <option value="Purok 6">Purok 6</option>
+                                    <option value="Purok 7">Purok 7</option>
+                                    <option value="Purok 8">Purok 8</option>
+                                </optgroup>
                                 <optgroup label="Tumana Puroks / Compounds">
                                     <option value="Doña Petra">Doña Petra Compound</option>
                                     <option value="Bagong Farmers">Bagong Farmers</option>
@@ -2019,6 +2037,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (kpBlocked) kpBlocked.style.display = 'none';
         const kpWarn = document.getElementById('modalRespondentKpWarning');
         if (kpWarn) kpWarn.style.display = 'none';
+        clearModalValidationErrors();
 
         ['modalMiddleUnknown', 'modalBirthUnknown', 'modalContactUnknown'].forEach(id => {
             const el = document.getElementById(id);
@@ -2029,7 +2048,31 @@ document.addEventListener('DOMContentLoaded', () => {
     function populateModalWithData(p) {
         const setV = (id, val) => {
             const el = document.getElementById(id);
-            if (el) el.value = val ?? '';
+            if (!el) return;
+            if (el.tagName === 'SELECT') {
+                const strVal = String(val ?? '').trim();
+                if (strVal) {
+                    let matched = false;
+                    for (let i = 0; i < el.options.length; i++) {
+                        if (el.options[i].value.toLowerCase() === strVal.toLowerCase()) {
+                            el.selectedIndex = i;
+                            matched = true;
+                            break;
+                        }
+                    }
+                    if (!matched) {
+                        const newOpt = document.createElement('option');
+                        newOpt.value = strVal;
+                        newOpt.textContent = strVal;
+                        el.appendChild(newOpt);
+                        el.value = strVal;
+                    }
+                } else {
+                    el.value = '';
+                }
+            } else {
+                el.value = val ?? '';
+            }
         };
 
         setV('modalResidentId', p.resident_id);
@@ -2159,7 +2202,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const item = e.target.closest('.party-search-item[data-id]');
             if (!item) return;
             const resId = parseInt(item.dataset.id, 10);
-            const res = window.AGAP_RESIDENTS?.find(r => r.resident_id === resId);
+            const res = window.AGAP_RESIDENTS?.find(r => String(r.resident_id) === String(resId));
             if (res) {
                 const resIdInput = document.getElementById('modalResidentId');
                 if (resIdInput) resIdInput.value = res.resident_id;
@@ -2169,12 +2212,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const setV = (id, val) => {
                     const el = document.getElementById(id);
-                    if (el) el.value = val ?? '';
+                    if (!el) return;
+                    if (el.tagName === 'SELECT') {
+                        const strVal = String(val ?? '').trim();
+                        if (strVal) {
+                            let matched = false;
+                            for (let i = 0; i < el.options.length; i++) {
+                                if (el.options[i].value.toLowerCase() === strVal.toLowerCase()) {
+                                    el.selectedIndex = i;
+                                    matched = true;
+                                    break;
+                                }
+                            }
+                            if (!matched) {
+                                const newOpt = document.createElement('option');
+                                newOpt.value = strVal;
+                                newOpt.textContent = strVal;
+                                el.appendChild(newOpt);
+                                el.value = strVal;
+                            }
+                        } else {
+                            el.value = '';
+                        }
+                    } else {
+                        el.value = val ?? '';
+                    }
                 };
 
                 setV('modalFirstName', res.first_name || '');
                 setV('modalMiddleName', res.middle_name || '');
-                setV('modalLastName', (res.last_name && res.last_name !== '-') ? res.last_name : '');
+                setV('modalLastName', res.last_name || '');
                 setV('modalSuffix', res.suffix || '');
                 if (res.birth_date) {
                     setV('modalBirthdate', res.birth_date);
@@ -2191,9 +2258,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (res.civil_status) setV('modalCivilStatus', res.civil_status);
                 if (res.contact_no) setV('modalContactNo', res.contact_no);
                 if (res.email) setV('modalEmail', res.email);
-                // Preferred contact removed
-                if (res.purok) setV('modalPurok', res.purok);
-                if (res.is_tenant !== undefined) setV('modalIsTenant', String(res.is_tenant));
+
+                // Set Purok and Residency Status with intelligent fallbacks
+                if (res.purok) {
+                    setV('modalPurok', res.purok);
+                }
+                let tenantVal = '0';
+                if (res.is_tenant !== undefined && res.is_tenant !== null && res.is_tenant !== '') {
+                    tenantVal = String(res.is_tenant);
+                } else if (res.purok && (res.purok.toLowerCase() === 'non-resident' || res.purok.toLowerCase() === 'outside tumana')) {
+                    tenantVal = '2';
+                }
+                setV('modalIsTenant', tenantVal);
+
                 if (res.address) {
                     setV('modalAddress', res.address);
                 }
@@ -2215,7 +2292,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
             modalSearchDropdown.style.display = 'none';
-                checkRespondentKpJurisdictionWarning();
+            checkRespondentKpJurisdictionWarning();
+            clearModalValidationErrors();
+        });
+
+        // Enter key in Quick-Fill combobox auto-selects first match
+        modalSearchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const firstItem = modalSearchDropdown.querySelector('.party-search-item[data-id]');
+                if (firstItem) {
+                    firstItem.click();
+                }
+            }
         });
 
         document.addEventListener('click', (e) => {
@@ -2393,6 +2482,122 @@ document.addEventListener('DOMContentLoaded', () => {
     let partyMapInstance = null;
     let partyMapMarker = null;
     let partyMapLookupVersion = 0;
+
+    function isWithinTumana(lat, lng) {
+        const poly = window.tumanaBoundary || [
+            [14.6554682,121.0857081],[14.6562612,121.0859908],[14.6557911,121.0865123],[14.6566853,121.0867891],
+            [14.6573361,121.0874608],[14.6566672,121.0882081],[14.6596216,121.0912009],[14.6605249,121.0911456],
+            [14.6609324,121.0914765],[14.6617729,121.0920319],[14.6634173,121.0935248],[14.6639892,121.0936321],
+            [14.6643486,121.0936995],[14.6645004,121.0938826],[14.6649347,121.0948585],[14.6652695,121.0952371],
+            [14.6652424,121.0956829],[14.6648805,121.0961861],[14.664908,121.0963356],[14.6645002,121.0966408],
+            [14.6642299,121.0967374],[14.6637829,121.0977901],[14.6629907,121.0988145],[14.6625832,121.0991486],
+            [14.6625136,121.0996819],[14.6625395,121.100022],[14.6623861,121.1006225],[14.6621551,121.1005299],
+            [14.6614757,121.1023379],[14.6602368,121.1019108],[14.6595948,121.1016599],[14.6589154,121.1019614],
+            [14.6581343,121.1022551],[14.6574788,121.102553],[14.6569962,121.1027094],[14.6566377,121.102703],
+            [14.656158,121.1026733],[14.6559169,121.1026982],[14.6553478,121.1027577],[14.6550262,121.1027938],
+            [14.6548318,121.1027249],[14.6541841,121.1025018],[14.6534713,121.1024013],[14.6532707,121.102373],
+            [14.6510737,121.101336],[14.6508768,121.1007973],[14.6507211,121.0992879],[14.650753,121.0989571],
+            [14.6509538,121.098811],[14.6514718,121.0983827],[14.6521496,121.0978851],[14.6527322,121.0972236],
+            [14.6535364,121.0959443],[14.6539003,121.0955034],[14.654028,121.0953166],[14.6537619,121.0950108],
+            [14.6533329,121.0942299],[14.6530062,121.0934184]
+        ];
+        let inside = false;
+        for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+            const xi = poly[i][0], yi = poly[i][1];
+            const xj = poly[j][0], yj = poly[j][1];
+            const intersect = ((yi > lng) !== (yj > lng)) && (lat < (xj - xi) * (lng - yi) / (yj - yi) + xi);
+            if (intersect) inside = !inside;
+        }
+        return inside;
+    }
+    window.isWithinTumana = isWithinTumana;
+
+    function autoDetectPurokFromAddress(addr) {
+        if (!addr) return '';
+        const lower = addr.toLowerCase();
+        
+        // Check for non-resident indicators
+        const outsideKeywords = [
+            'concepcion', 'malanday', 'nangka', 'parang', 'marikina heights', 'fortune',
+            'sto. niño', 'sto nino', 'san roque', 'santa elena', 'sta. elena', 'barangka',
+            'tañong', 'tanong', 'jesus dela peña', 'ivc', 'industrial valley', 'pasig',
+            'quezon city', 'antipolo', 'san mateo', 'montalban', 'cainta', 'manila'
+        ];
+        for (const kw of outsideKeywords) {
+            if (new RegExp('\\b' + kw.replace('.', '\\.') + '\\b', 'i').test(lower)) {
+                return 'Non-Resident';
+            }
+        }
+
+        const purokMap = [
+            { key: 'dona petra', val: 'Doña Petra' },
+            { key: 'doña petra', val: 'Doña Petra' },
+            { key: 'bagong farmers', val: 'Bagong Farmers' },
+            { key: 'farmers', val: 'Bagong Farmers' },
+            { key: 'bukang liwayway', val: 'Bukang Liwayway' },
+            { key: 'libis tumana', val: 'Libis Tumana' },
+            { key: 'libis', val: 'Libis Tumana' },
+            { key: 'bagong purok', val: 'Bagong Purok' },
+            { key: 'palay', val: 'Palay' },
+            { key: 'mais', val: 'Mais' },
+            { key: 'singkamas', val: 'Singkamas' },
+            { key: 'purok 1', val: 'Purok 1' },
+            { key: 'purok 2', val: 'Purok 2' },
+            { key: 'purok 3', val: 'Purok 3' },
+            { key: 'purok 4', val: 'Purok 4' },
+            { key: 'purok 5', val: 'Purok 5' },
+            { key: 'purok 6', val: 'Purok 6' },
+            { key: 'purok 7', val: 'Purok 7' },
+            { key: 'purok 8', val: 'Purok 8' },
+            { key: 'sampaguita', val: 'Purok 1' },
+            { key: 'rosal', val: 'Purok 2' },
+            { key: 'kalayaan', val: 'Purok 3' }
+        ];
+
+        for (const item of purokMap) {
+            if (new RegExp('\\b' + item.key + '\\b', 'i').test(lower)) {
+                return item.val;
+            }
+        }
+        return '';
+    }
+
+    function clearModalValidationErrors() {
+        const errorBox = document.getElementById('modalPartyValidationError');
+        if (errorBox) errorBox.style.display = 'none';
+        const errorList = document.getElementById('modalPartyValidationList');
+        if (errorList) errorList.innerHTML = '';
+        document.querySelectorAll('.party-modal-body .field-error-highlight').forEach(el => {
+            el.classList.remove('field-error-highlight');
+        });
+    }
+
+    function showModalValidationErrors(errors, errorFieldIds) {
+        const errorBox = document.getElementById('modalPartyValidationError');
+        const errorList = document.getElementById('modalPartyValidationList');
+        if (errorBox && errorList) {
+            errorList.innerHTML = errors.map(msg => `<li>${escapeHtml(msg)}</li>`).join('');
+            errorBox.style.display = 'block';
+            errorBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+        errorFieldIds.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.classList.add('field-error-highlight');
+                const clearFn = () => {
+                    el.classList.remove('field-error-highlight');
+                    el.removeEventListener('input', clearFn);
+                    el.removeEventListener('change', clearFn);
+                };
+                el.addEventListener('input', clearFn);
+                el.addEventListener('change', clearFn);
+            }
+        });
+        if (errorFieldIds.length > 0) {
+            document.getElementById(errorFieldIds[0])?.focus();
+        }
+        window.agapNotify?.('Pakikumpleto ang mga kinakailangang impormasyon sa modal.', 'error');
+    }
 
     function initPartyAddressMap() {
         const container = document.getElementById('modalPartyAddressMap');
@@ -2747,6 +2952,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalAddrInput = document.getElementById('modalAddress');
     if (modalAddrInput) {
         modalAddrInput.addEventListener('input', () => {
+            const curPurok = document.getElementById('modalPurok')?.value;
+            if (!curPurok && modalAddrInput.value) {
+                const detected = autoDetectPurokFromAddress(modalAddrInput.value);
+                if (detected) {
+                    const pEl = document.getElementById('modalPurok');
+                    if (pEl) {
+                        pEl.value = detected;
+                        if (detected === 'Non-Resident') {
+                            const isTen = document.getElementById('modalIsTenant');
+                            if (isTen) isTen.value = '2';
+                        }
+                        checkRespondentKpJurisdictionWarning();
+                    }
+                }
+            }
             if (isReverseGeocodingPartyMap) return;
             clearTimeout(partyGeocodeTimer);
             partyGeocodeTimer = setTimeout(() => {
@@ -2781,36 +3001,85 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Save Party from Modal
     document.getElementById('btnSavePartyModal')?.addEventListener('click', () => {
-        const firstName = document.getElementById('modalFirstName')?.value?.trim() || '';
-        const lastName  = document.getElementById('modalLastName')?.value?.trim() || '';
+        clearModalValidationErrors();
 
-        if (!firstName || !lastName) {
-            window.agapNotify?.('Please provide both the First Name and Last Name.', 'error');
-            if (!firstName) document.getElementById('modalFirstName')?.focus();
-            else document.getElementById('modalLastName')?.focus();
-            return;
+        let firstName = document.getElementById('modalFirstName')?.value?.trim() || '';
+        let lastName  = document.getElementById('modalLastName')?.value?.trim() || '';
+
+        // Fallback: If user entered the full name into the Quick-Fill search box instead of First/Last Name inputs
+        if ((!firstName || !lastName) && modalSearchInput?.value?.trim()) {
+            const rawSearch = modalSearchInput.value.trim();
+            if (rawSearch.includes(',')) {
+                const parts = rawSearch.split(',').map(s => s.trim());
+                if (parts.length >= 2) {
+                    if (!lastName) {
+                        lastName = parts[0];
+                        const lEl = document.getElementById('modalLastName');
+                        if (lEl) lEl.value = lastName;
+                    }
+                    if (!firstName) {
+                        firstName = parts[1].split(' ')[0];
+                        const fEl = document.getElementById('modalFirstName');
+                        if (fEl) fEl.value = firstName;
+                    }
+                }
+            } else {
+                const parts = rawSearch.split(/\s+/);
+                if (parts.length >= 2) {
+                    if (!firstName) {
+                        firstName = parts[0];
+                        const fEl = document.getElementById('modalFirstName');
+                        if (fEl) fEl.value = firstName;
+                    }
+                    if (!lastName) {
+                        lastName = parts.slice(1).join(' ');
+                        const lEl = document.getElementById('modalLastName');
+                        if (lEl) lEl.value = lastName;
+                    }
+                }
+            }
         }
 
-        const purok = document.getElementById('modalPurok')?.value?.trim() || '';
-        const isTenant = document.getElementById('modalIsTenant')?.value;
-        const address = document.getElementById('modalAddress')?.value?.trim() || '';
+        const errors = [];
+        const errorFieldIds = [];
+
+        if (!firstName) {
+            errors.push('Ilagay ang First Name (Pangalan).');
+            errorFieldIds.push('modalFirstName');
+        }
+
+        if (!lastName) {
+            errors.push('Ilagay ang Last Name (Apelyido).');
+            errorFieldIds.push('modalLastName');
+        }
+
+        let purok = document.getElementById('modalPurok')?.value?.trim() || '';
+        let isTenant = document.getElementById('modalIsTenant')?.value;
+        let address = document.getElementById('modalAddress')?.value?.trim() || '';
+
+        // If purok is missing, attempt auto-detect from street address
+        if (!purok && address) {
+            purok = autoDetectPurokFromAddress(address);
+            if (purok) {
+                const pEl = document.getElementById('modalPurok');
+                if (pEl) pEl.value = purok;
+            }
+        }
 
         if (!purok) {
-            window.agapNotify?.('Please select a Purok / Area under Residence Details.', 'error');
-            document.getElementById('modalPurok')?.focus();
-            return;
+            errors.push('Piliin ang Purok / Area sa ilalim ng Residence Details.');
+            errorFieldIds.push('modalPurok');
         }
 
         if (isTenant === '' || isTenant === undefined || isTenant === null) {
-            window.agapNotify?.('Please select a Residency Status under Residence Details.', 'error');
-            document.getElementById('modalIsTenant')?.focus();
-            return;
+            isTenant = (purok === 'Non-Resident') ? '2' : '0';
+            const tEl = document.getElementById('modalIsTenant');
+            if (tEl) tEl.value = isTenant;
         }
 
         if (!address) {
-            window.agapNotify?.('Please enter the Complete Street Address under Residence Details.', 'error');
-            document.getElementById('modalAddress')?.focus();
-            return;
+            errors.push('Ilagay ang Complete Street Address sa ilalim ng Residence Details.');
+            errorFieldIds.push('modalAddress');
         }
 
         if (currentModalRole === 'respondent') {
@@ -2828,15 +3097,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         setTimeout(() => { if (warningBox) warningBox.style.boxShadow = 'none'; }, 2500);
                     }
 
-                    const localitySpan = document.getElementById('modalRespondentLocalityText');
-                    const brgyHint = localitySpan?.textContent ? ` ${localitySpan.textContent}` : '';
-
-                    window.agapNotify?.(
-                        'Hinarang ang pag-save: Ayon sa KP Law (Sec. 409), ang reklamo ay dapat isampa sa Barangay kung saan nakatira ang inirereklamo' + brgyHint + '. Kung may legal na eksepsiyon (ari-arian o workplace sa Tumana), lagyan ng tsek ang "Kumpirmasyon ng Hurisdiksyon". Kung wala, payuhan ang complainant na lumipat sa barangay ng respondent.',
-                        'error'
-                    );
-                    document.getElementById('modalRespondentKpExceptionCheck')?.focus();
-                    return;
+                    errors.push('Babala sa Non-Resident Respondent: Ayon sa KP Law (Sec. 409), lagyan ng tsek ang "Kumpirmasyon ng Hurisdiksyon" kung may legal na eksepsiyon (ari-arian o trabaho sa Tumana).');
+                    errorFieldIds.push('modalRespondentKpExceptionCheck');
                 }
             }
         }
@@ -2847,15 +3109,18 @@ document.addEventListener('DOMContentLoaded', () => {
             const gName = document.getElementById('modalGuardianName')?.value?.trim();
             const gRel  = document.getElementById('modalGuardianRelationship')?.value?.trim();
             if (!gName) {
-                window.agapNotify?.('Since this person is a minor, the legal guardian\'s full name is required.', 'error');
-                document.getElementById('modalGuardianName')?.focus();
-                return;
+                errors.push('Dahil menor de edad (< 18), kailangan ang buong pangalan ng Legal Guardian.');
+                errorFieldIds.push('modalGuardianName');
             }
             if (!gRel) {
-                window.agapNotify?.('Please specify the legal guardian\'s relationship to the minor.', 'error');
-                document.getElementById('modalGuardianRelationship')?.focus();
-                return;
+                errors.push('Tukuyin ang relasyon ng Legal Guardian sa menor de edad (hal. Nanay, Tatay, Tagapangalaga).');
+                errorFieldIds.push('modalGuardianRelationship');
             }
+        }
+
+        if (errors.length > 0) {
+            showModalValidationErrors(errors, errorFieldIds);
+            return;
         }
 
         const partyData = {
@@ -2893,12 +3158,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 complainantsList.push(partyData);
             } else if (currentModalIndex !== null && complainantsList[currentModalIndex]) {
                 complainantsList[currentModalIndex] = partyData;
+            } else {
+                complainantsList[0] = partyData;
             }
         } else {
             if (currentModalMode === 'add') {
                 respondentsList.push(partyData);
             } else if (currentModalIndex !== null && respondentsList[currentModalIndex]) {
                 respondentsList[currentModalIndex] = partyData;
+            } else {
+                respondentsList[0] = partyData;
             }
         }
 
@@ -2907,6 +3176,9 @@ document.addEventListener('DOMContentLoaded', () => {
         renderParties();
         window.validateDistinctParties?.();
         triggerDuplicateCheck();
+
+        const roleText = currentModalRole === 'complainant' ? 'Complainant' : 'Respondent';
+        window.agapNotify?.(`Matagumpay na naitala si ${partyData.first_name} ${partyData.last_name} bilang ${roleText}.`, 'success');
     });
 
     window.removeParty = function(role, index) {
@@ -3114,7 +3386,6 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <div class="party-summary-title-row">
                                     <span class="party-summary-name">${escapeHtml(fullName)}</span>
                                     <span class="party-role-pill ${rolePillClass}">${roleLabel}</span>
-                                    ${(r.purok === "Non-Resident" || r.is_tenant === "2") && r.kp_jurisdiction_exception ? '<span class="party-role-pill" style="background: #fef3c7; color: #92400e; border: 1px solid #fde68a; font-size: 0.68rem;">KP Sec. 409(c/d) Exception</span>' : ''}
                                 </div>
                                 <div class="party-summary-details">
                                     ${details.join('')}
@@ -3200,6 +3471,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <div class="party-summary-title-row">
                                     <span class="party-summary-name">${escapeHtml(fullName)}</span>
                                     <span class="party-role-pill ${rolePillClass}">${roleLabel}</span>
+                                    ${(r.purok === "Non-Resident" || r.is_tenant === "2") && r.kp_jurisdiction_exception ? '<span class="party-role-pill" style="background: #fef3c7; color: #92400e; border: 1px solid #fde68a; font-size: 0.68rem;">KP Sec. 409(c/d) Exception</span>' : ''}
                                 </div>
                                 <div class="party-summary-details">
                                     ${details.join('')}

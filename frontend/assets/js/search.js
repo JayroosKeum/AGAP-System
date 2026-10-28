@@ -255,9 +255,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (disp.includes('CFA')) return 8;
                         if (disp.includes('Dismissed')) return 7;
                         const st = r.current_stage || '';
-                        if (st === 'Arbitration') return 6;
-                        if (st === 'Conciliation') return 5;
-                        if (st === 'Mediation') return 4;
+                        if (st.includes('Arbitration')) return 6;
+                        if (st.includes('Conciliation')) return 5;
+                        if (st.includes('Mediation')) return 4;
+                        if (st.includes('Paanyaya')) return 3;
                         if (r.intake_status === 'Under Review') return 2;
                         return 1;
                     };
@@ -530,7 +531,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const conciliationCount = rows.filter(r => r.lifecycle_status === 'Conciliation').length;
             const cfaCount = rows.filter(r => r.lifecycle_status === 'CFA').length;
             const closedCount = rows.filter(r => r.lifecycle_status === 'Resolution / Closed').length;
-            const paanyayaCount = rows.filter(r => r.lifecycle_status === 'Paanyaya' || (r.lifecycle_status && r.lifecycle_status.includes('Paanyaya')) || (r.status && r.status.includes('Paanyaya')) || (r.complaint_status && r.complaint_status.includes('Paanyaya')) || (!r.case_id && String(r.complaint_number || r.case_number || '').startsWith('P-'))).length;
+            const paanyayaCount = rows.filter(r => r.lifecycle_status !== 'Resolution / Closed' && (r.lifecycle_status === 'Paanyaya' || (r.lifecycle_status && r.lifecycle_status.includes('Paanyaya')) || (r.status && r.status.includes('Paanyaya')) || (r.complaint_status && r.complaint_status.includes('Paanyaya')) || (!r.case_id && String(r.complaint_number || r.case_number || '').startsWith('P-')))).length;
 
             cachedGlobalCounts = {
                 all: allCount,
@@ -684,7 +685,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const caseType = String(row.case_type || 'Civil');
         const caseTypeClass = caseType.toLowerCase() === 'criminal' ? 'badge-type-criminal' : 'badge-type-civil';
 
-        const isPaanyaya = (row.status === 'Pre-Docketed (Paanyaya)' || row.lifecycle_status === 'Paanyaya' || (row.status_labels && row.status_labels.includes('Paanyaya')) || (!row.case_id && String(row.complaint_number || row.case_number).startsWith('P-')));
+        const isPaanyaya = (row.status === 'Pre-Docketed (Paanyaya)' || row.lifecycle_status === 'Paanyaya' || (Array.isArray(row.status_labels) && row.status_labels.some(l => String(l).includes('Paanyaya'))) || (!row.case_id && String(row.complaint_number || row.case_number || '').startsWith('P-')));
 
         // 1. Case No.
         let caseNumberHtml;
@@ -756,30 +757,46 @@ document.addEventListener('DOMContentLoaded', () => {
             partiesHtml = `<div class="parties-stack">${renderedParties}${extraCount}${repeatFlag}</div>`;
         }
 
-        // 4. Standardized lifecycle status (Paanyaya is undocketed, Mediation is docketed)
-        let lifecycleStatus = 'Paanyaya';
-        if (isPaanyaya || !row.case_id) {
-            lifecycleStatus = 'Paanyaya';
-        } else if (row.status === 'Settled' || row.lifecycle_status === 'Settled' || row.status === 'Resolved at Paanyaya / Closed' || row.lifecycle_status === 'Resolved at Paanyaya / Closed') {
-            lifecycleStatus = 'Resolution / Closed';
-        } else if ([
-            'Mediation',
-            'Conciliation',
-            'CFA',
-            'Resolution / Closed',
-            'Paanyaya'
-        ].includes(row.lifecycle_status)) {
-            lifecycleStatus = row.lifecycle_status;
+        // 4. Granular lifecycle status badges
+        let labelsToRender = [];
+        if (Array.isArray(row.status_labels) && row.status_labels.length > 0) {
+            labelsToRender = row.status_labels;
+        } else {
+            // Fallback: unahin ang pagsusuri kung Settled / Resolution / Closed bago mag-fallback sa procedural stage
+            const isSettledOrClosed = row.status === 'Settled'
+                || row.case_status === 'Settled'
+                || row.complaint_status === 'Settled'
+                || row.status === 'Resolved at Paanyaya / Closed'
+                || row.lifecycle_status === 'Resolution / Closed';
+
+            if (isSettledOrClosed) {
+                if (!row.case_id || isPaanyaya) {
+                    labelsToRender = ['1st Paanyaya', 'Amicable Settlement'];
+                } else {
+                    labelsToRender = ['Amicable Settlement'];
+                }
+            } else if (row.lifecycle_status === 'CFA' || row.status === 'CFA Issued' || row.case_status === 'CFA Issued') {
+                labelsToRender = ['CFA'];
+            } else if (row.lifecycle_status && row.lifecycle_status !== 'Resolution / Closed') {
+                labelsToRender = [row.lifecycle_status];
+            } else if (!row.case_id || isPaanyaya) {
+                labelsToRender = ['1st Paanyaya'];
+            } else {
+                labelsToRender = ['1st Mediation'];
+            }
         }
-        const lifecycleClass = lifecycleStatus
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/^-|-$/g, '');
+
+        const badgesHtml = labelsToRender.map(lbl => {
+            const badgeClass = String(lbl)
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-|-$/g, '');
+            return `<span class="lifecycle-badge badge-lifecycle-${badgeClass}">${escapeHtml(lbl)}</span>`;
+        }).join('');
+
         const statusHtml = `
             <div class="lifecycle-group">
-                <span class="lifecycle-badge badge-lifecycle-${lifecycleClass}">
-                    ${escapeHtml(lifecycleStatus)}
-                </span>
+                ${badgesHtml}
             </div>
         `;
 
@@ -812,7 +829,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderSearchRow(row) {
-        const isPaanyaya = (row.status === 'Pre-Docketed (Paanyaya)' || row.lifecycle_status === 'Paanyaya' || (row.status_labels && row.status_labels.includes('Paanyaya')) || (!row.case_id && String(row.complaint_number || row.case_number).startsWith('P-')));
+        const isPaanyaya = (row.status === 'Pre-Docketed (Paanyaya)' || row.lifecycle_status === 'Paanyaya' || (Array.isArray(row.status_labels) && row.status_labels.some(l => String(l).includes('Paanyaya'))) || (!row.case_id && String(row.complaint_number || row.case_number || '').startsWith('P-')));
         let caseDisplay = row.case_number || 'Not docketed';
         if (isPaanyaya) {
             const d = row.incident_date ? new Date(row.incident_date) : new Date();
@@ -827,7 +844,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${escapeHtml(row.complaint_number)}<small>${escapeHtml(row.complaint_title)}</small></td>
                 <td>${escapeHtml(row.category_name || 'Uncategorized')}</td>
                 <td>${escapeHtml(row.parties || 'No parties linked')}</td>
-                <td>${escapeHtml(isPaanyaya ? 'Paanyaya' : (row.record_status || row.case_status || ''))}</td>
+                <td>${escapeHtml(row.record_status || (isPaanyaya ? 'Paanyaya' : (row.case_status || '')))}</td>
                 <td>${escapeHtml(row.incident_date || '')}</td>
                 <td>${Number(row.repeat_party_count || 0) > 1 ? `<span class="repeat-flag">Repeat party (${Number(row.repeat_party_count)} records)</span>` : 'No repeat record'}</td>
             </tr>

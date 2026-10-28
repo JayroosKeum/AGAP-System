@@ -1091,6 +1091,11 @@ class CaseStage
                 $updCase->execute([$caseId]);
                 $updComp = $this->conn->prepare("UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = 'Settled', co.updated_at = NOW() WHERE c.case_id = ?");
                 $updComp->execute([$caseId]);
+            } elseif ($outcome === 'Dismissed') {
+                $updCase = $this->conn->prepare("UPDATE cases SET case_status = 'Dismissed', updated_at = NOW() WHERE case_id = ?");
+                $updCase->execute([$caseId]);
+                $updComp = $this->conn->prepare("UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = 'Dismissed', co.updated_at = NOW() WHERE c.case_id = ?");
+                $updComp->execute([$caseId]);
             } elseif ($outcome === 'Arbitration' || $outcome === 'Arbitration Award') {
                 $updCase = $this->conn->prepare("UPDATE cases SET case_status = 'Arbitration', updated_at = NOW() WHERE case_id = ?");
                 $updCase->execute([$caseId]);
@@ -1102,7 +1107,7 @@ class CaseStage
             $hist = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, ?, ?, ?)");
             $hist->execute([
                 $caseId,
-                ($outcome === 'Settled' ? 'Settled' : $overview['case']['case_status']),
+                ($outcome === 'Settled' ? 'Settled' : ($outcome === 'Dismissed' ? 'Dismissed' : $overview['case']['case_status'])),
                 "{$stageType} outcome recorded: {$outcome}. {$remarks}",
                 $userId
             ]);

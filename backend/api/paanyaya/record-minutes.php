@@ -42,6 +42,11 @@ try {
 
     if (!$result['success']) {
         http_response_code(422);
+    } else {
+        $_SESSION['complaint_flash'] = [
+            'message' => $result['message'] ?? 'Dialogue minutes recorded successfully!',
+            'type' => 'success'
+        ];
     }
 
     echo json_encode($result);

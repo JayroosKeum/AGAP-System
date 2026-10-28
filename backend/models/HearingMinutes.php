@@ -129,7 +129,7 @@ class HearingMinutes
         $allowedOutcomes = [
             'Settled', 'Continue Mediation', 'Continue Conciliation', 'Continue Arbitration',
             'Failed', 'Party Absent', 'Rescheduled', 'Elevate to Pangkat',
-            'Pending CFA', 'Arbitration Award', 'Pending'
+            'Pending CFA', 'Arbitration Award', 'Dismissed', 'Pending'
         ];
         if (!$rawOutcome || !in_array($rawOutcome, $allowedOutcomes, true)) {
             return ['success' => false, 'message' => 'Please select a valid session outcome (Settled, Continue Mediation, Continue Conciliation, Continue Arbitration, Failed, Party Absent, Rescheduled, Elevate to Pangkat, Pending CFA, or Arbitration Award).'];
@@ -250,6 +250,28 @@ class HearingMinutes
             if ($outcome === 'Settled') {
                 $histMsg = sprintf('%s session concluded: Settlement reached. Proceed to prepare Amicable Settlement.', $sessionType);
                 $this->logCaseHistory($caseId, $hearing['case_status'], $histMsg, $userId);
+            } elseif ($outcome === 'Dismissed') {
+                $updCase = $this->conn->prepare("UPDATE cases SET case_status = 'Dismissed', updated_at = NOW() WHERE case_id = ?");
+                $updCase->execute([$caseId]);
+
+                $updComp = $this->conn->prepare("UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = 'Dismissed', co.updated_at = NOW() WHERE c.case_id = ?");
+                $updComp->execute([$caseId]);
+
+                $stageType = ($hearing['hearing_type'] === 'Conciliation') ? 'Conciliation' : 'Mediation';
+                $updStage = $this->conn->prepare("
+                    INSERT INTO case_stages (case_id, stage_type, stage_status, outcome, outcome_remarks, completed_at)
+                    VALUES (?, ?, 'Completed', 'Dismissed', ?, NOW())
+                    ON DUPLICATE KEY UPDATE
+                        stage_status = 'Completed',
+                        outcome = 'Dismissed',
+                        outcome_remarks = VALUES(outcome_remarks),
+                        completed_at = NOW(),
+                        updated_at = CURRENT_TIMESTAMP
+                ");
+                $updStage->execute([$caseId, $stageType, $remarks ?: 'Dismissed due to complainant non-appearance']);
+
+                $histMsg = sprintf('%s session concluded: Complaint dismissed due to unexcused absence/non-appearance of the complainant.', $sessionType);
+                $this->logCaseHistory($caseId, 'Dismissed', $histMsg, $userId);
             } elseif ($outcome === 'Failed') {
                 $histMsg = sprintf('%s session concluded: Mediation failed to reach settlement. Case eligible for Pangkat constitution (KP Form 10).', $sessionType);
                 $this->logCaseHistory($caseId, $hearing['case_status'], $histMsg, $userId);

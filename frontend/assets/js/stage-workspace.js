@@ -1290,6 +1290,7 @@ function getOutcomeOptionsForSession(session, mode) {
         opts.push({ val: 'Arbitration', label: 'Submit to Voluntary Arbitration (KP Form 14)' });
         opts.push({ val: 'Repudiated', label: 'Repudiated Settlement' });
         opts.push({ val: 'Party Absent', label: 'Non-Appearance / Certified for Show Cause' });
+        opts.push({ val: 'Dismissed', label: 'Dismiss Complaint — Complainant Absent / Non-Appearance (KP Rules)' });
         opts.push({ val: 'Rescheduled', label: 'Rescheduled — Session Reset' });
         return opts.map(o => `<option value="${o.val}" ${curOutcome === o.val ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('');
     } else if (mode === 'Conciliation') {
@@ -1311,6 +1312,7 @@ function getOutcomeOptionsForSession(session, mode) {
         opts.push({ val: 'Arbitration', label: 'Submit to Voluntary Arbitration (KP Form 14)' });
         opts.push({ val: 'Repudiated', label: 'Repudiated Settlement' });
         opts.push({ val: 'Party Absent', label: 'Party Absent / Non-appearance Recorded' });
+        opts.push({ val: 'Dismissed', label: 'Dismiss Complaint — Complainant Absent / Non-Appearance (KP Rules)' });
         opts.push({ val: 'Rescheduled', label: 'Rescheduled — Session Reset' });
         return opts.map(o => `<option value="${o.val}" ${curOutcome === o.val ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('');
     } else if (mode === 'Arbitration') {
@@ -1335,7 +1337,10 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
     const sessionLabel = `#${sessionIndex} ${getStageSessionOrdinalLabel(mode || stageWorkspaceState.stageType, sessionIndex)}`;
     const isFinalized = (session.minutes_status === 'Finalized');
     const readonlyAttr = isFinalized ? 'readonly disabled' : '';
-    const curOutcome = session.session_outcome || 'Pending';
+    let curOutcome = session.session_outcome || 'Pending';
+    if (session.complainant_attendance === 'Absent' && (curOutcome === 'Pending' || curOutcome === 'Party Absent')) {
+        curOutcome = 'Dismissed';
+    }
     const outcomeOptions = getOutcomeOptionsForSession(session, mode);
 
     const compAtt = session.complainant_attendance || 'Pending';
@@ -1993,6 +1998,15 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false, hearingId 
                     <a href="../documents/cfa.php?case_id=${encodeURIComponent(caseId)}" class="btn-create" style="font-size: 0.82rem; padding: 7px 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; background: #b91c1c;">
                         Issue CFA &rarr;
                     </a>
+                </div>
+            </div>
+        `;
+    } else if (outcomeVal === 'Dismissed') {
+        bannerEl.innerHTML = `
+            <div style="background: #fef2f2; border: 1.5px solid #fca5a5; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div style="color: #991b1b; font-size: 0.85rem;">
+                    <strong style="font-size: 0.92rem; display: block; color: #7f1d1d;">Dismiss Complaint / I-dismiss ang Kaso (Complainant Absent)</strong>
+                    Hindi dumalo ang nagreklamo sa takdang oras ng pagdinig. Kapag pinalisa ang katitikan, ang kaso at reklamo ay mamarkahang <strong>Dismissed</strong> alinsunod sa Katarungang Pambarangay rules (RA 7160 Sec. 410 / Sec. 412).
                 </div>
             </div>
         `;
@@ -3196,6 +3210,15 @@ async function saveStreamlinedAttendance() {
     const compAtt = document.querySelector('input[name="att_comp_attendance"]:checked')?.value || 'Present';
     const respAtt = document.querySelector('input[name="att_resp_attendance"]:checked')?.value || 'Present';
 
+    if (compAtt === 'Absent') {
+        const minOutcomeEl = document.getElementById(`minOutcome_${hearingId}`);
+        if (minOutcomeEl && (minOutcomeEl.value === 'Pending' || minOutcomeEl.value === 'Party Absent')) {
+            minOutcomeEl.value = 'Dismissed';
+            if (typeof handleMinutesOutcomeChange === 'function') {
+                handleMinutesOutcomeChange('Dismissed', true, hearingId);
+            }
+        }
+    }
     const currentData = stageWorkspaceState.lastAttendanceData || {};
     const parties = currentData.parties || [];
 
@@ -3256,6 +3279,22 @@ async function saveStreamlinedAttendance() {
     }
 }
 window.saveStreamlinedAttendance = saveStreamlinedAttendance;
+
+function handleCompAttendanceRadioChange(val) {
+    const notice = document.getElementById('wsCompAbsentNotice');
+    if (notice) notice.style.display = (val === 'Absent') ? 'block' : 'none';
+    const hId = stageWorkspaceState.currentHearingId;
+    if (val === 'Absent') {
+        const minOutcomeEl = document.getElementById(`minOutcome_${hId}`);
+        if (minOutcomeEl && (minOutcomeEl.value === 'Pending' || minOutcomeEl.value === 'Party Absent')) {
+            minOutcomeEl.value = 'Dismissed';
+            if (typeof handleMinutesOutcomeChange === 'function') {
+                handleMinutesOutcomeChange('Dismissed', true, hId);
+            }
+        }
+    }
+}
+window.handleCompAttendanceRadioChange = handleCompAttendanceRadioChange;
 
 function renderAttendanceModalForm(data) {
     const isCard = !!document.getElementById('wsAttCardBody');
@@ -3344,15 +3383,15 @@ function renderAttendanceModalForm(data) {
                         <span class="party-att-col-title">Nagpaanyaya (Complainant):</span>
                         <div style="display: flex; flex-direction: column; gap: 8px;">
                             <label class="party-att-radio-label present">
-                                <input type="radio" name="att_comp_attendance" value="Present" ${compAtt === 'Present' ? 'checked' : ''} style="accent-color: #16a34a; width: 16px; height: 16px;">
+                                <input type="radio" name="att_comp_attendance" value="Present" onchange="handleCompAttendanceRadioChange(this.value)" ${compAtt === 'Present' ? 'checked' : ''} style="accent-color: #16a34a; width: 16px; height: 16px;">
                                 <span>🟢 Dumalo sa Oras (Present)</span>
                             </label>
                             <label class="party-att-radio-label warning">
-                                <input type="radio" name="att_comp_attendance" value="Late" ${compAtt === 'Late' ? 'checked' : ''} style="accent-color: #d97706; width: 16px; height: 16px;">
+                                <input type="radio" name="att_comp_attendance" value="Late" onchange="handleCompAttendanceRadioChange(this.value)" ${compAtt === 'Late' ? 'checked' : ''} style="accent-color: #d97706; width: 16px; height: 16px;">
                                 <span>🟡 Nahuli / Late (Pasok sa 1-hour grace period)</span>
                             </label>
                             <label class="party-att-radio-label absent">
-                                <input type="radio" name="att_comp_attendance" value="Absent" ${compAtt === 'Absent' ? 'checked' : ''} style="accent-color: #dc2626; width: 16px; height: 16px;">
+                                <input type="radio" name="att_comp_attendance" value="Absent" onchange="handleCompAttendanceRadioChange(this.value)" ${compAtt === 'Absent' ? 'checked' : ''} style="accent-color: #dc2626; width: 16px; height: 16px;">
                                 <span>🔴 Hindi Dumalo (Absent - Lampas 1 oras)</span>
                             </label>
                         </div>
@@ -3377,6 +3416,9 @@ function renderAttendanceModalForm(data) {
                 </div>
             </div>
 
+            <div id="wsCompAbsentNotice" style="display: ${compAtt === 'Absent' ? 'block' : 'none'}; background: #fef2f2; border: 1px solid #fca5a5; border-radius: 6px; padding: 8px 12px; margin-bottom: 8px; font-size: 0.82rem; color: #991b1b;">
+                ⚠️ <strong>Complainant is Absent:</strong> Ito ay nagbibigay ng opsyon upang i-dismiss ang reklamo alinsunod sa KP rules sa katitikan ng pagdinig (session minutes).
+            </div>
             <!-- Save Attendance Button -->
             <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
                 <button type="button" class="btn-create" id="btnSaveAttendanceStreamlined" onclick="saveStreamlinedAttendance()" style="padding: 8px 22px; font-size: 0.88rem; font-weight: 600; background: #0f172a; color: #fff; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">

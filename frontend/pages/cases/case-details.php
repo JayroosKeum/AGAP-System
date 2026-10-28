@@ -2,7 +2,12 @@
 
 session_start();
 
-if (!isset($_SESSION['role_id']) || !in_array((int)$_SESSION['role_id'], [1, 2, 3, 4], true)) {
+if (!isset($_SESSION['role_id']) || !in_array((int)$_SESSION['role_id'], [1, 2, 3], true)) {
+    if ((int)($_SESSION['role_id'] ?? 0) === 4) {
+        header('Location: ../gps/proof-service.php');
+        exit;
+    }
+    http_response_code(403);
     die('Access Denied');
 }
 

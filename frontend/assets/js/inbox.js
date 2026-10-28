@@ -790,11 +790,11 @@ function resolveActionUrl(item) {
     // Fallback: search in message text
     const match = `${item.title} ${item.message}`.match(/(?:Case|case)\s*(?:#|No\.\s*|number\s*)?([0-9A-Za-z\-_]+)/i);
     if (match && match[1]) {
-        return `../search/records.php?q=${encodeURIComponent(match[1])}`;
+        return `../cases/case-list.php?search=${encodeURIComponent(match[1])}`;
     }
     const compMatch = `${item.title} ${item.message}`.match(/(?:Complaint|P-)\s*(?:#|No\.\s*|number\s*)?([0-9A-Za-z\-_]+)/i);
     if (compMatch && compMatch[1]) {
-        return `../search/records.php?q=${encodeURIComponent(compMatch[1])}`;
+        return `../complaints/complaint-list.php?search=${encodeURIComponent(compMatch[1])}`;
     }
     return '';
 }

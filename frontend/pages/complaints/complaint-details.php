@@ -1,11 +1,16 @@
-﻿<?php
+<?php
 
 session_start();
 
 if (
     !isset($_SESSION['role_id']) ||
-    !in_array((int)$_SESSION['role_id'], [1, 2, 3, 4], true)
+    !in_array((int)$_SESSION['role_id'], [1, 2, 3], true)
 ) {
+    if ((int)($_SESSION['role_id'] ?? 0) === 4) {
+        header('Location: ../gps/proof-service.php');
+        exit;
+    }
+    http_response_code(403);
     die('Access Denied');
 }
 
@@ -29,6 +34,10 @@ unset($_SESSION['complaint_flash']);
 
 include '../../layouts/header.php';
 require_once __DIR__ . '/../../../backend/models/Setting.php';
+require_once __DIR__ . '/../../../backend/models/Paanyaya.php';
+$paanyayaModel = new Paanyaya();
+$servingOfficers = $paanyayaModel->getServingOfficers();
+$eligiblePresiders = $paanyayaModel->getEligiblePresiders();
 $maxPaanyayaSetting = (int) Setting::getSetting('paanyaya_max_attempts', 3);
 ?>
 <script>
@@ -1016,6 +1025,8 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
         </form>
     </div>
 </div>
+
+
 
 <!-- Modal: View Paanyaya Dialogue Minutes -->
 <div id="paanyayaMinutesViewModal" class="modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="viewMinutesModalHeading">

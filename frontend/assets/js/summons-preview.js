@@ -356,13 +356,18 @@ function downloadSummonsPdf(event) {
 
 function continueToOfficerReturn() {
     if (window.currentSummonsPreview?.officerReturnUrl) {
-        window.location.href = window.currentSummonsPreview.officerReturnUrl;
+        const url = window.currentSummonsPreview.officerReturnUrl;
+        window.location.href = url.includes('open_return=') ? url : (url + (url.includes('?') ? '&' : '?') + 'open_return=1');
         return;
     }
     const caseId = window.currentSummonsPreview?.caseId;
     const docId = window.currentSummonsPreview?.documentId;
+    const hearingId = window.currentSummonsPreview?.hearingId;
     if (caseId) {
-        window.location.href = `../gps/proof-service.php?case_id=${encodeURIComponent(caseId)}` + (docId ? `&document_id=${encodeURIComponent(docId)}` : '');
+        let target = `../gps/proof-service.php?case_id=${encodeURIComponent(caseId)}&open_return=1`;
+        if (docId) target += `&document_id=${encodeURIComponent(docId)}`;
+        if (hearingId) target += `&hearing_id=${encodeURIComponent(hearingId)}`;
+        window.location.href = target;
         return;
     }
     window.location.href = '../gps/proof-service.php';

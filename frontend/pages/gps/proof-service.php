@@ -12,7 +12,9 @@ require_once __DIR__ . '/../../../backend/models/Setting.php';
 $sysSettings = Setting::all();
 ?>
 <script>
+window.AGAP_USER_ROLE_ID = <?php echo (int) $roleId; ?>;
 window.AGAP_SETTINGS = <?php echo json_encode([
+    'user_role_id' => (int) $roleId,
     'paanyaya_max_attempts' => (int) ($sysSettings['paanyaya_max_attempts'] ?? 6),
     'summons_max_attempts' => (int) ($sysSettings['summons_max_attempts'] ?? 6),
     'mediation_max_sessions' => (int) ($sysSettings['mediation_max_sessions'] ?? 2),

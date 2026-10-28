@@ -517,9 +517,26 @@ function renderSummonCasesTable(cases) {
         const caseId = Number(item.case_id);
         const isExpanded = String(caseId) === String(activeExpandedCaseId);
         const kpNumberRaw = item.case_number || item.complaint_number || (item.case_id ? `Case #${item.case_id}` : 'N/A');
-        const kpNumber = item.is_paanyaya
-            ? `<div style="display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;"><span>${escapeGpsHtml(kpNumberRaw)}</span><span style="font-size:0.72rem; padding:2px 7px; background:#ecfdf5; color:#166534; border:1px solid #bbf7d0; border-radius:4px; font-weight:700;">${escapeGpsHtml(item.paanyaya_stage_type || item.hearing_type || 'Paanyaya')}</span></div>`
-            : escapeGpsHtml(kpNumberRaw);
+        const userRoleId = Number(window.AGAP_USER_ROLE_ID || window.AGAP_SETTINGS?.user_role_id || 0);
+        const canAccessCaseDetails = userRoleId !== 4; // Summons server (Role 4) cannot access full case details
+
+        let kpNumber;
+        if (canAccessCaseDetails) {
+            const targetComplaintId = item.complaint_id || item.case_id;
+            const caseDetailsUrl = item.complaint_id
+                ? `../complaints/complaint-details.php?id=${encodeURIComponent(item.complaint_id)}${item.is_paanyaya ? '&tab=paanyaya' : ''}`
+                : `../cases/case-details.php?id=${encodeURIComponent(item.case_id)}`;
+
+            const kpLinkHtml = `<a href="${caseDetailsUrl}" class="case-kp-link" onclick="event.stopPropagation();" title="View case details for ${escapeGpsHtml(kpNumberRaw)}" style="color:#0284c7; font-size:0.92rem; font-weight:700; text-decoration:none; cursor:pointer;" onmouseover="this.style.textDecoration='underline'; this.style.color='#0369a1';" onmouseout="this.style.textDecoration='none'; this.style.color='#0284c7';">${escapeGpsHtml(kpNumberRaw)}</a>`;
+
+            kpNumber = item.is_paanyaya
+                ? `<div style="display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;">${kpLinkHtml}<span style="font-size:0.72rem; padding:2px 7px; background:#ecfdf5; color:#166534; border:1px solid #bbf7d0; border-radius:4px; font-weight:700;">${escapeGpsHtml(item.paanyaya_stage_type || item.hearing_type || 'Paanyaya')}</span></div>`
+                : kpLinkHtml;
+        } else {
+            kpNumber = item.is_paanyaya
+                ? `<div style="display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;"><span>${escapeGpsHtml(kpNumberRaw)}</span><span style="font-size:0.72rem; padding:2px 7px; background:#ecfdf5; color:#166534; border:1px solid #bbf7d0; border-radius:4px; font-weight:700;">${escapeGpsHtml(item.paanyaya_stage_type || item.hearing_type || 'Paanyaya')}</span></div>`
+                : escapeGpsHtml(kpNumberRaw);
+        }
         const complainant = item.complainant_names || 'Not recorded';
         const respondent = item.respondent_names || 'Not recorded';
         const hearingDate = item.hearing_date
@@ -917,20 +934,6 @@ async function renderExpandedCaseView(caseId) {
 
         // Render complete expanded panel
         container.innerHTML = `
-            <!-- Meta Bar -->
-            <div class="expanded-meta-bar">
-                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                    <strong style="color: #0f172a; font-size: 0.95rem;">${kpNumber}</strong>
-                    <span style="color: #64748b;">·</span>
-                    <span style="color: #475569; font-size: 0.88rem;">${escapeGpsHtml(complaintTitle)}</span>
-                    <span style="color: #64748b;">·</span>
-                    <span style="font-size: 0.82rem; color: #64748b;">Venue: <strong>${escapeGpsHtml(venue)}</strong></span>
-                </div>
-                <button type="button" class="btn-secondary" onclick="toggleExpandCase(${caseId}, event)" style="font-size: 0.78rem; padding: 4px 10px; border-radius: 6px;">
-                    Close Details &times;
-                </button>
-            </div>
-
             <!-- Two-Column Side-by-Side Service Records Grid -->
             <div class="expanded-columns-grid" ${isPaanyayaCase ? 'style="grid-template-columns: 1fr;"' : ''}>
                 <!-- Left Column: Complainant Notice (KP Form 8) -->
@@ -1545,12 +1548,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Setup Back Link
             const backLink = document.getElementById('backLink');
             const backLinkLabel = document.getElementById('backLinkLabel');
-            if (backLink) {
+            const userRoleId = Number(window.AGAP_USER_ROLE_ID || window.AGAP_SETTINGS?.user_role_id || 0);
+            if (backLink && userRoleId !== 4) {
                 backLink.href = `../complaints/complaint-details.php?id=${encodeURIComponent(targetCase.complaint_id || targetCase.case_id)}&tab=paanyaya`;
                 if (backLinkLabel) {
                     backLinkLabel.textContent = `Back to Case Details (${targetCase.case_number || targetCase.complaint_number || 'Paanyaya'})`;
                 }
                 backLink.hidden = false;
+            } else if (backLink) {
+                backLink.hidden = true;
             }
 
             if (String(activeExpandedCaseId) !== String(targetCase.case_id)) {

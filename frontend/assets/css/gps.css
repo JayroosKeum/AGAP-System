@@ -728,6 +728,20 @@
     border: 1px solid #cbd5e1;
 }
 
+/* Clickable KP Number in Proof-of-Service Case Table */
+.case-kp-link {
+    color: #0284c7 !important;
+    font-weight: 700 !important;
+    text-decoration: none;
+    cursor: pointer;
+    transition: color 0.15s ease, text-decoration 0.15s ease;
+}
+.case-kp-link:hover,
+.case-kp-link:focus {
+    color: #0369a1 !important;
+    text-decoration: underline !important;
+}
+
 /* Expanded Row Content */
 .expanded-row-container {
     background: #f8fafc;
