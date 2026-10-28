@@ -3273,14 +3273,8 @@ function renderAttendanceModalForm(data) {
     const delayRemarksVal = hearing.attendance_notes || '';
     const isSaved = Boolean(hearing.attendance_recorded_at);
 
-    let compIsPresent = true;
-    let respIsPresent = true;
-    if (hearing.complainant_attendance) {
-        compIsPresent = (hearing.complainant_attendance !== 'Absent');
-    }
-    if (hearing.respondent_attendance) {
-        respIsPresent = (hearing.respondent_attendance !== 'Absent');
-    }
+    let compAtt = hearing.complainant_attendance || 'Present';
+    let respAtt = hearing.respondent_attendance || 'Present';
 
     bodyEl.innerHTML = `
         <div class="streamlined-attendance-container" style="display: flex; flex-direction: column; gap: 16px;">
@@ -3348,27 +3342,35 @@ function renderAttendanceModalForm(data) {
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                     <div>
                         <span class="party-att-col-title">Nagpaanyaya (Complainant):</span>
-                        <div style="display: flex; gap: 16px; align-items: center;">
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
                             <label class="party-att-radio-label present">
-                                <input type="radio" name="att_comp_attendance" value="Present" ${compIsPresent ? 'checked' : ''} style="accent-color: #16a34a; width: 16px; height: 16px;">
-                                <span>Dumalo (Present)</span>
+                                <input type="radio" name="att_comp_attendance" value="Present" ${compAtt === 'Present' ? 'checked' : ''} style="accent-color: #16a34a; width: 16px; height: 16px;">
+                                <span>🟢 Dumalo sa Oras (Present)</span>
+                            </label>
+                            <label class="party-att-radio-label warning">
+                                <input type="radio" name="att_comp_attendance" value="Late" ${compAtt === 'Late' ? 'checked' : ''} style="accent-color: #d97706; width: 16px; height: 16px;">
+                                <span>🟡 Nahuli / Late (Pasok sa 1-hour grace period)</span>
                             </label>
                             <label class="party-att-radio-label absent">
-                                <input type="radio" name="att_comp_attendance" value="Absent" ${!compIsPresent ? 'checked' : ''} style="accent-color: #dc2626; width: 16px; height: 16px;">
-                                <span>Hindi Dumalo (Absent)</span>
+                                <input type="radio" name="att_comp_attendance" value="Absent" ${compAtt === 'Absent' ? 'checked' : ''} style="accent-color: #dc2626; width: 16px; height: 16px;">
+                                <span>🔴 Hindi Dumalo (Absent - Lampas 1 oras)</span>
                             </label>
                         </div>
                     </div>
                     <div>
                         <span class="party-att-col-title">Inanyayahan (Respondent):</span>
-                        <div style="display: flex; gap: 16px; align-items: center;">
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
                             <label class="party-att-radio-label present">
-                                <input type="radio" name="att_resp_attendance" value="Present" ${respIsPresent ? 'checked' : ''} style="accent-color: #16a34a; width: 16px; height: 16px;">
-                                <span>Dumalo (Present)</span>
+                                <input type="radio" name="att_resp_attendance" value="Present" ${respAtt === 'Present' ? 'checked' : ''} style="accent-color: #16a34a; width: 16px; height: 16px;">
+                                <span>🟢 Dumalo sa Oras (Present)</span>
+                            </label>
+                            <label class="party-att-radio-label warning">
+                                <input type="radio" name="att_resp_attendance" value="Late" ${respAtt === 'Late' ? 'checked' : ''} style="accent-color: #d97706; width: 16px; height: 16px;">
+                                <span>🟡 Nahuli / Late (Pasok sa 1-hour grace period)</span>
                             </label>
                             <label class="party-att-radio-label absent">
-                                <input type="radio" name="att_resp_attendance" value="Absent" ${!respIsPresent ? 'checked' : ''} style="accent-color: #dc2626; width: 16px; height: 16px;">
-                                <span>Hindi Dumalo (Absent)</span>
+                                <input type="radio" name="att_resp_attendance" value="Absent" ${respAtt === 'Absent' ? 'checked' : ''} style="accent-color: #dc2626; width: 16px; height: 16px;">
+                                <span>🔴 Hindi Dumalo (Absent - Lampas 1 oras)</span>
                             </label>
                         </div>
                     </div>
@@ -3841,12 +3843,12 @@ function printHearingMinutes(hearingId) {
                     <tr>
                         <td><strong>Nagsusumbong (Complainant)</strong></td>
                         <td>${escapeHtml(caseData.complainant_names || '—')}</td>
-                        <td>${compAtt === 'Present' ? 'Dumalo (Present)' : 'Hindi Dumalo (Absent)'}</td>
+                        <td>${compAtt === 'Late' ? 'Nahuli (Late)' : (compAtt === 'Present' ? 'Dumalo (Present)' : 'Hindi Dumalo (Absent)')}</td>
                     </tr>
                     <tr>
                         <td><strong>Ipinagsusumbong (Respondent)</strong></td>
                         <td>${escapeHtml(caseData.respondent_names || '—')}</td>
-                        <td>${respAtt === 'Present' ? 'Dumalo (Present)' : 'Hindi Dumalo (Absent)'}</td>
+                        <td>${respAtt === 'Late' ? 'Nahuli (Late)' : (respAtt === 'Present' ? 'Dumalo (Present)' : 'Hindi Dumalo (Absent)')}</td>
                     </tr>
                 </tbody>
             </table>

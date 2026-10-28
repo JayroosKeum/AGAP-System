@@ -534,30 +534,36 @@ function renderSummonCasesTable(cases) {
         // Main Case Row
         rowsHtml.push(`
             <tr id="case-row-${caseId}" class="case-main-row ${isExpanded ? 'is-expanded' : ''}" onclick="toggleExpandCase(${caseId}, event)">
-                <td style="padding: 12px 14px; text-align: center;">
+                <td class="cell-expand" style="padding: 12px 14px; text-align: center;">
                     <button type="button" class="row-expand-btn ${isExpanded ? 'is-expanded' : ''}" aria-label="${isExpanded ? 'Collapse' : 'Expand'} details for ${escapeGpsHtml(kpNumberRaw)}" onclick="toggleExpandCase(${caseId}, event)">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                             <polyline points="9 18 15 12 9 6"></polyline>
                         </svg>
                     </button>
                 </td>
-                <td style="padding: 12px 16px;">
+                <td class="cell-kp" style="padding: 12px 16px;">
                     <strong style="color: #0284c7; font-size: 0.92rem; font-weight: 700;">
                         ${kpNumber}
                     </strong>
                     ${item.complaint_title ? `<div class="case-row-subtitle" title="${escapeGpsHtml(item.complaint_title)}">${escapeGpsHtml(item.complaint_title)}</div>` : ''}
                 </td>
-                <td class="party-name-cell" style="padding: 12px 16px;">
-                    ${escapeGpsHtml(complainant)}
+                <td class="party-name-cell cell-complainant" style="padding: 12px 16px;">
+                    <span class="mobile-cell-label">Complainant</span>
+                    <span class="mobile-cell-val">${escapeGpsHtml(complainant)}</span>
                 </td>
-                <td class="party-name-cell" style="padding: 12px 16px;">
-                    ${escapeGpsHtml(respondent)}
+                <td class="party-name-cell cell-respondent" style="padding: 12px 16px;">
+                    <span class="mobile-cell-label">Respondent</span>
+                    <span class="mobile-cell-val">${escapeGpsHtml(respondent)}</span>
                 </td>
-                <td style="padding: 12px 16px;">
-                    ${hearingDate}
+                <td class="cell-hearing" style="padding: 12px 16px;">
+                    <span class="mobile-cell-label">Hearing</span>
+                    <span class="mobile-cell-val">${hearingDate}</span>
                 </td>
-                <td style="padding: 12px 16px;">
-                    ${renderTableServiceStatus(item)}
+                <td class="cell-status" style="padding: 12px 16px;">
+                    <span class="mobile-cell-label">Status</span>
+                    <div class="mobile-cell-val mobile-status-wrap">
+                        ${renderTableServiceStatus(item)}
+                    </div>
                 </td>
             </tr>
         `);

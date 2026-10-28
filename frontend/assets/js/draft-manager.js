@@ -251,15 +251,24 @@
             const banner = document.createElement('div');
             banner.id = bannerId;
             banner.className = 'agap-draft-restored-banner';
+            banner.style.cssText = 'background: #eff6ff; border: 1px solid #bfdbfe; border-left: 4px solid #2563eb; border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 0.85rem; color: #1e40af; box-shadow: 0 1px 3px rgba(37,99,235,0.08); box-sizing: border-box; width: 100%;';
             banner.innerHTML = `
-                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="font-size: 1rem;">🛡️</span>
-                        <span><strong>Draft Restored:</strong> Unsaved changes from ${timeAgo} have been recovered on your device.</span>
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; width: 100%;">
+                    <div style="display: flex; align-items: center; gap: 9px; flex: 1; min-width: 240px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;">
+                            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                            <path d="M3 3v5h5"></path>
+                            <path d="M12 7v5l4 2"></path>
+                        </svg>
+                        <span><strong style="color: #1e3a8a;">Draft Restored:</strong> <span style="color: #334155;">Unsaved changes from ${timeAgo} have been recovered on your device.</span></span>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <button type="button" class="agap-draft-discard-btn" onclick="AgapDraftManager.discardDraft('${storageKey}')">
-                            Discard Draft
+                    <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+                        <button type="button" class="agap-draft-discard-btn" onclick="AgapDraftManager.discardDraft('${storageKey}')" style="background: #ffffff; border: 1px solid #fca5a5; color: #dc2626; font-size: 0.78rem; font-weight: 600; padding: 5px 12px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; transition: all 0.15s ease; font-family: inherit; box-shadow: 0 1px 2px rgba(220,38,38,0.05);">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                            <span>Discard Draft</span>
+                        </button>
+                        <button type="button" class="agap-draft-dismiss-btn" onclick="document.getElementById('${bannerId}')?.remove();" title="Keep recovered draft and dismiss notice" style="background: transparent; border: none; color: #60a5fa; font-size: 1.25rem; line-height: 1; cursor: pointer; padding: 2px 6px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; transition: color 0.15s ease;">
+                            &times;
                         </button>
                     </div>
                 </div>

@@ -7822,9 +7822,11 @@ window.toggleMinutesOutcomeViews = function() {
     if (!form) return;
     const outcome = form.querySelector('input[name="outcome"]:checked')?.value || 'Settled';
     const choiceSection = document.getElementById('minutesComplainantChoiceSection');
+    const agreedSection = document.getElementById('minutesAgreedTermsSection');
     const submitBtn = document.getElementById('btnSubmitPaanyayaMinutes');
 
     if (outcome === 'Settled') {
+        if (agreedSection) agreedSection.style.display = 'block';
         if (choiceSection) choiceSection.style.display = 'none';
         const escSec = document.getElementById('minutesEscalationScheduleSection');
         if (escSec) escSec.style.display = 'none';
@@ -7834,6 +7836,7 @@ window.toggleMinutesOutcomeViews = function() {
             submitBtn.style.borderColor = '#16a34a';
         }
     } else {
+        if (agreedSection) agreedSection.style.display = 'none';
         if (choiceSection) choiceSection.style.display = 'block';
         toggleComplainantChoiceViews();
     }

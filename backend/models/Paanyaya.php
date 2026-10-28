@@ -376,9 +376,9 @@ class Paanyaya
 
         $outcome = trim((string) ($data['outcome'] ?? ''));
         $notes = trim((string) ($data['outcome_notes'] ?? ($data['notes'] ?? '')));
-        $compAttended = in_array(trim((string)($data['complainant_attended'] ?? '')), ['Present', 'Absent'], true)
+        $compAttended = in_array(trim((string)($data['complainant_attended'] ?? '')), ['Present', 'Late', 'Absent'], true)
             ? trim((string)$data['complainant_attended']) : 'Present';
-        $respAttended = in_array(trim((string)($data['respondent_attended'] ?? '')), ['Present', 'Absent'], true)
+        $respAttended = in_array(trim((string)($data['respondent_attended'] ?? '')), ['Present', 'Late', 'Absent'], true)
             ? trim((string)$data['respondent_attended']) : 'Present';
 
         $allowedOutcomes = ['Settled', 'Absent_Retry', 'Continued_Dialogue', 'Impasse_Escalate', 'Max_Failed_Escalate'];
@@ -1747,9 +1747,9 @@ class Paanyaya
         }
 
         $dialogueDate = !empty($data['dialogue_date']) ? date('Y-m-d H:i:s', strtotime($data['dialogue_date'])) : date('Y-m-d H:i:s');
-        $compAttended = in_array(trim((string)($data['complainant_attended'] ?? '')), ['Present', 'Absent'], true)
+        $compAttended = in_array(trim((string)($data['complainant_attended'] ?? '')), ['Present', 'Late', 'Absent'], true)
             ? trim((string)$data['complainant_attended']) : 'Present';
-        $respAttended = in_array(trim((string)($data['respondent_attended'] ?? '')), ['Present', 'Absent'], true)
+        $respAttended = in_array(trim((string)($data['respondent_attended'] ?? '')), ['Present', 'Late', 'Absent'], true)
             ? trim((string)$data['respondent_attended']) : 'Present';
 
         $discussionSummary = trim((string)($data['discussion_summary'] ?? ($data['summary'] ?? '')));
@@ -1777,10 +1777,11 @@ class Paanyaya
             $outcome = 'No_Agreement';
         }
 
-        // Complainant choice
+        // Complainant choice & agreed terms enforcement
         if ($outcome === 'Settled') {
             $complainantChoice = 'None';
         } else {
+            $agreedTerms = ''; // Agreed terms only apply if amicably settled
             $rawChoice = trim((string)($data['complainant_choice'] ?? ''));
             if ($rawChoice === 'Escalate_Mediation' || stripos($rawChoice, 'escalate') !== false || stripos($rawChoice, 'akyat') !== false) {
                 $complainantChoice = 'Escalate_Mediation';

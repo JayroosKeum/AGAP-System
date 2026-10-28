@@ -237,27 +237,35 @@ include '../../layouts/header.php';
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                             <div>
                                 <span style="font-size: 0.82rem; color: #475569; font-weight: 600; display: block; margin-bottom: 6px;">Nagpaanyaya (Complainant):</span>
-                                <div style="display: flex; gap: 16px; font-size: 0.88rem;">
+                                <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.88rem;">
                                     <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
                                         <input type="radio" name="complainant_attended" value="Present" checked>
-                                        <span style="color: #166534; font-weight: 600;">Dumalo (Present)</span>
+                                        <span style="color: #166534; font-weight: 600;">🟢 Dumalo sa Oras (Present)</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                        <input type="radio" name="complainant_attended" value="Late">
+                                        <span style="color: #b45309; font-weight: 600;">🟡 Nahuli / Late (Pasok sa 1-hour grace period)</span>
                                     </label>
                                     <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
                                         <input type="radio" name="complainant_attended" value="Absent">
-                                        <span style="color: #991b1b; font-weight: 600;">Hindi Dumalo (Absent)</span>
+                                        <span style="color: #991b1b; font-weight: 600;">🔴 Hindi Dumalo (Absent - Lampas 1 oras)</span>
                                     </label>
                                 </div>
                             </div>
                             <div>
                                 <span style="font-size: 0.82rem; color: #475569; font-weight: 600; display: block; margin-bottom: 6px;">Inanyayahan (Respondent):</span>
-                                <div style="display: flex; gap: 16px; font-size: 0.88rem;">
+                                <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.88rem;">
                                     <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
                                         <input type="radio" name="respondent_attended" value="Present" checked onchange="handleMinutesAttendanceChange()">
-                                        <span style="color: #166534; font-weight: 600;">Dumalo (Present)</span>
+                                        <span style="color: #166534; font-weight: 600;">🟢 Dumalo sa Oras (Present)</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                        <input type="radio" name="respondent_attended" value="Late" onchange="handleMinutesAttendanceChange()">
+                                        <span style="color: #b45309; font-weight: 600;">🟡 Nahuli / Late (Pasok sa 1-hour grace period)</span>
                                     </label>
                                     <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
                                         <input type="radio" name="respondent_attended" value="Absent" onchange="handleMinutesAttendanceChange()">
-                                        <span style="color: #991b1b; font-weight: 600;">Hindi Dumalo (Absent)</span>
+                                        <span style="color: #991b1b; font-weight: 600;">🔴 Hindi Dumalo (Absent - Lampas 1 oras)</span>
                                     </label>
                                 </div>
                             </div>
@@ -272,15 +280,7 @@ include '../../layouts/header.php';
                         <textarea id="minutesDiscussionSummary" name="discussion_summary" rows="4" required placeholder="Ibuod ang mga pahayag, sagot, at mga puntong napag-usapan ng magkabilang panig habang isinasagawa ang dialogue..." style="padding: 9px 12px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box;"></textarea>
                     </div>
 
-                    <!-- 5. Mga Mungkahi o Napagkasunduang Kondisyon -->
-                    <div class="form-group" style="margin-bottom: 18px;">
-                        <label for="minutesAgreedTerms" style="font-weight: 600; font-size: 0.86rem; color: #0f172a; display: block; margin-bottom: 5px;">
-                            Mga Mungkahi o Napagkasunduang Kondisyon (Proposals / Agreed Terms)
-                        </label>
-                        <textarea id="minutesAgreedTerms" name="agreed_terms" rows="3" placeholder="Kondisyon ng bayaran, pagsasaayos, o pangako ng magkabilang panig (kung mayroon)..." style="padding: 9px 12px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box;"></textarea>
-                    </div>
-
-                    <!-- 6. Kopya ng Isinulat-Kamay na Katitikan -->
+                    <!-- 5. Kopya ng Isinulat-Kamay na Katitikan -->
                     <div class="form-group" style="margin-bottom: 22px;">
                         <label for="minutesScannedFile" style="font-weight: 600; font-size: 0.86rem; color: #0f172a; display: block; margin-bottom: 5px;">
                             Kopya ng Isinulat-Kamay na Katitikan / Minutes (Optional Photo or Scan)
@@ -289,7 +289,7 @@ include '../../layouts/header.php';
                         <span style="font-size: 0.76rem; color: #64748b; margin-top: 4px; display: block;">Maaaring mag-attach ng litrato ng sulat-kamay na katitikan na may lagda ng mga panig (JPG, PNG, PDF hanggang 10MB).</span>
                     </div>
 
-                    <!-- 7. Dialogue Procedural Result (Outcome Selection) -->
+                    <!-- 6. Dialogue Procedural Result (Outcome Selection) -->
                     <div style="margin-bottom: 20px;">
                         <label style="font-weight: 700; font-size: 0.9rem; color: #0f172a; display: block; margin-bottom: 8px;">
                             Kinalabasan ng Pag-uusap (Dialogue Procedural Result) <span class="required-mark" style="color: #dc2626;">*</span>
@@ -311,6 +311,17 @@ include '../../layouts/header.php';
                                 </div>
                             </label>
                         </div>
+                    </div>
+
+                    <!-- Mga Mungkahi o Napagkasunduang Kondisyon (Lumalabas kapag pinili ang Nagkasundo / Settled) -->
+                    <div id="minutesAgreedTermsSection" style="background: #f0fdf4; border: 1.5px solid #bbf7d0; border-radius: 8px; padding: 14px 16px; margin-bottom: 20px;">
+                        <label for="minutesAgreedTerms" style="font-weight: 700; font-size: 0.88rem; color: #166534; display: block; margin-bottom: 6px;">
+                            🤝 Mga Mungkahi o Napagkasunduang Kondisyon (Proposals / Agreed Terms)
+                        </label>
+                        <p style="margin: 0 0 8px 0; font-size: 0.78rem; color: #15803d;">
+                            Itala rito ang naging pinal na kasunduan, kondisyon sa bayaran, takdang araw ng pagtupad, o anumang pangako ng magkabilang panig upang pormal na maipasara ang reklamo.
+                        </p>
+                        <textarea id="minutesAgreedTerms" name="agreed_terms" rows="3" placeholder="Kondisyon ng bayaran, pagsasaayos, o pangako ng magkabilang panig (kung mayroon)..." style="padding: 9px 12px; font-size: 0.88rem; border: 1px solid #86efac; border-radius: 7px; width: 100%; box-sizing: border-box; background: #ffffff;"></textarea>
                     </div>
 
                     <!-- Complainant Decision (Visible on No_Agreement) -->
@@ -529,9 +540,11 @@ function toggleMinutesOutcomeViews() {
     if (!form) return;
     const outcome = form.querySelector('input[name="outcome"]:checked')?.value || 'Settled';
     const choiceSection = document.getElementById('minutesComplainantChoiceSection');
+    const agreedSection = document.getElementById('minutesAgreedTermsSection');
     const submitBtn = document.getElementById('btnSubmitMinutes');
 
     if (outcome === 'Settled') {
+        if (agreedSection) agreedSection.style.display = 'block';
         if (choiceSection) choiceSection.style.display = 'none';
         const escSec = document.getElementById('minutesEscalationScheduleSection');
         if (escSec) escSec.style.display = 'none';
@@ -541,6 +554,7 @@ function toggleMinutesOutcomeViews() {
             submitBtn.style.borderColor = '#16a34a';
         }
     } else {
+        if (agreedSection) agreedSection.style.display = 'none';
         if (choiceSection) choiceSection.style.display = 'block';
         toggleComplainantChoiceViews();
     }
@@ -795,6 +809,11 @@ async function handleDialogueMinutesSubmit(event) {
 
     const outcome = form.querySelector('input[name="outcome"]:checked')?.value;
     const choice = form.querySelector('input[name="complainant_choice"]:checked')?.value;
+
+    if (outcome !== 'Settled') {
+        const termsInput = document.getElementById('minutesAgreedTerms');
+        if (termsInput) termsInput.value = '';
+    }
 
     if (outcome !== 'Settled' && choice === 'Escalate_Mediation') {
         if (conflictAlert && conflictAlert.style.display !== 'none' && conflictAlert.textContent.trim() !== '') {

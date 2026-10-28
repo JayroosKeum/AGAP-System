@@ -187,7 +187,7 @@ window.AGAP_SETTINGS = <?php echo json_encode([
         <button type="button" class="proof-modal-close" onclick="closeOfficerReturnModal()" aria-label="Close drawer" style="font-size: 1.6rem; color: #94a3b8; background: none; border: none; cursor: pointer;">&times;</button>
     </div>
 
-    <form id="officerReturnForm" onsubmit="submitOfficerReturn(event)" enctype="multipart/form-data" style="display: flex; flex-direction: column; height: calc(100% - 100px); justify-content: space-between;">
+    <form id="officerReturnForm" class="proof-drawer-form" onsubmit="submitOfficerReturn(event)" enctype="multipart/form-data">
         <input type="hidden" id="returnCaseId" name="case_id" value="">
         <input type="hidden" id="returnHearingId" name="hearing_id" value="">
         <input type="hidden" id="returnPartyType" name="party_type" value="">
