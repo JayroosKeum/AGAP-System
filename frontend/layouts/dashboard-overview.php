@@ -500,6 +500,108 @@
     <?php endif; ?>
 
 
+    <!-- ── Quick Attendance / Check-In Modal ───────────────────────── -->
+    <div id="quickDashboardAttendanceModal" class="report-modal-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="quickAttendanceModalTitle">
+        <div class="report-modal-container" style="max-width: 580px;">
+            <header class="report-modal-header" style="padding: 16px 20px; border-bottom: 1px solid #e2e8f0; background: #f8fafc;">
+                <div class="modal-header-info">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                        <span class="report-modal-badge" style="background:#e0e7ff; color:#3730a3; font-weight:700;">Lupon Court Session</span>
+                        <span id="quickAttCaseNumBadge" style="font-size:11.5px; font-weight:700; color:#475569; background:#f1f5f9; padding:2px 8px; border-radius:4px;">Case #</span>
+                    </div>
+                    <h2 class="report-modal-title" id="quickAttendanceModalTitle" style="font-size:1.15rem; margin:0; color:#0f172a;">Quick Attendance / Check-In</h2>
+                    <p class="report-modal-sub" id="quickAttendanceModalSub" style="margin:2px 0 0; font-size:0.8rem; color:#64748b;">Itala ang pagdalo ng mga panig bago simulan ang sesyon</p>
+                </div>
+                <button type="button" class="btn-modal-close" id="quickAttCloseBtn" aria-label="Close modal" style="font-size:1.4rem; cursor:pointer; background:none; border:none; color:#64748b;">&times;</button>
+            </header>
+
+            <div class="report-modal-body" style="padding: 20px; max-height: 70vh; overflow-y: auto;">
+                <input type="hidden" id="quickAttHearingId" value="">
+
+                <!-- Hearing Details summary bar -->
+                <div style="background: #f1f5f9; border-radius: 8px; padding: 10px 14px; margin-bottom: 18px; font-size: 0.83rem; color: #334155; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                    <div>
+                        <strong id="quickAttHearingType">Mediation Hearing</strong> · <span id="quickAttHearingTime">1:00 PM</span>
+                    </div>
+                    <div style="color: #64748b; font-size: 0.8rem;">
+                        📍 <span id="quickAttHearingVenue">Lupon Court Room</span>
+                    </div>
+                </div>
+
+                <!-- 1. Complainant Attendance -->
+                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 14px;">
+                    <div style="font-size: 0.82rem; font-weight: 700; color: #0f172a; margin-bottom: 2px;">
+                        Nagrereklamo / Nagsusumbong (Complainant)
+                    </div>
+                    <div id="quickAttComplainantName" style="font-size: 0.92rem; font-weight: 600; color: #1e293b; margin-bottom: 10px;">
+                        Complainant Name
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.86rem;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; border-radius: 6px; background: #f0fdf4; border: 1px solid #bbf7d0;">
+                            <input type="radio" name="quick_comp_att" value="Present" checked style="accent-color: #16a34a;">
+                            <span style="color: #15803d; font-weight: 600;">🟢 Dumalo sa Oras (Present)</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; border-radius: 6px; background: #fffbeb; border: 1px solid #fde68a;">
+                            <input type="radio" name="quick_comp_att" value="Late" style="accent-color: #d97706;">
+                            <span style="color: #b45309; font-weight: 600;">🟡 Nahuli / Late (Dumating sa loob ng 1-hr grace period)</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; border-radius: 6px; background: #fef2f2; border: 1px solid #fecaca;">
+                            <input type="radio" name="quick_comp_att" value="Absent" style="accent-color: #dc2626;">
+                            <span style="color: #991b1b; font-weight: 600;">🔴 Hindi Dumalo (Absent - Lampas 1 oras o hindi sumipot)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 2. Respondent Attendance -->
+                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 14px;">
+                    <div style="font-size: 0.82rem; font-weight: 700; color: #0f172a; margin-bottom: 2px;">
+                        Inirereklamo / Ipinagsusumbong (Respondent)
+                    </div>
+                    <div id="quickAttRespondentName" style="font-size: 0.92rem; font-weight: 600; color: #1e293b; margin-bottom: 10px;">
+                        Respondent Name
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.86rem;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; border-radius: 6px; background: #f0fdf4; border: 1px solid #bbf7d0;">
+                            <input type="radio" name="quick_resp_att" value="Present" checked style="accent-color: #16a34a;">
+                            <span style="color: #15803d; font-weight: 600;">🟢 Dumalo sa Oras (Present)</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; border-radius: 6px; background: #fffbeb; border: 1px solid #fde68a;">
+                            <input type="radio" name="quick_resp_att" value="Late" style="accent-color: #d97706;">
+                            <span style="color: #b45309; font-weight: 600;">🟡 Nahuli / Late (Dumating sa loob ng 1-hr grace period)</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; border-radius: 6px; background: #fef2f2; border: 1px solid #fecaca;">
+                            <input type="radio" name="quick_resp_att" value="Absent" style="accent-color: #dc2626;">
+                            <span style="color: #991b1b; font-weight: 600;">🔴 Hindi Dumalo (Absent - Lampas 1 oras o hindi sumipot)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 3. Delay Remarks & Helper Pills -->
+                <div style="margin-bottom: 10px;">
+                    <label for="quickAttRemarks" style="display: block; font-size: 0.82rem; font-weight: 700; color: #0f172a; margin-bottom: 6px;">
+                        Mga Tala ukol sa Pagkaantala / Delay Remarks (Opsyonal)
+                    </label>
+                    <textarea id="quickAttRemarks" rows="2" placeholder="Maglagay ng dahilan kung nahuli o naantala ang pagsisimula..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.85rem; box-sizing: border-box; font-family: inherit; resize: vertical;"></textarea>
+                    
+                    <!-- Helper Pills -->
+                    <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;" id="quickAttHelperPillsWrap">
+                        <button type="button" class="btn-att-helper-pill" data-remark="Nahuli ang panig" style="font-size: 0.76rem; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 9999px; padding: 3px 10px; color: #475569; cursor: pointer;">• Nahuli ang panig</button>
+                        <button type="button" class="btn-att-helper-pill" data-remark="Naunang kaso sa Court Room ay lumagpas sa oras" style="font-size: 0.76rem; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 9999px; padding: 3px 10px; color: #475569; cursor: pointer;">• Naunang kaso sa Court Room ay lumagpas sa oras</button>
+                        <button type="button" class="btn-att-helper-pill" data-remark="Nagkaroon ng emergency / traffic" style="font-size: 0.76rem; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 9999px; padding: 3px 10px; color: #475569; cursor: pointer;">• Nagkaroon ng emergency / traffic</button>
+                        <button type="button" class="btn-att-helper-pill" data-remark="Naghihintay sa tagapamagitan / Lupon Member" style="font-size: 0.76rem; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 9999px; padding: 3px 10px; color: #475569; cursor: pointer;">• Naghihintay sa tagapamagitan / Lupon Member</button>
+                    </div>
+                </div>
+            </div>
+
+            <footer class="report-modal-footer" style="padding: 14px 20px; display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #e2e8f0; background: #f8fafc;">
+                <button type="button" class="btn-modal-close-footer" id="quickAttCancelBtn" style="padding: 7px 16px; font-size: 0.85rem; font-weight: 600; border: 1px solid #cbd5e1; background: #fff; border-radius: 6px; cursor: pointer; color: #475569;">Kanselahin (Cancel)</button>
+                <button type="button" id="quickAttSaveBtn" style="padding: 7px 18px; font-size: 0.85rem; font-weight: 600; border: none; background: #0f172a; color: #fff; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                    💾 I-save ang Attendance
+                </button>
+            </footer>
+        </div>
+    </div>
+
     <span id="cfaCases" style="display:none;" aria-hidden="true"></span>
     <span id="deadlinesDue" style="display:none;" aria-hidden="true"></span>
     <div id="mediationDeadlines" style="display:none;" aria-hidden="true"></div>

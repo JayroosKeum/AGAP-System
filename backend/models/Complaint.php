@@ -239,10 +239,14 @@ class Complaint
                 require_once __DIR__ . '/../services/NotificationService.php';
                 $notifService = new NotificationService();
                 $cNum = $this->conn->query("SELECT complaint_number FROM complaints WHERE complaint_id = {$complaintId}")->fetchColumn() ?: "CMP-#{$complaintId}";
+                $actionUrl = "../complaints/complaint-details.php?id=" . (int) $complaintId;
                 $notifService->notifyRoles(
                     ['Administrator', 'Lupon Clerk'],
                     'New Complaint Filed',
-                    "New complaint {$cNum} (" . ($data['complaint_title'] ?? 'General Dispute') . ") has been filed and initiated into Pre-Docketing (Paanyaya)."
+                    "New complaint {$cNum} (" . ($data['complaint_title'] ?? 'General Dispute') . ") has been filed and initiated into Pre-Docketing (Paanyaya).",
+                    $_SESSION['user_id'] ?? null,
+                    'info',
+                    $actionUrl
                 );
             } catch (Throwable $ne) {
                 error_log('Failed to dispatch new complaint notification: ' . $ne->getMessage());
@@ -404,10 +408,14 @@ class Complaint
                     require_once __DIR__ . '/../services/NotificationService.php';
                     $notifService = new NotificationService();
                     $cNum = $this->conn->query("SELECT complaint_number FROM complaints WHERE complaint_id = {$complaintId}")->fetchColumn() ?: "CMP-#{$complaintId}";
+                    $actionUrl = "../complaints/complaint-details.php?id=" . (int) $complaintId;
                     $notifService->notifyRoles(
                         ['Administrator', 'Lupon Clerk'],
                         'New Complaint Filed',
-                        "New complaint {$cNum} (" . ($data['complaint_title'] ?? 'General Dispute') . ") has been filed and initiated into Pre-Docketing (Paanyaya)."
+                        "New complaint {$cNum} (" . ($data['complaint_title'] ?? 'General Dispute') . ") has been filed and initiated into Pre-Docketing (Paanyaya).",
+                        $_SESSION['user_id'] ?? null,
+                        'info',
+                        $actionUrl
                     );
                 } catch (Throwable $ne) {
                     error_log('Failed to dispatch new complaint notification: ' . $ne->getMessage());

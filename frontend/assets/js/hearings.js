@@ -273,8 +273,10 @@ function renderTimeCell(item) {
         badge = `<span style="display:block; font-size:0.7rem; font-weight:600; color:#64748b; margin-top:2px;">Waiting (${compIn ? '1/2' : (respIn ? '1/2' : '0/2')})</span>`;
     }
 
-    if (delayMinutes >= 15 && !isBothReady && qStatus !== 'Standby' && qStatus !== 'In_Session' && qStatus !== 'Concluded') {
+    if (delayMinutes >= 60 && !isBothReady && qStatus !== 'Standby' && qStatus !== 'In_Session' && qStatus !== 'Concluded') {
         badge += `<span style="display:block; font-size:0.68rem; font-weight:700; color:#dc2626; background:#fee2e2; padding:1px 5px; border-radius:3px; margin-top:2px;">Delayed (${delayMinutes}m)</span>`;
+    } else if (delayMinutes > 0 && delayMinutes < 60 && !isBothReady && qStatus !== 'Standby' && qStatus !== 'In_Session' && qStatus !== 'Concluded') {
+        badge += `<span style="display:block; font-size:0.68rem; font-weight:600; color:#b45309; background:#fef3c7; padding:1px 5px; border-radius:3px; margin-top:2px;">Grace Period (${delayMinutes}m)</span>`;
     }
 
     return `<span class="hearing-time-text">${escapeHtml(timeStr)}</span>${badge}`;

@@ -53,7 +53,145 @@ class Hearing
              WHERE h.hearing_id = ?"
         );
         $stmt->execute([$id]);
-        return $stmt->fetch(PDO::FETCH_ASSOC);
+        $hearing = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$hearing) {
+            return false;
+        }
+
+        // Bidirectional resolution: resolve KP Form 12, Officer's Return, and underlying service documents
+        $caseId = (int) $hearing['case_id'];
+        $kp12DocId = !empty($hearing['kp12_document_id']) ? (int) $hearing['kp12_document_id'] : null;
+
+        if (!$kp12DocId && $hearing['hearing_type'] === 'Conciliation') {
+            $findDoc = $this->conn->prepare("
+                SELECT gd.document_id FROM generated_documents gd
+                INNER JOIN document_templates dt ON dt.template_id = gd.template_id
+                WHERE gd.case_id = ? AND dt.template_name = 'KP Form 12'
+                ORDER BY gd.document_id DESC LIMIT 1
+            ");
+            $findDoc->execute([$caseId]);
+            $foundDocId = $findDoc->fetchColumn();
+            if ($foundDocId) {
+                $kp12DocId = (int) $foundDocId;
+                $this->conn->prepare("UPDATE hearings SET kp12_document_id = ? WHERE hearing_id = ?")->execute([$kp12DocId, $id]);
+                $hearing['kp12_document_id'] = $kp12DocId;
+            }
+        }
+
+        // 1. Resolve Officer Returns
+        $retStmt = $this->conn->prepare("
+            SELECT hps.*,
+                   TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS serving_officer_name,
+                   TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS resident_name,
+                   dt.template_name
+            FROM hearing_party_services hps
+            LEFT JOIN users u ON u.user_id = hps.serving_officer
+            LEFT JOIN residents r ON r.resident_id = hps.resident_id
+            LEFT JOIN generated_documents gd ON gd.document_id = hps.document_id
+            LEFT JOIN document_templates dt ON dt.template_id = gd.template_id
+            WHERE hps.hearing_id = ? OR (hps.document_id IS NOT NULL AND hps.document_id = ?)
+            ORDER BY hps.service_date DESC, hps.service_id DESC
+        ");
+        $retStmt->execute([$id, $kp12DocId ?: 0]);
+        $hearing['officer_returns'] = $retStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // 2. Resolve Delivery Records
+        $delivStmt = $this->conn->prepare("
+            SELECT sd.*,
+                   TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS served_by_name
+            FROM summon_deliveries sd
+            LEFT JOIN users u ON u.user_id = COALESCE(sd.served_by_user_id, sd.served_by)
+            WHERE sd.hearing_id = ? OR (sd.case_id = ? AND sd.document_id = ?)
+            ORDER BY sd.attempt_number DESC, sd.delivery_id ASC
+        ");
+        $delivStmt->execute([$id, $caseId, $kp12DocId ?: 0]);
+        $hearing['deliveries'] = $delivStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // 3. Resolve Service Documents
+        $docStmt = $this->conn->prepare("
+            SELECT gd.*, dt.template_name,
+                   TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS generated_by_name
+            FROM generated_documents gd
+            INNER JOIN document_templates dt ON dt.template_id = gd.template_id
+            LEFT JOIN users u ON u.user_id = gd.generated_by
+            WHERE gd.case_id = ? AND (gd.document_id = ? OR dt.template_name IN ('KP Form 10', 'KP Form 11', 'KP Form 12'))
+            ORDER BY gd.document_id DESC
+        ");
+        $docStmt->execute([$caseId, $kp12DocId ?: 0]);
+        $hearing['service_documents'] = $docStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        return $hearing;
+    }
+
+    /**
+     * Bidirectional Query: Resolves initial conciliation hearing for a case with its corresponding
+     * Officer's Return, delivery records, and underlying service documents.
+     */
+    public function getInitialConciliationHearing(int $caseId): array|false
+    {
+        $stmt = $this->conn->prepare("
+            SELECT hearing_id FROM hearings
+            WHERE case_id = ? AND hearing_type = 'Conciliation'
+            ORDER BY hearing_date ASC, hearing_id ASC LIMIT 1
+        ");
+        $stmt->execute([$caseId]);
+        $hId = $stmt->fetchColumn();
+        if (!$hId) {
+            return false;
+        }
+        return $this->getById((int) $hId);
+    }
+
+    /**
+     * Bidirectional Linkage: Associates a KP Form 12 document record to the hearing.
+     */
+    public function associateKp12Document(int $hearingId, int $documentId): bool
+    {
+        $hStmt = $this->conn->prepare("SELECT case_id FROM hearings WHERE hearing_id = ?");
+        $hStmt->execute([$hearingId]);
+        $caseId = $hStmt->fetchColumn();
+        if (!$caseId) {
+            return false;
+        }
+
+        $this->conn->prepare("UPDATE hearings SET kp12_document_id = ? WHERE hearing_id = ?")->execute([$documentId, $hearingId]);
+        $this->conn->prepare("UPDATE summon_deliveries SET hearing_id = ? WHERE case_id = ? AND document_id = ? AND hearing_id IS NULL")->execute([$hearingId, $caseId, $documentId]);
+        $this->conn->prepare("UPDATE hearing_party_services SET hearing_id = ? WHERE document_id = ? AND (hearing_id IS NULL OR hearing_id = 0)")->execute([$hearingId, $documentId]);
+        return true;
+    }
+
+    /**
+     * Bidirectional Traceability: Resolves the hearing corresponding to a KP Form 12 document.
+     */
+    public function getHearingByKp12DocumentId(int $documentId): array|false
+    {
+        $stmt = $this->conn->prepare("
+            SELECT hearing_id FROM hearings WHERE kp12_document_id = ? LIMIT 1
+        ");
+        $stmt->execute([$documentId]);
+        $hId = $stmt->fetchColumn();
+
+        if (!$hId) {
+            $stmt2 = $this->conn->prepare("
+                SELECT hearing_id FROM summon_deliveries WHERE document_id = ? AND hearing_id IS NOT NULL LIMIT 1
+            ");
+            $stmt2->execute([$documentId]);
+            $hId = $stmt2->fetchColumn();
+        }
+
+        if (!$hId) {
+            $stmt3 = $this->conn->prepare("
+                SELECT hearing_id FROM hearing_party_services WHERE document_id = ? AND hearing_id IS NOT NULL LIMIT 1
+            ");
+            $stmt3->execute([$documentId]);
+            $hId = $stmt3->fetchColumn();
+        }
+
+        if (!$hId) {
+            return false;
+        }
+
+        return $this->getById((int) $hId);
     }
 
     public function getCase(int $caseId): array|false
@@ -181,7 +319,7 @@ class Hearing
      * @param int|null $excludeHearingId Optional hearing ID to exclude (e.g., during rescheduling)
      * @return array ['valid' => bool, 'same_day' => bool, 'prior_date' => bool, 'message' => string, 'latest_hearing' => ?array]
      */
-    public function validateHearingDateProgression(int $caseId, string $hearingDate, ?int $excludeHearingId = null): array
+    public function validateHearingDateProgression(int $caseId, string $hearingDate, ?int $excludeHearingId = null, ?string $hearingType = null): array
     {
         try {
             $targetDateObj = new DateTimeImmutable($hearingDate);
@@ -197,15 +335,28 @@ class Hearing
 
         $targetDay = $targetDateObj->format('Y-m-d');
 
-        $sql = "SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.status,
-                       DATE(h.hearing_date) AS hearing_day, c.case_number
-                FROM hearings h
-                INNER JOIN cases c ON c.case_id = h.case_id
-                WHERE h.case_id = ?
-                  AND h.status != 'Cancelled'
-                  AND NOT EXISTS (
-                      SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
-                  )";
+        if ($hearingType === 'Arbitration') {
+            $sql = "SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.status,
+                           DATE(h.hearing_date) AS hearing_day, c.case_number
+                    FROM hearings h
+                    INNER JOIN cases c ON c.case_id = h.case_id
+                    WHERE h.case_id = ?
+                      AND h.hearing_type = 'Arbitration'
+                      AND h.status != 'Cancelled'
+                      AND NOT EXISTS (
+                          SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
+                      )";
+        } else {
+            $sql = "SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.status,
+                           DATE(h.hearing_date) AS hearing_day, c.case_number
+                    FROM hearings h
+                    INNER JOIN cases c ON c.case_id = h.case_id
+                    WHERE h.case_id = ?
+                      AND h.status != 'Cancelled'
+                      AND NOT EXISTS (
+                          SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
+                      )";
+        }
         $params = [$caseId];
 
         if ($excludeHearingId !== null) {
@@ -323,21 +474,18 @@ class Hearing
             }
 
             $counts = $this->conn->prepare(
-                "SELECT hearing_type, COUNT(*) AS total FROM hearings WHERE case_id = ? AND hearing_type IN ('Mediation', 'Conciliation') GROUP BY hearing_type"
+                "SELECT hearing_type, COUNT(*) AS total FROM hearings WHERE case_id = ? AND hearing_type IN ('Mediation', 'Conciliation', 'Arbitration') GROUP BY hearing_type"
             );
             $counts->execute([$data['case_id']]);
-            $scheduled = ['Mediation' => 0, 'Conciliation' => 0];
+            $scheduled = ['Mediation' => 0, 'Conciliation' => 0, 'Arbitration' => 0];
             foreach ($counts->fetchAll(PDO::FETCH_ASSOC) as $row) {
                 $scheduled[$row['hearing_type']] = (int) $row['total'];
             }
 
-            // A Conciliation hearing is available only after an authorized
-            // transition has moved the case to Conciliation (for example, an
-            // approved failed-mediation referral or a lapsed-period referral).
-            // The number of mediation schedules must never infer that outcome.
-            $expectedType = ($caseRecord['case_status'] === 'Conciliation')
-                ? 'Conciliation'
-                : 'Mediation';
+            // A Conciliation or Arbitration hearing is determined by authorized stage transition
+            $expectedType = ($data['hearing_type'] === 'Arbitration' || $caseRecord['case_status'] === 'Arbitration')
+                ? 'Arbitration'
+                : (($caseRecord['case_status'] === 'Conciliation') ? 'Conciliation' : 'Mediation');
 
             // Active mediation attempt count for this case (excluding cancelled/superseded)
             $medQuery = $this->conn->prepare("
@@ -422,7 +570,7 @@ class Hearing
             }
 
             // Progression date validation: cannot schedule on the same day or any prior date relative to already booked hearings.
-            $dateProgression = $this->validateHearingDateProgression((int) $data['case_id'], $data['hearing_date']);
+            $dateProgression = $this->validateHearingDateProgression((int) $data['case_id'], $data['hearing_date'], null, $data['hearing_type'] ?? null);
             if (!$dateProgression['valid']) {
                 $this->conn->rollBack();
                 return [
@@ -592,6 +740,13 @@ class Hearing
                 $complaintStatus->execute([$data['case_id']]);
                 $history = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, 'Conciliation', ?, ?)");
                 $history->execute([$data['case_id'], 'Case moved to conciliation when the 1st Conciliation was scheduled.', $userId]);
+            } elseif ($expectedType === 'Arbitration' && $scheduled['Arbitration'] === 0) {
+                $status = $this->conn->prepare("UPDATE cases SET case_status = 'Arbitration' WHERE case_id = ?");
+                $status->execute([$data['case_id']]);
+                $complaintStatus = $this->conn->prepare("UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = 'Arbitration' WHERE c.case_id = ?");
+                $complaintStatus->execute([$data['case_id']]);
+                $history = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, 'Arbitration', ?, ?)");
+                $history->execute([$data['case_id'], 'Case moved to Arbitration when the 1st Arbitration Hearing was scheduled.', $userId]);
             }
 
             $this->conn->commit();
@@ -608,7 +763,23 @@ class Hearing
                 }
             }
 
-            return ['success' => true, 'hearing_id' => $hearingId, 'sequence' => $scheduled[$expectedType] + 1, 'hearing_type' => $expectedType];
+            // Link existing KP Form 12 document to initial Conciliation Hearing
+            if ($expectedType === 'Conciliation') {
+                $findKp12 = $this->conn->prepare("
+                    SELECT gd.document_id FROM generated_documents gd
+                    INNER JOIN document_templates dt ON dt.template_id = gd.template_id
+                    WHERE gd.case_id = ? AND dt.template_name = 'KP Form 12'
+                    ORDER BY gd.document_id DESC LIMIT 1
+                ");
+                $findKp12->execute([$data['case_id']]);
+                $kp12Doc = $findKp12->fetchColumn();
+                if ($kp12Doc) {
+                    $this->associateKp12Document($hearingId, (int) $kp12Doc);
+                }
+            }
+
+            $seq = ($expectedType === 'Arbitration') ? ($scheduled['Arbitration'] + 1) : (($expectedType === 'Mediation') ? ($mediationAttempt ?: ($scheduled['Mediation'] + 1)) : ($scheduled['Conciliation'] + 1));
+            return ['success' => true, 'hearing_id' => $hearingId, 'sequence' => $seq, 'hearing_type' => $expectedType];
         } catch (Throwable $exception) {
             if ($this->conn->inTransaction()) {
                 $this->conn->rollBack();

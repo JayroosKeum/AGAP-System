@@ -157,7 +157,7 @@ function getStageSessionOrdinalLabel(stageType, index) {
     const s = ["th", "st", "nd", "rd"];
     const v = idx % 100;
     const ord = idx + (s[(v - 20) % 10] || s[v] || s[0]);
-    const stage = (stageType === 'Conciliation') ? 'Conciliation' : 'Mediation';
+    const stage = (stageType === 'Conciliation') ? 'Conciliation' : ((stageType === 'Arbitration') ? 'Arbitration Hearing' : 'Mediation');
     return `${ord} ${stage}`;
 }
 
@@ -374,6 +374,65 @@ function printAllPangkatNotices() {
     });
 }
 window.printAllPangkatNotices = printAllPangkatNotices;
+
+function openKpDocumentPreviewModal(documentId, templateName, caseNumber, caseId = null) {
+    const modal = document.getElementById('kpDocumentPreviewModal');
+    const iframe = document.getElementById('kpDocPreviewIframe');
+    const heading = document.getElementById('kpDocModalHeading');
+    const sub = document.getElementById('kpDocModalSub');
+    const dlBtn = document.getElementById('btnDownloadKpDocPdf');
+    if (!modal || !iframe) return;
+
+    const tName = String(templateName || 'KP Form').trim();
+    if (heading) {
+        heading.textContent = `${tName} Preview`;
+    }
+    if (sub && caseNumber) {
+        sub.textContent = `Barangay Tumana Lupong Tagapamayapa · Case #${caseNumber}`;
+    }
+
+    const baseApi = (typeof getStageApiUrl === 'function')
+        ? getStageApiUrl('documents/kp-form.php')
+        : `../../../backend/api/documents/kp-form.php`;
+
+    // Use kp-form.php: checks physical file first; if missing, dynamically renders clean, printable HTML
+    let previewUrl = `${baseApi}?document_id=${encodeURIComponent(documentId)}&preview=1&bare=1&_t=${Date.now()}`;
+    let downloadUrl = `${baseApi}?document_id=${encodeURIComponent(documentId)}&pdf=1`;
+
+    // Fallback using case_id and form_code if document_id is missing
+    const resolvedCaseId = caseId || stageWorkspaceState?.caseId || (new URLSearchParams(window.location.search)).get('case_id');
+    if ((!documentId || Number(documentId) <= 0) && resolvedCaseId) {
+        previewUrl = `${baseApi}?case_id=${encodeURIComponent(resolvedCaseId)}&form_code=${encodeURIComponent(tName)}&preview=1&bare=1&_t=${Date.now()}`;
+        downloadUrl = `${baseApi}?case_id=${encodeURIComponent(resolvedCaseId)}&form_code=${encodeURIComponent(tName)}&pdf=1`;
+    }
+
+    iframe.src = previewUrl;
+
+    if (dlBtn) {
+        dlBtn.href = downloadUrl;
+        dlBtn.style.display = 'inline-flex';
+    }
+
+    modal.style.display = 'flex';
+}
+window.openKpDocumentPreviewModal = openKpDocumentPreviewModal;
+
+function closeKpDocumentPreviewModal() {
+    const modal = document.getElementById('kpDocumentPreviewModal');
+    const iframe = document.getElementById('kpDocPreviewIframe');
+    if (iframe) iframe.src = 'about:blank';
+    if (modal) modal.style.display = 'none';
+}
+window.closeKpDocumentPreviewModal = closeKpDocumentPreviewModal;
+
+function printKpDocIframe() {
+    const iframe = document.getElementById('kpDocPreviewIframe');
+    if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+    }
+}
+window.printKpDocIframe = printKpDocIframe;
 
 function legacyOpenKPFormPreview(caseId, formCode, hearingId = null) {
     if (!caseId) {
@@ -873,7 +932,16 @@ function renderSessionsList(data, stage) {
         } else if (isConcluded) {
             queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;">Concluded (${s.actual_duration_minutes || s.duration_minutes || 45} mins)</span>`;
         } else {
-            queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0;">Waiting Room</span>`;
+            const dateObjForBadge = new Date(s.hearing_date ? s.hearing_date.replace(' ', 'T') : '');
+            const nowObjForBadge = new Date();
+            const elapsedMins = (!isNaN(dateObjForBadge.getTime()) && nowObjForBadge > dateObjForBadge) ? Math.floor((nowObjForBadge - dateObjForBadge) / 60000) : 0;
+            if (elapsedMins >= 60) {
+                queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5;">Delayed (${elapsedMins}m)</span>`;
+            } else if (elapsedMins > 0) {
+                queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: #fef3c7; color: #b45309; border: 1px solid #fde68a;">Grace Period (${elapsedMins}m)</span>`;
+            } else {
+                queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0;">Waiting Room</span>`;
+            }
         }
 
         let partyAttHtml = '';
@@ -978,19 +1046,36 @@ function renderSessionsList(data, stage) {
                 ${(() => {
                     const dateObj = new Date(s.hearing_date ? s.hearing_date.replace(' ', 'T') : '');
                     const nowObj = new Date();
-                    const isDelayed15 = (!isConcluded && !isInSession && !isReady && !isStandby && !isNaN(dateObj.getTime()) && (nowObj - dateObj) > 15 * 60000);
-                    if (!isDelayed15) return '';
-                    return `
-                        <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 14px; margin-bottom: 12px; font-size: 0.8rem; color: #991b1b; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                            <div>
-                                <strong>15-Minute Grace Period Expired:</strong> Scheduled call time has passed and parties remain incomplete.
+                    const elapsedMins = (!isNaN(dateObj.getTime()) && nowObj > dateObj) ? Math.floor((nowObj - dateObj) / 60000) : 0;
+                    const isGraceExpired = (!isConcluded && !isInSession && !isReady && !isStandby && elapsedMins >= 60);
+                    const isGraceActive = (!isConcluded && !isInSession && !isReady && !isStandby && elapsedMins > 0 && elapsedMins < 60);
+
+                    if (isGraceExpired) {
+                        return `
+                            <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 14px; margin-bottom: 12px; font-size: 0.8rem; color: #991b1b; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                                <div>
+                                    <strong>1-Hour Grace Period Expired:</strong> Scheduled call time has passed by ${elapsedMins} minutes and parties remain incomplete.
+                                </div>
+                                <div style="display: flex; gap: 6px;">
+                                    <button type="button" class="btn-secondary" onclick="handleDocketStandby(${s.hearing_id}, true)" style="font-size: 0.74rem; padding: 4px 8px; background: #fff;">Move to Standby</button>
+                                    <button type="button" class="btn-secondary" onclick="openAttendanceModal(${s.hearing_id})" style="font-size: 0.74rem; padding: 4px 8px; background: #fee2e2; border-color: #fca5a5; color: #991b1b;">Record Non-Appearance</button>
+                                </div>
                             </div>
-                            <div style="display: flex; gap: 6px;">
-                                <button type="button" class="btn-secondary" onclick="handleDocketStandby(${s.hearing_id}, true)" style="font-size: 0.74rem; padding: 4px 8px; background: #fff;">Move to Standby</button>
-                                <button type="button" class="btn-secondary" onclick="openAttendanceModal(${s.hearing_id})" style="font-size: 0.74rem; padding: 4px 8px; background: #fee2e2; border-color: #fca5a5; color: #991b1b;">Record Non-Appearance</button>
+                        `;
+                    }
+                    if (isGraceActive) {
+                        return `
+                            <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 8px 14px; margin-bottom: 12px; font-size: 0.8rem; color: #92400e; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                                <div>
+                                    <strong>1-Hour Grace Period Active:</strong> Call time was ${elapsedMins}m ago (${60 - elapsedMins}m remaining before non-appearance action).
+                                </div>
+                                <div style="display: flex; gap: 6px;">
+                                    <button type="button" class="btn-secondary" onclick="handleDocketStandby(${s.hearing_id}, true)" style="font-size: 0.74rem; padding: 4px 8px; background: #fff;" title="Put on standby to keep room available for other ready cases">Put on Standby</button>
+                                </div>
                             </div>
-                        </div>
-                    `;
+                        `;
+                    }
+                    return '';
                 })()}
 
                 <!-- Daily Docket Live Arrival / Readiness Tracking Bar -->
@@ -1205,6 +1290,7 @@ function getOutcomeOptionsForSession(session, mode) {
         opts.push({ val: 'Arbitration', label: 'Submit to Voluntary Arbitration (KP Form 14)' });
         opts.push({ val: 'Repudiated', label: 'Repudiated Settlement' });
         opts.push({ val: 'Party Absent', label: 'Non-Appearance / Certified for Show Cause' });
+        opts.push({ val: 'Dismissed', label: 'Dismiss Complaint — Complainant Absent / Non-Appearance (KP Rules)' });
         opts.push({ val: 'Rescheduled', label: 'Rescheduled — Session Reset' });
         return opts.map(o => `<option value="${o.val}" ${curOutcome === o.val ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('');
     } else if (mode === 'Conciliation') {
@@ -1226,6 +1312,7 @@ function getOutcomeOptionsForSession(session, mode) {
         opts.push({ val: 'Arbitration', label: 'Submit to Voluntary Arbitration (KP Form 14)' });
         opts.push({ val: 'Repudiated', label: 'Repudiated Settlement' });
         opts.push({ val: 'Party Absent', label: 'Party Absent / Non-appearance Recorded' });
+        opts.push({ val: 'Dismissed', label: 'Dismiss Complaint — Complainant Absent / Non-Appearance (KP Rules)' });
         opts.push({ val: 'Rescheduled', label: 'Rescheduled — Session Reset' });
         return opts.map(o => `<option value="${o.val}" ${curOutcome === o.val ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('');
     } else if (mode === 'Arbitration') {
@@ -1247,10 +1334,13 @@ window.getOutcomeOptionsForSession = getOutcomeOptionsForSession;
 function renderSingleSessionMinutesCard(session, mode, allSessions) {
     const hId = session.hearing_id;
     const sessionIndex = Number(session.session_index || 1);
-    const sessionLabel = `#${sessionIndex} ${getStageSessionOrdinalLabel(mode || stageWorkspaceState.stageType, sessionIndex)}`;
+    const sessionLabel = getStageSessionOrdinalLabel(mode || stageWorkspaceState.mode || stageWorkspaceState.stageType, sessionIndex);
     const isFinalized = (session.minutes_status === 'Finalized');
     const readonlyAttr = isFinalized ? 'readonly disabled' : '';
-    const curOutcome = session.session_outcome || 'Pending';
+    let curOutcome = session.session_outcome || 'Pending';
+    if (session.complainant_attendance === 'Absent' && (curOutcome === 'Pending' || curOutcome === 'Party Absent')) {
+        curOutcome = 'Dismissed';
+    }
     const outcomeOptions = getOutcomeOptionsForSession(session, mode);
 
     const compAtt = session.complainant_attendance || 'Pending';
@@ -1356,9 +1446,6 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
                             Minutes of the Meeting &amp; Hearing: ${escapeHtml(sessionLabel)}
                         </h3>
                     </div>
-                    <p style="margin: 4px 0 0; font-size: 0.83rem; color: #64748b;">
-                        Record formal proceedings, statements, agreed terms, and disposition for <strong>${escapeHtml(sessionLabel)}</strong> (${formatDateTimeReadable(session.hearing_date)}).
-                    </p>
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                     <span style="font-size: 0.78rem; padding: 4px 10px; border-radius: 9999px; font-weight: 700; ${badgeColor}">
@@ -1778,14 +1865,14 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false, hearingId 
         bannerEl.innerHTML = `
             <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                 <div style="color: #166534; font-size: 0.85rem;">
-                    <strong style="font-size: 0.92rem; display: block; color: #14532d;">Amicable Settlement Reached (Kasunduan)</strong>
-                    Parties have agreed on settlement terms. Finalize the minutes, then preview or print the formal Amicable Settlement (KP Form 16).
+                    <strong style="font-size: 0.95rem; color: #14532d; display: block;">Amicable Settlement Reached (Kasunduan)</strong>
+                    <div style="font-size: 0.82rem; color: #15803d; margin-top: 3px;">Parties agreed on settlement terms. Click below to record settlement and proceed to KP Form 16.</div>
                 </div>
                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <button type="button" class="btn-create" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 16', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
+                    <button type="button" class="btn-create" onclick="issueSettledOutcome(${Number(activeHearingId || 0)})" style="font-size: 0.82rem; padding: 7px 16px; display: inline-flex; align-items: center; gap: 5px; background: #16a34a; border-color: #16a34a; color: #ffffff; border-radius: 6px; font-weight: 700; cursor: pointer;">
                         Open Amicable Settlement &rarr;
                     </button>
-                    <button type="button" class="btn-secondary" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 16', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #86efac; color: #166534; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+                    <button type="button" class="btn-secondary" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 16', ${Number(activeHearingId || 0)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #86efac; color: #166534; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
                         Preview / Print KP Form 16
                     </button>
                 </div>
@@ -1860,14 +1947,8 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false, hearingId 
                     Both parties have voluntarily agreed in writing to submit their dispute to binding arbitration under RA 7160 Sec. 413.
                 </p>
                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <button type="button" class="btn-create" onclick="openEmbeddedScheduleModal('Arbitration')" style="background: #d97706; border-color: #d97706; font-size: 0.82rem; padding: 7px 14px;">
-                        Schedule Arbitration Session &rarr;
-                    </button>
-                    <button type="button" class="btn-secondary" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 14', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #fde68a; color: #92400e; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
-                        Preview KP Form 14
-                    </button>
-                    <button type="button" class="btn-secondary" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 15', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #fde68a; color: #92400e; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
-                        Preview KP Form 15
+                    <button type="button" class="btn-create" onclick="issueArbitrationOutcome(${Number(activeHearingId || 0)})" style="background: #d97706; border-color: #d97706; font-size: 0.82rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+                        Issue Arbitration &rarr;
                     </button>
                 </div>
             </div>
@@ -1911,6 +1992,15 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false, hearingId 
                 </div>
             </div>
         `;
+    } else if (outcomeVal === 'Dismissed') {
+        bannerEl.innerHTML = `
+            <div style="background: #fef2f2; border: 1.5px solid #fca5a5; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div style="color: #991b1b; font-size: 0.85rem;">
+                    <strong style="font-size: 0.92rem; display: block; color: #7f1d1d;">Dismiss Complaint / I-dismiss ang Kaso (Complainant Absent)</strong>
+                    Hindi dumalo ang nagreklamo sa takdang oras ng pagdinig. Kapag pinalisa ang katitikan, ang kaso at reklamo ay mamarkahang <strong>Dismissed</strong> alinsunod sa Katarungang Pambarangay rules (RA 7160 Sec. 410 / Sec. 412).
+                </div>
+            </div>
+        `;
     } else {
         bannerEl.innerHTML = '';
     }
@@ -1935,7 +2025,7 @@ window.selectInlineMinutesSession = selectInlineMinutesSession;
 window.openMinutesModal = selectInlineMinutesSession;
 window.closeMinutesModal = function() {};
 
-async function saveHearingMinutes(status = 'Draft', targetHearingId = null) {
+async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skipConfirm = false) {
     const hearingId = targetHearingId || document.getElementById('minHearingId')?.value || stageWorkspaceState.activeSessionHearingId;
     if (!hearingId) {
         notifyUser('No hearing session selected.', 'warning');
@@ -1956,7 +2046,7 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null) {
         return;
     }
 
-    if (status === 'Finalized') {
+    if (status === 'Finalized' && !skipConfirm) {
         const confirmLock = confirm(
             'Are you sure you want to FINALIZE this session minutes?\n\n' +
             'Once finalized, this official Lupong Tagapamayapa record will be locked and protected from further modification.'
@@ -3111,6 +3201,15 @@ async function saveStreamlinedAttendance() {
     const compAtt = document.querySelector('input[name="att_comp_attendance"]:checked')?.value || 'Present';
     const respAtt = document.querySelector('input[name="att_resp_attendance"]:checked')?.value || 'Present';
 
+    if (compAtt === 'Absent') {
+        const minOutcomeEl = document.getElementById(`minOutcome_${hearingId}`);
+        if (minOutcomeEl && (minOutcomeEl.value === 'Pending' || minOutcomeEl.value === 'Party Absent')) {
+            minOutcomeEl.value = 'Dismissed';
+            if (typeof handleMinutesOutcomeChange === 'function') {
+                handleMinutesOutcomeChange('Dismissed', true, hearingId);
+            }
+        }
+    }
     const currentData = stageWorkspaceState.lastAttendanceData || {};
     const parties = currentData.parties || [];
 
@@ -3172,6 +3271,22 @@ async function saveStreamlinedAttendance() {
 }
 window.saveStreamlinedAttendance = saveStreamlinedAttendance;
 
+function handleCompAttendanceRadioChange(val) {
+    const notice = document.getElementById('wsCompAbsentNotice');
+    if (notice) notice.style.display = (val === 'Absent') ? 'block' : 'none';
+    const hId = stageWorkspaceState.currentHearingId;
+    if (val === 'Absent') {
+        const minOutcomeEl = document.getElementById(`minOutcome_${hId}`);
+        if (minOutcomeEl && (minOutcomeEl.value === 'Pending' || minOutcomeEl.value === 'Party Absent')) {
+            minOutcomeEl.value = 'Dismissed';
+            if (typeof handleMinutesOutcomeChange === 'function') {
+                handleMinutesOutcomeChange('Dismissed', true, hId);
+            }
+        }
+    }
+}
+window.handleCompAttendanceRadioChange = handleCompAttendanceRadioChange;
+
 function renderAttendanceModalForm(data) {
     const isCard = !!document.getElementById('wsAttCardBody');
     const bodyEl = document.getElementById('wsAttCardBody') || document.getElementById('wsAttModalBody');
@@ -3188,14 +3303,8 @@ function renderAttendanceModalForm(data) {
     const delayRemarksVal = hearing.attendance_notes || '';
     const isSaved = Boolean(hearing.attendance_recorded_at);
 
-    let compIsPresent = true;
-    let respIsPresent = true;
-    if (hearing.complainant_attendance) {
-        compIsPresent = (hearing.complainant_attendance !== 'Absent');
-    }
-    if (hearing.respondent_attendance) {
-        respIsPresent = (hearing.respondent_attendance !== 'Absent');
-    }
+    let compAtt = hearing.complainant_attendance || 'Present';
+    let respAtt = hearing.respondent_attendance || 'Present';
 
     bodyEl.innerHTML = `
         <div class="streamlined-attendance-container" style="display: flex; flex-direction: column; gap: 16px;">
@@ -3246,6 +3355,9 @@ function renderAttendanceModalForm(data) {
                     <button type="button" class="delay-helper-pill pill-warning" onclick="appendDelayRemark('Nahuli ang panig')">
                         • Nahuli ang panig
                     </button>
+                    <button type="button" class="delay-helper-pill pill-warning" style="background: #fef2f2; color: #991b1b; border-color: #fca5a5;" onclick="appendDelayRemark('Lumampas sa 1-hour grace period / Hindi sumipot')">
+                        • Lumampas sa 1-hour grace period
+                    </button>
                     <button type="button" class="delay-helper-pill pill-success" onclick="appendDelayRemark('Nasa oras')">
                         • Nasa oras
                     </button>
@@ -3260,33 +3372,44 @@ function renderAttendanceModalForm(data) {
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                     <div>
                         <span class="party-att-col-title">Nagpaanyaya (Complainant):</span>
-                        <div style="display: flex; gap: 16px; align-items: center;">
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
                             <label class="party-att-radio-label present">
-                                <input type="radio" name="att_comp_attendance" value="Present" ${compIsPresent ? 'checked' : ''} style="accent-color: #16a34a; width: 16px; height: 16px;">
-                                <span>Dumalo (Present)</span>
+                                <input type="radio" name="att_comp_attendance" value="Present" onchange="handleCompAttendanceRadioChange(this.value)" ${compAtt === 'Present' ? 'checked' : ''} style="accent-color: #16a34a; width: 16px; height: 16px;">
+                                <span>🟢 Dumalo sa Oras (Present)</span>
+                            </label>
+                            <label class="party-att-radio-label warning">
+                                <input type="radio" name="att_comp_attendance" value="Late" onchange="handleCompAttendanceRadioChange(this.value)" ${compAtt === 'Late' ? 'checked' : ''} style="accent-color: #d97706; width: 16px; height: 16px;">
+                                <span>🟡 Nahuli / Late (Pasok sa 1-hour grace period)</span>
                             </label>
                             <label class="party-att-radio-label absent">
-                                <input type="radio" name="att_comp_attendance" value="Absent" ${!compIsPresent ? 'checked' : ''} style="accent-color: #dc2626; width: 16px; height: 16px;">
-                                <span>Hindi Dumalo (Absent)</span>
+                                <input type="radio" name="att_comp_attendance" value="Absent" onchange="handleCompAttendanceRadioChange(this.value)" ${compAtt === 'Absent' ? 'checked' : ''} style="accent-color: #dc2626; width: 16px; height: 16px;">
+                                <span>🔴 Hindi Dumalo (Absent - Lampas 1 oras)</span>
                             </label>
                         </div>
                     </div>
                     <div>
                         <span class="party-att-col-title">Inanyayahan (Respondent):</span>
-                        <div style="display: flex; gap: 16px; align-items: center;">
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
                             <label class="party-att-radio-label present">
-                                <input type="radio" name="att_resp_attendance" value="Present" ${respIsPresent ? 'checked' : ''} style="accent-color: #16a34a; width: 16px; height: 16px;">
-                                <span>Dumalo (Present)</span>
+                                <input type="radio" name="att_resp_attendance" value="Present" ${respAtt === 'Present' ? 'checked' : ''} style="accent-color: #16a34a; width: 16px; height: 16px;">
+                                <span>🟢 Dumalo sa Oras (Present)</span>
+                            </label>
+                            <label class="party-att-radio-label warning">
+                                <input type="radio" name="att_resp_attendance" value="Late" ${respAtt === 'Late' ? 'checked' : ''} style="accent-color: #d97706; width: 16px; height: 16px;">
+                                <span>🟡 Nahuli / Late (Pasok sa 1-hour grace period)</span>
                             </label>
                             <label class="party-att-radio-label absent">
-                                <input type="radio" name="att_resp_attendance" value="Absent" ${!respIsPresent ? 'checked' : ''} style="accent-color: #dc2626; width: 16px; height: 16px;">
-                                <span>Hindi Dumalo (Absent)</span>
+                                <input type="radio" name="att_resp_attendance" value="Absent" ${respAtt === 'Absent' ? 'checked' : ''} style="accent-color: #dc2626; width: 16px; height: 16px;">
+                                <span>🔴 Hindi Dumalo (Absent - Lampas 1 oras)</span>
                             </label>
                         </div>
                     </div>
                 </div>
             </div>
 
+            <div id="wsCompAbsentNotice" style="display: ${compAtt === 'Absent' ? 'block' : 'none'}; background: #fef2f2; border: 1px solid #fca5a5; border-radius: 6px; padding: 8px 12px; margin-bottom: 8px; font-size: 0.82rem; color: #991b1b;">
+                ⚠️ <strong>Complainant is Absent:</strong> Ito ay nagbibigay ng opsyon upang i-dismiss ang reklamo alinsunod sa KP rules sa katitikan ng pagdinig (session minutes).
+            </div>
             <!-- Save Attendance Button -->
             <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
                 <button type="button" class="btn-create" id="btnSaveAttendanceStreamlined" onclick="saveStreamlinedAttendance()" style="padding: 8px 22px; font-size: 0.88rem; font-weight: 600; background: #0f172a; color: #fff; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
@@ -3753,12 +3876,12 @@ function printHearingMinutes(hearingId) {
                     <tr>
                         <td><strong>Nagsusumbong (Complainant)</strong></td>
                         <td>${escapeHtml(caseData.complainant_names || '—')}</td>
-                        <td>${compAtt === 'Present' ? 'Dumalo (Present)' : 'Hindi Dumalo (Absent)'}</td>
+                        <td>${compAtt === 'Late' ? 'Nahuli (Late)' : (compAtt === 'Present' ? 'Dumalo (Present)' : 'Hindi Dumalo (Absent)')}</td>
                     </tr>
                     <tr>
                         <td><strong>Ipinagsusumbong (Respondent)</strong></td>
                         <td>${escapeHtml(caseData.respondent_names || '—')}</td>
-                        <td>${respAtt === 'Present' ? 'Dumalo (Present)' : 'Hindi Dumalo (Absent)'}</td>
+                        <td>${respAtt === 'Late' ? 'Nahuli (Late)' : (respAtt === 'Present' ? 'Dumalo (Present)' : 'Hindi Dumalo (Absent)')}</td>
                     </tr>
                 </tbody>
             </table>
@@ -3820,6 +3943,136 @@ function handleEmbeddedStageOutcomeChange(outcome) {
 }
 window.handleEmbeddedStageOutcomeChange = handleEmbeddedStageOutcomeChange;
 
+
+/**
+ * Issue Arbitration from Mediation or Conciliation Hearing Minutes
+ * Automatically records/saves the hearing outcome as Voluntary Arbitration,
+ * unlocks the Outcomes / Arbitration Tab, and immediately redirects the user.
+ */
+async function issueArbitrationOutcome(hearingId = null) {
+    const hId = hearingId || stageWorkspaceState.activeSessionHearingId;
+    const caseId = stageWorkspaceState.caseId;
+    let complaintId = stageWorkspaceState.complaintId;
+    const mode = stageWorkspaceState.mode || 'Mediation';
+    const remarks = (document.getElementById(`minOutcomeRemarks_${hId}`) || document.getElementById('minOutcomeRemarks') || document.getElementById('stageOutcomeRemarks'))?.value || 'Parties voluntarily agreed in writing to submit their dispute to binding arbitration under RA 7160 Sec. 413.';
+
+    try {
+        const payload = {
+            case_id: Number(caseId),
+            stage_type: mode,
+            outcome: 'Arbitration',
+            remarks: remarks
+        };
+        const res = await fetch(getStageApiUrl('stages/outcome.php'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (!json.success) {
+            notifyUser(json.message || 'Unable to record arbitration outcome.', 'error');
+            return;
+        }
+
+        if (json.complaint_id) {
+            complaintId = json.complaint_id;
+        }
+
+        // Also save hearing minutes if session is active
+        if (hId) {
+            const outcomeEl = getMinutesField('minOutcome', hId);
+            if (outcomeEl) outcomeEl.value = 'Arbitration';
+            try {
+                if (typeof saveHearingMinutes === 'function') {
+                    await saveHearingMinutes('Finalized', hId, true);
+                }
+            } catch (minErr) {
+                console.warn('saveHearingMinutes note:', minErr);
+            }
+        }
+
+        // Unlock Outcomes tab
+        unlockOutcomesTab(caseId);
+
+        // Redirect immediately to the Outcomes / Arbitration tab (tab-arbitration)
+        if (complaintId) {
+            window.location.href = `../complaints/complaint-details.php?id=${encodeURIComponent(complaintId)}&tab=tab-arbitration#caseWorkspaceSection`;
+        } else {
+            window.location.href = `../complaints/complaint-details.php?tab=tab-arbitration`;
+        }
+    } catch (err) {
+        console.error('issueArbitrationOutcome error:', err);
+        notifyUser('A network error occurred while issuing arbitration.', 'error');
+    }
+}
+window.issueArbitrationOutcome = issueArbitrationOutcome;
+
+/**
+ * Issue Settled Outcome from Mediation or Conciliation Hearing Minutes
+ * Automatically records/saves the hearing outcome as Settled,
+ * unlocks the Outcomes Tab, and immediately redirects the user to Amicable Settlement.
+ */
+async function issueSettledOutcome(hearingId = null) {
+    const hId = hearingId || stageWorkspaceState.activeSessionHearingId;
+    const caseId = stageWorkspaceState.caseId;
+    let complaintId = stageWorkspaceState.complaintId || new URLSearchParams(window.location.search).get('complaint_id');
+    const mode = stageWorkspaceState.mode || 'Mediation';
+    const remarks = (document.getElementById(`minOutcomeRemarks_${hId}`) || document.getElementById('minOutcomeRemarks') || document.getElementById('stageOutcomeRemarks'))?.value || 'Parties reached an amicable settlement (Kasunduan).';
+
+    try {
+        const payload = {
+            case_id: Number(caseId),
+            stage_type: mode,
+            outcome: 'Settled',
+            remarks: remarks
+        };
+        const res = await fetch(getStageApiUrl('stages/outcome.php'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (!json.success) {
+            notifyUser(json.message || 'Unable to record amicable settlement outcome.', 'error');
+            return;
+        }
+
+        if (json.complaint_id) {
+            complaintId = json.complaint_id;
+        }
+
+        // Also save hearing minutes if session is active
+        if (hId) {
+            const outcomeEl = getMinutesField('minOutcome', hId);
+            if (outcomeEl) outcomeEl.value = 'Settled';
+            try {
+                if (typeof saveHearingMinutes === 'function') {
+                    await saveHearingMinutes('Finalized', hId, true);
+                }
+            } catch (minErr) {
+                console.warn('saveHearingMinutes note:', minErr);
+            }
+        }
+
+        // Unlock Outcomes tab in session
+        unlockOutcomesTab(caseId);
+        if (complaintId) {
+            sessionStorage.setItem('agap_outcomes_unlocked_' + complaintId, '1');
+        }
+
+        // Redirect immediately to the Outcomes tab (tab-arbitration)
+        if (complaintId) {
+            window.location.href = `../complaints/complaint-details.php?id=${encodeURIComponent(complaintId)}&tab=tab-arbitration#caseWorkspaceSection`;
+        } else {
+            window.location.href = `../complaints/complaint-details.php?tab=tab-arbitration`;
+        }
+    } catch (err) {
+        console.error('issueSettledOutcome error:', err);
+        notifyUser('A network error occurred while opening amicable settlement.', 'error');
+    }
+}
+window.issueSettledOutcome = issueSettledOutcome;
+
 async function submitRecordOutcome(e) {
     e.preventDefault();
     const btn = document.getElementById('submitOutcomeBtn');
@@ -3847,9 +4100,13 @@ async function submitRecordOutcome(e) {
             closeRecordOutcomeModal();
             await loadStageData();
             if (outcomeVal === 'Arbitration') {
-                // Use the same in-workspace booking interface as mediation and
-                // conciliation, now configured for voluntary arbitration.
-                openScheduleModal(null, 'Arbitration');
+                unlockOutcomesTab(stageWorkspaceState.caseId);
+                const compId = json.complaint_id || stageWorkspaceState.complaintId;
+                if (compId) {
+                    window.location.href = `../complaints/complaint-details.php?id=${encodeURIComponent(compId)}&tab=tab-arbitration#caseWorkspaceSection`;
+                } else {
+                    window.location.href = `../complaints/complaint-details.php?tab=tab-arbitration`;
+                }
             } else if (outcomeVal === 'Settled') {
                 openKpFormModal(stageWorkspaceState.caseId, 'KP Form 16');
             } else if (outcomeVal === 'Repudiated') {
@@ -3871,6 +4128,262 @@ async function submitRecordOutcome(e) {
  * MODAL: Refer to Pangkat ng Tagapagkasundo (KP Form 10)
  * -----------------------------------------------------------------------------
  */
+let referCalendarWindowMeta = null;
+
+function initReferCalendar() {
+    const dateInput = document.getElementById('referConciliationDate');
+    const today = new Date();
+    
+    // Set min date to tomorrow
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const minDateStr = tomorrow.toISOString().split('T')[0];
+    if (dateInput) {
+        dateInput.min = minDateStr;
+        if (!dateInput.value) {
+            // Pick next non-Tuesday weekday (Mon=1, Wed=3, Thu=4, Fri=5)
+            let cur = new Date(tomorrow);
+            while (cur.getDay() === 0 || cur.getDay() === 6 || cur.getDay() === 2) {
+                cur.setDate(cur.getDate() + 1);
+            }
+            dateInput.value = cur.toISOString().split('T')[0];
+        }
+    }
+
+    const timeInput = document.getElementById('referConciliationTime');
+    if (timeInput && !timeInput.value) {
+        timeInput.value = '09:00';
+    }
+
+    checkReferScheduleConflict();
+}
+
+function handleReferDateInputChange() {
+    const dateInput = document.getElementById('referConciliationDate');
+    const conflictAlert = document.getElementById('referScheduleConflictAlert');
+    if (!dateInput || !dateInput.value) return;
+
+    const selectedDate = new Date(dateInput.value + 'T00:00:00');
+    const dow = selectedDate.getDay();
+
+    if (dow === 0 || dow === 6) {
+        if (conflictAlert) {
+            conflictAlert.textContent = 'Conciliation hearings cannot be scheduled on weekends.';
+            conflictAlert.style.display = 'block';
+        }
+        return;
+    }
+
+    if (dow === 2) {
+        if (conflictAlert) {
+            conflictAlert.textContent = 'Tuesdays reserved exclusively for Punong Barangay Mediation. Conciliation hearings must be scheduled on non-Tuesday weekdays (Mondays, Wednesdays, Thursdays, or Fridays).';
+            conflictAlert.style.display = 'block';
+        }
+        return;
+    }
+
+    if (conflictAlert) conflictAlert.style.display = 'none';
+
+    if (referCalendarWindowMeta) {
+        renderReferVisualDays(referCalendarWindowMeta, dateInput.value);
+    }
+    checkReferScheduleConflict();
+}
+
+function selectReferConciliationSlot(timeStr) {
+    const timeInput = document.getElementById('referConciliationTime');
+    if (timeInput) timeInput.value = timeStr;
+
+    document.querySelectorAll('#referSlotBtnGroup .refer-slot-btn').forEach(btn => {
+        if (btn.dataset.time === timeStr) {
+            btn.classList.add('active');
+            btn.style.borderColor = '#0284c7';
+            btn.style.background = '#e0f2fe';
+            btn.style.color = '#0369a1';
+            btn.style.borderWidth = '1.5px';
+        } else {
+            btn.classList.remove('active');
+            btn.style.borderColor = '#cbd5e1';
+            btn.style.background = '#ffffff';
+            btn.style.color = '#334155';
+            btn.style.borderWidth = '1px';
+        }
+    });
+
+    checkReferScheduleConflict();
+}
+
+function selectReferVisualDate(dateStr) {
+    const dateInput = document.getElementById('referConciliationDate');
+    if (!dateInput) return;
+    dateInput.value = dateStr;
+
+    if (referCalendarWindowMeta) {
+        renderReferVisualDays(referCalendarWindowMeta, dateStr);
+    }
+    checkReferScheduleConflict();
+}
+
+function renderReferVisualDays(windowMeta, selectedDate) {
+    const gridEl = document.getElementById('referVisualDayGrid');
+    const noticeEl = document.getElementById('referVisualDateStatusNotice');
+    const monthLabelEl = document.getElementById('referCalendarMonthLabel');
+    const capacityBadge = document.getElementById('referCourtroomCapacityBadge');
+    if (!gridEl) return;
+
+    const days = windowMeta?.daily_slots ? Object.values(windowMeta.daily_slots) : [];
+    if (!days.length) {
+        gridEl.innerHTML = '<div style="color: #64748b; font-size: 0.78rem; grid-column: 1 / -1; text-align: center; padding: 12px;">No available conciliation slots.</div>';
+        return;
+    }
+
+    if (monthLabelEl && days.length > 0) {
+        const firstDay = days[0];
+        monthLabelEl.textContent = `· ${firstDay.month_name || ''} ${new Date(firstDay.date).getFullYear()}`;
+    }
+
+    gridEl.innerHTML = days.map(d => {
+        const isSelected = (d.date === selectedDate);
+        const dayDate = new Date(d.date + 'T00:00:00');
+        const isTuesday = (dayDate.getDay() === 2);
+        const isWeekend = (d.is_weekend || dayDate.getDay() === 0 || dayDate.getDay() === 6);
+
+        let badgeText = `${d.available ?? 4} open`;
+        let badgeBg = '#dcfce7';
+        let badgeColor = '#15803d';
+        let cardStyle = 'border: 1px solid #cbd5e1; background: #ffffff; color: #1e293b; cursor: pointer;';
+        let disabledAttr = '';
+        let tooltip = `${d.date}: ${d.available ?? 4} of ${d.max ?? 4} conciliation slots open.`;
+
+        if (d.is_past) {
+            badgeText = 'Past';
+            badgeBg = '#f1f5f9';
+            badgeColor = '#94a3b8';
+            cardStyle = 'border: 1px solid #e2e8f0; background: #f8fafc; color: #94a3b8; cursor: not-allowed; opacity: 0.5;';
+            disabledAttr = 'disabled';
+            tooltip = `${d.date}: Past date cannot be scheduled.`;
+        } else if (isWeekend || d.is_non_working_day) {
+            badgeText = d.is_non_working_day ? 'Holiday' : 'Weekend';
+            badgeBg = '#f1f5f9';
+            badgeColor = '#64748b';
+            cardStyle = 'border: 1px dashed #cbd5e1; background: #f8fafc; color: #64748b; cursor: not-allowed; opacity: 0.5;';
+            disabledAttr = 'disabled';
+            tooltip = `${d.date}: ${d.is_non_working_day ? 'Holiday' : 'Weekend'}. Closed for conciliation.`;
+        } else if (isTuesday) {
+            badgeText = 'PB Only';
+            badgeBg = '#fee2e2';
+            badgeColor = '#991b1b';
+            cardStyle = 'border: 1px solid #fecaca; background: #fef2f2; color: #991b1b; cursor: not-allowed; opacity: 0.7;';
+            disabledAttr = 'disabled';
+            tooltip = `${d.date}: Tuesdays reserved exclusively for Punong Barangay Mediation. Conciliation hearings must be scheduled on non-Tuesday weekdays (Mondays, Wednesdays, Thursdays, or Fridays).`;
+        } else if (d.is_fully_booked || (d.available !== undefined && d.available <= 0)) {
+            badgeText = 'Full';
+            badgeBg = '#fee2e2';
+            badgeColor = '#b91c1c';
+            cardStyle = 'border: 1px solid #fecaca; background: #fff1f2; color: #881337; cursor: not-allowed; opacity: 0.65;';
+            disabledAttr = 'disabled';
+            tooltip = `${d.date}: Fully booked.`;
+        }
+
+        if (isSelected && !disabledAttr) {
+            cardStyle = 'border: 2px solid #0284c7; background: #e0f2fe; color: #0369a1; box-shadow: 0 0 0 2px rgba(2,132,199,0.25); font-weight: 700; cursor: pointer;';
+            badgeBg = '#0284c7';
+            badgeColor = '#ffffff';
+        }
+
+        return `
+            <div class="refer-day-card ${isSelected ? 'active' : ''}"
+                 onclick="${disabledAttr ? '' : `selectReferVisualDate('${d.date}')`}"
+                 title="${escapeHtml(tooltip)}"
+                 style="border-radius: 6px; padding: 6px 4px; text-align: center; transition: all 0.15s; user-select: none; ${cardStyle}">
+                <div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em;">
+                    ${escapeHtml(d.day_name || '')}
+                </div>
+                <div style="font-size: 0.85rem; font-weight: 800; margin: 2px 0;">
+                    ${d.day_num ?? ''} ${escapeHtml(d.month_name || '')}
+                </div>
+                <div style="font-size: 0.65rem; font-weight: 700; padding: 1px 4px; border-radius: 4px; background: ${badgeBg}; color: ${badgeColor}; display: inline-block;">
+                    ${badgeText}
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    if (noticeEl && selectedDate) {
+        const selDay = days.find(d => d.date === selectedDate);
+        if (selDay) {
+            const dayDate = new Date(selectedDate + 'T00:00:00');
+            if (dayDate.getDay() === 2) {
+                noticeEl.innerHTML = `<span style="color: #dc2626; font-weight: 600;">Tuesdays are reserved exclusively for PB Mediation. Select Mon, Wed, Thu, or Fri.</span>`;
+            } else if (selDay.is_fully_booked || selDay.available <= 0) {
+                noticeEl.innerHTML = `<span style="color: #dc2626; font-weight: 600;">Selected date is fully booked. Choose another conciliation day.</span>`;
+            } else {
+                noticeEl.innerHTML = `<span style="color: #15803d; font-weight: 600;">Conciliation date selected: ${selDay.available ?? 4} slots open.</span>`;
+            }
+        }
+    }
+}
+
+async function checkReferScheduleConflict() {
+    const dateInput = document.getElementById('referConciliationDate');
+    const timeInput = document.getElementById('referConciliationTime');
+    const venueInput = document.getElementById('referConciliationVenue');
+    const conflictAlert = document.getElementById('referScheduleConflictAlert');
+    const capacityBadge = document.getElementById('referCourtroomCapacityBadge');
+    const caseId = stageWorkspaceState.caseId;
+
+    if (!dateInput || !dateInput.value) return;
+
+    const dateVal = dateInput.value;
+    const timeVal = timeInput ? timeInput.value : '09:00';
+    const venueVal = venueInput ? venueInput.value : 'Lupon Court Room';
+
+    const params = new URLSearchParams();
+    params.set('date', dateVal);
+    params.set('time', timeVal);
+    params.set('venue', venueVal);
+    if (caseId) params.set('case_id', caseId);
+    params.set('hearing_type', 'Conciliation');
+    params.set('get_window', '1');
+
+    try {
+        const response = await fetch(getStageApiUrl(`summons/check-schedule.php?${params.toString()}`));
+        const result = await response.json();
+
+        if (result.window) {
+            referCalendarWindowMeta = result.window;
+            renderReferVisualDays(result.window, dateVal);
+        }
+
+        if (!response.ok || !result.success) {
+            if (conflictAlert && result.message) {
+                conflictAlert.textContent = `Schedule Notice: ${result.message}`;
+                conflictAlert.style.display = 'block';
+            }
+            if (capacityBadge) {
+                capacityBadge.style.background = '#fee2e2';
+                capacityBadge.style.color = '#991b1b';
+                capacityBadge.textContent = 'Conflict / Blocked';
+            }
+            return;
+        }
+
+        if (conflictAlert) {
+            conflictAlert.style.display = 'none';
+        }
+
+        if (capacityBadge) {
+            const avail = result.available_slots !== undefined ? result.available_slots : (4 - (result.total_booked || 0));
+            const max = result.max_slots || 4;
+            capacityBadge.style.background = avail > 0 ? '#dcfce7' : '#fee2e2';
+            capacityBadge.style.color = avail > 0 ? '#15803d' : '#991b1b';
+            capacityBadge.textContent = `${avail} of ${max} slots available`;
+        }
+    } catch (err) {
+        console.warn('checkReferScheduleConflict error:', err);
+    }
+}
+
 function openReferPangkatModal() {
     const modal = document.getElementById('wsReferPangkatModal');
     if (!modal) return;
@@ -3879,6 +4392,7 @@ function openReferPangkatModal() {
         dateInput.value = new Date().toISOString().split('T')[0];
     }
     populateLuponDropdowns();
+    initReferCalendar();
     goReferralStep(1);
     modal.style.display = 'flex';
 }
@@ -3892,16 +4406,124 @@ function goReferralStep(step) {
     if (step === 2) {
         const reason = document.getElementById('referReason')?.value.trim();
         const date = document.getElementById('referDate')?.value;
-        if (!date || !reason) { alert('Enter the referral date and authorized referral justification before continuing.'); return; }
+        const concDate = document.getElementById('referConciliationDate')?.value;
+        const concTime = document.getElementById('referConciliationTime')?.value;
+        const venue = document.getElementById('referConciliationVenue')?.value.trim();
+
+        if (!date || !reason) {
+            alert('Enter the referral date and authorized referral justification before continuing.');
+            return;
+        }
+        if (!concDate) {
+            alert('Please select a 1st Conciliation Hearing date.');
+            return;
+        }
+        const dObj = new Date(concDate + 'T00:00:00');
+        const dow = dObj.getDay();
+        if (dow === 0 || dow === 6) {
+            alert('Conciliation hearings cannot be scheduled on weekends.');
+            return;
+        }
+        if (dow === 2) {
+            alert('Tuesdays reserved exclusively for Punong Barangay Mediation. Conciliation hearings must be scheduled on non-Tuesday weekdays (Mondays, Wednesdays, Thursdays, or Fridays).');
+            return;
+        }
+        if (!concTime) {
+            alert('Please select a Conciliation time slot.');
+            return;
+        }
+        if (!venue) {
+            alert('Please provide a hearing venue.');
+            return;
+        }
     }
+
     if (step === 3) {
-        const ids = ['referChairmanId', 'referSecretaryId', 'referMemberId'].map((id) => document.getElementById(id)?.value);
-        if (ids.some((id) => !id) || new Set(ids).size !== 3) { alert('Choose three different active Lupon Members before reviewing the referral.'); return; }
+        const quorumSize = Number(document.getElementById('referQuorumSize')?.value || 3);
+        const chairmanId = document.getElementById('referChairmanId')?.value;
+        const secretaryId = document.getElementById('referSecretaryId')?.value;
+        const memberId = document.getElementById('referMemberId')?.value;
+        const quorumReason = document.getElementById('referQuorumReason')?.value.trim();
+
+        if (quorumSize === 2) {
+            if (!chairmanId || !secretaryId) {
+                alert('Choose both a Chairperson and a Secretary for the 2-member quorum.');
+                return;
+            }
+            if (chairmanId === secretaryId) {
+                alert('Chairperson and Secretary must be different Lupon members.');
+                return;
+            }
+            if (!quorumReason) {
+                alert('Please provide a justification for the 2-member quorum exception.');
+                return;
+            }
+        } else {
+            const ids = [chairmanId, secretaryId, memberId];
+            if (ids.some(id => !id) || new Set(ids).size !== 3) {
+                alert('Choose three different active Lupon Members before reviewing the referral.');
+                return;
+            }
+        }
+
         const nameFor = (id) => document.getElementById(id)?.selectedOptions?.[0]?.textContent || 'Not selected';
         const summary = document.getElementById('referReviewSummary');
-        if (summary) summary.innerHTML = `<strong>Step 3 of 3: Review and confirm</strong><br><br><strong>Referral date:</strong> ${escapeHtml(document.getElementById('referDate')?.value || '')}<br><strong>Head:</strong> ${escapeHtml(nameFor('referChairmanId'))}<br><strong>Secretary:</strong> ${escapeHtml(nameFor('referSecretaryId'))}<br><strong>Member:</strong> ${escapeHtml(nameFor('referMemberId'))}<br><br>The system will record the statutory Pangkat convening deadline and generate KP Form 10.`;
+        const concDate = document.getElementById('referConciliationDate')?.value || '';
+        const concTime = document.getElementById('referConciliationTime')?.value || '';
+        const venue = document.getElementById('referConciliationVenue')?.value || 'Lupon Court Room';
+        const refDate = document.getElementById('referDate')?.value || '';
+        const refReason = document.getElementById('referReason')?.value || '';
+        const selMethod = document.getElementById('referSelectionMethod')?.value || 'Party Agreement';
+
+        if (summary) {
+            summary.innerHTML = `
+                <div style="font-weight: 800; font-size: 0.95rem; margin-bottom: 8px; color: #1e3a8a;">
+                    Step 3 of 3: Review Referral &amp; 1st Conciliation Booking
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                    <div>
+                        <div style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; font-weight: 700;">1st Conciliation Hearing</div>
+                        <div style="font-weight: 700; color: #0f172a;">📅 ${escapeHtml(concDate)} at ${escapeHtml(concTime)}</div>
+                        <div style="font-size: 0.8rem; color: #475569;">📍 ${escapeHtml(venue)}</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; font-weight: 700;">Referral Parameters</div>
+                        <div style="font-weight: 600; color: #0f172a;">Date: ${escapeHtml(refDate)}</div>
+                        <div style="font-size: 0.8rem; color: #475569;">Method: ${escapeHtml(selMethod)}</div>
+                    </div>
+                </div>
+                <div style="border-top: 1px solid #bfdbfe; padding-top: 8px; margin-top: 6px;">
+                    <div style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; font-weight: 700;">Pangkat Tagapagkasundo Panel (${quorumSize} Members)</div>
+                    <div><strong>Head / Chair:</strong> ${escapeHtml(nameFor('referChairmanId'))}</div>
+                    <div><strong>Secretary:</strong> ${escapeHtml(nameFor('referSecretaryId'))}</div>
+                    <div><strong>Member:</strong> ${memberId ? escapeHtml(nameFor('referMemberId')) : '<em style="color:#64748b;">(Quorum Exception — 2 members)</em>'}</div>
+                    ${quorumSize === 2 ? `<div style="font-size: 0.78rem; color: #b45309; margin-top: 3px;"><strong>Exception Justification:</strong> ${escapeHtml(quorumReason)}</div>` : ''}
+                </div>
+                <div style="font-size: 0.78rem; color: #475569; margin-top: 8px; font-style: italic;">
+                    <strong>Statutory Note:</strong> Upon confirmation, case advances to Conciliation, KP Forms 10, 11, and 12 are generated, and Officer's Return records are registered for KP Form 12.
+                </div>
+            `;
+        }
     }
-    document.querySelectorAll('.referral-step').forEach((element) => { element.style.display = Number(element.dataset.referralStep) === Number(step) ? 'block' : 'none'; });
+
+    [1, 2, 3].forEach(pStep => {
+        const pill = document.getElementById(`referStepPill${pStep}`);
+        if (!pill) return;
+        if (pStep === step) {
+            pill.style.background = '#0284c7';
+            pill.style.color = '#ffffff';
+        } else if (pStep < step) {
+            pill.style.background = '#e0f2fe';
+            pill.style.color = '#0369a1';
+        } else {
+            pill.style.background = '#f1f5f9';
+            pill.style.color = '#64748b';
+        }
+    });
+
+    document.querySelectorAll('.referral-step').forEach((element) => {
+        element.style.display = Number(element.dataset.referralStep) === Number(step) ? 'block' : 'none';
+    });
 }
 window.goReferralStep = goReferralStep;
 
@@ -3913,17 +4535,49 @@ async function submitReferPangkat(e) {
     const chairmanId = document.getElementById('referChairmanId')?.value;
     const secretaryId = document.getElementById('referSecretaryId')?.value;
     const memberId = document.getElementById('referMemberId')?.value;
+    const quorumSize = Number(document.getElementById('referQuorumSize')?.value || 3);
+    const quorumReason = document.getElementById('referQuorumReason')?.value.trim();
 
-    if (!chairmanId || !secretaryId || !memberId) {
-        alert('Please nominate all 3 distinct active Lupon Members for Chairperson, Secretary, and Member.');
-        if (btn) btn.disabled = false;
-        return;
+    if (quorumSize === 2) {
+        if (!chairmanId || !secretaryId) {
+            alert('Please select both Chairperson and Secretary.');
+            if (btn) btn.disabled = false;
+            return;
+        }
+        if (chairmanId === secretaryId) {
+            alert('Chairperson and Secretary must be different Lupon members.');
+            if (btn) btn.disabled = false;
+            return;
+        }
+    } else {
+        if (!chairmanId || !secretaryId || !memberId) {
+            alert('Please nominate all 3 distinct active Lupon Members for Chairperson, Secretary, and Member.');
+            if (btn) btn.disabled = false;
+            return;
+        }
+        if (new Set([chairmanId, secretaryId, memberId]).size !== 3) {
+            alert('Chairperson, Secretary, and Member must be different Lupon members.');
+            if (btn) btn.disabled = false;
+            return;
+        }
     }
 
-    if (new Set([chairmanId, secretaryId, memberId]).size !== 3) {
-        alert('Chairperson, Secretary, and Member must be different Lupon members.');
-        if (btn) btn.disabled = false;
-        return;
+    const concDate = document.getElementById('referConciliationDate')?.value;
+    const concTime = document.getElementById('referConciliationTime')?.value;
+    const venue = document.getElementById('referConciliationVenue')?.value || 'Lupon Court Room';
+
+    if (concDate) {
+        const dObj = new Date(concDate + 'T00:00:00');
+        if (dObj.getDay() === 2) {
+            alert('Tuesdays reserved exclusively for Punong Barangay Mediation. Conciliation hearings must be scheduled on non-Tuesday weekdays (Mondays, Wednesdays, Thursdays, or Fridays).');
+            if (btn) btn.disabled = false;
+            return;
+        }
+        if (dObj.getDay() === 0 || dObj.getDay() === 6) {
+            alert('Conciliation hearings cannot be scheduled on weekends.');
+            if (btn) btn.disabled = false;
+            return;
+        }
     }
 
     const payload = {
@@ -3932,10 +4586,14 @@ async function submitReferPangkat(e) {
         referral_reason: document.getElementById('referReason')?.value || 'Mediation before the Punong Barangay failed. Elevated to Pangkat Conciliation.',
         selection_method: document.getElementById('referSelectionMethod')?.value || 'Party Agreement',
         selection_notes: document.getElementById('referSelectionNotes')?.value || '',
-        quorum_size: 3,
+        quorum_size: quorumSize,
+        quorum_exception_reason: quorumReason,
         chairman_id: Number(chairmanId),
         secretary_id: Number(secretaryId),
-        member_id: Number(memberId)
+        member_id: memberId ? Number(memberId) : null,
+        conciliation_date: concDate || null,
+        conciliation_time: concTime || null,
+        venue: venue
     };
 
     try {
@@ -3946,11 +4604,14 @@ async function submitReferPangkat(e) {
         });
         const json = await res.json();
         if (json.success) {
-            notifyUser('Case successfully referred to Pangkat ng Tagapagkasundo. KP Forms 10, 11, and 12 are ready for review.', 'success');
+            notifyUser('Case successfully referred to Pangkat ng Tagapagkasundo. 1st Conciliation booked & KP Forms 10, 11, and 12 generated.', 'success');
             closeReferPangkatModal();
             setTimeout(() => {
-                openTriPanelPangkatModal(stageWorkspaceState.caseId);
-            }, 250);
+                if (typeof openTriPanelPangkatModal === 'function') {
+                    openTriPanelPangkatModal(stageWorkspaceState.caseId);
+                }
+                loadStageData();
+            }, 300);
         } else {
             notifyUser(json.message || 'Unable to refer case to Pangkat.', 'error');
         }
@@ -3972,6 +4633,8 @@ function renderPangkatPanelSection(data, stage) {
     if (!container) return;
 
     const pInfo = stage.pangkat_assignment || {};
+    const caseId = stageWorkspaceState?.caseId || data?.case?.case_id || (new URLSearchParams(window.location.search)).get('case_id') || 0;
+    const caseNumber = stageWorkspaceState?.caseNumber || data?.case?.case_number || (data?.case?.complaint_number || '');
     const members = pInfo.members || [];
     const challenges = pInfo.challenges || [];
     const extensions = pInfo.extensions || [];
@@ -4110,6 +4773,26 @@ function renderPangkatPanelSection(data, stage) {
         </div>
 
         ${extensionsHtml}
+
+        <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                <span style="font-size: 0.74rem; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.04em;">Official Notices:</span>
+                <button type="button" class="btn-secondary" onclick="openKpDocumentPreviewModal(${pInfo.kp10_document_id || 'null'}, 'KP Form 10', '${escapeHtml(caseNumber)}', ${caseId})" style="font-size: 0.74rem; padding: 4px 10px;" title="Preview KP Form 10 (Notice for Constitution of Pangkat)">
+                    Preview KP Form 10
+                </button>
+                <button type="button" class="btn-secondary" onclick="openKpDocumentPreviewModal(${pInfo.kp11_document_id || 'null'}, 'KP Form 11', '${escapeHtml(caseNumber)}', ${caseId})" style="font-size: 0.74rem; padding: 4px 10px;" title="Preview KP Form 11 (Notice to Chosen Pangkat Members)">
+                    Preview KP Form 11
+                </button>
+                <button type="button" class="btn-secondary" onclick="openKpDocumentPreviewModal(${pInfo.kp12_document_id || 'null'}, 'KP Form 12', '${escapeHtml(caseNumber)}', ${caseId})" style="font-size: 0.74rem; padding: 4px 10px;" title="Preview KP Form 12 (Notice of Conciliation Hearing)">
+                    Preview KP Form 12
+                </button>
+            </div>
+            <div>
+                <button type="button" class="btn-secondary" onclick="openTriPanelPangkatModal(${caseId})" style="font-size: 0.74rem; padding: 4px 12px; font-weight: 600; color: #4f46e5; border-color: #c7d2fe; display: inline-flex; align-items: center; gap: 4px;">
+                    Preview All Pangkat Notices (KP 10, 11, 12)
+                </button>
+            </div>
+        </div>
     `;
 }
 
@@ -4530,19 +5213,27 @@ window.closePreviewMinutesModal = closePreviewMinutesModal;
 window.printHearingMinutes = printHearingMinutes;
 window.openScheduleModal = openScheduleModal;
 window.closeScheduleModal = closeScheduleModal;
-window.initWorkspaceScheduleModal = initWorkspaceScheduleModal;
-window.loadStageSlots = loadStageSlots;
+if (typeof initWorkspaceScheduleModal !== 'undefined') window.initWorkspaceScheduleModal = initWorkspaceScheduleModal;
+if (typeof loadStageSlots !== 'undefined') window.loadStageSlots = loadStageSlots;
 window.openAttendanceModal = openAttendanceModal;
 window.closeAttendanceModal = closeAttendanceModal;
-window.openMinutesModal = openMinutesModal;
-window.closeMinutesModal = closeMinutesModal;
-window.saveMinutes = saveMinutes;
+if (typeof openMinutesModal !== 'undefined') window.openMinutesModal = openMinutesModal;
+if (typeof closeMinutesModal !== 'undefined') window.closeMinutesModal = closeMinutesModal;
+if (typeof saveMinutes !== 'undefined') window.saveMinutes = saveMinutes;
 window.saveHearingMinutes = saveHearingMinutes;
 window.saveInlineMinutes = saveHearingMinutes;
 window.openRecordOutcomeModal = openRecordOutcomeModal;
 window.closeRecordOutcomeModal = closeRecordOutcomeModal;
 window.openReferPangkatModal = openReferPangkatModal;
 window.closeReferPangkatModal = closeReferPangkatModal;
+window.initReferCalendar = initReferCalendar;
+window.handleReferDateInputChange = handleReferDateInputChange;
+window.selectReferConciliationSlot = selectReferConciliationSlot;
+window.selectReferVisualDate = selectReferVisualDate;
+window.renderReferVisualDays = renderReferVisualDays;
+window.checkReferScheduleConflict = checkReferScheduleConflict;
+window.goReferralStep = goReferralStep;
+window.submitReferPangkat = submitReferPangkat;
 
 // Pangkat statutory extensions and challenges exposure
 window.openPangkatExtensionModal = openPangkatExtensionModal;
@@ -4564,11 +5255,11 @@ window.submitPangkatSelection = submitPangkatSelection;
 
 // Attendance & Form preview exposure
 window.openKPFormPreview = openKpFormModal;
-window.togglePresiderSubstituteSection = togglePresiderSubstituteSection;
-window.handlePresiderAbsenceChoiceChange = handlePresiderAbsenceChoiceChange;
-window.executeEmergencyReschedule = executeEmergencyReschedule;
-window.getSuggestedRescheduleDateTime = getSuggestedRescheduleDateTime;
-window.submitAttendance = submitAttendance;
+if (typeof togglePresiderSubstituteSection !== 'undefined') window.togglePresiderSubstituteSection = togglePresiderSubstituteSection;
+if (typeof handlePresiderAbsenceChoiceChange !== 'undefined') window.handlePresiderAbsenceChoiceChange = handlePresiderAbsenceChoiceChange;
+if (typeof executeEmergencyReschedule !== 'undefined') window.executeEmergencyReschedule = executeEmergencyReschedule;
+if (typeof getSuggestedRescheduleDateTime !== 'undefined') window.getSuggestedRescheduleDateTime = getSuggestedRescheduleDateTime;
+if (typeof submitAttendance !== 'undefined') window.submitAttendance = submitAttendance;
 
 // ========================================================
 // COURT & DILG TRANSMITTAL MODULE (RA 7160 SEC. 411)

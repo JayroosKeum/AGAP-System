@@ -1,10 +1,10 @@
 <?php
 
-require_once __DIR__ . '/../../backend/config/Database.php';
-require_once __DIR__ . '/../../backend/models/Complaint.php';
-require_once __DIR__ . '/../../backend/models/Paanyaya.php';
-require_once __DIR__ . '/../../backend/models/CaseModel.php';
-require_once __DIR__ . '/../../backend/services/PDFService.php';
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../models/Complaint.php';
+require_once __DIR__ . '/../models/Paanyaya.php';
+require_once __DIR__ . '/../models/CaseModel.php';
+require_once __DIR__ . '/../services/PDFService.php';
 require_once __DIR__ . '/TestDataCleanup.php';
 
 echo "Testing Paanyaya flow...\n";

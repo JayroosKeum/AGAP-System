@@ -2440,6 +2440,61 @@ input[data-ai-external-consent]:focus {
 .badge-lifecycle-resolution-closed,
 .status-resolution-closed { background:#dcfce7; color:#166534; border-color:#bbf7d0; }
 
+/* Granular Lifecycle Badges */
+.badge-lifecycle-1st-paanyaya {
+    background: #e0e7ff;
+    color: #3730a3;
+    border: 1px solid #c7d2fe;
+}
+.badge-lifecycle-2nd-paanyaya {
+    background: #ffedd5;
+    color: #9a3412;
+    border: 1px solid #fed7aa;
+}
+.badge-lifecycle-1st-mediation {
+    background: #e0f2fe;
+    color: #0369a1;
+    border: 1px solid #bae6fd;
+}
+.badge-lifecycle-2nd-mediation {
+    background: #dbeafe;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+}
+.badge-lifecycle-3rd-mediation {
+    background: #fce7f3;
+    color: #be185d;
+    border: 1px solid #fbcfe8;
+}
+.badge-lifecycle-conciliation {
+    background: #ccfbf1;
+    color: #0f766e;
+    border: 1px solid #99f6e4;
+}
+.badge-lifecycle-arbitration,
+.badge-lifecycle-arbitration-award {
+    background: #f3e8ff;
+    color: #7e22ce;
+    border: 1px solid #e9d5ff;
+}
+.badge-lifecycle-amicable-settlement {
+    background: #dcfce7;
+    color: #15803d;
+    border: 1px solid #bbf7d0;
+    font-weight: 700;
+}
+.badge-lifecycle-cfa {
+    background: #fee2e2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+    font-weight: 700;
+}
+.badge-lifecycle-dismissed {
+    background: #f1f5f9;
+    color: #475569;
+    border: 1px solid #cbd5e1;
+}
+
 /* Document Status Badges */
 .badge-doc-status {
     display: inline-flex;
@@ -4034,6 +4089,24 @@ input[data-ai-external-consent]:focus {
 .paper-mode-layout #section-evidence .evidence-upload-zone {
     padding: 16px;
 }
+
+/* Party Modal Error Highlighting & Quick Confirmation */
+.party-modal-body input.field-error-highlight,
+.party-modal-body select.field-error-highlight {
+    border-color: #dc2626 !important;
+    background-color: #fef2f2 !important;
+    box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.25) !important;
+}
+.party-validation-error-box {
+    margin-bottom: 16px;
+    background: #fef2f2;
+    border: 1.5px solid #ef4444;
+    border-left: 5px solid #dc2626;
+    border-radius: 8px;
+    padding: 12px 16px;
+    color: #991b1b;
+}
+
 
 
 

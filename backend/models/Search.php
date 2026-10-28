@@ -111,6 +111,7 @@ class Search
         $sql = "SELECT c.case_id, c.case_number, COALESCE(c.case_type, co.case_type) AS case_type, c.case_status, co.status, co.status AS complaint_status, COALESCE(c.case_status, co.status) AS raw_record_status, c.docket_date, co.complaint_id, co.complaint_number, co.complaint_title, co.incident_date, cc.category_name, co.document_status, co.is_draft,
         GROUP_CONCAT(DISTINCT CONCAT(cp.party_type, ': ', TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name))) ORDER BY cp.party_type SEPARATOR ' | ') AS parties,
         MAX(history.repeat_count) AS repeat_party_count,
+        (SELECT COALESCE(MAX(ps.attempt_number), 1) FROM paanyaya_sessions ps WHERE ps.complaint_id = co.complaint_id) AS paanyaya_attempt,
         (SELECT COUNT(*) FROM hearings h_med WHERE h_med.case_id = c.case_id AND h_med.hearing_type = 'Mediation') AS mediation_count,
         (SELECT COUNT(*) FROM hearings h_con WHERE h_con.case_id = c.case_id AND h_con.hearing_type = 'Conciliation') AS conciliation_count,
         (SELECT COUNT(*) FROM hearings h_arb WHERE h_arb.case_id = c.case_id AND h_arb.hearing_type = 'Arbitration') AS arbitration_hearing_count,
@@ -201,7 +202,7 @@ class Search
     {
         // 1. Final Disposition (How the case was resolved or terminated)
         $disposition = 'Pending';
-        if ((int)($row['settlement_count'] ?? 0) > 0 || ($row['case_status'] ?? '') === 'Settled' || ($row['complaint_status'] ?? '') === 'Settled') {
+        if ((int)($row['settlement_count'] ?? 0) > 0 || ($row['case_status'] ?? '') === 'Settled' || ($row['complaint_status'] ?? '') === 'Settled' || ($row['complaint_status'] ?? '') === 'Resolved at Paanyaya / Closed') {
             $disposition = 'Amicable Settlement';
         } elseif ((int)($row['cfa_count'] ?? 0) > 0 || ($row['case_status'] ?? '') === 'CFA Issued' || ($row['complaint_status'] ?? '') === 'CFA Issued') {
             $disposition = 'Certificate to File Action (CFA)';
@@ -211,48 +212,64 @@ class Search
             $disposition = 'Dismissed / Dropped';
         }
 
-        // 2. Progression / Dispute Stage (Active procedural phase)
+        // 2. Progression / Dispute Stage (Procedural phase)
         $stage = 'None';
         $medCount = (int)($row['mediation_count'] ?? 0);
         $conCount = (int)($row['conciliation_count'] ?? 0);
         $arbCount = (int)($row['arbitration_hearing_count'] ?? 0) + (int)($row['arbitration_record_count'] ?? 0);
+        $paanyayaAttempt = (int)($row['paanyaya_attempt'] ?? 1);
+        $caseStatus = (string)($row['case_status'] ?? '');
+        $complaintStatus = (string)($row['complaint_status'] ?? '');
+        $hasCase = !empty($row['case_id']);
 
-        // Dispute stage is only exhausted if formally disposed (Settled, CFA Issued, Dismissed, Archived)
-        $isDisposed = in_array($row['case_status'] ?? '', ['Settled', 'CFA Issued', 'Dismissed', 'Archived'], true);
+        $isDisposed = in_array($caseStatus, ['Settled', 'CFA Issued', 'Dismissed', 'Archived'], true)
+            || in_array($complaintStatus, ['Settled', 'Dismissed', 'Rejected', 'Resolved at Paanyaya / Closed'], true)
+            || (int)($row['settlement_count'] ?? 0) > 0
+            || (int)($row['arbitration_record_count'] ?? 0) > 0
+            || (int)($row['cfa_count'] ?? 0) > 0;
         $isStageExhausted = $isDisposed;
 
-        if (!$isDisposed) {
-            if ($arbCount > 0 || ($row['case_status'] ?? '') === 'Arbitration' || ($row['complaint_status'] ?? '') === 'Arbitration') {
-                $stage = 'Arbitration';
-            } elseif ($conCount > 0 || ($row['case_status'] ?? '') === 'Conciliation' || ($row['complaint_status'] ?? '') === 'Conciliation') {
-                $stage = 'Conciliation';
-            } elseif ($medCount > 0 || ($row['case_status'] ?? '') === 'Mediation' || ($row['complaint_status'] ?? '') === 'Mediation') {
-                $stage = 'Mediation';
-            } elseif (str_contains((string)($row['complaint_status'] ?? ''), 'Paanyaya') || str_contains((string)($row['case_status'] ?? ''), 'Paanyaya')) {
-                $stage = 'Paanyaya';
+        if ($arbCount > 0 || $caseStatus === 'Arbitration' || $complaintStatus === 'Arbitration') {
+            $stage = 'Arbitration';
+        } elseif ($conCount > 0 || $caseStatus === 'Conciliation' || $complaintStatus === 'Conciliation') {
+            $stage = 'Conciliation';
+        } elseif ($medCount > 0 || $caseStatus === 'Mediation' || $complaintStatus === 'Mediation' || ($hasCase && !$isDisposed)) {
+            if ($medCount >= 3) {
+                $stage = '3rd Mediation';
+            } elseif ($medCount === 2) {
+                $stage = '2nd Mediation';
+            } else {
+                $stage = '1st Mediation';
             }
+        } elseif ($hasCase) {
+            // Case is docketed and disposed, default procedural entry point is 1st Mediation
+            $stage = '1st Mediation';
+        } else {
+            // Paanyaya stage (pre-docketed / no case_id)
+            $isSecond = ($paanyayaAttempt >= 2) || str_contains($complaintStatus, '2nd') || str_contains($caseStatus, '2nd');
+            $stage = $isSecond ? '2nd Paanyaya' : '1st Paanyaya';
         }
 
         // 3. Intake / Administrative Status (Current administrative state)
         $intake = 'Paanyaya';
-        if (!empty($row['case_id']) || ($row['case_status'] ?? '') === 'Docketed' || ($row['complaint_status'] ?? '') === 'Docketed' || $stage !== 'None' || $isStageExhausted) {
+        if ($hasCase || $caseStatus === 'Docketed' || $complaintStatus === 'Docketed' || $stage !== 'None' || $isStageExhausted) {
             $intake = 'Docketed';
         }
 
-        // Aggregate labels for tag/pill rendering (Docketed is excluded as complaints are already considered docketed)
+        // Aggregate labels for tag/pill rendering
         $labels = [];
-        if ($stage === 'Paanyaya' || str_contains((string)($row['complaint_status'] ?? ''), 'Paanyaya') || str_contains((string)($row['case_status'] ?? ''), 'Paanyaya')) {
-            // Those with paanyaya status should NOT be combined with other status
-            $labels[] = 'Paanyaya';
-        } else {
-            if ($intake !== 'Docketed') {
-                $labels[] = $intake;
-            }
-            if ($stage !== 'None') {
-                $labels[] = $stage;
-            }
-            $dispLabel = ($disposition === 'Certificate to File Action (CFA)') ? 'CFA' : ($disposition === 'Dismissed / Dropped' ? 'Dismissed' : $disposition);
-            $labels[] = $dispLabel;
+        if ($stage !== 'None') {
+            $labels[] = $stage;
+        }
+
+        if ($disposition === 'Amicable Settlement') {
+            $labels[] = 'Amicable Settlement';
+        } elseif ($disposition === 'Certificate to File Action (CFA)') {
+            $labels[] = 'CFA';
+        } elseif ($disposition === 'Arbitration Award') {
+            $labels[] = 'Arbitration Award';
+        } elseif ($disposition === 'Dismissed / Dropped') {
+            $labels[] = 'Dismissed';
         }
 
         return [
@@ -274,12 +291,7 @@ class Search
         $caseStatus = (string) ($row['case_status'] ?? '');
         $complaintStatus = (string) ($row['complaint_status'] ?? '');
 
-        // Paanyaya status should not be combined with other status
-        if (str_contains($caseStatus, 'Paanyaya') || str_contains($complaintStatus, 'Paanyaya') || ($row['current_stage'] ?? '') === 'Paanyaya') {
-            return 'Paanyaya';
-        }
-
-        $closedStatuses = ['Settled', 'Dismissed', 'Archived', 'Rejected', 'Arbitration', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT'];
+        $closedStatuses = ['Settled', 'Dismissed', 'Archived', 'Rejected', 'Arbitration', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Resolved at Paanyaya / Closed'];
 
         if ((int) ($row['settlement_count'] ?? 0) > 0
             || (int) ($row['arbitration_record_count'] ?? 0) > 0

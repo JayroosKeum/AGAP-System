@@ -206,8 +206,9 @@ class Settlement
             return ['success' => false, 'message' => 'Detailed settlement agreement terms are required.'];
         }
 
-        // 10-day statutory repudiation deadline (Sec. 418 Local Government Code)
-        $repudiationDeadline = date('Y-m-d', strtotime($settlementDate . ' + 10 days'));
+        // 10-business-day statutory repudiation deadline (Sec. 416 Local Government Code)
+        require_once __DIR__ . '/../services/MediationDeadlineService.php';
+        $repudiationDeadline = MediationDeadlineService::calculateBusinessDays($settlementDate, 10);
 
         $termsRead = !empty($data['terms_read_to_parties']) ? 1 : 0;
         $compSigned = !empty($data['complainant_signed']) ? 1 : 0;
@@ -479,12 +480,40 @@ class Settlement
             ");
             $stmt->execute([$reason, $residentId, $docPath ?: null, $settlementId]);
 
-            // Update case status
+            // Update case status and history
             $updCase = $this->conn->prepare("UPDATE cases SET case_status = 'Mediation', updated_at = NOW() WHERE case_id = ?");
             $updCase->execute([$settlement['case_id']]);
 
+            // Invalidate amicable settlement & update stage status to Repudiated
+            $updStage = $this->conn->prepare("
+                INSERT INTO case_stages (case_id, stage_type, stage_status, outcome, outcome_remarks, completed_at)
+                VALUES (?, 'Mediation', 'Completed', 'Repudiated', ?, NOW())
+                ON DUPLICATE KEY UPDATE
+                    stage_status = 'Completed',
+                    outcome = 'Repudiated',
+                    outcome_remarks = VALUES(outcome_remarks),
+                    completed_at = NOW(),
+                    updated_at = CURRENT_TIMESTAMP
+            ");
+            $updStage->execute([$settlement['case_id'], "Settlement repudiated under RA 7160 Sec. 416. Ground: {$reason}"]);
+
+            // Automatically route case to generate KP Form 20 (Certificate to File Action - CFA)
+            $cfaCheck = $this->conn->prepare("SELECT cfa_id FROM cfa_records WHERE case_id = ?");
+            $cfaCheck->execute([$settlement['case_id']]);
+            if (!$cfaCheck->fetchColumn()) {
+                $insCfa = $this->conn->prepare("INSERT INTO cfa_records (case_id, issuance_date, reason) VALUES (?, CURDATE(), ?)");
+                $insCfa->execute([
+                    $settlement['case_id'],
+                    "Amicable settlement repudiated under RA 7160 Section 416 on grounds of: {$reason}"
+                ]);
+            }
+
+            // Invalidate / cancel court transmittal countdown
+            $cancelTrans = $this->conn->prepare("UPDATE case_transmittals SET status = 'Pending', transmittal_notified = 2, updated_at = NOW() WHERE case_id = ?");
+            $cancelTrans->execute([$settlement['case_id']]);
+
             $hist = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, 'Mediation', ?, ?)");
-            $hist->execute([$settlement['case_id'], "Settlement repudiated within 10-day statutory window. Ground: {$reason}", $actorUserId]);
+            $hist->execute([$settlement['case_id'], "Settlement repudiated within 10-day statutory window. Ground: {$reason}. Unlocked KP Form 20 (CFA).", $actorUserId]);
 
             try {
                 require_once __DIR__ . '/../services/NotificationService.php';

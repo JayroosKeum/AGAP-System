@@ -68,6 +68,32 @@ class NotificationService
     }
 
     // =========================================================================
+    public function notifyPaanyayaServed(
+        int $complaintId,
+        string $complaintNum,
+        string $stageType,
+        string $recipientName,
+        string $serverName,
+        bool $isDelivered,
+        string $outcome,
+        ?int $actorUserId = null
+    ): void {
+        $actionUrl = "../complaints/complaint-details.php?id=" . $complaintId . "&tab=paanyaya";
+
+        if ($isDelivered) {
+            $title = "{$stageType} Successfully Delivered";
+            $msg = "Ang {$stageType} para sa reklamo {$complaintNum} ay matagumpay na naihatid kay {$recipientName} ni {$serverName}. Handa na para sa takdang pag-uusap.";
+            $severity = 'success';
+        } else {
+            $title = "{$stageType} Delivery Alert: " . str_replace('_', ' ', $outcome);
+            $msg = "Hindi naihatid ang {$stageType} para sa reklamo {$complaintNum} kay {$recipientName} (Dahilan: {$outcome}). Suriin ang return para sa susunod na aksyon.";
+            $severity = 'warning';
+        }
+
+        // Abisuhan ang Administrator at Lupon Clerk
+        $this->notifyRoles(['Administrator', 'Lupon Clerk'], $title, $msg, $actorUserId, $severity, $actionUrl);
+    }
+
     // 2. SUMMONS & PROCESS SERVING (TANOD) NOTIFICATIONS
     // =========================================================================
     public function notifySummonsDispatched(int $caseId, string $caseNum, int $serverUserId, string $respondentName, ?int $actorUserId = null): void

@@ -148,7 +148,8 @@ function isCasePending(item) {
     const respFailed = Number(item.respondent_failed_attempts || 0);
 
     // Pending delivery if either party's service obligation is incomplete
-    return (!compServed) || (!respServed && respFailed < 6);
+    const maxAttempts = Number(window.AGAP_SETTINGS?.summons_max_attempts || 6);
+    return (!compServed) || (!respServed && respFailed < maxAttempts);
 }
 
 function isCaseCfaReady(item) {
@@ -158,7 +159,8 @@ function isCaseCfaReady(item) {
     const respStatus = String(item.respondent_service_status || '');
     const caseStatus = String(item.case_status || '');
 
-    return respFailed >= 6 && respServed === 0 && respStatus === 'Unserved' && caseStatus !== 'Archived' && caseStatus !== 'Settled';
+    const maxAttempts = Number(window.AGAP_SETTINGS?.summons_max_attempts || 6);
+    return respFailed >= maxAttempts && respServed === 0 && respStatus === 'Unserved' && caseStatus !== 'Archived' && caseStatus !== 'Settled';
 }
 
 function updateSummaryMetrics() {
@@ -418,7 +420,8 @@ function applySummonFilterAndRender() {
 
 function renderTableServiceStatus(item) {
     if (isCaseCfaReady(item)) {
-        return `<span class="service-status-pill badge-cfa-ready">CFA Ready (6/6 Failed)</span>`;
+        const maxCfaAtt = Number(window.AGAP_SETTINGS?.summons_max_attempts || 6);
+        return `<span class="service-status-pill badge-cfa-ready">CFA Ready (${maxCfaAtt}/${maxCfaAtt} Failed)</span>`;
     }
 
     if (item && item.is_paanyaya) {
@@ -428,7 +431,7 @@ function renderTableServiceStatus(item) {
         if (respServed) {
             return `<span class="service-status-pill badge-served-mini" style="font-weight:700;">Delivered (${stageLabel})</span>`;
         }
-        const maxPaanyayaAtt = Number(window.AGAP_SETTINGS?.paanyaya_max_attempts || 3);
+        const maxPaanyayaAtt = Number(window.AGAP_SETTINGS?.paanyaya_max_attempts || 6);
         if (respFailCount >= maxPaanyayaAtt) {
             return `<span class="service-status-pill badge-failed-mini">${maxPaanyayaAtt} Attempts Exhausted (${stageLabel})</span>`;
         }
@@ -514,9 +517,26 @@ function renderSummonCasesTable(cases) {
         const caseId = Number(item.case_id);
         const isExpanded = String(caseId) === String(activeExpandedCaseId);
         const kpNumberRaw = item.case_number || item.complaint_number || (item.case_id ? `Case #${item.case_id}` : 'N/A');
-        const kpNumber = item.is_paanyaya
-            ? `<div style="display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;"><span>${escapeGpsHtml(kpNumberRaw)}</span><span style="font-size:0.72rem; padding:2px 7px; background:#ecfdf5; color:#166534; border:1px solid #bbf7d0; border-radius:4px; font-weight:700;">${escapeGpsHtml(item.paanyaya_stage_type || item.hearing_type || 'Paanyaya')}</span></div>`
-            : escapeGpsHtml(kpNumberRaw);
+        const userRoleId = Number(window.AGAP_USER_ROLE_ID || window.AGAP_SETTINGS?.user_role_id || 0);
+        const canAccessCaseDetails = userRoleId !== 4; // Summons server (Role 4) cannot access full case details
+
+        let kpNumber;
+        if (canAccessCaseDetails) {
+            const targetComplaintId = item.complaint_id || item.case_id;
+            const caseDetailsUrl = item.complaint_id
+                ? `../complaints/complaint-details.php?id=${encodeURIComponent(item.complaint_id)}${item.is_paanyaya ? '&tab=paanyaya' : ''}`
+                : `../cases/case-details.php?id=${encodeURIComponent(item.case_id)}`;
+
+            const kpLinkHtml = `<a href="${caseDetailsUrl}" class="case-kp-link" onclick="event.stopPropagation();" title="View case details for ${escapeGpsHtml(kpNumberRaw)}" style="color:#0284c7; font-size:0.92rem; font-weight:700; text-decoration:none; cursor:pointer;" onmouseover="this.style.textDecoration='underline'; this.style.color='#0369a1';" onmouseout="this.style.textDecoration='none'; this.style.color='#0284c7';">${escapeGpsHtml(kpNumberRaw)}</a>`;
+
+            kpNumber = item.is_paanyaya
+                ? `<div style="display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;">${kpLinkHtml}<span style="font-size:0.72rem; padding:2px 7px; background:#ecfdf5; color:#166534; border:1px solid #bbf7d0; border-radius:4px; font-weight:700;">${escapeGpsHtml(item.paanyaya_stage_type || item.hearing_type || 'Paanyaya')}</span></div>`
+                : kpLinkHtml;
+        } else {
+            kpNumber = item.is_paanyaya
+                ? `<div style="display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;"><span>${escapeGpsHtml(kpNumberRaw)}</span><span style="font-size:0.72rem; padding:2px 7px; background:#ecfdf5; color:#166534; border:1px solid #bbf7d0; border-radius:4px; font-weight:700;">${escapeGpsHtml(item.paanyaya_stage_type || item.hearing_type || 'Paanyaya')}</span></div>`
+                : escapeGpsHtml(kpNumberRaw);
+        }
         const complainant = item.complainant_names || 'Not recorded';
         const respondent = item.respondent_names || 'Not recorded';
         const hearingDate = item.hearing_date
@@ -531,30 +551,36 @@ function renderSummonCasesTable(cases) {
         // Main Case Row
         rowsHtml.push(`
             <tr id="case-row-${caseId}" class="case-main-row ${isExpanded ? 'is-expanded' : ''}" onclick="toggleExpandCase(${caseId}, event)">
-                <td style="padding: 12px 14px; text-align: center;">
+                <td class="cell-expand" style="padding: 12px 14px; text-align: center;">
                     <button type="button" class="row-expand-btn ${isExpanded ? 'is-expanded' : ''}" aria-label="${isExpanded ? 'Collapse' : 'Expand'} details for ${escapeGpsHtml(kpNumberRaw)}" onclick="toggleExpandCase(${caseId}, event)">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                             <polyline points="9 18 15 12 9 6"></polyline>
                         </svg>
                     </button>
                 </td>
-                <td style="padding: 12px 16px;">
+                <td class="cell-kp" style="padding: 12px 16px;">
                     <strong style="color: #0284c7; font-size: 0.92rem; font-weight: 700;">
                         ${kpNumber}
                     </strong>
                     ${item.complaint_title ? `<div class="case-row-subtitle" title="${escapeGpsHtml(item.complaint_title)}">${escapeGpsHtml(item.complaint_title)}</div>` : ''}
                 </td>
-                <td class="party-name-cell" style="padding: 12px 16px;">
-                    ${escapeGpsHtml(complainant)}
+                <td class="party-name-cell cell-complainant" style="padding: 12px 16px;">
+                    <span class="mobile-cell-label">Complainant</span>
+                    <span class="mobile-cell-val">${escapeGpsHtml(complainant)}</span>
                 </td>
-                <td class="party-name-cell" style="padding: 12px 16px;">
-                    ${escapeGpsHtml(respondent)}
+                <td class="party-name-cell cell-respondent" style="padding: 12px 16px;">
+                    <span class="mobile-cell-label">Respondent</span>
+                    <span class="mobile-cell-val">${escapeGpsHtml(respondent)}</span>
                 </td>
-                <td style="padding: 12px 16px;">
-                    ${hearingDate}
+                <td class="cell-hearing" style="padding: 12px 16px;">
+                    <span class="mobile-cell-label">Hearing</span>
+                    <span class="mobile-cell-val">${hearingDate}</span>
                 </td>
-                <td style="padding: 12px 16px;">
-                    ${renderTableServiceStatus(item)}
+                <td class="cell-status" style="padding: 12px 16px;">
+                    <span class="mobile-cell-label">Status</span>
+                    <div class="mobile-cell-val mobile-status-wrap">
+                        ${renderTableServiceStatus(item)}
+                    </div>
                 </td>
             </tr>
         `);
@@ -700,8 +726,8 @@ async function renderExpandedCaseView(caseId) {
         const targetRespAttemptForReturn = anyRespServed ? null : activePendingResp;
 
         const maxAllowedAttempts = isPaanyayaCase
-            ? Number(activeHearing.max_attempts || window.AGAP_SETTINGS?.paanyaya_max_attempts || 3)
-            : Number(activeHearing.max_attempts || window.AGAP_SETTINGS?.summons_max_attempts || 3);
+            ? Number(activeHearing.max_attempts || window.AGAP_SETTINGS?.paanyaya_max_attempts || 6)
+            : Number(activeHearing.max_attempts || window.AGAP_SETTINGS?.summons_max_attempts || 6);
 
         let respBadgeHtml = '';
         if (anyRespServed) {
@@ -908,20 +934,6 @@ async function renderExpandedCaseView(caseId) {
 
         // Render complete expanded panel
         container.innerHTML = `
-            <!-- Meta Bar -->
-            <div class="expanded-meta-bar">
-                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                    <strong style="color: #0f172a; font-size: 0.95rem;">${kpNumber}</strong>
-                    <span style="color: #64748b;">·</span>
-                    <span style="color: #475569; font-size: 0.88rem;">${escapeGpsHtml(complaintTitle)}</span>
-                    <span style="color: #64748b;">·</span>
-                    <span style="font-size: 0.82rem; color: #64748b;">Venue: <strong>${escapeGpsHtml(venue)}</strong></span>
-                </div>
-                <button type="button" class="btn-secondary" onclick="toggleExpandCase(${caseId}, event)" style="font-size: 0.78rem; padding: 4px 10px; border-radius: 6px;">
-                    Close Details &times;
-                </button>
-            </div>
-
             <!-- Two-Column Side-by-Side Service Records Grid -->
             <div class="expanded-columns-grid" ${isPaanyayaCase ? 'style="grid-template-columns: 1fr;"' : ''}>
                 <!-- Left Column: Complainant Notice (KP Form 8) -->
@@ -933,7 +945,7 @@ async function renderExpandedCaseView(caseId) {
                                 <div class="delivery-party-name">
                                     <span>${escapeGpsHtml(compName)}</span>
                                 </div>
-                                <span class="delivery-form-type">KP Form No. 8 – Notice of Hearing</span>
+                                <span class="delivery-form-type">${(activeHearing.hearing_type === 'Conciliation') ? 'KP Form No. 12 – Notice of Hearing (Conciliation)' : 'KP Form No. 8 – Notice of Hearing'}</span>
                             </div>
                             <div>
                                 ${compBadgeHtml}
@@ -999,7 +1011,7 @@ async function renderExpandedCaseView(caseId) {
                                 <div class="delivery-party-name">
                                     <span>${escapeGpsHtml(respName)}</span>
                                 </div>
-                                <span class="delivery-form-type">${isPaanyayaCase ? `${escapeGpsHtml(activeHearing.hearing_type || 'Paanyaya')} – Preliminary Invitation Tracking (${maxAllowedAttempts} Attempts Max)` : `KP Form No. 9 – Summons Delivery Tracking (${maxAllowedAttempts} Attempts Max)`}</span>
+                                <span class="delivery-form-type">${isPaanyayaCase ? `${escapeGpsHtml(activeHearing.hearing_type || 'Paanyaya')} – Preliminary Invitation Tracking (${maxAllowedAttempts} Attempts Max)` : ((activeHearing.hearing_type === 'Conciliation') ? `KP Form No. 12 – Conciliation Hearing Notice Tracking (${maxAllowedAttempts} Attempts Max)` : `KP Form No. 9 – Summons Delivery Tracking (${maxAllowedAttempts} Attempts Max)`)}</span>
                             </div>
                             <div>
                                 ${respBadgeHtml}
@@ -1241,14 +1253,35 @@ function openOfficerReturnModal(partyType, residentId, hearingId, caseId, curren
     const ord = ordinals[attemptNumber] || attemptNumber + 'th';
     const displayParty = (partyType === 'Respondent' && attemptNumber) ? `Respondent (${ord} Attempt)` : partyType;
 
+    const activeExpandedH = window.activeExpandedHearingData || {};
+    const isConciliationStage = (activeExpandedH.hearing_type === 'Conciliation' || caseItem.case_status === 'Conciliation');
+    const isMediationStage = !isPaanyaya && !isConciliationStage;
+    const maxAtt = isPaanyaya ? (window.AGAP_SETTINGS?.paanyaya_max_attempts || 6) : (window.AGAP_SETTINGS?.summons_max_attempts || 6);
+
+    let stageBadgeText = '';
+    let docBadgeText = '';
+
+    if (isPaanyaya) {
+        docBadgeText = `${caseItem.paanyaya_stage_type || 'Paanyaya'} Invitation`;
+        stageBadgeText = `Paanyaya Stage · Invitation Attempt ${attemptNumber} of ${maxAtt}`;
+    } else if (isConciliationStage) {
+        docBadgeText = 'KP Form No. 12 – Notice of Hearing (Conciliation)';
+        stageBadgeText = (partyType === 'Respondent')
+            ? `Conciliation Stage · KP Form 12 Notice Attempt ${attemptNumber} of ${maxAtt}`
+            : 'Conciliation Stage · KP Form 12 Complainant Notice';
+    } else {
+        docBadgeText = (partyType === 'Respondent') ? 'KP Form No. 9 – Summons' : 'KP Form No. 8 – Notice of Hearing';
+        stageBadgeText = (partyType === 'Respondent')
+            ? `Mediation Stage · KP Form 9 Summons Attempt ${attemptNumber} of ${maxAtt}`
+            : 'Mediation Stage · KP Form 8 Complainant Notice';
+    }
+
     if (partyBadge) {
-        partyBadge.textContent = displayParty;
+        partyBadge.textContent = stageBadgeText;
         partyBadge.className = partyType === 'Respondent' ? 'drawer-badge drawer-badge-party-resp' : 'drawer-badge drawer-badge-party-comp';
     }
     if (docBadge) {
-        docBadge.textContent = isPaanyaya 
-            ? `${caseItem.paanyaya_stage_type || 'Paanyaya'} Invitation` 
-            : (partyType === 'Respondent' ? 'KP Form No. 9 – Summons' : 'KP Form No. 8 – Notice');
+        docBadge.textContent = docBadgeText;
     }
     if (titleEl) {
         titleEl.textContent = isEditMode ? `Edit Officer's Return` : `Log Officer's Return`;
@@ -1448,7 +1481,8 @@ async function submitOfficerReturn(event) {
         }
 
         if (result.max_attempts_reached) {
-            window.agapNotify?.(result.escalation_prompt || "${maxAllowedAttempts} Attempts Failed - Max Reached (Unserved). The hearing schedule has been halted. Please verify the respondent's address with the complainant or refer the case for lack of jurisdiction / non-residence.", 'warning', 'Max Attempts Reached (6/6 Failed)', 12000);
+            const maxAttVal = Number(window.AGAP_SETTINGS?.summons_max_attempts || 6);
+            window.agapNotify?.(result.escalation_prompt || `${maxAttVal} Attempts Failed - Max Reached (Unserved). The hearing schedule has been halted. Please verify the respondent's address with the complainant or refer the case for lack of jurisdiction / non-residence.`, 'warning', `Max Attempts Reached (${maxAttVal}/${maxAttVal} Failed)`, 12000);
         } else {
             window.agapNotify?.(result.message || 'Officer return recorded successfully.', 'success');
         }
@@ -1514,12 +1548,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Setup Back Link
             const backLink = document.getElementById('backLink');
             const backLinkLabel = document.getElementById('backLinkLabel');
-            if (backLink) {
+            const userRoleId = Number(window.AGAP_USER_ROLE_ID || window.AGAP_SETTINGS?.user_role_id || 0);
+            if (backLink && userRoleId !== 4) {
                 backLink.href = `../complaints/complaint-details.php?id=${encodeURIComponent(targetCase.complaint_id || targetCase.case_id)}&tab=paanyaya`;
                 if (backLinkLabel) {
                     backLinkLabel.textContent = `Back to Case Details (${targetCase.case_number || targetCase.complaint_number || 'Paanyaya'})`;
                 }
                 backLink.hidden = false;
+            } else if (backLink) {
+                backLink.hidden = true;
             }
 
             if (String(activeExpandedCaseId) !== String(targetCase.case_id)) {
@@ -1559,3 +1596,141 @@ document.addEventListener('DOMContentLoaded', async () => {
         setGpsMessage(error.message || 'Unable to load available cases.');
     }
 });
+
+/* ==========================================================================
+   Case Service History & Multi-Form Delivered Timeline
+   ========================================================================== */
+
+async function renderCaseServiceTimeline(caseId) {
+    const section = document.getElementById('caseServiceTimelineSection');
+    const container = document.getElementById('caseServiceTimelineContainer');
+    const subtitle = document.getElementById('timelineCaseSubtitle');
+    if (!section || !container) return;
+
+    section.style.display = 'block';
+    container.innerHTML = '<div style="text-align: center; color: #64748b; padding: 24px;"><div style="display: inline-block; width: 20px; height: 20px; border: 2px solid #0284c7; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite;"></div> Loading case service history & delivered forms timeline...</div>';
+
+    try {
+        const res = await gpsApi(`${proofApiUrl}?case_id=${encodeURIComponent(caseId)}&mode=timeline`);
+        if (!res.success || !res.stages) {
+            container.innerHTML = `<div style="text-align: center; color: #dc2626; padding: 16px;">${escapeGpsHtml(res.message || 'Unable to load service timeline.')}</div>`;
+            return;
+        }
+
+        if (subtitle) {
+            subtitle.textContent = `Chronological stream of all statutory invitations, notices, summons, and officer returns for Case ${res.case_number} (${res.case_status})`;
+        }
+
+        let html = '';
+        res.stages.forEach(stg => {
+            const items = stg.items || [];
+            let badgeStyle = 'background: #f1f5f9; color: #64748b;';
+            if (stg.badge === 'In Progress') badgeStyle = 'background: #e0f2fe; color: #0369a1;';
+            else if (stg.badge === 'Concluded' || stg.badge === 'Completed') badgeStyle = 'background: #dcfce7; color: #15803d;';
+
+            html += `
+                <div class="timeline-stage-group" style="margin-bottom: 22px; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; background: #fff;">
+                    <div style="background: #f8fafc; padding: 12px 18px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                        <div>
+                            <strong style="font-size: 0.95rem; color: #0f172a;">${escapeGpsHtml(stg.stage_name)}</strong>
+                            <span style="font-size: 0.8rem; color: #64748b; margin-left: 8px;">${escapeGpsHtml(stg.stage_title)}</span>
+                        </div>
+                        <span style="${badgeStyle} font-size: 0.75rem; font-weight: 700; padding: 3px 10px; border-radius: 9999px;">
+                            ${escapeGpsHtml(stg.badge)}
+                        </span>
+                    </div>
+                    <div style="padding: 14px 18px;">
+            `;
+
+            if (items.length === 0) {
+                html += `
+                    <div style="color: #94a3b8; font-size: 0.84rem; font-style: italic; padding: 8px 0;">
+                        No statutory documents or service attempts recorded for this stage.
+                    </div>
+                `;
+            } else {
+                html += `
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                `;
+                items.forEach((item, idx) => {
+                    let pillBg = '#f1f5f9';
+                    let pillColor = '#475569';
+                    let pillIcon = '⚪';
+                    if (item.status_pill === 'served-personal') {
+                        pillBg = '#dcfce7'; pillColor = '#15803d'; pillIcon = '🟢';
+                    } else if (item.status_pill === 'served-substituted') {
+                        pillBg = '#e0f2fe'; pillColor = '#0369a1'; pillIcon = '🔵';
+                    } else if (item.status_pill === 'refused') {
+                        pillBg = '#fef3c7'; pillColor = '#b45309'; pillIcon = '🟡';
+                    } else if (item.status_pill === 'unserved') {
+                        pillBg = '#fee2e2'; pillColor = '#b91c1c'; pillIcon = '🔴';
+                    }
+
+                    const formattedDate = item.service_datetime ? formatDateTime(item.service_datetime) : 'Pending / Not Recorded';
+
+                    html += `
+                        <div style="display: flex; gap: 14px; align-items: flex-start; padding: 12px 14px; background: #fafafa; border: 1px solid #eef2f6; border-radius: 8px;">
+                            <div style="flex-shrink: 0; width: 40px; height: 40px; border-radius: 8px; background: #fff; border: 1px solid #cbd5e1; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; box-shadow: 0 1px 2px rgba(0,0,0,0.04);">
+                                ${item.document_code.includes('10') ? '👥' : (item.document_code.includes('11') ? '📜' : (item.document_code.includes('12') ? '⚖️' : (item.document_code.includes('9') ? '📩' : (item.document_code.includes('8') ? '📋' : '✉️'))))}
+                            </div>
+                            <div style="flex: 1; min-width: 0;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 4px;">
+                                    <div>
+                                        <strong style="color: #0f172a; font-size: 0.9rem;">${escapeGpsHtml(item.document_code)}</strong>
+                                        <span style="font-size: 0.8rem; color: #475569; margin-left: 6px;">${escapeGpsHtml(item.document_title)}</span>
+                                        ${item.attempt_label ? `<span style="margin-left: 6px; background: #f1f5f9; color: #334155; font-size: 0.72rem; font-weight: 700; padding: 1px 6px; border-radius: 4px;">${escapeGpsHtml(item.attempt_label)}</span>` : ''}
+                                    </div>
+                                    <span style="background: ${pillBg}; color: ${pillColor}; font-size: 0.74rem; font-weight: 700; padding: 2px 9px; border-radius: 9999px; display: inline-flex; align-items: center; gap: 4px;">
+                                        ${pillIcon} ${escapeGpsHtml(item.delivery_status)}
+                                    </span>
+                                </div>
+                                <div style="font-size: 0.82rem; color: #475569; margin-bottom: 6px; display: flex; flex-wrap: wrap; gap: 14px;">
+                                    <span>Recipient: <strong>${escapeGpsHtml(item.recipient_name)}</strong> (${escapeGpsHtml(item.party_type)})</span>
+                                    <span>Server: <strong>${escapeGpsHtml(item.served_by_name)}</strong></span>
+                                    <span>Timestamp: <strong>${escapeGpsHtml(formattedDate)}</strong></span>
+                                    ${item.unserved_reason ? `<span style="color: #dc2626;">Reason: <strong>${escapeGpsHtml(item.unserved_reason)}</strong></span>` : ''}
+                                </div>
+                                ${item.remarks ? `<div style="font-size: 0.78rem; color: #64748b; font-style: italic; margin-bottom: 6px;">Notes: ${escapeGpsHtml(item.remarks)}</div>` : ''}
+                                <div style="display: flex; gap: 10px; align-items: center; font-size: 0.8rem;">
+                                    ${item.preview_url ? `
+                                        <a href="${item.preview_url}" target="_blank" style="color: #0284c7; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
+                                            📄 View Document
+                                        </a>
+                                    ` : ''}
+                                    ${item.proof_file_path ? `
+                                        <a href="../../${escapeGpsHtml(item.proof_file_path)}" target="_blank" style="color: #16a34a; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
+                                            📷 View Photo Proof
+                                        </a>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += `</div>`;
+            }
+
+            html += `</div></div>`;
+        });
+
+        container.innerHTML = html;
+    } catch (e) {
+        console.error('renderCaseServiceTimeline error:', e);
+        container.innerHTML = `<div style="text-align: center; color: #dc2626; padding: 16px;">Failed to load timeline: ${escapeGpsHtml(e.message)}</div>`;
+    }
+}
+window.renderCaseServiceTimeline = renderCaseServiceTimeline;
+
+function toggleTimelineVisibility() {
+    const container = document.getElementById('caseServiceTimelineContainer');
+    const btn = document.getElementById('toggleTimelineBtn');
+    if (!container || !btn) return;
+    if (container.style.display === 'none') {
+        container.style.display = 'block';
+        btn.textContent = 'Collapse Timeline';
+    } else {
+        container.style.display = 'none';
+        btn.textContent = 'Expand Timeline';
+    }
+}
+window.toggleTimelineVisibility = toggleTimelineVisibility;

@@ -129,7 +129,7 @@ class HearingController
             if (!$result['success']) {
                 return $result;
             }
-            $label = $this->ordinal($result['sequence']) . ' ' . $result['hearing_type'];
+            $label = $this->ordinal($result['sequence']) . ' ' . ($result['hearing_type'] === 'Arbitration' ? 'Arbitration Hearing' : $result['hearing_type']);
             $auditAction = 'Scheduled ' . $label;
             if (!empty($values['past_date_exception_reason'])) {
                 $auditAction .= ' with Administrator-approved past-date exception';
@@ -821,7 +821,7 @@ class HearingController
 
 
         if (!$allowExistingTypes) {
-            $dateProgression = $this->hearing->validateHearingDateProgression((int) $caseId, $date->format('Y-m-d H:i:s'));
+            $dateProgression = $this->hearing->validateHearingDateProgression((int) $caseId, $date->format('Y-m-d H:i:s'), null, $type);
             if (!$dateProgression['valid']) {
                 return [
                     'success' => false,
@@ -829,7 +829,7 @@ class HearingController
                 ];
             }
         } else {
-            $dateProgression = $this->hearing->validateHearingDateProgression((int) $caseId, $date->format('Y-m-d H:i:s'), $excludeHearingId);
+            $dateProgression = $this->hearing->validateHearingDateProgression((int) $caseId, $date->format('Y-m-d H:i:s'), $excludeHearingId, $type);
             if (!$dateProgression['valid'] && !empty($dateProgression['same_day'])) {
                 return [
                     'success' => false,
@@ -1040,11 +1040,24 @@ class HearingController
             elseif ($qStatus === 'Concluded') $concludedCount++;
             else $waitingCount++;
 
+            $hearingTimestamp = !empty($s['hearing_date']) ? strtotime($s['hearing_date']) : false;
+            $nowTime = time();
+            $delayMinutes = ($hearingTimestamp && $nowTime > $hearingTimestamp && !in_array($qStatus, ['In_Session', 'Concluded'], true))
+                ? (int) floor(($nowTime - $hearingTimestamp) / 60)
+                : 0;
+
+            $isGracePeriodExpired = ($delayMinutes >= 60 && !$isCompleteAndReady && !in_array($qStatus, ['In_Session', 'Concluded', 'Standby'], true));
+            $isGracePeriodActive = ($delayMinutes > 0 && $delayMinutes < 60 && !$isCompleteAndReady && !in_array($qStatus, ['In_Session', 'Concluded', 'Standby'], true));
+
             $s['complainant_checked_in'] = $compIn;
             $s['respondent_checked_in'] = $respIn;
             $s['is_complete_and_ready'] = $isCompleteAndReady;
             $s['queue_status'] = $qStatus;
             $s['call_time_formatted'] = date('g:i A', strtotime($s['hearing_date']));
+            $s['delay_minutes'] = $delayMinutes;
+            $s['is_grace_period_expired'] = $isGracePeriodExpired;
+            $s['is_grace_period_active'] = $isGracePeriodActive;
+            $s['grace_period_minutes_remaining'] = $isGracePeriodActive ? (60 - $delayMinutes) : 0;
 
             $normalized[] = $s;
         }

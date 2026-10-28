@@ -1854,3 +1854,48 @@ A series of key refinements were implemented to conform strictly to Barangay Tum
 - **Dynamic Outcomes Tab Unlocking**:
   - Renamed `tab-arbitration` to **Outcomes** with dynamic live unlock upon previewing/printing Amicable Settlement, Arbitration Award, or CFA.
   - Fixed uncaught `ReferenceError: arbStage is not defined` in `complaints.js` which previously halted party rendering.
+
+
+---
+
+### C. Today (October 29, 2026)
+
+- **Voluntary Arbitration End-to-End Workflow & 4-Step Progressive Timeline (RA 7160 Sec. 413)**:
+  - **Hearing Minutes Outcome Action Transformation**:
+    - In Mediation (`mediation-workspace.php`) and Conciliation (`pangkat-workspace.php`) hearing minutes (*Kinalabasan ng Sesyon*), selecting **"Submit to Voluntary Arbitration (KP Form 14)"** displays a single direct action button: `Issue Arbitration →`. Removed preliminary preview buttons (`Preview KP Form 14` and `Preview KP Form 15`) from the minutes outcome banner to maintain strict sequential progression.
+    - Implemented `issueArbitrationOutcome()` in `stage-workspace.js`: Automatically records the stage outcome as `Arbitration` via `stages/outcome.php`, finalizes the active session minutes, unlocks the Outcomes tab, and immediately redirects the user to the active case's Outcomes workspace (`complaint-details.php?id=[complaint_id]&tab=tab-arbitration#caseWorkspaceSection`).
+  - **4-Step Progressive Timeline Workspace (`#arbitrationProgressiveWorkspace`)**:
+    - Built a dedicated 4-step progressive timeline interface under `#tab-arbitration` in `complaint-details.php` and `complaints.js` (`renderArbitrationProgressiveWorkspace`):
+      - **Step 1: Agreement to Arbitrate (KP Form 14)**: Highlights the recorded Day 0 agreement/signing date (`agreement_date`) with accessible `Preview KP Form 14`, `Print KP Form 14`, and `Download PDF` controls.
+      - **Step 2: 5-Day Statutory Repudiation / Withdrawal Window**: Features a live badge tracking the 5-calendar-day window under RA 7160 Sec. 413 (`Repudiation Window: Day [X] of 5 (Active)` vs `5-Day Repudiation Window Closed (Award Eligible)`), alongside accessible `Preview KP Form 17` and `Print KP Form 17 (Katibayan ng Pagsalungat)` actions.
+      - **Step 3: Segregated Arbitration Hearing Scheduler**: In-workspace interface allowing the Punong Barangay / Presider to schedule arbitration hearing sessions for the same day or succeeding days. Hearings are strictly segregated from mediation/conciliation and labeled as `Arbitration Hearing` (e.g., `1st Arbitration Hearing`, `2nd Arbitration Hearing`) across logs, calendar, and session history (`Hearing.php`, `HearingController.php`).
+      - **Step 4: Statutory Day 6–15 Arbitration Award Modal & Issuance (KP Form 15)**: Integrated `#issueArbitrationAwardModal` with statutory date validation:
+        - *Minimum Date*: Cannot be earlier than **Day 6** (enforcing expiration of the 5-day repudiation window).
+        - *Maximum Date*: Cannot exceed **Day 15** from signing KP Form 14 (`Date Signed + 15 calendar days`).
+        - Enforced both client-side (`validateArbitrationAwardDateInput`) and server-side in `ArbitrationController.php`. Once submitted, unlocks `Preview KP Form 15` and `Print KP Form 15`.
+  - **Dynamic Form Data Auto-Population (`KpFormService.php`)**:
+    - Form 14 auto-populates Day 0 agreement date, parties, and barangay header.
+    - Form 15 dynamically queries and populates all dates of arbitration hearings held (`arbitration_hearing_dates`), award date within statutory window, arbitrator findings, and binding ruling.
+    - Form 17 prerequisite validation permits preview and printing during the active Arbitration stage upon sworn repudiation.
+  - **Database Migration (`20261029_001_voluntary_arbitration_outcomes.sql`)**:
+    - Modified `case_stages.outcome` ENUM to include `'Arbitration'` and `'Arbitration Award'`.
+    - Modified `hearing_minutes.session_outcome` ENUM to include `'Arbitration'`, `'Arbitration Award'`, and `'Repudiated'`.
+  - **Integration Test Suite**:
+    - Created and executed `backend/tests/test_voluntary_arbitration_workflow.php` verifying all 5 lifecycle steps and statutory date constraints (Days 6–15) with 100% assertion pass rate.
+
+- **Automated Amicable Settlement Persistence & Outcomes Transformation**:
+  - Replaced static navigational link in `stage-workspace.js` with `issueSettledOutcome()`: When "Amicably Settled / Nagkasundo (KP Form 16)" is chosen, clicking `Open Amicable Settlement →` automatically saves the stage outcome as `Settled` via `stages/outcome.php`, finalizes hearing minutes, unlocks the Outcomes tab, and transitions directly to `#amicableSettlementWorkspace`.
+  - Updated `backend/models/HearingMinutes.php`: Finalizing minutes with `Settled` automatically transitions `cases.case_status = 'Settled'`, `complaints.status = 'Settled'`, and marks `case_stages` as `Completed`.
+  - Enhanced `isSettledCase` in `complaints.js` to dynamically inspect session minutes, ensuring the Amicable Settlement Workspace (Kasunduan, KP Form 16, 10-day repudiation window) renders immediately on the Outcomes tab.
+
+- **Reopen Settled Case for CFA Stabilization (RA 7160 Sec. 417)**:
+  - Fixed `backend/api/cases/reopen.php`:
+    - Removed fatal error caused by nonexistent `require_once __DIR__ . '/../../config/session.php'`; replaced with standard `session_start()`.
+    - Corrected authorization check to inspect `$_SESSION['role_id']` (`[1, 2, 3]`) instead of nonexistent `$_SESSION['role']`.
+    - Corrected redirect URL to `../documents/cfa.php?case_id=...`.
+  - Hardened `submitReopenForCfa()` in `complaints.js` with comprehensive fallback resolution for `caseId` across `_reopenCaseCaseId`, `currentCaseId`, and `complaintData`.
+
+- **JavaScript Runtime & Syntax Hardening**:
+  - Fixed undefined variable reference `${hId}` in `stage-workspace.js` line 1948, replacing with `Number(activeHearingId || 0)`.
+  - Removed stray escaped newline character `\n` in `complaints.js` that caused an `Uncaught SyntaxError: Invalid or unexpected token`.
+  - Added `typeof` guards around global window exposures in `stage-workspace.js` (`loadStageSlots`, `initWorkspaceScheduleModal`, `submitAttendance`, etc.) to prevent premature runtime termination.

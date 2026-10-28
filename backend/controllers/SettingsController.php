@@ -113,6 +113,13 @@ class SettingsController
             }
         }
 
+        // Synchronize summons_max_attempts and paanyaya_max_attempts for backward compatibility
+        if (isset($toUpdate['summons_max_attempts'])) {
+            $toUpdate['paanyaya_max_attempts'] = $toUpdate['summons_max_attempts'];
+        } elseif (isset($toUpdate['paanyaya_max_attempts'])) {
+            $toUpdate['summons_max_attempts'] = $toUpdate['paanyaya_max_attempts'];
+        }
+
         // String & toggle settings
         $miscKeys = [
             'working_hours_start', 'working_hours_end', 'mediation_day_of_week',

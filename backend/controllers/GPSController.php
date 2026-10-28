@@ -58,11 +58,17 @@ class GPSController
 
         $hearings = [];
         if (!$isPaanyayaParam) {
+            $hOrderSql = "hearing_date DESC, hearing_id DESC";
+            if ($requestedStage === 'Conciliation') {
+                $hOrderSql = "CASE WHEN hearing_type = 'Conciliation' THEN 0 ELSE 1 END, hearing_date DESC, hearing_id DESC";
+            } elseif ($requestedStage === 'Mediation') {
+                $hOrderSql = "CASE WHEN hearing_type IN ('Initial Hearing', 'Mediation') THEN 0 ELSE 1 END, hearing_date DESC, hearing_id DESC";
+            }
             $stmt = $db->prepare("
                 SELECT hearing_id, hearing_type, hearing_date, venue, status
                 FROM hearings
                 WHERE case_id = ?
-                ORDER BY hearing_date DESC, hearing_id DESC
+                ORDER BY $hOrderSql
             ");
             $stmt->execute([$caseId]);
             $hearings = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -83,12 +89,14 @@ class GPSController
             $compRow = $compStmt->fetch(PDO::FETCH_ASSOC);
 
             if ($compRow) {
+    
                 require_once __DIR__ . '/../models/Setting.php';
-                $maxPaanyaya = (int) Setting::getSetting('paanyaya_max_attempts', 3, $db);
+                $maxPaanyaya = (int) Setting::getSetting('summons_max_attempts', (int) Setting::getSetting('paanyaya_max_attempts', 6, $db), $db);
+
                 $complaintId = (int) $compRow['complaint_id'];
-                $paaModel = new Paanyaya($db);
-            require_once __DIR__ . '/../models/Setting.php';
-            $maxPaanyaya = (int) Setting::getSetting('paanyaya_max_attempts', 3, $db);
+            $paaModel = new Paanyaya($db);
+
+
                 $twoStages = $paaModel->getTwoStagesData($complaintId);
                 
                 // Scope to requested stage if specified (Paanyaya 1 vs Paanyaya 2)
@@ -240,6 +248,8 @@ class GPSController
             ];
         }
 
+        require_once __DIR__ . '/../models/Setting.php';
+        $maxSummons = (int) Setting::getSetting('summons_max_attempts', 6, $db);
         $deliveryService = new SummonDeliveryService($db);
         $hearingsWithDeliveries = [];
         foreach ($hearings as $h) {
@@ -252,6 +262,7 @@ class GPSController
                     'hearing_date' => $h['hearing_date'],
                     'venue' => $h['venue'],
                     'status' => $h['status'],
+                    'max_attempts' => $maxSummons,
                     'deliveries' => $delivResult['deliveries'],
                     'respondent_attempts' => $delivResult['respondent_attempts'] ?? [],
                     'can_initiate_next_attempt' => $delivResult['can_initiate_next_attempt'] ?? false,
@@ -263,7 +274,8 @@ class GPSController
             }
         }
 
-        $cfaEligibility = $deliveryService->getCfaEligibility($caseId);
+        $primaryHearingId = !empty($hearingsWithDeliveries[0]['hearing_id']) ? (int) $hearingsWithDeliveries[0]['hearing_id'] : null;
+        $cfaEligibility = $deliveryService->getCfaEligibility($caseId, $primaryHearingId);
 
         return [
             'success' => true,
@@ -404,9 +416,11 @@ class GPSController
                 $serviceAddress = $resRow['address'] ?: ($resRow['purok'] ?: 'Barangay Tumana');
             }
 
-            $paaModel = new Paanyaya($db);
             require_once __DIR__ . '/../models/Setting.php';
-            $maxPaanyaya = (int) Setting::getSetting('paanyaya_max_attempts', 3, $db);
+            $maxPaanyaya = (int) Setting::getSetting('summons_max_attempts', (int) Setting::getSetting('paanyaya_max_attempts', 6, $db), $db);
+            $paaModel = new Paanyaya($db);
+
+
             $returnId = filter_var($input['delivery_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
 
             if ($returnId) {
@@ -492,6 +506,8 @@ class GPSController
             $imagePath = $upload['path'];
         }
 
+        require_once __DIR__ . '/../models/Setting.php';
+        $maxSummons = (int) Setting::getSetting('summons_max_attempts', 6, $db);
         $deliveryService = new SummonDeliveryService($db);
         $result = $deliveryService->recordDelivery($hearingId, $input, $userId);
 
@@ -515,6 +531,8 @@ class GPSController
         require_once __DIR__ . '/../services/SummonDeliveryService.php';
         require_once __DIR__ . '/../config/database.php';
         $db = (new Database())->connect();
+        require_once __DIR__ . '/../models/Setting.php';
+        $maxSummons = (int) Setting::getSetting('summons_max_attempts', 6, $db);
         $deliveryService = new SummonDeliveryService($db);
         return $deliveryService->initiateNextAttempt($caseId, $userId, $hearingId);
     }
@@ -524,6 +542,8 @@ class GPSController
         require_once __DIR__ . '/../services/SummonDeliveryService.php';
         require_once __DIR__ . '/../config/database.php';
         $db = (new Database())->connect();
+        require_once __DIR__ . '/../models/Setting.php';
+        $maxSummons = (int) Setting::getSetting('summons_max_attempts', 6, $db);
         $deliveryService = new SummonDeliveryService($db);
         return $deliveryService->markKp8Printed($caseId, $documentId, $hearingId, $userId);
     }
@@ -533,10 +553,12 @@ class GPSController
         require_once __DIR__ . '/../services/SummonDeliveryService.php';
         require_once __DIR__ . '/../config/database.php';
         $db = (new Database())->connect();
+        require_once __DIR__ . '/../models/Setting.php';
+        $maxSummons = (int) Setting::getSetting('summons_max_attempts', 6, $db);
         $deliveryService = new SummonDeliveryService($db);
         return [
             'success' => true,
-            'data' => $deliveryService->getCfaEligibility($caseId)
+            'data' => $deliveryService->getCfaEligibility($caseId, filter_input(INPUT_GET, 'hearing_id', FILTER_VALIDATE_INT) ?: null)
         ];
     }
 
@@ -637,5 +659,217 @@ class GPSController
         $relativePath = $relativeDirectory . '/' . bin2hex(random_bytes(16)) . '.' . $storedExtension;
         if (!move_uploaded_file($temporaryPath, dirname(__DIR__, 2) . '/' . $relativePath)) return ['success' => false, 'message' => 'Unable to save the proof image.'];
         return ['success' => true, 'path' => $relativePath];
+    }
+
+    public function getCaseServiceTimeline(int $caseId): array
+    {
+        if ($caseId < 1) {
+            return ['success' => false, 'message' => 'A valid case ID is required.'];
+        }
+
+        require_once __DIR__ . '/../config/database.php';
+        $db = (new Database())->connect();
+
+        $cStmt = $db->prepare("
+            SELECT c.case_id, c.case_number, c.case_status, c.complaint_id,
+                   co.complaint_number, co.complaint_title, co.status AS complaint_status
+            FROM cases c
+            INNER JOIN complaints co ON co.complaint_id = c.complaint_id
+            WHERE c.case_id = ?
+        ");
+        $cStmt->execute([$caseId]);
+        $case = $cStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$case) {
+            return ['success' => false, 'message' => 'Case not found.'];
+        }
+
+        $complaintId = (int) $case['complaint_id'];
+
+        // --- STAGE 0: PAANYAYA (Informal Invitation) ---
+        $paanyayaItems = [];
+        try {
+            $paaStmt = $db->prepare("
+                SELECT ps.stage_id, ps.stage_type, ps.status AS stage_status, ps.invitation_date, ps.invitation_time, ps.venue,
+                       sr.return_id, sr.attempt_number, sr.delivery_outcome, sr.unsuccessful_reason,
+                       sr.service_datetime, sr.recipient_name, sr.latitude, sr.longitude,
+                       sr.proof_photo_path, sr.remarks,
+                       TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS served_by_name
+                FROM paanyaya_stages ps
+                LEFT JOIN paanyaya_service_returns sr ON sr.stage_id = ps.stage_id
+                LEFT JOIN users u ON u.user_id = sr.created_by
+                WHERE ps.complaint_id = ?
+                ORDER BY ps.stage_type ASC, sr.attempt_number ASC, sr.return_id ASC
+            ");
+            $paaStmt->execute([$complaintId]);
+            $paaRows = $paaStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($paaRows as $row) {
+                if (empty($row['stage_id'])) continue;
+                $stageName = $row['stage_type'] ?: 'Paanyaya 1';
+                $attemptNum = (int) ($row['attempt_number'] ?: 1);
+                $outcome = $row['delivery_outcome'] ?: ($row['stage_status'] === 'Delivered' ? 'Successfully delivered' : 'Pending');
+                
+                $statusPill = 'pending';
+                $statusLabel = 'Pending Service';
+                if ($outcome === 'Successfully delivered') {
+                    $statusPill = 'served-personal';
+                    $statusLabel = 'Served - Personal';
+                } elseif (!empty($row['unsuccessful_reason']) || $outcome === 'Unsuccessful') {
+                    $statusPill = 'unserved';
+                    $statusLabel = 'Unserved';
+                }
+
+                $paanyayaItems[] = [
+                    'stage' => 'Paanyaya',
+                    'stage_index' => 0,
+                    'document_code' => $stageName,
+                    'document_title' => "{$stageName} — Invitation to Informal Dialogue",
+                    'party_type' => 'Respondent',
+                    'recipient_name' => $row['recipient_name'] ?: 'Respondent',
+                    'attempt_number' => $attemptNum,
+                    'attempt_label' => "Attempt #{$attemptNum}",
+                    'delivery_status' => $statusLabel,
+                    'status_pill' => $statusPill,
+                    'unserved_reason' => $row['unsuccessful_reason'] ?: null,
+                    'served_by_name' => $row['served_by_name'] ?: 'Process Server',
+                    'service_datetime' => $row['service_datetime'] ?: ($row['invitation_date'] ? "{$row['invitation_date']} {$row['invitation_time']}" : null),
+                    'latitude' => $row['latitude'] ?: null,
+                    'longitude' => $row['longitude'] ?: null,
+                    'proof_photo_path' => $row['proof_photo_path'] ?: null,
+                    'remarks' => $row['remarks'] ?: "Informal invitation scheduled at {$row['venue']}.",
+                    'preview_url' => "../../../backend/api/documents/kp-form.php?case_id={$caseId}&form_code=Paanyaya&preview=1"
+                ];
+            }
+        } catch (Throwable $e) {
+            error_log('Timeline Paanyaya Error: ' . $e->getMessage());
+        }
+
+        // --- STAGE 1: MEDIATION & STAGE 2: CONCILIATION DELIVERIES ---
+        $mediationItems = [];
+        $conciliationItems = [];
+
+        try {
+            $delivStmt = $db->prepare("
+                SELECT sd.*, 
+                       h.hearing_type, h.hearing_date, h.venue,
+                       gd.file_path, gd.template_id, dt.template_name,
+                       TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS served_by_name
+                FROM summon_deliveries sd
+                LEFT JOIN hearings h ON h.hearing_id = sd.hearing_id
+                LEFT JOIN generated_documents gd ON gd.document_id = sd.document_id
+                LEFT JOIN document_templates dt ON dt.template_id = gd.template_id
+                LEFT JOIN users u ON u.user_id = COALESCE(sd.served_by_user_id, sd.served_by)
+                WHERE sd.case_id = ?
+                ORDER BY sd.delivery_id ASC
+            ");
+            $delivStmt->execute([$caseId]);
+            $allDeliveries = $delivStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($allDeliveries as $deliv) {
+                $fType = $deliv['form_type'];
+                $hType = $deliv['hearing_type'] ?? '';
+                $isConc = ($hType === 'Conciliation' || str_contains($fType, '10') || str_contains($fType, '11') || str_contains($fType, '12') || str_contains((string)$deliv['remarks'], 'KP Form 12') || str_contains((string)$deliv['remarks'], 'Pangkat'));
+
+                $rawStatus = $deliv['delivery_status'] ?: 'Pending';
+                $statusPill = 'pending';
+                $statusLabel = 'Pending Service';
+                if ($rawStatus === 'Served Personal' || $rawStatus === 'Served') {
+                    $statusPill = 'served-personal';
+                    $statusLabel = 'Served - Personal';
+                } elseif ($rawStatus === 'Served Substituted') {
+                    $statusPill = 'served-substituted';
+                    $statusLabel = 'Served - Substituted';
+                } elseif ($rawStatus === 'Served Refused') {
+                    $statusPill = 'refused';
+                    $statusLabel = 'Refused to Receive';
+                } elseif ($rawStatus === 'Unserved') {
+                    $statusPill = 'unserved';
+                    $statusLabel = 'Unserved';
+                }
+
+                $attemptNum = (int) ($deliv['attempt_number'] ?: 1);
+
+                $docCode = $fType;
+                if (str_contains($fType, 'Summon') || $fType === 'Summon') {
+                    $docCode = 'KP Form 9';
+                } elseif ($fType === 'Notice of Hearing' && !$isConc) {
+                    $docCode = 'KP Form 8';
+                }
+
+                $previewUrl = null;
+                if (!empty($deliv['document_id'])) {
+                    $previewUrl = "../../../backend/api/documents/download.php?id=" . (int)$deliv['document_id'];
+                } else {
+                    $previewUrl = "../../../backend/api/documents/kp-form.php?case_id={$caseId}&form_code=" . urlencode($docCode) . "&preview=1";
+                }
+
+                $item = [
+                    'delivery_id' => (int) $deliv['delivery_id'],
+                    'hearing_id' => $deliv['hearing_id'] ? (int) $deliv['hearing_id'] : null,
+                    'document_id' => $deliv['document_id'] ? (int) $deliv['document_id'] : null,
+                    'stage' => $isConc ? 'Conciliation' : 'Mediation',
+                    'stage_index' => $isConc ? 2 : 1,
+                    'document_code' => $docCode,
+                    'document_title' => $deliv['remarks'] ?: "{$docCode} Notice",
+                    'party_type' => $deliv['party_type'],
+                    'recipient_name' => $deliv['recipient_name'] ?: $deliv['party_type'],
+                    'attempt_number' => $attemptNum,
+                    'attempt_label' => "Attempt #{$attemptNum}",
+                    'delivery_status' => $statusLabel,
+                    'status_pill' => $statusPill,
+                    'unserved_reason' => $deliv['unserved_reason'] ?: null,
+                    'served_by_name' => $deliv['served_by_name'] ?: ($deliv['service_method'] ?: 'Process Server'),
+                    'service_datetime' => $deliv['served_at'] ?: ($deliv['attempted_at'] ?: $deliv['created_at']),
+                    'service_method' => $deliv['service_method'] ?: null,
+                    'proof_file_path' => $deliv['proof_file_path'] ?: null,
+                    'remarks' => $deliv['remarks'] ?: '',
+                    'preview_url' => $previewUrl
+                ];
+
+                if ($isConc) {
+                    $conciliationItems[] = $item;
+                } else {
+                    $mediationItems[] = $item;
+                }
+            }
+        } catch (Throwable $e) {
+            error_log('Timeline Deliveries Error: ' . $e->getMessage());
+        }
+
+        // Build 3 stages
+        $stages = [
+            [
+                'stage_id' => 0,
+                'stage_key' => 'paanyaya',
+                'stage_name' => 'Stage 0: Paanyaya',
+                'stage_title' => 'Paanyaya (Informal Preliminary Dialogue)',
+                'badge' => count($paanyayaItems) > 0 ? (count(array_filter($paanyayaItems, fn($i) => $i['status_pill'] === 'served-personal')) > 0 ? 'Concluded' : 'In Progress') : 'Not Applicable',
+                'items' => $paanyayaItems
+            ],
+            [
+                'stage_id' => 1,
+                'stage_key' => 'mediation',
+                'stage_name' => 'Stage 1: Mediation',
+                'stage_title' => 'Punong Barangay Mediation (KP Form 8 & 9)',
+                'badge' => in_array($case['case_status'], ['Conciliation', 'Settled', 'Arbitration', 'Dismissed'], true) ? 'Concluded' : 'In Progress',
+                'items' => $mediationItems
+            ],
+            [
+                'stage_id' => 2,
+                'stage_key' => 'conciliation',
+                'stage_name' => 'Stage 2: Conciliation',
+                'stage_title' => 'Pangkat ng Tagapagkasundo Conciliation (KP Form 10, 11 & 12)',
+                'badge' => ($case['case_status'] === 'Conciliation') ? 'In Progress' : (in_array($case['case_status'], ['Settled', 'Arbitration', 'CFA Issued'], true) ? 'Completed' : 'Pending'),
+                'items' => $conciliationItems
+            ]
+        ];
+
+        return [
+            'success' => true,
+            'case_id' => $caseId,
+            'case_number' => $case['case_number'],
+            'case_status' => $case['case_status'],
+            'stages' => $stages
+        ];
     }
 }

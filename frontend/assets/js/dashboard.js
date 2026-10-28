@@ -110,55 +110,177 @@ document.addEventListener('DOMContentLoaded', () => {
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     };
 
+    const getCsrfToken = () => {
+        return document.querySelector('meta[name="agap-csrf-token"]')?.getAttribute('content')
+            || document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+            || window.agapCsrfToken
+            || '';
+    };
+
+    const formatTimeOnly = (raw) => {
+        if (!raw) return '';
+        const d = new Date(typeof raw === 'string' && raw.includes(' ') ? raw.replace(' ', 'T') : raw);
+        if (!isNaN(d.getTime())) {
+            return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        }
+        if (typeof raw === 'string' && raw.includes(':')) {
+            const parts = raw.split(':');
+            let h = parseInt(parts[0], 10);
+            const m = parts[1] || '00';
+            if (!isNaN(h)) {
+                const ampm = h >= 12 ? 'PM' : 'AM';
+                h = h % 12 || 12;
+                return `${h}:${m} ${ampm}`;
+            }
+        }
+        return raw;
+    };
+
     const addHearingItem = (container, hearing) => {
         const item = document.createElement('article');
         item.className = 'dashboard-list-item';
+        item.style.padding = '14px 0';
+        item.style.alignItems = 'flex-start';
 
         const content = document.createElement('div');
         content.className = 'dashboard-list-content';
 
+        const scheduledTimeStr = formatTimeOnly(hearing.hearing_date) || 'Scheduled';
+        const hearingTypeStr = `${hearing.hearing_type || 'Hearing'}${hearing.mediation_attempt ? ' ' + hearing.mediation_attempt : ''}`;
+        const caseNumberStr = hearing.case_number ? `Case #${hearing.case_number}` : 'Case';
+
+        const compName = hearing.complainant_names || 'Complainant';
+        const respName = hearing.respondent_names || 'Respondent';
+
+        // Title Row: Scheduled Time + Case # and Hearing Type
+        const headerRow = document.createElement('div');
+        headerRow.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;';
+
+        const timeBadge = document.createElement('span');
+        timeBadge.style.cssText = 'font-size: 0.78rem; font-weight: 700; color: #0f172a; background: #e2e8f0; padding: 2px 8px; border-radius: 4px; white-space: nowrap;';
+        timeBadge.textContent = scheduledTimeStr;
+
         const heading = document.createElement('h3');
-        heading.textContent = `${hearing.case_number || 'Case'} · ${hearing.hearing_type || 'Hearing'}`;
+        heading.style.cssText = 'margin: 0; font-size: 0.92rem; font-weight: 700; color: #0f172a;';
+        heading.textContent = `${caseNumberStr} · ${hearingTypeStr}`;
 
-        const description = document.createElement('p');
-        description.textContent = `${formatDateTime(hearing.hearing_date)} · ${hearing.venue || 'Lupon Court Room'}${hearing.complaint_title ? ` · ${hearing.complaint_title}` : ''}`;
+        headerRow.append(timeBadge, heading);
 
-        content.append(heading, description);
+        // Parties Row: (C) Complainant vs (R) Respondent
+        const partiesRow = document.createElement('div');
+        partiesRow.style.cssText = 'font-size: 0.84rem; color: #1e293b; margin-bottom: 4px; line-height: 1.4;';
+        partiesRow.innerHTML = `<span style="color: #166534; font-weight: 700;">(C)</span> ${escapeHtml(compName)} <span style="color: #94a3b8; font-weight: 600; margin: 0 4px;">vs.</span> <span style="color: #991b1b; font-weight: 700;">(R)</span> ${escapeHtml(respName)}`;
+
+        // Venue & Title Row
+        const venueRow = document.createElement('p');
+        venueRow.style.cssText = 'font-size: 0.78rem; color: #64748b; margin: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;';
+        venueRow.innerHTML = `<span>📍 ${escapeHtml(hearing.venue || 'Lupon Court Room')}</span>${hearing.complaint_title ? `<span style="color:#cbd5e1;">•</span><span>${escapeHtml(hearing.complaint_title)}</span>` : ''}`;
+
+        content.append(headerRow, partiesRow, venueRow);
         item.appendChild(content);
 
+        // Actions Container
         const actions = document.createElement('div');
-        actions.style.display = 'flex';
-        actions.style.alignItems = 'center';
-        actions.style.gap = '8px';
-        actions.style.flexWrap = 'wrap';
+        actions.className = 'hearing-card-actions';
+        actions.style.cssText = 'display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; margin-left: 12px;';
 
-        const rawStatus = (hearing.queue_status || hearing.status || 'Scheduled').trim();
+        // Queue & Attendance Evaluation
+        const rawQueue = (hearing.queue_status || '').trim();
+        const rawStatus = (hearing.status || '').trim();
+        const normQueue = rawQueue.toLowerCase().replace(/[\s-]+/g, '_');
         const normStatus = rawStatus.toLowerCase().replace(/[\s-]+/g, '_');
-        
-        let badgeBg = '#e0f2fe', badgeColor = '#0369a1', badgeBorder = '#bae6fd', badgeLabel = rawStatus;
 
-        if (normStatus === 'in_session') {
-            badgeBg = '#dbeafe'; badgeColor = '#1e40af'; badgeBorder = '#93c5fd'; badgeLabel = 'In_Session';
-        } else if (normStatus === 'ready' || normStatus === 'ready_for_hearing') {
-            badgeBg = '#dcfce7'; badgeColor = '#15803d'; badgeBorder = '#86efac'; badgeLabel = 'Ready';
-        } else if (normStatus === 'waiting' || normStatus === 'waiting_room') {
-            badgeBg = '#f1f5f9'; badgeColor = '#475569'; badgeBorder = '#cbd5e1'; badgeLabel = 'Waiting';
-        } else if (normStatus === 'standby' || normStatus === 'on_standby') {
-            badgeBg = '#fef3c7'; badgeColor = '#b45309'; badgeBorder = '#fde68a'; badgeLabel = 'Standby';
-        } else if (normStatus === 'concluded' || normStatus === 'completed') {
-            badgeBg = '#f3e8ff'; badgeColor = '#7e22ce'; badgeBorder = '#d8b4fe'; badgeLabel = 'Concluded';
+        const isConcluded = normQueue === 'concluded' || normStatus === 'concluded' || normStatus === 'completed';
+        const isInSession = normQueue === 'in_session';
+        const isStandby = normQueue === 'standby' || normQueue === 'on_standby';
+
+        const compCheckedIn = ['present', 'late'].includes((hearing.complainant_attendance || '').toLowerCase());
+        const respCheckedIn = ['present', 'late'].includes((hearing.respondent_attendance || '').toLowerCase());
+        const isCompleteAndReady = (compCheckedIn && respCheckedIn) || normQueue === 'ready' || normQueue === 'ready_for_hearing';
+
+        // 1-Hour Grace Period & Countdown Calculation
+        const hDate = new Date(hearing.hearing_date ? hearing.hearing_date.replace(' ', 'T') : '');
+        const nowD = new Date();
+        const diffMinutes = (!isNaN(hDate.getTime()) && nowD > hDate) ? Math.floor((nowD - hDate) / 60000) : 0;
+
+        let badgeBg = '#f1f5f9', badgeColor = '#475569', badgeBorder = '#cbd5e1', badgeLabel = 'Scheduled';
+
+        if (isInSession) {
+            badgeBg = '#dbeafe'; badgeColor = '#1e40af'; badgeBorder = '#93c5fd';
+            const startFormatted = formatTimeOnly(hearing.actual_start_time);
+            badgeLabel = startFormatted ? `In Session (Started: ${startFormatted})` : 'In Session';
+        } else if (isConcluded) {
+            badgeBg = '#f3e8ff'; badgeColor = '#7e22ce'; badgeBorder = '#d8b4fe';
+            badgeLabel = 'Concluded';
+        } else if (isStandby) {
+            badgeBg = '#fef3c7'; badgeColor = '#b45309'; badgeBorder = '#fde68a';
+            badgeLabel = 'On Standby';
+        } else if (isCompleteAndReady) {
+            badgeBg = '#dcfce7'; badgeColor = '#15803d'; badgeBorder = '#86efac';
+            badgeLabel = 'Complete & Ready';
+        } else if (diffMinutes >= 60) {
+            badgeBg = '#fee2e2'; badgeColor = '#991b1b'; badgeBorder = '#fca5a5';
+            badgeLabel = `1-Hour Expired (${diffMinutes}m late)`;
+        } else if (diffMinutes > 0) {
+            badgeBg = '#fef3c7'; badgeColor = '#b45309'; badgeBorder = '#fde68a';
+            badgeLabel = `Grace Period (${60 - diffMinutes}m left)`;
         } else {
-            badgeBg = '#e0f2fe'; badgeColor = '#0369a1'; badgeBorder = '#bae6fd'; badgeLabel = rawStatus;
+            badgeBg = '#f1f5f9'; badgeColor = '#475569'; badgeBorder = '#cbd5e1';
+            badgeLabel = 'Scheduled';
         }
 
         const statusPill = document.createElement('span');
         statusPill.className = 'hearing-status-pill';
         statusPill.style.cssText = `font-size: 0.74rem; font-weight: 700; padding: 4px 10px; border-radius: 9999px; background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder}; white-space: nowrap;`;
         statusPill.textContent = badgeLabel;
+        actions.appendChild(statusPill);
 
+        // Button 1: ▶ Call to Session / Start Hearing
+        if (isCompleteAndReady && !isInSession && !isConcluded) {
+            const startBtn = document.createElement('button');
+            startBtn.type = 'button';
+            startBtn.className = 'btn-action-start-hearing';
+            startBtn.style.cssText = 'background: #15803d; color: #ffffff; border: none; border-radius: 6px; padding: 6px 12px; font-size: 11.5px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; transition: all .15s ease;';
+            startBtn.innerHTML = '▶ Call to Session / Start Hearing';
+            startBtn.title = 'Both parties are checked in. Click to start the live hearing session.';
+            startBtn.addEventListener('click', () => handleStartHearing(hearing.hearing_id, hearing.case_number));
+            actions.appendChild(startBtn);
+        }
+
+        // Button 2: ⏸️ Put on Standby / ▶ Resume from Standby
+        if (!isConcluded && !isInSession) {
+            const standbyBtn = document.createElement('button');
+            standbyBtn.type = 'button';
+            standbyBtn.className = 'btn-action-standby-hearing';
+            if (isStandby) {
+                standbyBtn.style.cssText = 'background: #fffbeb; color: #b45309; border: 1.5px solid #b45309; border-radius: 6px; padding: 5px 11px; font-size: 11.5px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; transition: all .15s ease;';
+                standbyBtn.innerHTML = '▶ Resume from Standby';
+                standbyBtn.title = 'Resume from standby and return to active queue.';
+            } else {
+                standbyBtn.style.cssText = 'background: #f8fafc; color: #475569; border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 11px; font-size: 11.5px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; transition: all .15s ease;';
+                standbyBtn.innerHTML = '⏸️ Put on Standby';
+                standbyBtn.title = 'Put on standby to free Lupon Court Room for other ready cases.';
+            }
+            standbyBtn.addEventListener('click', () => handleToggleStandby(hearing.hearing_id, isStandby));
+            actions.appendChild(standbyBtn);
+        }
+
+        // Button 3: 📝 Quick Attendance / Check-In
+        if (!isConcluded) {
+            const attBtn = document.createElement('button');
+            attBtn.type = 'button';
+            attBtn.className = 'btn-action-quick-att';
+            attBtn.style.cssText = 'background: #ffffff; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 11px; font-size: 11.5px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; transition: all .15s ease;';
+            attBtn.innerHTML = '📝 Quick Attendance';
+            attBtn.title = 'Quick Attendance / Check-In for Complainant & Respondent';
+            attBtn.addEventListener('click', () => openQuickAttendanceModal(hearing));
+            actions.appendChild(attBtn);
+        }
+
+        // Button 4: 📂 Open Case
         const openCaseBtn = document.createElement('a');
         openCaseBtn.className = 'btn-open-case';
-        openCaseBtn.textContent = 'Open Case';
+        openCaseBtn.innerHTML = '📂 Open Case';
         if (hearing.complaint_id) {
             openCaseBtn.href = `../complaints/complaint-details.php?id=${encodeURIComponent(hearing.complaint_id)}`;
         } else if (hearing.case_id) {
@@ -166,12 +288,203 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             openCaseBtn.href = '#';
         }
-        openCaseBtn.title = 'View complaint details';
-
-        actions.appendChild(statusPill);
+        openCaseBtn.title = 'View full case and complaint record';
         actions.appendChild(openCaseBtn);
+
         item.appendChild(actions);
         container.appendChild(item);
+    };
+
+    const handleStartHearing = async (hearingId, caseNumber) => {
+        if (!confirm(`Simulan na ba ang sesyon para sa ${caseNumber ? `Case #${caseNumber}` : 'ang kasong ito'}?`)) {
+            return;
+        }
+        try {
+            const res = await fetch('../../../backend/api/hearings/queue.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-Token': getCsrfToken()
+                },
+                body: JSON.stringify({
+                    action: 'start_session',
+                    hearing_id: hearingId
+                })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.success) {
+                alert(data.message || 'Hindi masimulan ang sesyon.');
+                return;
+            }
+            alert(data.message || 'Nagsimula na ang sesyon sa Lupon Court Room.');
+            fetchDashboardData();
+        } catch (err) {
+            console.error(err);
+            alert('May naganap na error sa pagsisimula ng sesyon.');
+        }
+    };
+
+    const handleToggleStandby = async (hearingId, isCurrentlyStandby) => {
+        const actionLabel = isCurrentlyStandby ? 'ibalik mula sa Standby' : 'ilagay sa Standby';
+        if (!confirm(`Nais mo bang ${actionLabel} ang pagdinig na ito?`)) {
+            return;
+        }
+        try {
+            const res = await fetch('../../../backend/api/hearings/queue.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-Token': getCsrfToken()
+                },
+                body: JSON.stringify({
+                    action: 'standby',
+                    hearing_id: hearingId,
+                    standby: isCurrentlyStandby ? 0 : 1
+                })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.success) {
+                alert(data.message || 'Hindi ma-update ang standby status.');
+                return;
+            }
+            fetchDashboardData();
+        } catch (err) {
+            console.error(err);
+            alert('May naganap na error sa pag-update ng standby status.');
+        }
+    };
+
+    const openQuickAttendanceModal = (hearing) => {
+        const modal = document.getElementById('quickDashboardAttendanceModal');
+        if (!modal) return;
+
+        state.activeQuickAttHearing = hearing;
+        state.activeQuickAttHearingId = hearing.hearing_id;
+
+        const caseBadge = document.getElementById('quickAttCaseNumBadge');
+        if (caseBadge) caseBadge.textContent = hearing.case_number ? `Case #${hearing.case_number}` : 'Case';
+
+        const typeEl = document.getElementById('quickAttHearingType');
+        if (typeEl) typeEl.textContent = `${hearing.hearing_type || 'Hearing'}${hearing.mediation_attempt ? ' ' + hearing.mediation_attempt : ''}`;
+
+        const timeEl = document.getElementById('quickAttHearingTime');
+        if (timeEl) timeEl.textContent = formatTimeOnly(hearing.hearing_date);
+
+        const venueEl = document.getElementById('quickAttHearingVenue');
+        if (venueEl) venueEl.textContent = hearing.venue || 'Lupon Court Room';
+
+        const compNameEl = document.getElementById('quickAttComplainantName');
+        if (compNameEl) compNameEl.textContent = hearing.complainant_names || 'Complainant';
+
+        const respNameEl = document.getElementById('quickAttRespondentName');
+        if (respNameEl) respNameEl.textContent = hearing.respondent_names || 'Respondent';
+
+        const remarksEl = document.getElementById('quickAttRemarks');
+        if (remarksEl) remarksEl.value = hearing.attendance_notes || '';
+
+        // Select correct radios
+        const compVal = hearing.complainant_attendance || 'Present';
+        const respVal = hearing.respondent_attendance || 'Present';
+
+        const compRadio = document.querySelector(`input[name="quick_comp_att"][value="${compVal}"]`) || document.querySelector('input[name="quick_comp_att"][value="Present"]');
+        if (compRadio) compRadio.checked = true;
+
+        const respRadio = document.querySelector(`input[name="quick_resp_att"][value="${respVal}"]`) || document.querySelector('input[name="quick_resp_att"][value="Present"]');
+        if (respRadio) respRadio.checked = true;
+
+        modal.style.display = 'flex';
+    };
+
+    const closeQuickAttendanceModal = () => {
+        const modal = document.getElementById('quickDashboardAttendanceModal');
+        if (modal) modal.style.display = 'none';
+        state.activeQuickAttHearing = null;
+        state.activeQuickAttHearingId = null;
+    };
+
+    const submitQuickAttendance = async () => {
+        const hearingId = state.activeQuickAttHearingId;
+        if (!hearingId) return;
+
+        const compAtt = document.querySelector('input[name="quick_comp_att"]:checked')?.value || 'Present';
+        const respAtt = document.querySelector('input[name="quick_resp_att"]:checked')?.value || 'Present';
+        const remarks = (document.getElementById('quickAttRemarks')?.value || '').trim();
+
+        const saveBtn = document.getElementById('quickAttSaveBtn');
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Isinesave...';
+        }
+
+        try {
+            const res = await fetch('../../../backend/api/hearings/attendance.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-Token': getCsrfToken()
+                },
+                body: JSON.stringify({
+                    hearing_id: hearingId,
+                    complainant_attendance: compAtt,
+                    respondent_attendance: respAtt,
+                    attendance_notes: remarks,
+                    session_remarks: remarks,
+                    remarks: remarks
+                })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.success) {
+                alert(data.message || 'Hindi maitala ang attendance.');
+                return;
+            }
+            closeQuickAttendanceModal();
+            alert('Matagumpay na naitala ang attendance!');
+            fetchDashboardData();
+        } catch (err) {
+            console.error(err);
+            alert('May naganap na error sa pag-save ng attendance.');
+        } finally {
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.textContent = '💾 I-save ang Attendance';
+            }
+        }
+    };
+
+    const initQuickAttendanceModal = () => {
+        const closeBtn = document.getElementById('quickAttCloseBtn');
+        const cancelBtn = document.getElementById('quickAttCancelBtn');
+        const saveBtn = document.getElementById('quickAttSaveBtn');
+        const modal = document.getElementById('quickDashboardAttendanceModal');
+        const remarksEl = document.getElementById('quickAttRemarks');
+
+        if (closeBtn) closeBtn.addEventListener('click', closeQuickAttendanceModal);
+        if (cancelBtn) cancelBtn.addEventListener('click', closeQuickAttendanceModal);
+        if (saveBtn) saveBtn.addEventListener('click', submitQuickAttendance);
+
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) closeQuickAttendanceModal();
+            });
+        }
+
+        // Helper pills
+        const helperPills = document.querySelectorAll('.btn-att-helper-pill');
+        helperPills.forEach(pill => {
+            pill.addEventListener('click', () => {
+                const remark = pill.getAttribute('data-remark') || '';
+                if (!remarksEl || !remark) return;
+                const current = remarksEl.value.trim();
+                if (!current) {
+                    remarksEl.value = remark;
+                } else if (!current.includes(remark)) {
+                    remarksEl.value = `${current}; ${remark}`;
+                }
+            });
+        });
     };
 
     const selectCalendarDate = (dateStr) => {
@@ -210,19 +523,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        const getQueueRank = (h) => {
-            const s = (h.queue_status || h.status || '').toLowerCase().replace(/[\s-]+/g, '_');
-            if (s === 'in_session') return 1;
-            if (s === 'ready' || s === 'ready_for_hearing') return 2;
-            if (s === 'waiting' || s === 'waiting_room') return 3;
-            if (s === 'standby' || s === 'on_standby') return 4;
-            if (s === 'concluded' || s === 'completed') return 5;
-            return 4;
-        };
         matchingHearings.sort((a, b) => {
-            const rankA = getQueueRank(a);
-            const rankB = getQueueRank(b);
-            if (rankA !== rankB) return rankA - rankB;
             return new Date(a.hearing_date || 0) - new Date(b.hearing_date || 0);
         });
         state.hearings = matchingHearings;
@@ -238,19 +539,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const renderHearings = (hearings, periodLabel) => {
-        const getQueueRank = (h) => {
-            const s = (h.queue_status || h.status || '').toLowerCase().replace(/[\s-]+/g, '_');
-            if (s === 'in_session') return 1;
-            if (s === 'ready' || s === 'ready_for_hearing') return 2;
-            if (s === 'waiting' || s === 'waiting_room') return 3;
-            if (s === 'standby' || s === 'on_standby') return 4;
-            if (s === 'concluded' || s === 'completed') return 5;
-            return 4;
-        };
         const sortedHearings = [...(hearings || [])].sort((a, b) => {
-            const rankA = getQueueRank(a);
-            const rankB = getQueueRank(b);
-            if (rankA !== rankB) return rankA - rankB;
             return new Date(a.hearing_date || 0) - new Date(b.hearing_date || 0);
         });
         state.hearings = sortedHearings;
@@ -1585,7 +1874,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Initialize Quick Attendance / Check-In Modal
+    initQuickAttendanceModal();
 
+    // Auto-refresh countdown timers and queue statuses every 60 seconds
+    setInterval(() => {
+        if (!document.hidden && !state.isLoading && (state.hearings || []).length > 0) {
+            renderHearingsPage();
+        }
+    }, 60000);
 
     // Initial load
     fetchDashboardData();

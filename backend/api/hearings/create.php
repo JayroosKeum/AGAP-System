@@ -8,12 +8,18 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     echo json_encode(['success' => false, 'message' => 'Method not allowed.']);
     exit;
 }
-if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2], true)) {
+if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2, 3], true)) {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'Unauthorized.']);
     exit;
 }
 
-$result = (new HearingController())->create($_POST, (int) $_SESSION['user_id']);
+$raw = file_get_contents('php://input');
+$input = json_decode($raw, true);
+if (!is_array($input) || empty($input)) {
+    $input = $_POST;
+}
+
+$result = (new HearingController())->create($input, (int) $_SESSION['user_id']);
 http_response_code($result['success'] ? 201 : 422);
 echo json_encode($result);

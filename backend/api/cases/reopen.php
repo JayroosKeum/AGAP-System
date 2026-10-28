@@ -17,13 +17,13 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../../config/database.php';
-require_once __DIR__ . '/../../config/session.php';
+
+session_start();
 
 header('Content-Type: application/json; charset=utf-8');
 
-// Auth guard: Admin or Clerk only
-$allowedRoles = ['Admin', 'Clerk', 'Secretary'];
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', $allowedRoles, true)) {
+// Auth guard: Admin, Clerk, or Staff
+if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2, 3], true)) {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'Unauthorized. Admin or Clerk access required.']);
     exit;
@@ -104,7 +104,7 @@ try {
 
     // Build CFA page URL with pre-filled case and reason
     $cfaUrl = sprintf(
-        '../../frontend/pages/documents/cfa.php?case_id=%d&reason=%s&workflow=noncompliance_reopen',
+        '../documents/cfa.php?case_id=%d&reason=%s&workflow=noncompliance_reopen',
         $caseId,
         urlencode('Non-compliance / breach of Amicable Settlement terms by respondent (RA 7160 Sec. 417): ' . $reason)
     );

@@ -37,7 +37,45 @@ class DocumentController
         return ['success' => true, 'data' => $this->document->getAllGenerated()];
     }
 
+    public function generateKp10(array $input, int $userId): array
+    {
+        $caseId = filter_var($input['case_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if (!$caseId) {
+            return ['success' => false, 'message' => 'A valid case ID is required.'];
+        }
+        require_once __DIR__ . '/../services/KpFormService.php';
+        $svc = new KpFormService();
+        return $svc->generateAndPersistKp10((int) $caseId, $userId, $input);
+    }
+
+    public function generateKp11(array $input, int $userId): array
+    {
+        $caseId = filter_var($input['case_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if (!$caseId) {
+            return ['success' => false, 'message' => 'A valid case ID is required.'];
+        }
+        require_once __DIR__ . '/../services/KpFormService.php';
+        $svc = new KpFormService();
+        return $svc->generateAndPersistKp11((int) $caseId, $userId, $input);
+    }
+
     public function generateKp12(array $input, int $userId): array
+    {
+        $caseId = filter_var($input['case_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if (!$caseId) {
+            return ['success' => false, 'message' => 'Select a valid case and notice date.'];
+        }
+
+        require_once __DIR__ . '/../services/KpFormService.php';
+        $svc = new KpFormService();
+        $result = $svc->generateAndPersistKp12((int) $caseId, $userId, $input);
+        if ($result['success']) {
+            $result['download_url'] = '../../../backend/api/documents/download.php?id=' . $result['document_id'];
+        }
+        return $result;
+    }
+
+    public function legacyGenerateKp12(array $input, int $userId): array
     {
         $caseId = filter_var($input['case_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         $noticeDate = trim((string) ($input['notice_date'] ?? ''));

@@ -365,8 +365,15 @@ class DocxTemplateService
 
         if (!empty($replacements)) {
             foreach ($replacements as $k => $v) {
-                $tag = '{' . trim((string)$k, '{}') . '}';
-                $xml = str_replace($tag, htmlspecialchars((string)$v), $xml);
+                $cleanKey = trim((string)$k, '{} ');
+                $val = htmlspecialchars((string)$v);
+                $patterns = [
+                    '{{' . $cleanKey . '}}',
+                    '{{ ' . $cleanKey . ' }}',
+                    '{' . $cleanKey . '}',
+                    '{ ' . $cleanKey . ' }',
+                ];
+                $xml = str_replace($patterns, $val, $xml);
             }
         }
 
@@ -1730,10 +1737,68 @@ class DocxTemplateService
                 <div class="date-statement">Nilagdaan ngayong <strong>' . htmlspecialchars($data['date_today']) . '</strong> sa Barangay Tumana, Lungsod ng Marikina.</div>
                 <div class="signature-row"><div class="signature-box"><div class="sig-line">' . htmlspecialchars($officer) . '</div><div class="sig-title">' . htmlspecialchars($officerTitle) . '</div></div></div>';
 
+            case 'kp_17':
+                $repParty = htmlspecialchars($data['repudiating_party'] ?? $data['repudiating_party_name'] ?? $data['target_party_name'] ?? 'May-Kinalaman');
+                $repReason = htmlspecialchars($data['repudiation_reason'] ?? $data['repudiation_grounds'] ?? 'Pagtatwa batay sa pandaraya, karahasan, o pananakot');
+                $isFraud = stripos($repReason, 'pandaraya') !== false || stripos($repReason, 'fraud') !== false;
+                $isViolence = stripos($repReason, 'karahasan') !== false || stripos($repReason, 'violence') !== false;
+                $isIntimidation = stripos($repReason, 'pananakot') !== false || stripos($repReason, 'intimidation') !== false;
+                if (!$isFraud && !$isViolence && !$isIntimidation) $isFraud = true;
+                return '
+                <div class="form-title-block">
+                    <p style="text-align: left; margin: 0 0 10px 0; font-weight: bold; font-size: 10pt;">PORMULARYO NG KP BLG. 17</p>
+                    <p style="text-align: center; margin: 10px 0; font-weight: bold; font-size: 11pt;">TANGGAPAN NG LUPONG TAGAPAMAYAPA</p>
+                </div>
+                <table style="width: 100%; border-collapse: collapse; margin: 10px 0 18px 0;">
+                    <tr>
+                        <td style="width: 50%; vertical-align: top; padding: 4px 8px;">
+                            <div style="font-weight: bold; text-decoration: underline;">' . htmlspecialchars($data['complainants']) . '</div>
+                            <div style="font-size: 9.5pt; color: #475569;">(Mga) Nagrereklamo</div>
+                            <div style="text-align: center; margin: 10px 0; font-style: italic; font-size: 10pt;">-laban kay/kina-</div>
+                            <div style="font-weight: bold; text-decoration: underline;">' . htmlspecialchars($data['respondents']) . '</div>
+                            <div style="font-size: 9.5pt; color: #475569;">(Mga) Inirereklamo</div>
+                        </td>
+                        <td style="width: 50%; vertical-align: top; padding: 4px 8px;">
+                            <div style="margin-bottom: 8px;"><strong>Usapin ng Barangay Blg.:</strong> ' . htmlspecialchars($data['case_number']) . '</div>
+                            <div><strong>Para sa:</strong> ' . htmlspecialchars($data['complaint_title']) . '</div>
+                        </td>
+                    </tr>
+                </table>
+                <div style="text-align: center; margin: 20px 0 16px 0;">
+                    <h3 style="font-size: 12pt; font-weight: bold; margin: 0; text-transform: uppercase;">PAGTANGGI</h3>
+                    <div style="font-size: 10.5pt; font-style: italic; margin-top: 2px;">(Repudiation)</div>
+                </div>
+                <div style="margin: 14px 0 8px 0; font-size: 11pt; line-height: 1.6;">
+                    Aking/Aming tinatanggihan ang pag-aayos/kasunduan para sa paghahatol sa dahilang ang aking pagpayag ay pinawalang-bisa ng:
+                </div>
+                <div style="margin: 10px 0 18px 15px; font-size: 10.5pt; line-height: 1.8;">
+                    <div>(' . ($isFraud ? ' ✓ ' : ' &nbsp; ') . ') <strong>Pandaraya</strong>: ' . ($isFraud ? $repReason : '_____________________') . '</div>
+                    <div>(' . ($isViolence ? ' ✓ ' : ' &nbsp; ') . ') <strong>Karahasan</strong>: ' . ($isViolence ? $repReason : '_____________________') . '</div>
+                    <div>(' . ($isIntimidation ? ' ✓ ' : ' &nbsp; ') . ') <strong>Pananakot</strong>: ' . ($isIntimidation ? $repReason : '_____________________') . '</div>
+                </div>
+                <div style="margin: 20px 0 25px 0; font-size: 11pt;">
+                    Ngayong ika-<strong>' . htmlspecialchars($data['date_today']) . '</strong>.
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-top: 30px;">
+                    <div style="min-width: 220px; text-align: center;">
+                        <div style="font-weight: bold; border-top: 1px solid #000; padding-top: 4px;">' . $repParty . '</div>
+                        <div style="font-size: 10pt; color: #475569;">Lumagda sa Pagtanggi</div>
+                    </div>
+                    <div style="min-width: 250px; text-align: center;">
+                        <div style="font-size: 10pt; margin-bottom: 2px;">Pinatutunayan:</div>
+                        <div style="font-weight: bold; border-top: 1px solid #000; padding-top: 4px;">' . htmlspecialchars($officer) . '</div>
+                        <div style="font-size: 10pt; color: #475569;">' . htmlspecialchars($officerTitle) . '</div>
+                    </div>
+                </div>';
+
             case 'kp_20':
             case 'kp_20_a':
             case 'kp_20_b':
                 $kpCode = ($formKey === 'kp_20_a') ? 'PORMULARYO NG KP BLG. 20-A' : (($formKey === 'kp_20_b') ? 'PORMULARYO NG KP BLG. 20-B' : 'PORMULARYO NG KP BLG. 20');
+                $isRepudiated = !empty($data['is_repudiated']) || !empty($data['repudiation_date']) || !empty($data['repudiation_grounds']);
+                $repParty = htmlspecialchars($data['repudiating_party'] ?? $data['repudiating_party_name'] ?? $data['target_party_name'] ?? '');
+                $repGrounds = htmlspecialchars($data['repudiation_grounds'] ?? $data['repudiation_reason'] ?? 'Pandaraya, Karahasan, o Pananakot');
+                $secName = htmlspecialchars($data['pangkat_secretary_name'] ?? $data['secretary_name'] ?? $data['lupon_secretary'] ?? 'MARILOU P. CRUZ');
                 return '
                 <div class="form-title-block">
                     <p style="text-align: left; margin: 0 0 10px 0; font-weight: bold; font-size: 10pt;">' . htmlspecialchars($kpCode) . '</p>
@@ -1759,18 +1824,27 @@ class DocxTemplateService
                     <div style="font-size: 10.5pt; font-style: italic; margin-top: 2px;">(Certification to File Action)</div>
                 </div>
                 <div style="margin: 14px 0 8px 0; font-weight: bold; font-size: 11pt;">ITO AY NAGPAPATUNAY NA:</div>
+                ' . ($isRepudiated ? '
+                <ol style="margin: 8px 0 18px 20px; padding-left: 10px; font-size: 11pt; line-height: 1.6;">
+                    <li style="margin-bottom: 8px;">Nagkaroon ng personal na paghaharap sa pagitan ng mga panig sa harap ng Punong Barangay / Pangkat ng Tagapagkasundo;</li>
+                    <li style="margin-bottom: 8px;">Na nagkaroon ng pag-aayos sa pagitan ng mga panig;</li>
+                    <li style="margin-bottom: 8px;">Na ang nasabing pag-aayos ay tinanggihan sa isang sinumpaang salaysay sa harap ng Punong Barangay ni <strong>' . $repParty . '</strong> sa dahilang <strong>' . $repGrounds . '</strong>;</li>
+                    <li style="margin-bottom: 8px;">Dahil dito, ang kaukulang sakdal para sa nasabing usapin ay maaari nang ihain sa hukuman/tanggapan ng pamahalaan.</li>
+                </ol>
+                ' : '
                 <ol style="margin: 8px 0 18px 20px; padding-left: 10px; font-size: 11pt; line-height: 1.6;">
                     <li style="margin-bottom: 8px;">Nagkaroon ng personal na paghaharap sa pagitan ng mga panig sa harap ng Punong Barangay subalit ang pamamagitan ay nabigo;</li>
                     <li style="margin-bottom: 8px;">Ang Pangkat ng Tagapagkasundo ay binuo subalit ang personal na pag-uusap sa harap ng Pangkat ay di nagbunga ng pag-aayos;</li>
                     <li style="margin-bottom: 8px;">Dahil dito, ang nasabing reklamo para sa sigalot ay maaari nang idulog sa hukuman/tanggapan ng pamahalaan.</li>
                 </ol>
+                ') . '
                 <div style="margin: 20px 0 35px 0; font-size: 11pt;">
                     Ngayong ika-<strong>' . htmlspecialchars($data['date_today']) . '</strong>.
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-top: 40px;">
                     <div style="min-width: 220px; text-align: center;">
-                        <div style="font-weight: bold; border-top: 1px solid #000; padding-top: 4px;">MARIA CRISTINA SANTOS</div>
-                        <div style="font-size: 10pt; color: #475569;">Kalihim ng Lupon</div>
+                        <div style="font-weight: bold; border-top: 1px solid #000; padding-top: 4px;">' . $secName . '</div>
+                        <div style="font-size: 10pt; color: #475569;">Kalihim ng Pangkat / Kalihim ng Lupon</div>
                     </div>
                     <div style="min-width: 250px; text-align: center;">
                         <div style="font-size: 10pt; margin-bottom: 2px;">Pinatutunayan:</div>

@@ -105,28 +105,71 @@
 </div>
 
 <!-- ======================================================== -->
-<!-- MODAL: Transmittal Letter Preview & Print                -->
+<!-- MODAL: Transmittal Letter Preview & Print (Fit-to-Document) -->
 <!-- ======================================================== -->
-<div id="previewTransmittalModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="prevTransTitle" style="display: none;">
-    <div class="modal-content" style="width: 900px; max-width: calc(100% - 32px); height: 92vh; display: flex; flex-direction: column; padding: 18px 20px;">
-        <div class="modal-header" style="margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #e2e8f0;">
-            <div>
-                <h2 id="prevTransTitle" style="margin: 0; font-size: 1.15rem; color: #0f172a;">Transmittal Letter Preview</h2>
-                <p style="margin: 2px 0 0; font-size: 0.8rem; color: #64748b;">Official Court &amp; DILG Transmittal Letter under Section 411, RA 7160</p>
+<div id="previewTransmittalModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="prevTransTitle" style="display: none; padding: 16px; box-sizing: border-box; align-items: center; justify-content: center; z-index: 9999;">
+    <div class="modal-content fit-document-modal" style="max-width: 1050px; width: 95vw; height: 90vh; max-height: 90vh; display: flex; flex-direction: column; padding: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 25px 45px rgba(0, 0, 0, 0.45); background: #334155; box-sizing: border-box;">
+        
+        <!-- Sticky Header Toolbar -->
+        <div class="modal-header fit-document-toolbar" style="padding: 12px 20px; border-bottom: 1px solid #475569; background: #1e293b; color: #f8fafc; flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+                <span id="transmittalModalLockBadge" class="status-pill" style="background: #f59e0b; color: #fff; font-weight: 800; font-size: 0.76rem; padding: 3px 10px; border-radius: 4px;">
+                    TRANSMITTAL
+                </span>
+                <div style="min-width: 0;">
+                    <h2 id="prevTransTitle" style="font-size: 1.1rem; font-weight: 700; color: #f8fafc; margin: 0; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        Court &amp; DILG Transmittal Letter
+                    </h2>
+                    <p style="margin: 2px 0 0; font-size: 0.76rem; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        Under RA 7160 Sec. 411 / Sec. 416 &bull; MTC Marikina &amp; DILG Field Office
+                    </p>
+                </div>
             </div>
-            <div style="display: flex; gap: 8px; align-items: center;">
-                <a id="btnDownloadTransmittalPdf" href="#" class="btn-secondary" style="font-size: 0.82rem; padding: 6px 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
-                    Download PDF
-                </a>
-                <button type="button" class="btn-create" onclick="printTransmittalIframe()" style="font-size: 0.82rem; padding: 6px 12px; display: inline-flex; align-items: center; gap: 5px;">
-                    Print
+
+            <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+                <!-- Zoom Controls -->
+                <div class="zoom-toolbar" style="display: inline-flex; align-items: center; background: #334155; border: 1px solid #475569; border-radius: 6px; padding: 2px;">
+                    <button type="button" onclick="zoomDocModal('fit-page', 'transmittalLetterPreviewIframe')" style="background: transparent; border: none; color: #cbd5e1; font-size: 0.74rem; font-weight: 600; padding: 4px 8px; cursor: pointer;" title="Fit Entire Page">
+                        Fit Page
+                    </button>
+                    <button type="button" onclick="zoomDocModal('fit-width', 'transmittalLetterPreviewIframe')" style="background: transparent; border: none; color: #cbd5e1; font-size: 0.74rem; font-weight: 600; padding: 4px 8px; cursor: pointer;" title="Fit Width">
+                        Fit Width
+                    </button>
+                    <button type="button" onclick="zoomDocModal('100%', 'transmittalLetterPreviewIframe')" style="background: transparent; border: none; color: #cbd5e1; font-size: 0.74rem; font-weight: 600; padding: 4px 8px; cursor: pointer;" title="100% Size">
+                        100%
+                    </button>
+                    <button type="button" onclick="zoomDocModal('-', 'transmittalLetterPreviewIframe')" style="background: transparent; border: none; color: #cbd5e1; font-size: 0.85rem; font-weight: 700; padding: 4px 8px; cursor: pointer;">
+                        &minus;
+                    </button>
+                    <button type="button" onclick="zoomDocModal('+', 'transmittalLetterPreviewIframe')" style="background: transparent; border: none; color: #cbd5e1; font-size: 0.85rem; font-weight: 700; padding: 4px 8px; cursor: pointer;">
+                        +
+                    </button>
+                </div>
+
+                <button type="button" id="btnModalPrintTransmittal" class="btn-create" onclick="printTransmittalIframe()" style="font-size: 0.82rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 5px;">
+                    🖨️ Print
                 </button>
-                <button type="button" class="close-btn" onclick="closePreviewTransmittalModal()" style="font-size: 1.5rem; line-height: 1;">&times;</button>
+                <a id="btnDownloadTransmittalPdf" href="#" class="btn-secondary" style="font-size: 0.82rem; padding: 6px 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; background: #334155; color: #f8fafc; border-color: #475569;">
+                    📥 PDF
+                </a>
+                <button type="button" class="close-btn" onclick="closePreviewTransmittalModal()" style="font-size: 26px; line-height: 1; border: none; background: transparent; cursor: pointer; color: #94a3b8; padding: 0 4px; margin-left: 4px;">&times;</button>
             </div>
         </div>
 
-        <div style="flex: 1; min-height: 0; background: #e2e8f0; border-radius: 6px; padding: 10px; overflow: hidden; display: flex; justify-content: center;">
-            <iframe id="transmittalLetterPreviewIframe" src="about:blank" style="width: 100%; height: 100%; border: none; background: #fff; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" title="Transmittal Letter Preview"></iframe>
+        <!-- Document Canvas Container -->
+        <div class="fit-document-canvas" style="flex: 1 1 0; min-height: 0; background: #334155; padding: 24px; overflow-y: auto; overflow-x: hidden; display: flex; justify-content: center; box-sizing: border-box;">
+            <div class="document-paper-container" style="width: 8.5in; max-width: 850px; min-height: 14in; background: #ffffff; border-radius: 4px; box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45); overflow: hidden; display: flex; flex-direction: column;">
+                <iframe id="transmittalLetterPreviewIframe" src="about:blank" style="width: 100%; height: 100%; min-height: 1100px; flex: 1 1 auto; border: none; background: #ffffff;" title="Transmittal Letter Preview"></iframe>
+            </div>
         </div>
+
+        <!-- Footer Info -->
+        <div class="modal-actions" style="padding: 10px 20px; border-top: 1px solid #475569; background: #1e293b; margin-top: 0; flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; color: #94a3b8;">
+            <span id="transmittalModalFooterCountdown">10-business-day statutory print lock enforced under RA 7160 Section 416</span>
+            <button type="button" class="btn-secondary" onclick="closePreviewTransmittalModal()" style="font-size: 0.8rem; padding: 5px 14px; background: #334155; color: #f8fafc; border-color: #475569;">
+                Close Preview
+            </button>
+        </div>
+
     </div>
 </div>

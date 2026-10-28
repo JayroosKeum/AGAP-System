@@ -75,6 +75,7 @@ async function openSummonsPreviewModal(caseId, documentId = null, hearingId = nu
     if (gridEl) gridEl.style.display = 'none';
     if (frameKp8) frameKp8.srcdoc = '';
     if (frameKp9) frameKp9.srcdoc = '';
+
     if (errorEl) errorEl.style.display = 'none';
 
     [btnPrintBoth, btnPrint, btnContinue].forEach(btn => {
@@ -222,12 +223,16 @@ async function openSummonsPreviewModal(caseId, documentId = null, hearingId = nu
 }
 
 function closeSummonsPreviewModal() {
+    if (typeof window.onSummonsPreviewClosed === 'function') {
+        window.onSummonsPreviewClosed();
+    }
     const modal = document.getElementById('summonsPreviewModal');
     if (modal) modal.style.display = 'none';
     const frameKp8 = document.getElementById('summonsPreviewFrameKp8');
     const frameKp9 = document.getElementById('summonsPreviewFrameKp9');
     if (frameKp8) frameKp8.srcdoc = '';
     if (frameKp9) frameKp9.srcdoc = '';
+
 }
 
 function retrySummonsPreview() {
@@ -351,13 +356,18 @@ function downloadSummonsPdf(event) {
 
 function continueToOfficerReturn() {
     if (window.currentSummonsPreview?.officerReturnUrl) {
-        window.location.href = window.currentSummonsPreview.officerReturnUrl;
+        const url = window.currentSummonsPreview.officerReturnUrl;
+        window.location.href = url.includes('open_return=') ? url : (url + (url.includes('?') ? '&' : '?') + 'open_return=1');
         return;
     }
     const caseId = window.currentSummonsPreview?.caseId;
     const docId = window.currentSummonsPreview?.documentId;
+    const hearingId = window.currentSummonsPreview?.hearingId;
     if (caseId) {
-        window.location.href = `../gps/proof-service.php?case_id=${encodeURIComponent(caseId)}` + (docId ? `&document_id=${encodeURIComponent(docId)}` : '');
+        let target = `../gps/proof-service.php?case_id=${encodeURIComponent(caseId)}&open_return=1`;
+        if (docId) target += `&document_id=${encodeURIComponent(docId)}`;
+        if (hearingId) target += `&hearing_id=${encodeURIComponent(hearingId)}`;
+        window.location.href = target;
         return;
     }
     window.location.href = '../gps/proof-service.php';

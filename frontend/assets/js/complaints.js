@@ -275,7 +275,10 @@ function canAccessTab(tabId, caseStatus, stageProgress) {
                                     ['Settled', 'Repudiated', 'CFA Issued', 'Arbitration'].includes(cStatus) ||
                                     ['Settled', 'Repudiated', 'CFA Issued', 'Arbitration'].includes(medStage?.stage_status || '') ||
                                     ['Settled', 'Repudiated', 'CFA Issued', 'Arbitration'].includes(conStage?.stage_status || '') ||
-                                    ['Settled', 'Repudiated', 'CFA Issued', 'Arbitration'].includes(arbStage?.stage_status || '');
+                                    ['Settled', 'Repudiated', 'CFA Issued', 'Arbitration'].includes(arbStage?.stage_status || '') ||
+                                    Boolean(complaint?.case_workspace?.settlement) ||
+                                    Boolean(window.__agapComplaintWorkspace?.settlement) ||
+                                    Boolean(complaint?.settlement);
         if (isSessionUnlocked || isSettledOrElevated) {
             return { allowed: true };
         }
@@ -617,38 +620,78 @@ async function loadComplaintDetails() {
         const compTitleEl = document.getElementById('complaintTitle');
         if (compTitleEl) compTitleEl.textContent = data.complaint_title || 'Untitled Complaint';
 
+        // Status Determination & Display Stage
+        const settlement = data.settlement || data.case_settlement || data.case_workspace?.settlement;
+        const isRepudiated = Boolean(
+            (settlement && (settlement.repudiation_status === 'Repudiated' || settlement.repudiation_date)) ||
+            data.case_status === 'Repudiated' ||
+            data.case_workspace?.case?.case_status === 'Repudiated'
+        );
+        const isCfa = Boolean(
+            data.cfa ||
+            data.case_workspace?.cfa ||
+            data.case_status === 'CFA Issued' ||
+            data.case_status === 'For CFA' ||
+            data.case_workspace?.case?.case_status === 'CFA Issued' ||
+            data.case_workspace?.case?.case_status === 'For CFA' ||
+            data.status === 'CFA Issued'
+        );
+        const isSettled = !isRepudiated && Boolean(
+            data.case_status === 'Settled' ||
+            data.status === 'Settled' ||
+            data.case_workspace?.case?.case_status === 'Settled' ||
+            settlement
+        );
+
+        const caseStage = data.case_workspace?.case?.case_status || data.current_stage || data.lifecycle_status || '';
+        let displayStage = '';
+
+        if (isRepudiated && isCfa) {
+            displayStage = 'Repudiated — For CFA';
+        } else if (isRepudiated) {
+            displayStage = 'Repudiated Settlement';
+        } else if (isCfa) {
+            displayStage = 'CFA Stage (Court Referral)';
+        } else if (isSettled) {
+            displayStage = 'Settled (Amicable Settlement)';
+        } else if (isPaanyayaRecord || data.status === 'Pre-Docketed (Paanyaya)') {
+            displayStage = 'Paanyaya';
+        } else {
+            const effStage = caseStage || 'Mediation';
+            displayStage = effStage.endsWith('Stage') ? effStage : (effStage + ' Stage');
+        }
+
         // Status Badge
         const statusEl = document.getElementById('complaintStatusBadge');
-        const caseStage = data.case_workspace?.case?.case_status;
-        let displayStage = caseStage ? (caseStage + ' Stage') : (data.lifecycle_status || 'Under Review');
-        if (isPaanyayaRecord || data.status === 'Pre-Docketed (Paanyaya)') {
-            displayStage = 'Paanyaya';
-        } else if (data.status === 'Settled' || data.status === 'Resolved at Paanyaya / Closed') {
-            displayStage = 'Settled';
-
-
-
-
-        }
         if (statusEl) {
-            if (data.status === 'Pre-Docketed (Paanyaya)') {
-                statusEl.className = 'case-stage-pill';
+            statusEl.className = 'case-stage-pill';
+            if (isRepudiated && isCfa) {
+                statusEl.style.background = '#fee2e2';
+                statusEl.style.color = '#991b1b';
+                statusEl.style.border = '1px solid #fca5a5';
+            } else if (isRepudiated) {
+                statusEl.style.background = '#fef2f2';
+                statusEl.style.color = '#dc2626';
+                statusEl.style.border = '1px solid #fecaca';
+            } else if (isCfa) {
+                statusEl.style.background = '#ede9fe';
+                statusEl.style.color = '#6d28d9';
+                statusEl.style.border = '1px solid #c4b5fd';
+            } else if (isSettled) {
                 statusEl.style.background = '#dcfce7';
                 statusEl.style.color = '#15803d';
                 statusEl.style.border = '1px solid #86efac';
-            } else if (data.status === 'Settled' || data.status === 'Resolved at Paanyaya / Closed') {
-
-
-
-                statusEl.className = 'case-stage-pill';
+            } else if (isPaanyayaRecord || data.status === 'Pre-Docketed (Paanyaya)') {
                 statusEl.style.background = '#dcfce7';
                 statusEl.style.color = '#15803d';
                 statusEl.style.border = '1px solid #86efac';
-
-
             } else {
-                const stSlug = (caseStage || data.lifecycle_status || 'paanyaya').toLowerCase().replace(/[^a-z0-9]/g, '-');
+                const effStage = caseStage || 'Mediation';
+                const stSlug = effStage.toLowerCase().replace(/[^a-z0-9]/g, '-');
                 statusEl.className = 'case-stage-pill status-' + stSlug;
+                statusEl.style.background = '';
+                statusEl.style.color = '';
+                statusEl.style.border = '';
             }
             statusEl.textContent = displayStage;
         }
@@ -667,7 +710,7 @@ async function loadComplaintDetails() {
         // Action Bar Status Tracker Button
         const statusBtnLabel = document.getElementById('statusTrackerButtonLabel');
         if (statusBtnLabel) {
-            statusBtnLabel.textContent = 'Status: ' + (caseStage ? 'In Progress' : (data.status === 'Pre-Docketed (Paanyaya)' ? 'Paanyaya' : (data.status === 'Settled' ? 'Settled' : (data.lifecycle_status || 'In Progress'))));
+            statusBtnLabel.textContent = 'Status: ' + (data.status === 'Pre-Docketed (Paanyaya)' ? 'Paanyaya' : (data.status === 'Settled' ? 'Settled' : (caseStage || data.lifecycle_status || 'In Progress')));
         }
         const statusDot = document.getElementById('statusDotIndicator');
         if (statusDot) {
@@ -1323,6 +1366,94 @@ function renderCaseWorkspace(workspace, complaint) {
     }
     renderMediationCard(stages, stageCaseId, complaint, workspace);
     renderArbitrationCard(stages, stageCaseId, complaint);
+
+    // Dynamic Outcomes Tab & Amicable Settlement Workspace Transformation (RA 7160)
+    const settlement = workspace?.settlement || complaint?.settlement || complaint?.case_settlement || {};
+    const isRepudiated = Boolean(
+        settlement.repudiation_status === 'Repudiated' ||
+        settlement.repudiation_date ||
+        caseData?.case_status === 'Repudiated' ||
+        complaint?.case_status === 'Repudiated'
+    );
+    const isCfa = Boolean(
+        complaint?.cfa ||
+        workspace?.cfa ||
+        caseData?.case_status === 'CFA Issued' ||
+        caseData?.case_status === 'For CFA' ||
+        complaint?.case_status === 'CFA Issued' ||
+        complaint?.status === 'CFA Issued'
+    );
+    const hasExecution = Boolean(workspace?.execution || complaint?.execution);
+    const isArbitration = Boolean(
+        workspace?.arbitration ||
+        caseData?.case_status === 'Arbitration' ||
+        stages?.arbitration?.stage_status === 'Settled' ||
+        stages?.arbitration?.stage_status === 'Arbitration Award'
+    );
+    const hasSettledSession = (workspace?.hearings || []).some(h => (h.session_outcome === 'Settled' || h.outcome === 'Settled')) ||
+                              (workspace?.sessions || []).some(s => (s.session_outcome === 'Settled' || s.outcome === 'Settled')) ||
+                              med?.outcome === 'Settled' || con?.outcome === 'Settled' ||
+                              (complaint?.case_workspace?.hearings || []).some(h => (h.session_outcome === 'Settled' || h.outcome === 'Settled'));
+
+    const isSettledCase = Boolean(
+        complaint?.status === 'Settled' ||
+        complaint?.case_status === 'Settled' ||
+        caseData?.case_status === 'Settled' ||
+        workspace?.settlement ||
+        med?.stage_status === 'Settled' ||
+        con?.stage_status === 'Settled' ||
+        stages?.arbitration?.stage_status === 'Settled' ||
+        hasSettledSession
+    );
+
+    const tabLabel = document.getElementById('tabOutcomesLabel');
+    const amicWs = document.getElementById('amicableSettlementWorkspace');
+    const arbWs = document.getElementById('arbitrationCfaWorkspace');
+
+    let tabPillHtml = '';
+    if (isRepudiated) {
+        tabPillHtml = '<span class="status-pill" style="background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; font-size:0.7rem; padding:2px 8px; border-radius:9999px; margin-left:6px; font-weight:700;">⚠ REPUDIATED</span>';
+    } else if (isCfa) {
+        tabPillHtml = '<span class="status-pill" style="background:#ede9fe; color:#6d28d9; border:1px solid #c4b5fd; font-size:0.7rem; padding:2px 8px; border-radius:9999px; margin-left:6px; font-weight:700;">📄 FOR CFA</span>';
+    } else if (hasExecution) {
+        tabPillHtml = '<span class="status-pill" style="background:#dbeafe; color:#1d4ed8; border:1px solid #93c5fd; font-size:0.7rem; padding:2px 8px; border-radius:9999px; margin-left:6px; font-weight:700;">⚖️ FOR EXECUTION</span>';
+    } else if (isArbitration) {
+        tabPillHtml = '<span class="status-pill" style="background:#fef3c7; color:#b45309; border:1px solid #fcd34d; font-size:0.7rem; padding:2px 8px; border-radius:9999px; margin-left:6px; font-weight:700;">⚖️ ARBITRATION</span>';
+    } else if (isSettledCase) {
+        tabPillHtml = '<span class="status-pill status-active" style="background:#dcfce7; color:#15803d; border:1px solid #86efac; font-size:0.7rem; padding:2px 8px; border-radius:9999px; margin-left:6px; font-weight:700;">✓ AMICABLE SETTLEMENT</span>';
+    } else {
+        tabPillHtml = '<span class="status-pill" style="background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1; font-size:0.7rem; padding:2px 8px; border-radius:9999px; margin-left:6px; font-weight:700;">⏳ PENDING</span>';
+    }
+
+    if (tabLabel) {
+        tabLabel.innerHTML = `Outcome ${tabPillHtml}`;
+    }
+
+    const arbProgWs = document.getElementById('arbitrationProgressiveWorkspace');
+
+    if (isSettledCase || (isRepudiated && !isArbitration)) {
+        if (typeof unlockOutcomesTab === 'function') {
+            unlockOutcomesTab(stageCaseId || complaint.complaint_id);
+        }
+        if (amicWs) amicWs.style.display = 'block';
+        if (arbProgWs) arbProgWs.style.display = 'none';
+        if (arbWs) arbWs.style.display = 'none';
+        if (typeof renderAmicableSettlementWorkspace === 'function') {
+            renderAmicableSettlementWorkspace(workspace, complaint);
+        }
+    } else if (isArbitration) {
+        if (typeof unlockOutcomesTab === 'function') {
+            unlockOutcomesTab(stageCaseId || complaint.complaint_id);
+        }
+        if (amicWs) amicWs.style.display = 'none';
+        if (arbProgWs) arbProgWs.style.display = 'block';
+        if (arbWs) arbWs.style.display = 'none';
+        renderArbitrationProgressiveWorkspace(workspace, complaint, stageCaseId);
+    } else {
+        if (amicWs) amicWs.style.display = 'none';
+        if (arbProgWs) arbProgWs.style.display = 'none';
+        if (arbWs) arbWs.style.display = 'block';
+    }
 }
 
 function renderOfficialKpForms(workspace, complaint) {
@@ -1614,19 +1745,29 @@ function renderOfficialKpForms(workspace, complaint) {
         const docId = Number(doc.document_id);
         const tplNameEscaped = String(doc.template_name || 'KP Form').replace(/'/g, "\\'");
 
-        // Check if this KP form needs an Officer's Return (Summons, Notices of Hearing, Subpoenas)
+        // Check if this KP form requires an Officer's Return proof of service
         const tNameLower = (doc.template_name || '').toLowerCase();
+        const isKp12 = tNameLower.includes('kp form 12') 
+            || tNameLower.includes('blg. 12') 
+            || tNameLower.includes('pangkat hearing') 
+            || tNameLower.includes('conciliation hearing');
+
         const needsOfficerReturn = tNameLower.includes('summon') || 
                                    tNameLower.includes('patawag') || 
                                    tNameLower.includes('kp form 9') || 
                                    tNameLower.includes('kp form 8') || 
+                                   tNameLower.includes('kp form 18') || 
+                                   tNameLower.includes('kp form 19') || 
                                    tNameLower.includes('notice of hearing') || 
                                    tNameLower.includes('subpoena') || 
-                                   tNameLower.includes('kp form 13');
+                                   tNameLower.includes('kp form 13') ||
+                                   isKp12;
+
+        const isPangkatNotice = tNameLower.includes('kp form 10') || tNameLower.includes('kp form 11') || tNameLower.includes('kp form 12');
 
         const previewOnClick = (isSummonOrKp9 && typeof openSummonsPreviewModal === 'function')
             ? `openSummonsPreviewModal(${Number(caseId)}, ${docId})`
-            : `openKpDocumentPreviewModal(${docId}, '${tplNameEscaped}', '${caseNumber}')`;
+            : `openKpDocumentPreviewModal(${docId}, '${tplNameEscaped}', '${caseNumber}', ${Number(caseId) || 'null'})`;
 
         rowsHtml += `
             <div class="kp-form-item-row">
@@ -1645,13 +1786,22 @@ function renderOfficialKpForms(workspace, complaint) {
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                     ${needsOfficerReturn ? `
-                        <button type="button" class="btn-small-link" onclick="openDocOfficerReturn(${docId}, ${caseId})" style="color: #2563eb; border-color: #bfdbfe; font-weight: 600;" title="Record Officer's Return for ${escapeHtml(doc.template_name || 'KP Form')}">
+                        <button type="button" 
+                                class="btn-small-link" 
+                                onclick="openDocOfficerReturn(${docId}, ${caseId}, '${tplNameEscaped}')" 
+                                style="color: #2563eb; border-color: #bfdbfe; font-weight: 600;" 
+                                title="Record Officer's Return for ${escapeHtml(doc.template_name || 'KP Form')}">
                             Record / Return
                         </button>
                     ` : ''}
                     <button type="button" class="btn-small-link" onclick="${previewOnClick}" style="color: #4f46e5; border-color: #c7d2fe; font-weight: 600;" title="Preview and Print ${escapeHtml(doc.template_name || 'KP Form')}">
                         Preview / Print
                     </button>
+                    ${isPangkatNotice ? `
+                        <button type="button" class="btn-small-link" onclick="openTriPanelPangkatModal(${caseId})" style="color: #7c3aed; border-color: #ddd6fe; font-weight: 600;" title="Preview All Pangkat Notices (KP 10, 11, 12)">
+                            All Pangkat Notices
+                        </button>
+                    ` : ''}
                     ${doc.file_path ? `
                         <a href="../../../backend/api/documents/download.php?id=${encodeURIComponent(doc.document_id)}&download=1" class="btn-pdf-chip" download title="Download official PDF">
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
@@ -2219,18 +2369,38 @@ function printTransmittalIframe() {
 }
 window.printTransmittalIframe = printTransmittalIframe;
 function populatePaanyayaOfficersSelect(officers) {
-    if (!officers || !Array.isArray(officers)) return;
+    if (!officers || !Array.isArray(officers) || officers.length === 0) return;
     const select1 = document.getElementById('issueStageOfficer');
     const select2 = document.getElementById('rorServingOfficer');
     const optionsHtml = '<option value="">-- Select Serving Officer --</option>' +
-        officers.map(o => `<option value="${o.user_id}">${escapeHtml(o.full_name)} (${escapeHtml(o.role_name)})</option>`).join('');
+        officers.map((o, idx) => `<option value="${o.user_id}" ${idx === 0 ? 'selected' : ''}>${escapeHtml(o.full_name)} (${escapeHtml(o.role_name)})</option>`).join('');
 
-    if (select1 && select1.options.length <= 1) {
-        select1.innerHTML = optionsHtml;
+    if (select1) {
+        if (select1.options.length <= 1) {
+            select1.innerHTML = optionsHtml;
+        }
+        if (!select1.value && select1.options.length > 1) {
+            select1.selectedIndex = 1;
+        }
     }
-    if (select2 && select2.options.length <= 1) {
-        select2.innerHTML = optionsHtml;
+    if (select2) {
+        if (select2.options.length <= 1) {
+            select2.innerHTML = optionsHtml;
+        }
+        if (!select2.value && select2.options.length > 1) {
+            select2.selectedIndex = 1;
+        }
     }
+    const select3 = document.getElementById('minutesP2Officer');
+    const select4 = document.getElementById('modalMinutesP2Officer');
+    if (select3) {
+        const serversOnly = officers.filter(o => parseInt(o.role_id, 10) === 4 || (o.role_name && o.role_name.toLowerCase().includes('summons server')));
+        const activeServers = serversOnly.length ? serversOnly : officers;
+        if (select3.options.length <= 1) {
+            select3.innerHTML = activeServers.map((o, idx) => `<option value="${o.user_id}" ${idx === 0 ? 'selected' : ''}>${escapeHtml(o.full_name)} (${escapeHtml(o.role_name)})</option>`).join('');
+        }
+    }
+    if (select4 && select4.options.length <= 1) select4.innerHTML = optionsHtml;
 }
 
 function renderPaanyayaStageCard(stageNum, stageData, caseNum, compNames, respNames, respAddr) {
@@ -2262,7 +2432,10 @@ function renderPaanyayaStageCard(stageNum, stageData, caseNum, compNames, respNa
                                (window.complaintData?.hearings?.some(h => (h.hearing_type || '').toLowerCase() === 'mediation'));
         const isMediationGraduated = ['Mediation', 'Conciliation', 'Arbitration', 'Referred to Lupon'].includes(window.complaintData?.status || '') || hasMedHearings;
 
-        if (isMediationGraduated) {
+        const p2WasIssued = !!(details.issued_at) || (count > 0);
+        const hasP2Minutes = Boolean(stageData?.minutes_recorded && stageData?.minutes);
+
+        if (isMediationGraduated && !hasP2Minutes && !p2WasIssued) {
             if (lockedNotice) {
                 lockedNotice.style.display = 'flex';
                 lockedNotice.innerHTML = `
@@ -2287,11 +2460,9 @@ function renderPaanyayaStageCard(stageNum, stageData, caseNum, compNames, respNa
             return;
         }
 
-        const p2WasIssued = !!(details.issued_at) || (count > 0);
-
         // When dispute resolved at Paanyaya 1, hide Paanyaya 2 card
         const p2Card = document.getElementById('paanyaya2Card');
-        if (isP1Solved && !p2WasIssued) {
+        if (isP1Solved && !p2WasIssued && !hasP2Minutes) {
             if (p2Card) p2Card.style.display = 'none';
             return;
         } else if (p2Card) {
@@ -2303,7 +2474,7 @@ function renderPaanyayaStageCard(stageNum, stageData, caseNum, compNames, respNa
                             stage1.complainant_choice === 'Request_Paanyaya_2');
 
         const isP2Active = (details.status && details.status !== 'Not Started' && details.status !== 'Locked') && p2WasIssued;
-        const isP2Unlocked = !isP1Solved && (stageData?.is_eligible || canIssueP2 || isP2Active);
+        const isP2Unlocked = hasP2Minutes || isP2Active || (!isP1Solved && (stageData?.is_eligible || canIssueP2));
 
         if (!isP2Unlocked) {
             if (lockedNotice) lockedNotice.style.display = 'flex';
@@ -2329,26 +2500,71 @@ function renderPaanyayaStageCard(stageNum, stageData, caseNum, compNames, respNa
         }
     }
 
+    const hasMedHearingsGrad = (window.embeddedHearingsState?.mediation_sessions?.length > 0) ||
+                               (window.complaintData?.hearings?.some(h => (h.hearing_type || '').toLowerCase() === 'mediation'));
+    const isMediationGraduatedStage = ['Mediation', 'Conciliation', 'Arbitration', 'Referred to Lupon'].includes(window.complaintData?.status || '') || hasMedHearingsGrad;
+
+    // Stage Status Tag & Schedule Summary
+    const statusBadge = document.getElementById(isP2 ? 'p2StatusBadge' : 'p1StatusBadge');
+    if (statusBadge) {
+        if (stageData?.minutes_recorded) {
+            statusBadge.textContent = 'Minutes Recorded';
+            statusBadge.style.display = 'inline-block';
+            statusBadge.style.background = '#dcfce7';
+            statusBadge.style.color = '#15803d';
+        } else if (stageData?.is_delivered || details.status === 'Successfully Delivered' || latest?.delivery_outcome === 'Successfully delivered') {
+            statusBadge.textContent = 'Successfully Delivered';
+            statusBadge.style.display = 'inline-block';
+            statusBadge.style.background = '#dcfce7';
+            statusBadge.style.color = '#15803d';
+        } else if (stageData?.is_exhausted) {
+            statusBadge.textContent = 'Attempts Exhausted';
+            statusBadge.style.display = 'inline-block';
+            statusBadge.style.background = '#fee2e2';
+            statusBadge.style.color = '#991b1b';
+        } else if (details.status && details.status !== 'Not Started') {
+            statusBadge.textContent = `Pending Service (${count} attempt${count === 1 ? '' : 's'})`;
+            statusBadge.style.display = 'inline-block';
+            statusBadge.style.background = '#fef3c7';
+            statusBadge.style.color = '#92400e';
+        } else {
+            statusBadge.textContent = isP2 ? 'Locked' : 'Not Started';
+            statusBadge.style.display = 'inline-block';
+            statusBadge.style.background = '#f1f5f9';
+            statusBadge.style.color = '#64748b';
+        }
+    }
+
+    const schedMeta = document.getElementById(isP2 ? 'p2ScheduleMeta' : 'p1ScheduleMeta');
+    if (schedMeta) {
+        if (details.status && details.status !== 'Not Started') {
+            const dateStr = details.invitation_date ? formatDateReadable(details.invitation_date) : 'Scheduled';
+            const timeStr = details.invitation_time ? formatTime12(details.invitation_time) : '';
+            const officerStr = details.assigned_officer_name || (latest?.serving_officer_name) || '';
+            schedMeta.innerHTML = `
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; margin: 10px 0 12px; font-size: 0.82rem;">
+                    <div><strong>Takdang Pag-uusap:</strong> ${escapeHtml(dateStr)}${timeStr ? ` at ${escapeHtml(timeStr)}` : ''} &bull; ${escapeHtml(details.venue || 'Tanggapan ng Barangay Tumana')}</div>
+                    ${officerStr ? `<div style="margin-top: 3px;"><strong>Nakatakdang Tagapaghatid:</strong> ${escapeHtml(officerStr)}</div>` : ''}
+                    ${latest ? `<div style="margin-top: 4px; padding-top: 4px; border-top: 1px dashed #e2e8f0; color: ${stageData?.is_delivered ? '#166534' : '#b45309'}; font-weight: 600;">Huling Return: Attempt #${latest.attempt_number} &bull; ${escapeHtml(latest.delivery_outcome)} (${formatDateTimeReadable(latest.service_datetime || latest.created_at)})</div>` : ''}
+                </div>
+            `;
+            schedMeta.style.display = 'block';
+        } else {
+            schedMeta.style.display = 'none';
+        }
+    }
+
     // Action Buttons
     const btnIssueId = isP2 ? 'btnIssueP2' : 'btnIssueP1';
+    const btnRecordReturnId = isP2 ? 'btnRecordReturnP2' : 'btnRecordReturnP1';
     const btnPreviewId = isP2 ? 'btnPreviewP2' : 'btnPreviewP1';
     const btnReviewId = isP2 ? 'btnReviewP2' : 'btnReviewP1';
+    const btnViewMinutesId = isP2 ? 'btnViewMinutesP2' : 'btnViewMinutesP1';
     const btnIssue = document.getElementById(btnIssueId);
+    const btnRecordReturn = document.getElementById(btnRecordReturnId);
     const btnPreview = document.getElementById(btnPreviewId);
     const btnReview = document.getElementById(btnReviewId);
-
-    if (btnIssue) {
-        btnIssue.style.display = stageData?.can_issue ? 'inline-flex' : 'none';
-        btnIssue.disabled = false;
-        btnIssue.style.opacity = '';
-        btnIssue.style.cursor = '';
-    }
-    if (btnPreview) {
-        btnPreview.style.display = (details.status && details.status !== 'Not Started') ? 'inline-flex' : 'none';
-    }
-    if (btnReview) {
-        btnReview.style.display = stageData?.needs_review ? 'inline-flex' : 'none';
-    }
+    const btnViewMinutes = document.getElementById(btnViewMinutesId);
 
     const isDelivered = Boolean(
         stageData?.is_delivered || 
@@ -2358,15 +2574,40 @@ function renderPaanyayaStageCard(stageNum, stageData, caseNum, compNames, respNa
         String(latest?.delivery_outcome || '').toLowerCase().includes('delivered')
     );
     const p2Started = isP2 ? false : Boolean(window.paanyayaStagesData?.stage_2?.details?.status && window.paanyayaStagesData?.stage_2?.details?.status !== 'Not Started');
+    const hasMinutes = Boolean(stageData?.minutes_recorded && stageData?.minutes);
+    const minutes = stageData?.minutes || null;
+
+    if (btnIssue) {
+        btnIssue.style.display = (stageData?.can_issue && !isMediationGraduatedStage) ? 'inline-flex' : 'none';
+        btnIssue.disabled = false;
+        btnIssue.style.opacity = '';
+        btnIssue.style.cursor = '';
+    }
+    if (btnRecordReturn) {
+        const isIssued = Boolean(details.status && details.status !== 'Not Started');
+        const canRecordReturn = isIssued && !isDelivered && !stageData?.is_exhausted && !hasMinutes && !isMediationGraduatedStage;
+        btnRecordReturn.style.display = canRecordReturn ? 'inline-flex' : 'none';
+    }
+    if (btnPreview) {
+        btnPreview.style.display = (details.status && details.status !== 'Not Started') ? 'inline-flex' : 'none';
+    }
+    if (btnReview) {
+        btnReview.style.display = (stageData?.needs_review && !isMediationGraduatedStage) ? 'inline-flex' : 'none';
+    }
+    if (btnViewMinutes) {
+        btnViewMinutes.style.display = hasMinutes ? 'inline-flex' : 'none';
+        const cId = window.complaintData?.complaint_id || (new URLSearchParams(window.location.search)).get('id');
+        if (cId) {
+            const targetStage = isP2 ? 'Paanyaya 2' : 'Paanyaya 1';
+            btnViewMinutes.href = `record-dialogue-minutes.php?id=${encodeURIComponent(cId)}&stage=${encodeURIComponent(targetStage)}`;
+        }
+    }
 
     // Inline Dialogue Minutes & Settlement Result
     const inlineContainerId = isP2 ? 'p2DialogueMinutesInline' : 'p1DialogueMinutesInline';
     const inlineContainer = document.getElementById(inlineContainerId);
     const btnRecordMinutesId = isP2 ? 'btnRecordMinutesP2' : 'btnRecordMinutesP1';
     const btnRecordMinutes = document.getElementById(btnRecordMinutesId);
-
-    const hasMinutes = Boolean(stageData?.minutes_recorded && stageData?.minutes);
-    const minutes = stageData?.minutes || null;
 
     if (inlineContainer) {
         if (hasMinutes && minutes) {
@@ -2375,7 +2616,7 @@ function renderPaanyayaStageCard(stageNum, stageData, caseNum, compNames, respNa
                 outcomeBadge = '<span class="outcome-badge outcome-delivered" style="background:#dcfce7; color:#15803d; font-weight:700; padding:3px 10px; border-radius:9999px;">Nagkasundo / Amicably Settled</span>';
             } else if (minutes.complainant_choice === 'Request_Paanyaya_2') {
                 outcomeBadge = '<span class="outcome-badge outcome-unavailable" style="background:#fff7ed; color:#c2410c; font-weight:700; padding:3px 10px; border-radius:9999px;">Walang Kasunduan &bull; Humiling ng 2nd Paanyaya</span>';
-            } else if (minutes.complainant_choice === 'Escalate_Mediation') {
+            } else if (minutes.complainant_choice === 'Escalate_Mediation' || minutes.outcome === 'Impasse_Escalate' || minutes.outcome === 'Escalate_Mediation' || (isP2 && minutes.outcome === 'No_Agreement')) {
                 outcomeBadge = '<span class="outcome-badge outcome-refused" style="background:#fef2f2; color:#dc2626; font-weight:700; padding:3px 10px; border-radius:9999px;">Inakyat sa Pormal na Mediation</span>';
             }
 
@@ -2450,10 +2691,13 @@ function renderPaanyayaStageCard(stageNum, stageData, caseNum, compNames, respNa
         if (hasMinutes) {
             btnRecordMinutes.style.display = 'none';
         } else {
-            btnRecordMinutes.style.display = (isDelivered && !p2Started) ? 'inline-flex' : 'none';
+            btnRecordMinutes.style.display = (isDelivered && !p2Started && !isMediationGraduatedStage) ? 'inline-flex' : 'none';
             const cId = window.complaintData?.complaint_id || (new URLSearchParams(window.location.search)).get('id');
             if (cId) {
-                btnRecordMinutes.href = `record-dialogue-minutes.php?id=${encodeURIComponent(cId)}&stage=${encodeURIComponent(isP2 ? 'Paanyaya 2' : 'Paanyaya 1')}`;
+                const targetStage = isP2 ? 'Paanyaya 2' : 'Paanyaya 1';
+                // Ensure direct navigation to the standalone workspace page
+                btnRecordMinutes.href = `record-dialogue-minutes.php?id=${encodeURIComponent(cId)}&stage=${encodeURIComponent(targetStage)}`;
+                btnRecordMinutes.onclick = null; // Remove modal interception so it navigates cleanly
             }
         }
     }
@@ -2552,23 +2796,24 @@ function renderPaanyayaTab(data) {
                        (stage1.minutes?.outcome === 'Settled') ||
                        (stage2.bypassed === true);
 
+    const hasP2Minutes = Boolean(stage2.minutes_recorded && stage2.minutes);
     const p2WasIssued = !!(stage2.details?.issued_at) || ((stage2.attempts_count || 0) > 0);
 
     const p2Card = document.getElementById('paanyaya2Card');
     if (p2Card) {
-        p2Card.style.display = (isP1Solved && !p2WasIssued) ? 'none' : '';
+        p2Card.style.display = (isP1Solved && !p2WasIssued && !hasP2Minutes) ? 'none' : '';
     }
 
     const tab2Btn = document.getElementById('btnHistTabP2');
     if (tab2Btn) {
-        tab2Btn.style.display = (isP1Solved && !p2WasIssued) ? 'none' : '';
+        tab2Btn.style.display = (isP1Solved && !p2WasIssued && !hasP2Minutes) ? 'none' : '';
     }
 
     // 3. Render CARD 1: PAANYAYA 1
     renderPaanyayaStageCard('1', stage1, data.complaint_number, compNames, respNames, respAddr);
 
-    // 4. Render CARD 2: PAANYAYA 2 (only if not solved at Paanyaya 1)
-    if (!isP1Solved || p2WasIssued) {
+    // 4. Render CARD 2: PAANYAYA 2 (only if not solved at Paanyaya 1, or P2 was issued/recorded)
+    if (!isP1Solved || p2WasIssued || hasP2Minutes) {
         renderPaanyayaStageCard('2', stage2, data.complaint_number, compNames, respNames, respAddr);
     }
 
@@ -2716,7 +2961,16 @@ function renderHearingSessionCards(sessions, containerId, badgeId, stageType, ca
         } else if (isConcluded) {
             queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;">Concluded (${s.actual_duration_minutes || s.duration_minutes || 45} mins)</span>`;
         } else {
-            queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0;">Waiting Room</span>`;
+            const dateObjForBadge = new Date(s.hearing_date ? s.hearing_date.replace(' ', 'T') : '');
+            const nowObjForBadge = new Date();
+            const elapsedMins = (!isNaN(dateObjForBadge.getTime()) && nowObjForBadge > dateObjForBadge) ? Math.floor((nowObjForBadge - dateObjForBadge) / 60000) : 0;
+            if (elapsedMins >= 60) {
+                queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5;">Delayed (${elapsedMins}m)</span>`;
+            } else if (elapsedMins > 0) {
+                queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: #fef3c7; color: #b45309; border: 1px solid #fde68a;">Grace Period (${elapsedMins}m)</span>`;
+            } else {
+                queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0;">Waiting Room</span>`;
+            }
         }
 
         let partyAttHtml = '';
@@ -2786,6 +3040,9 @@ function renderHearingSessionCards(sessions, containerId, badgeId, stageType, ca
                             <button type="button" class="btn-secondary" onclick="openSummonsPreviewModal(${Number(caseId)}, null, ${Number(s.hearing_id)})" style="font-size: 0.78rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 4px; border-color: #0284c7; color: #0284c7; background: #f0f9ff;" title="Preview KP Form No. 9">
                                 KP Form 9
                             </button>
+                            <a href="../gps/proof-service.php?case_id=${encodeURIComponent(caseId || '')}&hearing_id=${encodeURIComponent(s.hearing_id)}&open_return=1" class="btn-secondary" style="font-size: 0.78rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 4px; border-color: #10b981; color: #047857; background: #ecfdf5; text-decoration: none;" title="Record attempt to deliver summons / Officer's Return">
+                                📋 Record Summons Return
+                            </a>
                         ` : ''}
                         <button type="button" class="btn-secondary" onclick="openEmbeddedAttendanceModal(${s.hearing_id})" style="font-size: 0.78rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 4px;">
                             Detailed Attendance
@@ -2796,39 +3053,52 @@ function renderHearingSessionCards(sessions, containerId, badgeId, stageType, ca
                     </div>
                 </div>
 
-                <!-- Daily Docket Live Arrival / Readiness Tracking Bar -->
-                <div style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                        <span style="font-size: 0.76rem; font-weight: 700; color: #475569; text-transform: uppercase;">Party Arrival Check-In:</span>
-                        ${(s.parties && s.parties.length > 2) ? s.parties.map(p => {
-                            const isPIn = (p.attendance_status === 'Present' || p.attendance_status === 'Late');
-                            return `
-                                <button type="button" onclick="handleHearingCheckIn(${s.hearing_id}, '${escapeHtml(p.party_type)}', '${isPIn ? 'Waiting' : 'Checked In'}', ${p.resident_id || 'null'})" style="font-size: 0.76rem; padding: 3px 8px; border-radius: 6px; border: 1px solid ${isPIn ? '#86efac' : '#cbd5e1'}; background: ${isPIn ? '#dcfce7' : '#fff'}; color: ${isPIn ? '#15803d' : '#475569'}; font-weight: 600; cursor: pointer;" title="Toggle arrival for ${escapeHtml(p.full_name)}">
-                                    ${escapeHtml(p.party_type)} (${escapeHtml(p.full_name)}): [ ${isPIn ? 'Checked In' : 'Waiting'} ]
-                                </button>
-                            `;
-                        }).join('') : `
-                            <button type="button" onclick="handleHearingCheckIn(${s.hearing_id}, 'Complainant', '${compIn ? 'Waiting' : 'Checked In'}')" style="font-size: 0.78rem; padding: 3px 10px; border-radius: 6px; border: 1px solid ${compIn ? '#86efac' : '#cbd5e1'}; background: ${compIn ? '#dcfce7' : '#fff'}; color: ${compIn ? '#15803d' : '#475569'}; font-weight: 600; cursor: pointer;">
-                                Complainant: [ ${compIn ? 'Checked In' : 'Waiting / In Transit'} ]
-                            </button>
-                            <button type="button" onclick="handleHearingCheckIn(${s.hearing_id}, 'Respondent', '${respIn ? 'Waiting' : 'Checked In'}')" style="font-size: 0.78rem; padding: 3px 10px; border-radius: 6px; border: 1px solid ${respIn ? '#86efac' : '#cbd5e1'}; background: ${respIn ? '#dcfce7' : '#fff'}; color: ${respIn ? '#15803d' : '#475569'}; font-weight: 600; cursor: pointer;">
-                                Respondent: [ ${respIn ? 'Checked In' : 'Waiting / In Transit'} ]
-                            </button>
-                        `}
-                    </div>
-                    <div style="font-size: 0.8rem; font-weight: 600;">
-                        ${isReady ? '<span style="color: #15803d;">Complete &amp; Ready for Hearing</span>' : '<span style="color: #64748b;">Waiting for parties to arrive</span>'}
-                    </div>
-                </div>
+                ${(() => {
+                    const dateObj = new Date(s.hearing_date ? s.hearing_date.replace(' ', 'T') : '');
+                    const nowObj = new Date();
+                    const elapsedMins = (!isNaN(dateObj.getTime()) && nowObj > dateObj) ? Math.floor((nowObj - dateObj) / 60000) : 0;
+                    const isGraceExpired = (!isConcluded && !isInSession && !isReady && !isStandby && elapsedMins >= 60);
+                    const isGraceActive = (!isConcluded && !isInSession && !isReady && !isStandby && elapsedMins > 0 && elapsedMins < 60);
+
+                    if (isGraceExpired) {
+                        return `
+                            <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 14px; margin-bottom: 12px; font-size: 0.8rem; color: #991b1b; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                                <div>
+                                    <strong>1-Hour Grace Period Expired:</strong> Scheduled call time has passed by ${elapsedMins} minutes and parties remain incomplete.
+                                </div>
+                                <div style="display: flex; gap: 6px;">
+                                    <button type="button" class="btn-secondary" onclick="handleHearingStandby(${s.hearing_id}, true)" style="font-size: 0.74rem; padding: 4px 8px; background: #fff;">Move to Standby</button>
+                                    <button type="button" class="btn-secondary" onclick="openEmbeddedAttendanceModal(${s.hearing_id})" style="font-size: 0.74rem; padding: 4px 8px; background: #fee2e2; border-color: #fca5a5; color: #991b1b;">Record Non-Appearance</button>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    if (isGraceActive) {
+                        return `
+                            <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 8px 14px; margin-bottom: 12px; font-size: 0.8rem; color: #92400e; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                                <div>
+                                    <strong>1-Hour Grace Period Active:</strong> Call time was ${elapsedMins}m ago (${60 - elapsedMins}m remaining before non-appearance action).
+                                </div>
+                                <div style="display: flex; gap: 6px;">
+                                    <button type="button" class="btn-secondary" onclick="handleHearingStandby(${s.hearing_id}, true)" style="font-size: 0.74rem; padding: 4px 8px; background: #fff;" title="Put on standby to keep room available for other ready cases">Put on Standby</button>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    return '';
+                })()}
 
                 <!-- Session Sub-Grid -->
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; font-size: 0.82rem;">
                     <div>
                         <span style="color: #64748b; font-size: 0.74rem; display: block; font-weight: 600;">PROOF OF SERVICE</span>
-                        <div style="margin-top: 3px;">
+                        <div style="margin-top: 3px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                             <span style="font-size: 0.76rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; ${s.proof_of_service_status === 'Served' ? 'background: #dcfce7; color: #15803d;' : 'background: #fef3c7; color: #b45309;'}">
                                 ${s.proof_of_service_status === 'Served' ? 'Notice Served' : 'Pending / Unserved'}
                             </span>
+                            <a href="../gps/proof-service.php?case_id=${encodeURIComponent(caseId || '')}&hearing_id=${encodeURIComponent(s.hearing_id)}&open_return=1" style="font-size: 0.74rem; color: #0284c7; font-weight: 600; text-decoration: underline;" title="Record attempt to deliver summons">
+                                ${s.proof_of_service_status === 'Served' ? 'View/Update Return &rarr;' : 'Record Attempt &rarr;'}
+                            </a>
                         </div>
                     </div>
                     <div>
@@ -3138,12 +3408,11 @@ async function submitEmbeddedRecordOutcome(e) {
 
             // Outcome-driven action prompts:
             if (outcomeVal === 'Arbitration') {
-                setTimeout(() => {
-                    if (confirm('Outcome recorded as Voluntary Arbitration. Would you like to schedule the Arbitration hearing session now?')) {
-                        openEmbeddedScheduleModal('Arbitration');
-                    }
-                }, 400);
+                if (typeof unlockOutcomesTab === 'function') unlockOutcomesTab(Number(caseId));
+                if (typeof switchCaseTab === 'function') switchCaseTab('tab-arbitration');
             } else if (outcomeVal === 'Settled') {
+                if (typeof unlockOutcomesTab === 'function') unlockOutcomesTab(Number(caseId));
+                if (typeof switchCaseTab === 'function') switchCaseTab('tab-arbitration');
                 setTimeout(() => {
                     openKpFormModal(Number(caseId), 'KP Form 16');
                 }, 400);
@@ -3530,6 +3799,9 @@ async function openEmbeddedAttendanceModal(hearingId) {
                         </button>
                         <button type="button" class="delay-helper-pill pill-warning" onclick="appendEmbeddedDelayRemark('Nahuli ang panig')">
                             • Nahuli ang panig
+                        </button>
+                        <button type="button" class="delay-helper-pill pill-warning" style="background: #fef2f2; color: #991b1b; border-color: #fca5a5;" onclick="appendEmbeddedDelayRemark('Lumampas sa 1-hour grace period / Hindi sumipot')">
+                            • Lumampas sa 1-hour grace period
                         </button>
                         <button type="button" class="delay-helper-pill pill-success" onclick="appendEmbeddedDelayRemark('Nasa oras')">
                             • Nasa oras
@@ -5998,7 +6270,7 @@ function printKp7Iframe() {
 }
 window.printKp7Iframe = printKp7Iframe;
 
-function openKpDocumentPreviewModal(documentId, templateName, caseNumber) {
+function openKpDocumentPreviewModal(documentId, templateName, caseNumber, caseId = null) {
     const modal = document.getElementById('kpDocumentPreviewModal');
     const iframe = document.getElementById('kpDocPreviewIframe');
     const heading = document.getElementById('kpDocModalHeading');
@@ -6006,20 +6278,106 @@ function openKpDocumentPreviewModal(documentId, templateName, caseNumber) {
     const dlBtn = document.getElementById('btnDownloadKpDocPdf');
     if (!modal || !iframe) return;
 
+    const tName = String(templateName || 'KP Form').trim();
     if (heading) {
-        heading.textContent = templateName ? `${templateName} Preview` : 'Official KP Form Preview';
+        heading.textContent = `${tName} Preview`;
     }
     if (sub && caseNumber) {
         sub.textContent = `Barangay Tumana Lupong Tagapamayapa · Case #${caseNumber}`;
     }
-    const pdfUrl = `../../../backend/api/documents/download.php?id=${encodeURIComponent(documentId)}&_t=${Date.now()}`;
-    const dlUrl = `../../../backend/api/documents/download.php?id=${encodeURIComponent(documentId)}&download=1`;
 
-    iframe.src = pdfUrl;
-    if (dlBtn) dlBtn.href = dlUrl;
+    // Use kp-form.php: checks physical file first; if missing, dynamically renders clean, printable HTML
+    let previewUrl = `../../../backend/api/documents/kp-form.php?document_id=${encodeURIComponent(documentId)}&preview=1&bare=1&_t=${Date.now()}`;
+    let downloadUrl = `../../../backend/api/documents/kp-form.php?document_id=${encodeURIComponent(documentId)}&pdf=1`;
+
+    // Fallback using case_id and form_code if document_id is missing
+    const resolvedCaseId = caseId || window.complaintData?.case_id || (new URLSearchParams(window.location.search)).get('case_id');
+    if ((!documentId || Number(documentId) <= 0) && resolvedCaseId) {
+        previewUrl = `../../../backend/api/documents/kp-form.php?case_id=${encodeURIComponent(resolvedCaseId)}&form_code=${encodeURIComponent(tName)}&preview=1&bare=1&_t=${Date.now()}`;
+        downloadUrl = `../../../backend/api/documents/kp-form.php?case_id=${encodeURIComponent(resolvedCaseId)}&form_code=${encodeURIComponent(tName)}&pdf=1`;
+    }
+
+    iframe.src = previewUrl;
+
+    if (dlBtn) {
+        dlBtn.href = downloadUrl;
+        dlBtn.style.display = 'inline-flex';
+    }
+
     modal.style.display = 'flex';
 }
 window.openKpDocumentPreviewModal = openKpDocumentPreviewModal;
+
+function openTriPanelPangkatModal(caseId) {
+    const activeCaseId = caseId || window.complaintData?.case_id || (new URLSearchParams(window.location.search)).get('case_id') || 0;
+    if (!activeCaseId) {
+        if (typeof notifyUser === 'function') {
+            notifyUser('Case ID is required for Pangkat notices preview.', 'warning');
+        } else {
+            alert('Case ID is required for Pangkat notices preview.');
+        }
+        return;
+    }
+    const modal = document.getElementById('pangkatNoticesModal');
+    if (!modal) {
+        console.warn('pangkatNoticesModal element not found in DOM.');
+        return;
+    }
+
+    const complaintId = window.complaintData?.complaint_id || (new URLSearchParams(window.location.search)).get('id') || '';
+    const frame10 = document.getElementById('pangkatPreviewFrameKp10');
+    const frame11 = document.getElementById('pangkatPreviewFrameKp11');
+    const frame12 = document.getElementById('pangkatPreviewFrameKp12');
+    const dl10 = document.getElementById('btnDownloadPangkatKp10');
+    const dl11 = document.getElementById('btnDownloadPangkatKp11');
+    const dl12 = document.getElementById('btnDownloadPangkatKp12');
+    const retComp = document.getElementById('btnPangkatOfficersReturnComp');
+    const retResp = document.getElementById('btnPangkatOfficersReturnResp');
+    const retFull = document.getElementById('btnPangkatOfficerReturnFull');
+
+    const baseApi = `../../../backend/api/documents/kp-form.php`;
+
+    if (frame10) frame10.src = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+10&preview=1&bare=1&_t=${Date.now()}`;
+    if (frame11) frame11.src = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+11&preview=1&bare=1&_t=${Date.now()}`;
+    if (frame12) frame12.src = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+12&preview=1&bare=1&_t=${Date.now()}`;
+
+    if (dl10) dl10.href = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+10&pdf=1`;
+    if (dl11) dl11.href = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+11&pdf=1`;
+    if (dl12) dl12.href = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+12&pdf=1`;
+
+    const gpsUrl = (party) => `../gps/proof-service.php?case_id=${encodeURIComponent(activeCaseId)}&complaint_id=${encodeURIComponent(complaintId)}&stage=Conciliation&form=KP12${party ? `&party=${encodeURIComponent(party)}` : ''}`;
+    if (retComp) retComp.href = gpsUrl('Complainant');
+    if (retResp) retResp.href = gpsUrl('Respondent');
+    if (retFull) retFull.href = gpsUrl();
+
+    modal.style.display = 'flex';
+}
+window.openTriPanelPangkatModal = openTriPanelPangkatModal;
+
+function closeTriPanelPangkatModal() {
+    const modal = document.getElementById('pangkatNoticesModal');
+    if (modal) modal.style.display = 'none';
+}
+window.closeTriPanelPangkatModal = closeTriPanelPangkatModal;
+
+function printPangkatFrame(which) {
+    let frameId = 'pangkatPreviewFrameKp10';
+    if (which === 'kp11') frameId = 'pangkatPreviewFrameKp11';
+    else if (which === 'kp12') frameId = 'pangkatPreviewFrameKp12';
+    const iframe = document.getElementById(frameId);
+    if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+    }
+}
+window.printPangkatFrame = printPangkatFrame;
+
+function printAllPangkatNotices() {
+    ['kp10', 'kp11', 'kp12'].forEach((which, i) => {
+        setTimeout(() => printPangkatFrame(which), i * 1500);
+    });
+}
+window.printAllPangkatNotices = printAllPangkatNotices;
 
 function closeKpDocumentPreviewModal() {
     const modal = document.getElementById('kpDocumentPreviewModal');
@@ -6628,6 +6986,207 @@ window.submitSchedulePaanyaya = async function(event) {
     }
 };
 
+// =========================================================
+// Elastic Duration Docketing & Daily Capacity Engine
+// =========================================================
+window.initMediationDocketScheduler = function(options) {
+    function esc(s) {
+        return String(s ?? '').replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c] || c));
+    }
+
+    const root = options.root || document;
+    const dateInput = typeof options.dateInput === 'string' ? root.querySelector(options.dateInput) || document.querySelector(options.dateInput) : options.dateInput;
+    const timeInput = typeof options.timeInput === 'string' ? root.querySelector(options.timeInput) || document.querySelector(options.timeInput) : options.timeInput;
+    const badgeEl = typeof options.badgeEl === 'string' ? root.querySelector(options.badgeEl) || document.querySelector(options.badgeEl) : options.badgeEl;
+    const docketEl = typeof options.docketEl === 'string' ? root.querySelector(options.docketEl) || document.querySelector(options.docketEl) : options.docketEl;
+    const docketCountEl = typeof options.docketCountEl === 'string' ? root.querySelector(options.docketCountEl) || document.querySelector(options.docketCountEl) : options.docketCountEl;
+    const alertEl = typeof options.alertEl === 'string' ? root.querySelector(options.alertEl) || document.querySelector(options.alertEl) : options.alertEl;
+    const submitBtn = typeof options.submitBtn === 'string' ? root.querySelector(options.submitBtn) || document.querySelector(options.submitBtn) : options.submitBtn;
+    const getComplaintId = options.getComplaintId || (() => window.complaintData?.complaint_id || (new URLSearchParams(window.location.search).get('id')));
+    const getCaseId = options.getCaseId || (() => null);
+
+    if (!dateInput) return null;
+
+    function getNextTuesdayStr() {
+        const d = new Date();
+        d.setDate(d.getDate() + 1);
+        while (d.getDay() !== 2) {
+            d.setDate(d.getDate() + 1);
+        }
+        return d.toISOString().slice(0, 10);
+    }
+
+    if (!dateInput.value) {
+        dateInput.value = getNextTuesdayStr();
+    }
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    dateInput.min = tomorrow.toISOString().slice(0, 10);
+
+    if (timeInput && !timeInput.value) {
+        timeInput.value = '13:00';
+    }
+
+    async function checkSchedule() {
+        if (!dateInput.value) return;
+        const dateVal = dateInput.value;
+        const timeVal = (timeInput && timeInput.value) ? timeInput.value : '13:00';
+        const compId = getComplaintId();
+        const cId = getCaseId();
+
+        const parts = dateVal.split('-');
+        let isTuesday = false;
+        if (parts.length === 3) {
+            const dt = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+            isTuesday = (dt.getDay() === 2);
+        }
+
+        if (!isTuesday) {
+            if (badgeEl) {
+                badgeEl.textContent = 'Non-Tuesday (Blocked)';
+                badgeEl.style.background = '#fef3c7';
+                badgeEl.style.color = '#92400e';
+                badgeEl.style.border = '1px solid #fcd34d';
+            }
+            if (alertEl) {
+                alertEl.textContent = 'Mediation hearings can only be held on Tuesdays (Barangay Tumana Katarungang Pambarangay Rules).';
+                alertEl.style.display = 'block';
+            }
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.title = 'Please select a Tuesday for mediation hearings.';
+            }
+            if (docketEl) {
+                docketEl.innerHTML = '<span style="color: #991b1b; font-size: 0.82rem;">Mediation sessions are held on Tuesdays only.</span>';
+            }
+            return;
+        }
+
+        try {
+            const params = new URLSearchParams({
+                date: dateVal,
+                time: timeVal,
+                venue: 'Lupon Court Room',
+                hearing_type: 'Mediation'
+            });
+            if (compId) params.set('complaint_id', String(compId));
+            if (cId) params.set('case_id', String(cId));
+
+            const res = await fetch(`../../../backend/api/summons/check-schedule.php?${params.toString()}`);
+            const data = await res.json();
+
+            const booked = data.total_booked ?? 0;
+            const max = data.max_slots ?? 8;
+            const isFull = data.is_fully_booked || booked >= max;
+
+            // 1. Capacity Badge
+            if (badgeEl) {
+                badgeEl.textContent = `${booked} of ${max} daily mediation slots booked` + (isFull ? ' — Date Fully Booked' : '');
+                if (isFull) {
+                    badgeEl.style.background = '#fee2e2';
+                    badgeEl.style.color = '#991b1b';
+                    badgeEl.style.border = '1px solid #fca5a5';
+                } else if (booked >= 5) {
+                    badgeEl.style.background = '#fef3c7';
+                    badgeEl.style.color = '#92400e';
+                    badgeEl.style.border = '1px solid #fcd34d';
+                } else {
+                    badgeEl.style.background = '#dcfce7';
+                    badgeEl.style.color = '#166534';
+                    badgeEl.style.border = '1px solid #86efac';
+                }
+            }
+
+            // 2. Docket Peek
+            if (docketCountEl) {
+                docketCountEl.textContent = `${booked} of ${max} slots`;
+            }
+            if (docketEl) {
+                const sessions = data.scheduled_mediations || [];
+                if (sessions.length === 0) {
+                    docketEl.innerHTML = `<span style="color: #166534; font-weight: 500; font-size: 0.82rem;">✓ All 8 session slots available on this date (${dateVal}).</span>`;
+                } else {
+                    docketEl.innerHTML = sessions.map(s => {
+                        const qStatus = s.queue_status || s.status || 'Waiting';
+                        let pillBg = '#eff6ff', pillColor = '#1e40af', pillBorder = '#bfdbfe';
+                        if (qStatus === 'In_Session') {
+                            pillBg = '#ecfdf5'; pillColor = '#047857'; pillBorder = '#6ee7b7';
+                        } else if (qStatus === 'Concluded' || qStatus === 'Completed') {
+                            pillBg = '#f1f5f9'; pillColor = '#475569'; pillBorder = '#cbd5e1';
+                        }
+                        const tDisplay = s.start_time || '';
+                        return `
+                            <div style="margin-top: 4px; padding: 4px 8px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                                <div>
+                                    <strong style="color: #0f172a; font-size: 0.84rem;">${esc(tDisplay)}</strong>
+                                    <span style="color: #64748b; font-size: 0.78rem; margin-left: 6px;">Case ${esc(s.case_number || 'N/A')}</span>
+                                </div>
+                                <span style="font-size: 0.7rem; color: ${pillColor}; background: ${pillBg}; border: 1px solid ${pillBorder}; padding: 1px 7px; border-radius: 9999px; font-weight: 700;">
+                                    ${esc(qStatus)}
+                                </span>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            }
+
+            // 3. Conflict / Capacity Blocking
+            if (isFull) {
+                if (alertEl) {
+                    alertEl.textContent = `Daily capacity limit reached: All ${max} mediation slots are fully booked for this Tuesday (${dateVal}). Please select another date.`;
+                    alertEl.style.display = 'block';
+                }
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.title = 'Cannot book: Daily capacity ceiling of 8 mediation hearings reached.';
+                }
+                return;
+            }
+
+            if (data.has_conflict && data.conflict) {
+                const msg = data.conflict.message || 'Schedule conflict with an active session in the Lupon Court Room.';
+                if (alertEl) {
+                    alertEl.textContent = msg.startsWith('⚠️') ? msg : `⚠️ Schedule Conflict: ${msg}`;
+                    alertEl.style.display = 'block';
+                }
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.title = 'Cannot book: Schedule conflict detected.';
+                }
+            } else {
+                if (alertEl) {
+                    alertEl.textContent = '';
+                    alertEl.style.display = 'none';
+                }
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.title = '';
+                }
+            }
+        } catch (err) {
+            console.warn('Mediation scheduler check failed:', err);
+        }
+    }
+
+    dateInput.onchange = checkSchedule;
+    if (timeInput) {
+        timeInput.onchange = checkSchedule;
+        timeInput.oninput = checkSchedule;
+    }
+
+    checkSchedule();
+
+    return {
+        checkSchedule,
+        setTargetTime: (timeStr) => {
+            if (timeInput) {
+                timeInput.value = timeStr;
+                checkSchedule();
+            }
+        }
+    };
+};
+
 window.openPaanyayaOutcomeModal = function(outcomeType) {
     const modal = document.getElementById('paanyayaOutcomeModal');
     if (!modal) return;
@@ -6666,6 +7225,7 @@ window.openPaanyayaOutcomeModal = function(outcomeType) {
             submitBtn.textContent = 'Confirm Resolution & Close Complaint';
             submitBtn.style.background = '#16a34a';
             submitBtn.style.borderColor = '#16a34a';
+            submitBtn.disabled = false;
         }
     } else {
         if (modalTitle) modalTitle.textContent = 'Escalate to Formal Docketing (KP Form 7 & 9)';
@@ -6679,17 +7239,17 @@ window.openPaanyayaOutcomeModal = function(outcomeType) {
             submitBtn.style.borderColor = '#dc2626';
         }
 
-        // Configure next Tuesday date per Tumana mediation rules
-        const medDateInput = document.getElementById('escalationMedDate');
-        if (medDateInput) {
-            const d = new Date();
-            d.setDate(d.getDate() + 3);
-            while (d.getDay() !== 2) {
-                d.setDate(d.getDate() + 1);
-            }
-            medDateInput.value = d.toISOString().slice(0, 10);
-            medDateInput.min = new Date().toISOString().slice(0, 10);
-        }
+        // Initialize Elastic Duration Docketing Scheduler for 1st Mediation
+        window.initMediationDocketScheduler({
+            dateInput: '#escalationMedDate',
+            timeInput: '#escalationMedTime',
+            badgeEl: '#escalationCapacityBadge',
+            docketEl: '#escalationDocketList',
+            docketCountEl: '#escalationDocketCount',
+            alertEl: '#escalationConflictAlert',
+            submitBtn: '#btnSubmitPaanyayaOutcome',
+            getComplaintId: () => compId
+        });
     }
 
     modal.style.display = 'flex';
@@ -6918,6 +7478,16 @@ window.openIssuePaanyayaModal = function(stageType) {
     if (salaysayInput) salaysayInput.value = window.complaintData?.narrative || '';
     if (errBox) errBox.style.display = 'none';
 
+    const officerSelect = document.getElementById('issueStageOfficer');
+    if (officerSelect) {
+        if (officerSelect.options.length <= 1 && window.paanyayaStagesData?.serving_officers) {
+            populatePaanyayaOfficersSelect(window.paanyayaStagesData.serving_officers);
+        }
+        if (!officerSelect.value && officerSelect.options.length > 1) {
+            officerSelect.selectedIndex = 1;
+        }
+    }
+
     modal.style.display = 'flex';
 };
 
@@ -6933,6 +7503,9 @@ window.submitIssuePaanyayaStage = async function(event) {
     const errBox = document.getElementById('issueStageError');
 
     const formData = new FormData(form);
+    const hasSigInput = form.querySelector('input[name="has_e_signature"]');
+    const hasSig = hasSigInput ? (hasSigInput.type === 'checkbox' ? (hasSigInput.checked ? 1 : 0) : parseInt(hasSigInput.value, 10) || 1) : 1;
+
     const payload = {
         complaint_id: parseInt(formData.get('complaint_id'), 10),
         stage_type: formData.get('stage_type'),
@@ -6941,7 +7514,7 @@ window.submitIssuePaanyayaStage = async function(event) {
         assigned_officer_id: formData.get('assigned_officer_id') ? parseInt(formData.get('assigned_officer_id'), 10) : null,
         venue: formData.get('venue'),
         salaysay: formData.get('salaysay'),
-        has_e_signature: form.querySelector('input[name="has_e_signature"]').checked ? 1 : 0
+        has_e_signature: hasSig
     };
 
     try {
@@ -6982,15 +7555,25 @@ window.submitIssuePaanyayaStage = async function(event) {
 };
 
 
-window.openDocOfficerReturn = function(docId, caseId) {
+window.openDocOfficerReturn = function(docId, caseId, templateName = '') {
     const cId = caseId || window.complaintData?.case_id || (new URLSearchParams(window.location.search)).get('case_id');
     const compId = window.complaintData?.complaint_id || (new URLSearchParams(window.location.search)).get('id');
+    const tNameLower = String(templateName || '').toLowerCase();
+
+    const isConciliation = tNameLower.includes('kp form 12') 
+        || tNameLower.includes('blg. 12') 
+        || tNameLower.includes('pangkat');
+
+    const stageParam = isConciliation ? '&stage=Conciliation&form=KP12' : '';
+
     if (cId) {
-        window.location.href = `../gps/proof-service.php?case_id=${encodeURIComponent(cId)}` + (docId ? `&doc_id=${encodeURIComponent(docId)}` : '');
+        window.location.href = `../gps/proof-service.php?case_id=${encodeURIComponent(cId)}${stageParam}` 
+            + (docId ? `&document_id=${encodeURIComponent(docId)}` : '');
     } else if (compId) {
-        window.location.href = `../gps/proof-service.php?complaint_id=${encodeURIComponent(compId)}`;
+        window.location.href = `../gps/proof-service.php?complaint_id=${encodeURIComponent(compId)}${stageParam}`
+            + (docId ? `&document_id=${encodeURIComponent(docId)}` : '');
     } else {
-        window.location.href = '../gps/proof-service.php';
+        window.location.href = `../gps/proof-service.php?${stageParam.replace('&', '')}`;
     }
 };
 
@@ -7042,8 +7625,12 @@ window.openRecordReturnModal = function(stageType = 'Paanyaya 1') {
     }
 
     // Pre-fill officer from stage
-    if (officerSelect && targetStage?.details?.assigned_officer_id) {
-        officerSelect.value = targetStage.details.assigned_officer_id;
+    if (officerSelect) {
+        if (targetStage?.details?.assigned_officer_id) {
+            officerSelect.value = targetStage.details.assigned_officer_id;
+        } else if (!officerSelect.value && officerSelect.options.length > 1) {
+            officerSelect.selectedIndex = 1;
+        }
     }
 
     // Pre-fill recipient & address from complaint parties
@@ -7660,9 +8247,11 @@ window.toggleMinutesOutcomeViews = function() {
     if (!form) return;
     const outcome = form.querySelector('input[name="outcome"]:checked')?.value || 'Settled';
     const choiceSection = document.getElementById('minutesComplainantChoiceSection');
+    const agreedSection = document.getElementById('minutesAgreedTermsSection');
     const submitBtn = document.getElementById('btnSubmitPaanyayaMinutes');
 
     if (outcome === 'Settled') {
+        if (agreedSection) agreedSection.style.display = 'block';
         if (choiceSection) choiceSection.style.display = 'none';
         const escSec = document.getElementById('minutesEscalationScheduleSection');
         if (escSec) escSec.style.display = 'none';
@@ -7672,6 +8261,7 @@ window.toggleMinutesOutcomeViews = function() {
             submitBtn.style.borderColor = '#16a34a';
         }
     } else {
+        if (agreedSection) agreedSection.style.display = 'none';
         if (choiceSection) choiceSection.style.display = 'block';
         toggleComplainantChoiceViews();
     }
@@ -7837,6 +8427,234 @@ window.closePaanyayaMinutesViewModal = function() {
 };
 
 // =========================================================
+// Paanyaya Dialogue Minutes & 2nd Paanyaya Inline Scheduling
+// =========================================================
+window.initP2ScheduleDefaults = function(form = null) {
+    const root = form || document;
+    const p2Date = root.querySelector('#minutesP2Date') || root.querySelector('input[name="p2_scheduled_date"]');
+    const p2Time = root.querySelector('#minutesP2Time') || root.querySelector('input[name="p2_scheduled_time"]');
+
+    if (p2Date) {
+        const tom = new Date();
+        tom.setDate(tom.getDate() + 1);
+        p2Date.min = tom.toISOString().split('T')[0];
+
+        if (!p2Date.value) {
+            let d = new Date();
+            let added = 0;
+            while (added < 3) {
+                d.setDate(d.getDate() + 1);
+                if (d.getDay() !== 0 && d.getDay() !== 6) added++;
+            }
+            p2Date.value = d.toISOString().split('T')[0];
+        }
+    }
+    if (p2Time && !p2Time.value) {
+        p2Time.value = '14:00';
+    }
+};
+
+window.toggleComplainantChoiceViews = function(contextForm = null) {
+    const form = contextForm || document.getElementById('recordDialogueMinutesForm') || document.getElementById('modalRecordDialogueMinutesForm');
+    if (!form) return;
+
+    const outcome = form.querySelector('input[name="outcome"]:checked')?.value;
+    const choice = form.querySelector('input[name="complainant_choice"]:checked')?.value || 'Request_Paanyaya_2';
+
+    const agreedSec = form.querySelector('#minutesAgreedTermsSection') || form.querySelector('.modal-minutes-agreed-section');
+    const choiceSec = form.querySelector('#minutesComplainantChoiceSection') || form.querySelector('.modal-minutes-choice-section');
+    const p2Sec = form.querySelector('#minutesPaanyaya2ScheduleSection');
+    const escSec = form.querySelector('#minutesEscalationScheduleSection');
+    const submitBtn = form.querySelector('button[type="submit"]') || document.getElementById('btnSubmitMinutes');
+
+    const p2DateInput = form.querySelector('input[name="p2_scheduled_date"]');
+    const p2TimeInput = form.querySelector('input[name="p2_scheduled_time"]');
+    const medDateInput = form.querySelector('input[name="mediation_date"]');
+
+    if (outcome === 'Settled') {
+        if (agreedSec) agreedSec.style.display = 'block';
+        if (choiceSec) choiceSec.style.display = 'none';
+        if (p2Sec) p2Sec.style.display = 'none';
+        if (escSec) escSec.style.display = 'none';
+        if (p2DateInput) p2DateInput.required = false;
+        if (p2TimeInput) p2TimeInput.required = false;
+        if (medDateInput) medDateInput.required = false;
+        if (submitBtn) {
+            submitBtn.textContent = 'Save Minutes & Close Complaint (Nagkasundo)';
+            submitBtn.style.background = '#16a34a';
+            submitBtn.style.borderColor = '#16a34a';
+            submitBtn.disabled = false;
+        }
+        return;
+    }
+
+    if (agreedSec) agreedSec.style.display = 'none';
+    if (choiceSec) choiceSec.style.display = 'block';
+
+    if (choice === 'Request_Paanyaya_2') {
+        if (p2Sec) {
+            p2Sec.style.display = 'block';
+            p2Sec.style.opacity = '1';
+        }
+        if (escSec) escSec.style.display = 'none';
+        if (p2DateInput) p2DateInput.required = true;
+        if (p2TimeInput) p2TimeInput.required = true;
+        if (medDateInput) medDateInput.required = false;
+        window.initP2ScheduleDefaults(form);
+        if (submitBtn) {
+            submitBtn.textContent = 'Save Minutes & Schedule 2nd Paanyaya';
+            submitBtn.style.background = '#2563eb';
+            submitBtn.style.borderColor = '#2563eb';
+            submitBtn.disabled = false;
+        }
+    } else if (choice === 'Escalate_Mediation') {
+        if (p2Sec) p2Sec.style.display = 'none';
+        if (escSec) {
+            escSec.style.display = 'block';
+            escSec.style.opacity = '1';
+        }
+        if (p2DateInput) p2DateInput.required = false;
+        if (p2TimeInput) p2TimeInput.required = false;
+        if (medDateInput) medDateInput.required = true;
+        if (submitBtn) {
+            submitBtn.textContent = 'Save Minutes & Escalate to Mediation';
+            submitBtn.style.background = '#dc2626';
+            submitBtn.style.borderColor = '#dc2626';
+        }
+        if (typeof checkMinutesScheduleConflict === 'function') {
+            checkMinutesScheduleConflict();
+        }
+    } else {
+        if (p2Sec) p2Sec.style.display = 'none';
+        if (escSec) escSec.style.display = 'none';
+        if (p2DateInput) p2DateInput.required = false;
+        if (p2TimeInput) p2TimeInput.required = false;
+        if (medDateInput) medDateInput.required = false;
+    }
+};
+
+window.openRecordDialogueMinutesModal = function(stageType = 'Paanyaya 1') {
+    const cId = window.complaintData?.complaint_id || (new URLSearchParams(window.location.search)).get('id');
+    if (cId) {
+        window.location.href = `record-dialogue-minutes.php?id=${encodeURIComponent(cId)}&stage=${encodeURIComponent(stageType)}`;
+        return;
+    }
+    const modal = document.getElementById('recordDialogueMinutesModal');
+    if (!modal) return;
+    const form = document.getElementById('modalRecordDialogueMinutesForm');
+    if (form) {
+        form.reset();
+        const stageInput = form.querySelector('input[name="stage_type"]');
+        if (stageInput) stageInput.value = stageType;
+
+        const heading = document.getElementById('recordMinutesModalHeading');
+        if (heading) heading.textContent = `Itala ang Katitikan ng Pag-uusap (${stageType})`;
+
+        // Set default dialogue date to now
+        const dtInput = form.querySelector('input[name="dialogue_date"]');
+        if (dtInput) {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            dtInput.value = `${year}-${month}-${day}T${hours}:${minutes}`;
+        }
+        const actTime = form.querySelector('input[name="actual_start_time"]');
+        if (actTime) {
+            const now = new Date();
+            actTime.value = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+        }
+
+        const p2ChoiceWrap = form.querySelector('#modalOptChoiceP2Wrap');
+        if (p2ChoiceWrap) {
+            p2ChoiceWrap.style.display = (stageType === 'Paanyaya 2') ? 'none' : 'flex';
+            if (stageType === 'Paanyaya 2') {
+                const escChoice = form.querySelector('input[name="complainant_choice"][value="Escalate_Mediation"]');
+                if (escChoice) escChoice.checked = true;
+            } else {
+                const p2Choice = form.querySelector('input[name="complainant_choice"][value="Request_Paanyaya_2"]');
+                if (p2Choice) p2Choice.checked = true;
+            }
+        }
+
+        window.initP2ScheduleDefaults(form);
+
+        if (window.paanyayaStagesData?.serving_officers) {
+            populatePaanyayaOfficersSelect(window.paanyayaStagesData.serving_officers);
+        }
+
+        window.toggleComplainantChoiceViews(form);
+    }
+    modal.style.display = 'flex';
+};
+
+window.closeRecordDialogueMinutesModal = function() {
+    const modal = document.getElementById('recordDialogueMinutesModal');
+    if (modal) modal.style.display = 'none';
+};
+
+window.handleModalDialogueMinutesSubmit = async function(event) {
+    event.preventDefault();
+    const form = event.target;
+    const btn = form.querySelector('button[type="submit"]');
+    const errBox = form.querySelector('.modal-minutes-error');
+
+    const outcome = form.querySelector('input[name="outcome"]:checked')?.value;
+    const choice = form.querySelector('input[name="complainant_choice"]:checked')?.value;
+
+    if (outcome !== 'Settled' && choice === 'Request_Paanyaya_2') {
+        const p2Date = form.querySelector('input[name="p2_scheduled_date"]')?.value?.trim();
+        const p2Time = form.querySelector('input[name="p2_scheduled_time"]')?.value?.trim();
+        if (!p2Date || !p2Time) {
+            if (errBox) {
+                errBox.textContent = 'Please specify the scheduled date and time for the 2nd Paanyaya dialogue.';
+                errBox.style.display = 'block';
+            }
+            return;
+        }
+    }
+
+    const formData = new FormData(form);
+    try {
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Saving dialogue minutes...';
+        }
+        if (errBox) errBox.style.display = 'none';
+
+        const res = await fetch('../../../backend/api/paanyaya/record-minutes.php', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            window.agapNotify?.(data.message || 'Dialogue minutes recorded successfully!', 'success');
+            window.closeRecordDialogueMinutesModal();
+            if (typeof loadComplaintDetails === 'function') {
+                await loadComplaintDetails();
+            } else {
+                window.location.reload();
+            }
+        } else {
+            throw new Error(data.message || 'Failed to record dialogue minutes.');
+        }
+    } catch (err) {
+        if (errBox) {
+            errBox.textContent = err.message || 'An error occurred while saving minutes.';
+            errBox.style.display = 'block';
+        }
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            window.toggleComplainantChoiceViews(form);
+        }
+    }
+};
+
+// =========================================================
 // Reopen Settled Case for CFA — RA 7160 Sec. 417
 // =========================================================
 window.openReopenCfaModal = function() {
@@ -7861,7 +8679,7 @@ window.submitReopenForCfa = async function() {
         return;
     }
 
-    const caseId = window._reopenCaseCaseId;
+    const caseId = window._reopenCaseCaseId || window.currentCaseId || window.complaintData?.case_id || window.complaintData?.case_workspace?.case?.case_id;
     if (!caseId) {
         if (window.agapNotify) window.agapNotify('Case ID not found. Please reload the page.', 'error');
         else alert('Case ID not found. Please reload the page.');
@@ -7997,3 +8815,1100 @@ function printAllPangkatNotices() {
 window.printAllPangkatNotices = printAllPangkatNotices;
 
 window.renderHeroKpFormsList = renderOfficialKpForms;
+
+
+
+/* =========================================================================
+ * AMICABLE SETTLEMENT & STATUTORY TRANSMITTAL WORKSPACE (RA 7160)
+ * ========================================================================= */
+
+function renderAmicableSettlementWorkspace(workspace, complaint) {
+    const comp = complaint || window.complaintData || {};
+    const ws = workspace || window.__agapComplaintWorkspace || comp.case_workspace || {};
+    const caseId = comp.case_id || ws.case?.case_id || (new URLSearchParams(window.location.search)).get('case_id') || (new URLSearchParams(window.location.search)).get('id');
+    const settlement = ws.settlement || {};
+    const transmittal = ws.transmittal || {};
+
+    const isRepudiated = settlement.repudiation_status === 'Repudiated' ||
+                         transmittal.is_repudiated === true ||
+                         comp.case_status === 'Repudiated' ||
+                         ws.case?.case_status === 'Repudiated';
+
+    const remainingDays = typeof transmittal.working_days_remaining !== 'undefined'
+        ? Number(transmittal.working_days_remaining)
+        : (typeof settlement.working_days_remaining !== 'undefined' ? Number(settlement.working_days_remaining) : 10);
+
+    const isLocked = !isRepudiated && (Boolean(transmittal.is_locked) || remainingDays > 0);
+
+    // 0. Update Settlement Header Card & Badge
+    const settledBadge = document.getElementById('stageSettledBadge');
+    const settledCard = document.getElementById('stageSettledCard');
+    const settledTitle = document.getElementById('stageSettledTitle') || (settledCard ? settledCard.querySelector('h3') : null);
+
+    if (isRepudiated) {
+        if (settledBadge) {
+            settledBadge.innerHTML = '⚠ REPUDIATED';
+            settledBadge.style.background = '#fee2e2';
+            settledBadge.style.color = '#b91c1c';
+            settledBadge.style.border = '1px solid #fca5a5';
+        }
+        if (settledCard) {
+            settledCard.style.borderColor = '#fca5a5';
+            settledCard.style.background = 'linear-gradient(135deg, #fef2f2 0%, #fff1f2 100%)';
+        }
+        if (settledTitle) {
+            settledTitle.textContent = 'Repudiated Settlement (KP Form 17 / CFA)';
+            settledTitle.style.color = '#991b1b';
+        }
+    } else {
+        if (settledBadge) {
+            settledBadge.innerHTML = '✓ Amicably Settled';
+            settledBadge.style.background = '#dcfce7';
+            settledBadge.style.color = '#166534';
+            settledBadge.style.border = '1px solid #86efac';
+        }
+        if (settledCard) {
+            settledCard.style.borderColor = '#86efac';
+            settledCard.style.background = 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)';
+        }
+        if (settledTitle) {
+            settledTitle.textContent = 'Amicable Settlement (Kasunduan)';
+            settledTitle.style.color = '#064e3b';
+        }
+    }
+
+    // 1. Metric: Execution Date
+    const settleDateEl = document.getElementById('metricSettlementDate');
+    if (settleDateEl) {
+        settleDateEl.textContent = settlement.settlement_date ? formatDateReadable(settlement.settlement_date) : 'Recently Executed';
+    }
+
+    // 2. Metric: 10-Working-Day Expiry
+    const deadlineEl = document.getElementById('metricRepudiationDeadline');
+    if (deadlineEl) {
+        const deadlineDate = transmittal.repudiation_deadline || settlement.repudiation_deadline;
+        deadlineEl.textContent = deadlineDate ? formatDateReadable(deadlineDate) : '10 Business Days from execution';
+    }
+
+    // 3. Metric: Repudiation Status / Countdown
+    const badgeEl = document.getElementById('metricCountdownBadge');
+    if (badgeEl) {
+        if (isRepudiated) {
+            badgeEl.innerHTML = '<span class="status-pill" style="background: #fee2e2; color: #b91c1c; font-weight: 800; font-size: 0.8rem; padding: 2px 8px; border-radius: 9999px;">⚠️ Repudiated (Void)</span>';
+        } else if (isLocked) {
+            badgeEl.innerHTML = `<span class="status-pill" style="background: #fef3c7; color: #b45309; font-weight: 800; font-size: 0.8rem; padding: 2px 8px; border-radius: 9999px;">⏳ ${remainingDays} Business Days Left</span>`;
+        } else {
+            badgeEl.innerHTML = '<span class="status-pill" style="background: #dcfce7; color: #15803d; font-weight: 800; font-size: 0.8rem; padding: 2px 8px; border-radius: 9999px;">🔓 Statutory Window Expired</span>';
+        }
+    }
+
+    // 4. Metric: Legal Force & Effect (if element exists)
+    const enforceEl = document.getElementById('metricEnforceability');
+    if (enforceEl) {
+        if (isRepudiated) {
+            enforceEl.innerHTML = '<span style="color: #b91c1c;">Null & Void (Repudiated)</span>';
+        } else if (isLocked) {
+            enforceEl.innerHTML = '<span style="color: #b45309;">Conditional (Sec. 416 Window)</span>';
+        } else {
+            enforceEl.innerHTML = '<span style="color: #15803d;">Final & Executory Judgment</span>';
+        }
+    }
+
+    // 5. Repudiation Callout
+    const repCallout = document.getElementById('calloutRepudiatedAlert');
+    const repNotes = document.getElementById('calloutRepudiatedNotes');
+    if (repCallout) {
+        if (isRepudiated) {
+            repCallout.style.display = 'block';
+            if (repNotes) {
+                const reason = settlement.repudiation_reason || 'Consent was vitiated by fraud, violence, or intimidation.';
+                const dt = settlement.repudiation_date ? ` (${formatDateReadable(settlement.repudiation_date)})` : '';
+                repNotes.textContent = `${reason}${dt} — Amicable settlement is invalidated. Case is routed to issue KP Form 20 (CFA).`;
+            }
+        } else {
+            repCallout.style.display = 'none';
+        }
+    }
+
+    // 6. Action Buttons
+    const btnFileRep = document.getElementById('btnActionFileRepudiation');
+    const btnIssueExec = document.getElementById('btnActionIssueExecution');
+    const btnRecTrans = document.getElementById('btnActionRecordTransmittal');
+
+    if (btnFileRep) {
+        btnFileRep.style.display = (!isRepudiated && isLocked) ? 'inline-flex' : 'none';
+    }
+    if (btnIssueExec) {
+        btnIssueExec.style.display = (!isRepudiated && !isLocked) ? 'inline-flex' : 'none';
+    }
+    if (btnRecTrans) {
+        btnRecTrans.style.display = (!isRepudiated && !isLocked) ? 'inline-flex' : 'none';
+    }
+
+    // 7. Populate KP Form 16 Live Preview
+    if (caseId) {
+        const kp16Iframe = document.getElementById('dualKp16PreviewIframe');
+        const dlKp16 = document.getElementById('btnDownloadDualKp16Pdf');
+        const kp16Url = `../../../backend/api/documents/kp-form.php?case_id=${encodeURIComponent(caseId)}&form_code=KP+Form+16&preview=1&bare=1`;
+        if (kp16Iframe && (!kp16Iframe.src || kp16Iframe.src === 'about:blank' || !kp16Iframe.src.includes(`case_id=${caseId}`))) {
+            kp16Iframe.src = kp16Url;
+        }
+        if (dlKp16) {
+            dlKp16.href = `../../../backend/api/documents/kp-form.php?case_id=${encodeURIComponent(caseId)}&form_code=KP+Form+16&pdf=1`;
+        }
+
+        // Card 2: Court Transmittal Letter
+        const transIframe = document.getElementById('dualTransmittalPreviewIframe');
+        const btnPrintTrans = document.getElementById('btnDualPrintTransmittal');
+        const dlTrans = document.getElementById('btnDownloadDualTransmittalPdf');
+        const chipTransLock = document.getElementById('dualTransmittalCountdownChip');
+        const badgeTrans = document.getElementById('dualTransmittalStatusBadge');
+        const transUrl = `../../../backend/api/transmittals/preview.php?case_id=${encodeURIComponent(caseId)}&html=1`;
+
+        if (transIframe && (!transIframe.src || transIframe.src === 'about:blank' || !transIframe.src.includes(`case_id=${caseId}`))) {
+            transIframe.src = transUrl;
+        }
+
+        if (isRepudiated) {
+            if (badgeTrans) {
+                badgeTrans.textContent = '⚠️ Repudiated';
+                badgeTrans.style.background = '#fee2e2';
+                badgeTrans.style.color = '#b91c1c';
+            }
+            if (chipTransLock) chipTransLock.innerHTML = '<span style="color: #b91c1c; font-weight: 700;">⚠️ Cancelled (Repudiated)</span>';
+            if (btnPrintTrans) {
+                btnPrintTrans.disabled = true;
+                btnPrintTrans.style.opacity = '0.5';
+                btnPrintTrans.style.cursor = 'not-allowed';
+                btnPrintTrans.title = 'Settlement Repudiated — Transmittal Cancelled';
+            }
+            if (dlTrans) {
+                dlTrans.href = 'javascript:void(0)';
+                dlTrans.style.opacity = '0.5';
+                dlTrans.style.cursor = 'not-allowed';
+                dlTrans.title = 'Settlement Repudiated — Transmittal Cancelled';
+            }
+        } else if (isLocked) {
+            if (badgeTrans) {
+                badgeTrans.textContent = '🔒 Locked for Printing';
+                badgeTrans.style.background = '#fef3c7';
+                badgeTrans.style.color = '#b45309';
+            }
+            if (chipTransLock) chipTransLock.textContent = `${remainingDays} business days remaining`;
+            if (btnPrintTrans) {
+                btnPrintTrans.disabled = true;
+                btnPrintTrans.style.opacity = '0.5';
+                btnPrintTrans.style.cursor = 'not-allowed';
+                btnPrintTrans.title = 'Locked pursuant to RA 7160 Sec. 416 until repudiation period expires';
+            }
+            if (dlTrans) {
+                dlTrans.href = 'javascript:void(0)';
+                dlTrans.style.opacity = '0.5';
+                dlTrans.style.cursor = 'not-allowed';
+                dlTrans.title = 'Locked pursuant to RA 7160 Sec. 416 until repudiation period expires';
+            }
+        } else {
+            if (badgeTrans) {
+                badgeTrans.textContent = '🔓 Ready for Transmittal';
+                badgeTrans.style.background = '#dcfce7';
+                badgeTrans.style.color = '#15803d';
+            }
+            if (chipTransLock) chipTransLock.innerHTML = '<span style="color: #15803d; font-weight: 700;">Ready for Transmittal</span>';
+            if (btnPrintTrans) {
+                btnPrintTrans.disabled = false;
+                btnPrintTrans.style.opacity = '1';
+                btnPrintTrans.style.cursor = 'pointer';
+                btnPrintTrans.title = 'Print Court Transmittal Letter';
+            }
+            if (dlTrans) {
+                dlTrans.href = `../../../backend/api/transmittals/preview.php?case_id=${encodeURIComponent(caseId)}&pdf=1`;
+                dlTrans.style.opacity = '1';
+                dlTrans.style.cursor = 'pointer';
+                dlTrans.title = 'Download Court Transmittal Letter PDF';
+            }
+        }
+    }
+}
+window.renderAmicableSettlementWorkspace = renderAmicableSettlementWorkspace;
+
+function printKp16PreviewIframe() {
+    const iframe = document.getElementById('dualKp16PreviewIframe');
+    if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+    }
+}
+window.printKp16PreviewIframe = printKp16PreviewIframe;
+
+function printDualTransmittalIframe() {
+    const btn = document.getElementById('btnDualPrintTransmittal');
+    if (btn && btn.disabled) {
+        const msg = 'Printing is restricted during the 10-business-day repudiation window pursuant to RA 7160 Sec. 416.';
+        if (typeof showToast === 'function') {
+            showToast(msg, 'warning');
+        } else {
+            alert(msg);
+        }
+        return;
+    }
+    const iframe = document.getElementById('dualTransmittalPreviewIframe') || document.getElementById('transmittalLetterPreviewIframe');
+    if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+    }
+}
+window.printDualTransmittalIframe = printDualTransmittalIframe;
+
+function openFileRepudiationModal() {
+    const data = window.complaintData || {};
+    const ws = window.__agapComplaintWorkspace || data.case_workspace || {};
+    const settlement = ws.settlement || {};
+    const modal = document.getElementById('modalFileRepudiation');
+    if (!modal) return;
+
+    const idInput = document.getElementById('repudiationSettlementId');
+    if (idInput) {
+        idInput.value = settlement.settlement_id || '';
+    }
+
+    const select = document.getElementById('repudiatingPartySelect');
+    if (select) {
+        select.innerHTML = '<option value="">— Select Party Filing Repudiation —</option>';
+        const parties = data.parties || [];
+        if (parties.length > 0) {
+            parties.forEach(p => {
+                const name = p.full_name || [p.first_name, p.middle_name, p.last_name].filter(Boolean).join(' ');
+                const opt = document.createElement('option');
+                opt.value = p.resident_id || p.party_id || '';
+                opt.textContent = `${name} (${p.party_type || 'Party'})`;
+                select.appendChild(opt);
+            });
+        }
+    }
+
+    const swornDateInput = document.getElementById('repudiationSwornDate');
+    if (swornDateInput) {
+        swornDateInput.value = new Date().toISOString().split('T')[0];
+    }
+
+    modal.style.display = 'flex';
+}
+window.openFileRepudiationModal = openFileRepudiationModal;
+
+function closeFileRepudiationModal() {
+    const modal = document.getElementById('modalFileRepudiation');
+    if (modal) modal.style.display = 'none';
+}
+window.closeFileRepudiationModal = closeFileRepudiationModal;
+
+function updateRepudiationGroundsText() {
+    const checkboxes = document.querySelectorAll('#modalFileRepudiation input[name="ground"]:checked');
+    const grounds = Array.from(checkboxes).map(c => c.value);
+    const textarea = document.getElementById('repudiationReasonText');
+    if (textarea && grounds.length > 0 && !textarea.value.includes('Grounds:')) {
+        textarea.value = `Grounds: ${grounds.join('; ')}\n\nNarrative of Vitiated Consent: `;
+    }
+}
+window.updateRepudiationGroundsText = updateRepudiationGroundsText;
+
+async function handleRepudiationSubmit(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    const btn = document.getElementById('btnSubmitRepudiation');
+    if (btn) btn.disabled = true;
+
+    const settlementId = document.getElementById('repudiationSettlementId')?.value;
+    const repudiatedBy = document.getElementById('repudiatingPartySelect')?.value;
+    const reason = document.getElementById('repudiationReasonText')?.value;
+    const swornDate = document.getElementById('repudiationSwornDate')?.value;
+
+    const checkboxes = document.querySelectorAll('#modalFileRepudiation input[name="ground"]:checked');
+    if (checkboxes.length === 0) {
+        alert('Please check at least one statutory ground (Fraud, Violence, or Intimidation).');
+        if (btn) btn.disabled = false;
+        return;
+    }
+
+    if (!settlementId || !repudiatedBy || !reason) {
+        alert('Please complete all required fields.');
+        if (btn) btn.disabled = false;
+        return;
+    }
+
+    try {
+        const res = await fetch('../../../backend/api/settlements/repudiate.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                settlement_id: Number(settlementId),
+                repudiated_by: Number(repudiatedBy),
+                repudiation_reason: reason,
+                sworn_date: swornDate
+            })
+        });
+        const json = await res.json();
+        if (json.success) {
+            closeFileRepudiationModal();
+            const msg = json.message || 'Settlement has been repudiated and invalidated. Case is routed to issue KP Form 20 (CFA).';
+            if (typeof showToast === 'function') {
+                showToast(msg, 'success');
+            } else {
+                alert(msg);
+            }
+
+            const currentComplaintId = window.complaintData?.complaint_id || (new URLSearchParams(window.location.search)).get('id');
+            if (currentComplaintId && typeof loadComplaintDetails === 'function') {
+                await loadComplaintDetails(currentComplaintId);
+            }
+
+            const activeCaseId = window.complaintData?.case_id || (window.__agapComplaintWorkspace?.case?.case_id);
+            if (activeCaseId) {
+                setTimeout(() => {
+                    if (confirm('Sworn Repudiation recorded. Would you like to view/print KP Form 17 (Repudiation) now?')) {
+                        openKpFormModal(Number(activeCaseId), 'KP Form 17');
+                    }
+                }, 350);
+            }
+        } else {
+            alert(json.message || 'Failed to submit repudiation.');
+        }
+    } catch (err) {
+        console.error('handleRepudiationSubmit error:', err);
+        alert('Network error submitting repudiation.');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+window.handleRepudiationSubmit = handleRepudiationSubmit;
+
+function openEditSettlementTermsModal() {
+    const data = window.complaintData || {};
+    const ws = window.__agapComplaintWorkspace || data.case_workspace || {};
+    const settlement = ws.settlement || {};
+    const modal = document.getElementById('modalEditSettlementTerms');
+    if (!modal) return;
+
+    const caseId = data.case_id || ws.case?.case_id || (new URLSearchParams(window.location.search)).get('case_id') || (new URLSearchParams(window.location.search)).get('id') || '';
+    const caseIdInput = document.getElementById('editSettleCaseId');
+    if (caseIdInput) caseIdInput.value = caseId;
+
+    const idInput = document.getElementById('editSettleId') || document.getElementById('editSettlementId');
+    if (idInput) idInput.value = settlement.settlement_id || '';
+
+    const dateInput = document.getElementById('editSettleDate') || document.getElementById('editSettlementDate');
+    if (dateInput) {
+        dateInput.value = settlement.settlement_date ? settlement.settlement_date.split(' ')[0] : new Date().toISOString().split('T')[0];
+    }
+
+    const termsInput = document.getElementById('editSettleTermsText') || document.getElementById('editSettlementTermsText');
+    if (termsInput) {
+        termsInput.value = settlement.agreement_details || settlement.terms_of_settlement || '';
+    }
+
+    const amountInput = document.getElementById('editSettleAmount');
+    if (amountInput) {
+        amountInput.value = settlement.total_amount ? Number(settlement.total_amount).toFixed(2) : '';
+    }
+
+    const respInput = document.getElementById('editSettleResponsible');
+    if (respInput && settlement.responsible_party) {
+        respInput.value = settlement.responsible_party;
+    }
+
+    modal.style.display = 'flex';
+}
+window.openEditSettlementTermsModal = openEditSettlementTermsModal;
+
+function closeEditSettlementTermsModal() {
+    const modal = document.getElementById('modalEditSettlementTerms');
+    if (modal) modal.style.display = 'none';
+}
+window.closeEditSettlementTermsModal = closeEditSettlementTermsModal;
+
+async function handleEditSettlementSubmit(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    const btn = document.getElementById('btnSubmitEditSettlement') || document.getElementById('btnSaveSettlementTerms');
+    if (btn) btn.disabled = true;
+
+    const data = window.complaintData || {};
+    const caseId = document.getElementById('editSettleCaseId')?.value ||
+                   data.case_id ||
+                   window.__agapComplaintWorkspace?.case?.case_id ||
+                   (new URLSearchParams(window.location.search)).get('case_id') ||
+                   (new URLSearchParams(window.location.search)).get('id');
+
+    const settlementId = document.getElementById('editSettleId')?.value || document.getElementById('editSettlementId')?.value;
+    const settlementDate = document.getElementById('editSettleDate')?.value || document.getElementById('editSettlementDate')?.value;
+    const terms = (document.getElementById('editSettleTermsText')?.value || document.getElementById('editSettlementTermsText')?.value || '').trim();
+    const amount = document.getElementById('editSettleAmount')?.value;
+    const responsible = document.getElementById('editSettleResponsible')?.value;
+
+    if (!terms) {
+        alert('Please fill out the settlement terms.');
+        if (btn) btn.disabled = false;
+        return;
+    }
+
+    try {
+        const payload = {
+            case_id: Number(caseId),
+            settlement_date: settlementDate,
+            agreement_details: terms,
+            terms_of_settlement: terms
+        };
+        if (settlementId) {
+            payload.settlement_id = Number(settlementId);
+        }
+        if (amount && !isNaN(Number(amount))) {
+            payload.total_amount = Number(amount);
+        }
+        if (responsible) {
+            payload.responsible_party = responsible;
+        }
+
+        const res = await fetch('../../../backend/api/settlements/save.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (json.success) {
+            closeEditSettlementTermsModal();
+            const msg = json.message || 'Settlement agreement terms updated successfully!';
+            if (typeof showToast === 'function') {
+                showToast(msg, 'success');
+            } else {
+                alert(msg);
+            }
+
+            const currentComplaintId = data.complaint_id || (new URLSearchParams(window.location.search)).get('id');
+            if (currentComplaintId && typeof loadComplaintDetails === 'function') {
+                await loadComplaintDetails(currentComplaintId);
+            }
+
+            // Immediately refresh the KP Form 16 preview iframe
+            const iframe = document.getElementById('dualKp16PreviewIframe');
+            if (iframe && iframe.src && iframe.src !== 'about:blank') {
+                try {
+                    const u = new URL(iframe.src, window.location.href);
+                    u.searchParams.set('_t', Date.now());
+                    iframe.src = u.toString();
+                } catch (_) {
+                    iframe.src = iframe.src.split('&_t=')[0] + '&_t=' + Date.now();
+                }
+            }
+        } else {
+            alert(json.message || 'Failed to update settlement terms.');
+        }
+    } catch (err) {
+        console.error('handleEditSettlementSubmit error:', err);
+        alert('Network error saving settlement terms.');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+window.handleEditSettlementSubmit = handleEditSettlementSubmit;
+
+function openIssueExecutionModal() {
+    const data = window.complaintData || {};
+    const ws = window.__agapComplaintWorkspace || data.case_workspace || {};
+    const settlement = ws.settlement || {};
+    const modal = document.getElementById('modalIssueExecutionKp23');
+    if (!modal) return;
+
+    const idInput = document.getElementById('execSettlementId');
+    if (idInput) idInput.value = settlement.settlement_id || '';
+
+    const select = document.getElementById('execMovingPartySelect');
+    if (select) {
+        select.innerHTML = '<option value="">— Select Moving Party —</option>';
+        const parties = data.parties || [];
+        parties.forEach(p => {
+            const name = p.full_name || [p.first_name, p.middle_name, p.last_name].filter(Boolean).join(' ');
+            const opt = document.createElement('option');
+            opt.value = p.resident_id || p.party_id || '';
+            opt.textContent = `${name} (${p.party_type || 'Party'})`;
+            select.appendChild(opt);
+        });
+    }
+
+    const dateInput = document.getElementById('execMotionDate');
+    if (dateInput) {
+        dateInput.value = new Date().toISOString().split('T')[0];
+    }
+
+    modal.style.display = 'flex';
+}
+window.openIssueExecutionModal = openIssueExecutionModal;
+
+function closeIssueExecutionModal() {
+    const modal = document.getElementById('modalIssueExecutionKp23');
+    if (modal) modal.style.display = 'none';
+}
+window.closeIssueExecutionModal = closeIssueExecutionModal;
+
+async function handleIssueExecutionSubmit(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    const btn = document.getElementById('btnSubmitExecution');
+    if (btn) btn.disabled = true;
+
+    const settlementId = document.getElementById('execSettlementId')?.value;
+    const movingParty = document.getElementById('execMovingPartySelect')?.value;
+    const obligation = document.getElementById('execObligationText')?.value;
+    const amountReq = document.getElementById('execAmountReq')?.value;
+    const motionDate = document.getElementById('execMotionDate')?.value;
+
+    if (!settlementId || !movingParty || !obligation || !amountReq) {
+        alert('Please fill out all required execution motion fields.');
+        if (btn) btn.disabled = false;
+        return;
+    }
+
+    try {
+        const res = await fetch('../../../backend/api/settlements/execute.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'file_motion',
+                settlement_id: Number(settlementId),
+                motion_filed_by: Number(movingParty),
+                obligation_violated: obligation,
+                amount_or_requirement: amountReq,
+                motion_date: motionDate
+            })
+        });
+        const json = await res.json();
+        if (json.success) {
+            closeIssueExecutionModal();
+            const msg = json.message || 'Motion for Execution recorded successfully!';
+            if (typeof showToast === 'function') {
+                showToast(msg, 'success');
+            } else {
+                alert(msg);
+            }
+
+            const currentComplaintId = window.complaintData?.complaint_id || (new URLSearchParams(window.location.search)).get('id');
+            if (currentComplaintId && typeof loadComplaintDetails === 'function') {
+                await loadComplaintDetails(currentComplaintId);
+            }
+
+            const activeCaseId = window.complaintData?.case_id || (window.__agapComplaintWorkspace?.case?.case_id);
+            if (activeCaseId) {
+                setTimeout(() => {
+                    openKpFormModal(Number(activeCaseId), 'KP Form 23');
+                }, 350);
+            }
+        } else {
+            alert(json.message || 'Failed to file motion for execution.');
+        }
+    } catch (err) {
+        console.error('handleIssueExecutionSubmit error:', err);
+        alert('Network error filing motion for execution.');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+window.handleIssueExecutionSubmit = handleIssueExecutionSubmit;
+
+/**
+ * =============================================================================
+ * ARBITRATION 4-STEP PROGRESSIVE WORKSPACE (RA 7160 Sec. 413)
+ * =============================================================================
+ */
+function renderArbitrationProgressiveWorkspace(workspace, complaint, caseId) {
+    const container = document.getElementById('arbitrationProgressiveWorkspace');
+    if (!container) return;
+
+    const activeCaseId = Number(caseId || complaint?.case_id || workspace?.case?.case_id || window.currentCaseId || 0);
+    const arb = workspace?.arbitration || complaint?.case_workspace?.arbitration || workspace?.stages?.arbitration?.arbitration_record || {};
+    const agreementDate = arb.agreement_date || (new Date()).toISOString().slice(0, 10);
+    const awardDate = arb.award_date || null;
+    const awardDetails = arb.award_details || arb.award_terms || '';
+    const hasAward = Boolean(awardDate);
+
+    // Date calculations
+    const d0 = new Date(agreementDate + 'T00:00:00');
+    const now = new Date();
+    const msPerDay = 86400000;
+    const daysElapsed = Math.floor((new Date().setHours(0,0,0,0) - d0.getTime()) / msPerDay);
+    const dayOf5 = Math.max(1, Math.min(5, daysElapsed + 1));
+    const isRepudiationActive = daysElapsed <= 5;
+    const repExpiryDate = new Date(d0.getTime() + 5 * msPerDay);
+    const repExpiryFormatted = formatDateReadable(repExpiryDate);
+
+    // Statutory award window (Day 6 to Day 15)
+    const day6Date = new Date(d0.getTime() + 6 * msPerDay);
+    const day15Date = new Date(d0.getTime() + 15 * msPerDay);
+    const day6Formatted = formatDateReadable(day6Date);
+    const day15Formatted = formatDateReadable(day15Date);
+
+    // Hearings segregated as Arbitration Hearing
+    const allHearings = complaint?.case_workspace?.hearings || workspace?.hearings || [];
+    const arbHearings = allHearings.filter(h => h.hearing_type === 'Arbitration' && h.hearing_status_code !== 'Cancelled');
+    const sessCount = arbHearings.length;
+
+    let hearingsListHtml = '';
+    if (sessCount === 0) {
+        hearingsListHtml = `
+            <div style="background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 8px; padding: 20px; text-align: center; color: #64748b; margin-top: 12px;">
+                <p style="margin: 0 0 10px; font-size: 0.86rem; color: #475569;">No arbitration hearings have been scheduled yet. You may schedule a hearing for the same day or succeeding days.</p>
+                <button type="button" class="btn-create" onclick="openEmbeddedScheduleModal('Arbitration')" style="background: #d97706; border-color: #d97706; font-size: 0.82rem; padding: 7px 16px;">
+                    + Schedule 1st Arbitration Hearing
+                </button>
+            </div>
+        `;
+    } else {
+        hearingsListHtml = `
+            <div style="margin-top: 12px; overflow-x: auto;">
+                <table class="table" style="width: 100%; border-collapse: collapse; font-size: 0.84rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;">
+                    <thead>
+                        <tr style="background: #f8fafc; border-bottom: 1.5px solid #e2e8f0; text-align: left; color: #475569;">
+                            <th style="padding: 10px 14px;">Hearing Session</th>
+                            <th style="padding: 10px 14px;">Date &amp; Time</th>
+                            <th style="padding: 10px 14px;">Venue</th>
+                            <th style="padding: 10px 14px;">Attendance</th>
+                            <th style="padding: 10px 14px;">Status</th>
+                            <th style="padding: 10px 14px; text-align: right;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${arbHearings.map((h, idx) => {
+                            const ordinalLabel = (typeof getStageSessionOrdinalLabel === 'function')
+                                ? getStageSessionOrdinalLabel('Arbitration', idx + 1)
+                                : `${idx + 1}${idx === 0 ? 'st' : (idx === 1 ? 'nd' : (idx === 2 ? 'rd' : 'th'))} Arbitration Hearing`;
+                            const hDate = formatDateReadable(h.hearing_date) + ' ' + (h.hearing_date.slice(11, 16) || '');
+                            const compAtt = h.complainant_attendance || 'Pending';
+                            const respAtt = h.respondent_attendance || 'Pending';
+                            const isDone = h.hearing_status === 'Completed' || (h.attendance_count > 0 && h.situation);
+                            return `
+                                <tr style="border-bottom: 1px solid #f1f5f9;">
+                                    <td style="padding: 10px 14px; font-weight: 700; color: #0f172a;">${escapeHtml(ordinalLabel)}</td>
+                                    <td style="padding: 10px 14px; color: #334155;">${escapeHtml(hDate)}</td>
+                                    <td style="padding: 10px 14px; color: #64748b;">${escapeHtml(h.venue || 'Lupon Court Room')}</td>
+                                    <td style="padding: 10px 14px;">
+                                        <span style="font-size: 0.74rem; padding: 2px 6px; border-radius: 4px; background: #f1f5f9; color: #475569;">C: ${escapeHtml(compAtt)}</span>
+                                        <span style="font-size: 0.74rem; padding: 2px 6px; border-radius: 4px; background: #f1f5f9; color: #475569; margin-left: 4px;">R: ${escapeHtml(respAtt)}</span>
+                                    </td>
+                                    <td style="padding: 10px 14px;">
+                                        <span class="status-pill ${isDone ? 'status-active' : 'status-amber'}" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 9999px;">
+                                            ${escapeHtml(h.hearing_status || 'Scheduled')}
+                                        </span>
+                                    </td>
+                                    <td style="padding: 10px 14px; text-align: right;">
+                                        <a href="../cases/arbitration-workspace.php?case_id=${encodeURIComponent(activeCaseId)}&hearing_id=${encodeURIComponent(h.hearing_id)}#minutesSection" class="btn-case-outline" style="font-size: 0.76rem; padding: 4px 10px; text-decoration: none;">
+                                            Conduct / Minutes &rarr;
+                                        </a>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+            <div style="margin-top: 10px; display: flex; justify-content: flex-end;">
+                <button type="button" class="btn-secondary" onclick="openEmbeddedScheduleModal('Arbitration')" style="font-size: 0.8rem; padding: 6px 14px;">
+                    + Schedule Another Arbitration Hearing
+                </button>
+            </div>
+        `;
+    }
+
+    container.innerHTML = `
+        <div style="margin: 0 30px 24px;">
+            <!-- Main Arbitration Stage Card -->
+            <div style="background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); border: 1.5px solid #fde68a; border-radius: 12px; padding: 20px 24px; box-shadow: 0 2px 8px rgba(217, 119, 6, 0.08); margin-bottom: 24px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 0.74rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; background: #d97706; color: #fff; padding: 3px 8px; border-radius: 4px;">
+                                RA 7160 SEC. 413
+                            </span>
+                            <h2 style="font-size: 1.25rem; font-weight: 800; color: #78350f; margin: 0;">
+                                Voluntary Binding Arbitration (Paghahatol)
+                            </h2>
+                        </div>
+                        <p style="margin: 6px 0 0; font-size: 0.84rem; color: #92400e; max-width: 780px; line-height: 1.5;">
+                            Parties have mutually agreed in writing to submit their dispute to binding arbitration. The resulting arbitral award has the force and effect of a final judgment of a court after ten (10) days.
+                        </p>
+                    </div>
+                    <div>
+                        <span class="status-pill" style="background: #fde68a; color: #78350f; font-weight: 800; font-size: 0.78rem; padding: 5px 12px; border-radius: 9999px;">
+                            ${hasAward ? '✓ Award Rendered' : '⚖️ Arbitration In Progress'}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4-STEP PROGRESSIVE TIMELINE -->
+            <div style="display: flex; flex-direction: column; gap: 20px;">
+
+                <!-- STEP 1: Agreement to Arbitrate (KP Form 14) -->
+                <div class="operational-card" style="border: 1.5px solid #e2e8f0; border-radius: 12px; overflow: hidden; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                    <div style="padding: 14px 20px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="background: #2563eb; color: #fff; width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 800;">1</span>
+                            <div>
+                                <h3 style="margin: 0; font-size: 0.98rem; font-weight: 800; color: #0f172a;">Agreement to Arbitrate (KP Form 14)</h3>
+                                <span style="font-size: 0.76rem; color: #64748b;">Kasunduan sa Pag-aarbitro &bull; Mutual agreement executed pursuant to Sec. 413</span>
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <button type="button" class="btn-secondary" onclick="openKpFormModal(${activeCaseId}, 'KP Form 14')" style="font-size: 0.78rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 5px;">
+                                🔍 Preview KP Form 14
+                            </button>
+                            <button type="button" class="btn-create" onclick="printKpFormModalDirect(${activeCaseId}, 'KP Form 14')" style="font-size: 0.78rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 5px; background: #0284c7; border-color: #0284c7;">
+                                🖨️ Print Form 14
+                            </button>
+                            <a href="../../../backend/api/documents/kp-form.php?action=pdf&case_id=${activeCaseId}&form_code=KP+Form+14" class="btn-secondary" download style="font-size: 0.78rem; padding: 6px 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+                                📥 PDF
+                            </a>
+                        </div>
+                    </div>
+                    <div style="padding: 16px 20px;">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;">
+                            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px;">
+                                <span style="font-size: 0.72rem; color: #64748b; font-weight: 700; text-transform: uppercase; display: block;">Date of Agreement (Day 0)</span>
+                                <strong style="font-size: 0.95rem; color: #0f172a;">${escapeHtml(formatDateReadable(agreementDate))}</strong>
+                            </div>
+                            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px;">
+                                <span style="font-size: 0.72rem; color: #64748b; font-weight: 700; text-transform: uppercase; display: block;">Agreement Status</span>
+                                <strong style="font-size: 0.95rem; color: #16a34a;">✓ Executed &amp; Legally Binding</strong>
+                            </div>
+                            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px;">
+                                <span style="font-size: 0.72rem; color: #64748b; font-weight: 700; text-transform: uppercase; display: block;">Arbitrating Body</span>
+                                <strong style="font-size: 0.95rem; color: #0f172a;">Lupong Tagapamayapa</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- STEP 2: 5-Day Statutory Repudiation / Withdrawal Period & KP Form 17 -->
+                <div class="operational-card" style="border: 1.5px solid ${isRepudiationActive ? '#fde68a' : '#cbd5e1'}; border-radius: 12px; overflow: hidden; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                    <div style="padding: 14px 20px; background: ${isRepudiationActive ? '#fffbeb' : '#f8fafc'}; border-bottom: 1px solid ${isRepudiationActive ? '#fde68a' : '#e2e8f0'}; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="background: ${isRepudiationActive ? '#d97706' : '#64748b'}; color: #fff; width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 800;">2</span>
+                            <div>
+                                <h3 style="margin: 0; font-size: 0.98rem; font-weight: 800; color: #0f172a;">5-Day Statutory Repudiation / Withdrawal Period</h3>
+                                <span style="font-size: 0.76rem; color: #64748b;">Right to withdraw under oath within 5 days on grounds of vitiated consent (RA 7160 Sec. 413)</span>
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            ${isRepudiationActive ? `
+                                <span class="status-pill" style="background: #fef3c7; color: #92400e; font-weight: 800; border: 1.5px solid #fde68a; font-size: 0.8rem; padding: 4px 12px; border-radius: 9999px;">
+                                    ⏳ Repudiation Window: Day ${dayOf5} of 5 (Active)
+                                </span>
+                            ` : `
+                                <span class="status-pill" style="background: #ecfdf5; color: #065f46; font-weight: 800; border: 1.5px solid #a7f3d0; font-size: 0.8rem; padding: 4px 12px; border-radius: 9999px;">
+                                    ✓ Repudiation Window Closed (Day 5 Expired on ${repExpiryFormatted})
+                                </span>
+                            `}
+                        </div>
+                    </div>
+                    <div style="padding: 16px 20px;">
+                        <p style="margin: 0 0 14px; font-size: 0.84rem; color: #475569; line-height: 1.5;">
+                            Under RA 7160 Sec. 413, any party may repudiate the agreement to arbitrate within <strong>five (5) calendar days</strong> from the date thereof (expiry: <strong>${repExpiryFormatted}</strong>) by submitting a sworn statement to the Punong Barangay asserting that consent was vitiated by fraud, violence, or intimidation.
+                        </p>
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 1.1rem;">📄</span>
+                                <div>
+                                    <strong style="font-size: 0.88rem; color: #0f172a;">KP Form 17 (Katibayan ng Pagsalungat / Repudiation of Agreement)</strong>
+                                    <span style="font-size: 0.76rem; color: #64748b; display: block;">Official sworn statement format available for parties filing timely repudiation</span>
+                                </div>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <button type="button" class="btn-secondary" onclick="openKpFormModal(${activeCaseId}, 'KP Form 17')" style="font-size: 0.78rem; padding: 6px 14px; border-color: #cbd5e1; color: #0f172a;">
+                                    🔍 Preview KP Form 17
+                                </button>
+                                <button type="button" class="btn-secondary" onclick="printKpFormModalDirect(${activeCaseId}, 'KP Form 17')" style="font-size: 0.78rem; padding: 6px 14px; border-color: #cbd5e1; color: #0f172a;">
+                                    🖨️ Print KP Form 17
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- STEP 3: Scheduling the Arbitration Hearings (Same Day or Next Days) -->
+                <div class="operational-card" style="border: 1.5px solid #e2e8f0; border-radius: 12px; overflow: hidden; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                    <div style="padding: 14px 20px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="background: #2563eb; color: #fff; width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 800;">3</span>
+                            <div>
+                                <h3 style="margin: 0; font-size: 0.98rem; font-weight: 800; color: #0f172a;">Scheduling the Arbitration Hearings</h3>
+                                <span style="font-size: 0.76rem; color: #64748b;">Flexible scheduling (same day or succeeding days) &bull; Segregated strictly as Arbitration Hearings</span>
+                            </div>
+                        </div>
+                        <button type="button" class="btn-create" onclick="openEmbeddedScheduleModal('Arbitration')" style="background: #d97706; border-color: #d97706; font-size: 0.78rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 5px;">
+                            + Schedule Arbitration Hearing
+                        </button>
+                    </div>
+                    <div style="padding: 16px 20px;">
+                        <p style="margin: 0 0 10px; font-size: 0.84rem; color: #475569; line-height: 1.5;">
+                            Arbitration sessions are conducted specifically to take testimonies, receive evidence, and formulate the award. Depending on official availability, hearings may take place on the same day or within the succeeding days.
+                        </p>
+                        ${hearingsListHtml}
+                    </div>
+                </div>
+
+                <!-- STEP 4: Issuing KP Form 15 (Arbitration Award / Gawad ng Arbitrasyon Modal) -->
+                <div class="operational-card" style="border: 1.5px solid ${hasAward ? '#86efac' : '#93c5fd'}; border-radius: 12px; overflow: hidden; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                    <div style="padding: 14px 20px; background: ${hasAward ? '#f0fdf4' : '#eff6ff'}; border-bottom: 1px solid ${hasAward ? '#86efac' : '#bfdbfe'}; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="background: ${hasAward ? '#16a34a' : '#2563eb'}; color: #fff; width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 800;">4</span>
+                            <div>
+                                <h3 style="margin: 0; font-size: 0.98rem; font-weight: 800; color: #0f172a;">KP Form 15: Gawad ng Paghahatol (Arbitration Award)</h3>
+                                <span style="font-size: 0.76rem; color: #64748b;">Official binding ruling rendered within mandatory statutory window (Days 6 to 15)</span>
+                            </div>
+                        </div>
+                        <div>
+                            ${hasAward ? `
+                                <span class="status-pill status-active" style="font-size: 0.78rem; padding: 4px 12px; border-radius: 9999px;">
+                                    ✓ Award Rendered on ${escapeHtml(formatDateReadable(awardDate))}
+                                </span>
+                            ` : `
+                                <span class="status-pill status-amber" style="font-size: 0.78rem; padding: 4px 12px; border-radius: 9999px;">
+                                    Pending Award Issuance
+                                </span>
+                            `}
+                        </div>
+                    </div>
+                    <div style="padding: 18px 20px;">
+                        <!-- Statutory Timeline Validation Rules Callout -->
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px;">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                                <span style="font-size: 1rem;">⚖️</span>
+                                <strong style="font-size: 0.86rem; color: #1e3a8a;">Mandatory Statutory Date Enforcement (RA 7160 Sec. 413)</strong>
+                            </div>
+                            <div style="font-size: 0.82rem; color: #475569; line-height: 1.5;">
+                                &bull; <strong>Cannot be issued before Day 6:</strong> The award cannot be handed down during the 5-day withdrawal period (earliest: <strong>${day6Formatted}</strong>).<br>
+                                &bull; <strong>Must be rendered by Day 15:</strong> The award must be made within 15 calendar days of signing KP Form 14 (latest: <strong>${day15Formatted}</strong>).
+                            </div>
+                        </div>
+
+                        ${hasAward ? `
+                            <div style="background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 8px; padding: 16px 18px; margin-bottom: 16px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1px solid #bbf7d0; padding-bottom: 8px;">
+                                    <strong style="color: #166534; font-size: 0.92rem;">Formal Binding Award Resolution</strong>
+                                    <span style="font-size: 0.8rem; color: #15803d; font-weight: 700;">Date Rendered: ${escapeHtml(formatDateReadable(awardDate))}</span>
+                                </div>
+                                <div style="font-size: 0.86rem; color: #0f172a; white-space: pre-wrap; line-height: 1.55;">${escapeHtml(awardDetails)}</div>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                    <button type="button" class="btn-create" onclick="openKpFormModal(${activeCaseId}, 'KP Form 15')" style="font-size: 0.82rem; padding: 7px 16px; background: #16a34a; border-color: #16a34a;">
+                                        🔍 Preview KP Form 15
+                                    </button>
+                                    <button type="button" class="btn-secondary" onclick="printKpFormModalDirect(${activeCaseId}, 'KP Form 15')" style="font-size: 0.82rem; padding: 7px 16px; display: inline-flex; align-items: center; gap: 5px;">
+                                        🖨️ Print KP Form 15
+                                    </button>
+                                    <a href="../../../backend/api/documents/kp-form.php?action=pdf&case_id=${activeCaseId}&form_code=KP+Form+15" class="btn-secondary" download style="font-size: 0.82rem; padding: 7px 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+                                        📥 PDF
+                                    </a>
+                                </div>
+                                <button type="button" class="btn-secondary" onclick="openIssueArbitrationAwardModal(${activeCaseId}, '${agreementDate}', true)" style="font-size: 0.82rem; padding: 7px 14px;">
+                                    ✏️ Edit Award Terms
+                                </button>
+                            </div>
+                        ` : `
+                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 16px 18px;">
+                                <div>
+                                    <strong style="color: #1e40af; font-size: 0.92rem; display: block;">Ready to Hand Down Arbitration Award?</strong>
+                                    <span style="font-size: 0.82rem; color: #1e3a8a;">Once hearings are conducted, issue the official KP Form 15 ruling within the Day 6–15 statutory window.</span>
+                                </div>
+                                <button type="button" class="btn-create" onclick="openIssueArbitrationAwardModal(${activeCaseId}, '${agreementDate}')" style="background: #2563eb; border-color: #2563eb; font-size: 0.85rem; padding: 8px 20px; font-weight: 700;">
+                                    Issue KP Form 15 (Arbitration Award) &rarr;
+                                </button>
+                            </div>
+                        `}
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    `;
+}
+window.renderArbitrationProgressiveWorkspace = renderArbitrationProgressiveWorkspace;
+
+function openIssueArbitrationAwardModal(caseId, agreementDate, isEdit = false) {
+    const modal = document.getElementById('issueArbitrationAwardModal');
+    if (!modal) return;
+
+    const caseIdInput = document.getElementById('arbAwardCaseId');
+    const agrDateInput = document.getElementById('arbAwardAgreementDate');
+    const awardDateInput = document.getElementById('arbAwardDate');
+    const awardTermsInput = document.getElementById('arbAwardTerms');
+    const arbitratorInput = document.getElementById('arbArbitratorPresider');
+    const helperEl = document.getElementById('arbAwardDateHelper');
+    const errEl = document.getElementById('arbAwardDateError');
+    if (errEl) errEl.style.display = 'none';
+
+    if (caseIdInput) caseIdInput.value = caseId || '';
+    if (agrDateInput) agrDateInput.value = agreementDate || (new Date()).toISOString().slice(0, 10);
+
+    // Compute Day 6 and Day 15
+    const d0 = new Date(agrDateInput.value + 'T00:00:00');
+    const msPerDay = 86400000;
+    const minD = new Date(d0.getTime() + 6 * msPerDay);
+    const maxD = new Date(d0.getTime() + 15 * msPerDay);
+    const minStr = minD.toISOString().slice(0, 10);
+    const maxStr = maxD.toISOString().slice(0, 10);
+    const minFormatted = formatDateReadable(minD);
+    const maxFormatted = formatDateReadable(maxD);
+
+    if (awardDateInput) {
+        awardDateInput.min = minStr;
+        awardDateInput.max = maxStr;
+        if (!awardDateInput.value || !isEdit) {
+            const todayStr = (new Date()).toISOString().slice(0, 10);
+            if (todayStr >= minStr && todayStr <= maxStr) {
+                awardDateInput.value = todayStr;
+            } else {
+                awardDateInput.value = minStr;
+            }
+        }
+    }
+
+    if (helperEl) {
+        helperEl.textContent = `Mandatory statutory window: Day 6 to Day 15 (${minFormatted} to ${maxFormatted}). Award cannot be rendered before ${minFormatted}.`;
+    }
+
+    const arb = window.complaintData?.case_workspace?.arbitration || {};
+    if (isEdit && arb) {
+        if (awardDateInput && arb.award_date) awardDateInput.value = arb.award_date;
+        if (awardTermsInput && (arb.award_details || arb.award_terms)) awardTermsInput.value = arb.award_details || arb.award_terms;
+    } else if (!isEdit) {
+        if (awardTermsInput) awardTermsInput.value = '';
+    }
+
+    if (arbitratorInput && !arbitratorInput.value) {
+        arbitratorInput.value = 'HON. AKIKO LYNNE CENTENO (Punong Barangay)';
+    }
+
+    modal.style.display = 'flex';
+}
+window.openIssueArbitrationAwardModal = openIssueArbitrationAwardModal;
+
+function closeIssueArbitrationAwardModal() {
+    const modal = document.getElementById('issueArbitrationAwardModal');
+    if (modal) modal.style.display = 'none';
+}
+window.closeIssueArbitrationAwardModal = closeIssueArbitrationAwardModal;
+
+function validateArbitrationAwardDateInput() {
+    const awardDateInput = document.getElementById('arbAwardDate');
+    const errEl = document.getElementById('arbAwardDateError');
+    if (!awardDateInput || !errEl) return true;
+
+    const val = awardDateInput.value;
+    const minStr = awardDateInput.min;
+    const maxStr = awardDateInput.max;
+
+    if (!val) {
+        errEl.textContent = 'Award date is required.';
+        errEl.style.display = 'block';
+        return false;
+    }
+
+    if (minStr && val < minStr) {
+        errEl.textContent = `Statutory Violation: Cannot issue before Day 6 (5-day repudiation window must expire). Earliest permitted date is ${formatDateReadable(minStr)}.`;
+        errEl.style.display = 'block';
+        return false;
+    }
+
+    if (maxStr && val > maxStr) {
+        errEl.textContent = `Statutory Violation: Must be rendered within 15 calendar days from signing KP Form 14. Latest permitted date is ${formatDateReadable(maxStr)}.`;
+        errEl.style.display = 'block';
+        return false;
+    }
+
+    errEl.style.display = 'none';
+    return true;
+}
+window.validateArbitrationAwardDateInput = validateArbitrationAwardDateInput;
+
+async function submitArbitrationAward(e) {
+    if (e && e.preventDefault) e.preventDefault();
+
+    if (!validateArbitrationAwardDateInput()) {
+        return;
+    }
+
+    const caseId = document.getElementById('arbAwardCaseId')?.value;
+    const agreementDate = document.getElementById('arbAwardAgreementDate')?.value;
+    const awardDate = document.getElementById('arbAwardDate')?.value;
+    const awardDetails = document.getElementById('arbAwardTerms')?.value.trim();
+    const arbitratorPresider = document.getElementById('arbArbitratorPresider')?.value.trim();
+
+    if (!caseId || !awardDate || !awardDetails) {
+        alert('Please fill out all required fields.');
+        return;
+    }
+
+    const btn = document.getElementById('btnSubmitArbAward');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Rendering Award...';
+    }
+
+    try {
+        const payload = {
+            case_id: Number(caseId),
+            agreement_date: agreementDate,
+            award_date: awardDate,
+            award_details: awardDetails,
+            arbitrator_presider: arbitratorPresider
+        };
+
+        const res = await fetch('../../../backend/api/documents/arbitration.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (json.success) {
+            closeIssueArbitrationAwardModal();
+            if (typeof showToast === 'function') {
+                showToast(json.message || 'Arbitration award successfully rendered!', 'success');
+            } else {
+                alert(json.message || 'Arbitration award successfully rendered!');
+            }
+            if (typeof loadComplaintDetails === 'function') {
+                await loadComplaintDetails();
+            }
+            // Auto open preview for KP Form 15
+            setTimeout(() => {
+                openKpFormModal(Number(caseId), 'KP Form 15');
+            }, 300);
+        } else {
+            const errEl = document.getElementById('arbAwardDateError');
+            if (errEl) {
+                errEl.textContent = json.message || 'Unable to record arbitration award.';
+                errEl.style.display = 'block';
+            } else {
+                alert(json.message || 'Unable to record arbitration award.');
+            }
+        }
+    } catch (err) {
+        console.error('submitArbitrationAward error:', err);
+        alert('Network error while saving arbitration award.');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Confirm & Render Award (KP Form 15)';
+        }
+    }
+}
+window.submitArbitrationAward = submitArbitrationAward;
+
+function printKpFormModalDirect(caseId, formCode) {
+    if (typeof openKpFormModal === 'function') {
+        openKpFormModal(caseId, formCode);
+        setTimeout(() => {
+            const iframe = document.getElementById('kpDocPreviewIframe');
+            if (iframe && iframe.contentWindow) {
+                iframe.contentWindow.focus();
+                iframe.contentWindow.print();
+            }
+        }, 600);
+    }
+}
+window.printKpFormModalDirect = printKpFormModalDirect;

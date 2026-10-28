@@ -1,11 +1,16 @@
-﻿<?php
+<?php
 
 session_start();
 
 if (
     !isset($_SESSION['role_id']) ||
-    !in_array((int)$_SESSION['role_id'], [1, 2, 3, 4], true)
+    !in_array((int)$_SESSION['role_id'], [1, 2, 3], true)
 ) {
+    if ((int)($_SESSION['role_id'] ?? 0) === 4) {
+        header('Location: ../gps/proof-service.php');
+        exit;
+    }
+    http_response_code(403);
     die('Access Denied');
 }
 
@@ -29,6 +34,10 @@ unset($_SESSION['complaint_flash']);
 
 include '../../layouts/header.php';
 require_once __DIR__ . '/../../../backend/models/Setting.php';
+require_once __DIR__ . '/../../../backend/models/Paanyaya.php';
+$paanyayaModel = new Paanyaya();
+$servingOfficers = $paanyayaModel->getServingOfficers();
+$eligiblePresiders = $paanyayaModel->getEligiblePresiders();
 $maxPaanyayaSetting = (int) Setting::getSetting('paanyaya_max_attempts', 3);
 ?>
 <script>
@@ -124,9 +133,9 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
                 <span>Conciliation</span>
                 <span class="case-tab-lock-icon" id="tabLockConciliation" style="display: none;" title="Locked stage">🔒</span>
             </button>
-            <button type="button" class="case-tab-item <?php echo $activeTab === 'tab-arbitration' ? 'active' : ''; ?>" data-tab="tab-arbitration" onclick="switchCaseTab('tab-arbitration')">
+            <button type="button" class="case-tab-item <?php echo $activeTab === 'tab-arbitration' ? 'active' : ''; ?>" data-tab="tab-arbitration" id="caseTabItemOutcomes" onclick="switchCaseTab('tab-arbitration')">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
-                <span>Outcomes</span>
+                <span id="tabOutcomesLabel">Outcomes</span>
                 <span class="case-tab-lock-icon" id="tabLockArbitration" style="display: none;" title="Locked stage">🔒</span>
             </button>
         </nav>
@@ -361,11 +370,15 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
                 <!-- CARD 1: PAANYAYA 1 (First Preliminary Invitation) -->
                 <div class="paanyaya-card" id="paanyaya1Card">
                     <div>
-                        <div class="paanyaya-card-header">
+                        <div class="paanyaya-card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                             <div class="paanyaya-stage-title-wrap">
                                 <h3 class="paanyaya-card-title">Paanyaya 1 &ndash; Preliminary Invitation</h3>
                             </div>
+                            <span id="p1StatusBadge" class="paanyaya-stage-tag" style="display: none;"></span>
                         </div>
+
+                        <!-- Schedule & Officer Meta -->
+                        <div id="p1ScheduleMeta" style="display: none;"></div>
 
                         <!-- Inline Dialogue Minutes & Settlement Result (Paanyaya 1) -->
                         <div id="p1DialogueMinutesInline" class="paanyaya-minutes-inline-container" style="margin-top: 10px;">
@@ -385,8 +398,14 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
                         <button type="button" class="btn-create" id="btnIssueP1" onclick="openIssuePaanyayaModal('Paanyaya 1')">
                             Issue Paanyaya 1
                         </button>
+                        <button type="button" class="btn-create" id="btnRecordReturnP1" onclick="openRecordReturnModal('Paanyaya 1')" style="background: #0284c7; border-color: #0284c7; display: none;">
+                            Record Officer's Return
+                        </button>
                         <a href="record-dialogue-minutes.php?id=<?= $complaintId ?>&stage=Paanyaya+1" class="btn-create" id="btnRecordMinutesP1" style="background: #2563eb; border-color: #2563eb; text-decoration: none; display: none;">
                             Record Dialogue Minutes
+                        </a>
+                        <a href="record-dialogue-minutes.php?id=<?= $complaintId ?>&stage=Paanyaya+1" class="btn-secondary" id="btnViewMinutesP1" style="display: none; text-decoration: none;">
+                            View Minutes
                         </a>
                         <button type="button" class="btn-sess-indigo" id="btnPreviewP1" onclick="previewPaanyayaStageLetter('Paanyaya 1')" style="display: none;">
                             Preview Letter
@@ -400,11 +419,15 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
                 <!-- CARD 2: PAANYAYA 2 (Second Preliminary Invitation) -->
                 <div class="paanyaya-card" id="paanyaya2Card">
                     <div>
-                        <div class="paanyaya-card-header">
+                        <div class="paanyaya-card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                             <div class="paanyaya-stage-title-wrap">
                                 <h3 class="paanyaya-card-title">Paanyaya 2 &ndash; Second Preliminary Invitation</h3>
                             </div>
+                            <span id="p2StatusBadge" class="paanyaya-stage-tag" style="display: none;"></span>
                         </div>
+
+                        <!-- Schedule & Officer Meta -->
+                        <div id="p2ScheduleMeta" style="display: none;"></div>
 
                         <!-- Locked State Alert Banner (when Paanyaya 1 is still incomplete) -->
                         <div id="p2LockedNotice" style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 14px; margin-bottom: 16px; font-size: 0.85rem; color: #64748b; display: flex; align-items: center; gap: 10px;">
@@ -429,8 +452,14 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
                         <button type="button" class="btn-create" id="btnIssueP2" onclick="openIssuePaanyayaModal('Paanyaya 2')" disabled style="opacity: 0.55; cursor: not-allowed; display: none;">
                             Issue Paanyaya 2
                         </button>
+                        <button type="button" class="btn-create" id="btnRecordReturnP2" onclick="openRecordReturnModal('Paanyaya 2')" style="background: #0284c7; border-color: #0284c7; display: none;">
+                            Record Officer's Return
+                        </button>
                         <a href="record-dialogue-minutes.php?id=<?= $complaintId ?>&stage=Paanyaya+2" class="btn-create" id="btnRecordMinutesP2" style="background: #2563eb; border-color: #2563eb; text-decoration: none; display: none;">
                             Record Dialogue Minutes
+                        </a>
+                        <a href="record-dialogue-minutes.php?id=<?= $complaintId ?>&stage=Paanyaya+2" class="btn-secondary" id="btnViewMinutesP2" style="display: none; text-decoration: none;">
+                            View Minutes
                         </a>
                         <button type="button" class="btn-sess-indigo" id="btnPreviewP2" onclick="previewPaanyayaStageLetter('Paanyaya 2')" style="display: none;">
                             Preview Letter
@@ -534,11 +563,169 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
         </div>
 
         <!-- ===================================================================
-             TAB PANE 4: ARBITRATION / CFA
+             TAB PANE 4: ARBITRATION / OUTCOMES / AMICABLE SETTLEMENT
              =================================================================== -->
         <div id="tab-arbitration" class="case-tab-pane <?php echo $activeTab === 'tab-arbitration' ? 'active' : ''; ?>">
-            <!-- Arbitration / Court Referral Stage Card / Banner -->
-            <div style="margin: 0 30px 20px;">
+            
+            <!-- A. AMICABLE SETTLEMENT DUAL PREVIEW WORKSPACE -->
+            <div id="amicableSettlementWorkspace" style="display: none;">
+                <!-- Header Banner -->
+                <div style="margin: 0 30px 20px;">
+                    <div id="stageSettledCard" class="stage-card-item active" style="background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border: 1.5px solid #86efac; border-radius: 12px; padding: 18px 22px; box-shadow: 0 2px 8px rgba(22, 163, 74, 0.08);">
+                        <div class="stage-card-top" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <h3 id="stageSettledTitle" style="font-size: 1.2rem; margin: 0; color: #064e3b; font-weight: 800;">
+                                    Amicable Settlement (Kasunduan)
+                                </h3>
+                                <span id="stageSettledBadge" class="status-pill" style="background: #dcfce7; color: #166534; font-weight: 800; font-size: 0.78rem; padding: 3px 10px; border-radius: 9999px;">
+                                    ✓ Amicably Settled
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Statutory Metric Cards -->
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-top: 10px;">
+                            <div style="background: #ffffff; padding: 10px 14px; border-radius: 8px; border: 1px solid #bbf7d0;">
+                                <span style="font-size: 0.72rem; color: #15803d; text-transform: uppercase; font-weight: 700; display: block;">Execution Date</span>
+                                <strong id="metricSettlementDate" style="font-size: 0.95rem; color: #0f172a;">—</strong>
+                            </div>
+                            <div style="background: #ffffff; padding: 10px 14px; border-radius: 8px; border: 1px solid #bbf7d0;">
+                                <span style="font-size: 0.72rem; color: #15803d; text-transform: uppercase; font-weight: 700; display: block;">10-Working-Day Expiry</span>
+                                <strong id="metricRepudiationDeadline" style="font-size: 0.95rem; color: #0f172a;">—</strong>
+                            </div>
+                            <div style="background: #ffffff; padding: 10px 14px; border-radius: 8px; border: 1px solid #bbf7d0;">
+                                <span style="font-size: 0.72rem; color: #15803d; text-transform: uppercase; font-weight: 700; display: block;">Repudiation Status</span>
+                                <div id="metricCountdownBadge" style="margin-top: 2px;">
+                                    <span class="status-pill status-active" style="font-size: 0.8rem;">Calculating...</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Repudiation Alert Callout (Shown if case is repudiated) -->
+                        <div id="calloutRepudiatedAlert" style="display: none; margin-top: 14px; background: #fef2f2; border: 1.5px solid #f87171; border-radius: 8px; padding: 12px 16px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                                <div>
+                                    <strong style="color: #991b1b; font-size: 0.92rem; display: flex; align-items: center; gap: 6px;">
+                                        <span>⚠️</span> Sworn Statement of Repudiation Filed (KP Form 17)
+                                    </strong>
+                                    <p id="calloutRepudiatedNotes" style="margin: 4px 0 0; font-size: 0.82rem; color: #7f1d1d; line-height: 1.4;">
+                                        Consent was vitiated. The settlement agreement is null and void.
+                                    </p>
+                                </div>
+                                <div style="display: flex; gap: 8px; align-items: center;">
+                                    <button type="button" class="btn-secondary" onclick="openKpFormModal(window.currentCaseId || window.complaintData?.case_id, 'KP Form 17')" style="font-size: 0.8rem; padding: 5px 12px; border-color: #fca5a5; color: #991b1b;">
+                                        View KP Form 17 &rarr;
+                                    </button>
+                                    <button type="button" class="btn-create" onclick="openKpFormModal(window.currentCaseId || window.complaintData?.case_id, 'KP Form 20')" style="font-size: 0.8rem; padding: 5px 14px; background: #dc2626; border-color: #dc2626;">
+                                        Issue KP Form 20 (CFA) &rarr;
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Top Action Buttons -->
+                        <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid #bbf7d0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <button type="button" class="btn-secondary" onclick="openEditSettlementTermsModal()" style="font-size: 0.82rem; padding: 6px 14px; background: #ffffff; border-color: #86efac; color: #166534; font-weight: 600;">
+                                    ✏️ Edit Settlement Terms
+                                </button>
+                                <button type="button" id="btnActionFileRepudiation" class="btn-secondary" onclick="openFileRepudiationModal()" style="font-size: 0.82rem; padding: 6px 14px; background: #ffffff; border-color: #fca5a5; color: #991b1b; font-weight: 600;">
+                                    ⚠️ File Repudiation (KP Form 17)
+                                </button>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <button type="button" id="btnActionIssueExecution" class="btn-secondary" onclick="openIssueExecutionModal()" style="font-size: 0.82rem; padding: 6px 14px; background: #ffffff; border-color: #cbd5e1; color: #334155; font-weight: 600; display: none;">
+                                    📜 Issue KP Form 23 (Motion for Execution)
+                                </button>
+                                <button type="button" id="btnActionRecordTransmittal" class="btn-create" onclick="openRecordTransmittalModal(window.currentCaseId || window.complaintData?.case_id)" style="font-size: 0.82rem; padding: 6px 14px; display: none;">
+                                    📋 Record Court &amp; DILG Transmittal
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dual Document Preview Panels -->
+                <div class="dual-doc-preview-grid" style="margin: 0 30px 30px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    
+                    <!-- Card 1: KP Form No. 16 (Amicable Settlement) -->
+                    <div class="dual-doc-card" style="background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 4px 16px rgba(0,0,0,0.06);">
+                        <!-- Header -->
+                        <div style="padding: 12px 18px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                            <div>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <strong style="color: #0f172a; font-size: 0.95rem;">KP Form No. 16</strong>
+                                    <span class="status-pill" style="background: #dcfce7; color: #166534; font-size: 0.72rem; padding: 2px 8px; border-radius: 9999px; font-weight: 700;">
+                                        ✓ Unlocked &amp; Printable
+                                    </span>
+                                </div>
+                                <span style="font-size: 0.76rem; color: #64748b; display: block; margin-top: 1px;">
+                                    Kasunduang Pag-aayos &bull; Executed Agreement
+                                </span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <button type="button" class="btn-create" onclick="printKp16PreviewIframe()" style="font-size: 0.78rem; padding: 5px 12px; display: inline-flex; align-items: center; gap: 4px; background: #16a34a; border-color: #16a34a;">
+                                    🖨️ Print Form 16
+                                </button>
+                                <a id="btnDownloadDualKp16Pdf" href="#" class="btn-secondary" download style="font-size: 0.78rem; padding: 5px 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 3px;">
+                                    📥 PDF
+                                </a>
+                                <button type="button" class="btn-secondary" onclick="openKpFormModal(window.currentCaseId || window.complaintData?.case_id, 'KP Form 16')" title="Fullscreen / Scale View" style="font-size: 0.78rem; padding: 5px 8px;">
+                                    🔍
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Document Canvas Container -->
+                        <div style="background: #334155; padding: 16px 12px; height: 680px; overflow: hidden; display: flex; justify-content: center; align-items: stretch; position: relative;">
+                            <iframe id="dualKp16PreviewIframe" src="about:blank" style="width: 100%; height: 100%; border: none; background: #ffffff; border-radius: 4px; box-shadow: 0 8px 30px rgba(0,0,0,0.35);" title="KP Form 16 Preview"></iframe>
+                        </div>
+                    </div>
+
+                    <!-- Card 2: Court Transmittal Letter (MTC / MeTC & DILG) -->
+                    <div class="dual-doc-card" style="background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 4px 16px rgba(0,0,0,0.06);">
+                        <!-- Header -->
+                        <div style="padding: 12px 18px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                            <div>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <strong style="color: #0f172a; font-size: 0.95rem;">Court Transmittal Letter</strong>
+                                    <span id="dualTransmittalStatusBadge" class="status-pill status-amber" style="background: #fef3c7; color: #b45309; font-size: 0.72rem; padding: 2px 8px; border-radius: 9999px; font-weight: 700;">
+                                        🔒 Locked for Printing
+                                    </span>
+                                </div>
+                                <span style="font-size: 0.76rem; color: #64748b; display: block; margin-top: 1px;">
+                                    RA 7160 Sec. 411 / Sec. 416 &bull; MTC &amp; DILG Transmittal
+                                </span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <button type="button" id="btnDualPrintTransmittal" class="btn-create" onclick="printDualTransmittalIframe()" disabled style="font-size: 0.78rem; padding: 5px 12px; display: inline-flex; align-items: center; gap: 4px; opacity: 0.5; cursor: not-allowed;" title="Locked pursuant to RA 7160 Sec. 416 until repudiation period expires">
+                                    🔒 Print Transmittal
+                                </button>
+                                <a id="btnDownloadDualTransmittalPdf" href="#" class="btn-secondary" style="font-size: 0.78rem; padding: 5px 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 3px; opacity: 0.5; pointer-events: none;" title="Download restricted until 10 business days elapse">
+                                    📥 PDF
+                                </a>
+                                <button type="button" class="btn-secondary" onclick="openPreviewTransmittalModal(window.currentCaseId || window.complaintData?.case_id)" title="Fullscreen / Scale View" style="font-size: 0.78rem; padding: 5px 8px;">
+                                    🔍
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Document Canvas Container -->
+                        <div style="background: #334155; padding: 16px 12px; height: 680px; overflow: hidden; display: flex; justify-content: center; align-items: stretch; position: relative;">
+                            <iframe id="dualTransmittalPreviewIframe" src="about:blank" style="width: 100%; height: 100%; border: none; background: #ffffff; border-radius: 4px; box-shadow: 0 8px 30px rgba(0,0,0,0.35);" title="Transmittal Letter Preview"></iframe>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- B. VOLUNTARY ARBITRATION 4-STEP PROGRESSIVE WORKSPACE -->
+            <div id="arbitrationProgressiveWorkspace" style="display: none;"></div>
+
+            <!-- C. ARBITRATION / CFA WORKSPACE (Existing fallback when outcome != Settled and != Arbitration) -->
+            <div id="arbitrationCfaWorkspace">
+                <!-- Arbitration / Court Referral Stage Card / Banner -->
+                <div style="margin: 0 30px 20px;">
                 <div id="stage3Card" class="stage-card-item pending">
                     <div class="stage-card-top">
                         <span class="stage-label-num">STAGE 3 &bull; KATARUNGANG PAMBARANGAY</span>
@@ -607,7 +794,8 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
                     </div>
                 </div>
             </div>
-        </div>
+            </div> <!-- close #arbitrationCfaWorkspace -->
+        </div> <!-- close #tab-arbitration -->
 
         <!-- Hidden legacy compatibility elements (preserves existing JS selectors) -->
         <div id="caseWorkspaceSection" style="display:none;"></div>
@@ -980,26 +1168,57 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
 
             <!-- Escalation 1st Mediation Hearing Picker (Visible ONLY on Escalate) -->
             <div id="escalationScheduleSection" style="display: none; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 14px; margin-bottom: 16px;">
-                <h4 style="margin: 0 0 10px; font-size: 0.92rem; color: #0f172a; font-weight: 700;">1st Formal Mediation Hearing Schedule (Tumana Rules)</h4>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 6px;">
+                    <h4 style="margin: 0; font-size: 0.92rem; color: #0f172a; font-weight: 700;">1st Formal Mediation Hearing Schedule (Tumana Rules)</h4>
+                    <span style="font-size: 0.72rem; background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; padding: 2px 8px; border-radius: 9999px; font-weight: 700;">
+                        Tuesdays ONLY · Court Room (Max 8/Day)
+                    </span>
+                </div>
                 <div class="form-row-2">
                     <div class="form-group">
-                        <label for="escalationMedDate" style="font-weight: 600; font-size: 0.82rem;">Mediation Date (Tuesdays ONLY) <span class="required-mark">*</span></label>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <label for="escalationMedDate" style="font-weight: 600; font-size: 0.82rem; margin: 0;">Mediation Date (Tuesdays ONLY) <span class="required-mark">*</span></label>
+                            <span id="escalationCapacityBadge" class="badge-capacity" style="font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 9999px; background: #e2e8f0; color: #475569;">
+                                Checking...
+                            </span>
+                        </div>
                         <input type="date" id="escalationMedDate" name="mediation_date" style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
                     </div>
                     <div class="form-group">
-                        <label for="escalationMedTime" style="font-weight: 600; font-size: 0.82rem;">Mediation Slot (1:00 PM - 5:00 PM) <span class="required-mark">*</span></label>
-                        <select id="escalationMedTime" name="mediation_time" style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
-                            <option value="13:00">1:00 PM - 2:00 PM</option>
-                            <option value="14:00">2:00 PM - 3:00 PM</option>
-                            <option value="15:00">3:00 PM - 4:00 PM</option>
-                            <option value="16:00">4:00 PM - 5:00 PM</option>
-                        </select>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <label for="escalationMedTime" style="font-weight: 600; font-size: 0.82rem; margin: 0;">Target Call Time (1:00 PM - 4:30 PM) <span class="required-mark">*</span></label>
+                            <span style="font-size: 0.72rem; color: #64748b;">15-min intervals</span>
+                        </div>
+                        <input type="time" id="escalationMedTime" name="mediation_time" min="13:00" max="16:30" step="900" value="13:00" style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                        <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px;">
+                            <button type="button" class="btn-slot-chip" onclick="document.getElementById('escalationMedTime').value='13:00'; document.getElementById('escalationMedTime').dispatchEvent(new Event('change'));" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:00 PM</button>
+                            <button type="button" class="btn-slot-chip" onclick="document.getElementById('escalationMedTime').value='13:15'; document.getElementById('escalationMedTime').dispatchEvent(new Event('change'));" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:15 PM</button>
+                            <button type="button" class="btn-slot-chip" onclick="document.getElementById('escalationMedTime').value='13:30'; document.getElementById('escalationMedTime').dispatchEvent(new Event('change'));" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:30 PM</button>
+                            <button type="button" class="btn-slot-chip" onclick="document.getElementById('escalationMedTime').value='13:45'; document.getElementById('escalationMedTime').dispatchEvent(new Event('change'));" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:45 PM</button>
+                            <button type="button" class="btn-slot-chip" onclick="document.getElementById('escalationMedTime').value='14:00'; document.getElementById('escalationMedTime').dispatchEvent(new Event('change'));" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">2:00 PM</button>
+                            <button type="button" class="btn-slot-chip" onclick="document.getElementById('escalationMedTime').value='14:30'; document.getElementById('escalationMedTime').dispatchEvent(new Event('change'));" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">2:30 PM</button>
+                            <button type="button" class="btn-slot-chip" onclick="document.getElementById('escalationMedTime').value='15:00'; document.getElementById('escalationMedTime').dispatchEvent(new Event('change'));" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">3:00 PM</button>
+                        </div>
                     </div>
                 </div>
                 <div class="form-group" style="margin-top: 8px;">
                     <label for="escalationMedVenue" style="font-weight: 600; font-size: 0.82rem;">Hearing Venue</label>
                     <input type="text" id="escalationMedVenue" name="venue" value="Lupon Court Room" readonly style="padding: 8px 10px; font-size: 0.88rem; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
                 </div>
+
+                <!-- Live Day Docket Peek -->
+                <div id="escalationDocketPeek" style="margin-top: 10px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;">
+                    <div style="font-size: 0.78rem; font-weight: 700; color: #334155; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
+                        <span>📋 Tuesday Mediation Docket Call (Lupon Court Room)</span>
+                        <span id="escalationDocketCount" style="font-size: 0.72rem; color: #64748b;">0 sessions</span>
+                    </div>
+                    <div id="escalationDocketList" style="font-size: 0.8rem; color: #64748b; line-height: 1.4;">
+                        Select a Tuesday to peek existing docket calls.
+                    </div>
+                </div>
+
+                <!-- Inline Overlap Conflict Alert -->
+                <div id="escalationConflictAlert" class="alert alert-danger" style="display: none; margin-top: 10px; padding: 8px 12px; font-size: 0.82rem; border-radius: 6px; background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5;"></div>
             </div>
 
             <div class="form-group" style="margin-bottom: 16px;">
@@ -1016,6 +1235,8 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
         </form>
     </div>
 </div>
+
+
 
 <!-- Modal: View Paanyaya Dialogue Minutes -->
 <div id="paanyayaMinutesViewModal" class="modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="viewMinutesModalHeading">
@@ -1079,6 +1300,11 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
                 <label for="issueStageOfficer" style="font-weight: 600; font-size: 0.84rem;">Assigned Serving Officer <span class="required-mark">*</span></label>
                 <select id="issueStageOfficer" name="assigned_officer_id" required style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
                     <option value="">-- Select Serving Officer --</option>
+                    <?php foreach ($servingOfficers as $idx => $off): ?>
+                        <option value="<?= (int)$off['user_id'] ?>" <?= $idx === 0 ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($off['full_name']) ?> (<?= htmlspecialchars($off['role_name']) ?>)
+                        </option>
+                    <?php endforeach; ?>
                 </select>
             </div>
 
@@ -1135,6 +1361,11 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
                     <label for="rorServingOfficer" style="font-weight: 600; font-size: 0.84rem;">Assigned Serving Officer <span class="required-mark">*</span></label>
                     <select id="rorServingOfficer" name="serving_officer_id" required style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
                         <option value="">-- Select Serving Officer --</option>
+                        <?php foreach ($servingOfficers as $idx => $off): ?>
+                            <option value="<?= (int)$off['user_id'] ?>" <?= $idx === 0 ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($off['full_name']) ?> (<?= htmlspecialchars($off['role_name']) ?>)
+                            </option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
             </div>
@@ -1508,9 +1739,10 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
             </div>
                         <div id="stageOutcomeArbitrationBanner" style="display: none; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px;">
                 <strong style="color: #92400e; font-size: 0.88rem; display: block;">Parties Agreed to Voluntary Arbitration (KP Form 14)</strong>
-                <p style="margin: 4px 0 0; font-size: 0.82rem; color: #78350f;">
-                    Recording Arbitration unlocks KP Form 14 and KP Form 15 and enables scheduling an Arbitration hearing session.
+                <p style="margin: 4px 0 10px; font-size: 0.82rem; color: #78350f;">
+                    Both parties have voluntarily agreed in writing to submit their dispute to binding arbitration under RA 7160 Sec. 413.
                 </p>
+                <button type="button" class="btn-create" onclick="submitEmbeddedRecordOutcome(event)" style="background: #d97706; border-color: #d97706; font-size: 0.82rem; padding: 6px 14px;">Issue Arbitration &rarr;</button>
             </div>
 <div class="form-group" style="margin-bottom: 18px;">
                 <label for="stageOutcomeRemarks" style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Determination Notes / Remarks <span class="optional-label" style="color: #64748b; font-weight: 400;">Optional</span></label>
@@ -1603,6 +1835,207 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
 <?php include __DIR__ . '/../../layouts/transmittal-modal.php'; ?>
 <?php include __DIR__ . '/../../layouts/kp-form-preview-modal.php'; ?>
 
+<!-- MODAL: Sworn Statement of Repudiation (KP Form 17 - RA 7160 Sec. 416) -->
+<div id="modalFileRepudiation" class="modal" role="dialog" aria-modal="true" style="display: none; padding: 12px; z-index: 9999;">
+    <div class="modal-content" style="max-width: 580px; width: 95vw; border-radius: 12px; padding: 24px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.25);">
+        <div class="modal-header" style="margin-bottom: 14px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h2 style="font-size: 1.2rem; font-weight: 800; color: #991b1b; margin: 0; display: flex; align-items: center; gap: 8px;">
+                    <span>⚠️</span> File Repudiation (KP Form 17)
+                </h2>
+                <p style="margin: 3px 0 0; font-size: 0.8rem; color: #64748b;">
+                    Pagtatwa ng Kasunduan &bull; RA 7160 Section 416 (Vitiated Consent)
+                </p>
+            </div>
+            <button type="button" class="close-btn" onclick="closeFileRepudiationModal()" style="font-size: 1.5rem; border: none; background: transparent; cursor: pointer; color: #64748b;">&times;</button>
+        </div>
+        <form onsubmit="handleRepudiationSubmit(event)">
+            <input type="hidden" id="repudiationSettlementId" name="settlement_id">
+
+            <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.82rem; color: #991b1b; line-height: 1.45;">
+                <strong>Statutory Notice (RA 7160 Sec. 416):</strong> Any party may, within ten (10) days from execution, repudiate the settlement by filing a sworn statement alleging that consent was vitiated by fraud, violence, or intimidation. Submitting this will invalidate the settlement and route the case to issue <strong>KP Form 20 (Certificate to File Action)</strong>.
+            </div>
+
+            <!-- Filing Party -->
+            <div class="form-group" style="margin-bottom: 14px;">
+                <label for="repudiatingPartySelect" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
+                    Repudiating Party (Naghahain ng Pagtatwa) <span style="color: #dc2626;">*</span>
+                </label>
+                <select id="repudiatingPartySelect" name="repudiated_by" required style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box;">
+                    <option value="">— Select Party Filing Repudiation —</option>
+                </select>
+            </div>
+
+            <!-- Statutory Grounds -->
+            <div class="form-group" style="margin-bottom: 14px;">
+                <label style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 6px;">
+                    Statutory Legal Grounds (RA 7160 Sec. 416) <span style="color: #dc2626;">*</span>
+                </label>
+                <div style="display: flex; flex-direction: column; gap: 6px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 12px; font-size: 0.85rem;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" name="ground" value="Fraud (Panlilinlang)" onchange="updateRepudiationGroundsText()">
+                        <span><strong>Panlilinlang (Fraud)</strong> &mdash; Misrepresentation of terms or deceit</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" name="ground" value="Violence (Karahasan)" onchange="updateRepudiationGroundsText()">
+                        <span><strong>Karahasan (Violence)</strong> &mdash; Physical force, coercion, or assault</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" name="ground" value="Intimidation (Pananakot)" onchange="updateRepudiationGroundsText()">
+                        <span><strong>Pananakot (Intimidation)</strong> &mdash; Duress, threats, or grave harassment</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Sworn Narrative -->
+            <div class="form-group" style="margin-bottom: 14px;">
+                <label for="repudiationReasonText" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
+                    Sworn Statement / Narrative Details (Salaysay ng Pagtatwa) <span style="color: #dc2626;">*</span>
+                </label>
+                <textarea id="repudiationReasonText" name="repudiation_reason" rows="3" required placeholder="State specific acts of fraud, violence, or intimidation that vitiated consent..." style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.85rem; box-sizing: border-box;"></textarea>
+            </div>
+
+            <!-- Date of Sworn Statement -->
+            <div class="form-group" style="margin-bottom: 18px;">
+                <label for="repudiationDateInput" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
+                    Date of Sworn Statement (Petsa ng Sinumpaang Salaysay) <span style="color: #dc2626;">*</span>
+                </label>
+                <input type="date" id="repudiationDateInput" name="repudiation_date" required style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box;">
+            </div>
+
+            <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 0;">
+                <button type="button" class="btn-secondary" onclick="closeFileRepudiationModal()">Cancel</button>
+                <button type="submit" id="btnSubmitRepudiation" class="btn-create" style="background: #dc2626; border-color: #dc2626;">
+                    Submit Sworn Repudiation &rarr;
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- MODAL: Edit Settlement Terms (KP Form 16) -->
+<div id="modalEditSettlementTerms" class="modal" role="dialog" aria-modal="true" style="display: none; padding: 12px; z-index: 9999;">
+    <div class="modal-content" style="max-width: 580px; width: 95vw; border-radius: 12px; padding: 24px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.25);">
+        <div class="modal-header" style="margin-bottom: 14px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h2 style="font-size: 1.15rem; font-weight: 800; color: #0f172a; margin: 0;">
+                    Edit Settlement Agreement Terms
+                </h2>
+                <p style="margin: 2px 0 0; font-size: 0.8rem; color: #64748b;">
+                    KP Form No. 16 (Kasunduang Pag-aayos)
+                </p>
+            </div>
+            <button type="button" class="close-btn" onclick="closeEditSettlementTermsModal()" style="font-size: 1.5rem; border: none; background: transparent; cursor: pointer; color: #64748b;">&times;</button>
+        </div>
+        <form onsubmit="handleEditSettlementSubmit(event)">
+            <input type="hidden" id="editSettleCaseId" name="case_id">
+            <input type="hidden" id="editSettleId" name="settlement_id">
+
+            <div class="form-group" style="margin-bottom: 14px;">
+                <label for="editSettleDate" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
+                    Date of Execution (Petsa ng Kasunduan) <span style="color: #dc2626;">*</span>
+                </label>
+                <input type="date" id="editSettleDate" name="settlement_date" required style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 14px;">
+                <label for="editSettleTermsText" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
+                    Detailed Terms of Settlement (Mga Napagkasunduan) <span style="color: #dc2626;">*</span>
+                </label>
+                <textarea id="editSettleTermsText" name="agreement_details" rows="5" required placeholder="Specify obligations, amounts, installment dates, or conditions..." style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box;"></textarea>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="editSettleAmount" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
+                        Settlement Amount (PHP) <span style="font-weight: 400; color: #64748b;">Optional</span>
+                    </label>
+                    <input type="number" step="0.01" min="0" id="editSettleAmount" name="total_amount" placeholder="0.00" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box;">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="editSettleResponsible" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
+                        Responsible Party
+                    </label>
+                    <select id="editSettleResponsible" name="responsible_party" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box;">
+                        <option value="Respondent" selected>Respondent</option>
+                        <option value="Complainant">Complainant</option>
+                        <option value="Both">Both Parties</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 0;">
+                <button type="button" class="btn-secondary" onclick="closeEditSettlementTermsModal()">Cancel</button>
+                <button type="submit" id="btnSubmitEditSettlement" class="btn-create">Save Changes &amp; Refresh Preview</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- MODAL: Issue Motion for Execution (KP Form 23 - RA 7160 Sec. 417) -->
+<div id="modalIssueExecutionKp23" class="modal" role="dialog" aria-modal="true" style="display: none; padding: 12px; z-index: 9999;">
+    <div class="modal-content" style="max-width: 580px; width: 95vw; border-radius: 12px; padding: 24px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.25);">
+        <div class="modal-header" style="margin-bottom: 14px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h2 style="font-size: 1.15rem; font-weight: 800; color: #0f172a; margin: 0; display: flex; align-items: center; gap: 8px;">
+                    <span>📜</span> Issue Motion for Execution (KP Form 23)
+                </h2>
+                <p style="margin: 2px 0 0; font-size: 0.8rem; color: #64748b;">
+                    Mosyon sa Pagpapatupad &bull; RA 7160 Sec. 417 (Enforcement of Final Settlement)
+                </p>
+            </div>
+            <button type="button" class="close-btn" onclick="closeIssueExecutionModal()" style="font-size: 1.5rem; border: none; background: transparent; cursor: pointer; color: #64748b;">&times;</button>
+        </div>
+        <form onsubmit="handleIssueExecutionSubmit(event)">
+            <input type="hidden" id="execSettlementId" name="settlement_id">
+
+            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.82rem; color: #166534; line-height: 1.45;">
+                <strong>Statutory Finality (RA 7160 Sec. 417):</strong> The 10-business-day repudiation window has elapsed without sworn repudiation. The amicable settlement now has the force and effect of a final court judgment and may be executed by the Lupon within six (6) months.
+            </div>
+
+            <!-- Moving Party -->
+            <div class="form-group" style="margin-bottom: 14px;">
+                <label for="execMovingPartySelect" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
+                    Moving Party (Naghain ng Mosyon) <span style="color: #dc2626;">*</span>
+                </label>
+                <select id="execMovingPartySelect" name="motion_filed_by" required style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box;">
+                    <option value="">— Select Moving Party —</option>
+                </select>
+            </div>
+
+            <!-- Obligation Violated -->
+            <div class="form-group" style="margin-bottom: 14px;">
+                <label for="execObligationText" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
+                    Obligation Violated / Unsatisfied Settlement Terms <span style="color: #dc2626;">*</span>
+                </label>
+                <textarea id="execObligationText" name="obligation_violated" rows="3" required placeholder="Specify what the respondent failed or refused to comply with..." style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.85rem; box-sizing: border-box;"></textarea>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="execAmountReq" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
+                        Amount / Requirement Demanded <span style="color: #dc2626;">*</span>
+                    </label>
+                    <input type="text" id="execAmountReq" name="amount_or_requirement" required placeholder="e.g. PHP 25,000 or Return of Property" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box;">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="execMotionDate" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
+                        Motion Filing Date <span style="color: #dc2626;">*</span>
+                    </label>
+                    <input type="date" id="execMotionDate" name="motion_date" required style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box;">
+                </div>
+            </div>
+
+            <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 0;">
+                <button type="button" class="btn-secondary" onclick="closeIssueExecutionModal()">Cancel</button>
+                <button type="submit" id="btnSubmitExecution" class="btn-create">
+                    Generate KP Form 23 &rarr;
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 
 <!-- =====================================================================
      MODAL: Reopen Settled Case for CFA (RA 7160 Sec. 417 Non-Compliance)
@@ -1646,5 +2079,66 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="../../assets/js/summons-preview.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/summons-preview.js'); ?>"></script>
 <script src="../../assets/js/complaints.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/complaints.js'); ?>"></script>
+
+
+<!-- ========================================== -->
+<!-- MODAL: Issue KP Form 15 (Arbitration Award)-->
+<!-- ========================================== -->
+<div id="issueArbitrationAwardModal" class="modal" style="display: none; z-index: 1050; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); align-items: center; justify-content: center; padding: 20px;">
+    <div class="modal-content" style="max-width: 620px; width: 100%; max-height: 90vh; overflow-y: auto; background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+        <div class="modal-header" style="border-bottom: 1px solid #e2e8f0; padding-bottom: 14px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <h2 style="font-size: 1.22rem; font-weight: 800; color: #0f172a; margin: 0;">Issue KP Form 15 (Arbitration Award)</h2>
+                <span style="font-size: 0.8rem; color: #64748b;">Gawad ng Paghahatol &bull; Binding Arbitral Ruling under RA 7160 Sec. 413</span>
+            </div>
+            <button type="button" class="close-btn" onclick="closeIssueArbitrationAwardModal()" style="background: none; border: none; font-size: 1.6rem; color: #64748b; cursor: pointer; line-height: 1;">&times;</button>
+        </div>
+        <form id="issueArbitrationAwardForm" onsubmit="submitArbitrationAward(event)">
+            <input type="hidden" id="arbAwardCaseId" value="">
+            <input type="hidden" id="arbAwardAgreementDate" value="">
+
+            <!-- Statutory Window Notice -->
+            <div id="arbStatutoryNoticeBanner" style="background: #eff6ff; border: 1.5px solid #bfdbfe; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 1.15rem;">⚖️</span>
+                    <strong style="color: #1e40af; font-size: 0.88rem;">RA 7160 Sec. 413 Mandatory Statutory Timeline</strong>
+                </div>
+                <p id="arbStatutoryNoticeText" style="margin: 4px 0 0; font-size: 0.81rem; color: #1e3a8a; line-height: 1.5;">
+                    The arbitration award cannot be issued earlier than <strong>Day 6</strong> (after the 5-day repudiation window expires) and must be rendered no later than <strong>15 calendar days</strong> from signing KP Form 14.
+                </p>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 14px;">
+                <label for="arbAwardDate" style="font-weight: 700; font-size: 0.84rem; color: #0f172a; display: block; margin-bottom: 4px;">
+                    Date of Arbitral Award <span class="required-mark" style="color: #dc2626;">*</span>
+                </label>
+                <input type="date" id="arbAwardDate" required onchange="validateArbitrationAwardDateInput()" style="width: 100%; border: 1.5px solid #cbd5e1; border-radius: 6px; padding: 9px 12px; font-size: 0.88rem; box-sizing: border-box;">
+                <small id="arbAwardDateHelper" style="color: #64748b; font-size: 0.77rem; display: block; margin-top: 4px;">
+                    Allowed statutory range: Day 6 to Day 15.
+                </small>
+                <div id="arbAwardDateError" style="display: none; color: #dc2626; font-size: 0.8rem; font-weight: 600; margin-top: 5px; padding: 6px 10px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px;"></div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 14px;">
+                <label for="arbAwardTerms" style="font-weight: 700; font-size: 0.84rem; color: #0f172a; display: block; margin-bottom: 4px;">
+                    Specific Terms of Award &amp; Resolution Findings <span class="required-mark" style="color: #dc2626;">*</span>
+                </label>
+                <textarea id="arbAwardTerms" rows="5" required placeholder="Isaad ang buong hatol ng Lupon, mga ebidensyang isinaalang-alang, at ang mga pinal na obligasyon o kabayaran na dapat tuparin ng mga panig..." style="width: 100%; border: 1.5px solid #cbd5e1; border-radius: 6px; padding: 10px 12px; font-size: 0.84rem; line-height: 1.5; box-sizing: border-box;"></textarea>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 18px;">
+                <label for="arbArbitratorPresider" style="font-weight: 700; font-size: 0.84rem; color: #0f172a; display: block; margin-bottom: 4px;">
+                    Signatures / Presiding Arbitrator Details
+                </label>
+                <input type="text" id="arbArbitratorPresider" placeholder="HON. AKIKO LYNNE CENTENO (Punong Barangay / Tagapangulo)" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 9px 12px; font-size: 0.84rem; box-sizing: border-box;">
+            </div>
+
+            <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #e2e8f0; padding-top: 14px;">
+                <button type="button" class="btn-secondary" onclick="closeIssueArbitrationAwardModal()" style="font-size: 0.84rem; padding: 8px 16px;">Cancel</button>
+                <button type="submit" class="btn-create" id="btnSubmitArbAward" style="font-size: 0.84rem; padding: 8px 20px; background: #2563eb; border-color: #2563eb; font-weight: 700;">Confirm &amp; Render Award (KP Form 15)</button>
+            </div>
+        </form>
+    </div>
+</div>
 
 <?php include '../../layouts/footer.php'; ?>

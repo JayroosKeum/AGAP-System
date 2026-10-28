@@ -3,7 +3,13 @@ $roleNames = [1 => 'Administrator', 2 => 'Lupon Clerk', 3 => 'Lupon Member', 4 =
 $roleName = $roleNames[(int) ($_SESSION['role_id'] ?? 0)] ?? 'Staff Member';
 ?>
 <nav class="navbar">
-    <button class="nav-menu-toggle" type="button" aria-label="Open navigation" aria-expanded="false" data-sidebar-toggle>Menu</button>
+    <button class="nav-menu-toggle" type="button" aria-label="Toggle navigation" aria-expanded="false" data-sidebar-toggle title="Toggle navigation">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+    </button>
     <div class="navbar-context"><span class="navbar-eyebrow">Barangay Tumana</span><span class="navbar-title">Katarungang Pambarangay</span></div>
     <div class="navbar-right">
 

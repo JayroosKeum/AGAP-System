@@ -287,9 +287,9 @@ include '../../layouts/header.php';
                                                 <div class="form-help">RA 7160 statutory maximum (3 sessions).</div>
                                             </div>
                                             <div class="form-group">
-                                                <label class="form-label">Max Paanyaya Attempts <span class="required">*</span></label>
-                                                <input type="number" name="paanyaya_max_attempts" class="form-control" value="<?php echo htmlspecialchars($settings['paanyaya_max_attempts'] ?? '6'); ?>" min="1" max="10" required>
-                                                <div class="form-help">Tumana informal invitation ceiling per stage.</div>
+                                                <label class="form-label">Max Summon Attempts <span class="required">*</span></label>
+                                                <input type="number" name="summons_max_attempts" class="form-control" value="<?php echo htmlspecialchars($settings['summons_max_attempts'] ?? $settings['paanyaya_max_attempts'] ?? '6'); ?>" min="1" max="6" required>
+                                                <div class="form-help">Standard cap for summons and officer's return delivery attempts before CFA eligibility or process halting (Default: 6 attempts, min: 1, max: 6).</div>
                                             </div>
                                         </div>
 

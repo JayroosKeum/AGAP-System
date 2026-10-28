@@ -353,10 +353,19 @@
         if (!actionUrl && item.case_id) {
             actionUrl = `../cases/case-details.php?id=${encodeURIComponent(item.case_id)}`;
         }
+        if (!actionUrl && item.complaint_id) {
+            actionUrl = `../complaints/complaint-details.php?id=${encodeURIComponent(item.complaint_id)}`;
+        }
         if (!actionUrl) {
             const match = (item.title + ' ' + item.message).match(/(?:Case|case)\s*(?:#|No\.\s*|number\s*)?([0-9A-Za-z\-_]+)/i);
             if (match && match[1]) {
-                actionUrl = `../search/records.php?q=${encodeURIComponent(match[1])}`;
+                actionUrl = `../cases/case-list.php?search=${encodeURIComponent(match[1])}`;
+            }
+        }
+        if (!actionUrl) {
+            const compMatch = (item.title + ' ' + item.message).match(/(?:Complaint|P-)\s*(?:#|No\.\s*|number\s*)?([0-9A-Za-z\-_]+)/i);
+            if (compMatch && compMatch[1]) {
+                actionUrl = `../complaints/complaint-list.php?search=${encodeURIComponent(compMatch[1])}`;
             }
         }
 
@@ -368,9 +377,10 @@
 
         let actionsHtml = '';
         if (actionUrl) {
+            const isComplaintTarget = actionUrl.includes('complaint-') || actionUrl.includes('paanyaya-');
             actionsHtml += `
                 <a href="${escapePopoverAttr(actionUrl)}" class="btn-popover-primary" onclick="handlePopoverActionClick(event, ${item.notification_id}, '${escapePopoverAttr(actionUrl)}')">
-                    Open Case
+                    ${isComplaintTarget ? 'Open Complaint' : 'Open Case'}
                 </a>
             `;
         }

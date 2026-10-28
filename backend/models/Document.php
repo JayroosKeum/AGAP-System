@@ -165,4 +165,68 @@ class Document
         $stmt->execute([$documentId]);
         return $stmt->rowCount() === 1;
     }
+
+    /**
+     * Resolves the hearing associated with a generated document.
+     */
+    public function getHearing(int $documentId): array|false
+    {
+        require_once __DIR__ . '/Hearing.php';
+        return (new Hearing())->getHearingByKp12DocumentId($documentId);
+    }
+
+    /**
+     * Resolves Officer's Returns associated with a generated document.
+     */
+    public function getOfficerReturns(int $documentId): array
+    {
+        $stmt = $this->conn->prepare("
+            SELECT hps.*,
+                   TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS serving_officer_name,
+                   TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS resident_name,
+                   dt.template_name
+            FROM hearing_party_services hps
+            LEFT JOIN users u ON u.user_id = hps.serving_officer
+            LEFT JOIN residents r ON r.resident_id = hps.resident_id
+            LEFT JOIN generated_documents gd ON gd.document_id = hps.document_id
+            LEFT JOIN document_templates dt ON dt.template_id = gd.template_id
+            WHERE hps.document_id = ?
+            ORDER BY hps.service_date DESC, hps.service_id DESC
+        ");
+        $stmt->execute([$documentId]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Creates an associated delivery record for a document.
+     */
+    public function createDeliveryRecord(int $caseId, int $documentId, array $data, int $userId): int
+    {
+        $stmt = $this->conn->prepare("
+            INSERT INTO summon_deliveries (
+                hearing_id, case_id, party_type, resident_id, form_type,
+                delivery_status, service_method, attempted_at, served_at,
+                served_by, served_by_user_id, recipient_name, document_id,
+                created_by, remarks
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ");
+        $stmt->execute([
+            $data['hearing_id'] ?? null,
+            $caseId,
+            $data['party_type'] ?? 'Respondent',
+            $data['resident_id'] ?? null,
+            $data['form_type'] ?? 'Notice of Hearing',
+            $data['delivery_status'] ?? 'Pending',
+            $data['service_method'] ?? 'Personal Service',
+            $data['attempted_at'] ?? null,
+            $data['served_at'] ?? null,
+            $data['served_by'] ?? $userId,
+            $data['served_by_user_id'] ?? $userId,
+            $data['recipient_name'] ?? null,
+            $documentId,
+            $userId,
+            $data['remarks'] ?? null
+        ]);
+        return (int) $this->conn->lastInsertId();
+    }
 }

@@ -26,7 +26,20 @@ class Report
 
             $todayHearings = $this->conn->prepare(
                 "SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.venue, h.status, h.queue_status,
-                        c.case_id, c.case_number, co.complaint_id, co.complaint_title
+                        h.actual_start_time, h.complainant_attendance, h.respondent_attendance, h.attendance_notes, h.mediation_attempt,
+                        c.case_id, c.case_number, co.complaint_id, co.complaint_title,
+                        COALESCE((
+                            SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')
+                            FROM complaint_parties cp
+                            INNER JOIN residents r ON r.resident_id = cp.resident_id
+                            WHERE cp.complaint_id = co.complaint_id AND cp.party_type = 'Complainant'
+                        ), '') AS complainant_names,
+                        COALESCE((
+                            SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')
+                            FROM complaint_parties cp
+                            INNER JOIN residents r ON r.resident_id = cp.resident_id
+                            WHERE cp.complaint_id = co.complaint_id AND cp.party_type = 'Respondent'
+                        ), '') AS respondent_names
                  FROM hearings h
                  INNER JOIN cases c ON c.case_id = h.case_id
                  INNER JOIN complaints co ON co.complaint_id = c.complaint_id
@@ -97,7 +110,20 @@ class Report
 
             $calendarHearingsStmt = $this->conn->query(
                 "SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.venue, h.status, h.queue_status,
-                        c.case_id, c.case_number, co.complaint_id, co.complaint_title
+                        h.actual_start_time, h.complainant_attendance, h.respondent_attendance, h.attendance_notes, h.mediation_attempt,
+                        c.case_id, c.case_number, co.complaint_id, co.complaint_title,
+                        COALESCE((
+                            SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')
+                            FROM complaint_parties cp
+                            INNER JOIN residents r ON r.resident_id = cp.resident_id
+                            WHERE cp.complaint_id = co.complaint_id AND cp.party_type = 'Complainant'
+                        ), '') AS complainant_names,
+                        COALESCE((
+                            SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')
+                            FROM complaint_parties cp
+                            INNER JOIN residents r ON r.resident_id = cp.resident_id
+                            WHERE cp.complaint_id = co.complaint_id AND cp.party_type = 'Respondent'
+                        ), '') AS respondent_names
                  FROM hearings h
                  INNER JOIN cases c ON c.case_id = h.case_id
                  INNER JOIN complaints co ON co.complaint_id = c.complaint_id
@@ -141,7 +167,20 @@ class Report
 
         $hearingsStmt = $this->conn->prepare(
             "SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.venue, h.status, h.queue_status,
-                        c.case_id, c.case_number, co.complaint_id, co.complaint_title
+                        h.actual_start_time, h.complainant_attendance, h.respondent_attendance, h.attendance_notes, h.mediation_attempt,
+                        c.case_id, c.case_number, co.complaint_id, co.complaint_title,
+                        COALESCE((
+                            SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')
+                            FROM complaint_parties cp
+                            INNER JOIN residents r ON r.resident_id = cp.resident_id
+                            WHERE cp.complaint_id = co.complaint_id AND cp.party_type = 'Complainant'
+                        ), '') AS complainant_names,
+                        COALESCE((
+                            SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')
+                            FROM complaint_parties cp
+                            INNER JOIN residents r ON r.resident_id = cp.resident_id
+                            WHERE cp.complaint_id = co.complaint_id AND cp.party_type = 'Respondent'
+                        ), '') AS respondent_names
              FROM hearings h
              INNER JOIN cases c ON c.case_id = h.case_id
              INNER JOIN complaints co ON co.complaint_id = c.complaint_id
@@ -255,7 +294,20 @@ class Report
 
         $calendarHearingsStmt = $this->conn->query(
             "SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.venue, h.status, h.queue_status,
-                        c.case_id, c.case_number, co.complaint_id, co.complaint_title
+                        h.actual_start_time, h.complainant_attendance, h.respondent_attendance, h.attendance_notes, h.mediation_attempt,
+                        c.case_id, c.case_number, co.complaint_id, co.complaint_title,
+                        COALESCE((
+                            SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')
+                            FROM complaint_parties cp
+                            INNER JOIN residents r ON r.resident_id = cp.resident_id
+                            WHERE cp.complaint_id = co.complaint_id AND cp.party_type = 'Complainant'
+                        ), '') AS complainant_names,
+                        COALESCE((
+                            SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')
+                            FROM complaint_parties cp
+                            INNER JOIN residents r ON r.resident_id = cp.resident_id
+                            WHERE cp.complaint_id = co.complaint_id AND cp.party_type = 'Respondent'
+                        ), '') AS respondent_names
              FROM hearings h
              INNER JOIN cases c ON c.case_id = h.case_id
              INNER JOIN complaints co ON co.complaint_id = c.complaint_id

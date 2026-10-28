@@ -50,6 +50,19 @@ if (!empty($_SESSION['flash']) && is_array($_SESSION['flash']) && !empty($_SESSI
     <script src="../../assets/js/notifications.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/notifications.js'); ?>"></script>
     <script src="../../assets/js/draft-manager.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/draft-manager.js'); ?>"></script>
     <script src="../../assets/js/draft-autosave.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/draft-autosave.js'); ?>"></script>
+    <script>
+        (function() {
+            try {
+                var saved = localStorage.getItem('agap_sidebar_collapsed');
+                var isMedium = window.innerWidth > 900 && window.innerWidth <= 1200;
+                if (saved === 'true' || (saved === null && isMedium)) {
+                    document.documentElement.classList.add('sidebar-collapsed');
+                } else if (saved === 'false') {
+                    document.documentElement.classList.add('sidebar-expanded');
+                }
+            } catch (e) {}
+        })();
+    </script>
     <meta name="agap-csrf-token" content="<?php echo htmlspecialchars($headerCsrfToken, ENT_QUOTES, 'UTF-8'); ?>">
 </head>
 <body>

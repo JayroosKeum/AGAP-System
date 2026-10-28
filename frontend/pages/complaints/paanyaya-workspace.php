@@ -618,6 +618,61 @@ include '../../layouts/header.php';
                 </label>
             </div>
 
+            <!-- Escalation 1st Mediation Hearing Schedule (Visible ONLY on Impasse / Max Failed) -->
+            <div id="workspaceEscalationSection" style="display: none; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 14px; margin-top: 14px; margin-bottom: 6px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 6px;">
+                    <h4 style="margin: 0; font-size: 0.92rem; color: #0f172a; font-weight: 700;">1st Formal Mediation Hearing Schedule (Tumana Rules)</h4>
+                    <span style="font-size: 0.72rem; background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; padding: 2px 8px; border-radius: 9999px; font-weight: 700;">
+                        Tuesdays ONLY · Court Room (Max 8/Day)
+                    </span>
+                </div>
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <label for="wsOutcomeMedDate" style="font-weight: 600; font-size: 0.82rem; margin: 0;">Mediation Date <span class="required-mark">*</span></label>
+                            <span id="wsOutcomeCapacityBadge" class="badge-capacity" style="font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 9999px; background: #e2e8f0; color: #475569;">
+                                Checking...
+                            </span>
+                        </div>
+                        <input type="date" id="wsOutcomeMedDate" name="mediation_date" style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                    </div>
+                    <div class="form-group">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <label for="wsOutcomeMedTime" style="font-weight: 600; font-size: 0.82rem; margin: 0;">Target Call Time <span class="required-mark">*</span></label>
+                            <span style="font-size: 0.72rem; color: #64748b;">1:00 PM - 4:30 PM</span>
+                        </div>
+                        <input type="time" id="wsOutcomeMedTime" name="mediation_time" min="13:00" max="16:30" step="900" value="13:00" style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                        <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px;">
+                            <button type="button" class="btn-slot-chip" onclick="document.getElementById('wsOutcomeMedTime').value='13:00'; document.getElementById('wsOutcomeMedTime').dispatchEvent(new Event('change'));" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:00 PM</button>
+                            <button type="button" class="btn-slot-chip" onclick="document.getElementById('wsOutcomeMedTime').value='13:15'; document.getElementById('wsOutcomeMedTime').dispatchEvent(new Event('change'));" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:15 PM</button>
+                            <button type="button" class="btn-slot-chip" onclick="document.getElementById('wsOutcomeMedTime').value='13:30'; document.getElementById('wsOutcomeMedTime').dispatchEvent(new Event('change'));" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:30 PM</button>
+                            <button type="button" class="btn-slot-chip" onclick="document.getElementById('wsOutcomeMedTime').value='13:45'; document.getElementById('wsOutcomeMedTime').dispatchEvent(new Event('change'));" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:45 PM</button>
+                            <button type="button" class="btn-slot-chip" onclick="document.getElementById('wsOutcomeMedTime').value='14:00'; document.getElementById('wsOutcomeMedTime').dispatchEvent(new Event('change'));" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">2:00 PM</button>
+                            <button type="button" class="btn-slot-chip" onclick="document.getElementById('wsOutcomeMedTime').value='14:30'; document.getElementById('wsOutcomeMedTime').dispatchEvent(new Event('change'));" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">2:30 PM</button>
+                            <button type="button" class="btn-slot-chip" onclick="document.getElementById('wsOutcomeMedTime').value='15:00'; document.getElementById('wsOutcomeMedTime').dispatchEvent(new Event('change'));" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">3:00 PM</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-group" style="margin-top: 8px;">
+                    <label style="font-weight: 600; font-size: 0.82rem;">Hearing Venue</label>
+                    <input type="text" name="venue" value="Lupon Court Room" readonly style="padding: 8px 10px; font-size: 0.88rem; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                </div>
+
+                <!-- Live Day Docket Peek -->
+                <div id="wsOutcomeDocketPeek" style="margin-top: 10px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;">
+                    <div style="font-size: 0.78rem; font-weight: 700; color: #334155; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
+                        <span>📋 Tuesday Mediation Docket Call (Lupon Court Room)</span>
+                        <span id="wsOutcomeDocketCount" style="font-size: 0.72rem; color: #64748b;">0 sessions</span>
+                    </div>
+                    <div id="wsOutcomeDocketList" style="font-size: 0.8rem; color: #64748b; line-height: 1.4;">
+                        Select a Tuesday to peek existing docket calls.
+                    </div>
+                </div>
+
+                <!-- Inline Overlap Conflict Alert -->
+                <div id="wsOutcomeConflictAlert" class="alert alert-danger" style="display: none; margin-top: 10px; padding: 8px 12px; font-size: 0.82rem; border-radius: 6px; background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5;"></div>
+            </div>
+
             <!-- Notes & Minutes -->
             <div class="form-group" style="margin-top: 14px;">
                 <label for="outcomeNotes" style="font-size: 0.84rem; font-weight: 700; color: #334155;">Minutes &amp; Outcome Notes</label>
@@ -629,6 +684,99 @@ include '../../layouts/header.php';
             <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px;">
                 <button type="button" class="btn-secondary" onclick="closeRecordOutcomeModal()">Cancel</button>
                 <button type="submit" class="btn-create" id="btnSubmitOutcome">Save Outcome Decision</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ============================================================== -->
+<!-- MODAL 1B: DIRECT ESCALATION TO FORMAL MEDIATION MODAL          -->
+<!-- ============================================================== -->
+<div id="directEscalationModal" class="modal" style="display: none;" role="dialog" aria-modal="true">
+    <div class="modal-content" style="max-width: 580px; padding: 24px; border-radius: 12px; box-shadow: 0 25px 30px -5px rgba(0,0,0,0.2);">
+        <div class="modal-header" style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 1.3rem;">⚖️</span>
+                <h2 style="font-size: 1.15rem; font-weight: 800; color: #0f172a; margin: 0;">
+                    Escalate Dispute to Formal Case Docketing
+                </h2>
+            </div>
+            <button type="button" class="close-btn" onclick="closeDirectEscalationModal()">&times;</button>
+        </div>
+
+        <form id="directEscalationForm" onsubmit="submitDirectEscalation(event)">
+            <input type="hidden" name="complaint_id" value="<?php echo (int)$complaintId; ?>">
+            <input type="hidden" name="outcome" value="Max_Failed_Escalate">
+
+            <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; font-size: 0.85rem; color: #991b1b; line-height: 1.45;">
+                <strong>Formal Mediation Docketing:</strong> The Paanyaya stage will be closed. An official Case Docket Number will be generated, starting the 15-day statutory Punong Barangay mediation timer, and KP Forms 7, 8, and 9 will be automatically prepared.
+            </div>
+
+            <!-- Escalation 1st Mediation Hearing Schedule -->
+            <div style="background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 14px; margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 6px;">
+                    <h4 style="margin: 0; font-size: 0.92rem; color: #0f172a; font-weight: 700;">1st Formal Mediation Hearing Schedule (Tumana Rules)</h4>
+                    <span style="font-size: 0.72rem; background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; padding: 2px 8px; border-radius: 9999px; font-weight: 700;">
+                        Tuesdays ONLY · Court Room (Max 8/Day)
+                    </span>
+                </div>
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <label for="directEscalationMedDate" style="font-weight: 700; font-size: 0.82rem; margin: 0;">Mediation Date <span class="required-mark">*</span></label>
+                            <span id="directEscalationCapacityBadge" class="badge-capacity" style="font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 9999px; background: #e2e8f0; color: #475569;">
+                                Checking...
+                            </span>
+                        </div>
+                        <input type="date" id="directEscalationMedDate" name="mediation_date" required style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                    </div>
+                    <div class="form-group">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <label for="directEscalationMedTime" style="font-weight: 700; font-size: 0.82rem; margin: 0;">Target Call Time <span class="required-mark">*</span></label>
+                            <span style="font-size: 0.72rem; color: #64748b;">1:00 PM – 4:30 PM</span>
+                        </div>
+                        <input type="time" id="directEscalationMedTime" name="mediation_time" min="13:00" max="16:30" step="900" value="13:00" required style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                        <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px;">
+                            <button type="button" class="btn-slot-chip" onclick="document.getElementById('directEscalationMedTime').value='13:00'; document.getElementById('directEscalationMedTime').dispatchEvent(new Event('change'));" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:00 PM</button>
+                            <button type="button" class="btn-slot-chip" onclick="document.getElementById('directEscalationMedTime').value='13:15'; document.getElementById('directEscalationMedTime').dispatchEvent(new Event('change'));" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:15 PM</button>
+                            <button type="button" class="btn-slot-chip" onclick="document.getElementById('directEscalationMedTime').value='13:30'; document.getElementById('directEscalationMedTime').dispatchEvent(new Event('change'));" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:30 PM</button>
+                            <button type="button" class="btn-slot-chip" onclick="document.getElementById('directEscalationMedTime').value='13:45'; document.getElementById('directEscalationMedTime').dispatchEvent(new Event('change'));" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:45 PM</button>
+                            <button type="button" class="btn-slot-chip" onclick="document.getElementById('directEscalationMedTime').value='14:00'; document.getElementById('directEscalationMedTime').dispatchEvent(new Event('change'));" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">2:00 PM</button>
+                            <button type="button" class="btn-slot-chip" onclick="document.getElementById('directEscalationMedTime').value='14:30'; document.getElementById('directEscalationMedTime').dispatchEvent(new Event('change'));" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">2:30 PM</button>
+                            <button type="button" class="btn-slot-chip" onclick="document.getElementById('directEscalationMedTime').value='15:00'; document.getElementById('directEscalationMedTime').dispatchEvent(new Event('change'));" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">3:00 PM</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-group" style="margin-top: 8px;">
+                    <label for="directEscalationVenue" style="font-weight: 700; font-size: 0.82rem;">Hearing Venue</label>
+                    <input type="text" id="directEscalationVenue" name="venue" value="Lupon Court Room" readonly style="padding: 8px 10px; font-size: 0.88rem; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                </div>
+
+                <!-- Live Day Docket Peek -->
+                <div id="directEscalationDocketPeek" style="margin-top: 10px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;">
+                    <div style="font-size: 0.78rem; font-weight: 700; color: #334155; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
+                        <span>📋 Tuesday Mediation Docket Call (Lupon Court Room)</span>
+                        <span id="directEscalationDocketCount" style="font-size: 0.72rem; color: #64748b;">0 sessions</span>
+                    </div>
+                    <div id="directEscalationDocketList" style="font-size: 0.8rem; color: #64748b; line-height: 1.4;">
+                        Select a Tuesday to peek existing docket calls.
+                    </div>
+                </div>
+
+                <!-- Inline Overlap Conflict Alert -->
+                <div id="directEscalationConflictAlert" class="alert alert-danger" style="display: none; margin-top: 10px; padding: 8px 12px; font-size: 0.82rem; border-radius: 6px; background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5;"></div>
+            </div>
+
+            <div class="form-group" style="margin-top: 10px;">
+                <label for="directEscalationNotes" style="font-size: 0.84rem; font-weight: 700; color: #334155;">Reasons for Escalation / Notes</label>
+                <textarea id="directEscalationNotes" name="outcome_notes" rows="2" placeholder="Describe reasons for formal case escalation..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.88rem;">Escalated to Formal Case Docketing from Paanyaya Pre-Docketing stage.</textarea>
+            </div>
+
+            <div id="directEscalationError" class="alert alert-danger" style="display: none; font-size: 0.84rem; margin-top: 10px;"></div>
+
+            <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;">
+                <button type="button" class="btn-secondary" onclick="closeDirectEscalationModal()">Cancel</button>
+                <button type="submit" class="btn-create" id="btnSubmitDirectEscalation" style="background: #dc2626; border-color: #dc2626;">Confirm Escalation &amp; Issue Summons</button>
             </div>
         </form>
     </div>
@@ -763,17 +911,19 @@ function openRecordOutcomeModal(sessionId, attemptNum) {
     
     const a1Box = document.getElementById('attempt1Options');
     const a2Box = document.getElementById('attempt2Options');
+    const escSec = document.getElementById('workspaceEscalationSection');
+    if (escSec) escSec.style.display = 'none';
     
     if (attemptNum >= 2) {
         if (a1Box) a1Box.style.display = 'none';
         if (a2Box) a2Box.style.display = 'block';
         const r = a2Box.querySelector('input[value="Settled"]');
-        if (r) r.checked = true;
+        if (r) { r.checked = true; handleOutcomeSelect(r); }
     } else {
         if (a1Box) a1Box.style.display = 'block';
         if (a2Box) a2Box.style.display = 'none';
         const r = a1Box.querySelector('input[value="Settled"]');
-        if (r) r.checked = true;
+        if (r) { r.checked = true; handleOutcomeSelect(r); }
     }
     
     const err = document.getElementById('outcomeErrorAlert');
@@ -790,6 +940,37 @@ function handleOutcomeSelect(radio) {
     document.querySelectorAll('.outcome-option-label').forEach(lbl => lbl.classList.remove('is-selected'));
     const parentLabel = radio.closest('.outcome-option-label');
     if (parentLabel) parentLabel.classList.add('is-selected');
+
+    const escSec = document.getElementById('workspaceEscalationSection');
+    const submitBtn = document.getElementById('btnSubmitOutcome');
+    if (radio.value === 'Impasse_Escalate' || radio.value === 'Max_Failed_Escalate') {
+        if (escSec) escSec.style.display = 'block';
+        if (submitBtn) {
+            submitBtn.textContent = 'Escalate to Formal Docketing';
+            submitBtn.style.background = '#dc2626';
+            submitBtn.style.borderColor = '#dc2626';
+        }
+        if (window.initMediationDocketScheduler) {
+            window.initMediationDocketScheduler({
+                dateInput: '#wsOutcomeMedDate',
+                timeInput: '#wsOutcomeMedTime',
+                badgeEl: '#wsOutcomeCapacityBadge',
+                docketEl: '#wsOutcomeDocketList',
+                docketCountEl: '#wsOutcomeDocketCount',
+                alertEl: '#wsOutcomeConflictAlert',
+                submitBtn: '#btnSubmitOutcome',
+                getComplaintId: () => COMPLAINT_ID
+            });
+        }
+    } else {
+        if (escSec) escSec.style.display = 'none';
+        if (submitBtn) {
+            submitBtn.textContent = 'Save Outcome Decision';
+            submitBtn.style.background = '#16a34a';
+            submitBtn.style.borderColor = '#16a34a';
+            submitBtn.disabled = false;
+        }
+    }
 }
 
 async function submitOutcome(e) {
@@ -889,25 +1070,60 @@ async function submitScheduleSecond(e) {
     }
 }
 
-async function triggerEscalation() {
-    if (!confirm('Escalate this dispute to Formal Case Docketing now?\n\nThis will assign an official formal Case Docket Number, advance the dispute to Mediation (1st Hearing), start the 15-day statutory Punong Barangay mediation timer, and auto-generate KP Forms 7, 8, and 9.')) {
-        return;
+function openDirectEscalationModal() {
+    const err = document.getElementById('directEscalationError');
+    if (err) err.style.display = 'none';
+    const modal = document.getElementById('directEscalationModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        if (window.initMediationDocketScheduler) {
+            window.initMediationDocketScheduler({
+                dateInput: '#directEscalationMedDate',
+                timeInput: '#directEscalationMedTime',
+                badgeEl: '#directEscalationCapacityBadge',
+                docketEl: '#directEscalationDocketList',
+                docketCountEl: '#directEscalationDocketCount',
+                alertEl: '#directEscalationConflictAlert',
+                submitBtn: '#btnSubmitDirectEscalation',
+                getComplaintId: () => COMPLAINT_ID
+            });
+        }
     }
+}
+
+function closeDirectEscalationModal() {
+    const modal = document.getElementById('directEscalationModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function triggerEscalation() {
+    openDirectEscalationModal();
+}
+
+async function submitDirectEscalation(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btnSubmitDirectEscalation');
+    const err = document.getElementById('directEscalationError');
+    if (err) err.style.display = 'none';
+
+    btn.disabled = true;
+    btn.textContent = 'Escalating & Generating Forms...';
+
+    const form = document.getElementById('directEscalationForm');
+    const formData = new FormData(form);
+    const payload = Object.fromEntries(formData.entries());
 
     try {
         const res = await fetch('../../../backend/api/paanyaya/record-outcome.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                complaint_id: COMPLAINT_ID,
-                outcome: 'Impasse_Escalate',
-                outcome_notes: 'Escalated to Formal Case Docketing from Paanyaya Pre-Docketing stage.'
-            })
+            body: JSON.stringify(payload)
         });
         const data = await res.json();
 
         if (data.success) {
             window.agapNotify?.(data.message, 'success', 'Formal Docketing');
+            closeDirectEscalationModal();
             setTimeout(() => {
                 if (data.workspace_url) {
                     window.location.href = data.workspace_url;
@@ -916,10 +1132,20 @@ async function triggerEscalation() {
                 }
             }, 1000);
         } else {
-            alert('Escalation failed: ' + (data.message || 'Unknown error'));
+            if (err) {
+                err.textContent = data.message || 'Failed to escalate dispute.';
+                err.style.display = 'block';
+            }
+            btn.disabled = false;
+            btn.textContent = 'Confirm Escalation & Issue Summons';
         }
-    } catch (err) {
-        alert('Network error during escalation: ' + err.message);
+    } catch (errExp) {
+        if (err) {
+            err.textContent = 'Network error: ' + errExp.message;
+            err.style.display = 'block';
+        }
+        btn.disabled = false;
+        btn.textContent = 'Confirm Escalation & Issue Summons';
     }
 }
 </script>
