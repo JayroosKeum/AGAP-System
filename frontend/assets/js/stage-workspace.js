@@ -932,7 +932,16 @@ function renderSessionsList(data, stage) {
         } else if (isConcluded) {
             queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;">Concluded (${s.actual_duration_minutes || s.duration_minutes || 45} mins)</span>`;
         } else {
-            queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0;">Waiting Room</span>`;
+            const dateObjForBadge = new Date(s.hearing_date ? s.hearing_date.replace(' ', 'T') : '');
+            const nowObjForBadge = new Date();
+            const elapsedMins = (!isNaN(dateObjForBadge.getTime()) && nowObjForBadge > dateObjForBadge) ? Math.floor((nowObjForBadge - dateObjForBadge) / 60000) : 0;
+            if (elapsedMins >= 60) {
+                queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5;">Delayed (${elapsedMins}m)</span>`;
+            } else if (elapsedMins > 0) {
+                queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: #fef3c7; color: #b45309; border: 1px solid #fde68a;">Grace Period (${elapsedMins}m)</span>`;
+            } else {
+                queueBadgeHtml = `<span style="font-size: 0.74rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0;">Waiting Room</span>`;
+            }
         }
 
         let partyAttHtml = '';
@@ -1037,19 +1046,36 @@ function renderSessionsList(data, stage) {
                 ${(() => {
                     const dateObj = new Date(s.hearing_date ? s.hearing_date.replace(' ', 'T') : '');
                     const nowObj = new Date();
-                    const isDelayed15 = (!isConcluded && !isInSession && !isReady && !isStandby && !isNaN(dateObj.getTime()) && (nowObj - dateObj) > 15 * 60000);
-                    if (!isDelayed15) return '';
-                    return `
-                        <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 14px; margin-bottom: 12px; font-size: 0.8rem; color: #991b1b; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                            <div>
-                                <strong>15-Minute Grace Period Expired:</strong> Scheduled call time has passed and parties remain incomplete.
+                    const elapsedMins = (!isNaN(dateObj.getTime()) && nowObj > dateObj) ? Math.floor((nowObj - dateObj) / 60000) : 0;
+                    const isGraceExpired = (!isConcluded && !isInSession && !isReady && !isStandby && elapsedMins >= 60);
+                    const isGraceActive = (!isConcluded && !isInSession && !isReady && !isStandby && elapsedMins > 0 && elapsedMins < 60);
+
+                    if (isGraceExpired) {
+                        return `
+                            <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 14px; margin-bottom: 12px; font-size: 0.8rem; color: #991b1b; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                                <div>
+                                    <strong>1-Hour Grace Period Expired:</strong> Scheduled call time has passed by ${elapsedMins} minutes and parties remain incomplete.
+                                </div>
+                                <div style="display: flex; gap: 6px;">
+                                    <button type="button" class="btn-secondary" onclick="handleDocketStandby(${s.hearing_id}, true)" style="font-size: 0.74rem; padding: 4px 8px; background: #fff;">Move to Standby</button>
+                                    <button type="button" class="btn-secondary" onclick="openAttendanceModal(${s.hearing_id})" style="font-size: 0.74rem; padding: 4px 8px; background: #fee2e2; border-color: #fca5a5; color: #991b1b;">Record Non-Appearance</button>
+                                </div>
                             </div>
-                            <div style="display: flex; gap: 6px;">
-                                <button type="button" class="btn-secondary" onclick="handleDocketStandby(${s.hearing_id}, true)" style="font-size: 0.74rem; padding: 4px 8px; background: #fff;">Move to Standby</button>
-                                <button type="button" class="btn-secondary" onclick="openAttendanceModal(${s.hearing_id})" style="font-size: 0.74rem; padding: 4px 8px; background: #fee2e2; border-color: #fca5a5; color: #991b1b;">Record Non-Appearance</button>
+                        `;
+                    }
+                    if (isGraceActive) {
+                        return `
+                            <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 8px 14px; margin-bottom: 12px; font-size: 0.8rem; color: #92400e; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                                <div>
+                                    <strong>1-Hour Grace Period Active:</strong> Call time was ${elapsedMins}m ago (${60 - elapsedMins}m remaining before non-appearance action).
+                                </div>
+                                <div style="display: flex; gap: 6px;">
+                                    <button type="button" class="btn-secondary" onclick="handleDocketStandby(${s.hearing_id}, true)" style="font-size: 0.74rem; padding: 4px 8px; background: #fff;" title="Put on standby to keep room available for other ready cases">Put on Standby</button>
+                                </div>
                             </div>
-                        </div>
-                    `;
+                        `;
+                    }
+                    return '';
                 })()}
 
                 <!-- Daily Docket Live Arrival / Readiness Tracking Bar -->
@@ -3304,6 +3330,9 @@ function renderAttendanceModalForm(data) {
                     </button>
                     <button type="button" class="delay-helper-pill pill-warning" onclick="appendDelayRemark('Nahuli ang panig')">
                         • Nahuli ang panig
+                    </button>
+                    <button type="button" class="delay-helper-pill pill-warning" style="background: #fef2f2; color: #991b1b; border-color: #fca5a5;" onclick="appendDelayRemark('Lumampas sa 1-hour grace period / Hindi sumipot')">
+                        • Lumampas sa 1-hour grace period
                     </button>
                     <button type="button" class="delay-helper-pill pill-success" onclick="appendDelayRemark('Nasa oras')">
                         • Nasa oras
