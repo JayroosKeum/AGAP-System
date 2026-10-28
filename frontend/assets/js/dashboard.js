@@ -142,7 +142,16 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (normStatus === 'ready' || normStatus === 'ready_for_hearing') {
             badgeBg = '#dcfce7'; badgeColor = '#15803d'; badgeBorder = '#86efac'; badgeLabel = 'Ready';
         } else if (normStatus === 'waiting' || normStatus === 'waiting_room') {
-            badgeBg = '#f1f5f9'; badgeColor = '#475569'; badgeBorder = '#cbd5e1'; badgeLabel = 'Waiting';
+            const hDate = new Date(hearing.hearing_date ? hearing.hearing_date.replace(' ', 'T') : '');
+            const nowD = new Date();
+            const diffMin = (!isNaN(hDate.getTime()) && nowD > hDate) ? Math.floor((nowD - hDate) / 60000) : 0;
+            if (diffMin >= 60) {
+                badgeBg = '#fee2e2'; badgeColor = '#991b1b'; badgeBorder = '#fca5a5'; badgeLabel = `Delayed (${diffMin}m)`;
+            } else if (diffMin > 0) {
+                badgeBg = '#fef3c7'; badgeColor = '#b45309'; badgeBorder = '#fde68a'; badgeLabel = `Grace Period (${diffMin}m)`;
+            } else {
+                badgeBg = '#f1f5f9'; badgeColor = '#475569'; badgeBorder = '#cbd5e1'; badgeLabel = 'Waiting';
+            }
         } else if (normStatus === 'standby' || normStatus === 'on_standby') {
             badgeBg = '#fef3c7'; badgeColor = '#b45309'; badgeBorder = '#fde68a'; badgeLabel = 'Standby';
         } else if (normStatus === 'concluded' || normStatus === 'completed') {
