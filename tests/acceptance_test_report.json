@@ -3,48 +3,54 @@
     "name": "Staff Authentication",
     "status": "PASSED",
     "details": "Logged in as Lupon Clerk and landed on Dashboard",
-    "time": "2026-10-26T22:14:04.330Z"
+    "time": "2026-10-28T22:46:42.639Z"
   },
   {
     "name": "Complaint Intake & Filing",
     "status": "PASSED",
-    "details": "Created Complaint #43 (Paanyaya Case #P-10-43-2026)",
-    "time": "2026-10-26T22:14:11.927Z"
+    "details": "Created Complaint #57 (Case #—)",
+    "time": "2026-10-28T22:46:54.258Z"
   },
   {
     "name": "Preliminary Paanyaya Service",
     "status": "PASSED",
     "details": "Paanyaya 1 marked Successfully Delivered; Summons gate unlocked",
-    "time": "2026-10-26T22:14:18.857Z"
+    "time": "2026-10-28T22:47:01.492Z"
   },
   {
     "name": "Formal Docketing & Summons",
     "status": "PASSED",
-    "details": "Assigned Docket Case #10-10-2026, scheduled 1st Mediation hearing #179, generated KP Forms 8 & 9",
-    "time": "2026-10-26T22:14:27.846Z"
+    "details": "Assigned Docket Case #10-11-2026, scheduled 1st Mediation hearing #207, generated KP Forms 8 & 9",
+    "time": "2026-10-28T22:47:11.867Z"
   },
   {
     "name": "1st Mediation Session Conducted",
     "status": "PASSED",
-    "details": "Finalized 1st Mediation minutes (Outcome: Continue Mediation); automatically booked 2nd Mediation hearing #180 under RA 7160 Sec. 410",
-    "time": "2026-10-26T22:14:37.618Z"
+    "details": "Finalized 1st Mediation minutes (Outcome: Continue Mediation); automatically booked 2nd Mediation hearing #208 under RA 7160 Sec. 410",
+    "time": "2026-10-28T22:47:21.618Z"
   },
   {
     "name": "2nd Mediation Concluded & Elevation Unlocked",
     "status": "PASSED",
     "details": "Completed 2 of 2 statutory mediation sessions; mediation unsuccessful, unlocked Pangkat referral",
-    "time": "2026-10-26T22:14:47.517Z"
+    "time": "2026-10-28T22:47:32.817Z"
   },
   {
     "name": "Pangkat Constitution & Document Generation",
     "status": "PASSED",
     "details": "Constituted 3-member Pangkat Tagapagkasundo (Chairperson, Secretary, Member); generated KP Forms 10, 11, and 12",
-    "time": "2026-10-26T22:14:50.110Z"
+    "time": "2026-10-28T22:47:36.601Z"
   },
   {
-    "name": "Acceptance Test Execution",
-    "status": "FAILED",
-    "details": "Conciliation minutes save failed: A valid hearing ID is required.",
-    "time": "2026-10-26T22:14:54.852Z"
+    "name": "Pangkat Conciliation & CFA Escalation",
+    "status": "PASSED",
+    "details": "Conducted 1st Conciliation session #209; recorded conciliation failure, elevated to Pending CFA",
+    "time": "2026-10-28T22:47:46.340Z"
+  },
+  {
+    "name": "CFA (KP Form 20) Generation & Verification",
+    "status": "PASSED",
+    "details": "Certificate to File Action (KP Form 20) successfully generated and displayed in high-fidelity preview modal for Case #10-11-2026",
+    "time": "2026-10-28T22:47:54.354Z"
   }
 ]

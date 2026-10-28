@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 
 
@@ -2061,7 +2061,7 @@ class KpFormService
             ");
             $updDeliv = $this->conn->prepare("
                 UPDATE summon_deliveries
-                SET document_id = COALESCE(document_id, ?),
+                SET document_id = ?,
                     form_type = 'KP Form 12',
                     remarks = COALESCE(?, remarks)
                 WHERE delivery_id = ?

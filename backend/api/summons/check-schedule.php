@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 session_start();
 header('Content-Type: application/json; charset=utf-8');
@@ -110,11 +110,13 @@ if ($complaintId || $getWindow) {
                 $canSchedule = (!$isPast = ($dStr < $todayStr)) && !$isFull;
             }
         } else {
-            $maxSlots = ($isTuesday && !$isWeekend && !$isHoliday) ? 8 : 0;
+            // Mediation (Punong Barangay): All working weekdays (Mon-Fri), 8AM-5PM.
+            // KP_SYSTEM_ENHANCEMENT_SPECS.md sec.83-84: "Enable scheduling across all regular working days."
+            $maxSlots = (!$isWeekend && !$isHoliday) ? 8 : 0;
             $avail = max(0, $maxSlots - $booked);
             $isFull = ($booked >= 8);
             $isPast = ($dStr < $todayStr);
-            $canSchedule = (!$isPast && !$isFull && $isTuesday && !$isHoliday && !$isWeekend);
+            $canSchedule = (!$isPast && !$isFull && !$isWeekend && !$isHoliday);
         }
 
         $days[$dStr] = [
@@ -200,17 +202,7 @@ if ($hearingType === 'Conciliation' && $isCurTuesday) {
         'venue' => $venue,
         'message' => 'Tuesdays reserved exclusively for Punong Barangay Mediation. Conciliation hearings must be held on non-Tuesday weekdays (Mondays, Wednesdays, Thursdays, or Fridays).'
     ];
-} elseif ($hearingType === 'Mediation' && !$isCurTuesday) {
-    $hasConflict = true;
-    $conflictData = [
-        'case_number' => '',
-        'hearing_type' => 'Tuesday Only',
-        'hearing_date' => $date,
-        'start_time' => '',
-        'end_time' => '',
-        'venue' => $venue,
-        'message' => 'Mediation hearings can only be held on Tuesdays (Barangay Tumana Katarungang Pambarangay Rules).'
-    ];
+
 } elseif ($isNonWorkingDay) {
     $hasConflict = true;
     $conflictData = [
@@ -224,7 +216,8 @@ if ($hearingType === 'Conciliation' && $isCurTuesday) {
     ];
 } elseif ($time !== '' && preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', $time)) {
     $timeMin = (int) date('H', strtotime($time)) * 60 + (int) date('i', strtotime($time));
-    if ($hearingType === 'Mediation' && ($timeMin < 780 || $timeMin > 990)) {
+    // Mediation: 8:00 AM - 5:00 PM (480-1020 min), excluding 12:00-13:00 lunch break handled downstream
+    if ($hearingType === 'Mediation' && ($timeMin < 480 || $timeMin >= 1020)) {
         $hasConflict = true;
         $conflictData = [
             'case_number' => '',
@@ -233,7 +226,7 @@ if ($hearingType === 'Conciliation' && $isCurTuesday) {
             'start_time' => $time,
             'end_time' => '',
             'venue' => $venue,
-            'message' => 'Mediation sessions on Tuesdays must have target call times between 1:00 PM and 4:30 PM (operating hours 1:00 PM – 5:00 PM).'
+            'message' => 'Mediation sessions must be scheduled between 8:00 AM and 5:00 PM on any working day (Monday to Friday, excluding holidays).'
         ];
     } else {
         $hearingDateTime = substr($date, 0, 10) . ' ' . substr($time, 0, 5) . ':00';
