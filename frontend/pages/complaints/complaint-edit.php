@@ -1117,6 +1117,30 @@ include __DIR__ . '/../../layouts/header.php';
                         </div>
                     </div>
 
+                    <!-- Dynamic KP Law Sec. 409 Non-Resident Respondent Warning & Jurisdiction Confirmation -->
+                    <div id="modalRespondentKpWarning" style="display: none; margin-top: 14px; background: #fffbeb; border: 1.5px solid #f59e0b; border-left: 5px solid #d97706; border-radius: 8px; padding: 14px 16px;">
+                        <div style="display: flex; align-items: flex-start; gap: 10px;">
+                            <span style="font-size: 1.4rem; line-height: 1; flex-shrink: 0;" aria-hidden="true">⚠️</span>
+                            <div style="flex: 1;">
+                                <div style="font-size: 0.88rem; font-weight: 700; color: #92400e; margin-bottom: 5px;">
+                                    Babala alinsunod sa KP Law (Sec. 409):
+                                </div>
+                                <div id="modalRespondentKpWarningText" style="font-size: 0.82rem; color: #78350f; line-height: 1.5; margin-bottom: 10px;">
+                                    Ang inirereklamo ay hindi residente ng Barangay Tumana. Ayon sa batas, ang reklamo ay dapat isampa sa Barangay kung saan nakatira ang Respondent <span id="modalRespondentLocalityText" style="font-weight: 700;"></span>, <strong>MALIBAN</strong> na lamang kung ang alitan ay tungkol sa <strong>Lupa/Paupahan sa Tumana (Sec. 409c)</strong> o naganap sa <strong>Lugar ng Trabaho/Paaralan sa Tumana (Sec. 409d)</strong>.
+                                </div>
+                                <div style="background: #fef3c7; border: 1px solid #fde68a; border-radius: 6px; padding: 10px 12px;">
+                                    <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; margin: 0; font-size: 0.84rem; font-weight: 600; color: #92400e;">
+                                        <input type="checkbox" id="modalRespondentKpExceptionCheck" style="margin-top: 2px; width: 16px; height: 16px; accent-color: #d97706;">
+                                        <span>Ang alitan ay naganap sa Ari-arian / Workplace sa loob ng Tumana</span>
+                                    </label>
+                                </div>
+                                <div id="modalRespondentKpBlockedMsg" style="display: none; margin-top: 8px; font-size: 0.8rem; font-weight: 700; color: #b91c1c; background: #fee2e2; border: 1px solid #fecaca; border-radius: 4px; padding: 8px 10px; line-height: 1.4;">
+                                    ⛔ Hinarang ang pag-save: Kung hindi iche-check ang kumpirmasyon ng eksepsiyon (Sec. 409c/d), hindi maaaring tanggapin ang reklamo laban sa non-resident sa Barangay Tumana. Mangyaring payuhan ang complainant na lumipat at isampa ang reklamo sa barangay kung saan nakatira ang respondent.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="party-field-col" style="margin-top: 10px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                             <label for="modalAddress" style="margin-bottom: 0;">Complete Street Address <span class="required-mark">*</span></label>
@@ -1528,6 +1552,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (modalEl) {
+            checkRespondentKpJurisdictionWarning();
             modalEl.style.display = 'flex';
             setTimeout(() => {
                 document.getElementById('modalFirstName')?.focus();
@@ -1612,6 +1637,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const gSec = document.getElementById('modalGuardianSection');
         if (gSec) gSec.style.display = 'none';
+        const kpExChk = document.getElementById('modalRespondentKpExceptionCheck');
+        if (kpExChk) kpExChk.checked = false;
+        const kpBlocked = document.getElementById('modalRespondentKpBlockedMsg');
+        if (kpBlocked) kpBlocked.style.display = 'none';
+        const kpWarn = document.getElementById('modalRespondentKpWarning');
+        if (kpWarn) kpWarn.style.display = 'none';
 
         ['modalMiddleUnknown', 'modalBirthUnknown', 'modalContactUnknown'].forEach(id => {
             const el = document.getElementById(id);
@@ -1665,6 +1696,9 @@ document.addEventListener('DOMContentLoaded', () => {
         setV('modalGuardianRelationship', p.guardian_relationship);
         setV('modalGuardianContact', p.guardian_contact);
         setV('modalGuardianAddress', p.guardian_address);
+        const kpExChk = document.getElementById('modalRespondentKpExceptionCheck');
+        if (kpExChk) kpExChk.checked = Boolean(p.kp_jurisdiction_exception);
+        checkRespondentKpJurisdictionWarning();
 
         const chkMid = document.getElementById('modalMiddleUnknown');
         const midInput = document.getElementById('modalMiddleName');
@@ -1805,6 +1839,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
             modalSearchDropdown.style.display = 'none';
+                checkRespondentKpJurisdictionWarning();
         });
 
         document.addEventListener('click', (e) => {
@@ -1896,7 +1931,56 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
 
-    // Residency Status <-> Purok automatic synchronization
+        function checkRespondentKpJurisdictionWarning() {
+        const warningBox = document.getElementById('modalRespondentKpWarning');
+        const localitySpan = document.getElementById('modalRespondentLocalityText');
+        const blockedMsg = document.getElementById('modalRespondentKpBlockedMsg');
+        if (!warningBox) return;
+
+        if (currentModalRole !== 'respondent') {
+            warningBox.style.display = 'none';
+            if (blockedMsg) blockedMsg.style.display = 'none';
+            return;
+        }
+
+        const purokVal = document.getElementById('modalPurok')?.value;
+        const isTenantVal = document.getElementById('modalIsTenant')?.value;
+        const isNonResident = (purokVal === 'Non-Resident' || isTenantVal === '2');
+
+        if (isNonResident) {
+            const addr = document.getElementById('modalAddress')?.value || '';
+            let detected = '';
+            const marikinaBrgys = [
+                'Concepcion Uno', 'Concepcion Dos', 'Malanday', 'Nangka', 'Parang',
+                'Marikina Heights', 'Fortune', 'Sto. Niño', 'San Roque', 'Santa Elena',
+                'Barangka', 'Tañong', 'Jesus Dela Peña', 'Industrial Valley Complex'
+            ];
+            for (const b of marikinaBrgys) {
+                if (new RegExp('\\b' + b.replace('.', '\\.') + '\\b', 'i').test(addr)) {
+                    detected = b;
+                    break;
+                }
+            }
+            if (!detected) {
+                const brgyMatch = addr.match(/(?:Barangay|Brgy\.?)\s+([A-Za-z0-9\s]+?)(?:,|$)/i);
+                if (brgyMatch) detected = brgyMatch[1].trim();
+            }
+
+            if (localitySpan) {
+                localitySpan.textContent = detected ? `(${detected})` : '(sa kanyang tinitirhang barangay)';
+            }
+
+            warningBox.style.display = 'block';
+        } else {
+            warningBox.style.display = 'none';
+            if (blockedMsg) blockedMsg.style.display = 'none';
+            const chk = document.getElementById('modalRespondentKpExceptionCheck');
+            if (chk) chk.checked = false;
+        }
+    }
+    window.checkRespondentKpJurisdictionWarning = checkRespondentKpJurisdictionWarning;
+
+// Residency Status <-> Purok automatic synchronization
     const modalIsTenantEl = document.getElementById('modalIsTenant');
     const modalPurokEl = document.getElementById('modalPurok');
     if (modalIsTenantEl && modalPurokEl) {
@@ -1907,12 +1991,24 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (modalPurokEl.value === 'Non-Resident') {
                 modalPurokEl.value = '';
             }
+            checkRespondentKpJurisdictionWarning();
         });
         modalPurokEl.addEventListener('change', () => {
             if (modalPurokEl.value === 'Non-Resident') {
                 modalIsTenantEl.value = '2';
             } else if (modalIsTenantEl.value === '2') {
                 modalIsTenantEl.value = '0'; // Reset to Permanent Resident when picking a Tumana purok
+            }
+            checkRespondentKpJurisdictionWarning();
+        });
+
+        document.getElementById('modalAddress')?.addEventListener('input', () => {
+            checkRespondentKpJurisdictionWarning();
+        });
+        document.getElementById('modalRespondentKpExceptionCheck')?.addEventListener('change', function() {
+            if (this.checked) {
+                const bMsg = document.getElementById('modalRespondentKpBlockedMsg');
+                if (bMsg) bMsg.style.display = 'none';
             }
         });
     }
@@ -2338,6 +2434,34 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        if (currentModalRole === 'respondent') {
+            const isNonResident = (purok === 'Non-Resident' || isTenant === '2');
+            if (isNonResident) {
+                const exceptionChecked = document.getElementById('modalRespondentKpExceptionCheck')?.checked;
+                if (!exceptionChecked) {
+                    const blockedMsg = document.getElementById('modalRespondentKpBlockedMsg');
+                    if (blockedMsg) blockedMsg.style.display = 'block';
+
+                    const warningBox = document.getElementById('modalRespondentKpWarning');
+                    if (warningBox) {
+                        warningBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        warningBox.style.boxShadow = '0 0 0 3px rgba(220, 38, 38, 0.45)';
+                        setTimeout(() => { if (warningBox) warningBox.style.boxShadow = 'none'; }, 2500);
+                    }
+
+                    const localitySpan = document.getElementById('modalRespondentLocalityText');
+                    const brgyHint = localitySpan?.textContent ? ` ${localitySpan.textContent}` : '';
+
+                    window.agapNotify?.(
+                        'Hinarang ang pag-save: Ayon sa KP Law (Sec. 409), ang reklamo ay dapat isampa sa Barangay kung saan nakatira ang inirereklamo' + brgyHint + '. Kung may legal na eksepsiyon (ari-arian o workplace sa Tumana), lagyan ng tsek ang "Kumpirmasyon ng Hurisdiksyon". Kung wala, payuhan ang complainant na lumipat sa barangay ng respondent.',
+                        'error'
+                    );
+                    document.getElementById('modalRespondentKpExceptionCheck')?.focus();
+                    return;
+                }
+            }
+        }
+
         const minorEl = document.getElementById('modalIsMinor');
         const isMinor = (minorEl?.type === 'checkbox') ? !!minorEl?.checked : (minorEl?.value === '1');
         if (isMinor) {
@@ -2382,6 +2506,7 @@ document.addEventListener('DOMContentLoaded', () => {
             contact_unknown: document.getElementById('modalContactUnknown')?.checked || false,
             middle_unknown: document.getElementById('modalMiddleUnknown')?.checked || false,
             birth_unknown: document.getElementById('modalBirthUnknown')?.checked || false,
+            kp_jurisdiction_exception: (currentModalRole === 'respondent' && (purok === 'Non-Resident' || isTenant === '2')) ? (document.getElementById('modalRespondentKpExceptionCheck')?.checked ? 1 : 0) : 0,
         };
 
         if (currentModalRole === 'complainant') {
@@ -2610,6 +2735,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <div class="party-summary-title-row">
                                     <span class="party-summary-name">${escapeHtml(fullName)}</span>
                                     <span class="party-role-pill ${rolePillClass}">${roleLabel}</span>
+                                    ${(r.purok === "Non-Resident" || r.is_tenant === "2") && r.kp_jurisdiction_exception ? '<span class="party-role-pill" style="background: #fef3c7; color: #92400e; border: 1px solid #fde68a; font-size: 0.68rem;">KP Sec. 409(c/d) Exception</span>' : ''}
                                 </div>
                                 <div class="party-summary-details">
                                     ${details.join('')}
