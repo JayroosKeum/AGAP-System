@@ -439,14 +439,14 @@ include '../../layouts/header.php';
                     <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 20px; margin-bottom: 22px;">
                         <div class="rm-section-title">
                             <span style="font-size: 1.1rem;">📝</span>
-                            <span>Seksyon 3: Salaysay at Buod ng Usapan (Discussion Summary &amp; Attachments)</span>
-                            <span class="required-mark" style="color: #dc2626;">*</span>
+                            <span>Seksyon 3: Salaysay at Buod ng Usapan</span>
+                            <span class="required-mark sec3-required-mark" style="color: #dc2626;">*</span>
                         </div>
 
                         <!-- Summary Textarea -->
                         <div class="form-group" style="margin-bottom: 18px;">
                             <label for="minutesDiscussionSummary" style="font-weight: 600; font-size: 0.86rem; color: #0f172a; display: block; margin-bottom: 5px;">
-                                Salaysay at Buod ng Napag-usapan (Summary of Statements &amp; Discussion) <span class="required-mark" style="color: #dc2626;">*</span>
+                                Buod ng Usapan / Tala ng Pagharap <span class="required-mark sec3-required-mark" style="color: #dc2626;">*</span>
                             </label>
                             <textarea id="minutesDiscussionSummary" name="discussion_summary" rows="5" required placeholder="Ibuod ang mga pahayag, sagot, at mga puntong napag-usapan ng magkabilang panig habang isinasagawa ang dialogue..." style="padding: 10px 12px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box;"></textarea>
                         </div>
@@ -489,7 +489,7 @@ include '../../layouts/header.php';
                             <label id="optMinutesDismissedWrap" class="rm-outcome-card dismissed-card" style="display: none; border: 1.5px solid #f87171; background: #fef2f2;">
                                 <input type="radio" name="outcome" value="Dismissed" onchange="toggleMinutesOutcomeViews()" style="margin-top: 4px;">
                                 <div>
-                                    <strong style="color: #991b1b; font-size: 0.94rem;">🚫 I-dismiss ang Reklamo / Dismiss Complaint (Complainant Absent)</strong>
+                                    <strong style="color: #991b1b; font-size: 0.94rem;">🚫 I-dismiss ang Reklamo / Dismiss Complaint (Complainant or Both Parties Absent)</strong>
                                     <p style="margin: 3px 0 0; font-size: 0.82rem; color: #b91c1c;">Hindi humarap o dumalo ang nagreklamo sa takdang oras ng pag-uusap. Isasara at ididismis ang reklamo alinsunod sa KP rules.</p>
                                 </div>
                             </label>
@@ -917,9 +917,28 @@ function handleMinutesAttendanceChange() {
     const settledRadio = form.querySelector('input[name="outcome"][value="Settled"]');
     const noAgreeRadio = form.querySelector('input[name="outcome"][value="No_Agreement"]');
     const attendanceNotice = document.getElementById('minutesAttendanceNotice');
+    const summaryTextarea = document.getElementById('minutesDiscussionSummary');
+    const sec3Marks = document.querySelectorAll('.sec3-required-mark');
 
-    if (compAttended === 'Absent') {
-        // Complainant is Absent -> Case must be Dismissed under KP law
+    // Handle Seksyon 3 requirement based on attendance
+    if (compAttended === 'Absent' || respAttended === 'Absent') {
+        if (summaryTextarea) {
+            summaryTextarea.required = false;
+            summaryTextarea.placeholder = 'Opsyonal: Hindi sumipot ang panig kaya walang pormal na pag-uusap na naisagawa.';
+        }
+        sec3Marks.forEach(el => { el.style.display = 'none'; });
+    } else {
+        if (summaryTextarea) {
+            summaryTextarea.required = true;
+            summaryTextarea.placeholder = 'Ibuod ang mga pahayag, sagot, at mga puntong napag-usapan ng magkabilang panig habang isinasagawa ang dialogue...';
+        }
+        sec3Marks.forEach(el => { el.style.display = 'inline'; });
+    }
+
+    const isComplainantOrBothAbsent = (compAttended === 'Absent') || (compAttended === 'Absent' && respAttended === 'Absent');
+
+    if (isComplainantOrBothAbsent) {
+        // Complainant is Absent OR Both Parties Absent -> Case must be Dismissed under KP law (Sec. 410b)
         if (optDismissedWrap) {
             optDismissedWrap.style.display = 'flex';
         }
@@ -940,7 +959,7 @@ function handleMinutesAttendanceChange() {
             attendanceNotice.style.background = '#fef2f2';
             attendanceNotice.style.border = '1px solid #fca5a5';
             attendanceNotice.style.color = '#991b1b';
-            attendanceNotice.innerHTML = '<strong>⚠️ Batas Katarungang Pambarangay (Sec. 410b):</strong> Dahil hindi humarap ang nagpaanyaya (Complainant), ang reklamo ay awtomatikong ididismis sa Seksyon 4 nang hindi maaaring i-akyat o i-settle.';
+            attendanceNotice.innerHTML = '<strong>⚠️ Batas Katarungang Pambarangay (Sec. 410b):</strong> Dahil hindi humarap ang nagrereklamo (o ang magkabilang panig), ang reklamo ay awtomatikong ididismis alinsunod sa KP Rules (Sec. 410b).';
         }
     } else {
         // Complainant is Present -> Dismissed is hidden
@@ -1492,7 +1511,7 @@ async function handleDialogueMinutesSubmit(event) {
 
     if (compAttended === 'Absent' && outcome !== 'Dismissed') {
         if (errBox) {
-            errBox.textContent = 'Dahil Absent ang nagpaanyaya (Complainant), ang reklamo ay dapat i-dismiss alinsunod sa Katarungang Pambarangay rules. Piliin ang "I-dismiss ang Reklamo".';
+            errBox.textContent = 'Dahil hindi humarap ang nagrereklamo (o ang magkabilang panig), ang reklamo ay dapat i-dismiss alinsunod sa KP Rules (Sec. 410b). Piliin ang "I-dismiss ang Reklamo".';
             errBox.style.display = 'block';
         }
         return;
@@ -1506,15 +1525,29 @@ async function handleDialogueMinutesSubmit(event) {
         return;
     }
 
-    // 3. Discussion Summary Validation
-    const discussionSummary = form.querySelector('textarea[name="discussion_summary"]')?.value?.trim();
-    if (!discussionSummary) {
-        if (errBox) {
-            errBox.textContent = 'Paki-lagay ang Salaysay at Buod ng Napag-usapan (Summary of Statements & Discussion).';
-            errBox.style.display = 'block';
+    // 3. Discussion Summary Validation (Required only if both parties attended)
+    const summaryInput = form.querySelector('textarea[name="discussion_summary"]');
+    let discussionSummary = summaryInput?.value?.trim() || '';
+
+    if (compAttended === 'Present' && respAttended === 'Present') {
+        if (!discussionSummary) {
+            if (errBox) {
+                errBox.textContent = 'Paki-lagay ang Salaysay at Buod ng Napag-usapan (Summary of Statements & Discussion).';
+                errBox.style.display = 'block';
+            }
+            document.getElementById('minutesDiscussionSummary')?.focus();
+            return;
         }
-        document.getElementById('minutesDiscussionSummary')?.focus();
-        return;
+    } else {
+        if (!discussionSummary) {
+            const absentPartyLabel = (compAttended === 'Absent' && respAttended === 'Absent')
+                ? 'magkabilang panig.'
+                : (compAttended === 'Absent' ? 'nagrereklamo (Complainant).' : 'inanyayahan (Respondent).');
+            discussionSummary = 'Walang naganap na pag-uusap dahil hindi sumipot ang ' + absentPartyLabel;
+            if (summaryInput) {
+                summaryInput.value = discussionSummary;
+            }
+        }
     }
 
     // 4. Settled Outcome: Agreed Terms Validation

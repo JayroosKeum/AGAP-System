@@ -1241,6 +1241,21 @@ class Paanyaya
             ];
         }
 
+        // Check complaint status (if dismissed or settled, cannot issue summons)
+        $cStmt = $this->conn->prepare('SELECT status FROM complaints WHERE complaint_id = ? LIMIT 1');
+        $cStmt->execute([$complaintId]);
+        $compRow = $cStmt->fetch(PDO::FETCH_ASSOC);
+        if ($compRow && in_array($compRow['status'], ['Dismissed', 'Settled', 'Closed', 'Resolved at Paanyaya / Closed'], true)) {
+            return [
+                'allowed' => false,
+                'reason' => 'case_closed',
+                'message' => 'Ang reklamo ay ' . ($compRow['status'] === 'Dismissed' ? 'na-dismiss' : 'nalutas na') . '. Hindi na maaaring maglabas ng pormal na summons.'
+            ];
+        }
+
+        $minutes1 = $this->getStageMinutes($complaintId, self::STAGE_1);
+        $minutes2 = $this->getStageMinutes($complaintId, self::STAGE_2);
+
         // Check attempts and outcomes for Stage 1
         $countStmt = $this->conn->prepare("
             SELECT COUNT(*) AS total_count,
@@ -1263,33 +1278,26 @@ class Paanyaya
             ];
         }
 
-        // If Paanyaya 2 was initiated or required
-        $isPaanyaya2Active = ($stage1['review_status'] === 'Approved for Paanyaya 2') || ($stage2 && in_array($stage2['status'], ['In Progress', 'Successfully Delivered', 'Attempts Exhausted – For Review', 'Completed'], true));
+        // Check if Paanyaya 1 chose 2nd Paanyaya
+        $isP2Chosen = ($minutes1 && ($minutes1['complainant_choice'] ?? '') === 'Request_Paanyaya_2');
+
+        // If Paanyaya 2 was chosen, initiated, or active
+        $isPaanyaya2Active = $isP2Chosen || ($stage1['review_status'] === 'Approved for Paanyaya 2') || ($stage2 && in_array($stage2['status'], ['In Progress', 'Successfully Delivered', 'Attempts Exhausted – For Review', 'Completed'], true));
 
         if ($isPaanyaya2Active) {
-            if (!$stage2 || $stage2['status'] === 'Not Started') {
-                return [
-                    'allowed' => false,
-                    'reason' => 'paanyaya_2_not_started',
-                    'message' => 'Complete the required Paanyaya 2 delivery attempts before issuing the first formal summons.'
-                ];
+            $count2 = 0;
+            $isDelivered2 = false;
+            $isExhausted2 = false;
+
+            if ($stage2) {
+                $countStmt->execute([(int)$stage2['id']]);
+                $stats2 = $countStmt->fetch(PDO::FETCH_ASSOC);
+                $count2 = (int)($stats2['total_count'] ?? 0);
+                $isDelivered2 = ((int)($stats2['delivered_count'] ?? 0) > 0) || ($stage2['status'] === 'Successfully Delivered');
+                $isExhausted2 = ($count2 >= $maxAttempts && !$isDelivered2) || ($stage2['status'] === 'Attempts Exhausted – For Review');
             }
 
-            $countStmt->execute([(int)$stage2['id']]);
-            $stats2 = $countStmt->fetch(PDO::FETCH_ASSOC);
-            $count2 = (int)($stats2['total_count'] ?? 0);
-            $isDelivered2 = ((int)($stats2['delivered_count'] ?? 0) > 0) || ($stage2['status'] === 'Successfully Delivered');
-            $isExhausted2 = ($count2 >= $maxAttempts && !$isDelivered2) || ($stage2['status'] === 'Attempts Exhausted – For Review');
-
-            // 1. If Paanyaya 2 was served -> UNLOCKED!
-            if ($isDelivered2 || $stage2['status'] === 'Completed') {
-                return [
-                    'allowed' => true,
-                    'message' => 'Paanyaya 2 successfully served. Formal summons unlocked.'
-                ];
-            }
-
-            // 2. If 6 attempts failed on Paanyaya 2 -> UNLOCKED!
+            // 1. If Paanyaya 2 delivery attempts exhausted -> UNLOCKED!
             if ($isExhausted2 || $count2 >= $maxAttempts) {
                 return [
                     'allowed' => true,
@@ -1297,11 +1305,19 @@ class Paanyaya
                 ];
             }
 
-            // Still in progress (< 6 attempts and unserved)
+            // 2. If Paanyaya 2 dialogue minutes recorded and escalate to Mediation -> UNLOCKED!
+            if ($minutes2 && ($minutes2['outcome'] === 'No_Agreement' || $minutes2['complainant_choice'] === 'Escalate_Mediation')) {
+                return [
+                    'allowed' => true,
+                    'message' => 'Paanyaya 2 dialogue completed with no settlement. Formal summons unlocked for Mediation.'
+                ];
+            }
+
+            // 3. Otherwise, formal summons must remain locked until Paanyaya 2 is concluded
             return [
                 'allowed' => false,
                 'reason' => 'paanyaya_2_in_progress',
-                'message' => 'Paanyaya 2 delivery attempt ' . $count2 . ' of ' . $maxAttempts . ' recorded. Must be served or complete ' . $maxAttempts . ' failed attempts before issuing summons.'
+                'message' => 'Ikalawang Paanyaya ang piniling hakbang. Tapusin muna ang Paanyaya 2 bago maglabas ng pormal na summons para sa Mediation.'
             ];
         }
 
@@ -1361,8 +1377,10 @@ class Paanyaya
 
         $isP1Solved = (($compRow['status'] ?? '') === 'Settled') ||
                       (($compRow['status'] ?? '') === 'Resolved at Paanyaya / Closed') ||
+                      (($compRow['status'] ?? '') === 'Dismissed') ||
                       (($compRow['paanyaya_1_outcome'] ?? '') === 'Settled') ||
-                      ($minutes1 && $minutes1['outcome'] === 'Settled');
+                      (($compRow['paanyaya_1_outcome'] ?? '') === 'Dismissed') ||
+                      ($minutes1 && in_array($minutes1['outcome'], ['Settled', 'Dismissed'], true));
 
         $p2WasIssued = ($stage2['issued_at'] !== null) || ($count2 > 0);
 
@@ -2066,7 +2084,11 @@ class Paanyaya
         $agreedTerms = trim((string)($data['agreed_terms'] ?? ($data['terms'] ?? '')));
 
         if ($discussionSummary === '') {
-            $discussionSummary = 'Informal dialogue conducted. Summary of discussion recorded.';
+            if ($compAttended === 'Absent' || $respAttended === 'Absent') {
+                $discussionSummary = 'Walang naganap na pag-uusap dahil hindi sumipot ang partido.';
+            } else {
+                $discussionSummary = 'Informal dialogue conducted. Summary of discussion recorded.';
+            }
         }
 
         // Determine outcome with statutory attendance enforcement
@@ -2233,12 +2255,12 @@ class Paanyaya
                     SET status = 'Dismissed',
                         resolved_without_docketing = 1,
                         ltia_category = 'Dismissed at Paanyaya',
-                        paanyaya_1_outcome = 'Dismissed',
-                        paanyaya_complainant_choice = 'Dismissed',
+                        paanyaya_1_outcome = IF(? = 'Paanyaya 1', 'Dismissed', COALESCE(paanyaya_1_outcome, 'Dismissed')),
+                        paanyaya_complainant_choice = IF(? = 'Paanyaya 1', 'Dismissed', COALESCE(paanyaya_complainant_choice, 'Dismissed')),
                         updated_at = CURRENT_TIMESTAMP
                     WHERE complaint_id = ?
                 ");
-                $updComp->execute([$complaintId]);
+                $updComp->execute([$stageType, $stageType, $complaintId]);
 
                 $updStages = $this->conn->prepare("
                     UPDATE paanyaya_stages

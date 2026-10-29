@@ -199,6 +199,14 @@ function canAccessTab(tabId, caseStatus, stageProgress) {
     const lifecycle = progress.lifecycle_status || complaint.lifecycle_status || '';
     const caseId = complaint.case_id || complaint.case_workspace?.case?.case_id || (new URLSearchParams(window.location.search)).get('case_id');
 
+    if (complaint.status === 'Dismissed' || cStatus === 'Dismissed') {
+        return {
+            allowed: false,
+            prerequisite: 'Paanyaya',
+            message: 'Ang reklamo ay opisyal nang na-dismiss. Hindi na maaaring buksan ang mga susunod na yugto.'
+        };
+    }
+
     const paanyayaStatuses = [
         'Pre-Docketed (Paanyaya)',
         '1st Paanyaya Failed (No-Show)',
@@ -206,7 +214,14 @@ function canAccessTab(tabId, caseStatus, stageProgress) {
         'Paanyaya'
     ];
     const isPaanyayaActive = paanyayaStatuses.includes(complaint.status) && !caseId;
-    const isPaanyayaCompletedOrEscalated = !isPaanyayaActive && (
+
+    const summonsPrereq = complaint.paanyaya_stages?.summons_prerequisite;
+    const isSummonsLocked = summonsPrereq && (summonsPrereq.allowed === false) && !caseId;
+    const p1Choice = complaint.paanyaya_stages?.stage_1?.complainant_choice;
+    const p2Stage = complaint.paanyaya_stages?.stage_2;
+    const isP2Pending = (p1Choice === 'Request_Paanyaya_2') && (!p2Stage || !p2Stage.is_completed) && (!summonsPrereq || !summonsPrereq.allowed) && !caseId;
+
+    const isPaanyayaCompletedOrEscalated = !isPaanyayaActive && !isSummonsLocked && !isP2Pending && (
         Boolean(caseId) ||
         ['Mediation', 'Conciliation', 'Arbitration', 'CFA', 'Settled', 'Resolution / Closed'].includes(lifecycle) ||
         ['Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Closed'].includes(cStatus) ||
@@ -217,11 +232,11 @@ function canAccessTab(tabId, caseStatus, stageProgress) {
     );
 
     if (tabId === 'tab-mediation') {
-        if (!isPaanyayaCompletedOrEscalated) {
+        if (!isPaanyayaCompletedOrEscalated || isSummonsLocked || isP2Pending) {
             return {
                 allowed: false,
                 prerequisite: 'Paanyaya',
-                message: 'This stage is locked until Paanyaya is completed'
+                message: summonsPrereq?.message || 'This stage is locked until Paanyaya is completed'
             };
         }
         return { allowed: true };
@@ -2723,7 +2738,12 @@ function renderPaanyayaTab(data) {
     const stage0Badge = document.getElementById('stage0StatusText');
     const stage0Icon = document.getElementById('stage0Icon');
     if (stage0Badge) {
-        if (data.status === 'Settled' || data.status === 'Resolved at Paanyaya / Closed' || stage1.outcome === 'Settled' || stage1.minutes?.outcome === 'Settled') {
+        if (data.status === 'Dismissed' || stage1.outcome === 'Dismissed' || stage1.minutes?.outcome === 'Dismissed') {
+            stage0Badge.textContent = 'Dismissed at Paanyaya (Complainant Absent)';
+            stage0Badge.style.background = '#fee2e2';
+            stage0Badge.style.color = '#991b1b';
+            if (stage0Icon) stage0Icon.textContent = '🚫';
+        } else if (data.status === 'Settled' || data.status === 'Resolved at Paanyaya / Closed' || stage1.outcome === 'Settled' || stage1.minutes?.outcome === 'Settled') {
             stage0Badge.textContent = 'Resolved at Paanyaya (Informal Settlement)';
             stage0Badge.style.background = '#dcfce7';
             stage0Badge.style.color = '#15803d';
@@ -2791,9 +2811,13 @@ function renderPaanyayaTab(data) {
 
     const isP1Solved = (data.status === 'Settled') ||
                        (data.status === 'Resolved at Paanyaya / Closed') ||
+                       (data.status === 'Dismissed') ||
                        (data.paanyaya_1_outcome === 'Settled') ||
+                       (data.paanyaya_1_outcome === 'Dismissed') ||
                        (stage1.outcome === 'Settled') ||
+                       (stage1.outcome === 'Dismissed') ||
                        (stage1.minutes?.outcome === 'Settled') ||
+                       (stage1.minutes?.outcome === 'Dismissed') ||
                        (stage2.bypassed === true);
 
     const hasP2Minutes = Boolean(stage2.minutes_recorded && stage2.minutes);
@@ -4569,12 +4593,18 @@ async function loadCaseProgress(complaintId) {
             issueBtn.style.cursor = '';
             issueBtn.removeAttribute('data-summon-gated');
 
-            if (btnInfo.disabled) {
-                // Visually disabled — mark as gated so handleIssueSummonClick can redirect to proof page
+            const paaPrereq = window.complaintData?.paanyaya_stages?.summons_prerequisite;
+            const isPaaLocked = paaPrereq && (paaPrereq.allowed === false);
+
+            if (btnInfo.disabled || isPaaLocked) {
+                // Visually disabled — mark as gated so handleIssueSummonClick can redirect to proof page or notify
                 issueBtn.setAttribute('data-summon-gated', 'true');
                 issueBtn.className = issueBtn.closest('.case-bar-right') ? 'btn-case-outline disabled' : 'btn-secondary';
                 issueBtn.style.opacity = '0.6';
                 issueBtn.style.cursor = 'not-allowed';
+                if (isPaaLocked && paaPrereq.message) {
+                    issueBtn.title = paaPrereq.message;
+                }
             } else if (btnInfo.action === 'view_proof') {
                 issueBtn.className = issueBtn.closest('.case-bar-right') ? 'btn-case-outline' : 'btn-secondary';
             } else {

@@ -203,17 +203,37 @@ include '../../layouts/header.php';
                             <div class="doc-viewer-card">
                                 <div class="doc-viewer-header">
                                     <div class="doc-viewer-title-group">
-                                        <span class="doc-viewer-icon"></span>
+                                        <span class="doc-viewer-icon">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #38bdf8; display: block;">
+                                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                                <polyline points="14 2 14 8 20 8"></polyline>
+                                                <line x1="16" y1="13" x2="8" y2="13"></line>
+                                                <line x1="16" y1="17" x2="8" y2="17"></line>
+                                                <polyline points="10 9 9 9 8 9"></polyline>
+                                            </svg>
+                                        </span>
                                         <div>
                                             <div class="doc-viewer-title">Document Viewer</div>
                                             <div class="doc-viewer-subtitle" id="docViewerStatusText">No document loaded</div>
                                         </div>
                                     </div>
                                     <div class="doc-viewer-toolbar">
-                                        <button type="button" class="btn-viewer-tool" id="btnDocZoomIn" title="Zoom In">Zoom In</button>
-                                        <button type="button" class="btn-viewer-tool" id="btnDocZoomOut" title="Zoom Out">Zoom Out</button>
-                                        <button type="button" class="btn-viewer-tool" id="btnDocRotate" title="Rotate 90°">Rotate</button>
-                                        <button type="button" class="btn-viewer-tool" id="btnDocReset" title="Reset View">⟲ Reset</button>
+                                        <button type="button" class="btn-viewer-tool" id="btnDocZoomIn" title="Zoom In">
+                                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+                                            <span>Zoom In</span>
+                                        </button>
+                                        <button type="button" class="btn-viewer-tool" id="btnDocZoomOut" title="Zoom Out">
+                                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+                                            <span>Zoom Out</span>
+                                        </button>
+                                        <button type="button" class="btn-viewer-tool" id="btnDocRotate" title="Rotate 90 degrees">
+                                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                                            <span>Rotate</span>
+                                        </button>
+                                        <button type="button" class="btn-viewer-tool" id="btnDocReset" title="Reset View">
+                                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                                            <span>Reset</span>
+                                        </button>
                                     </div>
                                 </div>
 
