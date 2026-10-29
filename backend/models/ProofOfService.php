@@ -123,6 +123,16 @@ class ProofOfService
                     (
                         SELECT CASE
                             WHEN sd.delivery_status IN ('Served', 'Served Personal', 'Served Substituted', 'Served Refused') THEN 'Served'
+                            WHEN sd.delivery_status = 'Unserved' THEN 'Unserved'
+                            ELSE 'Pending'
+                        END
+                        FROM summon_deliveries sd
+                        WHERE sd.hearing_id = h.hearing_id AND sd.party_type = 'Complainant'
+                        ORDER BY sd.delivery_id DESC LIMIT 1
+                    ),
+                    (
+                        SELECT CASE
+                            WHEN sd.delivery_status IN ('Served', 'Served Personal', 'Served Substituted', 'Served Refused') THEN 'Served'
                             WHEN (SELECT h_sub.hearing_type FROM hearings h_sub WHERE h_sub.case_id = c.case_id ORDER BY h_sub.hearing_date ASC, h_sub.hearing_id ASC LIMIT 1) = 'Mediation' THEN 'Served'
                             ELSE sd.delivery_status
                         END
@@ -130,13 +140,22 @@ class ProofOfService
                         WHERE sd.case_id = c.case_id AND sd.party_type = 'Complainant'
                         ORDER BY sd.delivery_id DESC LIMIT 1
                     ),
-                    'Served'
+                    'Pending'
                 ) AS complainant_service_status,
-                (
-                    SELECT sd.delivery_status
-                    FROM summon_deliveries sd
-                    WHERE sd.case_id = c.case_id AND sd.party_type = 'Respondent'
-                    ORDER BY sd.attempt_number DESC, sd.delivery_id DESC LIMIT 1
+                COALESCE(
+                    (
+                        SELECT sd.delivery_status
+                        FROM summon_deliveries sd
+                        WHERE sd.hearing_id = h.hearing_id AND sd.party_type = 'Respondent'
+                        ORDER BY sd.attempt_number DESC, sd.delivery_id DESC LIMIT 1
+                    ),
+                    (
+                        SELECT sd.delivery_status
+                        FROM summon_deliveries sd
+                        WHERE sd.case_id = c.case_id AND sd.party_type = 'Respondent'
+                        ORDER BY sd.attempt_number DESC, sd.delivery_id DESC LIMIT 1
+                    ),
+                    'Pending'
                 ) AS respondent_service_status,
                 (
                     SELECT COUNT(*)

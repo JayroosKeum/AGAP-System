@@ -53,17 +53,33 @@ class GPSController
         $db = (new Database())->connect();
 
         $requestedStage = trim((string)($_GET['stage'] ?? $_GET['stage_type'] ?? ''));
+        $requestedHearingId = filter_input(INPUT_GET, 'hearing_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
         $isPaanyayaParam = (!empty($_GET['is_paanyaya']) && $_GET['is_paanyaya'] != '0') ||
                            strpos($requestedStage, 'Paanyaya') === 0;
 
         $hearings = [];
         if (!$isPaanyayaParam) {
-            $hOrderSql = "hearing_date DESC, hearing_id DESC";
-            if ($requestedStage === 'Conciliation') {
-                $hOrderSql = "CASE WHEN hearing_type = 'Conciliation' THEN 0 ELSE 1 END, hearing_date DESC, hearing_id DESC";
-            } elseif ($requestedStage === 'Mediation') {
-                $hOrderSql = "CASE WHEN hearing_type IN ('Initial Hearing', 'Mediation') THEN 0 ELSE 1 END, hearing_date DESC, hearing_id DESC";
+            if (!$requestedStage) {
+                $cStmt = $db->prepare("SELECT case_status FROM cases WHERE case_id = ?");
+                $cStmt->execute([$caseId]);
+                $requestedStage = (string)$cStmt->fetchColumn();
             }
+
+            $orderClauses = [];
+            if ($requestedHearingId) {
+                $orderClauses[] = "CASE WHEN hearing_id = " . (int)$requestedHearingId . " THEN 0 ELSE 1 END";
+            }
+            if ($requestedStage === 'Conciliation') {
+                $orderClauses[] = "CASE WHEN hearing_type = 'Conciliation' THEN 0 ELSE 1 END";
+            } elseif ($requestedStage === 'Mediation') {
+                $orderClauses[] = "CASE WHEN hearing_type IN ('Initial Hearing', 'Mediation') THEN 0 ELSE 1 END";
+            }
+            $orderClauses[] = "CASE WHEN status IN ('Scheduled', 'In Progress', 'Active') THEN 0 ELSE 1 END";
+            $orderClauses[] = "hearing_date DESC";
+            $orderClauses[] = "hearing_id DESC";
+
+            $hOrderSql = implode(", ", $orderClauses);
+
             $stmt = $db->prepare("
                 SELECT hearing_id, hearing_type, hearing_date, venue, status
                 FROM hearings
@@ -264,6 +280,11 @@ class GPSController
                     'status' => $h['status'],
                     'max_attempts' => $maxSummons,
                     'deliveries' => $delivResult['deliveries'],
+                    'complainant_delivery' => $delivResult['complainant_delivery'] ?? null,
+                    'complainant_attempts' => $delivResult['complainant_attempts'] ?? [],
+                    'latest_complainant_attempt' => $delivResult['latest_complainant_attempt'] ?? null,
+                    'can_initiate_next_comp_attempt' => $delivResult['can_initiate_next_comp_attempt'] ?? false,
+                    'next_comp_attempt_number' => $delivResult['next_comp_attempt_number'] ?? null,
                     'respondent_attempts' => $delivResult['respondent_attempts'] ?? [],
                     'can_initiate_next_attempt' => $delivResult['can_initiate_next_attempt'] ?? false,
                     'next_attempt_number' => $delivResult['next_attempt_number'] ?? null,
@@ -526,7 +547,7 @@ class GPSController
         return $result;
     }
 
-    public function initiateNextAttempt(int $caseId, int $userId, ?int $hearingId = null): array
+    public function initiateNextAttempt(int $caseId, int $userId, ?int $hearingId = null, string $partyType = 'Respondent'): array
     {
         require_once __DIR__ . '/../services/SummonDeliveryService.php';
         require_once __DIR__ . '/../config/database.php';
@@ -534,7 +555,7 @@ class GPSController
         require_once __DIR__ . '/../models/Setting.php';
         $maxSummons = (int) Setting::getSetting('summons_max_attempts', 6, $db);
         $deliveryService = new SummonDeliveryService($db);
-        return $deliveryService->initiateNextAttempt($caseId, $userId, $hearingId);
+        return $deliveryService->initiateNextAttempt($caseId, $userId, $hearingId, $partyType);
     }
 
     public function markKp8Served(int $caseId, int $documentId, ?int $hearingId, int $userId): array

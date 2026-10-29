@@ -659,14 +659,17 @@ async function renderExpandedCaseView(caseId) {
     if (!container) return;
 
     try {
-        const result = await gpsApi(`${proofApiUrl}?case_id=${encodeURIComponent(caseId)}&mode=deliveries`);
+        const currentCaseItem = allLoadedSummonCases.find(c => Number(c.case_id) === Number(caseId)) || {};
+        const targetHearingParam = currentCaseItem.hearing_id ? `&hearing_id=${encodeURIComponent(currentCaseItem.hearing_id)}` : '';
+        const targetStageParam = (currentCaseItem.hearing_type || currentCaseItem.case_status) ? `&stage=${encodeURIComponent(currentCaseItem.hearing_type || currentCaseItem.case_status)}` : '';
+        const result = await gpsApi(`${proofApiUrl}?case_id=${encodeURIComponent(caseId)}&mode=deliveries${targetHearingParam}${targetStageParam}`);
         const data = result.data || {};
 
         if (!data.has_hearings || !Array.isArray(data.hearings) || data.hearings.length === 0) {
             container.innerHTML = `
                 <div style="padding: 24px; text-align: center; color: #64748b; background: #fff; border: 1px dashed #cbd5e1; border-radius: 8px;">
                     <div style="font-size: 1.1rem; font-weight: 600; color: #1e293b; margin-bottom: 4px;">No Scheduled Hearings Found</div>
-                    <p style="margin: 0; font-size: 0.86rem;">No mediation hearing has been scheduled yet for this case. Issue a summons to establish hearing date and notice tracking.</p>
+                    <p style="margin: 0; font-size: 0.86rem;">No hearing has been scheduled yet for this case. Issue a summons/notice to establish hearing date and delivery tracking.</p>
                 </div>
             `;
             return;
@@ -674,60 +677,73 @@ async function renderExpandedCaseView(caseId) {
 
         const activeHearing = data.hearings[0];
         window.activeExpandedHearingData = activeHearing;
-        const currentCaseItem = allLoadedSummonCases.find(c => Number(c.case_id) === Number(caseId)) || {};
         const isPaanyayaCase = Boolean(currentCaseItem.is_paanyaya || activeHearing.is_paanyaya);
+        const isConciliation = (activeHearing.hearing_type === 'Conciliation' || currentCaseItem.case_status === 'Conciliation');
         const deliveries = activeHearing.deliveries || [];
         const respAttempts = activeHearing.respondent_attempts || [];
+        const compAttempts = activeHearing.complainant_attempts || [];
+
+        const maxAllowedAttempts = isPaanyayaCase
+            ? Number(activeHearing.max_attempts || window.AGAP_SETTINGS?.paanyaya_max_attempts || 6)
+            : Number(activeHearing.max_attempts || window.AGAP_SETTINGS?.summons_max_attempts || 6);
+
         const cfaElig = data.cfa_eligibility || activeHearing.cfa_eligibility || {
             eligible: false,
             failed_count: 0,
             attempts_count: 0,
-            reason: 'CFA is locked until all ${maxAllowedAttempts} summons attempts have failed.'
+            reason: `CFA is locked until all ${maxAllowedAttempts} summons attempts have failed.`
         };
         const failedCount = Number(cfaElig.failed_count || 0);
         const isCfaEligible = Boolean(cfaElig.eligible);
 
         const kpNumber = currentCaseItem.case_number || `Case #${caseId}`;
         const complaintTitle = currentCaseItem.complaint_title || 'Barangay Grievance Case';
-        const hearingDateFormatted = activeHearing.hearing_date ? formatDateTime(activeHearing.hearing_date) : 'Mediation Session';
+        const hearingDateFormatted = activeHearing.hearing_date ? formatDateTime(activeHearing.hearing_date) : `${activeHearing.hearing_type || 'Hearing'} Session`;
         const venue = activeHearing.venue || 'Barangay Tumana Lupon Office';
+        const ordinals = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th'];
 
-        // 1. Complainant Details (Left Column)
-        const compDeliv = deliveries.find(d => d.party_type === 'Complainant') || null;
-        const compProfile = compDeliv?.party_profile || {};
-        const compName = compDeliv?.recipient_name || compProfile.resident_name || currentCaseItem.complainant_names || 'Complainant';
+        // 1. Complainant Party Details & Status
+        const compDeliv = deliveries.find(d => d.party_type === 'Complainant') || activeHearing.complainant_delivery || null;
+        const compProfile = compDeliv?.party_profile || (compAttempts[0]?.party_profile) || {};
+        const compName = compDeliv?.recipient_name || compProfile.resident_name || (compAttempts[0]?.recipient_name) || currentCaseItem.complainant_names || 'Complainant';
+        const compResidentId = compDeliv?.resident_id || compProfile.resident_id || (compAttempts[0]?.resident_id) || 0;
+
         const isMediation = (activeHearing.hearing_type === 'Mediation');
-        const compStatus = (isMediation && (!compDeliv?.delivery_status || compDeliv.delivery_status === 'Pending')) ? 'Served' : (compDeliv?.delivery_status || (isMediation ? 'Served' : 'Pending'));
-        const compIsServed = compStatus.startsWith('Served');
-        const compResidentId = compDeliv?.resident_id || compProfile.resident_id || 0;
+        const anyCompServed = compAttempts.some(a => a.is_served) || (!isConciliation && Boolean(compDeliv?.delivery_status?.startsWith('Served')));
+        const compFailedCount = compAttempts.filter(a => a.is_failed).length;
+        const canNextComp = Boolean(activeHearing.can_initiate_next_comp_attempt) && !anyCompServed;
+        const nextCompNum = activeHearing.next_comp_attempt_number || (compAttempts.length + 1);
+        const nextCompOrd = ordinals[nextCompNum] || nextCompNum + 'th';
+        const activePendingComp = compAttempts.find(a => a.is_pending) || null;
+        const targetCompAttemptForReturn = anyCompServed ? null : (activePendingComp || (!anyCompServed && compDeliv ? compDeliv : null));
 
         let compBadgeHtml = '';
-        if (compIsServed) {
+        if (anyCompServed) {
             compBadgeHtml = `<span class="service-result-badge badge-served">Served</span>`;
-        } else if (compStatus === 'Unserved') {
-            compBadgeHtml = `<span class="service-result-badge badge-not-served">Unserved / Failed</span>`;
+        } else if (compAttempts.length >= maxAllowedAttempts && compFailedCount >= maxAllowedAttempts) {
+            compBadgeHtml = `<span class="service-result-badge badge-not-served">${maxAllowedAttempts} Attempts Failed - Max Reached (Unserved)</span>`;
+        } else if (compFailedCount > 0) {
+            compBadgeHtml = `<span class="service-result-badge badge-not-served">Attempt #${compFailedCount} Failed</span>`;
         } else {
             compBadgeHtml = `<span class="service-result-badge badge-warning">Pending Service</span>`;
         }
 
-        // 2. Respondent Details (Right Column)
+        const compFormTitle = isConciliation
+            ? `KP Form No. 12 – Notice of Hearing (Pangkat) (${maxAllowedAttempts} Attempts Max)`
+            : 'KP Form No. 8 – Notice of Hearing';
+
+        // 2. Respondent Party Details & Status
         const respDeliv = deliveries.find(d => d.party_type === 'Respondent') || null;
         const respProfile = respDeliv?.party_profile || (respAttempts[0]?.party_profile) || {};
         const respName = respDeliv?.recipient_name || respProfile.resident_name || (respAttempts[0]?.recipient_name) || currentCaseItem.respondent_names || 'Respondent';
         const respResidentId = respDeliv?.resident_id || respProfile.resident_id || (respAttempts[0]?.resident_id) || 0;
 
-                const anyRespServed = respAttempts.some(a => a.is_served);
-        const canNext = Boolean(activeHearing.can_initiate_next_attempt) && !anyRespServed;
-        const nextNum = activeHearing.next_attempt_number || (respAttempts.length + 1);
-        const ordinals = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th'];
-        const nextOrd = ordinals[nextNum] || nextNum + 'th';
-        const latestServedResp = respAttempts.find(a => a.is_served) || null;
+        const anyRespServed = respAttempts.some(a => a.is_served);
+        const canNextResp = Boolean(activeHearing.can_initiate_next_attempt) && !anyRespServed;
+        const nextRespNum = activeHearing.next_attempt_number || (respAttempts.length + 1);
+        const nextRespOrd = ordinals[nextRespNum] || nextRespNum + 'th';
         const activePendingResp = respAttempts.find(a => a.is_pending) || null;
         const targetRespAttemptForReturn = anyRespServed ? null : activePendingResp;
-
-        const maxAllowedAttempts = isPaanyayaCase
-            ? Number(activeHearing.max_attempts || window.AGAP_SETTINGS?.paanyaya_max_attempts || 6)
-            : Number(activeHearing.max_attempts || window.AGAP_SETTINGS?.summons_max_attempts || 6);
 
         let respBadgeHtml = '';
         if (anyRespServed) {
@@ -740,10 +756,21 @@ async function renderExpandedCaseView(caseId) {
             respBadgeHtml = `<span class="service-result-badge badge-warning">Pending Service</span>`;
         }
 
-        // Stepper Nodes (Task 5)
-        const renderStepperNode = (num) => {
+        const respFormTitle = isPaanyayaCase
+            ? `${escapeGpsHtml(activeHearing.hearing_type || 'Paanyaya')} – Preliminary Invitation Tracking (${maxAllowedAttempts} Attempts Max)`
+            : (isConciliation
+                ? `KP Form No. 12 – Notice of Hearing (Pangkat) (${maxAllowedAttempts} Attempts Max)`
+                : `KP Form No. 9 – Summons Delivery Tracking (${maxAllowedAttempts} Attempts Max)`);
+
+        // Helper: Party Stepper Node (Complainant or Respondent)
+        const renderPartyStepperNode = (num, partyType) => {
             const ord = ordinals[num] || num + 'th';
-            const att = respAttempts.find(a => a.attempt_number === num) || null;
+            const attemptsList = (partyType === 'Complainant') ? compAttempts : respAttempts;
+            const anyServed = (partyType === 'Complainant') ? anyCompServed : anyRespServed;
+            const targetResId = (partyType === 'Complainant') ? compResidentId : respResidentId;
+            const targetPartyName = (partyType === 'Complainant') ? compName : respName;
+
+            const att = attemptsList.find(a => a.attempt_number === num) || null;
             let circleClass = 'unissued';
             let iconText = num;
             let statusText = 'Not Issued';
@@ -752,10 +779,10 @@ async function renderExpandedCaseView(caseId) {
             let stepCursor = 'default';
 
             if (att) {
-                const targetResId = Number(att.resident_id || respResidentId) || 0;
+                const resIdVal = Number(att.resident_id || targetResId) || 0;
                 const deliveryId = Number(att.delivery_id);
                 const attDelivId = (Number.isSafeInteger(deliveryId) && deliveryId > 0) ? deliveryId : 'null';
-                if (att.is_pending && anyRespServed) {
+                if (att.is_pending && anyServed) {
                     return `
                         <div class="stepper-step" style="cursor: default;" title="${ord} Attempt: Cancelled (Notice already served)">
                             <div class="step-circle pending">✓</div>
@@ -782,7 +809,7 @@ async function renderExpandedCaseView(caseId) {
                     subText = 'Awaiting Return';
                 }
 
-                clickAttr = `onclick="openOfficerReturnModal('Respondent', ${targetResId}, ${Number(activeHearing.hearing_id)}, ${caseId}, ${escapeGpsJsArgument(att.delivery_status || '')}, ${escapeGpsJsArgument(att.recipient_name || respName)}, ${escapeGpsJsArgument(att.relationship || '')}, ${escapeGpsJsArgument(att.remarks || '')}, ${escapeGpsJsArgument(att.unserved_reason || '')}, ${num}, ${attDelivId})"`;
+                clickAttr = `onclick="openOfficerReturnModal('${partyType}', ${resIdVal}, ${Number(activeHearing.hearing_id)}, ${caseId}, ${escapeGpsJsArgument(att.delivery_status || '')}, ${escapeGpsJsArgument(att.recipient_name || targetPartyName)}, ${escapeGpsJsArgument(att.relationship || '')}, ${escapeGpsJsArgument(att.remarks || '')}, ${escapeGpsJsArgument(att.unserved_reason || '')}, ${num}, ${attDelivId})"`;
                 stepCursor = 'pointer';
             }
 
@@ -803,7 +830,7 @@ async function renderExpandedCaseView(caseId) {
             let subText = isCfaEligible ? 'Eligible' : `${failedCount}/${maxAllowedAttempts} Failed`;
             let clickAction = isCfaEligible
                 ? `onclick="window.location.href='../documents/cfa.php?case_id=${encodeURIComponent(caseId)}'"`
-                : `onclick="window.agapNotify ? window.agapNotify('${escapeGpsHtml(cfaElig.reason || 'CFA is locked until all ${maxAllowedAttempts} summons attempts have failed.')}', 'warning', 'CFA Locked') : alert('${escapeGpsHtml(cfaElig.reason || 'CFA is locked until all ${maxAllowedAttempts} summons attempts have failed.')}')"`;
+                : `onclick="window.agapNotify ? window.agapNotify('${escapeGpsHtml(cfaElig.reason || `CFA is locked until all ${maxAllowedAttempts} summons attempts have failed.`)}', 'warning', 'CFA Locked') : alert('${escapeGpsHtml(cfaElig.reason || `CFA is locked until all ${maxAllowedAttempts} summons attempts have failed.`)}')`;
 
             return `
                 <button type="button" class="stepper-step" ${clickAction} title="${statusText} — ${escapeGpsHtml(cfaElig.reason || '')}" style="${!isCfaEligible ? 'cursor: not-allowed;' : ''}">
@@ -814,23 +841,71 @@ async function renderExpandedCaseView(caseId) {
             `;
         };
 
-        // Respondent Attempts Text Layout (Matching Complainant Layout)
-        let respDetailsHtml = '';
-        if (respAttempts.length === 0) {
-            respDetailsHtml = `
-                <ul class="delivery-detail-list">
-                    <li>
-                        <span class="delivery-detail-label">Service Status</span>
-                        <span class="delivery-detail-val"><span class="service-result-badge badge-warning">Pending Service</span></span>
-                    </li>
-                    <li>
-                        <span class="delivery-detail-label">Service Source / Server</span>
-                        <span class="delivery-detail-val">Unassigned</span>
-                    </li>
-                </ul>
-            `;
-        } else {
-            respDetailsHtml = respAttempts.map((att, idx) => {
+        // Helper: Party Details List (Attempts Cards)
+        const renderPartyDetailsList = (attemptsList, partyType, fallbackDeliv) => {
+            const targetResId = (partyType === 'Complainant') ? compResidentId : respResidentId;
+            const targetPartyName = (partyType === 'Complainant') ? compName : respName;
+
+            if (!attemptsList || attemptsList.length === 0) {
+                if (fallbackDeliv) {
+                    const fallbackDelivId = (Number.isSafeInteger(Number(fallbackDeliv?.delivery_id)) && Number(fallbackDeliv?.delivery_id) > 0) ? Number(fallbackDeliv.delivery_id) : 'null';
+                    const isServed = Boolean(fallbackDeliv.delivery_status?.startsWith('Served'));
+                    const isFailed = fallbackDeliv.delivery_status === 'Unserved';
+                    const statusClass = isServed ? 'badge-served' : (isFailed ? 'badge-not-served' : 'badge-warning');
+                    const statusLabel = isServed ? (fallbackDeliv.delivery_status || 'Served') : (isFailed ? 'Unserved / Failed' : 'Pending Service');
+
+                    return `
+                        <div class="respondent-attempt-block">
+                            <div style="font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
+                                <span>1st Attempt</span>
+                                <div style="display: inline-flex; align-items: center; gap: 8px;">
+                                    <span class="service-result-badge ${statusClass}" style="font-size: 0.72rem; padding: 2px 7px;">${escapeGpsHtml(statusLabel)}</span>
+                                    <button type="button" class="btn-secondary" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; cursor: pointer; border: 1px solid #cbd5e1; background: #fff;" onclick="openOfficerReturnModal('${partyType}', ${Number(fallbackDeliv.resident_id || targetResId) || 0}, ${Number(activeHearing.hearing_id)}, ${caseId}, ${escapeGpsJsArgument(fallbackDeliv.delivery_status || '')}, ${escapeGpsJsArgument(fallbackDeliv.recipient_name || targetPartyName)}, ${escapeGpsJsArgument(fallbackDeliv.relationship || '')}, ${escapeGpsJsArgument(fallbackDeliv.remarks || '')}, ${escapeGpsJsArgument(fallbackDeliv.unserved_reason || '')}, 1, ${fallbackDelivId})">
+                                        ${fallbackDeliv.delivery_status === 'Pending' ? '📝 Log Return' : '✏️ Edit Return'}
+                                    </button>
+                                </div>
+                            </div>
+                            <ul class="delivery-detail-list">
+                                <li>
+                                    <span class="delivery-detail-label">Service Source / Server</span>
+                                    <span class="delivery-detail-val">${escapeGpsHtml(fallbackDeliv.served_by_name || 'Lupon Office (Personal Notice)')}</span>
+                                </li>
+                                ${fallbackDeliv.served_at ? `
+                                    <li>
+                                        <span class="delivery-detail-label">Date/Time Served</span>
+                                        <span class="delivery-detail-val">${escapeGpsHtml(formatDateTime(fallbackDeliv.served_at))}</span>
+                                    </li>
+                                ` : ''}
+                                <li>
+                                    <span class="delivery-detail-label">Service Method</span>
+                                    <span class="delivery-detail-val">${escapeGpsHtml(fallbackDeliv.service_method || 'Personal Notice')}</span>
+                                </li>
+                                ${fallbackDeliv.remarks ? `
+                                    <li>
+                                        <span class="delivery-detail-label">Remarks</span>
+                                        <span class="delivery-detail-val">${escapeGpsHtml(fallbackDeliv.remarks)}</span>
+                                    </li>
+                                ` : ''}
+                            </ul>
+                        </div>
+                    `;
+                }
+
+                return `
+                    <ul class="delivery-detail-list">
+                        <li>
+                            <span class="delivery-detail-label">Service Status</span>
+                            <span class="delivery-detail-val"><span class="service-result-badge badge-warning">Pending Service</span></span>
+                        </li>
+                        <li>
+                            <span class="delivery-detail-label">Service Source / Server</span>
+                            <span class="delivery-detail-val">Unassigned</span>
+                        </li>
+                    </ul>
+                `;
+            }
+
+            return attemptsList.map((att, idx) => {
                 const ord = att.attempt_ordinal || ((ordinals[att.attempt_number] || att.attempt_number + 'th') + ' Attempt');
                 const proofPath = att.proof_file_path || att.attachment_path;
                 const isServed = Boolean(att.is_served);
@@ -857,7 +932,7 @@ async function renderExpandedCaseView(caseId) {
                             <span>${escapeGpsHtml(ord)}</span>
                             <div style="display: inline-flex; align-items: center; gap: 8px;">
                                 <span>${statusBadge}</span>
-                                <button type="button" class="btn-secondary" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; cursor: pointer; border: 1px solid #cbd5e1; background: #fff;" onclick="openOfficerReturnModal('Respondent', ${Number(att.resident_id || respResidentId) || 0}, ${Number(activeHearing.hearing_id)}, ${caseId}, ${escapeGpsJsArgument(att.delivery_status || '')}, ${escapeGpsJsArgument(att.recipient_name || respName)}, ${escapeGpsJsArgument(att.relationship || '')}, ${escapeGpsJsArgument(att.remarks || '')}, ${escapeGpsJsArgument(att.unserved_reason || '')}, ${att.attempt_number || (idx + 1)}, ${attDelivId})">
+                                <button type="button" class="btn-secondary" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; cursor: pointer; border: 1px solid #cbd5e1; background: #fff;" onclick="openOfficerReturnModal('${partyType}', ${Number(att.resident_id || targetResId) || 0}, ${Number(activeHearing.hearing_id)}, ${caseId}, ${escapeGpsJsArgument(att.delivery_status || '')}, ${escapeGpsJsArgument(att.recipient_name || targetPartyName)}, ${escapeGpsJsArgument(att.relationship || '')}, ${escapeGpsJsArgument(att.remarks || '')}, ${escapeGpsJsArgument(att.unserved_reason || '')}, ${att.attempt_number || (idx + 1)}, ${attDelivId})">
                                     ${editBtnIcon} ${editBtnText}
                                 </button>
                             </div>
@@ -905,15 +980,30 @@ async function renderExpandedCaseView(caseId) {
                     </div>
                 `;
             }).join('');
+        };
+
+        // Complainant Action Buttons
+        let compActionBtnHtml = '';
+        if (canNextComp && nextCompNum <= 6) {
+            compActionBtnHtml = `
+                <button type="button" class="btn-create" onclick="initiateNextSummonAttempt(${caseId}, ${activeHearing.hearing_id}, 'Complainant')" style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; padding: 6px 14px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    Issue Notice ${nextCompOrd} Attempt
+                </button>
+            `;
+        } else if (anyCompServed) {
+            compActionBtnHtml = `<span style="background: #dcfce7; color: #166534; font-weight: 700; font-size: 0.8rem; padding: 6px 12px; border-radius: 6px; border: 1px solid #bbf7d0; display: inline-flex; align-items: center; gap: 4px;">✓ Successfully Served</span>`;
+        } else if (compAttempts.length >= maxAllowedAttempts && compFailedCount >= maxAllowedAttempts) {
+            compActionBtnHtml = `<span style="background: #fee2e2; color: #991b1b; font-weight: 700; font-size: 0.8rem; padding: 6px 12px; border-radius: 6px; border: 1px solid #fecaca; display: inline-flex; align-items: center; gap: 4px;">${maxAllowedAttempts} Attempts Failed - Max Reached (Unserved)</span>`;
         }
 
-        // Action Buttons for Respondent Footer
+        // Respondent Action Buttons
         let respActionBtnHtml = '';
-        if (canNext && nextNum <= 6) {
+        if (canNextResp && nextRespNum <= 6) {
             respActionBtnHtml = `
-                <button type="button" class="btn-create" onclick="initiateNextSummonAttempt(${caseId}, ${activeHearing.hearing_id})" style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; padding: 6px 14px;">
+                <button type="button" class="btn-create" onclick="initiateNextSummonAttempt(${caseId}, ${activeHearing.hearing_id}, 'Respondent')" style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; padding: 6px 14px;">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                    Issue Summon ${nextOrd} Attempt
+                    ${isConciliation ? 'Issue Notice' : 'Issue Summon'} ${nextRespOrd} Attempt
                 </button>
             `;
         } else if (anyRespServed) {
@@ -936,7 +1026,7 @@ async function renderExpandedCaseView(caseId) {
         container.innerHTML = `
             <!-- Two-Column Side-by-Side Service Records Grid -->
             <div class="expanded-columns-grid" ${isPaanyayaCase ? 'style="grid-template-columns: 1fr;"' : ''}>
-                <!-- Left Column: Complainant Notice (KP Form 8) -->
+                <!-- Left Column: Complainant Notice (KP Form 12 for Conciliation / KP Form 8 for Mediation) -->
                 <div class="delivery-card" style="margin: 0; display: ${isPaanyayaCase ? 'none' : 'flex'}; flex-direction: column; justify-content: space-between;">
                     <div>
                         <div class="delivery-card-header">
@@ -945,7 +1035,7 @@ async function renderExpandedCaseView(caseId) {
                                 <div class="delivery-party-name">
                                     <span>${escapeGpsHtml(compName)}</span>
                                 </div>
-                                <span class="delivery-form-type">${(activeHearing.hearing_type === 'Conciliation') ? 'KP Form No. 12 – Notice of Hearing (Conciliation)' : 'KP Form No. 8 – Notice of Hearing'}</span>
+                                <span class="delivery-form-type">${escapeGpsHtml(compFormTitle)}</span>
                             </div>
                             <div>
                                 ${compBadgeHtml}
@@ -957,52 +1047,71 @@ async function renderExpandedCaseView(caseId) {
                                 Hearing: <strong>${escapeGpsHtml(activeHearing.hearing_type)}</strong> (${escapeGpsHtml(hearingDateFormatted)})
                             </div>
 
-                            <ul class="delivery-detail-list">
-                                <li>
-                                    <span class="delivery-detail-label">Date/Time Served</span>
-                                    <span class="delivery-detail-val">${escapeGpsHtml(formatDateTime(compDeliv?.served_at || compDeliv?.created_at || activeHearing.hearing_date || new Date()))}</span>
-                                </li>
-                                <li>
-                                    <span class="delivery-detail-label">Service Source / Server</span>
-                                    <span class="delivery-detail-val">${escapeGpsHtml(compDeliv?.served_by_name || 'Lupon Office (Personal Notice)')}</span>
-                                </li>
-                                <li>
-                                    <span class="delivery-detail-label">Service Method</span>
-                                    <span class="delivery-detail-val">Personal Notice</span>
-                                </li>
-                                <li>
-                                    <span class="delivery-detail-label">Remarks</span>
-                                    <span class="delivery-detail-val">${escapeGpsHtml(compDeliv?.remarks || 'Personal notice served to complainant upon issuance of 1st mediation summons.')}</span>
-                                </li>
-                            </ul>
+                            ${isConciliation || compAttempts.length > 0 ? `
+                                <!-- Horizontal Stepper Tracker for Complainant -->
+                                <div class="summon-stepper-wrap">
+                                    <div class="summon-stepper">
+                                        ${Array.from({length: maxAllowedAttempts}, (_, i) => renderPartyStepperNode(i + 1, 'Complainant')).join('')}
+                                    </div>
+                                </div>
+
+                                ${(compAttempts.length >= maxAllowedAttempts && compFailedCount >= maxAllowedAttempts) ? `
+                                    <div style="background: #fef2f2; border: 1px solid #f87171; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; color: #991b1b; font-size: 0.82rem; line-height: 1.45; display: flex; align-items: flex-start; gap: 8px;">
+                                        <span style="font-size: 1rem;">⚠️</span>
+                                        <div>
+                                            <strong>${maxAllowedAttempts} Attempts Failed - Max Reached (Unserved):</strong> Complainant notice delivery could not be completed after ${maxAllowedAttempts} attempts.
+                                        </div>
+                                    </div>
+                                ` : ''}
+
+                                ${renderPartyDetailsList(compAttempts, 'Complainant', compDeliv)}
+                            ` : `
+                                <ul class="delivery-detail-list">
+                                    <li>
+                                        <span class="delivery-detail-label">Date/Time Served</span>
+                                        <span class="delivery-detail-val">${escapeGpsHtml(formatDateTime(compDeliv?.served_at || compDeliv?.created_at || activeHearing.hearing_date || new Date()))}</span>
+                                    </li>
+                                    <li>
+                                        <span class="delivery-detail-label">Service Source / Server</span>
+                                        <span class="delivery-detail-val">${escapeGpsHtml(compDeliv?.served_by_name || 'Lupon Office (Personal Notice)')}</span>
+                                    </li>
+                                    <li>
+                                        <span class="delivery-detail-label">Service Method</span>
+                                        <span class="delivery-detail-val">${escapeGpsHtml(compDeliv?.service_method || 'Personal Notice')}</span>
+                                    </li>
+                                    <li>
+                                        <span class="delivery-detail-label">Remarks</span>
+                                        <span class="delivery-detail-val">${escapeGpsHtml(compDeliv?.remarks || 'Personal notice served to complainant upon issuance of mediation summons.')}</span>
+                                    </li>
+                                </ul>
+                            `}
                         </div>
                     </div>
 
-                    <div class="delivery-card-footer" style="display: flex; gap: 8px; flex-wrap: wrap;">
-                        ${!compIsServed ? `
-                            <button type="button" class="btn-log-return" onclick="openOfficerReturnModal(
+                    <div class="delivery-card-footer" style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; align-items: center;">
+                        ${targetCompAttemptForReturn ? `
+                            <button type="button" class="btn-log-return" style="font-size: 0.82rem; padding: 6px 12px;" onclick="openOfficerReturnModal(
                                 'Complainant',
                                 ${compResidentId},
                                 ${activeHearing.hearing_id},
                                 ${caseId},
-                                ${escapeGpsJsArgument(compDeliv?.delivery_status || 'Served Personal')},
-                                ${escapeGpsJsArgument(compDeliv?.recipient_name || compName || '')},
-                                ${escapeGpsJsArgument(compDeliv?.relationship || '')},
-                                ${escapeGpsJsArgument(compDeliv?.remarks || '')},
-                                ${escapeGpsJsArgument(compDeliv?.unserved_reason || '')},
-                                1,
-                                ${compDeliv?.delivery_id || 'null'}
+                                ${escapeGpsJsArgument(targetCompAttemptForReturn.delivery_status || '')},
+                                ${escapeGpsJsArgument(targetCompAttemptForReturn.recipient_name || compName)},
+                                ${escapeGpsJsArgument(targetCompAttemptForReturn.relationship || '')},
+                                ${escapeGpsJsArgument(targetCompAttemptForReturn.remarks || '')},
+                                ${escapeGpsJsArgument(targetCompAttemptForReturn.unserved_reason || '')},
+                                ${targetCompAttemptForReturn.attempt_number || 1},
+                                ${targetCompAttemptForReturn.delivery_id || 'null'}
                             )">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                                 Log Officer's Return
                             </button>
-                        ` : `
-                            <span style="background: #dcfce7; color: #166534; font-weight: 700; font-size: 0.8rem; padding: 6px 12px; border-radius: 6px; border: 1px solid #bbf7d0; display: inline-flex; align-items: center; gap: 4px;">✓ Notice Served</span>
-                        `}
+                        ` : ''}
+                        ${compActionBtnHtml}
                     </div>
                 </div>
 
-                <!-- Right Column: Respondent Summons (KP Form 9 / Paanyaya) -->
+                <!-- Right Column: Respondent Summons / Notice (KP Form 12 for Conciliation / KP Form 9 for Mediation) -->
                 <div class="delivery-card" style="margin: 0; display: flex; flex-direction: column; justify-content: space-between;">
                     <div>
                         <div class="delivery-card-header">
@@ -1011,7 +1120,7 @@ async function renderExpandedCaseView(caseId) {
                                 <div class="delivery-party-name">
                                     <span>${escapeGpsHtml(respName)}</span>
                                 </div>
-                                <span class="delivery-form-type">${isPaanyayaCase ? `${escapeGpsHtml(activeHearing.hearing_type || 'Paanyaya')} – Preliminary Invitation Tracking (${maxAllowedAttempts} Attempts Max)` : ((activeHearing.hearing_type === 'Conciliation') ? `KP Form No. 12 – Conciliation Hearing Notice Tracking (${maxAllowedAttempts} Attempts Max)` : `KP Form No. 9 – Summons Delivery Tracking (${maxAllowedAttempts} Attempts Max)`)}</span>
+                                <span class="delivery-form-type">${escapeGpsHtml(respFormTitle)}</span>
                             </div>
                             <div>
                                 ${respBadgeHtml}
@@ -1019,15 +1128,10 @@ async function renderExpandedCaseView(caseId) {
                         </div>
 
                         <div class="delivery-card-body">
-                            <!-- Task 5: Horizontal Stepper Tracker -->
+                            <!-- Horizontal Stepper Tracker -->
                             <div class="summon-stepper-wrap">
                                 <div class="summon-stepper">
-                                    ${Array.from({length: maxAllowedAttempts}, (_, i) => renderStepperNode(i + 1)).join('')}
-
-
-
-
-
+                                    ${Array.from({length: maxAllowedAttempts}, (_, i) => renderPartyStepperNode(i + 1, 'Respondent')).join('')}
                                     ${renderCfaStepperNode()}
                                 </div>
                             </div>
@@ -1041,8 +1145,8 @@ async function renderExpandedCaseView(caseId) {
                                 </div>
                             ` : ''}
 
-                            <!-- Delivery Details List (matching Complainant side) -->
-                            ${respDetailsHtml}
+                            <!-- Delivery Details List -->
+                            ${renderPartyDetailsList(respAttempts, 'Respondent', respDeliv)}
                         </div>
                     </div>
 
@@ -1159,9 +1263,11 @@ window.loadCases = loadCases;
    Summon Actions & Document Integration (Task 7)
    ========================================================================== */
 
-async function initiateNextSummonAttempt(caseId, hearingId) {
+async function initiateNextSummonAttempt(caseId, hearingId, partyType = 'Respondent') {
     if (!caseId) return;
-    if (!window.confirm('Do you want to initiate the next summons delivery attempt for the respondent?')) {
+    const partyLabel = partyType === 'Complainant' ? 'complainant' : 'respondent';
+    const noticeLabel = partyType === 'Complainant' ? 'notice' : 'summons/notice';
+    if (!window.confirm(`Do you want to initiate the next ${noticeLabel} delivery attempt for the ${partyLabel}?`)) {
         return;
     }
 
@@ -1169,6 +1275,7 @@ async function initiateNextSummonAttempt(caseId, hearingId) {
         const formData = new FormData();
         formData.append('case_id', caseId);
         if (hearingId) formData.append('hearing_id', hearingId);
+        formData.append('party_type', partyType);
         formData.append('action', 'next_attempt');
 
         const res = await fetch('../../../backend/api/summons/next-attempt.php', {
@@ -1178,16 +1285,16 @@ async function initiateNextSummonAttempt(caseId, hearingId) {
         });
         const data = await res.json();
         if (!res.ok || !data.success) {
-            throw new Error(data.message || 'Failed to initiate summons attempt.');
+            throw new Error(data.message || 'Failed to initiate summons/notice attempt.');
         }
 
-        window.agapNotify?.(data.message || 'Next summons attempt initiated successfully.', 'success', 'Summons Attempt');
+        window.agapNotify?.(data.message || 'Next delivery attempt initiated successfully.', 'success', 'Delivery Attempt');
         await loadCases();
         if (activeExpandedCaseId) {
             await renderExpandedCaseView(activeExpandedCaseId);
         }
     } catch (err) {
-        window.agapNotify?.(err.message, 'error', 'Summons Attempt Failed');
+        window.agapNotify?.(err.message, 'error', 'Delivery Attempt Failed');
     }
 }
 window.initiateNextSummonAttempt = initiateNextSummonAttempt;
@@ -1267,9 +1374,7 @@ function openOfficerReturnModal(partyType, residentId, hearingId, caseId, curren
         stageBadgeText = `Paanyaya Stage · Invitation Attempt ${attemptNumber} of ${maxAtt}`;
     } else if (isConciliationStage) {
         docBadgeText = 'KP Form No. 12 – Notice of Hearing (Conciliation)';
-        stageBadgeText = (partyType === 'Respondent')
-            ? `Conciliation Stage · KP Form 12 Notice Attempt ${attemptNumber} of ${maxAtt}`
-            : 'Conciliation Stage · KP Form 12 Complainant Notice';
+        stageBadgeText = `Conciliation Stage · KP Form 12 Notice Attempt ${attemptNumber} of ${maxAtt}`;
     } else {
         docBadgeText = (partyType === 'Respondent') ? 'KP Form No. 9 – Summons' : 'KP Form No. 8 – Notice of Hearing';
         stageBadgeText = (partyType === 'Respondent')
