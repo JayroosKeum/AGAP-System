@@ -3570,7 +3570,7 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                         <button type="button" class="btn-create" id="btnSaveMinutesDraft_${hId}" onclick="saveHearingMinutes('Draft', ${hId})" style="font-size: 0.84rem; padding: 7px 16px; background: #0284c7; border-color: #0284c7;">
 
-                            Save #${sessionIndex} Draft
+                            Save
 
                         </button>
 
@@ -3858,30 +3858,22 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false, hearingId 
 
             `;
 
-        } else {
-
-            bannerEl.innerHTML = `
-
-                <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-
-                    <div style="color: #1e40af; font-size: 0.85rem;">
-
-                        <strong style="font-size: 0.92rem; display: block; color: #1e3a8a;">Unresolved Â· Schedule ${nextOrd} ${escapeHtml(mode)}</strong>
-
-                        Parties were notified in person. Schedule the ${nextOrd} ${escapeHtml(mode)} session directly.
-
+                } else {
+            if (isMed && nextIdx === 2) {
+                renderInlineMediationScheduleCalendar(bannerEl, activeHearingId);
+            } else {
+                bannerEl.innerHTML = `
+                    <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <div style="color: #1e40af; font-size: 0.85rem;">
+                            <strong style="font-size: 0.92rem; display: block; color: #1e3a8a;">Unresolved · Schedule ${nextOrd} ${escapeHtml(mode)}</strong>
+                            Parties were notified in person. Schedule the ${nextOrd} ${escapeHtml(mode)} session directly.
+                        </div>
+                        <button type="button" class="btn-create" onclick="openScheduleModal()" style="font-size: 0.82rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px;">
+                            Schedule ${nextOrd} ${escapeHtml(mode)} Hearing &rarr;
+                        </button>
                     </div>
-
-                    <button type="button" class="btn-create" onclick="openScheduleModal()" style="font-size: 0.82rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px;">
-
-                        Schedule ${nextOrd} ${escapeHtml(mode)} Hearing &rarr;
-
-                    </button>
-
-                </div>
-
-            `;
-
+                `;
+            }
         }
 
     } else if (outcomeVal === 'Arbitration' || outcomeVal === 'Submit to Arbitration' || outcomeVal === 'Submit to Voluntary Arbitration (KP Form 14)') {
@@ -4010,10 +4002,10 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false, hearingId 
 
         `;
 
+    } else if (outcomeVal === 'Party Absent' || outcomeVal === 'Non-Appearance') {
+        renderPartyAbsentOutcomeBanner(bannerEl, Number(caseId), Number(activeHearingId));
     } else {
-
         bannerEl.innerHTML = '';
-
     }
 
 }
@@ -4302,11 +4294,36 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skip
 
     if (outcomeVal === 'Continue Mediation' && isMediation && !hasNextSession && sessionIndex < 3) {
 
-        const nextDate = getVal('minNextHearingDate')?.trim();
+                const inlineDate = document.getElementById(`minInlineSchedDate_${hearingId}`)?.value?.trim();
+        const inlineTime = document.getElementById(`minInlineSchedTime_${hearingId}`)?.value?.trim();
+        const inlineVenue = document.getElementById(`minInlineSchedVenue_${hearingId}`)?.value?.trim();
 
-        const nextTime = getVal('minNextHearingTime')?.trim();
+        const nextDate = inlineDate || getVal('minNextHearingDate')?.trim();
+        const nextTime = inlineTime || getVal('minNextHearingTime')?.trim();
+        const nextVenue = inlineVenue || getVal('minNextHearingVenue')?.trim() || 'Lupon Court Room';
 
-        const nextVenue = getVal('minNextHearingVenue')?.trim() || 'Lupon Court Room';
+        if (!nextDate) {
+            notifyUser('Paki-pili ang petsa para sa 2nd Mediation session mula sa kalendaryo bago i-save.', 'warning', 'Kailangan ang Petsa');
+            const dInput = document.getElementById(`minInlineSchedDate_${hearingId}`);
+            dInput?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            dInput?.focus();
+            if (draftBtn) {
+                draftBtn.disabled = false;
+                draftBtn.innerHTML = 'Save';
+            }
+            return;
+        }
+        if (!nextTime) {
+            notifyUser('Paki-pili ang takdang oras para sa 2nd Mediation session.', 'warning', 'Kailangan ang Oras');
+            const tInput = document.getElementById(`minInlineSchedTime_${hearingId}`);
+            tInput?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            tInput?.focus();
+            if (draftBtn) {
+                draftBtn.disabled = false;
+                draftBtn.innerHTML = 'Save';
+            }
+            return;
+        }
 
         if (nextDate && nextTime) {
 
@@ -4432,7 +4449,7 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skip
 
                 } else {
 
-                    notifyUser('Session minutes draft saved successfully.', 'success');
+                    notifyUser('Session minutes saved successfully.', 'success');
 
                 }
 
@@ -6838,17 +6855,532 @@ function renderAttendanceModalForm(data) {
 
     `;
 
+    setTimeout(updatePartyAttRadioStyles, 0);
 }
 
 
+
+function updatePartyAttRadioStyles() {
+    const container = document.getElementById('wsAttPartiesContainer');
+    if (!container) return;
+    const allRadios = container.querySelectorAll('input[type="radio"][name^="att_party_"]');
+    allRadios.forEach(radio => {
+        const pill = radio.closest('.party-att-radio-pill');
+        if (!pill) return;
+        const txt = pill.querySelector('span');
+        if (radio.checked) {
+            pill.classList.add('selected');
+            if (radio.value === 'Present') {
+                pill.style.borderColor = '#86efac';
+                pill.style.background = '#f0fdf4';
+                if (txt) txt.style.color = '#15803d';
+            } else if (radio.value === 'Late') {
+                pill.style.borderColor = '#fde68a';
+                pill.style.background = '#fefce8';
+                if (txt) txt.style.color = '#b45309';
+            } else if (radio.value === 'Absent') {
+                pill.style.borderColor = '#fca5a5';
+                pill.style.background = '#fef2f2';
+                if (txt) txt.style.color = '#991b1b';
+            }
+        } else {
+            pill.classList.remove('selected');
+            pill.style.borderColor = '#e2e8f0';
+            pill.style.background = '#ffffff';
+            if (txt) txt.style.color = '#334155';
+        }
+    });
+}
+window.updatePartyAttRadioStyles = updatePartyAttRadioStyles;
+
+function syncOutcomeWithAttendance() {
+    const activeHearingId = stageWorkspaceState.activeSessionHearingId || stageWorkspaceState.currentHearingId;
+    if (!activeHearingId) return;
+
+    const outcomeSelect = document.getElementById(`minOutcome_${activeHearingId}`);
+    if (!outcomeSelect) return;
+
+    let compAtt = 'Present';
+    let respAtt = 'Present';
+    let foundComp = false;
+    let foundResp = false;
+
+    const currentData = stageWorkspaceState.lastAttendanceData || {};
+    const parties = currentData.parties || [];
+
+    parties.forEach(p => {
+        const partyId = p.resident_id || p.party_id;
+        const rad = document.querySelector(`input[name="att_party_${partyId}"]:checked`);
+        const st = rad ? rad.value : (p.attendance_status || 'Present');
+        if (p.party_type === 'Complainant') {
+            foundComp = true;
+            if (st === 'Absent') compAtt = 'Absent';
+            else if (st === 'Late' && compAtt !== 'Absent') compAtt = 'Late';
+        } else if (p.party_type === 'Respondent') {
+            foundResp = true;
+            if (st === 'Absent') respAtt = 'Absent';
+            else if (st === 'Late' && respAtt !== 'Absent') respAtt = 'Late';
+        }
+    });
+
+    if (!foundComp || !foundResp) {
+        document.querySelectorAll('input[type="radio"][name^="att_party_"]:checked').forEach(rad => {
+            const row = rad.closest('.party-att-person-card') || rad.closest('.party-att-item');
+            const isComp = row?.querySelector('.badge-complainant') !== null || row?.textContent.includes('Nagpaanyaya');
+            const isResp = row?.querySelector('.badge-respondent') !== null || row?.textContent.includes('Inanyayahan');
+            if (isComp) {
+                foundComp = true;
+                if (rad.value === 'Absent') compAtt = 'Absent';
+                else if (rad.value === 'Late' && compAtt !== 'Absent') compAtt = 'Late';
+            } else if (isResp) {
+                foundResp = true;
+                if (rad.value === 'Absent') respAtt = 'Absent';
+                else if (rad.value === 'Late' && respAtt !== 'Absent') respAtt = 'Late';
+            }
+        });
+    }
+
+    const activeSession = (stageWorkspaceState.sessions || []).find(s => Number(s.hearing_id) === Number(activeHearingId)) || {};
+    const sessionIndex = Number(activeSession.session_index || 1);
+    const mode = stageWorkspaceState.mode;
+
+    const curVal = outcomeSelect.value;
+    let targetOutcome = null;
+
+    if (compAtt === 'Absent' && respAtt === 'Absent') {
+        targetOutcome = 'Party Absent';
+    } else if (compAtt === 'Absent') {
+        const hasDismiss = Array.from(outcomeSelect.options).some(o => o.value === 'Dismissed');
+        targetOutcome = hasDismiss ? 'Dismissed' : 'Party Absent';
+    } else if (respAtt === 'Absent') {
+        targetOutcome = 'Party Absent';
+    } else {
+        if (['Party Absent', 'Dismissed', 'Pending', ''].includes(curVal)) {
+            if (mode === 'Mediation') {
+                targetOutcome = (sessionIndex === 1) ? 'Continue Mediation' : 'Elevate to Pangkat';
+            } else if (mode === 'Conciliation') {
+                targetOutcome = (sessionIndex === 1) ? 'Continue Conciliation' : 'Pending CFA';
+            }
+        }
+    }
+
+    if (targetOutcome && outcomeSelect.value !== targetOutcome) {
+        outcomeSelect.value = targetOutcome;
+        handleMinutesOutcomeChange(targetOutcome, true, activeHearingId);
+    }
+}
+window.syncOutcomeWithAttendance = syncOutcomeWithAttendance;
 
 function handlePartyAttendanceChange(partyId, status, partyType) {
-
+    updatePartyAttRadioStyles();
     saveStreamlinedAttendance(true);
-
+    syncOutcomeWithAttendance();
 }
-
 window.handlePartyAttendanceChange = handlePartyAttendanceChange;
+
+function renderPartyAbsentOutcomeBanner(bannerEl, caseId, activeHearingId) {
+    if (!bannerEl) return;
+    let isCompAbsent = false;
+    let isRespAbsent = false;
+
+    document.querySelectorAll('input[type="radio"][name^="att_party_"]:checked').forEach(rad => {
+        const row = rad.closest('.party-att-person-card') || rad.closest('.party-att-item');
+        const isComp = row?.querySelector('.badge-complainant') !== null || row?.textContent.includes('Nagpaanyaya');
+        const isResp = row?.querySelector('.badge-respondent') !== null || row?.textContent.includes('Inanyayahan');
+        if (isComp && rad.value === 'Absent') isCompAbsent = true;
+        if (isResp && rad.value === 'Absent') isRespAbsent = true;
+    });
+
+    if (isCompAbsent && isRespAbsent) {
+        bannerEl.innerHTML = `
+            <div style="background: #fef2f2; border: 1.5px solid #fca5a5; border-radius: 8px; padding: 14px 18px;">
+                <strong style="color: #991b1b; font-size: 0.95rem; display: block;">Magkabilang Panig Hindi Dumalo (Mutual Non-Appearance)</strong>
+                <p style="margin: 4px 0 10px; font-size: 0.84rem; color: #7f1d1d;">
+                    Parehong hindi sumipot ang Nagrereklamo at Inirereklamo sa itinakdang sesyon. Sa ilalim ng Katarungang Pambarangay rules (RA 7160), maglalabas ng Notice of Hearing / Show Cause para sa magkabilang panig (KP Form 18 at KP Form 19).
+                </p>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button type="button" class="btn-secondary" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 18', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #fca5a5; color: #991b1b; cursor: pointer;">
+                        Preview KP Form 18 (Complainant)
+                    </button>
+                    <button type="button" class="btn-secondary" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 19', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #fca5a5; color: #991b1b; cursor: pointer;">
+                        Preview KP Form 19 (Respondent)
+                    </button>
+                </div>
+            </div>
+        `;
+    } else if (isRespAbsent) {
+        bannerEl.innerHTML = `
+            <div style="background: #fef2f2; border: 1.5px solid #fca5a5; border-radius: 8px; padding: 14px 18px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div>
+                        <strong style="color: #991b1b; font-size: 0.95rem; display: block;">Inirereklamo Hindi Dumalo (Respondent Non-Appearance)</strong>
+                        <div style="font-size: 0.84rem; color: #7f1d1d; margin-top: 3px;">
+                            Hindi sumipot ang inirereklamo sa itinakdang pagdinig. Sa ilalim ng RA 7160 Sec. 410(b), maglalabas ng <strong>KP Form 19 (Notice of Hearing / Show Cause)</strong> upang pagpaliwanagin ang respondent sa loob ng 5 araw.
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button type="button" class="btn-secondary" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 19', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #fca5a5; color: #991b1b; cursor: pointer;">
+                            Preview KP Form 19
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    } else {
+        bannerEl.innerHTML = `
+            <div style="background: #fef2f2; border: 1.5px solid #fca5a5; border-radius: 8px; padding: 14px 18px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div>
+                        <strong style="color: #991b1b; font-size: 0.95rem; display: block;">Nagrereklamo Hindi Dumalo (Complainant Non-Appearance)</strong>
+                        <div style="font-size: 0.84rem; color: #7f1d1d; margin-top: 3px;">
+                            Hindi sumipot ang nagrereklamo. Sa ilalim ng RA 7160 Sec. 410(b), maglalabas ng <strong>KP Form 18 (Notice of Hearing / Show Cause)</strong> o i-dismiss ang reklamo (KP Form 21).
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button type="button" class="btn-secondary" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 18', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #fca5a5; color: #991b1b; cursor: pointer;">
+                            Preview KP Form 18
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+}
+window.renderPartyAbsentOutcomeBanner = renderPartyAbsentOutcomeBanner;
+
+function renderInlineMediationScheduleCalendar(containerEl, hearingId) {
+    if (!containerEl) return;
+    const medDaysLabel = window.AGAP_SETTINGS?.mediation_days_label || 'Tuesdays ONLY';
+    const medVenue = window.AGAP_SETTINGS?.mediation_venue || 'Lupon Court Room';
+    const maxCap = window.AGAP_SETTINGS?.daily_capacity || 8;
+    const medHoursStart = window.AGAP_SETTINGS?.mediation_hours_start || '08:00';
+    const medHoursEnd = window.AGAP_SETTINGS?.mediation_hours_end || '17:00';
+
+    containerEl.innerHTML = `
+        <div class="inline-sched-card" style="background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 10px; padding: 18px 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-top: 10px;">
+            <!-- Header -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+                <h3 style="font-size: 1.05rem; font-weight: 700; color: #0f172a; margin: 0; display: flex; align-items: center; gap: 8px;">
+                    <span>⚖️</span> 2nd Formal Mediation Hearing Schedule
+                </h3>
+                <span style="font-size: 0.72rem; background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; padding: 3px 10px; border-radius: 9999px; font-weight: 700;">
+                    ${escapeHtml(medDaysLabel)} · ${escapeHtml(medVenue)} (Max ${maxCap}/Day)
+                </span>
+            </div>
+
+            <!-- Mediation Date Row -->
+            <div class="form-group" style="margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <label for="minInlineSchedDate_${hearingId}" style="font-weight: 700; font-size: 0.85rem; color: #1e293b; margin: 0;">
+                        Mediation Date (${escapeHtml(medDaysLabel)}) <span style="color: #dc2626;">*</span>
+                    </label>
+                    <span id="minInlineSchedCapacityBadge_${hearingId}" style="font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 9999px; background: #dcfce7; color: #166534; border: 1px solid #86efac;">
+                        Checking capacity...
+                    </span>
+                </div>
+                <input type="date" id="minInlineSchedDate_${hearingId}" name="minNextHearingDate" required onchange="handleInlineMediationDateChange(this, ${hearingId})" style="padding: 9px 12px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box; background: #fff; margin-bottom: 4px;">
+
+                <!-- Visual Day Grid Container -->
+                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-top: 6px; margin-bottom: 14px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.78rem; flex-wrap: wrap; gap: 6px;">
+                        <span style="font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.03em; font-size: 0.74rem;">
+                            AVAILABLE MEDIATION SLOTS (MAX ${maxCap} HEARINGS/DAY):
+                        </span>
+                        <div style="display: flex; gap: 10px; font-size: 0.72rem; flex-wrap: wrap;">
+                            <span style="display: inline-flex; align-items: center; gap: 4px; color: #166534;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e;"></span> Available</span>
+                            <span style="display: inline-flex; align-items: center; gap: 4px; color: #991b1b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #ef4444;"></span> ${maxCap}/${maxCap} Full</span>
+                        </div>
+                    </div>
+                    <div id="minInlineSchedVisualDayGrid_${hearingId}" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 6px; padding: 4px 2px;">
+                        <div style="text-align: center; color: #64748b; font-size: 0.78rem; padding: 8px; grid-column: 1 / -1;">
+                            Loading mediation availability...
+                        </div>
+                    </div>
+                    <div id="minInlineSchedDateStatusNotice_${hearingId}" style="margin-top: 6px; font-size: 0.75rem; color: #64748b; line-height: 1.4;"></div>
+                </div>
+            </div>
+
+            <!-- Target Call Time & Hearing Venue Row -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                        <label for="minInlineSchedTime_${hearingId}" style="font-weight: 700; font-size: 0.84rem; margin: 0; color: #1e293b;">
+                            Target Call Time (${escapeHtml(medHoursStart)} - ${escapeHtml(medHoursEnd)}) <span style="color: #dc2626;">*</span>
+                        </label>
+                        <span style="font-size: 0.72rem; color: #64748b;">15-min intervals</span>
+                    </div>
+                    <input type="time" id="minInlineSchedTime_${hearingId}" name="minNextHearingTime" min="${escapeHtml(medHoursStart)}" max="${escapeHtml(medHoursEnd)}" step="900" value="13:00" onchange="handleInlineMediationTimeChange(${hearingId})" style="padding: 9px 12px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box; background: #fff;">
+                    <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;">
+                        <button type="button" class="btn-slot-chip" onclick="selectInlineSchedTime('13:00', ${hearingId})" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:00 PM</button>
+                        <button type="button" class="btn-slot-chip" onclick="selectInlineSchedTime('13:15', ${hearingId})" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:15 PM</button>
+                        <button type="button" class="btn-slot-chip" onclick="selectInlineSchedTime('13:30', ${hearingId})" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:30 PM</button>
+                        <button type="button" class="btn-slot-chip" onclick="selectInlineSchedTime('13:45', ${hearingId})" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:45 PM</button>
+                        <button type="button" class="btn-slot-chip" onclick="selectInlineSchedTime('14:00', ${hearingId})" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">2:00 PM</button>
+                        <button type="button" class="btn-slot-chip" onclick="selectInlineSchedTime('14:30', ${hearingId})" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">2:30 PM</button>
+                        <button type="button" class="btn-slot-chip" onclick="selectInlineSchedTime('15:00', ${hearingId})" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">3:00 PM</button>
+                    </div>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="minInlineSchedVenue_${hearingId}" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 5px; color: #1e293b;">
+                        Hearing Venue
+                    </label>
+                    <input type="text" id="minInlineSchedVenue_${hearingId}" name="minNextHearingVenue" value="${escapeHtml(medVenue)}" readonly style="padding: 9px 12px; font-size: 0.88rem; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box; cursor: not-allowed; color: #334155;">
+                </div>
+            </div>
+
+            <!-- Live Docket Call -->
+            <div id="minInlineSchedDaySchedulesWrap_${hearingId}" style="margin-bottom: 6px; padding: 10px 12px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.84rem;">
+                <div style="font-weight: 700; color: #334155; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
+                    <span>📋 Mediation Docket Call (${escapeHtml(medVenue)}):</span>
+                    <span id="minInlineSchedDaySlotsCount_${hearingId}" style="font-size: 0.72rem; background: #e2e8f0; color: #475569; padding: 2px 7px; border-radius: 9999px; font-weight: 600;">0</span>
+                </div>
+                <div id="minInlineSchedDaySlotsList_${hearingId}" style="color: #64748b; font-size: 0.82rem; line-height: 1.5;">
+                    Loading docket call...
+                </div>
+            </div>
+        </div>
+    `;
+
+    initInlineMediationScheduler(hearingId);
+}
+window.renderInlineMediationScheduleCalendar = renderInlineMediationScheduleCalendar;
+
+window.inlineSchedWindowMeta = null;
+
+async function initInlineMediationScheduler(hearingId) {
+    const caseId = stageWorkspaceState.caseId;
+    const complaintId = document.getElementById('schedComplaintId')?.value || stageWorkspaceState.stageData?.case?.complaint_id || '';
+    const dateInput = document.getElementById(`minInlineSchedDate_${hearingId}`);
+    const timeInput = document.getElementById(`minInlineSchedTime_${hearingId}`);
+    const gridEl = document.getElementById(`minInlineSchedVisualDayGrid_${hearingId}`);
+
+    if (!dateInput || !gridEl) return;
+
+    try {
+        const res = await fetch(getStageApiUrl(`summons/check-schedule.php?case_id=${encodeURIComponent(caseId)}&complaint_id=${encodeURIComponent(complaintId)}&hearing_type=Mediation&get_window=1`));
+        const json = await res.json();
+        if (json.window && json.window.daily_slots) {
+            window.inlineSchedWindowMeta = json.window;
+            const allowedNums = window.AGAP_SETTINGS?.mediation_day_numbers || [2];
+            const allowedDays = window.AGAP_SETTINGS?.mediation_days || ['Tue'];
+
+            // Find first available Tuesday that is not past and not fully booked
+            const firstOpen = Object.values(json.window.daily_slots).find(d => {
+                const parts = d.date.split('-');
+                const dt = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+                const isMedDay = allowedNums.includes(dt.getDay()) || allowedDays.includes(d.day_name);
+                return isMedDay && !d.is_past && !d.is_fully_booked;
+            });
+
+            const initialDate = firstOpen ? firstOpen.date : Object.keys(json.window.daily_slots)[0];
+            if (initialDate && !dateInput.value) {
+                dateInput.value = initialDate;
+            }
+
+            renderInlineSchedVisualDays(hearingId, json.window, dateInput.value);
+            await updateInlineSchedDocketCall(hearingId, dateInput.value, timeInput?.value || '13:00');
+        }
+    } catch (err) {
+        console.error('initInlineMediationScheduler error:', err);
+    }
+}
+window.initInlineMediationScheduler = initInlineMediationScheduler;
+
+function renderInlineSchedVisualDays(hearingId, windowMeta, selectedDate) {
+    const gridEl = document.getElementById(`minInlineSchedVisualDayGrid_${hearingId}`);
+    const noticeEl = document.getElementById(`minInlineSchedDateStatusNotice_${hearingId}`);
+    if (!gridEl || !windowMeta?.daily_slots) return;
+
+    const allDays = Object.values(windowMeta.daily_slots);
+    const allowedNums = window.AGAP_SETTINGS?.mediation_day_numbers || [2];
+    const allowedDays = window.AGAP_SETTINGS?.mediation_days || ['Tue'];
+    const days = allDays.filter(d => {
+        const parts = d.date.split('-');
+        const dt = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        return (allowedNums.includes(dt.getDay()) || allowedDays.includes(d.day_name)) && !d.is_past;
+    });
+
+    if (!days.length) {
+        gridEl.innerHTML = '<div style="color: #64748b; font-size: 0.78rem; grid-column: 1 / -1; text-align: center; padding: 12px;">No upcoming mediation dates found.</div>';
+        return;
+    }
+
+    gridEl.innerHTML = days.slice(0, 8).map(d => {
+        const isSelected = (d.date === selectedDate);
+        let badgeText = `${d.available} open`;
+        let badgeBg = '#dcfce7';
+        let badgeColor = '#15803d';
+        let cardStyle = 'border: 1px solid #cbd5e1; background: #ffffff; color: #1e293b; cursor: pointer;';
+        let disabledAttr = '';
+        let tooltip = `${d.date}: ${d.available} of ${d.max || 8} slots available.`;
+
+        if (d.is_fully_booked || (d.max > 0 && d.available <= 0)) {
+            badgeText = `${d.max || 8}/${d.max || 8} Full`;
+            badgeBg = '#fee2e2';
+            badgeColor = '#b91c1c';
+            cardStyle = 'border: 1px solid #fecaca; background: #fff1f2; color: #881337; cursor: not-allowed; opacity: 0.65;';
+            disabledAttr = 'disabled';
+            tooltip = `${d.date}: Fully booked! Maximum ${d.max || 8} sessions reached.`;
+        }
+
+        if (isSelected) {
+            cardStyle = 'border: 2px solid #2563eb; background: #eff6ff; color: #1e3a8a; box-shadow: 0 0 0 2px rgba(37,99,235,0.25); font-weight: 700; cursor: pointer;';
+            badgeBg = '#2563eb';
+            badgeColor = '#ffffff';
+        }
+
+        return `
+            <div class="ws-day-card ${isSelected ? 'active' : ''}"
+                 onclick="${disabledAttr ? '' : `selectInlineSchedVisualDate('${d.date}', ${hearingId})`}"
+                 title="${escapeHtml(tooltip)}"
+                 style="border-radius: 6px; padding: 8px 6px; text-align: center; transition: all 0.15s; user-select: none; ${cardStyle}">
+                <div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; color: ${isSelected ? '#1e40af' : '#475569'};">
+                    ${escapeHtml(d.day_name || '')}
+                </div>
+                <div style="font-size: 0.88rem; font-weight: 800; margin: 3px 0;">
+                    ${d.day_num} ${escapeHtml(d.month_name || '')}
+                </div>
+                <div style="font-size: 0.68rem; font-weight: 700; padding: 2px 6px; border-radius: 9999px; background: ${badgeBg}; color: ${badgeColor}; display: inline-block;">
+                    ${badgeText}
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    if (noticeEl) {
+        if (selectedDate && windowMeta.daily_slots[selectedDate]) {
+            const sd = windowMeta.daily_slots[selectedDate];
+            noticeEl.innerHTML = sd.is_fully_booked || sd.available <= 0
+                ? `<span style="color: #dc2626; font-weight: 600;">Selected date is fully booked (${sd.max || 8} of ${sd.max || 8} slots).</span>`
+                : `<span style="color: #1e40af; font-weight: 600;">Date selected (${escapeHtml(selectedDate)}): ${sd.available} slot${sd.available === 1 ? '' : 's'} remaining.</span>`;
+        } else {
+            noticeEl.innerHTML = '<span style="color: #64748b;">Click an available Tuesday above to select date.</span>';
+        }
+    }
+}
+window.renderInlineSchedVisualDays = renderInlineSchedVisualDays;
+
+async function updateInlineSchedDocketCall(hearingId, dateVal, timeVal) {
+    const wrap = document.getElementById(`minInlineSchedDaySchedulesWrap_${hearingId}`);
+    const slotsCount = document.getElementById(`minInlineSchedDaySlotsCount_${hearingId}`);
+    const slotsList = document.getElementById(`minInlineSchedDaySlotsList_${hearingId}`);
+    const capBadge = document.getElementById(`minInlineSchedCapacityBadge_${hearingId}`);
+    if (!dateVal || !wrap || !slotsList) return;
+
+    const caseId = stageWorkspaceState.caseId;
+    const venue = window.AGAP_SETTINGS?.mediation_venue || 'Lupon Court Room';
+
+    try {
+        const params = new URLSearchParams({
+            date: dateVal,
+            time: timeVal || '13:00',
+            venue: venue,
+            case_id: caseId || '',
+            hearing_type: 'Mediation',
+            get_window: '1'
+        });
+        const res = await fetch(getStageApiUrl(`summons/check-schedule.php?${params.toString()}`));
+        const result = await res.json();
+
+        const bookedCount = result.total_booked ?? (result.scheduled_mediations ? result.scheduled_mediations.length : 0);
+        const maxSlots = result.max_slots || 8;
+        const availSlots = result.available_slots ?? Math.max(0, maxSlots - bookedCount);
+
+        if (capBadge) {
+            capBadge.textContent = `${bookedCount} of ${maxSlots} daily mediation slots booked`;
+            if (result.is_fully_booked || bookedCount >= maxSlots) {
+                capBadge.style.background = '#fee2e2'; capBadge.style.color = '#991b1b'; capBadge.style.border = '1px solid #fca5a5';
+            } else if (bookedCount >= 5) {
+                capBadge.style.background = '#fef3c7'; capBadge.style.color = '#92400e'; capBadge.style.border = '1px solid #fcd34d';
+            } else {
+                capBadge.style.background = '#dcfce7'; capBadge.style.color = '#166534'; capBadge.style.border = '1px solid #86efac';
+            }
+        }
+
+        wrap.style.display = 'block';
+        if (slotsCount) {
+            slotsCount.textContent = `${availSlots} of ${maxSlots} slots available`;
+            slotsCount.style.background = availSlots > 2 ? '#dcfce7' : (availSlots > 0 ? '#fef3c7' : '#fee2e2');
+            slotsCount.style.color = availSlots > 2 ? '#15803d' : (availSlots > 0 ? '#92400e' : '#b91c1c');
+        }
+
+        const scheduled = result.scheduled_mediations || [];
+        if (scheduled.length === 0) {
+            slotsList.innerHTML = `<span style="color: #166534; font-weight: 500;">✓ No other mediations scheduled on this day. All ${maxSlots} slots available.</span>`;
+        } else {
+            slotsList.innerHTML = `
+                <div style="margin-bottom: 6px; font-weight: 600; color: #475569;">Mediation Docket Call (${bookedCount} of ${maxSlots} booked):</div>
+            ` + scheduled.map(s => {
+                const qStatus = s.queue_status || s.status || 'Waiting';
+                let pillBg = '#eff6ff', pillColor = '#1e40af', pillBorder = '#bfdbfe';
+                if (qStatus === 'In_Session') {
+                    pillBg = '#ecfdf5'; pillColor = '#047857'; pillBorder = '#6ee7b7';
+                } else if (qStatus === 'Concluded' || qStatus === 'Completed') {
+                    pillBg = '#f1f5f9'; pillColor = '#475569'; pillBorder = '#cbd5e1';
+                }
+                const timeDisp = s.scheduled_time_formatted || s.hearing_time || `${s.start_time || ''}`;
+                const caseTitle = s.case_title || (s.case_number ? `Case ${s.case_number}` : `Case #${s.case_id || ''}`);
+                return `
+                    <div style="margin-top: 4px; padding: 6px 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                        <div>
+                            <strong style="color: #1e293b; font-size: 0.85rem;">${escapeHtml(timeDisp)}</strong>
+                            <span style="color: #475569; margin-left: 8px; font-size: 0.82rem;">${escapeHtml(caseTitle)}</span>
+                        </div>
+                        <span style="font-size: 0.72rem; padding: 2px 8px; border-radius: 9999px; background: ${pillBg}; color: ${pillColor}; border: 1px solid ${pillBorder}; font-weight: 600;">
+                            ${escapeHtml(qStatus)}
+                        </span>
+                    </div>
+                `;
+            }).join('');
+        }
+    } catch (e) {
+        console.error('updateInlineSchedDocketCall error:', e);
+    }
+}
+window.updateInlineSchedDocketCall = updateInlineSchedDocketCall;
+
+function selectInlineSchedVisualDate(dateStr, hearingId) {
+    const dateInput = document.getElementById(`minInlineSchedDate_${hearingId}`);
+    if (dateInput) {
+        dateInput.value = dateStr;
+    }
+    if (window.inlineSchedWindowMeta) {
+        renderInlineSchedVisualDays(hearingId, window.inlineSchedWindowMeta, dateStr);
+    }
+    const timeInput = document.getElementById(`minInlineSchedTime_${hearingId}`);
+    updateInlineSchedDocketCall(hearingId, dateStr, timeInput?.value || '13:00');
+}
+window.selectInlineSchedVisualDate = selectInlineSchedVisualDate;
+
+function selectInlineSchedTime(timeStr, hearingId) {
+    const timeInput = document.getElementById(`minInlineSchedTime_${hearingId}`);
+    if (timeInput) {
+        timeInput.value = timeStr;
+    }
+    const dateInput = document.getElementById(`minInlineSchedDate_${hearingId}`);
+    if (dateInput && dateInput.value) {
+        updateInlineSchedDocketCall(hearingId, dateInput.value, timeStr);
+    }
+}
+window.selectInlineSchedTime = selectInlineSchedTime;
+
+function handleInlineMediationDateChange(input, hearingId) {
+    if (window.inlineSchedWindowMeta) {
+        renderInlineSchedVisualDays(hearingId, window.inlineSchedWindowMeta, input.value);
+    }
+    const timeInput = document.getElementById(`minInlineSchedTime_${hearingId}`);
+    updateInlineSchedDocketCall(hearingId, input.value, timeInput?.value || '13:00');
+}
+window.handleInlineMediationDateChange = handleInlineMediationDateChange;
+
+function handleInlineMediationTimeChange(hearingId) {
+    const dateInput = document.getElementById(`minInlineSchedDate_${hearingId}`);
+    const timeInput = document.getElementById(`minInlineSchedTime_${hearingId}`);
+    if (dateInput && dateInput.value) {
+        updateInlineSchedDocketCall(hearingId, dateInput.value, timeInput?.value || '13:00');
+    }
+}
+window.handleInlineMediationTimeChange = handleInlineMediationTimeChange;
 
 
 

@@ -2203,7 +2203,7 @@ class Paanyaya
                 $rawPresiders = is_array($decoded) ? $decoded : [];
             }
             $presiderIds = array_values(array_filter(array_map('intval', (array)$rawPresiders), fn($id) => $id > 0));
-            $presidersJson = !empty($presiderIds) ? json_encode($presiderIds) : json_encode([$userId]);
+            $presidersJson = !empty($presiderIds) ? json_encode($presiderIds) : json_encode([]);
 
             $insStmt = $this->conn->prepare("
                 INSERT INTO paanyaya_minutes (

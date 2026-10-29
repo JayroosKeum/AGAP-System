@@ -312,9 +312,9 @@ include '../../layouts/header.php';
                         <div class="form-group" style="margin-bottom: 0;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                                 <label for="minutesPresidingSelect" style="font-weight: 700; font-size: 0.88rem; color: #0f172a; margin: 0;">
-                                    Mga Namuno / Tagapamagitan sa Pag-uusap (Presiding Officer[s] / Lupon / LISO) <span class="required-mark" style="color: #dc2626;">*</span>
+                                    Mga Namuno / Tagapamagitan sa Pag-uusap (Presiding Officer[s] / Lupon / LISO) <span id="presidersRequiredMark" class="required-mark" style="color: #dc2626;">*</span>
                                 </label>
-                                <span style="font-size: 0.74rem; color: #64748b;">Maaaring pumili ng higit sa isa (Co-presiders)</span>
+                                <span id="presidersOptionalNote" style="font-size: 0.74rem; color: #64748b;">Maaaring pumili ng higit sa isa (Co-presiders)</span>
                             </div>
 
                             <div class="presider-multiselect-container" style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; background: #ffffff;">
@@ -333,7 +333,7 @@ include '../../layouts/header.php';
                                     <?php endforeach; ?>
                                 </select>
                             </div>
-                            <input type="hidden" id="minutesPresidingOfficerIds" name="presiding_officer_ids" value="[]" required>
+                            <input type="hidden" id="minutesPresidingOfficerIds" name="presiding_officer_ids" value="[]">
                         </div>
                     </div>
 
@@ -893,6 +893,34 @@ function handleMinutesAttendanceChange() {
     const attendanceNotice = document.getElementById('minutesAttendanceNotice');
     const summaryTextarea = document.getElementById('minutesDiscussionSummary');
     const sec3Marks = document.querySelectorAll('.sec3-required-mark');
+
+    // Handle Presiding Officers requirement based on attendance (Only required if both parties attended)
+    const presidersReqMark = document.getElementById('presidersRequiredMark');
+    const presidersNote = document.getElementById('presidersOptionalNote');
+    const noPresiderPlaceholder = document.getElementById('noPresiderPlaceholder');
+    const errBoxEl = document.getElementById('minutesErrorMessage');
+
+    if (compAttended === 'Absent' || respAttended === 'Absent') {
+        if (presidersReqMark) presidersReqMark.style.display = 'none';
+        if (presidersNote) {
+            presidersNote.innerHTML = '<span style="color: #64748b; font-style: italic;">(Opsyonal &bull; walang naganap na pag-uusap dahil hindi dumalo ang panig)</span>';
+        }
+        if (noPresiderPlaceholder) {
+            noPresiderPlaceholder.textContent = 'Opsyonal: Maaaring iwanang bakante dahil hindi dumalo ang panig.';
+        }
+        if (errBoxEl && errBoxEl.textContent.includes('Presiding Officer')) {
+            errBoxEl.textContent = '';
+            errBoxEl.style.display = 'none';
+        }
+    } else {
+        if (presidersReqMark) presidersReqMark.style.display = 'inline';
+        if (presidersNote) {
+            presidersNote.textContent = 'Maaaring pumili ng higit sa isa (Co-presiders)';
+        }
+        if (noPresiderPlaceholder) {
+            noPresiderPlaceholder.textContent = 'Pumili ng isa o higit pang Lupon / LISO members mula sa dropdown sa ibaba...';
+        }
+    }
 
     // Handle Seksyon 3 requirement based on attendance
     if (compAttended === 'Absent' || respAttended === 'Absent') {
@@ -1460,7 +1488,14 @@ async function handleDialogueMinutesSubmit(event) {
     const btn = document.getElementById('btnSubmitMinutes');
     const errBox = document.getElementById('minutesErrorMessage');
 
-    // 1. Validate at least one Presiding Officer is selected
+    // 1. Attendance & Outcome Consistency Evaluation
+    const compAttended = document.getElementById('overallComplainantAttended')?.value || 'Present';
+    const respAttended = document.getElementById('overallRespondentAttended')?.value || 'Present';
+    const outcome = form.querySelector('input[name="outcome"]:checked')?.value || 'Settled';
+    const choice = form.querySelector('input[name="complainant_choice"]:checked')?.value || 'Request_Paanyaya_2';
+    const eitherPartyAbsent = (compAttended === 'Absent' || respAttended === 'Absent');
+
+    // 2. Validate at least one Presiding Officer is selected ONLY IF both parties attended
     const presidersInput = document.getElementById('minutesPresidingOfficerIds');
     let presiderIds = [];
     try {
@@ -1468,7 +1503,7 @@ async function handleDialogueMinutesSubmit(event) {
     } catch (e) {
         presiderIds = [];
     }
-    if (!Array.isArray(presiderIds) || presiderIds.length === 0) {
+    if (!eitherPartyAbsent && (!Array.isArray(presiderIds) || presiderIds.length === 0)) {
         if (errBox) {
             errBox.textContent = 'Paki-pili ang kahit isang Presiding Officer o Lupon Member na namuno sa pag-uusap.';
             errBox.style.display = 'block';
@@ -1476,12 +1511,6 @@ async function handleDialogueMinutesSubmit(event) {
         document.getElementById('minutesPresidingSelect')?.focus();
         return;
     }
-
-    // 2. Attendance & Outcome Consistency Validation
-    const compAttended = document.getElementById('overallComplainantAttended')?.value || 'Present';
-    const respAttended = document.getElementById('overallRespondentAttended')?.value || 'Present';
-    const outcome = form.querySelector('input[name="outcome"]:checked')?.value || 'Settled';
-    const choice = form.querySelector('input[name="complainant_choice"]:checked')?.value || 'Request_Paanyaya_2';
 
     if (compAttended === 'Absent' && outcome !== 'Dismissed') {
         if (errBox) {
