@@ -797,7 +797,7 @@ CREATE TABLE summon_deliveries (
     created_by INT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uq_hearing_party_form_attempt (hearing_id, party_type, form_type, attempt_number),
+    UNIQUE KEY uq_hearing_party_form_attempt (hearing_id, party_type, resident_id, form_type, attempt_number),
     KEY idx_summon_deliveries_hearing_status (hearing_id, delivery_status),
     KEY idx_summon_deliveries_served_by (served_by),
     KEY idx_summon_deliveries_case (case_id),

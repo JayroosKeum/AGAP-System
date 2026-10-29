@@ -7007,57 +7007,69 @@ window.initMediationDocketScheduler = function(options) {
 
     if (!dateInput) return null;
 
-    function getNextTuesdayStr() {
+    const dayMap = { 'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6 };
+    let allowedDayNums = window.AGAP_SETTINGS?.mediation_day_numbers;
+    if (!allowedDayNums && window.AGAP_SETTINGS?.mediation_days) {
+        allowedDayNums = window.AGAP_SETTINGS.mediation_days.map(d => dayMap[d]).filter(n => n !== undefined);
+    }
+    if (!allowedDayNums || !allowedDayNums.length) {
+        allowedDayNums = [2];
+    }
+    let medDaysLabel = window.AGAP_SETTINGS?.mediation_days_label || 'Tuesdays';
+
+    function getNextMediationDayStr() {
         const d = new Date();
         d.setDate(d.getDate() + 1);
-        while (d.getDay() !== 2) {
+        let loops = 0;
+        while (!allowedDayNums.includes(d.getDay()) && loops < 14) {
             d.setDate(d.getDate() + 1);
+            loops++;
         }
         return d.toISOString().slice(0, 10);
     }
 
     if (!dateInput.value) {
-        dateInput.value = getNextTuesdayStr();
+        dateInput.value = getNextMediationDayStr();
     }
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     dateInput.min = tomorrow.toISOString().slice(0, 10);
 
     if (timeInput && !timeInput.value) {
-        timeInput.value = '13:00';
+        timeInput.value = window.AGAP_SETTINGS?.mediation_hours_start || '13:00';
     }
 
     async function checkSchedule() {
         if (!dateInput.value) return;
         const dateVal = dateInput.value;
-        const timeVal = (timeInput && timeInput.value) ? timeInput.value : '13:00';
+        const timeVal = (timeInput && timeInput.value) ? timeInput.value : (window.AGAP_SETTINGS?.mediation_hours_start || '13:00');
         const compId = getComplaintId();
         const cId = getCaseId();
 
         const parts = dateVal.split('-');
-        let isTuesday = false;
+        let isAllowedMedDay = false;
         if (parts.length === 3) {
             const dt = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-            isTuesday = (dt.getDay() === 2);
+            isAllowedMedDay = allowedDayNums.includes(dt.getDay());
         }
 
-        if (!isTuesday) {
+        if (!isAllowedMedDay) {
             if (badgeEl) {
-                badgeEl.textContent = 'Non-Tuesday (Blocked)';
+                badgeEl.textContent = 'Non-Mediation Day (Blocked)';
                 badgeEl.style.background = '#fef3c7';
                 badgeEl.style.color = '#92400e';
                 badgeEl.style.border = '1px solid #fcd34d';
             }
             if (alertEl) {
-                alertEl.textContent = 'Mediation hearings can only be held on Tuesdays (Barangay Tumana Katarungang Pambarangay Rules).';
+                alertEl.textContent = `Mediation hearings can only be held on configured mediation days (${medDaysLabel}).`;
                 alertEl.style.display = 'block';
             }
             if (submitBtn) {
                 submitBtn.disabled = true;
-                submitBtn.title = 'Please select a Tuesday for mediation hearings.';
+                submitBtn.title = `Please select a configured mediation day (${medDaysLabel}).`;
             }
             if (docketEl) {
-                docketEl.innerHTML = '<span style="color: #991b1b; font-size: 0.82rem;">Mediation sessions are held on Tuesdays only.</span>';
+                docketEl.innerHTML = `<span style="color: #991b1b; font-size: 0.82rem;">Mediation sessions are held on ${medDaysLabel} only.</span>`;
             }
             return;
         }
@@ -7133,7 +7145,7 @@ window.initMediationDocketScheduler = function(options) {
             // 3. Conflict / Capacity Blocking
             if (isFull) {
                 if (alertEl) {
-                    alertEl.textContent = `Daily capacity limit reached: All ${max} mediation slots are fully booked for this Tuesday (${dateVal}). Please select another date.`;
+                    alertEl.textContent = `Daily capacity limit reached: All ${max} mediation slots are fully booked for this date (${dateVal}). Please select another date.`;
                     alertEl.style.display = 'block';
                 }
                 if (submitBtn) {

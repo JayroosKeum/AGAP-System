@@ -728,15 +728,35 @@ class Paanyaya
                 $caseNumber = $newCase['case_number'] ?? '';
             }
 
-            // 2. Determine 1st Mediation Hearing parameters conforming to Barangay Tumana rules:
-            // Allowed Day: Tuesdays ONLY.
-            // Allowed Time: 1:00 PM to 5:00 PM (13:00, 14:00, 15:00, 16:00).
-            // Venue: Lupon Court Room.
+            // 2. Determine 1st Mediation Hearing parameters dynamically based on Office Hours & Session Duration Settings
             require_once __DIR__ . '/../services/MediationDeadlineService.php';
+            require_once __DIR__ . '/Setting.php';
+
+            $rawMedDays = Setting::getSetting('mediation_day_of_week', 'Tue');
+            $allowedMedDays = [];
+            if (is_string($rawMedDays)) {
+                $dec = json_decode($rawMedDays, true);
+                $allowedMedDays = is_array($dec) ? $dec : array_filter(array_map('trim', explode(',', $rawMedDays)));
+            } elseif (is_array($rawMedDays)) {
+                $allowedMedDays = $rawMedDays;
+            }
+            if (empty($allowedMedDays)) {
+                $allowedMedDays = ['Tue'];
+            }
+            $dayNumMap = ['Mon' => 1, 'Tue' => 2, 'Wed' => 3, 'Thu' => 4, 'Fri' => 5, 'Sat' => 6, 'Sun' => 7];
+            $pluralMap = ['Mon' => 'Mondays', 'Tue' => 'Tuesdays', 'Wed' => 'Wednesdays', 'Thu' => 'Thursdays', 'Fri' => 'Fridays', 'Sat' => 'Saturdays', 'Sun' => 'Sundays'];
+            $allowedDayNumbers = array_values(array_unique(array_filter(array_map(fn($d) => $dayNumMap[$d] ?? null, $allowedMedDays))));
+            $medDaysPlural = array_map(fn($d) => $pluralMap[$d] ?? $d, $allowedMedDays);
+            $medDaysLabel = implode(', ', $medDaysPlural);
+
+            $dailyCap = (int) Setting::getSetting('daily_hearing_capacity', 8);
+            $medHoursStart = Setting::getSetting('mediation_hours_start', '13:00');
+            $medHoursEnd = Setting::getSetting('mediation_hours_end', '16:30');
+            $venueSetting = Setting::getSetting('mediation_venue', 'Lupon Court Room');
 
             $medDate = !empty($escalationData['mediation_date']) ? trim((string)$escalationData['mediation_date']) : '';
             $medTime = !empty($escalationData['mediation_time']) ? trim((string)$escalationData['mediation_time']) : '';
-            $venue = !empty($escalationData['venue']) ? trim((string)$escalationData['venue']) : 'Lupon Court Room';
+            $venue = !empty($escalationData['venue']) ? trim((string)$escalationData['venue']) : $venueSetting;
 
             if (!empty($medDate)) {
                 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $medDate)) {
@@ -744,14 +764,15 @@ class Paanyaya
                 }
                 $todayStr = date('Y-m-d');
                 if ($medDate <= $todayStr) {
-                    return ['success' => false, 'message' => 'Mediation date must be a future Tuesday.'];
+                    return ['success' => false, 'message' => "Mediation date must be a future scheduled mediation day ({$medDaysLabel})."];
                 }
                 $dateObj = new DateTimeImmutable($medDate);
-                if ((int) $dateObj->format('N') !== 2) {
-                    return ['success' => false, 'message' => 'Mediation hearings can only be scheduled on Tuesdays (Barangay Tumana Katarungang Pambarangay Rules).'];
+                $dayN = (int) $dateObj->format('N');
+                if (!in_array($dayN, $allowedDayNumbers, true)) {
+                    return ['success' => false, 'message' => "Mediation hearings can only be scheduled on {$medDaysLabel} according to Office Hours Settings."];
                 }
                 if (MediationDeadlineService::isNonWorkingDay($dateObj)) {
-                    return ['success' => false, 'message' => 'The selected Tuesday is a declared holiday or non-working day. Please select another Tuesday.'];
+                    return ['success' => false, 'message' => 'The selected date is a declared holiday or non-working day. Please select another date.'];
                 }
             }
 
@@ -759,55 +780,59 @@ class Paanyaya
                 if (!preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', $medTime)) {
                     return ['success' => false, 'message' => 'Please provide a valid target call time (HH:MM).'];
                 }
+                $startMin = (int) date('H', strtotime($medHoursStart)) * 60 + (int) date('i', strtotime($medHoursStart));
+                $endMin = (int) date('H', strtotime($medHoursEnd)) * 60 + (int) date('i', strtotime($medHoursEnd));
                 $timeMin = (int) date('H', strtotime($medTime)) * 60 + (int) date('i', strtotime($medTime));
-                if ($timeMin < 780 || $timeMin > 990) {
-                    return ['success' => false, 'message' => 'Mediation sessions on Tuesdays must have target call times between 1:00 PM and 4:30 PM (operating hours 1:00 PM – 5:00 PM).'];
+                if ($timeMin < $startMin || $timeMin > $endMin) {
+                    return ['success' => false, 'message' => "Mediation sessions must have target call times between {$medHoursStart} and {$medHoursEnd}."];
                 }
             }
 
-            // If date or time is missing, auto-find next open Tuesday and available slot
+            // If date or time is missing, auto-find next open mediation date and available slot
             if (empty($medDate) || empty($medTime)) {
                 $allowedSlots = ['13:00', '13:15', '13:30', '13:45', '14:00', '14:15', '14:30', '14:45', '15:00', '15:30', '16:00', '16:30'];
-                $checkTue = new DateTime('+1 day');
-                while ((int)$checkTue->format('N') !== 2) {
-                    $checkTue->modify('+1 day');
+                $checkDay = new DateTime('+1 day');
+                while (!in_array((int)$checkDay->format('N'), $allowedDayNumbers, true)) {
+                    $checkDay->modify('+1 day');
                 }
 
                 $foundDate = null;
                 $foundTime = null;
 
-                for ($week = 0; $week < 6; $week++) {
-                    $dateCandidate = $checkTue->format('Y-m-d');
-                    $candStmt = $this->conn->prepare("
-                        SELECT COUNT(*) FROM hearings h
-                        INNER JOIN cases c ON c.case_id = h.case_id
-                        WHERE DATE(h.hearing_date) = ?
-                          AND h.hearing_type = 'Mediation'
-                          AND c.case_status NOT IN ('Dismissed', 'Settled')
-                          AND h.status NOT IN ('Cancelled', 'Office Cancelled')
-                    ");
-                    $candStmt->execute([$dateCandidate]);
-                    $candCnt = (int) $candStmt->fetchColumn();
+                for ($step = 0; $step < 30; $step++) {
+                    $dateCandidate = $checkDay->format('Y-m-d');
+                    if (in_array((int)$checkDay->format('N'), $allowedDayNumbers, true)) {
+                        $candStmt = $this->conn->prepare("
+                            SELECT COUNT(*) FROM hearings h
+                            INNER JOIN cases c ON c.case_id = h.case_id
+                            WHERE DATE(h.hearing_date) = ?
+                              AND h.hearing_type = 'Mediation'
+                              AND c.case_status NOT IN ('Dismissed', 'Settled')
+                              AND h.status NOT IN ('Cancelled', 'Office Cancelled')
+                        ");
+                        $candStmt->execute([$dateCandidate]);
+                        $candCnt = (int) $candStmt->fetchColumn();
 
-                    if ($candCnt < 8 && !MediationDeadlineService::isNonWorkingDay(new DateTimeImmutable($dateCandidate))) {
-                        foreach ($allowedSlots as $slot) {
-                            $candDateTime = $dateCandidate . ' ' . $slot . ':00';
-                            $conflict = $summonsModel->findMediationConflict($candDateTime, $venue, $caseId);
-                            if (!$conflict) {
-                                $foundDate = $dateCandidate;
-                                $foundTime = $slot;
-                                break 2;
+                        if ($candCnt < $dailyCap && !MediationDeadlineService::isNonWorkingDay(new DateTimeImmutable($dateCandidate))) {
+                            foreach ($allowedSlots as $slot) {
+                                $candDateTime = $dateCandidate . ' ' . $slot . ':00';
+                                $conflict = $summonsModel->findMediationConflict($candDateTime, $venue, $caseId);
+                                if (!$conflict) {
+                                    $foundDate = $dateCandidate;
+                                    $foundTime = $slot;
+                                    break 2;
+                                }
                             }
                         }
                     }
-                    $checkTue->modify('+7 days');
+                    $checkDay->modify('+1 day');
                 }
 
-                $medDate = $foundDate ?: $checkTue->format('Y-m-d');
-                $medTime = $foundTime ?: '13:00';
+                $medDate = $foundDate ?: $checkDay->format('Y-m-d');
+                $medTime = $foundTime ?: $medHoursStart;
             }
 
-            // Enforce 8-session ceiling via SQL
+            // Enforce daily capacity ceiling via SQL
             $capStmt = $this->conn->prepare("
                 SELECT COUNT(*) FROM hearings h
                 INNER JOIN cases c ON c.case_id = h.case_id
@@ -818,10 +843,10 @@ class Paanyaya
             ");
             $capStmt->execute([$medDate]);
             $bookedCeiling = (int) $capStmt->fetchColumn();
-            if ($bookedCeiling >= 8) {
+            if ($bookedCeiling >= $dailyCap) {
                 return [
                     'success' => false,
-                    'message' => 'Daily capacity limit reached: All 8 mediation slots are fully booked for this date. Please select another Tuesday.'
+                    'message' => "Daily capacity limit reached: All {$dailyCap} mediation slots are fully booked for this date. Please select another date."
                 ];
             }
 
@@ -2410,6 +2435,9 @@ class Paanyaya
 
             // Trigger formal docketing
             $escResult = $this->escalateToFormalDocketing($complaintId, $userId, $discussionSummary, $data);
+            if (empty($escResult['success'])) {
+                return $escResult;
+            }
             $escResult['minutes_id'] = $minutesId;
             $escResult['action'] = 'escalate_mediation';
             $escResult['stage_type'] = $stageType;

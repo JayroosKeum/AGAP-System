@@ -24,6 +24,41 @@ if (!in_array($stageType, ['Paanyaya 1', 'Paanyaya 2'], true)) {
 require_once __DIR__ . '/../../../backend/config/database.php';
 require_once __DIR__ . '/../../../backend/controllers/ComplaintController.php';
 require_once __DIR__ . '/../../../backend/models/Paanyaya.php';
+require_once __DIR__ . '/../../../backend/models/Setting.php';
+
+$sysSettings = Setting::all();
+$rawMedDays = $sysSettings['mediation_day_of_week'] ?? 'Tue';
+$allowedMedDays = [];
+if (is_string($rawMedDays)) {
+    $dec = json_decode($rawMedDays, true);
+    $allowedMedDays = is_array($dec) ? $dec : array_filter(array_map('trim', explode(',', $rawMedDays)));
+} elseif (is_array($rawMedDays)) {
+    $allowedMedDays = $rawMedDays;
+}
+if (empty($allowedMedDays)) {
+    $allowedMedDays = ['Tue'];
+}
+
+$pluralMap = [
+    'Mon' => 'Mondays', 'Tue' => 'Tuesdays', 'Wed' => 'Wednesdays',
+    'Thu' => 'Thursdays', 'Fri' => 'Fridays', 'Sat' => 'Saturdays', 'Sun' => 'Sundays'
+];
+$dayNumMap = ['Sun' => 0, 'Mon' => 1, 'Tue' => 2, 'Wed' => 3, 'Thu' => 4, 'Fri' => 5, 'Sat' => 6];
+
+$medDaysPlural = array_map(fn($d) => $pluralMap[$d] ?? $d, $allowedMedDays);
+if (count($medDaysPlural) === 1) {
+    $medDaysLabel = reset($medDaysPlural) . ' ONLY';
+} elseif (count($medDaysPlural) === 2) {
+    $medDaysLabel = implode(' & ', $medDaysPlural) . ' ONLY';
+} else {
+    $medDaysLabel = implode(', ', array_slice($medDaysPlural, 0, -1)) . ' & ' . end($medDaysPlural);
+}
+
+$allowedMedDayNumbers = array_values(array_unique(array_filter(array_map(fn($d) => $dayNumMap[$d] ?? null, $allowedMedDays), fn($n) => $n !== null)));
+$dailyHearingCapacity = (int) ($sysSettings['daily_hearing_capacity'] ?? 8);
+$medHoursStart = $sysSettings['mediation_hours_start'] ?? '13:00';
+$medHoursEnd = $sysSettings['mediation_hours_end'] ?? '16:30';
+$medVenue = $sysSettings['mediation_venue'] ?? 'Lupon Court Room';
 
 $paanyayaModel = new Paanyaya();
 $servingOfficers = $paanyayaModel->getServingOfficers();
@@ -553,18 +588,18 @@ include '../../layouts/header.php';
                         <div id="minutesEscalationScheduleSection" style="display: none; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 18px; margin-bottom: 10px;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
                                 <h4 style="margin: 0; font-size: 0.96rem; color: #0f172a; font-weight: 700; display: flex; align-items: center; gap: 8px;">
-                                    <span>⚖️</span> 1st Formal Mediation Hearing Schedule (Tumana Rules)
+                                    <span>⚖️</span> 1st Formal Mediation Hearing Schedule
                                 </h4>
                                 <span style="font-size: 0.72rem; background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; padding: 3px 10px; border-radius: 9999px; font-weight: 700;">
-                                    Tuesdays ONLY · Lupon Court Room (Max 8/Day)
+                                    <?= htmlspecialchars($medDaysLabel) ?> · <?= htmlspecialchars($medVenue) ?> (Max <?= $dailyHearingCapacity ?>/Day)
                                 </span>
                             </div>
 
-                            <!-- Date input and Visual Tuesday Picker -->
+                            <!-- Date input and Visual Day Picker -->
                             <div class="form-group" style="margin-bottom: 14px;">
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                                     <label for="minutesMedDate" style="margin-bottom: 0; font-weight: 700; font-size: 0.85rem; color: #1e293b;">
-                                        Mediation Date (Tuesdays ONLY) <span class="required-mark" style="color: #dc2626;">*</span>
+                                        Mediation Date (<?= htmlspecialchars($medDaysLabel) ?>) <span class="required-mark" style="color: #dc2626;">*</span>
                                     </label>
                                     <span id="minutesCapacityBadge" class="badge-capacity" style="font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 9999px; background: #e2e8f0; color: #475569;">
                                         Checking capacity...
@@ -573,20 +608,20 @@ include '../../layouts/header.php';
                                 <input type="date" id="minutesMedDate" name="mediation_date" onchange="handleMinutesMedDateChange(this)" required style="padding: 9px 12px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box; margin-bottom: 4px;">
                                 <small id="minutesMedDateError" style="display: none; color: #dc2626; font-size: 0.75rem; font-weight: 600; margin-bottom: 6px;"></small>
 
-                                <!-- Visual Tuesday Picker Container -->
+                                <!-- Visual Mediation Date Picker Container -->
                                 <div id="minutesVisualDatePickerContainer" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-top: 6px;">
                                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.78rem; flex-wrap: wrap; gap: 6px;">
                                         <span style="font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.03em; font-size: 0.74rem;">
-                                            Available Tuesday Slots (Max 8 Hearings/Day):
+                                            Available Mediation Slots (Max <?= $dailyHearingCapacity ?> Hearings/Day):
                                         </span>
                                         <div style="display: flex; gap: 10px; font-size: 0.72rem; flex-wrap: wrap;">
                                             <span style="display: inline-flex; align-items: center; gap: 4px; color: #166534;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e;"></span> Available</span>
-                                            <span style="display: inline-flex; align-items: center; gap: 4px; color: #991b1b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #ef4444;"></span> 8/8 Full</span>
+                                            <span style="display: inline-flex; align-items: center; gap: 4px; color: #991b1b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #ef4444;"></span> <?= $dailyHearingCapacity ?>/<?= $dailyHearingCapacity ?> Full</span>
                                         </div>
                                     </div>
                                     <div id="minutesVisualDayGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 6px; padding: 4px 2px;">
                                         <div style="text-align: center; color: #64748b; font-size: 0.78rem; padding: 8px; grid-column: 1 / -1;">
-                                            Loading Tuesday availability...
+                                            Loading mediation availability...
                                         </div>
                                     </div>
                                     <div id="minutesVisualDateStatusNotice" style="margin-top: 6px; font-size: 0.75rem; color: #64748b; line-height: 1.4;"></div>
@@ -598,11 +633,11 @@ include '../../layouts/header.php';
                                 <div class="form-group" style="margin-bottom: 0;">
                                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
                                         <label for="minutesMedTime" style="font-weight: 700; font-size: 0.84rem; margin: 0; color: #1e293b;">
-                                            Target Call Time (1:00 PM - 4:30 PM) <span class="required-mark" style="color: #dc2626;">*</span>
+                                            Target Call Time (<?= date('g:i A', strtotime($medHoursStart)) ?> - <?= date('g:i A', strtotime($medHoursEnd)) ?>) <span class="required-mark" style="color: #dc2626;">*</span>
                                         </label>
                                         <span style="font-size: 0.72rem; color: #64748b;">15-min intervals</span>
                                     </div>
-                                    <input type="time" id="minutesMedTime" name="mediation_time" min="13:00" max="16:30" step="900" value="13:00" onchange="handleMinutesMedTimeChange(this)" style="padding: 9px 12px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box;">
+                                    <input type="time" id="minutesMedTime" name="mediation_time" min="<?= $medHoursStart ?>" max="<?= $medHoursEnd ?>" step="900" value="<?= $medHoursStart ?>" onchange="handleMinutesMedTimeChange(this)" style="padding: 9px 12px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box;">
                                     <small id="minutesMedTimeError" style="display: none; color: #dc2626; font-size: 0.75rem; font-weight: 600; margin-top: 3px;"></small>
                                     <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px;">
                                         <button type="button" class="btn-slot-chip" onclick="document.getElementById('minutesMedTime').value='13:00'; checkMinutesScheduleConflict();" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:00 PM</button>
@@ -616,14 +651,14 @@ include '../../layouts/header.php';
                                 </div>
                                 <div class="form-group" style="margin-bottom: 0;">
                                     <label for="minutesMedVenue" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 5px; color: #1e293b;">Hearing Venue</label>
-                                    <input type="text" id="minutesMedVenue" name="venue" value="Lupon Court Room" readonly style="padding: 9px 12px; font-size: 0.88rem; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box; cursor: not-allowed;">
+                                    <input type="text" id="minutesMedVenue" name="venue" value="<?= htmlspecialchars($medVenue) ?>" readonly style="padding: 9px 12px; font-size: 0.88rem; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box; cursor: not-allowed;">
                                 </div>
                             </div>
 
                             <!-- Live Day Docket Peek (Existing Scheduled Mediations on selected date) -->
                             <div id="minutesDaySchedulesWrap" style="display: none; margin-bottom: 12px; padding: 10px 12px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.84rem;">
                                 <div style="font-weight: 700; color: #334155; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
-                                    <span>📋 Tuesday Mediation Docket Call (Lupon Court Room):</span>
+                                    <span>📋 Mediation Docket Call (<?= htmlspecialchars($medVenue) ?>):</span>
                                     <span id="minutesDaySlotsCount" style="font-size: 0.72rem; background: #e2e8f0; color: #475569; padding: 2px 7px; border-radius: 9999px; font-weight: 600;">0</span>
                                 </div>
                                 <div id="minutesDaySlotsList" style="color: #64748b; font-size: 0.82rem; line-height: 1.5;">
@@ -656,6 +691,15 @@ include '../../layouts/header.php';
 </div>
 
 <script>
+window.AGAP_SETTINGS = window.AGAP_SETTINGS || {};
+window.AGAP_SETTINGS.mediation_days = <?= json_encode($allowedMedDays) ?>;
+window.AGAP_SETTINGS.mediation_days_label = <?= json_encode($medDaysLabel) ?>;
+window.AGAP_SETTINGS.mediation_day_numbers = <?= json_encode($allowedMedDayNumbers) ?>;
+window.AGAP_SETTINGS.daily_capacity = <?= (int) $dailyHearingCapacity ?>;
+window.AGAP_SETTINGS.mediation_hours_start = <?= json_encode($medHoursStart) ?>;
+window.AGAP_SETTINGS.mediation_hours_end = <?= json_encode($medHoursEnd) ?>;
+window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
+
 // Multi-Select Presiders Management
 let selectedPresiders = [];
 
@@ -770,12 +814,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // Set default actual start time to now
     setMinutesActualStartNow();
 
-    // Configure next Tuesday date for mediation
+    // Configure next mediation date
     const medDateInput = document.getElementById('minutesMedDate');
     if (medDateInput) {
+        const allowedNums = window.AGAP_SETTINGS?.mediation_day_numbers || [2];
         const d = new Date();
-        d.setDate(d.getDate() + 3);
-        while (d.getDay() !== 2) {
+        d.setDate(d.getDate() + 1);
+        while (!allowedNums.includes(d.getDay())) {
             d.setDate(d.getDate() + 1);
         }
         medDateInput.value = d.toISOString().slice(0, 10);
@@ -1004,18 +1049,20 @@ function handleMinutesMedDateChange(inputEl) {
     const today = new Date().toISOString().slice(0, 10);
     const parts = val.split('-');
     const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    const allowedNums = window.AGAP_SETTINGS?.mediation_day_numbers || [2];
+    const medLabel = window.AGAP_SETTINGS?.mediation_days_label || 'Mediation Day';
 
     if (val <= today) {
         if (errEl) {
-            errEl.textContent = 'Ang petsa ng Mediation ay dapat pumatak sa darating na Martes (future Tuesday).';
+            errEl.textContent = `Ang petsa ng Mediation ay dapat pumatak sa darating na araw (${medLabel}).`;
             errEl.style.display = 'block';
         }
-    } else if (d.getDay() !== 2) {
+    } else if (!allowedNums.includes(d.getDay())) {
         if (errEl) {
-            errEl.textContent = 'Alinsunod sa Tumana rules, ang pormal na Mediation ay tuwing Martes (Tuesday) lamang.';
+            errEl.textContent = `Alinsunod sa schedule rules, ang pormal na Mediation ay tuwing ${medLabel} lamang.`;
             errEl.style.display = 'block';
         }
-        enforceTuesdayDate(inputEl);
+        enforceAllowedMediationDate(inputEl);
     } else {
         if (errEl) errEl.style.display = 'none';
     }
@@ -1030,9 +1077,11 @@ function handleMinutesMedTimeChange(inputEl) {
         return;
     }
     const val = inputEl.value;
-    if (val < '13:00' || val > '16:30') {
+    const startH = window.AGAP_SETTINGS?.mediation_hours_start || '13:00';
+    const endH = window.AGAP_SETTINGS?.mediation_hours_end || '16:30';
+    if (val < startH || val > endH) {
         if (errEl) {
-            errEl.textContent = 'Ang Target Call Time ng Mediation ay dapat nasa pagitan ng 1:00 PM at 4:30 PM (Tuesday Docket Call).';
+            errEl.textContent = `Ang Target Call Time ng Mediation ay dapat nasa pagitan ng ${startH} at ${endH}.`;
             errEl.style.display = 'block';
         }
     } else {
@@ -1170,13 +1219,14 @@ function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m]));
 }
 
-function enforceTuesdayDate(inputEl) {
+function enforceAllowedMediationDate(inputEl) {
     if (!inputEl || !inputEl.value) return;
     const parts = inputEl.value.split('-');
     if (parts.length === 3) {
         const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-        if (d.getDay() !== 2) {
-            while (d.getDay() !== 2) {
+        const allowedNums = window.AGAP_SETTINGS?.mediation_day_numbers || [2];
+        if (!allowedNums.includes(d.getDay())) {
+            while (!allowedNums.includes(d.getDay())) {
                 d.setDate(d.getDate() + 1);
             }
             const y = d.getFullYear();
@@ -1186,40 +1236,47 @@ function enforceTuesdayDate(inputEl) {
         }
     }
 }
+window.enforceTuesdayDate = enforceAllowedMediationDate;
+window.enforceAllowedMediationDate = enforceAllowedMediationDate;
 
 function renderMinutesVisualDayPicker(windowMeta, selectedDate) {
     const gridEl = document.getElementById('minutesVisualDayGrid');
     const noticeEl = document.getElementById('minutesVisualDateStatusNotice');
     if (!gridEl || !windowMeta || !windowMeta.daily_slots) return;
 
+    const allowedNums = window.AGAP_SETTINGS?.mediation_day_numbers || [2];
+    const allowedDays = window.AGAP_SETTINGS?.mediation_days || ['Tue'];
+    const medLabel = window.AGAP_SETTINGS?.mediation_days_label || 'Mediation';
+    const maxCapacity = window.AGAP_SETTINGS?.daily_capacity || 8;
+
     const allDays = Object.values(windowMeta.daily_slots);
-    const tuesdayDays = allDays.filter(d => {
+    const medDays = allDays.filter(d => {
         const parts = d.date.split('-');
         const dt = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-        return dt.getDay() === 2 && !d.is_past;
+        return (allowedNums.includes(dt.getDay()) || allowedDays.includes(d.day_name)) && !d.is_past;
     });
 
-    if (!tuesdayDays.length) {
-        gridEl.innerHTML = '<div style="color: #64748b; font-size: 0.78rem; grid-column: 1 / -1; text-align: center;">No upcoming Tuesday dates found in window.</div>';
+    if (!medDays.length) {
+        gridEl.innerHTML = `<div style="color: #64748b; font-size: 0.78rem; grid-column: 1 / -1; text-align: center;">No upcoming ${escapeHtml(medLabel)} dates found in window.</div>`;
         return;
     }
 
-    gridEl.innerHTML = tuesdayDays.slice(0, 6).map(d => {
+    gridEl.innerHTML = medDays.slice(0, 8).map(d => {
         const isSelected = (d.date === selectedDate);
         let badgeText = `${d.available} open`;
         let badgeBg = '#dcfce7';
         let badgeColor = '#15803d';
         let cardStyle = 'border: 1px solid #cbd5e1; background: #ffffff; color: #1e293b; cursor: pointer;';
         let disabledAttr = '';
-        let tooltip = `${d.date}: ${d.available} of ${d.max} slots available.`;
+        let tooltip = `${d.date}: ${d.available} of ${d.max || maxCapacity} slots available.`;
 
-        if (d.is_fully_booked) {
-            badgeText = '8/8 FULL';
+        if (d.is_fully_booked || (d.max > 0 && d.available <= 0)) {
+            badgeText = `${d.max || maxCapacity}/${d.max || maxCapacity} FULL`;
             badgeBg = '#fee2e2';
             badgeColor = '#b91c1c';
             cardStyle = 'border: 1px solid #fecaca; background: #fff1f2; color: #881337; cursor: not-allowed; opacity: 0.65;';
             disabledAttr = 'disabled';
-            tooltip = `${d.date}: Fully booked! Maximum 8 mediation sessions reached for this date.`;
+            tooltip = `${d.date}: Fully booked! Maximum ${d.max || maxCapacity} mediation sessions reached for this date.`;
         } else if (d.is_non_working_day) {
             badgeText = 'Holiday';
             badgeBg = '#f1f5f9';
@@ -1240,7 +1297,7 @@ function renderMinutesVisualDayPicker(windowMeta, selectedDate) {
                  title="${escapeHtml(tooltip)}"
                  style="border-radius: 6px; padding: 8px 6px; text-align: center; transition: all 0.15s; user-select: none; ${cardStyle}">
                 <div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; color: #475569;">
-                    ${escapeHtml(d.day_name || 'Tue')}
+                    ${escapeHtml(d.day_name || '')}
                 </div>
                 <div style="font-size: 0.88rem; font-weight: 800; margin: 3px 0;">
                     ${d.day_num} ${escapeHtml(d.month_name || '')}
@@ -1256,14 +1313,14 @@ function renderMinutesVisualDayPicker(windowMeta, selectedDate) {
         if (selectedDate) {
             const selectedDayData = windowMeta.daily_slots[selectedDate];
             if (selectedDayData) {
-                if (selectedDayData.is_fully_booked) {
-                    noticeEl.innerHTML = `<span style="color: #dc2626; font-weight: 600;">Selected Tuesday is fully booked (8 of 8 daily mediation sessions).</span>`;
+                if (selectedDayData.is_fully_booked || (selectedDayData.max > 0 && selectedDayData.available <= 0)) {
+                    noticeEl.innerHTML = `<span style="color: #dc2626; font-weight: 600;">Selected date is fully booked (${selectedDayData.max || maxCapacity} of ${selectedDayData.max || maxCapacity} daily mediation sessions).</span>`;
                 } else {
-                    noticeEl.innerHTML = `<span style="color: #15803d; font-weight: 600;">Tuesday selected (${selectedDate}): ${selectedDayData.available} slots remaining.</span>`;
+                    noticeEl.innerHTML = `<span style="color: #15803d; font-weight: 600;">Date selected (${selectedDate}): ${selectedDayData.available} slots remaining.</span>`;
                 }
             }
         } else {
-            noticeEl.textContent = `Click any available Tuesday above to select.`;
+            noticeEl.textContent = `Click any available mediation date above to select.`;
         }
     }
 }
@@ -1285,11 +1342,11 @@ async function checkMinutesScheduleConflict() {
     const slotsList = document.getElementById('minutesDaySlotsList');
 
     if (!dateInput) return;
-    enforceTuesdayDate(dateInput);
+    enforceAllowedMediationDate(dateInput);
 
     const dateVal = dateInput.value;
-    const timeVal = timeInput ? timeInput.value : '13:00';
-    const venueVal = 'Lupon Court Room';
+    const timeVal = timeInput ? timeInput.value : (window.AGAP_SETTINGS?.mediation_hours_start || '13:00');
+    const venueVal = window.AGAP_SETTINGS?.mediation_venue || 'Lupon Court Room';
 
     if (!dateVal) return;
 
@@ -1343,7 +1400,7 @@ async function checkMinutesScheduleConflict() {
                 slotsList.innerHTML = `<span style="color: #166534; font-weight: 500;">✓ No other sessions scheduled on ${escapeHtml(dateVal)}. All 8 slots available.</span>`;
             } else {
                 slotsList.innerHTML = `
-                    <div style="margin-bottom: 6px; font-weight: 600; color: #475569;">Tuesday Mediation Docket Call (${bookedCount} of ${maxSlots} booked):</div>
+                    <div style="margin-bottom: 6px; font-weight: 600; color: #475569;">Mediation Docket Call (${bookedCount} of ${maxSlots} booked):</div>
                 ` + scheduled.map(s => {
                     const qStatus = s.queue_status || s.status || 'Waiting';
                     let pillBg = '#eff6ff', pillColor = '#1e40af', pillBorder = '#bfdbfe';
@@ -1369,7 +1426,7 @@ async function checkMinutesScheduleConflict() {
 
         if (result.is_fully_booked || bookedCount >= maxSlots) {
             if (conflictAlert) {
-                conflictAlert.textContent = `Date Fully Booked: All ${maxSlots} daily mediation slots on this date are occupied. Please select another Tuesday.`;
+                conflictAlert.textContent = `Date Fully Booked: All ${maxSlots} daily mediation slots on this date are occupied. Please select another date.`;
                 conflictAlert.style.display = 'block';
             }
             if (submitBtn) {
@@ -1535,31 +1592,36 @@ async function handleDialogueMinutesSubmit(event) {
             }
             return;
         }
+        const allowedNums = window.AGAP_SETTINGS?.mediation_day_numbers || [2];
+        const medLabel = window.AGAP_SETTINGS?.mediation_days_label || 'Mediation Day';
+        const startH = window.AGAP_SETTINGS?.mediation_hours_start || '13:00';
+        const endH = window.AGAP_SETTINGS?.mediation_hours_end || '16:30';
+
         if (medDate <= todayStr) {
             if (errBox) {
-                errBox.textContent = 'Ang petsa ng Mediation ay dapat pumatak sa darating na Martes (future Tuesday).';
+                errBox.textContent = `Ang petsa ng Mediation ay dapat pumatak sa darating na araw (${medLabel}).`;
                 errBox.style.display = 'block';
             }
             return;
         }
         const medDt = new Date(medDate + 'T00:00:00');
-        if (medDt.getDay() !== 2) {
+        if (!allowedNums.includes(medDt.getDay())) {
             if (errBox) {
-                errBox.textContent = 'Alinsunod sa Tumana rules, ang pormal na Mediation ay tuwing Martes (Tuesday) lamang maaaring itakda.';
+                errBox.textContent = `Alinsunod sa schedule rules, ang pormal na Mediation ay tuwing ${medLabel} lamang maaaring itakda.`;
                 errBox.style.display = 'block';
             }
             return;
         }
-        if (medTime < '13:00' || medTime > '16:30') {
+        if (medTime < startH || medTime > endH) {
             if (errBox) {
-                errBox.textContent = 'Ang Target Call Time ng Mediation ay dapat nasa pagitan ng 1:00 PM at 4:30 PM (Tuesday Docket Call).';
+                errBox.textContent = `Ang Target Call Time ng Mediation ay dapat nasa pagitan ng ${startH} at ${endH}.`;
                 errBox.style.display = 'block';
             }
             return;
         }
         if (conflictAlert && conflictAlert.style.display !== 'none' && conflictAlert.textContent.trim() !== '') {
             if (errBox) {
-                errBox.textContent = 'May schedule conflict o puno na ang mga slots sa napiling Mediation schedule. Paki-pili ang ibang Martes o oras bago magpatuloy.';
+                errBox.textContent = 'May schedule conflict o puno na ang mga slots sa napiling Mediation schedule. Paki-pili ang ibang petsa o oras bago magpatuloy.';
                 errBox.style.display = 'block';
             }
             return;
@@ -1590,7 +1652,11 @@ async function handleDialogueMinutesSubmit(event) {
 
             if (data.action === 'escalate_mediation') {
                 window.pendingEscalationData = data;
-                openPaanyayaPreviewModal(data.complaint_id || complaintId, data.stage_type || currentStage);
+                if (typeof openSummonsPreviewModal === 'function' && data.case_id) {
+                    openSummonsPreviewModal(data.case_id, data.document_id || data.kp9_document_id, data.hearing_id, true);
+                } else {
+                    openPaanyayaPreviewModal(data.complaint_id || complaintId, data.stage_type || currentStage);
+                }
             } else {
                 let targetUrl = `complaint-details.php?id=${encodeURIComponent(complaintId)}&tab=paanyaya`;
                 window.location.href = targetUrl;

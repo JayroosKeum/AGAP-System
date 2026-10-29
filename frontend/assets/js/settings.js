@@ -108,13 +108,21 @@ document.addEventListener('DOMContentLoaded', () => {
             payload[key] = value;
         }
 
-        // Toggles / checkboxes not in form data if unchecked
-        const toggles = settingsForm.querySelectorAll('input[type="checkbox"]');
+        // Toggles / checkboxes not in form data if unchecked (excluding array checkboxes)
+        const toggles = settingsForm.querySelectorAll('input[type="checkbox"]:not([name$="[]"])');
         toggles.forEach(t => {
             if (t.name) {
                 payload[t.name] = t.checked ? '1' : '0';
             }
         });
+
+        // Collect multi-select array checkboxes (e.g. mediation_days[])
+        const medDays = [];
+        settingsForm.querySelectorAll('input[name="mediation_days[]"]:checked').forEach(cb => {
+            medDays.push(cb.value);
+        });
+        payload['mediation_days'] = medDays;
+        payload['mediation_day_of_week'] = medDays.join(',');
 
         // Holidays JSON
         payload['configured_holidays'] = JSON.stringify(window.currentHolidaysList || []);

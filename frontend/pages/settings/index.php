@@ -341,26 +341,76 @@ include '../../layouts/header.php';
                                             </div>
                                         </div>
 
-                                        <div class="form-grid-3" style="margin-top: 14px;">
+                                        <div class="form-grid-2" style="margin-top: 14px;">
                                             <div class="form-group">
-                                                <label class="form-label">Working Hours Start</label>
+                                                <label class="form-label">Barangay Working Hours Start</label>
                                                 <input type="time" name="working_hours_start" class="form-control" value="<?php echo htmlspecialchars($settings['working_hours_start'] ?? '08:00'); ?>">
+                                                <div class="form-help">Opening time of Barangay Lupon office.</div>
                                             </div>
                                             <div class="form-group">
-                                                <label class="form-label">Working Hours End</label>
+                                                <label class="form-label">Barangay Working Hours End</label>
                                                 <input type="time" name="working_hours_end" class="form-control" value="<?php echo htmlspecialchars($settings['working_hours_end'] ?? '17:00'); ?>">
+                                                <div class="form-help">Closing time of Barangay Lupon office.</div>
+                                            </div>
+                                        </div>
+
+                                        <div class="form-grid-2" style="margin-top: 14px;">
+                                            <div class="form-group">
+                                                <label class="form-label">Mediation Session Window (Start / End)</label>
+                                                <div style="display: flex; gap: 8px;">
+                                                    <input type="time" name="mediation_hours_start" class="form-control" value="<?php echo htmlspecialchars($settings['mediation_hours_start'] ?? '13:00'); ?>">
+                                                    <input type="time" name="mediation_hours_end" class="form-control" value="<?php echo htmlspecialchars($settings['mediation_hours_end'] ?? '16:30'); ?>">
+                                                </div>
+                                                <div class="form-help">Operating hours window for Punong Barangay formal mediation docket calls (Default: 1:00 PM - 4:30 PM).</div>
                                             </div>
                                             <div class="form-group">
-                                                <label class="form-label">Mediation Day of Week</label>
-                                                <select name="mediation_day_of_week" class="form-control">
-                                                    <option value="Tue" <?php echo ($settings['mediation_day_of_week'] ?? 'Tue') === 'Tue' ? 'selected' : ''; ?>>Tuesday (Barangay Tumana Rule)</option>
-                                                    <option value="Mon" <?php echo ($settings['mediation_day_of_week'] ?? '') === 'Mon' ? 'selected' : ''; ?>>Monday</option>
-                                                    <option value="Wed" <?php echo ($settings['mediation_day_of_week'] ?? '') === 'Wed' ? 'selected' : ''; ?>>Wednesday</option>
-                                                    <option value="Thu" <?php echo ($settings['mediation_day_of_week'] ?? '') === 'Thu' ? 'selected' : ''; ?>>Thursday</option>
-                                                    <option value="Fri" <?php echo ($settings['mediation_day_of_week'] ?? '') === 'Fri' ? 'selected' : ''; ?>>Friday</option>
-                                                </select>
-                                                <div class="form-help">Restricts Punong Barangay mediation slots.</div>
+                                                <label class="form-label">Mediation Hearing Venue</label>
+                                                <input type="text" name="mediation_venue" class="form-control" value="<?php echo htmlspecialchars($settings['mediation_venue'] ?? 'Lupon Court Room'); ?>">
+                                                <div class="form-help">Designated room or hall for mediation hearings (Default: Lupon Court Room).</div>
                                             </div>
+                                        </div>
+
+                                        <?php
+                                        $currentMedDays = [];
+                                        $rawMedDays = $settings['mediation_day_of_week'] ?? 'Tue';
+                                        if (is_string($rawMedDays)) {
+                                            $decoded = json_decode($rawMedDays, true);
+                                            if (is_array($decoded)) {
+                                                $currentMedDays = $decoded;
+                                            } else {
+                                                $currentMedDays = array_filter(array_map('trim', explode(',', $rawMedDays)));
+                                            }
+                                        } elseif (is_array($rawMedDays)) {
+                                            $currentMedDays = $rawMedDays;
+                                        }
+                                        if (empty($currentMedDays)) {
+                                            $currentMedDays = ['Tue'];
+                                        }
+                                        $weekdaysList = [
+                                            'Mon' => 'Monday',
+                                            'Tue' => 'Tuesday',
+                                            'Wed' => 'Wednesday',
+                                            'Thu' => 'Thursday',
+                                            'Fri' => 'Friday',
+                                            'Sat' => 'Saturday'
+                                        ];
+                                        ?>
+                                        <div class="form-group" style="margin-top: 14px;">
+                                            <label class="form-label" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+                                                <span>Mediation Days of Week (Select one or multiple days) <span class="required">*</span></span>
+                                                <span style="font-size: 0.74rem; font-weight: normal; color: #64748b;">Punong Barangay Formal Mediation</span>
+                                            </label>
+                                            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px;">
+                                                <?php foreach ($weekdaysList as $code => $lbl): 
+                                                    $isChecked = in_array($code, $currentMedDays, true);
+                                                ?>
+                                                    <label style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; background: <?= $isChecked ? '#f0f9ff' : '#f8fafc' ?>; border: 1.5px solid <?= $isChecked ? '#0284c7' : '#cbd5e1' ?>; border-radius: 8px; cursor: pointer; font-size: 0.86rem; font-weight: 600; color: <?= $isChecked ? '#0369a1' : '#334155' ?>; transition: all 0.15s ease;">
+                                                        <input type="checkbox" name="mediation_days[]" value="<?= $code ?>" <?= $isChecked ? 'checked' : '' ?> onchange="this.parentElement.style.borderColor = this.checked ? '#0284c7' : '#cbd5e1'; this.parentElement.style.background = this.checked ? '#f0f9ff' : '#f8fafc'; this.parentElement.style.color = this.checked ? '#0369a1' : '#334155';">
+                                                        <?= $lbl ?> <?= $code === 'Tue' ? '<small style="color: #64748b; font-size: 0.75rem;">(Tumana Rule)</small>' : '' ?>
+                                                    </label>
+                                                <?php endforeach; ?>
+                                            </div>
+                                            <div class="form-help">Designated days for Punong Barangay formal mediation hearings. You can select multiple days. Conciliation sessions will be scheduled on the remaining non-mediation weekdays.</div>
                                         </div>
                                     </div>
                                 </div>

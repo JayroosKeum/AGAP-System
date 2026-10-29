@@ -38,11 +38,52 @@ require_once __DIR__ . '/../../../backend/models/Paanyaya.php';
 $paanyayaModel = new Paanyaya();
 $servingOfficers = $paanyayaModel->getServingOfficers();
 $eligiblePresiders = $paanyayaModel->getEligiblePresiders();
-$maxPaanyayaSetting = (int) Setting::getSetting('paanyaya_max_attempts', 3);
+$sysSettings = Setting::all();
+$maxPaanyayaSetting = (int) ($sysSettings['paanyaya_max_attempts'] ?? 3);
+
+$rawMedDays = $sysSettings['mediation_day_of_week'] ?? 'Tue';
+$allowedMedDays = [];
+if (is_string($rawMedDays)) {
+    $dec = json_decode($rawMedDays, true);
+    $allowedMedDays = is_array($dec) ? $dec : array_filter(array_map('trim', explode(',', $rawMedDays)));
+} elseif (is_array($rawMedDays)) {
+    $allowedMedDays = $rawMedDays;
+}
+if (empty($allowedMedDays)) {
+    $allowedMedDays = ['Tue'];
+}
+
+$pluralMap = [
+    'Mon' => 'Mondays', 'Tue' => 'Tuesdays', 'Wed' => 'Wednesdays',
+    'Thu' => 'Thursdays', 'Fri' => 'Fridays', 'Sat' => 'Saturdays', 'Sun' => 'Sundays'
+];
+$dayNumMap = ['Sun' => 0, 'Mon' => 1, 'Tue' => 2, 'Wed' => 3, 'Thu' => 4, 'Fri' => 5, 'Sat' => 6];
+
+$medDaysPlural = array_map(fn($d) => $pluralMap[$d] ?? $d, $allowedMedDays);
+if (count($medDaysPlural) === 1) {
+    $medDaysLabel = reset($medDaysPlural) . ' ONLY';
+} elseif (count($medDaysPlural) === 2) {
+    $medDaysLabel = implode(' & ', $medDaysPlural) . ' ONLY';
+} else {
+    $medDaysLabel = implode(', ', array_slice($medDaysPlural, 0, -1)) . ' & ' . end($medDaysPlural);
+}
+
+$allowedMedDayNumbers = array_values(array_unique(array_filter(array_map(fn($d) => $dayNumMap[$d] ?? null, $allowedMedDays), fn($n) => $n !== null)));
+$dailyHearingCapacity = (int) ($sysSettings['daily_hearing_capacity'] ?? 8);
+$medHoursStart = $sysSettings['mediation_hours_start'] ?? '13:00';
+$medHoursEnd = $sysSettings['mediation_hours_end'] ?? '16:30';
+$medVenue = $sysSettings['mediation_venue'] ?? 'Lupon Court Room';
 ?>
 <script>
 window.AGAP_SETTINGS = window.AGAP_SETTINGS || {};
 window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
+window.AGAP_SETTINGS.mediation_days = <?= json_encode($allowedMedDays) ?>;
+window.AGAP_SETTINGS.mediation_days_label = <?= json_encode($medDaysLabel) ?>;
+window.AGAP_SETTINGS.mediation_day_numbers = <?= json_encode($allowedMedDayNumbers) ?>;
+window.AGAP_SETTINGS.daily_capacity = <?= (int) $dailyHearingCapacity ?>;
+window.AGAP_SETTINGS.mediation_hours_start = <?= json_encode($medHoursStart) ?>;
+window.AGAP_SETTINGS.mediation_hours_end = <?= json_encode($medHoursEnd) ?>;
+window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
 </script>
 <?php
 
@@ -398,9 +439,9 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
                         <button type="button" class="btn-create" id="btnIssueP1" onclick="openIssuePaanyayaModal('Paanyaya 1')">
                             Issue Paanyaya 1
                         </button>
-                        <button type="button" class="btn-create" id="btnRecordReturnP1" onclick="openRecordReturnModal('Paanyaya 1')" style="background: #0284c7; border-color: #0284c7; display: none;">
+                        <a href="../gps/proof-service.php?complaint_id=<?= (int)$complaintId ?>&stage=Paanyaya+1&open_return=1" class="btn-create" id="btnRecordReturnP1" onclick="openRecordReturnModal('Paanyaya 1'); return true;" style="background: #0284c7; border-color: #0284c7; text-decoration: none; display: none;">
                             Record Officer's Return
-                        </button>
+                        </a>
                         <a href="record-dialogue-minutes.php?id=<?= $complaintId ?>&stage=Paanyaya+1" class="btn-create" id="btnRecordMinutesP1" style="background: #2563eb; border-color: #2563eb; text-decoration: none; display: none;">
                             Record Dialogue Minutes
                         </a>
@@ -452,9 +493,9 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
                         <button type="button" class="btn-create" id="btnIssueP2" onclick="openIssuePaanyayaModal('Paanyaya 2')" disabled style="opacity: 0.55; cursor: not-allowed; display: none;">
                             Issue Paanyaya 2
                         </button>
-                        <button type="button" class="btn-create" id="btnRecordReturnP2" onclick="openRecordReturnModal('Paanyaya 2')" style="background: #0284c7; border-color: #0284c7; display: none;">
+                        <a href="../gps/proof-service.php?complaint_id=<?= (int)$complaintId ?>&stage=Paanyaya+2&open_return=1" class="btn-create" id="btnRecordReturnP2" onclick="openRecordReturnModal('Paanyaya 2'); return true;" style="background: #0284c7; border-color: #0284c7; text-decoration: none; display: none;">
                             Record Officer's Return
-                        </button>
+                        </a>
                         <a href="record-dialogue-minutes.php?id=<?= $complaintId ?>&stage=Paanyaya+2" class="btn-create" id="btnRecordMinutesP2" style="background: #2563eb; border-color: #2563eb; text-decoration: none; display: none;">
                             Record Dialogue Minutes
                         </a>
@@ -902,7 +943,7 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
 
                 <div class="form-group">
                     <label for="summonMediationVenue">Venue <span class="required-mark" aria-hidden="true">*</span></label>
-                    <input type="text" id="summonMediationVenue" name="venue" maxlength="255" value="Lupon Court Room" readonly required style="background: #f8fafc; cursor: not-allowed;">
+                    <input type="text" id="summonMediationVenue" name="venue" maxlength="255" value="<?= htmlspecialchars($medVenue) ?>" readonly required style="background: #f8fafc; cursor: not-allowed;">
                     <small style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Mediation sessions are conducted exclusively in the Lupon Court Room.</small>
                 </div>
                 <div class="form-group" style="margin-bottom: 6px;">
@@ -1169,15 +1210,15 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
             <!-- Escalation 1st Mediation Hearing Picker (Visible ONLY on Escalate) -->
             <div id="escalationScheduleSection" style="display: none; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 14px; margin-bottom: 16px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 6px;">
-                    <h4 style="margin: 0; font-size: 0.92rem; color: #0f172a; font-weight: 700;">1st Formal Mediation Hearing Schedule (Tumana Rules)</h4>
+                    <h4 style="margin: 0; font-size: 0.92rem; color: #0f172a; font-weight: 700;">1st Formal Mediation Hearing Schedule</h4>
                     <span style="font-size: 0.72rem; background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; padding: 2px 8px; border-radius: 9999px; font-weight: 700;">
-                        Tuesdays ONLY · Court Room (Max 8/Day)
+                        <?= htmlspecialchars($medDaysLabel) ?> · <?= htmlspecialchars($medVenue) ?> (Max <?= $dailyHearingCapacity ?>/Day)
                     </span>
                 </div>
                 <div class="form-row-2">
                     <div class="form-group">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                            <label for="escalationMedDate" style="font-weight: 600; font-size: 0.82rem; margin: 0;">Mediation Date (Tuesdays ONLY) <span class="required-mark">*</span></label>
+                            <label for="escalationMedDate" style="font-weight: 600; font-size: 0.82rem; margin: 0;">Mediation Date (<?= htmlspecialchars($medDaysLabel) ?>) <span class="required-mark">*</span></label>
                             <span id="escalationCapacityBadge" class="badge-capacity" style="font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 9999px; background: #e2e8f0; color: #475569;">
                                 Checking...
                             </span>
@@ -1186,10 +1227,10 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
                     </div>
                     <div class="form-group">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                            <label for="escalationMedTime" style="font-weight: 600; font-size: 0.82rem; margin: 0;">Target Call Time (1:00 PM - 4:30 PM) <span class="required-mark">*</span></label>
+                            <label for="escalationMedTime" style="font-weight: 600; font-size: 0.82rem; margin: 0;">Target Call Time (<?= date('g:i A', strtotime($medHoursStart)) ?> - <?= date('g:i A', strtotime($medHoursEnd)) ?>) <span class="required-mark">*</span></label>
                             <span style="font-size: 0.72rem; color: #64748b;">15-min intervals</span>
                         </div>
-                        <input type="time" id="escalationMedTime" name="mediation_time" min="13:00" max="16:30" step="900" value="13:00" style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                        <input type="time" id="escalationMedTime" name="mediation_time" min="<?= $medHoursStart ?>" max="<?= $medHoursEnd ?>" step="900" value="<?= $medHoursStart ?>" style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
                         <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px;">
                             <button type="button" class="btn-slot-chip" onclick="document.getElementById('escalationMedTime').value='13:00'; document.getElementById('escalationMedTime').dispatchEvent(new Event('change'));" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:00 PM</button>
                             <button type="button" class="btn-slot-chip" onclick="document.getElementById('escalationMedTime').value='13:15'; document.getElementById('escalationMedTime').dispatchEvent(new Event('change'));" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:15 PM</button>
@@ -1203,17 +1244,17 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
                 </div>
                 <div class="form-group" style="margin-top: 8px;">
                     <label for="escalationMedVenue" style="font-weight: 600; font-size: 0.82rem;">Hearing Venue</label>
-                    <input type="text" id="escalationMedVenue" name="venue" value="Lupon Court Room" readonly style="padding: 8px 10px; font-size: 0.88rem; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                    <input type="text" id="escalationMedVenue" name="venue" value="<?= htmlspecialchars($medVenue) ?>" readonly style="padding: 8px 10px; font-size: 0.88rem; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
                 </div>
 
                 <!-- Live Day Docket Peek -->
                 <div id="escalationDocketPeek" style="margin-top: 10px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;">
                     <div style="font-size: 0.78rem; font-weight: 700; color: #334155; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
-                        <span>📋 Tuesday Mediation Docket Call (Lupon Court Room)</span>
+                        <span>📋 Mediation Docket Call (<?= htmlspecialchars($medVenue) ?>)</span>
                         <span id="escalationDocketCount" style="font-size: 0.72rem; color: #64748b;">0 sessions</span>
                     </div>
                     <div id="escalationDocketList" style="font-size: 0.8rem; color: #64748b; line-height: 1.4;">
-                        Select a Tuesday to peek existing docket calls.
+                        Select a mediation date to peek existing docket calls.
                     </div>
                 </div>
 
@@ -1672,7 +1713,7 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
 
                 <div class="form-group" style="margin-bottom: 14px;">
                     <label for="schedVenue">Venue <span class="required-mark" aria-hidden="true">*</span></label>
-                    <input type="text" id="schedVenue" name="venue" maxlength="255" value="Lupon Court Room" readonly required style="background: #f8fafc; cursor: not-allowed; width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.88rem; box-sizing: border-box;">
+                    <input type="text" id="schedVenue" name="venue" maxlength="255" value="<?= htmlspecialchars($medVenue) ?>" readonly required style="background: #f8fafc; cursor: not-allowed; width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.88rem; box-sizing: border-box;">
                     <small style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Hearing sessions are conducted in the Lupon Court Room.</small>
                 </div>
 
@@ -2140,5 +2181,13 @@ window.AGAP_SETTINGS.paanyaya_max_attempts = <?php echo $maxPaanyayaSetting; ?>;
         </form>
     </div>
 </div>
+
+
+<script>
+window.openRecordReturnModal = function(stage) {
+    const cId = <?= (int)($complaintId ?? 0) ?>;
+    window.location.href = `../gps/proof-service.php?complaint_id=${encodeURIComponent(cId)}&stage=${encodeURIComponent(stage || 'Paanyaya 1')}&open_return=1`;
+};
+</script>
 
 <?php include '../../layouts/footer.php'; ?>

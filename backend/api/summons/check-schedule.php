@@ -1,9 +1,12 @@
-﻿<?php
+<?php
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 header('Content-Type: application/json; charset=utf-8');
 
 require_once __DIR__ . '/../../models/Summons.php';
+require_once __DIR__ . '/../../models/Setting.php';
 require_once __DIR__ . '/../../services/MediationDeadlineService.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'GET' && $_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -32,6 +35,30 @@ $caseId = filter_var($input['case_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
 $getWindow = !empty($input['get_window']) || !empty($input['window']);
 
 $summons = new Summons();
+
+    $rawMedDays = Setting::getSetting('mediation_day_of_week', 'Tue');
+    $allowedMedDays = [];
+    if (is_string($rawMedDays)) {
+        $dec = json_decode($rawMedDays, true);
+        $allowedMedDays = is_array($dec) ? $dec : array_filter(array_map('trim', explode(',', $rawMedDays)));
+    } elseif (is_array($rawMedDays)) {
+        $allowedMedDays = $rawMedDays;
+    }
+    if (empty($allowedMedDays)) {
+        $allowedMedDays = ['Tue'];
+    }
+    $pluralMap = [
+        'Mon' => 'Mondays', 'Tue' => 'Tuesdays', 'Wed' => 'Wednesdays',
+        'Thu' => 'Thursdays', 'Fri' => 'Fridays', 'Sat' => 'Saturdays', 'Sun' => 'Sundays'
+    ];
+    $medDaysPlural = array_map(fn($d) => $pluralMap[$d] ?? $d, $allowedMedDays);
+    $medDaysLabel = implode(', ', $medDaysPlural);
+    $workStart = Setting::getSetting('working_hours_start', '08:00');
+    $workEnd = Setting::getSetting('working_hours_end', '17:00');
+    $medHoursStart = Setting::getSetting('mediation_hours_start', '13:00');
+    $medHoursEnd = Setting::getSetting('mediation_hours_end', '16:30');
+    $medVenue = Setting::getSetting('mediation_venue', 'Lupon Court Room');
+
 $db = null;
 
 if (!$caseId && $complaintId) {
@@ -90,15 +117,15 @@ if ($complaintId || $getWindow) {
     while ($cur <= $endDt) {
         $dStr = $cur->format('Y-m-d');
         $dayOfWeek = (int) $cur->format('N'); // 1 = Mon, 2 = Tue, ..., 7 = Sun
+        $curDayCode = $cur->format('D');
         $isWeekend = ($dayOfWeek === 6 || $dayOfWeek === 7);
         $isHoliday = MediationDeadlineService::isNonWorkingDay($cur);
-        $isTuesday = ($dayOfWeek === 2);
+        $isMedDay = in_array($curDayCode, $allowedMedDays, true);
         $booked = $dailyCounts[$dStr] ?? 0;
 
         if ($hearingType === 'Conciliation') {
-            // Tumana Master Schedule: Mon, Wed, Thu, Fri = 4 distinct conciliation slots (09:00, 10:00, 14:00, 15:00).
-            // Tuesdays are strictly blocked (reserved exclusively for Punong Barangay Mediation). Weekends & Holidays = 0.
-            if ($isWeekend || $isHoliday || $isTuesday) {
+            // Conciliation blocked on designated mediation days (Lupon court room reserved for Punong Barangay).
+            if ($isWeekend || $isHoliday || $isMedDay) {
                 $maxSlots = 0;
                 $avail = 0;
                 $isFull = false;
@@ -110,11 +137,12 @@ if ($complaintId || $getWindow) {
                 $canSchedule = (!$isPast = ($dStr < $todayStr)) && !$isFull;
             }
         } else {
-            $maxSlots = ($isTuesday && !$isWeekend && !$isHoliday) ? 8 : 0;
+            // Mediation allowed only on configured mediation days
+            $maxSlots = ($isMedDay && !$isWeekend && !$isHoliday) ? 8 : 0;
             $avail = max(0, $maxSlots - $booked);
             $isFull = ($booked >= 8);
             $isPast = ($dStr < $todayStr);
-            $canSchedule = (!$isPast && !$isFull && $isTuesday && !$isHoliday && !$isWeekend);
+            $canSchedule = (!$isPast && !$isFull && $isMedDay && !$isHoliday && !$isWeekend);
         }
 
         $days[$dStr] = [
@@ -170,12 +198,12 @@ $dayOfWeek = (int) $dateObj->format('N');
 $isWeekend = ($dayOfWeek === 6 || $dayOfWeek === 7);
 $isNonWorkingDay = MediationDeadlineService::isNonWorkingDay($dateObj);
 
-$curDayOfWeek = (int) $dateObj->format('N');
-$isCurTuesday = ($curDayOfWeek === 2);
+$curDayCode = $dateObj->format('D');
+$isCurMedDay = in_array($curDayCode, $allowedMedDays, true);
 if ($hearingType === 'Conciliation') {
-    $maxSlots = ($isWeekend || $isNonWorkingDay || $isCurTuesday) ? 0 : 4;
+    $maxSlots = ($isWeekend || $isNonWorkingDay || $isCurMedDay) ? 0 : 4;
 } else {
-    $maxSlots = 8;
+    $maxSlots = $isCurMedDay ? 8 : 0;
 }
 
 $scheduledMediations = $summons->getScheduledHearingsForDate($date, $hearingType, $caseId);
@@ -189,27 +217,27 @@ $deadlineMessage = null;
 $hasConflict = false;
 $conflictData = null;
 
-if ($hearingType === 'Conciliation' && $isCurTuesday) {
+if ($hearingType === 'Conciliation' && $isCurMedDay) {
     $hasConflict = true;
     $conflictData = [
         'case_number' => '',
-        'hearing_type' => 'Tuesday Blocked',
+        'hearing_type' => 'Mediation Day Blocked',
         'hearing_date' => $date,
         'start_time' => '',
         'end_time' => '',
         'venue' => $venue,
-        'message' => 'Tuesdays reserved exclusively for Punong Barangay Mediation. Conciliation hearings must be held on non-Tuesday weekdays (Mondays, Wednesdays, Thursdays, or Fridays).'
+        'message' => "{$medDaysLabel} reserved exclusively for Punong Barangay Mediation. Conciliation hearings must be held on non-mediation weekdays."
     ];
-} elseif ($hearingType === 'Mediation' && !$isCurTuesday) {
+} elseif ($hearingType === 'Mediation' && !$isCurMedDay) {
     $hasConflict = true;
     $conflictData = [
         'case_number' => '',
-        'hearing_type' => 'Tuesday Only',
+        'hearing_type' => 'Restricted Mediation Day',
         'hearing_date' => $date,
         'start_time' => '',
         'end_time' => '',
         'venue' => $venue,
-        'message' => 'Mediation hearings can only be held on Tuesdays (Barangay Tumana Katarungang Pambarangay Rules).'
+        'message' => "Mediation hearings can only be held on designated mediation days ({$medDaysLabel}) according to Office Hours Settings."
     ];
 } elseif ($isNonWorkingDay) {
     $hasConflict = true;
@@ -224,7 +252,9 @@ if ($hearingType === 'Conciliation' && $isCurTuesday) {
     ];
 } elseif ($time !== '' && preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', $time)) {
     $timeMin = (int) date('H', strtotime($time)) * 60 + (int) date('i', strtotime($time));
-    if ($hearingType === 'Mediation' && ($timeMin < 780 || $timeMin > 990)) {
+    $workStartMin = (int)date('H', strtotime($workStart)) * 60 + (int)date('i', strtotime($workStart));
+    $workEndMin = (int)date('H', strtotime($workEnd)) * 60 + (int)date('i', strtotime($workEnd));
+    if ($hearingType === 'Mediation' && ($timeMin < $workStartMin || $timeMin > ($workEndMin - 30))) {
         $hasConflict = true;
         $conflictData = [
             'case_number' => '',
@@ -233,7 +263,7 @@ if ($hearingType === 'Conciliation' && $isCurTuesday) {
             'start_time' => $time,
             'end_time' => '',
             'venue' => $venue,
-            'message' => 'Mediation sessions on Tuesdays must have target call times between 1:00 PM and 4:30 PM (operating hours 1:00 PM – 5:00 PM).'
+            'message' => "Mediation sessions must have target call times within configured office hours (" . date('g:i A', strtotime($workStart)) . " – " . date('g:i A', strtotime($workEnd)) . ")."
         ];
     } else {
         $hearingDateTime = substr($date, 0, 10) . ' ' . substr($time, 0, 5) . ':00';
@@ -267,7 +297,15 @@ $capacityBadgeText = ($isFullyBooked)
 echo json_encode([
     'success' => true,
     'date' => $date,
-    'is_tuesday' => $isCurTuesday,
+    'is_tuesday' => in_array('Tue', $allowedMedDays, true),
+    'is_mediation_day' => $isCurMedDay,
+    'mediation_days' => $allowedMedDays,
+    'mediation_days_label' => $medDaysLabel,
+    'working_hours_start' => $workStart,
+    'working_hours_end' => $workEnd,
+    'mediation_hours_start' => $medHoursStart,
+    'mediation_hours_end' => $medHoursEnd,
+    'mediation_venue' => $medVenue,
     'total_booked' => $totalBooked,
     'max_slots' => $maxSlots,
     'available_slots' => $availableSlots,

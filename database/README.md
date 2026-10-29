@@ -204,6 +204,15 @@ For existing databases updating to the Voluntary Arbitration end-to-end workflow
   - **`hearing_minutes` Table**:
     - Modifies `session_outcome` ENUM to include `'Arbitration'`, `'Arbitration Award'`, and `'Repudiated'` alongside existing session outcomes (`'Settled'`, `'Continue Mediation'`, `'Continue Conciliation'`, `'Continue Arbitration'`, `'Failed'`, `'Party Absent'`, `'Rescheduled'`, `'Elevate to Pangkat'`, `'Pending CFA'`, `'Pending'`).
 
+## Multi-Party Summon Deliveries Unique Index Fix (October 2026)
+
+For existing databases experiencing duplicate key collisions during summons or proof-of-service initialization for cases with multiple complainants, respondents, or witnesses, apply:
+- `database/migrations/20261029_002_fix_multi_party_summon_deliveries_unique_index.sql`:
+  - **`summon_deliveries` Table**:
+    - Replaces `uq_hearing_party_form_attempt` on `(hearing_id, party_type, form_type, attempt_number)` with `(hearing_id, party_type, resident_id, form_type, attempt_number)`.
+    - Eliminates SQLSTATE 23000 (error 1062) collisions when multiple individuals of the same party type (such as co-complainants or co-respondents) have notices or summons tracked for the same hearing attempt.
+
+
 
 
 

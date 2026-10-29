@@ -10,6 +10,41 @@ if (!in_array($roleId, [1, 2, 3, 4], true)) {
 
 require_once __DIR__ . '/../../../backend/config/database.php';
 require_once __DIR__ . '/../../../backend/models/Paanyaya.php';
+require_once __DIR__ . '/../../../backend/models/Setting.php';
+
+$sysSettings = Setting::all();
+$rawMedDays = $sysSettings['mediation_day_of_week'] ?? 'Tue';
+$allowedMedDays = [];
+if (is_string($rawMedDays)) {
+    $dec = json_decode($rawMedDays, true);
+    $allowedMedDays = is_array($dec) ? $dec : array_filter(array_map('trim', explode(',', $rawMedDays)));
+} elseif (is_array($rawMedDays)) {
+    $allowedMedDays = $rawMedDays;
+}
+if (empty($allowedMedDays)) {
+    $allowedMedDays = ['Tue'];
+}
+
+$pluralMap = [
+    'Mon' => 'Mondays', 'Tue' => 'Tuesdays', 'Wed' => 'Wednesdays',
+    'Thu' => 'Thursdays', 'Fri' => 'Fridays', 'Sat' => 'Saturdays', 'Sun' => 'Sundays'
+];
+$dayNumMap = ['Sun' => 0, 'Mon' => 1, 'Tue' => 2, 'Wed' => 3, 'Thu' => 4, 'Fri' => 5, 'Sat' => 6];
+
+$medDaysPlural = array_map(fn($d) => $pluralMap[$d] ?? $d, $allowedMedDays);
+if (count($medDaysPlural) === 1) {
+    $medDaysLabel = reset($medDaysPlural) . ' ONLY';
+} elseif (count($medDaysPlural) === 2) {
+    $medDaysLabel = implode(' & ', $medDaysPlural) . ' ONLY';
+} else {
+    $medDaysLabel = implode(', ', array_slice($medDaysPlural, 0, -1)) . ' & ' . end($medDaysPlural);
+}
+
+$allowedMedDayNumbers = array_values(array_unique(array_filter(array_map(fn($d) => $dayNumMap[$d] ?? null, $allowedMedDays), fn($n) => $n !== null)));
+$dailyHearingCapacity = (int) ($sysSettings['daily_hearing_capacity'] ?? 8);
+$medHoursStart = $sysSettings['mediation_hours_start'] ?? '13:00';
+$medHoursEnd = $sysSettings['mediation_hours_end'] ?? '16:30';
+$medVenue = $sysSettings['mediation_venue'] ?? 'Lupon Court Room';
 
 $complaintId = filter_var($_GET['id'] ?? ($_GET['complaint_id'] ?? null), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 if (!$complaintId) {
@@ -47,6 +82,16 @@ unset($_SESSION['complaint_flash']);
 
 include '../../layouts/header.php';
 ?>
+<script>
+window.AGAP_SETTINGS = window.AGAP_SETTINGS || {};
+window.AGAP_SETTINGS.mediation_days = <?= json_encode($allowedMedDays) ?>;
+window.AGAP_SETTINGS.mediation_days_label = <?= json_encode($medDaysLabel) ?>;
+window.AGAP_SETTINGS.mediation_day_numbers = <?= json_encode($allowedMedDayNumbers) ?>;
+window.AGAP_SETTINGS.daily_capacity = <?= (int) $dailyHearingCapacity ?>;
+window.AGAP_SETTINGS.mediation_hours_start = <?= json_encode($medHoursStart) ?>;
+window.AGAP_SETTINGS.mediation_hours_end = <?= json_encode($medHoursEnd) ?>;
+window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
+</script>
 
 <link rel="stylesheet" href="../../assets/css/dashboard.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/dashboard.css'); ?>">
 <link rel="stylesheet" href="../../assets/css/cases.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/cases.css'); ?>">
@@ -621,9 +666,9 @@ include '../../layouts/header.php';
             <!-- Escalation 1st Mediation Hearing Schedule (Visible ONLY on Impasse / Max Failed) -->
             <div id="workspaceEscalationSection" style="display: none; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 14px; margin-top: 14px; margin-bottom: 6px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 6px;">
-                    <h4 style="margin: 0; font-size: 0.92rem; color: #0f172a; font-weight: 700;">1st Formal Mediation Hearing Schedule (Tumana Rules)</h4>
+                    <h4 style="margin: 0; font-size: 0.92rem; color: #0f172a; font-weight: 700;">1st Formal Mediation Hearing Schedule</h4>
                     <span style="font-size: 0.72rem; background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; padding: 2px 8px; border-radius: 9999px; font-weight: 700;">
-                        Tuesdays ONLY · Court Room (Max 8/Day)
+                        <?= htmlspecialchars($medDaysLabel) ?> · <?= htmlspecialchars($medVenue) ?> (Max <?= $dailyHearingCapacity ?>/Day)
                     </span>
                 </div>
                 <div class="form-row-2">
@@ -641,7 +686,7 @@ include '../../layouts/header.php';
                             <label for="wsOutcomeMedTime" style="font-weight: 600; font-size: 0.82rem; margin: 0;">Target Call Time <span class="required-mark">*</span></label>
                             <span style="font-size: 0.72rem; color: #64748b;">1:00 PM - 4:30 PM</span>
                         </div>
-                        <input type="time" id="wsOutcomeMedTime" name="mediation_time" min="13:00" max="16:30" step="900" value="13:00" style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                        <input type="time" id="wsOutcomeMedTime" name="mediation_time" min="<?= $medHoursStart ?>" max="<?= $medHoursEnd ?>" step="900" value="<?= $medHoursStart ?>" style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
                         <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px;">
                             <button type="button" class="btn-slot-chip" onclick="document.getElementById('wsOutcomeMedTime').value='13:00'; document.getElementById('wsOutcomeMedTime').dispatchEvent(new Event('change'));" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:00 PM</button>
                             <button type="button" class="btn-slot-chip" onclick="document.getElementById('wsOutcomeMedTime').value='13:15'; document.getElementById('wsOutcomeMedTime').dispatchEvent(new Event('change'));" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:15 PM</button>
@@ -655,17 +700,17 @@ include '../../layouts/header.php';
                 </div>
                 <div class="form-group" style="margin-top: 8px;">
                     <label style="font-weight: 600; font-size: 0.82rem;">Hearing Venue</label>
-                    <input type="text" name="venue" value="Lupon Court Room" readonly style="padding: 8px 10px; font-size: 0.88rem; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                    <input type="text" name="venue" value="<?= htmlspecialchars($medVenue) ?>" readonly style="padding: 8px 10px; font-size: 0.88rem; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
                 </div>
 
                 <!-- Live Day Docket Peek -->
                 <div id="wsOutcomeDocketPeek" style="margin-top: 10px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;">
                     <div style="font-size: 0.78rem; font-weight: 700; color: #334155; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
-                        <span>📋 Tuesday Mediation Docket Call (Lupon Court Room)</span>
+                        <span>📋 Mediation Docket Call (<?= htmlspecialchars($medVenue) ?>)</span>
                         <span id="wsOutcomeDocketCount" style="font-size: 0.72rem; color: #64748b;">0 sessions</span>
                     </div>
                     <div id="wsOutcomeDocketList" style="font-size: 0.8rem; color: #64748b; line-height: 1.4;">
-                        Select a Tuesday to peek existing docket calls.
+                        Select a mediation date to peek existing docket calls.
                     </div>
                 </div>
 
@@ -715,9 +760,9 @@ include '../../layouts/header.php';
             <!-- Escalation 1st Mediation Hearing Schedule -->
             <div style="background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 14px; margin-bottom: 14px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 6px;">
-                    <h4 style="margin: 0; font-size: 0.92rem; color: #0f172a; font-weight: 700;">1st Formal Mediation Hearing Schedule (Tumana Rules)</h4>
+                    <h4 style="margin: 0; font-size: 0.92rem; color: #0f172a; font-weight: 700;">1st Formal Mediation Hearing Schedule</h4>
                     <span style="font-size: 0.72rem; background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; padding: 2px 8px; border-radius: 9999px; font-weight: 700;">
-                        Tuesdays ONLY · Court Room (Max 8/Day)
+                        <?= htmlspecialchars($medDaysLabel) ?> · <?= htmlspecialchars($medVenue) ?> (Max <?= $dailyHearingCapacity ?>/Day)
                     </span>
                 </div>
                 <div class="form-row-2">
@@ -735,7 +780,7 @@ include '../../layouts/header.php';
                             <label for="directEscalationMedTime" style="font-weight: 700; font-size: 0.82rem; margin: 0;">Target Call Time <span class="required-mark">*</span></label>
                             <span style="font-size: 0.72rem; color: #64748b;">1:00 PM – 4:30 PM</span>
                         </div>
-                        <input type="time" id="directEscalationMedTime" name="mediation_time" min="13:00" max="16:30" step="900" value="13:00" required style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                        <input type="time" id="directEscalationMedTime" name="mediation_time" min="<?= $medHoursStart ?>" max="<?= $medHoursEnd ?>" step="900" value="<?= $medHoursStart ?>" required style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
                         <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px;">
                             <button type="button" class="btn-slot-chip" onclick="document.getElementById('directEscalationMedTime').value='13:00'; document.getElementById('directEscalationMedTime').dispatchEvent(new Event('change'));" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:00 PM</button>
                             <button type="button" class="btn-slot-chip" onclick="document.getElementById('directEscalationMedTime').value='13:15'; document.getElementById('directEscalationMedTime').dispatchEvent(new Event('change'));" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:15 PM</button>
@@ -749,17 +794,17 @@ include '../../layouts/header.php';
                 </div>
                 <div class="form-group" style="margin-top: 8px;">
                     <label for="directEscalationVenue" style="font-weight: 700; font-size: 0.82rem;">Hearing Venue</label>
-                    <input type="text" id="directEscalationVenue" name="venue" value="Lupon Court Room" readonly style="padding: 8px 10px; font-size: 0.88rem; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                    <input type="text" id="directEscalationVenue" name="venue" value="<?= htmlspecialchars($medVenue) ?>" readonly style="padding: 8px 10px; font-size: 0.88rem; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
                 </div>
 
                 <!-- Live Day Docket Peek -->
                 <div id="directEscalationDocketPeek" style="margin-top: 10px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;">
                     <div style="font-size: 0.78rem; font-weight: 700; color: #334155; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
-                        <span>📋 Tuesday Mediation Docket Call (Lupon Court Room)</span>
+                        <span>📋 Mediation Docket Call (<?= htmlspecialchars($medVenue) ?>)</span>
                         <span id="directEscalationDocketCount" style="font-size: 0.72rem; color: #64748b;">0 sessions</span>
                     </div>
                     <div id="directEscalationDocketList" style="font-size: 0.8rem; color: #64748b; line-height: 1.4;">
-                        Select a Tuesday to peek existing docket calls.
+                        Select a mediation date to peek existing docket calls.
                     </div>
                 </div>
 

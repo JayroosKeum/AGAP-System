@@ -1,6 +1,7 @@
-﻿<?php
+<?php
 
 require_once __DIR__ . '/../models/Hearing.php';
+require_once __DIR__ . '/../models/Setting.php';
 require_once __DIR__ . '/../services/AuditService.php';
 require_once __DIR__ . '/../services/DeadlineService.php';
 require_once __DIR__ . '/../services/NotificationService.php';
@@ -675,12 +676,35 @@ class HearingController
         $dayOfWeek = (int) date('w', strtotime($date->format('Y-m-d H:i:s'))); // 0 = Sun, 2 = Tue, etc.
         $hour = (int) date('H', strtotime($date->format('Y-m-d H:i:s')));
 
+        $rawMedDays = Setting::getSetting('mediation_day_of_week', 'Tue');
+        $allowedMedDays = [];
+        if (is_string($rawMedDays)) {
+            $dec = json_decode($rawMedDays, true);
+            $allowedMedDays = is_array($dec) ? $dec : array_filter(array_map('trim', explode(',', $rawMedDays)));
+        } elseif (is_array($rawMedDays)) {
+            $allowedMedDays = $rawMedDays;
+        }
+        if (empty($allowedMedDays)) {
+            $allowedMedDays = ['Tue'];
+        }
+        $pluralNames = [
+            'Mon' => 'Mondays', 'Tue' => 'Tuesdays', 'Wed' => 'Wednesdays',
+            'Thu' => 'Thursdays', 'Fri' => 'Fridays', 'Sat' => 'Saturdays', 'Sun' => 'Sundays'
+        ];
+        $medDaysPlural = array_map(fn($c) => $pluralNames[$c] ?? $c, $allowedMedDays);
+        $medDaysLabel = implode(', ', $medDaysPlural);
+        $curDayCode = date('D', strtotime($date->format('Y-m-d H:i:s')));
+        $isMedDay = in_array($curDayCode, $allowedMedDays, true);
+
         if ($type === 'Mediation') {
             if ($dayOfWeek === 0 || $dayOfWeek === 6) {
-                return ['success' => false, 'message' => 'Mediation hearings can only be scheduled on working days (Monday to Friday).'];
+                return ['success' => false, 'message' => 'Mediation hearings can only be scheduled on working days.'];
+            }
+            if (!$isMedDay) {
+                return ['success' => false, 'message' => "Mediation hearings can only be scheduled on designated mediation days ({$medDaysLabel})."];
             }
             if (($hour < 8 || $hour >= 17) || ($hour >= 12 && $hour < 13)) {
-                return ['success' => false, 'message' => 'Mediation hearings must be during regular office hours (8:00 AM – 5:00 PM, excluding 12:00 PM – 1:00 PM lunch break).'];
+                return ['success' => false, 'message' => 'Mediation hearings must be during regular office hours (excluding 12:00 PM – 1:00 PM lunch break).'];
             }
         }
 
@@ -688,11 +712,9 @@ class HearingController
             if ($dayOfWeek === 0 || $dayOfWeek === 6) {
                 return ['success' => false, 'message' => 'Conciliation hearings cannot be scheduled on weekends.'];
             }
-            if ($dayOfWeek === 2) {
-                // Tuesdays are entirely reserved for Punong Barangay Mediation (KP_SYSTEM_ENHANCEMENT_SPECS.md sec.99-100).
-                return ['success' => false, 'message' => 'Conciliation hearings cannot be scheduled on Tuesdays. Tuesdays are exclusively reserved for Punong Barangay Formal Mediation (Barangay Tumana Master Schedule).'];
+            if ($isMedDay) {
+                return ['success' => false, 'message' => "Conciliation hearings cannot be scheduled on {$medDaysLabel}. {$medDaysLabel} are exclusively reserved for Punong Barangay Formal Mediation."];
             } else {
-                // Mon, Wed, Thu, Fri
                 if (($hour < 8 || $hour >= 17) || ($hour >= 12 && $hour < 13)) {
                     return ['success' => false, 'message' => 'Conciliation hearings must be during operating hours (8:00 AM – 12:00 PM & 1:00 PM – 5:00 PM, excluding 12:00 PM – 1:00 PM lunch break).'];
                 }

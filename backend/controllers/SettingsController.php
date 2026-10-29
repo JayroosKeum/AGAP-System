@@ -120,9 +120,23 @@ class SettingsController
             $toUpdate['summons_max_attempts'] = $toUpdate['paanyaya_max_attempts'];
         }
 
+        // Multi-day mediation schedule setting (supports array of selected days or comma-separated string)
+        if (isset($data['mediation_days']) && is_array($data['mediation_days'])) {
+            $cleanedDays = array_values(array_filter(array_map('trim', $data['mediation_days'])));
+            $toUpdate['mediation_day_of_week'] = !empty($cleanedDays) ? implode(',', $cleanedDays) : 'Tue';
+        } elseif (isset($data['mediation_day_of_week'])) {
+            if (is_array($data['mediation_day_of_week'])) {
+                $cleanedDays = array_values(array_filter(array_map('trim', $data['mediation_day_of_week'])));
+                $toUpdate['mediation_day_of_week'] = !empty($cleanedDays) ? implode(',', $cleanedDays) : 'Tue';
+            } else {
+                $toUpdate['mediation_day_of_week'] = trim((string)$data['mediation_day_of_week']);
+            }
+        }
+
         // String & toggle settings
         $miscKeys = [
-            'working_hours_start', 'working_hours_end', 'mediation_day_of_week',
+            'working_hours_start', 'working_hours_end',
+            'mediation_hours_start', 'mediation_hours_end', 'mediation_venue',
             'jurisdiction_auto_referral_notice', 'default_map_latitude', 'default_map_longitude',
             'default_map_zoom', 'document_paper_size', 'auto_serve_complainant_notice',
             'kp_header_title', 'kp_lgu_header', 'gemini_model', 'ai_narrative_refinement_enabled',

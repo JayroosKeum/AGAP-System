@@ -1238,7 +1238,8 @@ function openOfficerReturnModal(partyType, residentId, hearingId, caseId, curren
     const paaFlagEl = document.getElementById('returnIsPaanyaya');
     if (paaFlagEl) paaFlagEl.value = isPaanyaya ? '1' : '0';
     const paaStageEl = document.getElementById('returnStageType');
-    if (paaStageEl) paaStageEl.value = isPaanyaya ? (caseItem.paanyaya_stage_type || 'Paanyaya 1') : '';
+    const qStage = (new URLSearchParams(window.location.search)).get('stage');
+    if (paaStageEl) paaStageEl.value = isPaanyaya ? (qStage || caseItem.paanyaya_stage_type || 'Paanyaya 1') : '';
     const paaCompIdEl = document.getElementById('returnComplaintId');
     if (paaCompIdEl) paaCompIdEl.value = isPaanyaya ? (caseItem.complaint_id || caseId) : '';
 

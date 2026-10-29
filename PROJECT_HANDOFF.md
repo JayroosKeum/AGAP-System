@@ -1899,3 +1899,12 @@ A series of key refinements were implemented to conform strictly to Barangay Tum
   - Fixed undefined variable reference `${hId}` in `stage-workspace.js` line 1948, replacing with `Number(activeHearingId || 0)`.
   - Removed stray escaped newline character `\n` in `complaints.js` that caused an `Uncaught SyntaxError: Invalid or unexpected token`.
   - Added `typeof` guards around global window exposures in `stage-workspace.js` (`loadStageSlots`, `initWorkspaceScheduleModal`, `submitAttendance`, etc.) to prevent premature runtime termination.
+
+
+- **Multi-Party Summon Delivery & Proof of Service Fix (SQLSTATE 23000 / Error 1062)**:
+  - **Issue**: Expanding case rows on `proof-service.php` (such as Case `10-05-2026`) triggered `"Failed to load service records: The server returned an invalid response"`.
+  - **Root Cause**: `summon_deliveries` had a unique constraint `uq_hearing_party_form_attempt (hearing_id, party_type, form_type, attempt_number)` which omitted `resident_id`. When initializing delivery records for multi-party complaints (e.g. multiple complainants or multiple respondents), the second party attempted to insert the same `(hearing_id, party_type, form_type, attempt_number)` combination, triggering an uncaught MySQL duplicate key violation (SQLSTATE 23000, Error 1062). This caused the API to emit an HTTP 500 HTML error page, breaking JSON decoding in `gps.js`.
+  - **Resolution**:
+    - Replaced the unique key in the database and `database/schema.sql` with `uq_hearing_party_form_attempt (hearing_id, party_type, resident_id, form_type, attempt_number)`.
+    - Created migration `database/migrations/20261029_002_fix_multi_party_summon_deliveries_unique_index.sql`.
+    - Hardened `backend/api/gps/proof-service.php` with a `try...catch (Throwable $e)` block and output buffer cleanup (`ob_clean()`) to guarantee that all errors return valid, structured JSON payloads with appropriate HTTP status codes.
