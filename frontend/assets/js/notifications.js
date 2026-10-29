@@ -348,8 +348,11 @@
             avIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
         }
 
-        // Action URL
+        // Action URL - redirect directly to case details
         let actionUrl = item.action_url || '';
+        if (actionUrl && actionUrl.includes('records.php')) {
+            actionUrl = '';
+        }
         if (!actionUrl && item.case_id) {
             actionUrl = `../cases/case-details.php?id=${encodeURIComponent(item.case_id)}`;
         }
@@ -359,13 +362,13 @@
         if (!actionUrl) {
             const match = (item.title + ' ' + item.message).match(/(?:Case|case)\s*(?:#|No\.\s*|number\s*)?([0-9A-Za-z\-_]+)/i);
             if (match && match[1]) {
-                actionUrl = `../cases/case-list.php?search=${encodeURIComponent(match[1])}`;
+                actionUrl = `../cases/case-details.php?case_number=${encodeURIComponent(match[1])}`;
             }
         }
         if (!actionUrl) {
             const compMatch = (item.title + ' ' + item.message).match(/(?:Complaint|P-)\s*(?:#|No\.\s*|number\s*)?([0-9A-Za-z\-_]+)/i);
             if (compMatch && compMatch[1]) {
-                actionUrl = `../complaints/complaint-list.php?search=${encodeURIComponent(compMatch[1])}`;
+                actionUrl = `../complaints/complaint-details.php?id=${encodeURIComponent(compMatch[1])}`;
             }
         }
 

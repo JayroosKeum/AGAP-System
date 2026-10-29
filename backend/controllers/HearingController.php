@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 require_once __DIR__ . '/../models/Hearing.php';
 require_once __DIR__ . '/../services/AuditService.php';
@@ -668,11 +668,10 @@ class HearingController
             $recordRemarks = trim($recordRemarks . ($recordRemarks === '' ? '' : "\n\n") . $exceptionNote);
         }
 
-        // Strict Master Operating Schedule (Barangay Tumana)
-        // 1. Tuesdays (1:00 PM – 5:00 PM): Exclusively reserved for Formal Mediation.
-        // 2. Mon, Wed, Thu, Fri (8:00 AM – 12:00 PM & 1:00 PM – 5:00 PM): Conciliation & Paanyaya.
-        // 3. Tuesday Mornings (8:00 AM – 12:00 PM): Conciliation & Paanyaya.
-        // 4. 12:00 PM – 1:00 PM Lunch Break & Weekends/Holidays: Closed for all session types.
+        // Master Operating Schedule (Barangay Tumana KP_SYSTEM_ENHANCEMENT_SPECS.md sec.83-84, 99-100)
+        // 1. Mediation (Punong Barangay): Mon-Fri, 8:00 AM - 5:00 PM (any working day).
+        // 2. Conciliation (Pangkat): Mon, Wed, Thu, Fri, 8:00 AM - 5:00 PM. Tuesdays fully blocked.
+        // 3. 12:00 PM - 1:00 PM Lunch Break & Weekends/Holidays: Closed for all session types.
         $dayOfWeek = (int) date('w', strtotime($date->format('Y-m-d H:i:s'))); // 0 = Sun, 2 = Tue, etc.
         $hour = (int) date('H', strtotime($date->format('Y-m-d H:i:s')));
 
@@ -690,10 +689,8 @@ class HearingController
                 return ['success' => false, 'message' => 'Conciliation hearings cannot be scheduled on weekends.'];
             }
             if ($dayOfWeek === 2) {
-                // Tuesday morning only: 8:00 AM – 12:00 PM
-                if ($hour < 8 || $hour >= 12) {
-                    return ['success' => false, 'message' => 'Conciliation hearings on Tuesdays are permitted only in the morning (8:00 AM – 12:00 PM). Tuesday afternoons (1:00 PM – 5:00 PM) are exclusively reserved for Formal Mediation in the Lupon Court Room.'];
-                }
+                // Tuesdays are entirely reserved for Punong Barangay Mediation (KP_SYSTEM_ENHANCEMENT_SPECS.md sec.99-100).
+                return ['success' => false, 'message' => 'Conciliation hearings cannot be scheduled on Tuesdays. Tuesdays are exclusively reserved for Punong Barangay Formal Mediation (Barangay Tumana Master Schedule).'];
             } else {
                 // Mon, Wed, Thu, Fri
                 if (($hour < 8 || $hour >= 17) || ($hour >= 12 && $hour < 13)) {

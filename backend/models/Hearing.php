@@ -155,7 +155,16 @@ class Hearing
         }
 
         $this->conn->prepare("UPDATE hearings SET kp12_document_id = ? WHERE hearing_id = ?")->execute([$documentId, $hearingId]);
-        $this->conn->prepare("UPDATE summon_deliveries SET hearing_id = ? WHERE case_id = ? AND document_id = ? AND hearing_id IS NULL")->execute([$hearingId, $caseId, $documentId]);
+        // If summon_deliveries already has records for this hearing_id, attach document_id and ensure form_type is 'KP Form 12'
+        // and remove any orphan unlinked delivery rows with the same document_id to prevent unique key collisions
+        $existingDelivStmt = $this->conn->prepare("SELECT delivery_id FROM summon_deliveries WHERE hearing_id = ? LIMIT 1");
+        $existingDelivStmt->execute([$hearingId]);
+        if ($existingDelivStmt->fetchColumn()) {
+            $this->conn->prepare("UPDATE summon_deliveries SET document_id = ?, form_type = 'KP Form 12' WHERE hearing_id = ?")->execute([$documentId, $hearingId]);
+            $this->conn->prepare("DELETE FROM summon_deliveries WHERE case_id = ? AND document_id = ? AND hearing_id IS NULL")->execute([$caseId, $documentId]);
+        } else {
+            $this->conn->prepare("UPDATE summon_deliveries SET hearing_id = ? WHERE case_id = ? AND document_id = ? AND hearing_id IS NULL")->execute([$hearingId, $caseId, $documentId]);
+        }
         $this->conn->prepare("UPDATE hearing_party_services SET hearing_id = ? WHERE document_id = ? AND (hearing_id IS NULL OR hearing_id = 0)")->execute([$hearingId, $documentId]);
         return true;
     }

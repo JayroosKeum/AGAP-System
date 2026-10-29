@@ -69,10 +69,18 @@ class CDPClient {
 
   async screenshot(filename) {
     const filePath = path.join(SCREENSHOT_DIR, filename);
-    const shot = await this.send('Page.captureScreenshot', { format: 'png' });
-    fs.writeFileSync(filePath, Buffer.from(shot.data, 'base64'));
-    console.log(`  📸 [Screenshot] Saved: ${filename} (${(shot.data.length / 1024).toFixed(1)} KB)`);
-    return filePath;
+    try {
+      const shot = await this.send('Page.captureScreenshot', { format: 'png' });
+      if (fs.existsSync(filePath)) {
+        try { fs.unlinkSync(filePath); } catch (e) {}
+      }
+      fs.writeFileSync(filePath, Buffer.from(shot.data, 'base64'));
+      console.log(`  📸 [Screenshot] Saved: ${filename} (${(shot.data.length / 1024).toFixed(1)} KB)`);
+      return filePath;
+    } catch (err) {
+      console.warn(`  ⚠️ [Screenshot Warning] Could not save ${filename}: ${err.message}`);
+      return null;
+    }
   }
 
   async sleep(ms) {
@@ -344,13 +352,19 @@ async function run() {
     await cdp.sleep(1500);
     await cdp.screenshot('04_01_issue_summon_modal.png');
 
-    // Calculate next working day (3 days ahead, Monday-Friday, 10:00 AM)
+    // Calculate next working day (3 days ahead, Monday-Friday, excluding holidays, 10:00 AM)
     const nextHearingDt = await cdp.evaluate(`
       (() => {
+        const holidays = ['01-01', '04-09', '05-01', '06-12', '08-21', '11-01', '11-02', '11-30', '12-08', '12-25', '12-30', '12-31'];
         let d = new Date();
         d.setDate(d.getDate() + 3);
-        // Ensure Monday-Friday
-        while (d.getDay() === 0 || d.getDay() === 6) {
+        while (true) {
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          const md = \`\${m}-\${day}\`;
+          if (d.getDay() !== 0 && d.getDay() !== 6 && !holidays.includes(md)) {
+            break;
+          }
           d.setDate(d.getDate() + 1);
         }
         const y = d.getFullYear();
@@ -433,7 +447,7 @@ async function run() {
       (() => {
         const holidays = ['01-01', '04-09', '05-01', '06-12', '08-21', '11-01', '11-02', '11-30', '12-08', '12-25', '12-30', '12-31'];
         let d = new Date();
-        d.setDate(d.getDate() + 4);
+        d.setDate(d.getDate() + 6);
         while (true) {
           const m = String(d.getMonth() + 1).padStart(2, '0');
           const day = String(d.getDate()).padStart(2, '0');
@@ -576,7 +590,23 @@ async function run() {
     // ─────────────────────────────────────────────────────────────
     console.log('\n--- STEP 7: Pangkat Constitution (KP Forms 10, 11, 12) ---');
 
-    // Nominate 3 distinct Lupon members (IDs: 3, 5, 7)
+    // Dynamically fetch 3 distinct active Lupon Member IDs from the assignments API.
+    // Never hardcode user IDs – the DB may assign them differently per environment.
+    // The lupon-members endpoint returns [{member_id, first_name, last_name, ...}, ...]
+    const luponMemberIds = await cdp.evaluate(`
+      (async () => {
+        const res = await fetch('../../../backend/api/assignments/lupon-members.php');
+        const data = await res.json();
+        const members = Array.isArray(data) ? data : (data?.members || data?.data || []);
+        return members.slice(0, 3).map(u => u.member_id || u.user_id);
+      })()
+    `);
+    console.log('  Lupon Members fetched for Pangkat panel:', luponMemberIds);
+    if (!luponMemberIds || luponMemberIds.length < 3) {
+      throw new Error(`Need at least 3 active Lupon Members for the Pangkat panel, got: ${JSON.stringify(luponMemberIds)}`);
+    }
+    const [chairmanId, secretaryId, memberId] = luponMemberIds;
+
     const referPangkatResult = await cdp.evaluate(`
       (async () => {
         const payload = {
@@ -586,9 +616,9 @@ async function run() {
           selection_method: 'Party Agreement',
           selection_notes: 'Parties agreed upon 3 active Lupon members from Barangay Tumana duty roster.',
           quorum_size: 3,
-          chairman_id: 3,
-          secretary_id: 5,
-          member_id: 7
+          chairman_id: ${chairmanId},
+          secretary_id: ${secretaryId},
+          member_id: ${memberId}
         };
 
         const res = await fetch('../../../backend/api/stages/refer-pangkat.php', {
@@ -659,7 +689,7 @@ async function run() {
         payload.append('hearing_type', 'Conciliation');
         payload.append('hearing_date', '${nextConciliationDate} 10:00:00');
         payload.append('venue', 'Lupon Court Room');
-        payload.append('presiding_officer_id', '3'); // Pangkat Chairman
+        payload.append('presiding_officer_id', '${chairmanId}'); // Pangkat Chairman (dynamically resolved)
         payload.append('schedule_reviewed', '1');
         payload.append('remarks', '1st Pangkat Conciliation session.');
 

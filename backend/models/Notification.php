@@ -22,6 +22,11 @@ class Notification
         $allowedSeverities = ['urgent', 'warning', 'info', 'success'];
         $severity = in_array(strtolower($severity), $allowedSeverities, true) ? strtolower($severity) : $this->inferSeverity($title, $message);
 
+        // Discard any obsolete records.php URL
+        if ($actionUrl !== null && str_contains($actionUrl, 'records.php')) {
+            $actionUrl = null;
+        }
+
         // Auto-generate action URL if case ID is provided and action URL is empty
         if ($caseId !== null && $caseId > 0 && empty($actionUrl)) {
             $actionUrl = "../cases/case-details.php?id=" . $caseId;
@@ -62,6 +67,11 @@ class Notification
                 $row['severity'] = $this->inferSeverity($row['title'], $row['message']);
             }
 
+            // If action_url points to the obsolete records.php page, clear it so it resolves directly to the case
+            if (!empty($row['action_url']) && str_contains($row['action_url'], 'records.php')) {
+                $row['action_url'] = null;
+            }
+
             // If action_url is already present, ensure it is properly formatted
             if (!empty($row['action_url'])) {
                 continue;
@@ -84,6 +94,9 @@ class Notification
                     $row['action_url'] = "../cases/case-details.php?id=" . (int)$foundCaseId;
                     continue;
                 }
+                // Fallback direct case redirect by number (handled by case-details.php)
+                $row['action_url'] = "../cases/case-details.php?case_number=" . urlencode($identifier);
+                continue;
             }
 
             // Attempt to resolve complaint from message/title (e.g. "Complaint #12")
@@ -96,6 +109,8 @@ class Notification
                     $row['action_url'] = "../complaints/complaint-details.php?id=" . (int)$foundCompId;
                     continue;
                 }
+                $row['action_url'] = "../cases/case-details.php?case_number=" . urlencode($compIdentifier);
+                continue;
             }
         }
         unset($row);
