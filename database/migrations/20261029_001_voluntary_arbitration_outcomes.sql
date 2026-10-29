@@ -1,3 +1,3 @@
 -- Migration: Add Arbitration and Repudiated to hearing_minutes session_outcome, and Arbitration to case_stages outcome
 ALTER TABLE case_stages MODIFY COLUMN outcome ENUM('Settled', 'Unsuccessful', 'Repudiated', 'Dismissed', 'Referred to Pangkat', 'Arbitration', 'Arbitration Award', 'Pending') NOT NULL DEFAULT 'Pending';
-ALTER TABLE hearing_minutes MODIFY COLUMN session_outcome ENUM('Settled', 'Continue Mediation', 'Continue Conciliation', 'Continue Arbitration', 'Failed', 'Party Absent', 'Rescheduled', 'Elevate to Pangkat', 'Pending CFA', 'Arbitration', 'Arbitration Award', 'Repudiated', 'Pending') NOT NULL DEFAULT 'Pending';
+ALTER TABLE hearing_minutes MODIFY COLUMN session_outcome ENUM('Settled', 'Continue Mediation', 'Continue Conciliation', 'Continue Arbitration', 'Failed', 'Party Absent', 'Rescheduled', 'Elevate to Pangkat', 'Pending CFA', 'Arbitration', 'Arbitration Award', 'Repudiated', 'Dismissed', 'Pending') NOT NULL DEFAULT 'Pending';

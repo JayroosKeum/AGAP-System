@@ -7,6 +7,8 @@ CREATE DATABASE IF NOT EXISTS agap_db
 
 USE agap_db;
 
+SET FOREIGN_KEY_CHECKS = 0;
+
 -- =====================================================
 -- ACCESS CONTROL
 -- =====================================================
@@ -262,11 +264,12 @@ CREATE TABLE paanyaya_sessions (
     has_e_signature TINYINT(1) NOT NULL DEFAULT 1,
     pdf_path VARCHAR(255) NULL,
     salaysay TEXT NULL,
-    complainant_attended ENUM('Present', 'Absent') DEFAULT 'Absent',
-    respondent_attended ENUM('Present', 'Absent') DEFAULT 'Absent',
-    session_outcome ENUM('Settled', 'Absent_Retry', 'Continued_Dialogue', 'Impasse_Escalate', 'Max_Failed_Escalate') NULL,
+    complainant_attended ENUM('Present', 'Late', 'Absent') DEFAULT 'Absent',
+    respondent_attended ENUM('Present', 'Late', 'Absent') DEFAULT 'Absent',
+    session_outcome ENUM('Settled', 'Absent_Retry', 'Continued_Dialogue', 'Impasse_Escalate', 'Max_Failed_Escalate', 'Dismissed') NULL,
     outcome_notes TEXT NULL,
     scheduled_by INT UNSIGNED NULL,
+    presiding_officer_ids JSON NULL,
     resolved_at DATETIME NULL,
     escalated_at DATETIME NULL,
     actual_start_time DATETIME NULL,
@@ -294,6 +297,7 @@ CREATE TABLE complaint_paanyaya (
     pdf_path VARCHAR(255) NULL,
     has_e_signature TINYINT(1) NOT NULL DEFAULT 1,
     scheduled_by INT UNSIGNED NULL,
+    presiding_officer_ids JSON NULL,
     resolved_at DATETIME NULL,
     escalated_at DATETIME NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -384,10 +388,11 @@ CREATE TABLE IF NOT EXISTS paanyaya_minutes (
     respondent_attended ENUM('Present', 'Absent') DEFAULT 'Present',
     discussion_summary TEXT NOT NULL,
     agreed_terms TEXT NULL,
-    outcome ENUM('Settled', 'No_Agreement', 'Party_Absent') NOT NULL,
-    complainant_choice ENUM('Request_Paanyaya_2', 'Escalate_Mediation', 'None') DEFAULT 'None',
+    outcome ENUM('Settled', 'No_Agreement', 'Party_Absent', 'Dismissed') NOT NULL,
+    complainant_choice ENUM('Request_Paanyaya_2', 'Escalate_Mediation', 'Dismissed', 'None') DEFAULT 'None',
     scanned_minutes_path VARCHAR(255) NULL,
     recorded_by INT UNSIGNED NOT NULL,
+    presiding_officer_ids JSON NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_pm_complaint FOREIGN KEY (complaint_id) REFERENCES complaints (complaint_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -515,7 +520,7 @@ CREATE TABLE case_stages (
     stage_status ENUM('Locked', 'Ready for Referral', 'Not Started', 'In Progress', 'Awaiting Outcome', 'Completed', 'Referred to Pangkat') NOT NULL DEFAULT 'Not Started',
     started_at DATETIME NULL,
     completed_at DATETIME NULL,
-    outcome ENUM('Settled', 'Unsuccessful', 'Repudiated', 'Dismissed', 'Referred to Pangkat', 'Pending') NOT NULL DEFAULT 'Pending',
+    outcome ENUM('Settled', 'Unsuccessful', 'Repudiated', 'Dismissed', 'Referred to Pangkat', 'Arbitration', 'Arbitration Award', 'Pending') NOT NULL DEFAULT 'Pending',
     outcome_remarks TEXT NULL,
     referral_date DATE NULL,
     referring_officer_id INT UNSIGNED NULL,
@@ -752,7 +757,7 @@ CREATE TABLE hearing_minutes (
     new_proposal TEXT NULL,
     counteroffer TEXT NULL,
     additional_evidence_notes TEXT NULL,
-    session_outcome ENUM('Settled', 'Continue Mediation', 'Continue Conciliation', 'Continue Arbitration', 'Failed', 'Party Absent', 'Rescheduled', 'Elevate to Pangkat', 'Pending CFA', 'Arbitration Award', 'Pending') NOT NULL DEFAULT 'Pending',
+    session_outcome ENUM('Settled', 'Continue Mediation', 'Continue Conciliation', 'Continue Arbitration', 'Failed', 'Party Absent', 'Rescheduled', 'Elevate to Pangkat', 'Pending CFA', 'Arbitration', 'Arbitration Award', 'Repudiated', 'Dismissed', 'Pending') NOT NULL DEFAULT 'Pending',
     status ENUM('Draft', 'Finalized') NOT NULL DEFAULT 'Draft',
     agenda_topics TEXT NULL,
     agreements_action_items TEXT NULL,
@@ -770,6 +775,21 @@ CREATE TABLE hearing_minutes (
     CONSTRAINT fk_hm_recorded_by FOREIGN KEY (recorded_by) REFERENCES users (user_id) ON DELETE RESTRICT,
     CONSTRAINT fk_hm_finalized_by FOREIGN KEY (finalized_by) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS hearing_minutes_documents (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    hearing_id INT UNSIGNED NOT NULL,
+    case_id INT UNSIGNED NOT NULL,
+    document_type ENUM('handwritten_minutes', 'evidence_attachment') NOT NULL DEFAULT 'evidence_attachment',
+    file_name VARCHAR(255) NOT NULL,
+    file_path VARCHAR(500) NOT NULL,
+    file_size INT UNSIGNED DEFAULT 0,
+    mime_type VARCHAR(100) DEFAULT NULL,
+    uploaded_by INT UNSIGNED NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX (hearing_id),
+    INDEX (case_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE summon_deliveries (
     delivery_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -1334,3 +1354,5 @@ LEFT JOIN summon_deliveries sd ON sd.hearing_id = h.hearing_id OR (sd.case_id = 
 LEFT JOIN hearing_party_services hps ON hps.hearing_id = h.hearing_id OR (h.kp12_document_id IS NOT NULL AND hps.document_id = h.kp12_document_id)
 LEFT JOIN users u ON u.user_id = COALESCE(hps.serving_officer, sd.served_by, sd.served_by_user_id)
 WHERE h.hearing_type = 'Conciliation';
+
+SET FOREIGN_KEY_CHECKS = 1;

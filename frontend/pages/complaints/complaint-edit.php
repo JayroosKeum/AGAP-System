@@ -2971,11 +2971,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (complainantsList.length === 0) {
             listEl.innerHTML = `
-                <div class="party-empty-card" onclick="openPartyModal('complainant', 'add')">
-                    
+                <div class="party-empty-card" onclick="openPartyModal('complainant', 'add')" style="border-color:#bae6fd; background:#f0f9ff; color:#0369a1;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
                     <div>
-                        <strong>No complainant added yet</strong>
-                        <div style="font-size: 0.78rem; color: #64748b;">Click here or "+ Add Complainant" to fill in complainant details</div>
+                        <strong>No complainant recorded yet</strong>
+                        <div style="font-size: 0.78rem; color: #0284c7; margin-top:2px;">Click here or "+ Add Complainant" to fill in complainant details</div>
                     </div>
                 </div>
             `;
@@ -2986,42 +2986,51 @@ document.addEventListener('DOMContentLoaded', () => {
                 const roleLabel = idx === 0 ? 'Primary Complainant' : `Additional Complainant #${idx + 1}`;
                 const rolePillClass = idx === 0 ? 'primary-complainant' : 'additional-party';
 
-                const details = [];
-                if (c.contact_no) details.push(`<span>Tel: ${escapeHtml(c.contact_no)}</span>`);
-                if (c.purok || c.address) details.push(`<span>${escapeHtml(c.address || c.purok)}</span>`);
+                const chips = [];
+                if (c.contact_no) {
+                    chips.push(`<span class="party-detail-chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg> Tel: ${escapeHtml(c.contact_no)}</span>`);
+                }
+                if (c.purok || c.address) {
+                    const addrArr = [];
+                    if (c.address) addrArr.push(c.address);
+                    if (c.purok && (!c.address || !c.address.includes(c.purok))) addrArr.push(c.purok);
+                    chips.push(`<span class="party-detail-chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg> ${escapeHtml(addrArr.join(', '))}</span>`);
+                }
                 const demo = [];
                 if (c.age) demo.push(`${escapeHtml(c.age)} yrs old`);
                 if (c.gender) demo.push(escapeHtml(c.gender));
                 if (c.civil_status) demo.push(escapeHtml(c.civil_status));
-                if (demo.length) details.push(`<span>${demo.join(' • ')}</span>`);
+                if (demo.length) {
+                    chips.push(`<span class="party-detail-chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg> ${demo.join(' • ')}</span>`);
+                }
                 if (c.is_minor && c.guardian_name) {
-                    details.push(`<span>Minor (Guardian: ${escapeHtml(c.guardian_name)}${c.guardian_relationship ? ' - ' + escapeHtml(c.guardian_relationship) : ''})</span>`);
+                    chips.push(`<span class="party-detail-chip chip-accent">Minor (Guardian: ${escapeHtml(c.guardian_name)}${c.guardian_relationship ? ' - ' + escapeHtml(c.guardian_relationship) : ''})</span>`);
                 }
 
                 return `
-                    <div class="party-summary-card">
-                        <div class="party-summary-left">
-                            <div class="party-avatar-badge is-complainant">${escapeHtml(initials)}</div>
-                            <div class="party-summary-info">
-                                <div class="party-summary-title-row">
-                                    <span class="party-summary-name">${escapeHtml(fullName)}</span>
-                                    <span class="party-role-pill ${rolePillClass}">${roleLabel}</span>
-                                </div>
-                                <div class="party-summary-details">
-                                    ${details.join('')}
+                    <div class="party-summary-card is-complainant-card">
+                        <div class="party-summary-top">
+                            <div class="party-summary-left">
+                                <div class="party-avatar-badge is-complainant">${escapeHtml(initials)}</div>
+                                <div class="party-summary-info">
+                                    <div class="party-summary-title-row">
+                                        <span class="party-summary-name">${escapeHtml(fullName)}</span>
+                                        <span class="party-role-pill ${rolePillClass}">${roleLabel}</span>
+                                    </div>
                                 </div>
                             </div>
+                            <div class="party-summary-actions">
+                                <button type="button" class="btn-summary-action" onclick="openPartyModal('complainant', 'edit', ${idx})" title="Edit Details">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                    <span>Edit</span>
+                                </button>
+                                <button type="button" class="btn-summary-action remove-party-action" onclick="removeParty('complainant', ${idx})" title="Remove Party">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                    <span>Remove</span>
+                                </button>
+                            </div>
                         </div>
-                        <div class="party-summary-actions">
-                            <button type="button" class="btn-summary-action" onclick="openPartyModal('complainant', 'edit', ${idx})" title="Edit Details">
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                                <span>Edit</span>
-                            </button>
-                            <button type="button" class="btn-summary-action remove-party-action" onclick="removeParty('complainant', ${idx})" title="Remove Party">
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                                <span>Remove</span>
-                            </button>
-                        </div>
+                        ${chips.length ? `<div class="party-summary-details">${chips.join('')}</div>` : ''}
                     </div>
                 `;
             }).join('');
@@ -3048,11 +3057,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (respondentsList.length === 0) {
             listEl.innerHTML = `
-                <div class="party-empty-card" onclick="openPartyModal('respondent', 'add')">
-                    
+                <div class="party-empty-card" onclick="openPartyModal('respondent', 'add')" style="border-color:#fecaca; background:#fff1f2; color:#be123c;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="8" x2="23" y2="14"/><line x1="23" y1="8" x2="17" y2="14"/></svg>
                     <div>
-                        <strong>No respondent added yet</strong>
-                        <div style="font-size: 0.78rem; color: #64748b;">Click here or "+ Add Respondent" to fill in respondent details</div>
+                        <strong>No respondent recorded yet</strong>
+                        <div style="font-size: 0.78rem; color: #be123c; margin-top:2px;">Click here or "+ Add Respondent" to fill in respondent details</div>
                     </div>
                 </div>
             `;
@@ -3063,51 +3072,62 @@ document.addEventListener('DOMContentLoaded', () => {
                 const roleLabel = idx === 0 ? 'Primary Respondent' : `Additional Respondent #${idx + 1}`;
                 const rolePillClass = idx === 0 ? 'primary-respondent' : 'additional-party';
 
-                const details = [];
+                const chips = [];
                 if (r.contact_unknown) {
-                    details.push('<span>Tel: Contact Unknown</span>');
+                    chips.push('<span class="party-detail-chip">Tel: Contact Unknown</span>');
                 } else if (r.contact_no) {
-                    details.push(`<span>Tel: ${escapeHtml(r.contact_no)}</span>`);
+                    chips.push(`<span class="party-detail-chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg> Tel: ${escapeHtml(r.contact_no)}</span>`);
                 }
-                if (r.purok || r.address) details.push(`<span>${escapeHtml(r.address || r.purok)}</span>`);
+                if (r.purok || r.address) {
+                    const addrArr = [];
+                    if (r.address) addrArr.push(r.address);
+                    if (r.purok && (!r.address || !r.address.includes(r.purok))) addrArr.push(r.purok);
+                    chips.push(`<span class="party-detail-chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg> ${escapeHtml(addrArr.join(', '))}</span>`);
+                }
                 const demo = [];
                 if (r.birth_unknown) {
-                    demo.push('<span>Birthdate Unknown</span>');
+                    demo.push('Birthdate Unknown');
                 } else if (r.age) {
-                    demo.push(`<span>${escapeHtml(r.age)} yrs old</span>`);
+                    demo.push(`${escapeHtml(r.age)} yrs old`);
                 }
-                if (r.gender) demo.push(`<span>${escapeHtml(r.gender)}</span>`);
-                if (r.civil_status) demo.push(`<span>${escapeHtml(r.civil_status)}</span>`);
-                if (demo.length) details.push(`<span>${demo.join(' • ')}</span>`);
+                if (r.gender) demo.push(escapeHtml(r.gender));
+                if (r.civil_status) demo.push(escapeHtml(r.civil_status));
+                if (demo.length) {
+                    chips.push(`<span class="party-detail-chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg> ${demo.join(' • ')}</span>`);
+                }
                 if (r.is_minor && r.guardian_name) {
-                    details.push(`<span>Minor (Guardian: ${escapeHtml(r.guardian_name)}${r.guardian_relationship ? ' - ' + escapeHtml(r.guardian_relationship) : ''})</span>`);
+                    chips.push(`<span class="party-detail-chip chip-accent">Minor (Guardian: ${escapeHtml(r.guardian_name)}${r.guardian_relationship ? ' - ' + escapeHtml(r.guardian_relationship) : ''})</span>`);
                 }
 
+                const exceptionPill = (r.purok === "Non-Resident" || r.is_tenant === "2") && r.kp_jurisdiction_exception 
+                    ? '<span class="party-role-pill" style="background: #fef3c7; color: #92400e; border: 1px solid #fde68a; font-size: 0.68rem;">KP Sec. 409(c/d) Exception</span>' 
+                    : '';
+
                 return `
-                    <div class="party-summary-card">
-                        <div class="party-summary-left">
-                            <div class="party-avatar-badge is-respondent">${escapeHtml(initials)}</div>
-                            <div class="party-summary-info">
-                                <div class="party-summary-title-row">
-                                    <span class="party-summary-name">${escapeHtml(fullName)}</span>
-                                    <span class="party-role-pill ${rolePillClass}">${roleLabel}</span>
-                                    ${(r.purok === "Non-Resident" || r.is_tenant === "2") && r.kp_jurisdiction_exception ? '<span class="party-role-pill" style="background: #fef3c7; color: #92400e; border: 1px solid #fde68a; font-size: 0.68rem;">KP Sec. 409(c/d) Exception</span>' : ''}
-                                </div>
-                                <div class="party-summary-details">
-                                    ${details.join('')}
+                    <div class="party-summary-card is-respondent-card">
+                        <div class="party-summary-top">
+                            <div class="party-summary-left">
+                                <div class="party-avatar-badge is-respondent">${escapeHtml(initials)}</div>
+                                <div class="party-summary-info">
+                                    <div class="party-summary-title-row">
+                                        <span class="party-summary-name">${escapeHtml(fullName)}</span>
+                                        <span class="party-role-pill ${rolePillClass}">${roleLabel}</span>
+                                        ${exceptionPill}
+                                    </div>
                                 </div>
                             </div>
+                            <div class="party-summary-actions">
+                                <button type="button" class="btn-summary-action" onclick="openPartyModal('respondent', 'edit', ${idx})" title="Edit Details">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                    <span>Edit</span>
+                                </button>
+                                <button type="button" class="btn-summary-action remove-party-action" onclick="removeParty('respondent', ${idx})" title="Remove Party">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                    <span>Remove</span>
+                                </button>
+                            </div>
                         </div>
-                        <div class="party-summary-actions">
-                            <button type="button" class="btn-summary-action" onclick="openPartyModal('respondent', 'edit', ${idx})" title="Edit Details">
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                                <span>Edit</span>
-                            </button>
-                            <button type="button" class="btn-summary-action remove-party-action" onclick="removeParty('respondent', ${idx})" title="Remove Party">
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                                <span>Remove</span>
-                            </button>
-                        </div>
+                        ${chips.length ? `<div class="party-summary-details">${chips.join('')}</div>` : ''}
                     </div>
                 `;
             }).join('');

@@ -8,7 +8,15 @@ class GeminiService
 
     public function __construct()
     {
-        $this->apiKey = GEMINI_API_KEY;
+        $this->apiKey = defined('GEMINI_API_KEY') && GEMINI_API_KEY !== '' ? GEMINI_API_KEY : (string)(getenv('GEMINI_API_KEY') ?: '');
+        if ($this->apiKey === '' && file_exists(__DIR__ . '/../models/Setting.php')) {
+            require_once __DIR__ . '/../models/Setting.php';
+            try {
+                $this->apiKey = (string)Setting::getSetting('gemini_api_key', '');
+            } catch (Throwable $t) {
+                // Ignore DB error if not connected yet
+            }
+        }
     }
 
     public function generate(string $prompt, array $generationConfig = []): array
@@ -20,7 +28,7 @@ class GeminiService
             return ['success' => false, 'message' => 'AI narrative assistance is unavailable because PHP cURL is not enabled.'];
         }
 
-        $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent';
+        $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
 
         $payload = [
             "contents" => [[

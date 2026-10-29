@@ -212,6 +212,17 @@ For existing databases experiencing duplicate key collisions during summons or p
     - Replaces `uq_hearing_party_form_attempt` on `(hearing_id, party_type, form_type, attempt_number)` with `(hearing_id, party_type, resident_id, form_type, attempt_number)`.
     - Eliminates SQLSTATE 23000 (error 1062) collisions when multiple individuals of the same party type (such as co-complainants or co-respondents) have notices or summons tracked for the same hearing attempt.
 
+## Dismissed Outcome for Paanyaya Dialogue (October 2026)
+
+For existing databases updating to support complaint dismissal upon complainant non-appearance during Paanyaya preliminary dialogue, apply:
+- `database/migrations/20261029_003_add_dismissed_outcome_to_paanyaya.sql`:
+  - **`paanyaya_minutes` Table**:
+    - Expands `outcome` ENUM to include `'Dismissed'` alongside `'Settled'`, `'No_Agreement'`, and `'Party_Absent'`.
+    - Expands `complainant_choice` ENUM to include `'Dismissed'` alongside `'Request_Paanyaya_2'`, `'Escalate_Mediation'`, and `'None'`.
+  - **`paanyaya_sessions` Table**:
+    - Expands `session_outcome` ENUM to include `'Dismissed'` alongside `'Settled'`, `'Absent_Retry'`, `'Continued_Dialogue'`, `'Impasse_Escalate'`, and `'Max_Failed_Escalate'`.
+
+
 
 
 

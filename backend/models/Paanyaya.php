@@ -2020,8 +2020,32 @@ class Paanyaya
     /**
      * Records the Temporary Minutes of the Meeting and Complainant Decision.
      */
+    /**
+     * Ensures actual_start_time and session_remarks columns exist in paanyaya_minutes and paanyaya_sessions.
+     */
+    public function ensureMinutesColumnsExist(): void
+    {
+        try {
+            $cols = array_column($this->conn->query("DESCRIBE paanyaya_minutes")->fetchAll(PDO::FETCH_ASSOC), 'Field');
+            if (!in_array('actual_start_time', $cols, true)) {
+                $this->conn->exec("ALTER TABLE paanyaya_minutes ADD COLUMN actual_start_time TIME NULL AFTER dialogue_date");
+            }
+            if (!in_array('session_remarks', $cols, true)) {
+                $this->conn->exec("ALTER TABLE paanyaya_minutes ADD COLUMN session_remarks TEXT NULL AFTER agreed_terms");
+            }
+            $sessCols = array_column($this->conn->query("DESCRIBE paanyaya_sessions")->fetchAll(PDO::FETCH_ASSOC), 'Field');
+            if (!in_array('session_remarks', $sessCols, true)) {
+                $this->conn->exec("ALTER TABLE paanyaya_sessions ADD COLUMN session_remarks TEXT NULL AFTER outcome_notes");
+            }
+        } catch (Throwable $e) {
+            error_log('Paanyaya ensureMinutesColumnsExist warning: ' . $e->getMessage());
+        }
+    }
+
     public function recordMinutes(int $complaintId, string $stageType, array $data, int $userId, ?array $proofFile = null): array
     {
+        $this->ensureMinutesColumnsExist();
+
         if (!in_array($stageType, [self::STAGE_1, self::STAGE_2], true)) {
             return ['success' => false, 'message' => 'Invalid Paanyaya stage specified.'];
         }

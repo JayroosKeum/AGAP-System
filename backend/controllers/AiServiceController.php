@@ -10,6 +10,7 @@ class AiServiceController
     public function __construct(string $model = 'gemini-1.5-flash')
     {
         $this->apiKey = defined('GEMINI_API_KEY') ? GEMINI_API_KEY : (string) (getenv('GEMINI_API_KEY') ?: '');
+        if ($this->apiKey === '' && file_exists(__DIR__ . '/../models/Setting.php')) { require_once __DIR__ . '/../models/Setting.php'; try { $this->apiKey = (string)Setting::getSetting('gemini_api_key', ''); } catch (Throwable $t) {} }
         $this->model = $model;
     }
 

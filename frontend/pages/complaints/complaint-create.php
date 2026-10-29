@@ -218,6 +218,10 @@ include '../../layouts/header.php';
                                         </div>
                                     </div>
                                     <div class="doc-viewer-toolbar">
+                                        <button type="button" class="btn-viewer-tool btn-viewer-scan" id="btnScanDocViewer" title="Scan document using AI OCR and auto-fill form fields">
+                                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="9" x2="12" y2="3"/></svg>
+                                            <span style="font-weight: 700;">Scan &amp; Auto-Fill</span>
+                                        </button>
                                         <button type="button" class="btn-viewer-tool" id="btnDocZoomIn" title="Zoom In">
                                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
                                             <span>Zoom In</span>
@@ -250,9 +254,30 @@ include '../../layouts/header.php';
                                             </svg>
                                         </div>
                                         <h4>Scanned Form Viewer</h4>
-                                        <p>Upload a scanned handwritten KP Form No. 7 on the right panel to read and transcribe side-by-side.</p>
-                                        <button type="button" class="btn-outline-sm" id="btnTriggerUploadFromViewer" style="margin-top: 8px;">
-                                            Select Document
+                                        <p>Upload a scanned handwritten KP Form No. 7 on the right panel to read, transcribe, or auto-fill dispute fields.</p>
+                                        <div style="display: flex; gap: 8px; justify-content: center; margin-top: 10px; flex-wrap: wrap;">
+                                            <button type="button" class="btn-outline-sm" id="btnTriggerUploadFromViewer">
+                                                Select Document
+                                            </button>
+                                            <button type="button" class="btn-outline-sm btn-viewer-scan" id="btnTriggerScanFromViewer" style="color: #ffffff;">
+                                                ⚡ Auto-Scan &amp; Fill Form
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <!-- Laser Scanner Beam & Status Overlay -->
+                                    <div class="doc-scanner-beam" id="docScannerBeam" style="display: none;"></div>
+                                    <div class="doc-scanner-status" id="docScannerStatus" style="display: none;">
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="animation: spin 1s linear infinite;"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>
+                                        <span id="docScannerStatusLabel">AI OCR Scanner analyzing document &amp; reading fields...</span>
+                                    </div>
+
+                                    <!-- Floating Quick-Scan Bar when document is loaded -->
+                                    <div class="doc-floating-scan-bar" id="docFloatingScanBar" style="display: none;">
+                                        <span class="floating-scan-text">⚡ Document loaded</span>
+                                        <button type="button" class="btn-floating-scan" id="btnFloatingScanDoc">
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
+                                            Auto-Fill Fields
                                         </button>
                                     </div>
 
@@ -3371,11 +3396,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (complainantsList.length === 0) {
             listEl.innerHTML = `
-                <div class="party-empty-card" onclick="openPartyModal('complainant', 'add')">
-                    
+                <div class="party-empty-card" onclick="openPartyModal('complainant', 'add')" style="border-color:#bae6fd; background:#f0f9ff; color:#0369a1;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
                     <div>
-                        <strong>No complainant added yet</strong>
-                        <div style="font-size: 0.78rem; color: #64748b;">Click here or "+ Add Complainant" to fill in complainant details</div>
+                        <strong>No complainant recorded yet</strong>
+                        <div style="font-size: 0.78rem; color: #0284c7; margin-top:2px;">Click here or "+ Add Complainant" to fill in complainant details</div>
                     </div>
                 </div>
             `;
@@ -3386,42 +3411,51 @@ document.addEventListener('DOMContentLoaded', () => {
                 const roleLabel = idx === 0 ? 'Primary Complainant' : `Additional Complainant #${idx + 1}`;
                 const rolePillClass = idx === 0 ? 'primary-complainant' : 'additional-party';
 
-                const details = [];
-                if (c.contact_no) details.push(`<span>Tel: ${escapeHtml(c.contact_no)}</span>`);
-                if (c.purok || c.address) details.push(`<span>${escapeHtml(c.address || c.purok)}</span>`);
+                const chips = [];
+                if (c.contact_no) {
+                    chips.push(`<span class="party-detail-chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg> Tel: ${escapeHtml(c.contact_no)}</span>`);
+                }
+                if (c.purok || c.address) {
+                    const addrArr = [];
+                    if (c.address) addrArr.push(c.address);
+                    if (c.purok && (!c.address || !c.address.includes(c.purok))) addrArr.push(c.purok);
+                    chips.push(`<span class="party-detail-chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg> ${escapeHtml(addrArr.join(', '))}</span>`);
+                }
                 const demo = [];
                 if (c.age) demo.push(`${escapeHtml(c.age)} yrs old`);
                 if (c.gender) demo.push(escapeHtml(c.gender));
                 if (c.civil_status) demo.push(escapeHtml(c.civil_status));
-                if (demo.length) details.push(`<span>${demo.join(' • ')}</span>`);
+                if (demo.length) {
+                    chips.push(`<span class="party-detail-chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg> ${demo.join(' • ')}</span>`);
+                }
                 if (c.is_minor && c.guardian_name) {
-                    details.push(`<span>Minor (Guardian: ${escapeHtml(c.guardian_name)}${c.guardian_relationship ? ' - ' + escapeHtml(c.guardian_relationship) : ''})</span>`);
+                    chips.push(`<span class="party-detail-chip chip-accent">Minor (Guardian: ${escapeHtml(c.guardian_name)}${c.guardian_relationship ? ' - ' + escapeHtml(c.guardian_relationship) : ''})</span>`);
                 }
 
                 return `
-                    <div class="party-summary-card">
-                        <div class="party-summary-left">
-                            <div class="party-avatar-badge is-complainant">${escapeHtml(initials)}</div>
-                            <div class="party-summary-info">
-                                <div class="party-summary-title-row">
-                                    <span class="party-summary-name">${escapeHtml(fullName)}</span>
-                                    <span class="party-role-pill ${rolePillClass}">${roleLabel}</span>
-                                </div>
-                                <div class="party-summary-details">
-                                    ${details.join('')}
+                    <div class="party-summary-card is-complainant-card">
+                        <div class="party-summary-top">
+                            <div class="party-summary-left">
+                                <div class="party-avatar-badge is-complainant">${escapeHtml(initials)}</div>
+                                <div class="party-summary-info">
+                                    <div class="party-summary-title-row">
+                                        <span class="party-summary-name">${escapeHtml(fullName)}</span>
+                                        <span class="party-role-pill ${rolePillClass}">${roleLabel}</span>
+                                    </div>
                                 </div>
                             </div>
+                            <div class="party-summary-actions">
+                                <button type="button" class="btn-summary-action" onclick="openPartyModal('complainant', 'edit', ${idx})" title="Edit Details">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                    <span>Edit</span>
+                                </button>
+                                <button type="button" class="btn-summary-action remove-party-action" onclick="removeParty('complainant', ${idx})" title="Remove Party">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                    <span>Remove</span>
+                                </button>
+                            </div>
                         </div>
-                        <div class="party-summary-actions">
-                            <button type="button" class="btn-summary-action" onclick="openPartyModal('complainant', 'edit', ${idx})" title="Edit Details">
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                                <span>Edit</span>
-                            </button>
-                            <button type="button" class="btn-summary-action remove-party-action" onclick="removeParty('complainant', ${idx})" title="Remove Party">
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                                <span>Remove</span>
-                            </button>
-                        </div>
+                        ${chips.length ? `<div class="party-summary-details">${chips.join('')}</div>` : ''}
                     </div>
                 `;
             }).join('');
@@ -3448,11 +3482,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (respondentsList.length === 0) {
             listEl.innerHTML = `
-                <div class="party-empty-card" onclick="openPartyModal('respondent', 'add')">
-                    
+                <div class="party-empty-card" onclick="openPartyModal('respondent', 'add')" style="border-color:#fecaca; background:#fff1f2; color:#be123c;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="8" x2="23" y2="14"/><line x1="23" y1="8" x2="17" y2="14"/></svg>
                     <div>
-                        <strong>No respondent added yet</strong>
-                        <div style="font-size: 0.78rem; color: #64748b;">Click here or "+ Add Respondent" to fill in respondent details</div>
+                        <strong>No respondent recorded yet</strong>
+                        <div style="font-size: 0.78rem; color: #be123c; margin-top:2px;">Click here or "+ Add Respondent" to fill in respondent details</div>
                     </div>
                 </div>
             `;
@@ -3463,51 +3497,62 @@ document.addEventListener('DOMContentLoaded', () => {
                 const roleLabel = idx === 0 ? 'Primary Respondent' : `Additional Respondent #${idx + 1}`;
                 const rolePillClass = idx === 0 ? 'primary-respondent' : 'additional-party';
 
-                const details = [];
+                const chips = [];
                 if (r.contact_unknown) {
-                    details.push('<span>Tel: Contact Unknown</span>');
+                    chips.push('<span class="party-detail-chip">Tel: Contact Unknown</span>');
                 } else if (r.contact_no) {
-                    details.push(`<span>Tel: ${escapeHtml(r.contact_no)}</span>`);
+                    chips.push(`<span class="party-detail-chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg> Tel: ${escapeHtml(r.contact_no)}</span>`);
                 }
-                if (r.purok || r.address) details.push(`<span>${escapeHtml(r.address || r.purok)}</span>`);
+                if (r.purok || r.address) {
+                    const addrArr = [];
+                    if (r.address) addrArr.push(r.address);
+                    if (r.purok && (!r.address || !r.address.includes(r.purok))) addrArr.push(r.purok);
+                    chips.push(`<span class="party-detail-chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg> ${escapeHtml(addrArr.join(', '))}</span>`);
+                }
                 const demo = [];
                 if (r.birth_unknown) {
-                    demo.push('<span>Birthdate Unknown</span>');
+                    demo.push('Birthdate Unknown');
                 } else if (r.age) {
-                    demo.push(`<span>${escapeHtml(r.age)} yrs old</span>`);
+                    demo.push(`${escapeHtml(r.age)} yrs old`);
                 }
-                if (r.gender) demo.push(`<span>${escapeHtml(r.gender)}</span>`);
-                if (r.civil_status) demo.push(`<span>${escapeHtml(r.civil_status)}</span>`);
-                if (demo.length) details.push(`<span>${demo.join(' • ')}</span>`);
+                if (r.gender) demo.push(escapeHtml(r.gender));
+                if (r.civil_status) demo.push(escapeHtml(r.civil_status));
+                if (demo.length) {
+                    chips.push(`<span class="party-detail-chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg> ${demo.join(' • ')}</span>`);
+                }
                 if (r.is_minor && r.guardian_name) {
-                    details.push(`<span>Minor (Guardian: ${escapeHtml(r.guardian_name)}${r.guardian_relationship ? ' - ' + escapeHtml(r.guardian_relationship) : ''})</span>`);
+                    chips.push(`<span class="party-detail-chip chip-accent">Minor (Guardian: ${escapeHtml(r.guardian_name)}${r.guardian_relationship ? ' - ' + escapeHtml(r.guardian_relationship) : ''})</span>`);
                 }
 
+                const exceptionPill = (r.purok === "Non-Resident" || r.is_tenant === "2") && r.kp_jurisdiction_exception 
+                    ? '<span class="party-role-pill" style="background: #fef3c7; color: #92400e; border: 1px solid #fde68a; font-size: 0.68rem;">KP Sec. 409(c/d) Exception</span>' 
+                    : '';
+
                 return `
-                    <div class="party-summary-card">
-                        <div class="party-summary-left">
-                            <div class="party-avatar-badge is-respondent">${escapeHtml(initials)}</div>
-                            <div class="party-summary-info">
-                                <div class="party-summary-title-row">
-                                    <span class="party-summary-name">${escapeHtml(fullName)}</span>
-                                    <span class="party-role-pill ${rolePillClass}">${roleLabel}</span>
-                                    ${(r.purok === "Non-Resident" || r.is_tenant === "2") && r.kp_jurisdiction_exception ? '<span class="party-role-pill" style="background: #fef3c7; color: #92400e; border: 1px solid #fde68a; font-size: 0.68rem;">KP Sec. 409(c/d) Exception</span>' : ''}
-                                </div>
-                                <div class="party-summary-details">
-                                    ${details.join('')}
+                    <div class="party-summary-card is-respondent-card">
+                        <div class="party-summary-top">
+                            <div class="party-summary-left">
+                                <div class="party-avatar-badge is-respondent">${escapeHtml(initials)}</div>
+                                <div class="party-summary-info">
+                                    <div class="party-summary-title-row">
+                                        <span class="party-summary-name">${escapeHtml(fullName)}</span>
+                                        <span class="party-role-pill ${rolePillClass}">${roleLabel}</span>
+                                        ${exceptionPill}
+                                    </div>
                                 </div>
                             </div>
+                            <div class="party-summary-actions">
+                                <button type="button" class="btn-summary-action" onclick="openPartyModal('respondent', 'edit', ${idx})" title="Edit Details">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                    <span>Edit</span>
+                                </button>
+                                <button type="button" class="btn-summary-action remove-party-action" onclick="removeParty('respondent', ${idx})" title="Remove Party">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                    <span>Remove</span>
+                                </button>
+                            </div>
                         </div>
-                        <div class="party-summary-actions">
-                            <button type="button" class="btn-summary-action" onclick="openPartyModal('respondent', 'edit', ${idx})" title="Edit Details">
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                                <span>Edit</span>
-                            </button>
-                            <button type="button" class="btn-summary-action remove-party-action" onclick="removeParty('respondent', ${idx})" title="Remove Party">
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                                <span>Remove</span>
-                            </button>
-                        </div>
+                        ${chips.length ? `<div class="party-summary-details">${chips.join('')}</div>` : ''}
                     </div>
                 `;
             }).join('');
@@ -3753,14 +3798,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const statusText = document.getElementById('docViewerStatusText');
         const fileNameEl = document.getElementById('docViewerFileName');
 
+        const floatingScan = document.getElementById('docFloatingScanBar');
         if (!file || !url) {
             if (emptyState) emptyState.style.display = 'block';
             if (pdfFrame) { pdfFrame.style.display = 'none'; pdfFrame.src = ''; }
             if (imgWrapper) { imgWrapper.style.display = 'none'; }
             if (statusText) statusText.textContent = 'No document loaded';
             if (fileNameEl) fileNameEl.textContent = 'Waiting for document...';
+            if (floatingScan) floatingScan.style.display = 'none';
             return;
         }
+        if (floatingScan) floatingScan.style.display = 'flex';
 
         const ext = file.name.split('.').pop().toLowerCase();
         if (emptyState) emptyState.style.display = 'none';
@@ -4457,6 +4505,369 @@ document.addEventListener('DOMContentLoaded', () => {
             triggerBtn.textContent = originalLabel;
         }
     }
+
+        // ═════════════════════════════════════════════════════════════════════════
+    // DOCUMENT VIEWER AI SCANNER & AUTO-FILL SYSTEM
+    // ═════════════════════════════════════════════════════════════════════════
+    let isScanningDocument = false;
+    let pendingScanData = null;
+
+    async function triggerDocumentScanner(fileToScan) {
+        if (isScanningDocument) return;
+
+        const targetFile = fileToScan || currentKp7File;
+        if (!targetFile) {
+            window._autoScanOnSelect = true;
+            window.agapNotify?.('Please select or upload a KP Form 7 document to scan.', 'info', 'Document Scanner');
+            document.getElementById('scannedKp7Input')?.click();
+            return;
+        }
+
+        const beam = document.getElementById('docScannerBeam');
+        const statusOverlay = document.getElementById('docScannerStatus');
+        const statusLabel = document.getElementById('docScannerStatusLabel');
+        const scanBtn = document.getElementById('btnScanDocViewer');
+        const floatingScanBtn = document.getElementById('btnFloatingScanDoc');
+
+        isScanningDocument = true;
+        if (beam) beam.style.display = 'block';
+        if (statusOverlay) statusOverlay.style.display = 'flex';
+        if (statusLabel) statusLabel.textContent = `Scanning "${targetFile.name}" with AI OCR...`;
+        if (scanBtn) {
+            scanBtn.disabled = true;
+            scanBtn.innerHTML = `
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="animation: spin 1s linear infinite;"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>
+                <span>Scanning...</span>
+            `;
+        }
+        if (floatingScanBtn) {
+            floatingScanBtn.disabled = true;
+            floatingScanBtn.textContent = 'Scanning...';
+        }
+
+        try {
+            const formData = new FormData();
+            formData.append('document', targetFile, targetFile.name);
+
+            const resp = await fetch('../../../backend/api/ai/scan-kp-document.php', {
+                method: 'POST',
+                body: formData
+            });
+            const result = await resp.json();
+
+            if (result && result.success && result.data) {
+                pendingScanData = result.data;
+                showScanReviewModal(result.data, targetFile.name);
+            } else {
+                window.agapNotify?.(result?.message || 'Unable to scan document. Please check the file.', 'error', 'Document Scanner');
+            }
+        } catch (err) {
+            console.error('Scan error:', err);
+            window.agapNotify?.('Failed to connect to scanner service. Please try again.', 'error', 'Document Scanner');
+        } finally {
+            isScanningDocument = false;
+            if (beam) beam.style.display = 'none';
+            if (statusOverlay) statusOverlay.style.display = 'none';
+            if (scanBtn) {
+                scanBtn.disabled = false;
+                scanBtn.innerHTML = `
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="9" x2="12" y2="3"/></svg>
+                    <span style="font-weight: 700;">Scan &amp; Auto-Fill</span>
+                `;
+            }
+            if (floatingScanBtn) {
+                floatingScanBtn.disabled = false;
+                floatingScanBtn.innerHTML = `
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
+                    Auto-Fill Fields
+                `;
+            }
+        }
+    }
+
+    function showScanReviewModal(data, fileName) {
+        let modalEl = document.getElementById('scanReviewModalOverlay');
+        if (!modalEl) {
+            modalEl = document.createElement('div');
+            modalEl.id = 'scanReviewModalOverlay';
+            modalEl.className = 'scan-review-modal-overlay';
+            document.body.appendChild(modalEl);
+        }
+
+        const comp = data.complainants?.[0] || {};
+        const resp = data.respondents?.[0] || {};
+        const compName = [comp.first_name, comp.middle_name, comp.last_name, comp.suffix].filter(Boolean).join(' ') || 'Complainant detected';
+        const respName = [resp.first_name, resp.middle_name, resp.last_name, resp.suffix].filter(Boolean).join(' ') || 'Respondent detected';
+
+        modalEl.innerHTML = `
+            <div class="scan-review-modal">
+                <div class="scan-review-header">
+                    <h3>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                        Document Scanned Successfully
+                    </h3>
+                    <button type="button" id="btnCloseScanReview" style="background:none; border:none; color:#ffffff; font-size:1.5rem; cursor:pointer; line-height:1;">&times;</button>
+                </div>
+                <div class="scan-review-body">
+                    <div style="font-size:0.83rem; color:#64748b; margin-bottom:2px;">
+                        Extracted from <strong>${escapeHtml(fileName)}</strong>. Review the detected details below before applying to the complaint form:
+                    </div>
+
+                    <div class="scan-review-grid">
+                        <div class="scan-review-item">
+                            <div class="scan-review-label">Case Classification</div>
+                            <div class="scan-review-val">${escapeHtml(data.category_name || 'General Dispute')} <span style="font-size:0.75rem; color:#0284c7; font-weight:700;">(${escapeHtml(data.case_type || 'Civil')})</span></div>
+                        </div>
+                        <div class="scan-review-item">
+                            <div class="scan-review-label">Incident Date &amp; Time</div>
+                            <div class="scan-review-val">${escapeHtml(data.incident_date || 'Not specified')} ${data.incident_time ? 'at ' + escapeHtml(data.incident_time) : ''}</div>
+                        </div>
+                        <div class="scan-review-item full-width">
+                            <div class="scan-review-label">Specific Nature of Dispute</div>
+                            <div class="scan-review-val">${escapeHtml(data.dispute_nature || 'Dispute intake')}</div>
+                        </div>
+                    </div>
+
+                    <div class="scan-review-label" style="margin-top:6px;">Involved Parties</div>
+                    <div class="scan-review-parties">
+                        <div class="scan-review-party-card is-comp">
+                            <div style="font-size:0.72rem; font-weight:800; color:#0369a1; text-transform:uppercase;">Complainant</div>
+                            <div style="font-weight:700; color:#0f172a; font-size:0.95rem; margin-top:2px;">${escapeHtml(compName)}</div>
+                            <div style="font-size:0.78rem; color:#475569; margin-top:4px;">
+                                ${comp.contact_no ? '<div>📞 ' + escapeHtml(comp.contact_no) + '</div>' : ''}
+                                ${(comp.address || comp.purok) ? '<div>📍 ' + escapeHtml([comp.address, comp.purok].filter(Boolean).join(', ')) + '</div>' : ''}
+                            </div>
+                        </div>
+                        <div class="scan-review-party-card is-resp">
+                            <div style="font-size:0.72rem; font-weight:800; color:#be123c; text-transform:uppercase;">Respondent</div>
+                            <div style="font-weight:700; color:#0f172a; font-size:0.95rem; margin-top:2px;">${escapeHtml(respName)}</div>
+                            <div style="font-size:0.78rem; color:#475569; margin-top:4px;">
+                                ${resp.contact_no ? '<div>📞 ' + escapeHtml(resp.contact_no) + '</div>' : ''}
+                                ${(resp.address || resp.purok) ? '<div>📍 ' + escapeHtml([resp.address, resp.purok].filter(Boolean).join(', ')) + '</div>' : ''}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="scan-review-item full-width">
+                        <div class="scan-review-label">Narrative Statement</div>
+                        <div class="scan-review-val" style="font-size:0.83rem; font-weight:400; line-height:1.5; max-height:110px; overflow-y:auto;">
+                            ${escapeHtml(data.narrative || 'See attached scanned document')}
+                        </div>
+                    </div>
+
+                    ${data.requested_resolution ? `
+                        <div class="scan-review-item full-width">
+                            <div class="scan-review-label">Relief / Remedy Demanded</div>
+                            <div class="scan-review-val" style="font-size:0.83rem; font-weight:500;">
+                                ${escapeHtml(data.requested_resolution)}
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+                <div class="scan-review-footer">
+                    <button type="button" class="btn-secondary btn-sm" id="btnCancelScanReview">Discard</button>
+                    <button type="button" class="btn-create btn-sm" id="btnApplyScanReview" style="display:inline-flex; align-items:center; gap:6px; font-weight:700;">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        Apply to Form Fields
+                    </button>
+                </div>
+            </div>
+        `;
+
+        modalEl.style.display = 'flex';
+
+        document.getElementById('btnCloseScanReview')?.addEventListener('click', () => { modalEl.style.display = 'none'; });
+        document.getElementById('btnCancelScanReview')?.addEventListener('click', () => { modalEl.style.display = 'none'; });
+        document.getElementById('btnApplyScanReview')?.addEventListener('click', () => {
+            applyScannedDataToForm(data);
+            modalEl.style.display = 'none';
+        });
+    }
+
+    function applyScannedDataToForm(data) {
+        if (!data) return;
+
+        function highlightEl(el) {
+            if (!el) return;
+            el.classList.remove('field-scan-highlight');
+            void el.offsetWidth;
+            el.classList.add('field-scan-highlight');
+        }
+
+        // 1. Classification & Case Type
+        const catSelect = document.getElementById('categoryId');
+        if (catSelect && data.category_id) {
+            catSelect.value = String(data.category_id);
+            highlightEl(catSelect);
+        } else if (catSelect && data.category_name) {
+            for (let i = 0; i < catSelect.options.length; i++) {
+                if (catSelect.options[i].text.toLowerCase().includes(data.category_name.toLowerCase())) {
+                    catSelect.selectedIndex = i;
+                    highlightEl(catSelect);
+                    break;
+                }
+            }
+        }
+
+        const caseTypeSelect = document.getElementById('caseType');
+        if (caseTypeSelect && data.case_type) {
+            caseTypeSelect.value = data.case_type;
+            highlightEl(caseTypeSelect);
+        }
+
+        // 2. Dispute Title / Nature
+        const titleInput = document.getElementById('complaintTitle');
+        if (titleInput && data.dispute_nature) {
+            titleInput.value = data.dispute_nature;
+            titleInput.dispatchEvent(new Event('input'));
+            highlightEl(titleInput);
+        }
+
+        // 3. Incident Date & Time
+        const dtField = document.getElementById('incidentDateTime');
+        if (dtField && data.incident_date) {
+            const timePart = data.incident_time || '14:00';
+            dtField.value = dtField.type === 'date' ? data.incident_date : `${data.incident_date}T${timePart}`;
+            dtField.dispatchEvent(new Event('change'));
+            highlightEl(dtField);
+        }
+
+        // 4. Incident Location
+        const streetInput = document.getElementById('incidentStreet');
+        if (streetInput && data.incident_street) {
+            streetInput.value = data.incident_street;
+            highlightEl(streetInput);
+        }
+
+        const purokSelect = document.getElementById('incidentPurok');
+        if (purokSelect && data.incident_purok) {
+            for (let i = 0; i < purokSelect.options.length; i++) {
+                if (purokSelect.options[i].value.toLowerCase() === data.incident_purok.toLowerCase() ||
+                    purokSelect.options[i].text.toLowerCase().includes(data.incident_purok.toLowerCase())) {
+                    purokSelect.selectedIndex = i;
+                    highlightEl(purokSelect);
+                    break;
+                }
+            }
+        }
+
+        // 5. Blotter Ref
+        const blotterInput = document.getElementById('blotterRefNo');
+        if (blotterInput && data.blotter_ref_no) {
+            blotterInput.value = data.blotter_ref_no;
+            highlightEl(blotterInput);
+        }
+
+        // 6. Narrative & Relief
+        const narrativeTa = document.getElementById('narrative');
+        if (narrativeTa && data.narrative) {
+            narrativeTa.value = data.narrative;
+            narrativeTa.dispatchEvent(new Event('input'));
+            highlightEl(narrativeTa);
+        }
+
+        const reliefTa = document.getElementById('requestedResolution');
+        if (reliefTa && data.requested_resolution) {
+            reliefTa.value = data.requested_resolution;
+            highlightEl(reliefTa);
+        }
+
+        // 7. Complainants List
+        if (Array.isArray(data.complainants) && data.complainants.length > 0) {
+            complainantsList = data.complainants.map((c, idx) => ({
+                resident_id: '',
+                first_name: c.first_name || '',
+                middle_name: c.middle_name || '',
+                last_name: c.last_name || '',
+                suffix: c.suffix || '',
+                birthdate: c.birthdate || '',
+                age: c.age || '',
+                gender: c.gender || '',
+                civil_status: c.civil_status || '',
+                occupation: c.occupation || '',
+                contact_no: c.contact_no || '',
+                email: c.email || '',
+                preferred_contact: 'SMS',
+                purok: c.purok || 'Purok 1',
+                is_tenant: '0',
+                address: c.address || '',
+                is_minor: false,
+                guardian_name: '',
+                guardian_relationship: '',
+                guardian_contact: '',
+                guardian_address: ''
+            }));
+            const chkMultComp = document.getElementById('chkMultipleComplainants');
+            if (chkMultComp) chkMultComp.checked = complainantsList.length > 1;
+        }
+
+        // 8. Respondents List
+        if (Array.isArray(data.respondents) && data.respondents.length > 0) {
+            respondentsList = data.respondents.map((r, idx) => ({
+                resident_id: '',
+                first_name: r.first_name || '',
+                middle_name: r.middle_name || '',
+                last_name: r.last_name || '',
+                suffix: r.suffix || '',
+                birthdate: r.birthdate || '',
+                age: r.age || '',
+                gender: r.gender || '',
+                civil_status: r.civil_status || '',
+                occupation: r.occupation || '',
+                contact_no: r.contact_no || '',
+                email: r.email || '',
+                preferred_contact: 'Personal Delivery',
+                purok: r.purok || 'Purok 1',
+                is_tenant: '0',
+                address: r.address || '',
+                is_minor: false,
+                guardian_name: '',
+                guardian_relationship: '',
+                guardian_contact: '',
+                guardian_address: '',
+                contact_unknown: !r.contact_no,
+                middle_unknown: !r.middle_name,
+                birth_unknown: !r.age && !r.birthdate,
+                kp_jurisdiction_exception: false
+            }));
+            const chkMultResp = document.getElementById('chkMultipleRespondents');
+            if (chkMultResp) chkMultResp.checked = respondentsList.length > 1;
+        }
+
+        // Sync & re-render
+        syncHiddenPartyInputs();
+        renderParties();
+        window.validateDistinctParties?.();
+        triggerDuplicateCheck();
+
+        const compListEl = document.getElementById('complainantsSummaryList');
+        const respListEl = document.getElementById('respondentsSummaryList');
+        highlightEl(compListEl);
+        highlightEl(respListEl);
+
+        window.agapNotify?.('Form fields successfully populated from document scan!', 'success', 'Document Scanner');
+    }
+
+    // Attach Scanner Trigger Listeners
+    document.getElementById('btnScanDocViewer')?.addEventListener('click', () => {
+        triggerDocumentScanner(currentKp7File);
+    });
+    document.getElementById('btnTriggerScanFromViewer')?.addEventListener('click', () => {
+        triggerDocumentScanner(currentKp7File);
+    });
+    document.getElementById('btnFloatingScanDoc')?.addEventListener('click', () => {
+        triggerDocumentScanner(currentKp7File);
+    });
+
+    // Auto-scan callback when file is selected if user clicked scan on empty state
+    const origHandleKp7 = handleKp7FileSelection;
+    handleKp7FileSelection = function(file) {
+        origHandleKp7(file);
+        if (window._autoScanOnSelect) {
+            window._autoScanOnSelect = false;
+            setTimeout(() => { triggerDocumentScanner(file); }, 250);
+        }
+    };
 
     // ═════════════════════════════════════════════════════════════════════════
     // ACCIDENTAL REFRESH / NAVIGATION PROTECTION
