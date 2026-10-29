@@ -86,6 +86,7 @@ $medHoursEnd = $sysSettings['mediation_hours_end'] ?? '17:00';
 $workHoursStart = $sysSettings['working_hours_start'] ?? '08:00';
 $workHoursEnd = $sysSettings['working_hours_end'] ?? '17:00';
 $medVenue = $sysSettings['mediation_venue'] ?? 'Lupon Court Room';
+$dailyHearingCapacity = (int) ($sysSettings['daily_hearing_capacity'] ?? 8);
 
 include '../../layouts/header.php';
 ?>
@@ -94,6 +95,7 @@ window.AGAP_SETTINGS = window.AGAP_SETTINGS || {};
 window.AGAP_SETTINGS.mediation_days = <?= json_encode($allowedMedDays) ?>;
 window.AGAP_SETTINGS.mediation_days_label = <?= json_encode($medDaysLabel) ?>;
 window.AGAP_SETTINGS.mediation_day_numbers = <?= json_encode($allowedMedDayNumbers) ?>;
+window.AGAP_SETTINGS.daily_capacity = <?= (int) $dailyHearingCapacity ?>;
 window.AGAP_SETTINGS.mediation_hours_start = <?= json_encode($medHoursStart) ?>;
 window.AGAP_SETTINGS.mediation_hours_end = <?= json_encode($medHoursEnd) ?>;
 window.AGAP_SETTINGS.working_hours_start = <?= json_encode($workHoursStart) ?>;
@@ -458,209 +460,125 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
 <!-- ========================================== -->
 
 <div id="wsScheduleModal" class="modal" style="display: none;">
-
-    <div class="modal-content" style="max-width: 580px; max-height: 90vh; display: flex; flex-direction: column; padding: 0; border-radius: 10px; overflow: hidden;">
-
-        <div class="modal-header" style="padding: 16px 24px; border-bottom: 1px solid #e2e8f0; background: #fff; margin-bottom: 0; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center;">
-
-            <h2 id="wsSchedModalTitle" style="font-size: 1.15rem; font-weight: 700; color: #0f172a; margin: 0;">Schedule 2nd Mediation Session</h2>
-
-            <button type="button" class="close-btn" onclick="closeScheduleModal()">&times;</button>
-
+    <div class="modal-content" style="max-width: 680px; max-height: 92vh; display: flex; flex-direction: column; padding: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);">
+        <div class="modal-header" style="padding: 16px 22px; border-bottom: 1px solid #e2e8f0; background: #ffffff; margin-bottom: 0; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <h2 id="wsSchedModalTitle" style="font-size: 1.05rem; font-weight: 700; color: #0f172a; margin: 0; display: flex; align-items: center; gap: 8px;">
+                <span>⚖️</span> 2nd Formal Mediation Hearing Schedule
+            </h2>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span id="schedHeaderBadge" style="font-size: 0.72rem; background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; padding: 3px 10px; border-radius: 9999px; font-weight: 700;">
+                    <?= htmlspecialchars($medDaysLabel) ?> · <?= htmlspecialchars($medVenue) ?> (Max <?= $dailyHearingCapacity ?>/Day)
+                </span>
+                <button type="button" class="close-btn" onclick="closeScheduleModal()" style="font-size: 1.3rem; line-height: 1; border: none; background: none; cursor: pointer; color: #64748b;">&times;</button>
+            </div>
         </div>
-
         <form id="wsScheduleForm" onsubmit="submitSchedule(event)" style="display: flex; flex-direction: column; overflow: hidden; margin: 0;">
-
             <input type="hidden" id="schedHearingType" value="Mediation">
-
             <input type="hidden" id="schedComplaintId" value="<?php echo (int) $complaintId; ?>">
-
             <input type="hidden" id="schedCaseId" value="<?php echo (int) $caseId; ?>">
-
-            <div class="modal-body" style="padding: 18px 24px; overflow-y: auto; flex: 1;">
-
-                <p id="wsSchedModalSubtitle" style="color: #64748b; font-size: 0.85rem; margin-top: 0; margin-bottom: 14px; line-height: 1.45;">
-
-                    Enter the date and time to schedule the 2nd mediation session immediately. <strong>RA 7160 Sec. 410 Notice Exemption:</strong> Because both parties are present in this session and notified, prior personal notice is legally recognized and no redundant summons (KP Form 9) is generated.
-
-                </p>
-
-
-
+            <div class="modal-body" style="padding: 18px 22px; overflow-y: auto; flex: 1; background: #f8fafc;">
+                <!-- Mediation Date (Tuesdays ONLY) Row -->
                 <div class="form-group" style="margin-bottom: 14px;">
-
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
-
-                        <label for="schedDate" style="margin-bottom: 0; font-weight: 700; color: #1e293b;">
-
-                            <span id="schedDateLabel">2nd Mediation Date</span> <span class="required-mark" aria-hidden="true">*</span>
-
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label for="schedDate" style="margin-bottom: 0; font-weight: 700; font-size: 0.85rem; color: #1e293b;">
+                            <span id="schedDateLabel">Mediation Date (<?= htmlspecialchars($medDaysLabel) ?>)</span> <span class="required-mark" style="color: #dc2626;">*</span>
                         </label>
-
-                        <span id="schedWindowStatutoryBadge" style="font-size: 0.72rem; background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; padding: 2px 8px; border-radius: 9999px; font-weight: 600;">
-
-                            15-Working-Day Window (RA 7160 Sec. 410)
-
+                        <span id="schedCapacityBadge" class="badge-capacity" style="font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 9999px; background: #dcfce7; color: #166534; border: 1px solid #86efac;">
+                            Checking capacity...
                         </span>
-
                     </div>
+                    <input type="date" id="schedDate" name="hearing_date" required onchange="handleWorkspaceSchedDateChange(this)" style="padding: 9px 12px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box; background: #fff; margin-bottom: 4px;">
+                    <small id="schedDateError" style="display: none; color: #dc2626; font-size: 0.75rem; font-weight: 600; margin-bottom: 6px;"></small>
 
-
-
-                    <input type="date" id="schedDate" name="hearing_date" required style="margin-bottom: 8px; width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.88rem; box-sizing: border-box; background: #fff;">
-
-
-
-                    <!-- Visual 15-Working-Day Calendar & Capacity Strip -->
-
-                    <div id="schedVisualDatePickerContainer" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-top: 6px;">
-
+                    <!-- Visual Day Grid Container -->
+                    <div id="schedVisualDatePickerContainer" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-top: 6px; margin-bottom: 14px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.78rem; flex-wrap: wrap; gap: 6px;">
-
-                            <span style="font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.03em; font-size: 0.74rem;">
-
-                                AVAILABLE MEDIATION DAYS (MAX 8 HEARINGS/DAY):
-
+                            <span id="schedVisualDeckTitle" style="font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.03em; font-size: 0.74rem;">
+                                AVAILABLE MEDIATION SLOTS (MAX <?= $dailyHearingCapacity ?> HEARINGS/DAY):
                             </span>
-
                             <div style="display: flex; gap: 10px; font-size: 0.72rem; flex-wrap: wrap;">
-
                                 <span style="display: inline-flex; align-items: center; gap: 4px; color: #166534;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e;"></span> Available</span>
-
-                                <span style="display: inline-flex; align-items: center; gap: 4px; color: #991b1b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #ef4444;"></span> 8/8 Full</span>
-
-                                <span style="display: inline-flex; align-items: center; gap: 4px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #94a3b8;"></span> Outside 15d</span>
-
+                                <span style="display: inline-flex; align-items: center; gap: 4px; color: #991b1b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #ef4444;"></span> <?= $dailyHearingCapacity ?>/<?= $dailyHearingCapacity ?> Full</span>
                             </div>
-
                         </div>
-
-
-
-                        <!-- Scrollable Day Cards Grid -->
-
-                        <div id="schedVisualDayGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; max-height: 155px; overflow-y: auto; padding: 4px 2px;">
-
-                            <div style="text-align: center; color: #64748b; font-size: 0.78rem; padding: 12px; grid-column: 1 / -1;">
-
-                                Loading statutory 15-working-day availability &amp; capacity...
-
+                        <div id="schedVisualDayGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 6px; padding: 4px 2px;">
+                            <div style="text-align: center; color: #64748b; font-size: 0.78rem; padding: 8px; grid-column: 1 / -1;">
+                                Loading mediation availability...
                             </div>
-
                         </div>
-
                         <div id="schedVisualDateStatusNotice" style="margin-top: 6px; font-size: 0.75rem; color: #64748b; line-height: 1.4;"></div>
-
                     </div>
-
                 </div>
 
+                <!-- Target Call Time & Hearing Venue (2-Column Grid) -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                            <label for="schedTime" style="font-weight: 700; font-size: 0.84rem; margin: 0; color: #1e293b;">
+                                <span id="schedTimeLabel">Target Call Time (<?= date('g:i A', strtotime($medHoursStart)) ?> - <?= date('g:i A', strtotime($medHoursEnd)) ?>)</span> <span class="required-mark" style="color: #dc2626;">*</span>
+                            </label>
+                            <span style="font-size: 0.72rem; color: #64748b;">15-min intervals</span>
+                        </div>
+                        <input type="time" id="schedTime" name="hearing_time" min="<?= $medHoursStart ?>" max="<?= $medHoursEnd ?>" step="900" value="13:45" style="padding: 9px 12px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box; background: #fff;">
+                        <small id="schedTimeError" style="display: none; color: #dc2626; font-size: 0.75rem; font-weight: 600; margin-top: 3px;"></small>
+                        <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px;">
+                            <button type="button" class="btn-slot-chip" onclick="selectSchedTime('13:00')" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:00 PM</button>
+                            <button type="button" class="btn-slot-chip" onclick="selectSchedTime('13:15')" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:15 PM</button>
+                            <button type="button" class="btn-slot-chip" onclick="selectSchedTime('13:30')" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:30 PM</button>
+                            <button type="button" class="btn-slot-chip" onclick="selectSchedTime('13:45')" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">1:45 PM</button>
+                            <button type="button" class="btn-slot-chip" onclick="selectSchedTime('14:00')" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">2:00 PM</button>
+                            <button type="button" class="btn-slot-chip" onclick="selectSchedTime('14:30')" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">2:30 PM</button>
+                            <button type="button" class="btn-slot-chip" onclick="selectSchedTime('15:00')" style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer;">3:00 PM</button>
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="schedVenue" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 5px; color: #1e293b;">
+                            <span id="schedVenueLabel">Hearing Venue</span>
+                        </label>
+                        <input type="text" id="schedVenue" name="venue" value="<?= htmlspecialchars($medVenue) ?>" readonly style="padding: 9px 12px; font-size: 0.88rem; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box; cursor: not-allowed; color: #334155;">
+                    </div>
+                </div>
 
-
-                <!-- Existing Mediations on selected date -->
-
-                <div id="schedDaySchedulesWrap" style="display: none; margin-bottom: 14px; padding: 10px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.84rem;">
-
-                    <div style="font-weight: 600; color: #334155; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
-
-                        <span>Scheduled Mediations on this Date:</span>
-
+                <!-- Live Docket Call (Existing Scheduled Mediations) -->
+                <div id="schedDaySchedulesWrap" style="display: none; margin-bottom: 14px; padding: 10px 12px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.84rem;">
+                    <div style="font-weight: 700; color: #334155; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
+                        <span id="schedDaySchedulesTitle">📋 Mediation Docket Call (<?= htmlspecialchars($medVenue) ?>):</span>
                         <span id="schedDaySlotsCount" style="font-size: 0.72rem; background: #e2e8f0; color: #475569; padding: 2px 7px; border-radius: 9999px; font-weight: 600;">0</span>
-
                     </div>
-
                     <div id="schedDaySlotsList" style="color: #64748b; font-size: 0.82rem; line-height: 1.5;">
-
                         No other mediations scheduled on this day.
-
                     </div>
-
                 </div>
 
-
-
-                <div class="form-group" style="margin-bottom: 14px;">
-
-                    <label for="schedTime"><span id="schedTimeLabel">2nd Mediation Time</span> <span class="required-mark" aria-hidden="true">*</span></label>
-
-                    <input type="time" id="schedTime" name="hearing_time" value="09:00" min="08:00" max="17:00" step="1800" required style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.88rem; box-sizing: border-box; background: #fff;">
-
-                    <small class="field-hint" style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Regular Lupon hearing hours are 8:00 AM to 5:00 PM (Monday to Friday). Standard duration is 1 hour.</small>
-
-                </div>
-
-
-
-                <!-- Conflict Alert Box -->
-
+                <!-- Conflict Alert Banner -->
                 <div id="schedScheduleConflictAlert" class="alert alert-danger" style="display: none; margin: 0 0 14px; padding: 10px 12px; font-size: 0.84rem; border-radius: 6px; background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; line-height: 1.4;">
-
                 </div>
-
-
-
-                <div class="form-group" style="margin-bottom: 14px;">
-
-                    <label for="schedVenue"><span id="schedVenueLabel">Venue</span> <span class="required-mark" aria-hidden="true">*</span></label>
-
-                    <input type="text" id="schedVenue" name="venue" maxlength="255" value="Lupon Court Room" readonly required style="background: #f8fafc; cursor: not-allowed; width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.88rem; box-sizing: border-box;">
-
-                    <small style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Mediation sessions are conducted exclusively in the Lupon Court Room.</small>
-
-                </div>
-
-
 
                 <div class="form-group" id="schedPresidingOfficerGroup" style="display: none; margin-bottom: 14px;">
-
                     <label for="schedPresidingOfficer"><span id="schedPresidingOfficerLabel">Presiding Officer</span></label>
-
                     <input type="text" id="schedPresidingOfficer" readonly value="Punong Barangay / Pangkat Chairman" style="background: #f8fafc; width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.88rem; box-sizing: border-box;">
-
                 </div>
-
-
 
                 <div class="form-group" style="margin-bottom: 6px;">
-
-                    <label for="schedRemarks"><span id="schedRemarksLabel">Remarks</span> <span class="optional-label">Optional</span></label>
-
-                    <textarea id="schedRemarks" name="remarks" maxlength="5000" rows="2" placeholder="Optional mediation instructions or notes..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.84rem; box-sizing: border-box;"></textarea>
-
+                    <label for="schedRemarks"><span id="schedRemarksLabel">Remarks</span> <span class="optional-label" style="font-size: 0.74rem; color: #64748b; font-weight: normal;">(Optional)</span></label>
+                    <textarea id="schedRemarks" name="remarks" maxlength="5000" rows="2" placeholder="Optional mediation instructions or notes..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.84rem; box-sizing: border-box; background: #fff;"></textarea>
                 </div>
-
-
 
                 <?php if ($canAuthorizePastDate): ?>
-
                 <div class="form-group" style="margin-top: 10px;">
-
                     <label for="schedPastDateExceptionReason">Administrator past-date exception reason</label>
-
                     <textarea id="schedPastDateExceptionReason" rows="2" maxlength="2000" placeholder="Required only when scheduling a past date or time (10–2,000 characters)." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.84rem; box-sizing: border-box;"></textarea>
-
                     <small style="color: #64748b; font-size: 0.75rem;">The reason is saved with the hearing and audit history.</small>
-
                 </div>
-
                 <?php endif; ?>
-
             </div>
-
-            <div class="modal-actions" style="padding: 12px 24px; border-top: 1px solid #e2e8f0; background: #f8fafc; margin-top: 0; flex-shrink: 0; display: flex; justify-content: flex-end; gap: 10px;">
-
-                <button type="button" class="btn-secondary" onclick="closeScheduleModal()">Cancel</button>
-
-                <button type="submit" class="btn-create" id="submitSchedBtn">Schedule 2nd Mediation</button>
-
+            <div class="modal-actions" style="padding: 12px 22px; border-top: 1px solid #e2e8f0; background: #ffffff; margin-top: 0; flex-shrink: 0; display: flex; justify-content: flex-end; gap: 10px;">
+                <button type="button" class="btn-secondary" onclick="closeScheduleModal()" style="padding: 8px 16px; font-size: 0.86rem; border-radius: 6px;">Cancel</button>
+                <button type="submit" class="btn-create" id="submitSchedBtn" style="padding: 8px 20px; font-size: 0.86rem; border-radius: 6px; font-weight: 700; background: #16a34a; border-color: #16a34a;">Schedule 2nd Mediation</button>
             </div>
-
-            <p id="schedMessage" role="status" style="margin: 0; padding: 0 24px 8px; font-size: 0.84rem;"></p>
-
+            <p id="schedMessage" role="status" style="margin: 0; padding: 0 22px 8px; font-size: 0.84rem;"></p>
         </form>
-
     </div>
-
 </div>
 
 

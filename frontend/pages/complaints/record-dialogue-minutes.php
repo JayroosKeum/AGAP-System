@@ -687,21 +687,8 @@ window.AGAP_SETTINGS.mediation_hours_start = <?= json_encode($medHoursStart) ?>;
 window.AGAP_SETTINGS.mediation_hours_end = <?= json_encode($medHoursEnd) ?>;
 window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
 
-// Multi-Select Presiders Management
+// Multi-Select Presiders Management (starts blank, no default pre-selected presider)
 let selectedPresiders = [];
-
-const currentUserId = <?= (int)($_SESSION['user_id'] ?? 0) ?>;
-const eligiblePresidersList = <?= json_encode(array_map(fn($p) => [
-    'id' => (int)$p['user_id'],
-    'name' => $p['full_name'],
-    'role' => $p['role_name']
-], $eligiblePresiders ?? [])) ?>;
-
-// Pre-select current user if they are an eligible presider
-const matchedCurrentUser = eligiblePresidersList.find(p => p.id === currentUserId);
-if (matchedCurrentUser) {
-    selectedPresiders.push(matchedCurrentUser);
-}
 
 function handleAddPresider(val) {
     if (!val) return;
