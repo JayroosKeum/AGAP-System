@@ -87,7 +87,7 @@ class Summons
                 INNER JOIN cases c ON c.case_id = h.case_id
                 WHERE DATE(h.hearing_date) = ?
                   AND h.hearing_type = 'Mediation'
-                  AND c.case_status NOT IN ('Dismissed', 'Settled')
+                  AND c.case_status NOT IN ('Dismissed', 'Settled', 'DISMISSED_BARRED', 'Archived', 'CFA Issued')
                   AND h.status NOT IN ('Cancelled', 'Office Cancelled')
             ");
             $capacityStmt->execute([$medDate]);
@@ -941,7 +941,7 @@ class Summons
             LEFT JOIN complaints co ON co.complaint_id = c.complaint_id
             WHERE DATE(h.hearing_date) = ?
               AND {$typeCondition}
-              AND c.case_status NOT IN ('Dismissed', 'Settled')
+              AND c.case_status NOT IN ('Dismissed', 'Settled', 'DISMISSED_BARRED', 'Archived', 'CFA Issued')
               AND h.status NOT IN ('Cancelled', 'Office Cancelled')
         ";
         $params = [$dateOnly];
@@ -1005,7 +1005,7 @@ class Summons
             WHERE DATE(h.hearing_date) BETWEEN ? AND ?
               AND {$typeCondition}
               AND h.status NOT IN ('Cancelled', 'Office Cancelled')
-              AND c.case_status NOT IN ('Dismissed', 'Settled')
+              AND c.case_status NOT IN ('Dismissed', 'Settled', 'DISMISSED_BARRED', 'Archived', 'CFA Issued')
         ";
         $params = [substr($startDate, 0, 10), substr($endDate, 0, 10)];
 

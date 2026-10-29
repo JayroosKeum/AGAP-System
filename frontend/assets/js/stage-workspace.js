@@ -9006,27 +9006,21 @@ function renderReferVisualDays(windowMeta, selectedDate) {
 
 
 
-    const days = windowMeta?.daily_slots ? Object.values(windowMeta.daily_slots) : [];
+    const allDays = windowMeta?.daily_slots ? Object.values(windowMeta.daily_slots) : [];
 
-    if (!days.length) {
-
+    if (!allDays.length) {
         gridEl.innerHTML = '<div style="color: #64748b; font-size: 0.78rem; grid-column: 1 / -1; text-align: center; padding: 12px;">No available conciliation slots.</div>';
-
         return;
-
     }
 
-
+    // Show active upcoming conciliation days
+    const upcomingDays = allDays.filter(d => !d.is_past);
+    const days = (upcomingDays.length ? upcomingDays : allDays).slice(0, 14);
 
     if (monthLabelEl && days.length > 0) {
-
         const firstDay = days[0];
-
-        monthLabelEl.textContent = `· ${firstDay.month_name || ''} ${new Date(firstDay.date).getFullYear()}`;
-
+        monthLabelEl.textContent = `· ${firstDay.month_name || ''} ${new Date(firstDay.date + 'T00:00:00').getFullYear()}`;
     }
-
-
 
     gridEl.innerHTML = days.map(d => {
 

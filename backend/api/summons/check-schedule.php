@@ -119,6 +119,7 @@ if ($complaintId || $getWindow) {
         $dayOfWeek = (int) $cur->format('N'); // 1 = Mon, 2 = Tue, ..., 7 = Sun
         $curDayCode = $cur->format('D');
         $isWeekend = ($dayOfWeek === 6 || $dayOfWeek === 7);
+$isTuesday = ($dayOfWeek === 2);
         $isHoliday = MediationDeadlineService::isNonWorkingDay($cur);
         $isMedDay = in_array($curDayCode, $allowedMedDays, true);
         $booked = $dailyCounts[$dStr] ?? 0;
@@ -210,6 +211,7 @@ if ($date === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
 $dateObj = new DateTimeImmutable($date);
 $dayOfWeek = (int) $dateObj->format('N');
 $isWeekend = ($dayOfWeek === 6 || $dayOfWeek === 7);
+$isTuesday = ($dayOfWeek === 2);
 $isNonWorkingDay = MediationDeadlineService::isNonWorkingDay($dateObj);
 
 $curDayCode = $dateObj->format('D');
