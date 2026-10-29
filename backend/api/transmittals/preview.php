@@ -21,7 +21,7 @@ $db = (new Database())->connect();
 if (!$caseId && $complaintId) {
     $cStmt = $db->prepare("SELECT case_id FROM cases WHERE complaint_id = ? ORDER BY case_id DESC LIMIT 1");
     $cStmt->execute([$complaintId]);
-    $caseId = (int) $cStmt->fetchColumn() ?: null;
+    $caseId = (int) $cStmt->fetchColumn() ?: (int) $complaintId;
 }
 
 if (!$caseId) {
@@ -104,7 +104,7 @@ try {
         }
 
         if ($isLocked) {
-            // Statutory Repudiation Window Active: Strict print protection during 10-business-day window
+            // Statutory Repudiation Window Active: Strict print protection during 10-working-day window
             $printLockCss = '
             <style id="statutoryPrintLockCss">
                 @media print {
@@ -118,7 +118,7 @@ try {
                         overflow: visible !important;
                     }
                     body::before {
-                        content: "🔒 OFFICIAL COURT TRANSMITTAL IS LOCKED PURSUANT TO RA 7160 SEC. 416\A\A The mandatory 10-business-day repudiation window is currently active (' . $daysRemaining . ' business day(s) remaining, unlocking on ' . addslashes($unlockDate) . ').\A\A OFFICIAL TRANSMITTAL DISPATCH AND PHYSICAL PRINTING ARE STRICTLY PROHIBITED BY STATUTORY LAW.";
+                        content: "🔒 OFFICIAL COURT TRANSMITTAL IS LOCKED PURSUANT TO RA 7160 SEC. 416\A\A The mandatory 10-working-day repudiation window is currently active (' . $daysRemaining . ' working day(s) remaining, unlocking on ' . addslashes($unlockDate) . ').\A\A OFFICIAL TRANSMITTAL DISPATCH AND PHYSICAL PRINTING ARE STRICTLY PROHIBITED BY STATUTORY LAW.";
                         white-space: pre-wrap !important;
                         display: block !important;
                         font-family: Arial, sans-serif !important;
@@ -156,14 +156,14 @@ try {
             'unlock_date' => $unlockDate,
             'message' => $isRepudiated
                 ? 'Court transmittal is cancelled because the settlement was repudiated under RA 7160 Sec. 416.'
-                : "Court transmittal letter is locked pursuant to RA 7160 Sec. 416. {$daysRemaining} business day(s) remaining before official dispatch unlocks on {$unlockDate}."
+                : "Court transmittal letter is locked pursuant to RA 7160 Sec. 416. {$daysRemaining} working day(s) remaining before official dispatch unlocks on {$unlockDate}."
         ]);
         exit;
     }
 
     $caseStmt = $db->prepare("SELECT case_number FROM cases WHERE case_id = ?");
     $caseStmt->execute([$caseId]);
-    $caseNumber = $caseStmt->fetchColumn() ?: "Case-{$caseId}";
+    $caseNumber = !empty($details['case']['case_number']) ? $details['case']['case_number'] : ($caseStmt->fetchColumn() ?: "Case-{$caseId}");
     $filename = sprintf('Court-Transmittal-Letter-MTC-%s.pdf', preg_replace('/[^a-zA-Z0-9_-]/', '_', $caseNumber));
 
     header('Content-Type: application/pdf');

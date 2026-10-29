@@ -732,7 +732,7 @@ class Paanyaya
             require_once __DIR__ . '/../services/MediationDeadlineService.php';
             require_once __DIR__ . '/Setting.php';
 
-            $rawMedDays = Setting::getSetting('mediation_day_of_week', 'Tue');
+            $rawMedDays = Setting::getSetting('mediation_day_of_week', 'Mon,Tue,Wed,Thu,Fri');
             $allowedMedDays = [];
             if (is_string($rawMedDays)) {
                 $dec = json_decode($rawMedDays, true);
@@ -750,7 +750,7 @@ class Paanyaya
             $medDaysLabel = implode(', ', $medDaysPlural);
 
             $dailyCap = (int) Setting::getSetting('daily_hearing_capacity', 8);
-            $medHoursStart = Setting::getSetting('mediation_hours_start', '13:00');
+            $medHoursStart = Setting::getSetting('mediation_hours_start', '08:00');
             $medHoursEnd = Setting::getSetting('mediation_hours_end', '16:30');
             $venueSetting = Setting::getSetting('mediation_venue', 'Lupon Court Room');
 

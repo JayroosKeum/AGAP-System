@@ -150,7 +150,8 @@ class HearingMinutes
         $checkExisting = $this->conn->prepare("SELECT status FROM hearing_minutes WHERE hearing_id = ?");
         $checkExisting->execute([$hearingId]);
         $existingStatus = $checkExisting->fetchColumn();
-        if ($existingStatus === 'Finalized' && empty($data['force_edit'])) {
+        // Lupon clerk can continuously edit and update session minutes to ensure completeness and accuracy
+        if ($existingStatus === 'Finalized' && !empty($data['prevent_finalized_edit'])) {
             return ['success' => false, 'message' => 'This session minutes has already been finalized and cannot be overwritten without authorized unlock.'];
         }
 
@@ -337,6 +338,14 @@ class HearingMinutes
             } elseif ($outcome === 'Arbitration Award') {
                 $histMsg = sprintf('%s session concluded: Arbitration proceedings concluded. Ready for Arbitration Award.', $sessionType);
                 $this->logCaseHistory($caseId, 'Arbitration', $histMsg, $userId);
+            } elseif ($outcome === 'Party Absent') {
+                $stageType = ($hearing['hearing_type'] === 'Conciliation') ? 'Conciliation' : 'Mediation';
+                $histMsg = sprintf('%s session concluded: Non-appearance recorded (Party Absent). Show-cause proceedings initiated.', $sessionType);
+                $this->logCaseHistory($caseId, $hearing['case_status'] ?? $stageType, $histMsg, $userId);
+            } elseif ($outcome === 'Rescheduled') {
+                $stageType = ($hearing['hearing_type'] === 'Conciliation') ? 'Conciliation' : 'Mediation';
+                $histMsg = sprintf('%s session concluded: Session reset / rescheduled.', $sessionType);
+                $this->logCaseHistory($caseId, $hearing['case_status'] ?? $stageType, $histMsg, $userId);
             }
 
             if ($status === 'Finalized') {
@@ -350,6 +359,15 @@ class HearingMinutes
             // Workflow transition if 2nd Mediation elevated to Pangkat
             if ($outcome === 'Elevate to Pangkat' && $status === 'Finalized') {
                 $this->transitionToConciliationOnMediationFailure($caseId, $userId);
+            }
+
+            // Post-commit triggers for Dismissed, Party Absent, Rescheduled
+            if ($outcome === 'Dismissed' && $status === 'Finalized') {
+                $this->generateKp21OnDismissed($caseId, $hearingId, $userId);
+            } elseif ($outcome === 'Party Absent') {
+                $this->handlePartyAbsentOutcome($hearing, $data, $userId, $sessionType, $remarks);
+            } elseif ($outcome === 'Rescheduled') {
+                $this->handleRescheduledSession($hearing, $data, $userId, $remarks);
             }
 
             // Direct Next Hearing Booking from Minutes of Meeting (RA 7160 Sec. 410)
@@ -494,6 +512,8 @@ class HearingMinutes
 
             if ($outcome === 'Elevate to Pangkat') {
                 $this->transitionToConciliationOnMediationFailure($caseId, $userId);
+            } elseif ($outcome === 'Dismissed') {
+                $this->generateKp21OnDismissed($caseId, $hearingId, $userId);
             }
 
             $this->logCaseHistory($caseId, ($outcome === 'Elevate to Pangkat' ? 'Conciliation' : ($minutes['case_status'] ?? 'Mediation')), "Session minutes for hearing #{$hearingId} ({$minutes['session_type']}) finalized and approved.", $userId);
@@ -562,6 +582,135 @@ class HearingMinutes
             ], $this->conn);
         } catch (Throwable $e) {
             error_log('transitionToConciliationOnMediationFailure error: ' . $e->getMessage());
+        }
+    }
+
+    private function generateKp21OnDismissed(int $caseId, int $hearingId, int $userId): void
+    {
+        try {
+            require_once __DIR__ . '/../services/KpFormService.php';
+            $kpFormService = new KpFormService($this->conn);
+            $kpFormService->generateKpForm('KP Form 21', $caseId, $userId, [
+                'hearing_id' => $hearingId,
+                'bypass_prerequisites' => true
+            ]);
+        } catch (Throwable $e) {
+            error_log('Error generating KP Form 21 on Dismissed: ' . $e->getMessage());
+        }
+    }
+
+    private function handlePartyAbsentOutcome(array $hearing, array $data, int $userId, string $sessionType, string $remarks): void
+    {
+        try {
+            require_once __DIR__ . '/../services/ShowCauseService.php';
+            $showCauseService = new ShowCauseService($this->conn);
+            $hearingId = (int) $hearing['hearing_id'];
+            $caseId = (int) $hearing['case_id'];
+
+            // Fetch latest attendance status from hearings or input
+            $checkH = $this->conn->prepare("SELECT complainant_attendance, respondent_attendance FROM hearings WHERE hearing_id = ?");
+            $checkH->execute([$hearingId]);
+            $curAtt = $checkH->fetch(PDO::FETCH_ASSOC);
+
+            $compAtt = $data['complainant_attendance'] ?? $curAtt['complainant_attendance'] ?? 'Pending';
+            $respAtt = $data['respondent_attendance'] ?? $curAtt['respondent_attendance'] ?? 'Pending';
+
+            if ($compAtt !== 'Absent' && $respAtt !== 'Absent') {
+                $attStmt = $this->conn->prepare("
+                    SELECT cp.party_type, ha.attendance_status
+                    FROM hearing_attendance ha
+                    INNER JOIN complaint_parties cp ON cp.resident_id = ha.resident_id AND cp.complaint_id = ?
+                    WHERE ha.hearing_id = ? AND ha.attendance_status = 'Absent'
+                ");
+                $attStmt->execute([(int) $hearing['complaint_id'], $hearingId]);
+                $absentRows = $attStmt->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($absentRows as $ar) {
+                    if ($ar['party_type'] === 'Complainant') $compAtt = 'Absent';
+                    if ($ar['party_type'] === 'Respondent') $respAtt = 'Absent';
+                }
+            }
+
+            if ($compAtt !== 'Absent' && $respAtt !== 'Absent') {
+                if (!empty($data['complainant_absent'])) $compAtt = 'Absent';
+                if (!empty($data['respondent_absent'])) $respAtt = 'Absent';
+                if ($compAtt !== 'Absent' && $respAtt !== 'Absent') {
+                    $compAtt = 'Absent';
+                    $respAtt = 'Absent';
+                }
+            }
+
+            // Check existing show cause hearings
+            $chkSc = $this->conn->prepare("
+                SELECT hearing_type FROM hearings
+                WHERE rescheduled_from_id = ? AND hearing_type LIKE 'Show Cause%' AND status NOT IN ('Cancelled', 'Office Cancelled')
+            ");
+            $chkSc->execute([$hearingId]);
+            $existingScTypes = $chkSc->fetchAll(PDO::FETCH_COLUMN);
+
+            $needsCompSc = ($compAtt === 'Absent') && !in_array('Show Cause (Complainant)', $existingScTypes, true);
+            $needsRespSc = ($respAtt === 'Absent') && !in_array('Show Cause (Respondent)', $existingScTypes, true);
+
+            if ($needsCompSc || $needsRespSc) {
+                $attData = [
+                    'complainant_attendance' => ($compAtt === 'Absent') ? 'Absent' : 'Present',
+                    'respondent_attendance' => ($respAtt === 'Absent') ? 'Absent' : 'Present',
+                    'attendance_notes' => $remarks ?: 'Non-appearance recorded from session minutes.',
+                    'bypass_service_check' => true
+                ];
+                $showCauseService->recordAttendance($hearingId, $attData, $userId);
+            }
+
+            $stageType = ($hearing['hearing_type'] === 'Conciliation') ? 'Conciliation' : 'Mediation';
+            $histMsg = sprintf('%s session concluded: Non-appearance recorded (Party Absent). Show-cause proceedings initiated.', $sessionType);
+            $this->logCaseHistory($caseId, $stageType, $histMsg, $userId);
+        } catch (Throwable $e) {
+            error_log('handlePartyAbsentOutcome error: ' . $e->getMessage());
+        }
+    }
+
+    private function handleRescheduledSession(array $hearing, array $data, int $userId, string $remarks): void
+    {
+        try {
+            $hearingId = (int) $hearing['hearing_id'];
+
+            // Check if already rescheduled to an active hearing
+            $chkResched = $this->conn->prepare("
+                SELECT hearing_id FROM hearings
+                WHERE rescheduled_from_id = ? AND status NOT IN ('Cancelled', 'Office Cancelled')
+                LIMIT 1
+            ");
+            $chkResched->execute([$hearingId]);
+            $existingNewId = $chkResched->fetchColumn();
+
+            if ($existingNewId) {
+                return;
+            }
+
+            require_once __DIR__ . '/Hearing.php';
+            $hearingModel = new Hearing($this->conn);
+
+            $nextDate = trim((string) ($data['next_hearing_date'] ?? $data['reschedule_date'] ?? ''));
+            $nextTime = trim((string) ($data['next_hearing_time'] ?? ''));
+            if ($nextDate !== '' && $nextTime !== '') {
+                $newDateTime = $nextDate . ' ' . (strlen($nextTime) === 5 ? ($nextTime . ':00') : $nextTime);
+            } elseif ($nextDate !== '' && str_contains($nextDate, ' ')) {
+                $newDateTime = $nextDate;
+            } else {
+                $newDateTime = date('Y-m-d 09:00:00', strtotime('+3 days'));
+            }
+
+            $venue = trim((string) ($data['next_hearing_venue'] ?? '')) ?: ($hearing['venue'] ?: 'Lupon Court Room');
+            $reason = $remarks ?: 'Hearing session reset / rescheduled from session minutes.';
+
+            $hearingModel->createRescheduledHearingWithNotices(
+                $hearingId,
+                $newDateTime,
+                $reason,
+                $userId,
+                $venue
+            );
+        } catch (Throwable $e) {
+            error_log('handleRescheduledSession error: ' . $e->getMessage());
         }
     }
 

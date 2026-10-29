@@ -502,7 +502,7 @@
 
     <!-- ── Quick Attendance / Check-In Modal ───────────────────────── -->
     <div id="quickDashboardAttendanceModal" class="report-modal-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="quickAttendanceModalTitle">
-        <div class="report-modal-container" style="max-width: 580px;">
+        <div class="report-modal-container" style="max-width: 640px;">
             <header class="report-modal-header" style="padding: 16px 20px; border-bottom: 1px solid #e2e8f0; background: #f8fafc;">
                 <div class="modal-header-info">
                     <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
@@ -510,7 +510,7 @@
                         <span id="quickAttCaseNumBadge" style="font-size:11.5px; font-weight:700; color:#475569; background:#f1f5f9; padding:2px 8px; border-radius:4px;">Case #</span>
                     </div>
                     <h2 class="report-modal-title" id="quickAttendanceModalTitle" style="font-size:1.15rem; margin:0; color:#0f172a;">Quick Attendance / Check-In</h2>
-                    <p class="report-modal-sub" id="quickAttendanceModalSub" style="margin:2px 0 0; font-size:0.8rem; color:#64748b;">Itala ang pagdalo ng mga panig bago simulan ang sesyon</p>
+                    <p class="report-modal-sub" id="quickAttendanceModalSub" style="margin:2px 0 0; font-size:0.8rem; color:#64748b;">Itala ang pagdalo ng bawat panig bago simulan ang sesyon</p>
                 </div>
                 <button type="button" class="btn-modal-close" id="quickAttCloseBtn" aria-label="Close modal" style="font-size:1.4rem; cursor:pointer; background:none; border:none; color:#64748b;">&times;</button>
             </header>
@@ -528,51 +528,21 @@
                     </div>
                 </div>
 
-                <!-- 1. Complainant Attendance -->
-                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 14px;">
-                    <div style="font-size: 0.82rem; font-weight: 700; color: #0f172a; margin-bottom: 2px;">
-                        Nagrereklamo / Nagsusumbong (Complainant)
+                <!-- Per-Person Party Attendance Container -->
+                <div style="margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <span style="font-size: 0.88rem; font-weight: 700; color: #0f172a;">
+                            Pagdalo ng Bawat Panig (Per-Person Attendance) <span style="color: #dc2626;">*</span>
+                        </span>
+                        <span style="font-size: 0.76rem; color: #64748b;">Itala ang pagdalo ayon sa pangalan</span>
                     </div>
-                    <div id="quickAttComplainantName" style="font-size: 0.92rem; font-weight: 600; color: #1e293b; margin-bottom: 10px;">
-                        Complainant Name
+                    <div id="quickAttPartiesContainer" style="display: flex; flex-direction: column; gap: 12px;">
+                        <div style="text-align: center; padding: 20px; color: #64748b; font-size: 0.85rem;">
+                            Kinukuha ang talaan ng mga panig...
+                        </div>
                     </div>
-                    <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.86rem;">
-                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; border-radius: 6px; background: #f0fdf4; border: 1px solid #bbf7d0;">
-                            <input type="radio" name="quick_comp_att" value="Present" checked style="accent-color: #16a34a;">
-                            <span style="color: #15803d; font-weight: 600;">🟢 Dumalo sa Oras (Present)</span>
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; border-radius: 6px; background: #fffbeb; border: 1px solid #fde68a;">
-                            <input type="radio" name="quick_comp_att" value="Late" style="accent-color: #d97706;">
-                            <span style="color: #b45309; font-weight: 600;">🟡 Nahuli / Late (Dumating sa loob ng 1-hr grace period)</span>
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; border-radius: 6px; background: #fef2f2; border: 1px solid #fecaca;">
-                            <input type="radio" name="quick_comp_att" value="Absent" style="accent-color: #dc2626;">
-                            <span style="color: #991b1b; font-weight: 600;">🔴 Hindi Dumalo (Absent - Lampas 1 oras o hindi sumipot)</span>
-                        </label>
-                    </div>
-                </div>
-
-                <!-- 2. Respondent Attendance -->
-                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 14px;">
-                    <div style="font-size: 0.82rem; font-weight: 700; color: #0f172a; margin-bottom: 2px;">
-                        Inirereklamo / Ipinagsusumbong (Respondent)
-                    </div>
-                    <div id="quickAttRespondentName" style="font-size: 0.92rem; font-weight: 600; color: #1e293b; margin-bottom: 10px;">
-                        Respondent Name
-                    </div>
-                    <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.86rem;">
-                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; border-radius: 6px; background: #f0fdf4; border: 1px solid #bbf7d0;">
-                            <input type="radio" name="quick_resp_att" value="Present" checked style="accent-color: #16a34a;">
-                            <span style="color: #15803d; font-weight: 600;">🟢 Dumalo sa Oras (Present)</span>
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; border-radius: 6px; background: #fffbeb; border: 1px solid #fde68a;">
-                            <input type="radio" name="quick_resp_att" value="Late" style="accent-color: #d97706;">
-                            <span style="color: #b45309; font-weight: 600;">🟡 Nahuli / Late (Dumating sa loob ng 1-hr grace period)</span>
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; border-radius: 6px; background: #fef2f2; border: 1px solid #fecaca;">
-                            <input type="radio" name="quick_resp_att" value="Absent" style="accent-color: #dc2626;">
-                            <span style="color: #991b1b; font-weight: 600;">🔴 Hindi Dumalo (Absent - Lampas 1 oras o hindi sumipot)</span>
-                        </label>
+                    <div id="quickCompAbsentNotice" style="display: none; background: #fef2f2; border: 1px solid #fca5a5; border-radius: 6px; padding: 8px 12px; margin-top: 10px; font-size: 0.82rem; color: #991b1b;">
+                        ⚠️ <strong>May Complainant na Hindi Dumalo:</strong> Maaaring maging batayan ito para sa pag-dismiss ng reklamo alinsunod sa KP rules sa katitikan ng pagdinig.
                     </div>
                 </div>
 

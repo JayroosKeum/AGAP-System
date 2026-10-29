@@ -2291,7 +2291,7 @@ async function loadHeroTransmittalStatus(complaintId) {
 
         if (isLocked) {
             if (badge) {
-                badge.textContent = `🔒 Locked (${daysRemaining} business day${daysRemaining === 1 ? '' : 's'} remaining - Repudiation Window)`;
+                badge.textContent = `🔒 Locked (${daysRemaining} working day${daysRemaining === 1 ? '' : 's'} remaining - Repudiation Window)`;
                 badge.style.background = '#fef3c7';
                 badge.style.color = '#92400e';
                 badge.style.border = '1px solid #fde68a';
@@ -2317,7 +2317,7 @@ async function loadHeroTransmittalStatus(complaintId) {
                 badge.style.border = '1px solid #86efac';
             }
             if (meta) {
-                meta.innerHTML = `<span style="color: #15803d; font-weight: 600;">10-business-day repudiation period completed &bull; Official endorsement ready for print &amp; submission</span>`;
+                meta.innerHTML = `<span style="color: #15803d; font-weight: 600;">10-working-day repudiation period completed &bull; Official endorsement ready for print &amp; submission</span>`;
             }
             if (actions) {
                 actions.innerHTML = `
@@ -2351,7 +2351,11 @@ function openPrintBlankMinutes(caseId, complaintId) {
 }
 window.openPrintBlankMinutes = openPrintBlankMinutes;
 
-function openPreviewTransmittalModal(caseId) {
+function openPreviewTransmittalModal(caseId, complaintId = null) {
+    const cData = window.complaintData || {};
+    const ws = window.__agapComplaintWorkspace || cData.case_workspace || {};
+    const activeComplaintId = complaintId || cData.complaint_id || cData.complaint?.complaint_id || (new URLSearchParams(window.location.search)).get('id') || '';
+    const activeCaseId = caseId || ws.case_id || ws.case?.case_id || cData.case_id || cData.complaint?.case_id || window.currentCaseId || activeComplaintId;
     if (typeof unlockOutcomesTab === 'function') unlockOutcomesTab(caseId);
     const modal = document.getElementById('previewTransmittalModal');
     const iframe = document.getElementById('transmittalLetterPreviewIframe');
@@ -2359,10 +2363,10 @@ function openPreviewTransmittalModal(caseId) {
     if (!modal) return;
 
     if (iframe) {
-        iframe.src = `../../../backend/api/transmittals/preview.php?case_id=${encodeURIComponent(caseId)}&html=1`;
+        iframe.src = `../../../backend/api/transmittals/preview.php?case_id=${encodeURIComponent(activeCaseId)}&complaint_id=${encodeURIComponent(activeComplaintId)}&html=1`;
     }
     if (downloadBtn) {
-        downloadBtn.href = `../../../backend/api/transmittals/preview.php?case_id=${encodeURIComponent(caseId)}&download=1`;
+        downloadBtn.href = `../../../backend/api/transmittals/preview.php?case_id=${encodeURIComponent(activeCaseId)}&complaint_id=${encodeURIComponent(activeComplaintId)}&download=1`;
     }
 
     modal.style.display = 'flex';
@@ -3003,7 +3007,7 @@ function renderHearingSessionCards(sessions, containerId, badgeId, stageType, ca
                 let badgeStyle = 'background: #f1f5f9; color: #64748b;';
                 const st = p.attendance_status || 'Pending';
                 if (st === 'Present') badgeStyle = 'background: #dcfce7; color: #15803d;';
-                else if (st === 'Late') badgeStyle = 'background: #dbeafe; color: #1e40af;';
+                else if (st === 'Late') badgeStyle = 'background: #fef3c7; color: #b45309;';
                 else if (st === 'Excused') badgeStyle = 'background: #fef3c7; color: #b45309;';
                 else if (st === 'Absent') badgeStyle = 'background: #fee2e2; color: #991b1b;';
                 const excuseText = p.justification_reason ? ` (${escapeHtml(p.justification_reason)})` : '';
@@ -3068,8 +3072,8 @@ function renderHearingSessionCards(sessions, containerId, badgeId, stageType, ca
                                 📋 Record Summons Return
                             </a>
                         ` : ''}
-                        <button type="button" class="btn-secondary" onclick="openEmbeddedAttendanceModal(${s.hearing_id})" style="font-size: 0.78rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 4px;">
-                            Detailed Attendance
+                        <button type="button" class="btn-secondary" onclick="openEmbeddedAttendanceModal(${s.hearing_id})" style="font-size: 0.78rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 4px;" title="Quick Attendance / Check-In for Complainant &amp; Respondent">
+                            📝 Quick Attendance
                         </button>
                         <a href="${openWorkspaceUrl}" class="btn-create" style="font-size: 0.78rem; padding: 5px 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; background: #2563eb; border-color: #2563eb; color: #fff; font-weight: 700;" title="Open ${escapeHtml(sessionLabel)} workspace">
                             Open ${escapeHtml(sessionLabel)} &rarr;
@@ -3735,7 +3739,7 @@ async function openEmbeddedAttendanceModal(hearingId) {
         const titleEl = document.getElementById('wsAttModalTitle');
         if (titleEl) {
             const hType = hearing.hearing_type || 'Mediation';
-            titleEl.textContent = `Record Hearing Attendance: ${hType}`;
+            titleEl.textContent = `Quick Attendance: ${hType}`;
         }
 
         const formatForDatetimeLocal = (dtString) => {
@@ -3763,16 +3767,86 @@ async function openEmbeddedAttendanceModal(hearingId) {
         const actualStartVal = formatForTimeInput(hearing.actual_start_time || '');
         const delayRemarksVal = hearing.attendance_notes || '';
 
-        let compIsPresent = true;
-        let respIsPresent = true;
+        let compAtt = 'Present';
+        let respAtt = 'Present';
         if (hearing.complainant_attendance) {
-            compIsPresent = (hearing.complainant_attendance !== 'Absent');
+            compAtt = hearing.complainant_attendance;
+            if (compAtt !== 'Late' && compAtt !== 'Absent') compAtt = 'Present';
         }
         if (hearing.respondent_attendance) {
-            respIsPresent = (hearing.respondent_attendance !== 'Absent');
+            respAtt = hearing.respondent_attendance;
+            if (respAtt !== 'Late' && respAtt !== 'Absent') respAtt = 'Present';
         }
 
         const isSaved = Boolean(hearing.attendance_recorded_at);
+
+        // Check if any complainant is absent initially
+        const anyCompAbsentInitially = parties.some(p => p.party_type === 'Complainant' && p.attendance_status === 'Absent') || compAtt === 'Absent';
+
+        const renderPartyCard = (p) => {
+            const isComp = (p.party_type === 'Complainant');
+            let st = p.attendance_status;
+            if (!st || st === 'Pending' || st === 'Not Recorded') {
+                st = isComp ? compAtt : respAtt;
+            }
+            if (st !== 'Late' && st !== 'Absent') st = 'Present';
+
+            const roleBadgeStyle = isComp 
+                ? 'background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;' 
+                : 'background: #fdf2f8; color: #be185d; border: 1px solid #fbcfe8;';
+            const roleLabel = isComp ? 'Nagpaanyaya (Complainant)' : 'Inanyayahan (Respondent)';
+            const partyName = p.resident_name || p.full_name || (isComp ? 'Complainant' : 'Respondent');
+
+            return `
+                <div class="party-att-person-card" style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; background: #f8fafc; display: flex; flex-direction: column; gap: 10px;">
+                    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">
+                        <div style="min-width: 0;">
+                            <div style="font-weight: 700; color: #0f172a; font-size: 0.94rem; line-height: 1.35;">
+                                👤 ${escapeHtml(partyName)}
+                            </div>
+                            ${p.address ? `<div style="font-size: 0.75rem; color: #64748b; margin-top: 2px;">📍 ${escapeHtml(p.address)}</div>` : ''}
+                        </div>
+                        <span style="font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 9999px; white-space: nowrap; ${roleBadgeStyle}">
+                            ${roleLabel}
+                        </span>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                        <label class="party-att-radio-label present" style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 0.83rem; cursor: pointer; color: #15803d; background: #ffffff; padding: 6px 10px; border-radius: 6px; border: 1px solid #dcfce7;">
+                            <input type="radio" name="emb_att_party_${p.resident_id}" data-party-type="${escapeHtml(p.party_type)}" value="Present" onchange="checkEmbComplainantAbsence()" ${st === 'Present' ? 'checked' : ''} style="accent-color: #16a34a; width: 15px; height: 15px; margin: 0;">
+                            <span>🟢 Dumalo sa Oras (Present)</span>
+                        </label>
+                        <label class="party-att-radio-label warning" style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 0.83rem; cursor: pointer; color: #b45309; background: #ffffff; padding: 6px 10px; border-radius: 6px; border: 1px solid #fef3c7;">
+                            <input type="radio" name="emb_att_party_${p.resident_id}" data-party-type="${escapeHtml(p.party_type)}" value="Late" onchange="checkEmbComplainantAbsence()" ${st === 'Late' ? 'checked' : ''} style="accent-color: #d97706; width: 15px; height: 15px; margin: 0;">
+                            <span>🟡 Nahuli / Late (Pasok sa 1-hour grace period)</span>
+                        </label>
+                        <label class="party-att-radio-label absent" style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 0.83rem; cursor: pointer; color: #dc2626; background: #ffffff; padding: 6px 10px; border-radius: 6px; border: 1px solid #fee2e2;">
+                            <input type="radio" name="emb_att_party_${p.resident_id}" data-party-type="${escapeHtml(p.party_type)}" value="Absent" onchange="checkEmbComplainantAbsence()" ${st === 'Absent' ? 'checked' : ''} style="accent-color: #dc2626; width: 15px; height: 15px; margin: 0;">
+                            <span>🔴 Hindi Dumalo (Absent - Lampas 1 oras)</span>
+                        </label>
+                    </div>
+                </div>
+            `;
+        };
+
+        let partiesHtml = '';
+        if (parties.length > 0) {
+            partiesHtml = `
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px;">
+                    ${parties.map(renderPartyCard).join('')}
+                </div>
+            `;
+        } else {
+            const fallbackParties = [
+                { resident_id: 1, party_type: 'Complainant', resident_name: hearing.complainant_names || 'Complainant', attendance_status: compAtt },
+                { resident_id: 2, party_type: 'Respondent', resident_name: hearing.respondent_names || 'Respondent', attendance_status: respAtt }
+            ];
+            partiesHtml = `
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px;">
+                    ${fallbackParties.map(renderPartyCard).join('')}
+                </div>
+            `;
+        }
 
         body.innerHTML = `
             <form id="embAttendanceForm" onsubmit="submitEmbeddedAttendance(event, ${Number(hearingId)})" class="streamlined-attendance-container" style="display: flex; flex-direction: column; gap: 16px;">
@@ -3783,25 +3857,12 @@ async function openEmbeddedAttendanceModal(hearingId) {
                     </div>
                 ` : ''}
 
-                <!-- Row 1: Scheduled Date/Time & Actual Start Time -->
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                    <div>
-                        <label for="embAttScheduledDateTime" style="display: block; font-weight: 600; color: #0f172a; font-size: 0.88rem; margin-bottom: 6px;">
-                            Petsa at Takdang Oras (Scheduled Date &amp; Time) <span style="color: #dc2626;">*</span>
-                        </label>
-                        <input type="datetime-local" id="embAttScheduledDateTime" value="${escapeHtml(scheduledVal)}" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; font-size: 0.88rem; box-sizing: border-box; background: #fff; font-family: inherit; color: #1e293b;">
-                    </div>
-                    <div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                            <label for="embAttActualStartTime" style="font-weight: 600; color: #0f172a; font-size: 0.88rem;">
-                                Aktwal na Oras ng Simula (Actual Start Time)
-                            </label>
-                            <a href="javascript:void(0)" onclick="setEmbeddedAttendanceActualStartTimeNow()" class="time-now-link" style="color: #2563eb; font-weight: 600; font-size: 0.84rem; text-decoration: none;">
-                                Oras Ngayon (Now)
-                            </a>
-                        </div>
-                        <input type="time" id="embAttActualStartTime" value="${escapeHtml(actualStartVal)}" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; font-size: 0.88rem; box-sizing: border-box; background: #fff; font-family: inherit; color: #1e293b;">
-                    </div>
+                <!-- Row 1: Scheduled Date/Time -->
+                <div>
+                    <label for="embAttScheduledDateTime" style="display: block; font-weight: 600; color: #0f172a; font-size: 0.88rem; margin-bottom: 6px;">
+                        Petsa at Takdang Oras (Scheduled Date &amp; Time) <span style="color: #dc2626;">*</span>
+                    </label>
+                    <input type="datetime-local" id="embAttScheduledDateTime" value="${escapeHtml(scheduledVal)}" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; font-size: 0.88rem; box-sizing: border-box; background: #fff; font-family: inherit; color: #1e293b;">
                 </div>
 
                 <!-- Row 2: Session Delay Remarks -->
@@ -3833,39 +3894,19 @@ async function openEmbeddedAttendanceModal(hearingId) {
                     </div>
                 </div>
 
-                <!-- Row 3: Party Attendance (Pagdalo ng Magkabilang Panig) -->
+                <!-- Row 3: Per-Person Party Attendance (Pagdalo ng Bawat Panig) -->
                 <div class="party-attendance-box" style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 16px 20px; background: #fff; margin-top: 4px;">
-                    <h4 style="margin: 0 0 14px; font-size: 0.95rem; font-weight: 700; color: #0f172a;">
-                        Pagdalo ng Magkabilang Panig (Party Attendance) <span style="color: #dc2626;">*</span>
-                    </h4>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                        <div>
-                            <span class="party-att-col-title" style="font-weight: 600; color: #334155; font-size: 0.86rem; margin-bottom: 8px; display: block;">Nagpaanyaya (Complainant):</span>
-                            <div style="display: flex; gap: 16px; align-items: center;">
-                                <label class="party-att-radio-label present" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 0.85rem; cursor: pointer; color: #15803d;">
-                                    <input type="radio" name="emb_att_comp_attendance" value="Present" ${compIsPresent ? 'checked' : ''} style="accent-color: #16a34a; width: 16px; height: 16px;">
-                                    <span>Dumalo (Present)</span>
-                                </label>
-                                <label class="party-att-radio-label absent" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 0.85rem; cursor: pointer; color: #b91c1c;">
-                                    <input type="radio" name="emb_att_comp_attendance" value="Absent" ${!compIsPresent ? 'checked' : ''} style="accent-color: #dc2626; width: 16px; height: 16px;">
-                                    <span>Hindi Dumalo (Absent)</span>
-                                </label>
-                            </div>
-                        </div>
-                        <div>
-                            <span class="party-att-col-title" style="font-weight: 600; color: #334155; font-size: 0.86rem; margin-bottom: 8px; display: block;">Inanyayahan (Respondent):</span>
-                            <div style="display: flex; gap: 16px; align-items: center;">
-                                <label class="party-att-radio-label present" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 0.85rem; cursor: pointer; color: #15803d;">
-                                    <input type="radio" name="emb_att_resp_attendance" value="Present" ${respIsPresent ? 'checked' : ''} style="accent-color: #16a34a; width: 16px; height: 16px;">
-                                    <span>Dumalo (Present)</span>
-                                </label>
-                                <label class="party-att-radio-label absent" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 0.85rem; cursor: pointer; color: #b91c1c;">
-                                    <input type="radio" name="emb_att_resp_attendance" value="Absent" ${!respIsPresent ? 'checked' : ''} style="accent-color: #dc2626; width: 16px; height: 16px;">
-                                    <span>Hindi Dumalo (Absent)</span>
-                                </label>
-                            </div>
-                        </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <h4 style="margin: 0; font-size: 0.95rem; font-weight: 700; color: #0f172a;">
+                            Pagdalo ng Bawat Panig (Per-Person Attendance) <span style="color: #dc2626;">*</span>
+                        </h4>
+                        <span style="font-size: 0.78rem; color: #64748b;">Itala ang pagdalo ayon sa pangalan</span>
                     </div>
+                    ${partiesHtml}
+                </div>
+
+                <div id="embCompAbsentNotice" style="display: ${anyCompAbsentInitially ? 'block' : 'none'}; background: #fef2f2; border: 1px solid #fca5a5; border-radius: 6px; padding: 8px 12px; margin-top: 4px; font-size: 0.82rem; color: #991b1b;">
+                    ⚠️ <strong>May Complainant na Hindi Dumalo:</strong> Ito ay nagbibigay ng opsyon upang i-dismiss ang reklamo alinsunod sa KP rules sa katitikan ng pagdinig (session minutes).
                 </div>
 
                 <!-- Actions -->
@@ -3884,6 +3925,18 @@ async function openEmbeddedAttendanceModal(hearingId) {
 window.openEmbeddedAttendanceModal = openEmbeddedAttendanceModal;
 window.openAttendanceModal = openEmbeddedAttendanceModal;
 
+function checkEmbComplainantAbsence() {
+    const compRadios = document.querySelectorAll('input[name^="emb_att_party_"][data-party-type="Complainant"]:checked');
+    let anyAbsent = false;
+    compRadios.forEach(r => {
+        if (r.value === 'Absent') anyAbsent = true;
+    });
+    const notice = document.getElementById('embCompAbsentNotice');
+    if (notice) notice.style.display = anyAbsent ? 'block' : 'none';
+}
+window.checkEmbComplainantAbsence = checkEmbComplainantAbsence;
+window.handleEmbCompAttendanceRadioChange = checkEmbComplainantAbsence;
+
 function closeEmbeddedAttendanceModal() {
     const modal = document.getElementById('wsAttendanceModal');
     if (modal) modal.style.display = 'none';
@@ -3901,24 +3954,48 @@ async function submitEmbeddedAttendance(e, hearingId) {
         const schedDate = document.getElementById('embAttScheduledDateTime')?.value;
         const actualStart = document.getElementById('embAttActualStartTime')?.value;
         const delayRemarks = document.getElementById('embAttDelayRemarks')?.value.trim() || '';
-        const compAtt = document.querySelector('input[name="emb_att_comp_attendance"]:checked')?.value || 'Present';
-        const respAtt = document.querySelector('input[name="emb_att_resp_attendance"]:checked')?.value || 'Present';
 
         const currentData = window._lastEmbeddedAttendanceData || {};
         const parties = currentData.parties || [];
 
-        const partyRecords = parties.map(p => {
-            const isComp = (p.party_type === 'Complainant');
-            const st = isComp ? compAtt : respAtt;
-            return {
-                resident_id: p.resident_id,
-                party_type: p.party_type,
-                attendance_status: st,
-                is_justified: st === 'Present' ? 0 : (delayRemarks ? 1 : 0),
-                justification_reason: st === 'Present' ? null : (delayRemarks || null),
-                verification_status: st === 'Present' ? 'Verified Served' : 'Pending'
-            };
-        });
+        let partyRecords = [];
+        let compAtt = 'Present';
+        let respAtt = 'Present';
+
+        if (parties.length > 0) {
+            partyRecords = parties.map(p => {
+                const radio = document.querySelector(`input[name="emb_att_party_${p.resident_id}"]:checked`);
+                const st = radio ? radio.value : (p.attendance_status || 'Present');
+                const isPresentOrLate = (st === 'Present' || st === 'Late');
+                return {
+                    resident_id: p.resident_id,
+                    party_type: p.party_type,
+                    attendance_status: st,
+                    is_justified: isPresentOrLate ? 0 : (delayRemarks ? 1 : 0),
+                    justification_reason: isPresentOrLate ? null : (delayRemarks || null),
+                    verification_status: isPresentOrLate ? 'Verified Served' : 'Pending'
+                };
+            });
+
+            const compStatuses = partyRecords.filter(p => p.party_type === 'Complainant').map(p => p.attendance_status);
+            const respStatuses = partyRecords.filter(p => p.party_type === 'Respondent').map(p => p.attendance_status);
+
+            if (compStatuses.length > 0) {
+                if (compStatuses.every(s => s === 'Absent')) compAtt = 'Absent';
+                else if (compStatuses.some(s => s === 'Late')) compAtt = 'Late';
+                else compAtt = 'Present';
+            }
+            if (respStatuses.length > 0) {
+                if (respStatuses.every(s => s === 'Absent')) respAtt = 'Absent';
+                else if (respStatuses.some(s => s === 'Late')) respAtt = 'Late';
+                else respAtt = 'Present';
+            }
+        } else {
+            const fallbackCompRadio = document.querySelector('input[name="emb_att_party_1"]:checked');
+            const fallbackRespRadio = document.querySelector('input[name="emb_att_party_2"]:checked');
+            compAtt = fallbackCompRadio ? fallbackCompRadio.value : 'Present';
+            respAtt = fallbackRespRadio ? fallbackRespRadio.value : 'Present';
+        }
 
         const payload = {
             hearing_id: Number(hearingId),
@@ -8768,19 +8845,32 @@ window.submitReopenForCfa = async function() {
 
 
 // Modal Helpers & Aliases for KP Forms & Multi-Panel Pangkat Preview
-function openKpFormModal(caseId, formCode, hearingId = null) {
+function openKpFormModal(caseId, formCode, hearingId = null, complaintId = null) {
     const modal = document.getElementById('kpDocumentPreviewModal');
     const iframe = document.getElementById('kpDocPreviewIframe');
     const heading = document.getElementById('kpDocModalHeading');
     const sub = document.getElementById('kpDocModalSub');
     const dlBtn = document.getElementById('btnDownloadKpDocPdf');
 
+    const cData = window.complaintData || {};
+    const ws = window.__agapComplaintWorkspace || cData.case_workspace || {};
+    const activeComplaintId = complaintId || cData.complaint_id || cData.complaint?.complaint_id || (new URLSearchParams(window.location.search)).get('id') || '';
+    const activeCaseId = caseId || ws.case_id || ws.case?.case_id || cData.case_id || cData.complaint?.case_id || window.currentCaseId || activeComplaintId;
+
     if (heading) heading.textContent = `${formCode} Preview`;
-    if (sub && caseId) sub.textContent = `Barangay Tumana Lupong Tagapamayapa Â· Case #${caseId}`;
+    if (sub) {
+        if (activeCaseId && String(activeCaseId) !== String(activeComplaintId)) {
+            sub.textContent = `Barangay Tumana Lupong Tagapamayapa · Case #${activeCaseId}`;
+        } else if (cData.complaint_number || cData.complaint?.complaint_number) {
+            sub.textContent = `Barangay Tumana Lupong Tagapamayapa · Complaint #${cData.complaint_number || cData.complaint?.complaint_number}`;
+        } else {
+            sub.textContent = `Barangay Tumana Lupong Tagapamayapa Official Katarungang Pambarangay Form`;
+        }
+    }
 
     const baseApi = `../../../backend/api/documents/kp-form.php`;
-    let src = `${baseApi}?case_id=${encodeURIComponent(caseId)}&form_code=${encodeURIComponent(formCode)}&preview=1&bare=1`;
-    let dl = `${baseApi}?case_id=${encodeURIComponent(caseId)}&form_code=${encodeURIComponent(formCode)}&pdf=1`;
+    let src = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&complaint_id=${encodeURIComponent(activeComplaintId)}&form_code=${encodeURIComponent(formCode)}&preview=1&bare=1`;
+    let dl = `${baseApi}?case_id=${encodeURIComponent(activeCaseId)}&complaint_id=${encodeURIComponent(activeComplaintId)}&form_code=${encodeURIComponent(formCode)}&pdf=1`;
     if (hearingId) {
         src += `&hearing_id=${encodeURIComponent(hearingId)}`;
         dl += `&hearing_id=${encodeURIComponent(hearingId)}`;
@@ -8929,7 +9019,7 @@ function renderAmicableSettlementWorkspace(workspace, complaint) {
     const deadlineEl = document.getElementById('metricRepudiationDeadline');
     if (deadlineEl) {
         const deadlineDate = transmittal.repudiation_deadline || settlement.repudiation_deadline;
-        deadlineEl.textContent = deadlineDate ? formatDateReadable(deadlineDate) : '10 Business Days from execution';
+        deadlineEl.textContent = deadlineDate ? formatDateReadable(deadlineDate) : '10 Working Days from execution';
     }
 
     // 3. Metric: Repudiation Status / Countdown
@@ -8938,7 +9028,7 @@ function renderAmicableSettlementWorkspace(workspace, complaint) {
         if (isRepudiated) {
             badgeEl.innerHTML = '<span class="status-pill" style="background: #fee2e2; color: #b91c1c; font-weight: 800; font-size: 0.8rem; padding: 2px 8px; border-radius: 9999px;">⚠️ Repudiated (Void)</span>';
         } else if (isLocked) {
-            badgeEl.innerHTML = `<span class="status-pill" style="background: #fef3c7; color: #b45309; font-weight: 800; font-size: 0.8rem; padding: 2px 8px; border-radius: 9999px;">⏳ ${remainingDays} Business Days Left</span>`;
+            badgeEl.innerHTML = `<span class="status-pill" style="background: #fef3c7; color: #b45309; font-weight: 800; font-size: 0.8rem; padding: 2px 8px; border-radius: 9999px;">⏳ ${remainingDays} Working Days Left</span>`;
         } else {
             badgeEl.innerHTML = '<span class="status-pill" style="background: #dcfce7; color: #15803d; font-weight: 800; font-size: 0.8rem; padding: 2px 8px; border-radius: 9999px;">🔓 Statutory Window Expired</span>';
         }
@@ -8991,12 +9081,13 @@ function renderAmicableSettlementWorkspace(workspace, complaint) {
     if (caseId) {
         const kp16Iframe = document.getElementById('dualKp16PreviewIframe');
         const dlKp16 = document.getElementById('btnDownloadDualKp16Pdf');
-        const kp16Url = `../../../backend/api/documents/kp-form.php?case_id=${encodeURIComponent(caseId)}&form_code=KP+Form+16&preview=1&bare=1`;
+        const activeComplaintId = comp.complaint_id || (new URLSearchParams(window.location.search)).get('id') || caseId;
+        const kp16Url = `../../../backend/api/documents/kp-form.php?case_id=${encodeURIComponent(caseId)}&complaint_id=${encodeURIComponent(activeComplaintId)}&form_code=KP+Form+16&preview=1&bare=1`;
         if (kp16Iframe && (!kp16Iframe.src || kp16Iframe.src === 'about:blank' || !kp16Iframe.src.includes(`case_id=${caseId}`))) {
             kp16Iframe.src = kp16Url;
         }
         if (dlKp16) {
-            dlKp16.href = `../../../backend/api/documents/kp-form.php?case_id=${encodeURIComponent(caseId)}&form_code=KP+Form+16&pdf=1`;
+            dlKp16.href = `../../../backend/api/documents/kp-form.php?case_id=${encodeURIComponent(caseId)}&complaint_id=${encodeURIComponent(activeComplaintId)}&form_code=KP+Form+16&pdf=1`;
         }
 
         // Card 2: Court Transmittal Letter
@@ -9005,7 +9096,7 @@ function renderAmicableSettlementWorkspace(workspace, complaint) {
         const dlTrans = document.getElementById('btnDownloadDualTransmittalPdf');
         const chipTransLock = document.getElementById('dualTransmittalCountdownChip');
         const badgeTrans = document.getElementById('dualTransmittalStatusBadge');
-        const transUrl = `../../../backend/api/transmittals/preview.php?case_id=${encodeURIComponent(caseId)}&html=1`;
+        const transUrl = `../../../backend/api/transmittals/preview.php?case_id=${encodeURIComponent(caseId)}&complaint_id=${encodeURIComponent(activeComplaintId)}&html=1`;
 
         if (transIframe && (!transIframe.src || transIframe.src === 'about:blank' || !transIframe.src.includes(`case_id=${caseId}`))) {
             transIframe.src = transUrl;
@@ -9036,7 +9127,7 @@ function renderAmicableSettlementWorkspace(workspace, complaint) {
                 badgeTrans.style.background = '#fef3c7';
                 badgeTrans.style.color = '#b45309';
             }
-            if (chipTransLock) chipTransLock.textContent = `${remainingDays} business days remaining`;
+            if (chipTransLock) chipTransLock.textContent = `${remainingDays} working days remaining`;
             if (btnPrintTrans) {
                 btnPrintTrans.disabled = true;
                 btnPrintTrans.style.opacity = '0.5';
@@ -9063,7 +9154,7 @@ function renderAmicableSettlementWorkspace(workspace, complaint) {
                 btnPrintTrans.title = 'Print Court Transmittal Letter';
             }
             if (dlTrans) {
-                dlTrans.href = `../../../backend/api/transmittals/preview.php?case_id=${encodeURIComponent(caseId)}&pdf=1`;
+                dlTrans.href = `../../../backend/api/transmittals/preview.php?case_id=${encodeURIComponent(caseId)}&complaint_id=${encodeURIComponent(activeComplaintId)}&pdf=1`;
                 dlTrans.style.opacity = '1';
                 dlTrans.style.cursor = 'pointer';
                 dlTrans.title = 'Download Court Transmittal Letter PDF';
@@ -9085,7 +9176,7 @@ window.printKp16PreviewIframe = printKp16PreviewIframe;
 function printDualTransmittalIframe() {
     const btn = document.getElementById('btnDualPrintTransmittal');
     if (btn && btn.disabled) {
-        const msg = 'Printing is restricted during the 10-business-day repudiation window pursuant to RA 7160 Sec. 416.';
+        const msg = 'Printing is restricted during the 10-working-day repudiation window pursuant to RA 7160 Sec. 416.';
         if (typeof showToast === 'function') {
             showToast(msg, 'warning');
         } else {

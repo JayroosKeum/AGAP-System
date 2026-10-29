@@ -245,7 +245,7 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
                     <span style="font-size: 1.4rem; line-height: 1;">ℹ️</span>
                     <div>
                         <strong style="display: block; font-size: 0.95rem; color: #064e3b; margin-bottom: 2px;">
-                            10-Business-Day Statutory Period Completed: Court Transmittal Letter is now ready to print.
+                            10-Working-Day Statutory Period Completed: Court Transmittal Letter is now ready to print.
                         </strong>
                         <span style="font-size: 0.82rem; color: #047857;">
                             The mandatory repudiation window under RA 7160 Sec. 416 has elapsed. You may now print and transmit the official endorsement to the Metropolitan Trial Court (MTCC Marikina City).
@@ -654,10 +654,10 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
                                     </p>
                                 </div>
                                 <div style="display: flex; gap: 8px; align-items: center;">
-                                    <button type="button" class="btn-secondary" onclick="openKpFormModal(window.currentCaseId || window.complaintData?.case_id, 'KP Form 17')" style="font-size: 0.8rem; padding: 5px 12px; border-color: #fca5a5; color: #991b1b;">
+                                    <button type="button" class="btn-secondary" onclick="openKpFormModal(window.currentCaseId || window.complaintData?.case_id || window.currentComplaintId || window.complaintData?.complaint_id, 'KP Form 17', null, window.currentComplaintId || window.complaintData?.complaint_id)" style="font-size: 0.8rem; padding: 5px 12px; border-color: #fca5a5; color: #991b1b;">
                                         View KP Form 17 &rarr;
                                     </button>
-                                    <button type="button" class="btn-create" onclick="openKpFormModal(window.currentCaseId || window.complaintData?.case_id, 'KP Form 20')" style="font-size: 0.8rem; padding: 5px 14px; background: #dc2626; border-color: #dc2626;">
+                                    <button type="button" class="btn-create" onclick="openKpFormModal(window.currentCaseId || window.complaintData?.case_id || window.currentComplaintId || window.complaintData?.complaint_id, 'KP Form 20', null, window.currentComplaintId || window.complaintData?.complaint_id)" style="font-size: 0.8rem; padding: 5px 14px; background: #dc2626; border-color: #dc2626;">
                                         Issue KP Form 20 (CFA) &rarr;
                                     </button>
                                 </div>
@@ -711,7 +711,7 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
                                 <a id="btnDownloadDualKp16Pdf" href="#" class="btn-secondary" download style="font-size: 0.78rem; padding: 5px 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 3px;">
                                     📥 PDF
                                 </a>
-                                <button type="button" class="btn-secondary" onclick="openKpFormModal(window.currentCaseId || window.complaintData?.case_id, 'KP Form 16')" title="Fullscreen / Scale View" style="font-size: 0.78rem; padding: 5px 8px;">
+                                <button type="button" class="btn-secondary" onclick="openKpFormModal(window.currentCaseId || window.complaintData?.case_id || window.currentComplaintId || window.complaintData?.complaint_id, 'KP Form 16', null, window.currentComplaintId || window.complaintData?.complaint_id)" title="Fullscreen / Scale View" style="font-size: 0.78rem; padding: 5px 8px;">
                                     🔍
                                 </button>
                             </div>
@@ -742,10 +742,10 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
                                 <button type="button" id="btnDualPrintTransmittal" class="btn-create" onclick="printDualTransmittalIframe()" disabled style="font-size: 0.78rem; padding: 5px 12px; display: inline-flex; align-items: center; gap: 4px; opacity: 0.5; cursor: not-allowed;" title="Locked pursuant to RA 7160 Sec. 416 until repudiation period expires">
                                     🔒 Print Transmittal
                                 </button>
-                                <a id="btnDownloadDualTransmittalPdf" href="#" class="btn-secondary" style="font-size: 0.78rem; padding: 5px 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 3px; opacity: 0.5; pointer-events: none;" title="Download restricted until 10 business days elapse">
+                                <a id="btnDownloadDualTransmittalPdf" href="#" class="btn-secondary" style="font-size: 0.78rem; padding: 5px 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 3px; opacity: 0.5; pointer-events: none;" title="Download restricted until 10 working days elapse">
                                     📥 PDF
                                 </a>
-                                <button type="button" class="btn-secondary" onclick="openPreviewTransmittalModal(window.currentCaseId || window.complaintData?.case_id)" title="Fullscreen / Scale View" style="font-size: 0.78rem; padding: 5px 8px;">
+                                <button type="button" class="btn-secondary" onclick="openPreviewTransmittalModal(window.currentCaseId || window.complaintData?.case_id || window.currentComplaintId || window.complaintData?.complaint_id, window.currentComplaintId || window.complaintData?.complaint_id)" title="Fullscreen / Scale View" style="font-size: 0.78rem; padding: 5px 8px;">
                                     🔍
                                 </button>
                             </div>
@@ -1740,12 +1740,12 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
 </div>
 
 <!-- ========================================== -->
-<!-- MODAL: Detailed Hearing Session Attendance -->
+<!-- MODAL: Quick Hearing Session Attendance -->
 <!-- ========================================== -->
 <div id="wsAttendanceModal" class="modal" style="display: none;">
     <div class="modal-content" style="max-width: 650px; max-height: 90vh; display: flex; flex-direction: column; padding: 0; border-radius: 10px; overflow: hidden;">
         <div class="modal-header" style="padding: 16px 24px; border-bottom: 1px solid #e2e8f0; background: #fff; margin-bottom: 0; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center;">
-            <h2 id="wsAttModalTitle" style="font-size: 1.15rem; font-weight: 700; color: #0f172a; margin: 0;">Record Hearing Attendance</h2>
+            <h2 id="wsAttModalTitle" style="font-size: 1.15rem; font-weight: 700; color: #0f172a; margin: 0;">Quick Attendance</h2>
             <button type="button" class="close-btn" onclick="closeEmbeddedAttendanceModal()">&times;</button>
         </div>
         <div id="wsAttModalBody" style="padding: 18px 24px; overflow-y: auto; flex: 1;">
@@ -2031,7 +2031,7 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
             <input type="hidden" id="execSettlementId" name="settlement_id">
 
             <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.82rem; color: #166534; line-height: 1.45;">
-                <strong>Statutory Finality (RA 7160 Sec. 417):</strong> The 10-business-day repudiation window has elapsed without sworn repudiation. The amicable settlement now has the force and effect of a final court judgment and may be executed by the Lupon within six (6) months.
+                <strong>Statutory Finality (RA 7160 Sec. 417):</strong> The 10-working-day repudiation window has elapsed without sworn repudiation. The amicable settlement now has the force and effect of a final court judgment and may be executed by the Lupon within six (6) months.
             </div>
 
             <!-- Moving Party -->

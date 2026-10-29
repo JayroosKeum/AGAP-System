@@ -616,15 +616,26 @@ class HearingController
         $caseId = filter_var($data['case_id'] ?? null, FILTER_VALIDATE_INT, [
             'options' => ['min_range' => 1],
         ]);
-        $type = trim((string) ($data['hearing_type'] ?? ''));
+        $rawType = trim((string) ($data['hearing_type'] ?? ''));
+        $type = match (true) {
+            str_contains($rawType, 'Mediation') => 'Mediation',
+            str_contains($rawType, 'Conciliation') => 'Conciliation',
+            str_contains($rawType, 'Arbitration') => 'Arbitration',
+            str_contains($rawType, 'Show Cause (Complainant)') => 'Show Cause (Complainant)',
+            str_contains($rawType, 'Show Cause (Respondent)') => 'Show Cause (Respondent)',
+            $rawType === 'Show Cause' => 'Mediation',
+            $rawType === 'Initial Hearing' => 'Initial Hearing',
+            default => $rawType,
+        };
         $venue = trim((string) ($data['venue'] ?? ''));
+        if ($venue === '') {
+            $venue = 'Lupon Court Room';
+        }
         $remarks = trim((string) ($data['remarks'] ?? ''));
         $rawDate = trim((string) ($data['hearing_date'] ?? ''));
-        $types = $allowExistingTypes
-            ? ['Initial Hearing', 'Mediation', 'Conciliation', 'Arbitration']
-            : ['Mediation', 'Conciliation', 'Arbitration'];
+        $types = ['Initial Hearing', 'Mediation', 'Conciliation', 'Arbitration', 'Show Cause (Complainant)', 'Show Cause (Respondent)'];
 
-        if (($data['schedule_reviewed'] ?? '') !== '1') {
+        if (isset($data['schedule_reviewed']) && $data['schedule_reviewed'] !== '1' && $data['schedule_reviewed'] !== 1 && $data['schedule_reviewed'] !== true) {
             return ['success' => false, 'message' => 'Review the hearing details before final scheduling.'];
         }
 
@@ -635,12 +646,23 @@ class HearingController
             $date = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $rawDate);
         } elseif (ValidationService::dateTime($rawDate, 'Y-m-d H:i')) {
             $date = DateTimeImmutable::createFromFormat('Y-m-d H:i', $rawDate);
+        } elseif (ValidationService::dateTime($rawDate, 'Y-m-d')) {
+            $timePart = trim((string)($data['hearing_time'] ?? ($data['time'] ?? '09:00:00')));
+            if (strlen($timePart) === 5) $timePart .= ':00';
+            $date = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $rawDate . ' ' . $timePart);
+        }
+        if (!$date && $rawDate !== '') {
+            try {
+                $date = new DateTimeImmutable($rawDate);
+            } catch (Throwable) {
+                $date = null;
+            }
         }
 
         if (!$caseId || !in_array($type, $types, true) || !$date) {
             return ['success' => false, 'message' => 'Provide a valid case, hearing type, date, and time.'];
         }
-        if ($venue === '' || mb_strlen($venue) > 255) {
+        if (mb_strlen($venue) > 255) {
             return ['success' => false, 'message' => 'Venue is required and must not exceed 255 characters.'];
         }
         if (mb_strlen($remarks) > 5000) {
@@ -670,13 +692,13 @@ class HearingController
         }
 
         // Master Operating Schedule (Barangay Tumana KP_SYSTEM_ENHANCEMENT_SPECS.md sec.83-84, 99-100)
-        // 1. Mediation (Punong Barangay): Mon-Fri, 8:00 AM - 5:00 PM (any working day).
-        // 2. Conciliation (Pangkat): Mon, Wed, Thu, Fri, 8:00 AM - 5:00 PM. Tuesdays fully blocked.
+        // 1. Mediation (Punong Barangay): Mon-Fri, 8:00 AM - 5:00 PM (any regular working day).
+        // 2. Conciliation (Pangkat): Mon, Wed, Thu, Fri, 8:00 AM - 5:00 PM & Tuesday mornings 8:00 AM - 12:00 PM. Tuesday afternoons reserved for formal mediation.
         // 3. 12:00 PM - 1:00 PM Lunch Break & Weekends/Holidays: Closed for all session types.
         $dayOfWeek = (int) date('w', strtotime($date->format('Y-m-d H:i:s'))); // 0 = Sun, 2 = Tue, etc.
         $hour = (int) date('H', strtotime($date->format('Y-m-d H:i:s')));
 
-        $rawMedDays = Setting::getSetting('mediation_day_of_week', 'Tue');
+        $rawMedDays = Setting::getSetting('mediation_day_of_week', 'Mon,Tue,Wed,Thu,Fri');
         $allowedMedDays = [];
         if (is_string($rawMedDays)) {
             $dec = json_decode($rawMedDays, true);
@@ -685,7 +707,7 @@ class HearingController
             $allowedMedDays = $rawMedDays;
         }
         if (empty($allowedMedDays)) {
-            $allowedMedDays = ['Tue'];
+            $allowedMedDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
         }
         $pluralNames = [
             'Mon' => 'Mondays', 'Tue' => 'Tuesdays', 'Wed' => 'Wednesdays',
@@ -697,14 +719,25 @@ class HearingController
         $isMedDay = in_array($curDayCode, $allowedMedDays, true);
 
         if ($type === 'Mediation') {
-            if ($dayOfWeek === 0 || $dayOfWeek === 6) {
-                return ['success' => false, 'message' => 'Mediation hearings can only be scheduled on working days.'];
+            if ($dayOfWeek === 0) {
+                return ['success' => false, 'message' => 'Mediation hearings cannot be scheduled on Sundays.'];
+            }
+            if ($dayOfWeek === 6 && !$isMedDay) {
+                return ['success' => false, 'message' => 'Mediation hearings cannot be scheduled on Saturdays unless designated in Settings.'];
             }
             if (!$isMedDay) {
                 return ['success' => false, 'message' => "Mediation hearings can only be scheduled on designated mediation days ({$medDaysLabel})."];
             }
-            if (($hour < 8 || $hour >= 17) || ($hour >= 12 && $hour < 13)) {
-                return ['success' => false, 'message' => 'Mediation hearings must be during regular office hours (excluding 12:00 PM – 1:00 PM lunch break).'];
+            $medHoursStart = Setting::getSetting('mediation_hours_start', '08:00');
+            $medHoursEnd = Setting::getSetting('mediation_hours_end', '17:00');
+            $timeStr = $date->format('H:i');
+            if ($timeStr < $medHoursStart || $timeStr > $medHoursEnd) {
+                $startFmt = date('g:i A', strtotime($medHoursStart));
+                $endFmt = date('g:i A', strtotime($medHoursEnd));
+                return ['success' => false, 'message' => "Mediation hearings must be scheduled during the designated mediation session window ({$startFmt} – {$endFmt})."];
+            }
+            if ($timeStr >= '12:00' && $timeStr < '13:00') {
+                return ['success' => false, 'message' => 'Mediation hearings cannot be scheduled during lunch break (12:00 PM – 1:00 PM).'];
             }
         }
 
@@ -712,15 +745,13 @@ class HearingController
             if ($dayOfWeek === 0 || $dayOfWeek === 6) {
                 return ['success' => false, 'message' => 'Conciliation hearings cannot be scheduled on weekends.'];
             }
-            if ($isMedDay) {
-                return ['success' => false, 'message' => "Conciliation hearings cannot be scheduled on {$medDaysLabel}. {$medDaysLabel} are exclusively reserved for Punong Barangay Formal Mediation."];
-            } else {
-                if (($hour < 8 || $hour >= 17) || ($hour >= 12 && $hour < 13)) {
-                    return ['success' => false, 'message' => 'Conciliation hearings must be during operating hours (8:00 AM – 12:00 PM & 1:00 PM – 5:00 PM, excluding 12:00 PM – 1:00 PM lunch break).'];
-                }
+            if ($dayOfWeek === 2 && $hour >= 12) {
+                return ['success' => false, 'message' => 'Conciliation hearings on Tuesdays are permitted only in the morning (8:00 AM – 12:00 PM). Tuesday afternoons (1:00 PM – 5:00 PM) are exclusively reserved for Formal Mediation in the Lupon Court Room.'];
+            }
+            if (($hour < 8 || $hour >= 17) || ($hour >= 12 && $hour < 13)) {
+                return ['success' => false, 'message' => 'Conciliation hearings must be during operating hours (8:00 AM – 12:00 PM & 1:00 PM – 5:00 PM, excluding 12:00 PM – 1:00 PM lunch break).'];
             }
         }
-
         // Validation: Approved hearing blocks, lunch break, Monday 8-9am, legal holidays, duration rules
         $hoursValidation = $this->hearing->validateHearingOperatingHours(
             $date->format('Y-m-d H:i:s'),
@@ -758,7 +789,7 @@ class HearingController
                 SELECT h.hearing_id, h.status, h.mediation_attempt, m.status AS minutes_status, m.session_outcome
                 FROM hearings h
                 LEFT JOIN hearing_minutes m ON m.hearing_id = h.hearing_id
-                WHERE h.case_id = ? AND h.hearing_type IN ('Initial Hearing', 'Mediation') AND h.status NOT IN ('Cancelled', 'Office Cancelled')
+                WHERE h.case_id = ? AND h.hearing_type IN ('Initial Hearing', 'Mediation') AND h.status NOT IN ('Cancelled', 'Office Cancelled') AND NOT EXISTS (SELECT 1 FROM hearings nh WHERE nh.rescheduled_from_id = h.hearing_id)
                 ORDER BY h.hearing_date ASC, h.hearing_id ASC
             ");
             $medStmt->execute([(int)$caseId]);

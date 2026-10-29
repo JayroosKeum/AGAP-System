@@ -105,8 +105,23 @@ class CaseTransmittal
             $resolutionType = 'AMICABLE SETTLEMENT';
             $settlementDate = !empty($c['updated_at']) ? substr($c['updated_at'], 0, 10) : date('Y-m-d');
         } else {
-            // Case is not yet formally resolved
-            return null;
+            // Check if $caseId is a complaint_id with a Settled paanyaya or Settled status
+            $compStmt = $this->conn->prepare("SELECT complaint_id, complaint_number, status, updated_at, created_at FROM complaints WHERE complaint_id = ?");
+            $compStmt->execute([$caseId]);
+            $comp = $compStmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($comp && ($comp['status'] === 'Settled' || $comp['status'] === 'Resolved at Paanyaya / Closed')) {
+                $pMinStmt = $this->conn->prepare("SELECT dialogue_date, created_at, agreed_terms FROM paanyaya_minutes WHERE complaint_id = ? AND outcome = 'Settled' ORDER BY minutes_id DESC LIMIT 1");
+                $pMinStmt->execute([$caseId]);
+                $pMin = $pMinStmt->fetch(PDO::FETCH_ASSOC);
+
+                $resolutionType = 'AMICABLE SETTLEMENT';
+                $settlementDate = !empty($pMin['dialogue_date'])
+                    ? substr($pMin['dialogue_date'], 0, 10)
+                    : (!empty($pMin['created_at']) ? substr($pMin['created_at'], 0, 10) : substr($comp['updated_at'], 0, 10));
+            } else {
+                return null;
+            }
         }
 
         // 2. Compute 10-working-day expiry date under RA 7160 Section 416 (excluding weekends & holidays)
@@ -134,6 +149,28 @@ class CaseTransmittal
         $pbStmt = $this->conn->prepare("SELECT user_id FROM users WHERE role_id = 1 LIMIT 1");
         $pbStmt->execute();
         $defaultPbId = $pbStmt->fetchColumn() ?: null;
+
+        if (!$c) {
+            $row = [
+                'transmittal_id' => 0,
+                'case_id' => 0,
+                'complaint_id' => $caseId,
+                'transmittal_number' => $transmittalNumber,
+                'settlement_date' => $settlementDate,
+                'resolution_type' => $resolutionType,
+                'ten_day_expiry_date' => $expiryDate,
+                'target_agency' => 'Both',
+                'transmitting_officer_id' => $defaultSecId,
+                'attesting_officer_id' => $defaultPbId,
+                'status' => 'Pending',
+                'transmittal_notified' => 0,
+                'created_at' => date('Y-m-d H:i:s'),
+                'updated_at' => date('Y-m-d H:i:s'),
+                'transmitting_officer_name' => 'MARILOU P. CRUZ',
+                'attesting_officer_name' => 'HON. AKIKO LYNNE CENTENO'
+            ];
+            return $this->enrichTransmittalData($row);
+        }
 
         // 5. Insert transmittal record
         $ins = $this->conn->prepare("
@@ -184,12 +221,14 @@ class CaseTransmittal
      */
     private function enrichTransmittalData(array $row): array
     {
-        $caseId = (int) $row['case_id'];
-
-        // Check if settlement was repudiated
-        $settleCheck = $this->conn->prepare("SELECT repudiation_status, repudiation_reason, repudiation_date FROM settlements WHERE case_id = ? ORDER BY settlement_id DESC LIMIT 1");
-        $settleCheck->execute([$caseId]);
-        $settleData = $settleCheck->fetch(PDO::FETCH_ASSOC);
+        $caseId = (int) ($row['case_id'] ?? 0);
+        $settleData = null;
+        if ($caseId > 0) {
+            // Check if settlement was repudiated
+            $settleCheck = $this->conn->prepare("SELECT repudiation_status, repudiation_reason, repudiation_date FROM settlements WHERE case_id = ? ORDER BY settlement_id DESC LIMIT 1");
+            $settleCheck->execute([$caseId]);
+            $settleData = $settleCheck->fetch(PDO::FETCH_ASSOC);
+        }
 
         if ($settleData && ($settleData['repudiation_status'] === 'Repudiated' || !empty($settleData['repudiation_date']))) {
             $row['is_locked'] = true;
@@ -233,13 +272,13 @@ class CaseTransmittal
             $badgeLabel = 'Acknowledged by MTC & DILG';
         } elseif ($isWindowOpen) {
             $badgeClass = 'badge-amber';
-            $badgeLabel = sprintf('🔒 Locked (%d business day%s remaining - Repudiation Window)', $daysRemaining, $daysRemaining === 1 ? '' : 's');
+            $badgeLabel = sprintf('🔒 Locked (%d working day%s remaining - Repudiation Window)', $daysRemaining, $daysRemaining === 1 ? '' : 's');
         } else {
             $badgeClass = 'badge-green';
             $badgeLabel = '🔓 Ready for MTC / DILG Transmittal';
         }
 
-        // Automatic in-app notification when 10 business days elapse
+        // Automatic in-app notification when 10 working days elapse
         if ($daysRemaining <= 0 && empty($row['transmittal_notified'])) {
             $this->dispatchTransmittalNotification((int)$row['transmittal_id'], (int)$row['case_id']);
             $row['transmittal_notified'] = 1;
@@ -280,7 +319,7 @@ class CaseTransmittal
     }
 
     /**
-     * Dispatches in-app notification to PB, Secretary, and Lupon Clerks when 10 business days elapse.
+     * Dispatches in-app notification to PB, Secretary, and Lupon Clerks when 10 working days elapse.
      */
     private function dispatchTransmittalNotification(int $transmittalId, int $caseId): void
     {
@@ -304,7 +343,7 @@ class CaseTransmittal
             $userIds = $uStmt->fetchAll(PDO::FETCH_COLUMN);
 
             $title = "Case #{$caseNumber} Ready for Court Transmittal";
-            $message = "The 10-business-day repudiation period has elapsed for Case #{$caseNumber}. The Court Transmittal Letter to the Metropolitan Trial Court is now unlocked and ready for printing.";
+            $message = "The 10-working-day repudiation period has elapsed for Case #{$caseNumber}. The Court Transmittal Letter to the Metropolitan Trial Court is now unlocked and ready for printing.";
             $actionUrl = "../complaints/complaint-details.php?id={$complaintId}&tab=tab-overview";
 
             $notifStmt = $this->conn->prepare("
@@ -461,6 +500,33 @@ class CaseTransmittal
         $caseInfo = $caseStmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$caseInfo) {
+            $compStmt = $this->conn->prepare("
+                SELECT co.complaint_id, co.complaint_number, co.complaint_title, co.narrative,
+                       co.status AS complaint_status, co.case_type, co.created_at, co.updated_at,
+                       cat.category_name
+                FROM complaints co
+                LEFT JOIN complaint_categories cat ON cat.category_id = co.category_id
+                WHERE co.complaint_id = ?
+            ");
+            $compStmt->execute([$caseId]);
+            $compRow = $compStmt->fetch(PDO::FETCH_ASSOC);
+            if ($compRow) {
+                $caseInfo = [
+                    'case_id' => 0,
+                    'case_number' => $compRow['complaint_number'],
+                    'case_type' => $compRow['case_type'] ?? 'Civil',
+                    'case_status' => $compRow['complaint_status'],
+                    'docket_date' => substr($compRow['created_at'], 0, 10),
+                    'complaint_id' => (int) $compRow['complaint_id'],
+                    'complaint_number' => $compRow['complaint_number'],
+                    'complaint_title' => $compRow['complaint_title'],
+                    'narrative' => $compRow['narrative'],
+                    'category_name' => $compRow['category_name']
+                ];
+            }
+        }
+
+        if (!$caseInfo) {
             throw new RuntimeException("Case #{$caseId} not found.");
         }
 
@@ -498,6 +564,27 @@ class CaseTransmittal
         ");
         $settleStmt->execute([$caseId]);
         $settlement = $settleStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        if (empty($settlement) && !empty($caseInfo['complaint_id'])) {
+            $pMinStmt = $this->conn->prepare("
+                SELECT minutes_id, agreed_terms, dialogue_date, created_at
+                FROM paanyaya_minutes
+                WHERE complaint_id = ? AND outcome = 'Settled'
+                ORDER BY minutes_id DESC LIMIT 1
+            ");
+            $pMinStmt->execute([$caseInfo['complaint_id']]);
+            $pMin = $pMinStmt->fetch(PDO::FETCH_ASSOC);
+            if ($pMin) {
+                $settlement = [
+                    'settlement_id' => (int)$pMin['minutes_id'],
+                    'case_id' => 0,
+                    'settlement_date' => !empty($pMin['dialogue_date']) ? substr($pMin['dialogue_date'], 0, 10) : substr($pMin['created_at'], 0, 10),
+                    'agreement_details' => $pMin['agreed_terms'] ?: '',
+                    'repudiation_status' => 'Within Repudiation Period',
+                    'compliance_status' => 'Pending'
+                ];
+            }
+        }
 
         // Determine resolution document label
         $resType = $transmittal['resolution_type'] ?? '';

@@ -1844,12 +1844,12 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
         }
 
         $compLines = '';
-        foreach ($compList as $c) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($c) . '</div>'; }
-        for ($i = 0; $i < max(0, 3 - count($compList)); $i++) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+        foreach ($compList as $c) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 16px; margin-bottom: 3px; font-weight: bold;">' . $this->escape($c) . '</div>'; }
+        for ($i = 0; $i < max(0, 1 - count($compList)); $i++) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 16px; margin-bottom: 3px;">&nbsp;</div>'; }
 
         $respLines = '';
-        foreach ($respList as $r) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($r) . '</div>'; }
-        for ($i = 0; $i < max(0, 3 - count($respList)); $i++) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
+        foreach ($respList as $r) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 16px; margin-bottom: 3px; font-weight: bold;">' . $this->escape($r) . '</div>'; }
+        for ($i = 0; $i < max(0, 1 - count($respList)); $i++) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 16px; margin-bottom: 3px;">&nbsp;</div>'; }
 
         $noticeTs = !empty($data['settlement_date']) ? strtotime($data['settlement_date']) : (!empty($data['notice_date']) ? strtotime($data['notice_date']) : time());
         $noticeDay = date('j', $noticeTs);
@@ -1858,7 +1858,7 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
 
         $officialName = $this->escape($this->getAuthorizedCaptainName($data['official_name'] ?? $data['captain_name'] ?? null));
 
-        $wrapperStart = $forPdf ? '' : '<div style="background: #f1f5f9; padding: 24px 12px; min-height: 100vh; display: flex; justify-content: center;"><div style="background: #fff; width: 100%; max-width: 760px; min-height: 960px; padding: 14mm 16mm; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-radius: 4px; box-sizing: border-box;">';
+        $wrapperStart = $forPdf ? '' : '<div class="preview-outer" style="background: #f1f5f9; padding: 18px 10px; min-height: 100%; display: flex; justify-content: center; box-sizing: border-box;"><div class="preview-sheet" style="background: #fff; width: 100%; max-width: 760px; padding: 10mm 14mm; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-radius: 4px; box-sizing: border-box;">';
         $wrapperEnd = $forPdf ? '' : '</div></div>';
 
         return '<!DOCTYPE html>
@@ -1867,12 +1867,41 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
     <meta charset="UTF-8">
     <title>Pormularyo ng KP Blg. 16 - MATIWASAY NA PAG-AAYOS</title>
     <style>
-        @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
+        @page { size: A4 portrait; margin: 10mm 14mm 10mm 14mm; }
         * { box-sizing: border-box; }
-        body { font-family: Arial, "DejaVu Sans", Helvetica, sans-serif; font-size: 11pt; color: #111827; line-height: 1.4; margin: 0; padding: 0; }
-        .form-code { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
-        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
-        .header-center { text-align: center; font-size: 10pt; line-height: 1.25; }
+        body { font-family: Arial, "DejaVu Sans", Helvetica, sans-serif; font-size: 10pt; color: #111827; line-height: 1.35; margin: 0; padding: 0; }
+        .form-code { font-size: 10pt; font-weight: bold; margin-bottom: 4px; }
+        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
+        .header-center { text-align: center; font-size: 9pt; line-height: 1.2; }
+        @media print {
+            @page { size: A4 portrait; margin: 10mm 14mm 10mm 14mm; }
+            html, body {
+                background: #ffffff !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+                height: auto !important;
+                overflow: visible !important;
+            }
+            .preview-outer {
+                background: transparent !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                min-height: 0 !important;
+                display: block !important;
+            }
+            .preview-sheet {
+                background: transparent !important;
+                box-shadow: none !important;
+                border: none !important;
+                border-radius: 0 !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                min-height: 0 !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1881,97 +1910,96 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
 
     <table class="header-table">
         <tr>
-            <td style="width: 80px; text-align: left; vertical-align: top;">
-                ' . (!empty($tumanaLogo) ? '<img src="' . $tumanaLogo . '" alt="Barangay Tumana" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            <td style="width: 70px; text-align: left; vertical-align: top;">
+                ' . (!empty($tumanaLogo) ? '<img src="' . $tumanaLogo . '" alt="Barangay Tumana" style="width: 65px; height: 65px; object-fit: contain;">' : '') . '
             </td>
             <td class="header-center" style="vertical-align: top;">
                 <div>Republika ng Pilipinas</div>
                 <div>Lalawigan ng NCR</div>
                 <div>Lungsod ng Marikina</div>
-                <div style="font-weight: bold;">Barangay Tumana</div>
-                <div style="font-size: 9.5pt;">Telephone Nos. 8-238-4208</div>
-                <div style="font-size: 9.5pt;">EMAILADDRESS:barangaytumana2023@gmail.com</div>
+                <div style="font-weight: bold; font-size: 10pt;">Barangay Tumana</div>
+                <div style="font-size: 8.5pt;">Telephone Nos. 8-238-4208</div>
+                <div style="font-size: 8.5pt;">EMAILADDRESS:barangaytumana2023@gmail.com</div>
             </td>
-            <td style="width: 80px; text-align: right; vertical-align: top;">
-                ' . (!empty($marikinaLogo) ? '<img src="' . $marikinaLogo . '" alt="Lungsod ng Marikina" style="width: 76px; height: 76px; object-fit: contain;">' : '') . '
+            <td style="width: 70px; text-align: right; vertical-align: top;">
+                ' . (!empty($marikinaLogo) ? '<img src="' . $marikinaLogo . '" alt="Lungsod ng Marikina" style="width: 65px; height: 65px; object-fit: contain;">' : '') . '
             </td>
         </tr>
     </table>
 
-    <div style="text-align: center; font-weight: bold; font-size: 11pt; margin-top: 10px; margin-bottom: 16px;">TANGGAPAN NG LUPONG TAGAPAMAYAPA</div>
+    <div style="text-align: center; font-weight: bold; font-size: 10.5pt; margin-top: 4px; margin-bottom: 10px;">TANGGAPAN NG LUPONG TAGAPAMAYAPA</div>
 
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10.5pt;">
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 9.5pt;">
         <tr>
             <td style="width: 50%; vertical-align: top;">
                 ' . $compLines . '
-                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">(Mga) Nagrereklamo</div>
-                <div style="text-align: center; font-size: 10pt; margin-bottom: 8px;">-laban kay/kina-</div>
+                <div style="text-align: center; font-size: 8.5pt; margin-bottom: 4px;">(Mga) Nagrereklamo</div>
+                <div style="text-align: center; font-size: 8.5pt; margin-bottom: 4px;">-laban kay/kina-</div>
                 ' . $respLines . '
-                <div style="text-align: center; font-size: 10pt;">(Mga) Inirereklamo</div>
+                <div style="text-align: center; font-size: 8.5pt;">(Mga) Inirereklamo</div>
             </td>
-            <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 20px;">
-                <div>Usapin ng Barangay Blg. <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 130px; font-weight: bold; text-align: center;">' . $caseNumber . '</span></div>
-                <div style="margin-top: 6px;">Para sa: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 160px; font-weight: bold; text-align: center;">' . $title . '</span></div>
+            <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 15px;">
+                <div>Usapin ng Barangay Blg. <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 120px; font-weight: bold; text-align: center;">' . $caseNumber . '</span></div>
+                <div style="margin-top: 4px;">Para sa: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 150px; font-weight: bold; text-align: center;">' . $title . '</span></div>
             </td>
         </tr>
     </table>
 
-    <div style="text-align: center; margin: 16px 0;">
-        <div style="font-size: 13.5pt; font-weight: bold; letter-spacing: 0.5px;">MATIWASAY NA PAG-AAYOS</div>
-        <div style="font-size: 11.5pt; font-weight: bold;">(Amicable Settlement)</div>
+    <div style="text-align: center; margin: 8px 0 6px;">
+        <div style="font-size: 12.5pt; font-weight: bold; letter-spacing: 0.5px;">MATIWASAY NA PAG-AAYOS</div>
+        <div style="font-size: 10.5pt; font-weight: bold;">(Amicable Settlement)</div>
     </div>
 
-    <div style="font-size: 11pt; line-height: 1.8; margin-bottom: 14px;">
+    <div style="font-size: 9.5pt; line-height: 1.4; margin-bottom: 6px;">
         KAMI, mga nagrereklamo/at inirereklamo sa usaping nakasaad sa itaas, ay nagkasundo na aayusin ang aming sigalot sa mga sumusunod:
     </div>
 
-    <div style="margin-bottom: 16px; font-size: 10.5pt; line-height: 1.7;">
-        ' . ($agreementDetails ? '<div style="border: 1px solid #999; padding: 10px 14px; background: #fafafa; margin-bottom: 10px;">' . nl2br($agreementDetails) . '</div>' : '
-            <div style="border-bottom: 1px solid #111; min-height: 20px; margin-bottom: 6px;">&nbsp;</div>
-            <div style="border-bottom: 1px solid #111; min-height: 20px; margin-bottom: 6px;">&nbsp;</div>
-            <div style="border-bottom: 1px solid #111; min-height: 20px; margin-bottom: 6px;">&nbsp;</div>
-            <div style="border-bottom: 1px solid #111; min-height: 20px; margin-bottom: 6px;">&nbsp;</div>
+    <div style="margin-bottom: 8px; font-size: 9.5pt; line-height: 1.4;">
+        ' . ($agreementDetails ? '<div style="border: 1px solid #777; padding: 8px 12px; background: #fafafa; min-height: 50px; max-height: 140px;">' . nl2br($agreementDetails) . '</div>' : '
+            <div style="border-bottom: 1px solid #111; min-height: 16px; margin-bottom: 4px;">&nbsp;</div>
+            <div style="border-bottom: 1px solid #111; min-height: 16px; margin-bottom: 4px;">&nbsp;</div>
+            <div style="border-bottom: 1px solid #111; min-height: 16px; margin-bottom: 4px;">&nbsp;</div>
         ') . '
     </div>
 
-    <div style="font-size: 10.5pt; line-height: 1.8; margin-bottom: 14px;">
+    <div style="font-size: 9.5pt; line-height: 1.4; margin-bottom: 6px;">
         At magkakaisa na tapat naming susundin ang mga kondisyon sa pag-aayos na nakasaad sa itaas.
     </div>
 
-    <div style="font-size: 10.5pt; margin-bottom: 18px;">
-        Itinala ngayong <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 120px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, 20<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 40px; font-weight: bold; text-align: center;">' . substr($noticeYear, -2) . '</span>.
+    <div style="font-size: 9.5pt; margin-bottom: 12px;">
+        Itinala ngayong <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 50px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 100px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, 20<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 35px; font-weight: bold; text-align: center;">' . substr($noticeYear, -2) . '</span>.
     </div>
 
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 9pt;">
         <tr>
             <td style="width: 45%; text-align: center;">
-                <div style="border-top: 1px solid #111; min-height: 2px; margin-bottom: 4px;"></div>
+                <div style="border-top: 1px solid #111; min-height: 1px; margin-bottom: 3px;"></div>
                 <div>(Mga) Nagrereklamo</div>
             </td>
             <td style="width: 10%;"></td>
             <td style="width: 45%; text-align: center;">
-                <div style="border-top: 1px solid #111; min-height: 2px; margin-bottom: 4px;"></div>
+                <div style="border-top: 1px solid #111; min-height: 1px; margin-bottom: 3px;"></div>
                 <div>(Mga) Inirereklamo</div>
             </td>
         </tr>
     </table>
 
-    <div style="text-align: center; font-weight: bold; font-size: 11pt; margin-bottom: 6px;">PAGPAPATOTOO</div>
-    <div style="font-size: 10pt; line-height: 1.7; text-align: justify; margin-bottom: 22px;">
+    <div style="text-align: center; font-weight: bold; font-size: 10pt; margin-bottom: 4px;">PAGPAPATOTOO</div>
+    <div style="font-size: 9pt; line-height: 1.35; text-align: justify; margin-bottom: 14px;">
         PINATUTUNAYAN ko ang sinusundang Matiwasay na Pag-aayos na ginawa ng mga panig ay malaya at kusang-loob, matapos na aking maipaliwanag sa kanila ang uri at magiging bunga ng gayong pag-aayos.
     </div>
 
-    <table style="width: 100%; border-collapse: collapse;">
+    <table style="width: 100%; border-collapse: collapse; font-size: 9.5pt;">
         <tr>
             <td style="width: 45%; vertical-align: top;">
-                <div style="border-top: 1px solid #111; width: 220px; margin-bottom: 4px;"></div>
-                <div style="font-weight: bold; font-size: 10.5pt;">' . $officialName . '</div>
-                <div style="font-size: 9.5pt;">Punong Barangay</div>
+                <div style="border-top: 1px solid #111; width: 200px; margin-bottom: 3px;"></div>
+                <div style="font-weight: bold; font-size: 10pt;">' . $officialName . '</div>
+                <div style="font-size: 8.5pt;">Punong Barangay</div>
             </td>
             <td style="width: 10%;"></td>
             <td style="width: 45%; vertical-align: top; text-align: center;">
-                <div style="border-top: 1px solid #111; width: 220px; margin: 0 auto 4px;"></div>
-                <div style="font-size: 10pt;">Tagapangulo ng Pangkat</div>
+                <div style="border-top: 1px solid #111; width: 200px; margin: 0 auto 3px;"></div>
+                <div style="font-size: 9pt;">Tagapangulo ng Pangkat</div>
             </td>
         </tr>
     </table>
@@ -1979,6 +2007,7 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
 </body>
 </html>';
     }
+
 
     public function renderKp17Html(array $data, bool $forPdf = false): string
     {

@@ -85,6 +85,7 @@ final class TestDataCleanup
                         } catch (Throwable) {}
                     }
 
+                    $this->db->prepare('UPDATE hearings SET rescheduled_from_id = NULL WHERE case_id = ?')->execute([$caseId]);
                     $this->db->prepare('DELETE FROM hearings WHERE case_id = ?')->execute([$caseId]);
                     $this->db->prepare('DELETE FROM cases WHERE case_id = ?')->execute([$caseId]);
                 }

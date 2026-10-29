@@ -276,25 +276,12 @@ include '../../layouts/header.php';
                             <span class="required-mark" style="color: #dc2626;">*</span>
                         </div>
 
-                        <!-- 1. Dialogue Date & Time and Actual Start Time -->
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px;">
-                            <div class="form-group" style="margin-bottom: 0;">
-                                <label for="minutesDialogueDate" style="font-weight: 600; font-size: 0.86rem; display: block; margin-bottom: 5px; color: #0f172a;">
-                                    Petsa at Takdang Oras (Scheduled Date &amp; Time) <span class="required-mark" style="color: #dc2626;">*</span>
-                                </label>
-                                <input type="datetime-local" id="minutesDialogueDate" name="dialogue_date" required style="padding: 9px 12px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box;">
-                            </div>
-                            <div class="form-group" style="margin-bottom: 0;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                                    <label for="minutesActualStartTime" style="font-weight: 600; font-size: 0.86rem; margin: 0; color: #0f172a;">
-                                        Aktwal na Oras ng Simula (Actual Start Time)
-                                    </label>
-                                    <button type="button" id="btnActualStartNow" onclick="setMinutesActualStartNow(event)" style="background: none; border: none; color: #2563eb; font-size: 0.78rem; font-weight: 700; cursor: pointer; padding: 0;">
-                                        Oras Ngayon (Now)
-                                    </button>
-                                </div>
-                                <input type="time" id="minutesActualStartTime" name="actual_start_time" style="padding: 9px 12px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box;">
-                            </div>
+                        <!-- 1. Dialogue Date & Time -->
+                        <div class="form-group" style="margin-bottom: 18px;">
+                            <label for="minutesDialogueDate" style="font-weight: 600; font-size: 0.86rem; display: block; margin-bottom: 5px; color: #0f172a;">
+                                Petsa at Takdang Oras (Scheduled Date &amp; Time) <span class="required-mark" style="color: #dc2626;">*</span>
+                            </label>
+                            <input type="datetime-local" id="minutesDialogueDate" name="dialogue_date" required style="padding: 9px 12px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box;">
                         </div>
 
                         <!-- 2. Session Delay Remarks -->

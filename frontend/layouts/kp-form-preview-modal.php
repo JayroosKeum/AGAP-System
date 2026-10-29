@@ -188,6 +188,10 @@
                 <a href="#" id="btnDownloadKpDocPdf" class="btn-secondary" style="font-size: 0.82rem; padding: 6px 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; background: #334155; color: #f8fafc; border-color: #475569;" download>
                     📥 PDF
                 </a>
+                <!-- Proceed to Officer's Log / Proof of Service -->
+                <a href="../gps/proof-service.php" id="btnHeaderProceedOfficerLog" class="btn-create" style="display: none; font-size: 0.82rem; padding: 6px 14px; background: #059669; border-color: #059669; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 600; align-items: center; gap: 5px;" title="Proceed to Officer's Return / Proof of Service to log delivery attempt">
+                    📋 Proceed to Officer's Log &rarr;
+                </a>
                 <button type="button" class="close-btn" onclick="closeKpDocumentPreviewModal()" title="Close Preview" style="font-size: 26px; line-height: 1; border: none; background: transparent; cursor: pointer; color: #94a3b8; padding: 0 4px; margin-left: 4px;">&times;</button>
             </div>
         </div>
@@ -202,9 +206,14 @@
         <!-- Footer Info -->
         <div class="modal-actions" style="padding: 10px 20px; border-top: 1px solid #475569; background: #1e293b; margin-top: 0; flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; color: #94a3b8;">
             <span>Legal standard (8.5" x 14") &bull; Arial typography &bull; Official Katarungang Pambarangay Master Template</span>
-            <button type="button" class="btn-secondary" onclick="closeKpDocumentPreviewModal()" style="font-size: 0.8rem; padding: 5px 14px; background: #334155; color: #f8fafc; border-color: #475569;">
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <a href="../gps/proof-service.php" id="btnKpDocProceedOfficerLog" class="btn-create" style="display: none; font-size: 0.8rem; padding: 6px 14px; background: #0284c7; border-color: #0284c7; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 600; align-items: center; gap: 5px;">
+                    📋 Proceed to Officer's Log / Proof of Service &rarr;
+                </a>
+                <button type="button" class="btn-secondary" onclick="closeKpDocumentPreviewModal()" style="font-size: 0.8rem; padding: 5px 14px; background: #334155; color: #f8fafc; border-color: #475569;">
                 Close Preview
             </button>
+            </div>
         </div>
 
     </div>
@@ -260,7 +269,14 @@ window.printKpDocIframe = printKpDocIframe;
 
 function closeKpDocumentPreviewModal() {
     const modal = document.getElementById('kpDocumentPreviewModal');
+    const iframe = document.getElementById('kpDocPreviewIframe');
+    if (iframe) iframe.src = 'about:blank';
     if (modal) modal.style.display = 'none';
+    if (window._kpPreviewProceedUrl) {
+        const dest = window._kpPreviewProceedUrl;
+        window._kpPreviewProceedUrl = null;
+        window.location.href = dest;
+    }
 }
 window.closeKpDocumentPreviewModal = closeKpDocumentPreviewModal;
 </script>

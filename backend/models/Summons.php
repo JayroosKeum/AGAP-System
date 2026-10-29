@@ -664,27 +664,64 @@ class Summons
         $minute = (int) date('i', $ts);
         $timeMinutes = $hour * 60 + $minute;
 
+        require_once __DIR__ . '/Setting.php';
+        $rawMedDays = Setting::getSetting('mediation_day_of_week', 'Mon,Tue,Wed,Thu,Fri');
+        $allowedMedDays = [];
+        if (is_string($rawMedDays)) {
+            $dec = json_decode($rawMedDays, true);
+            $allowedMedDays = is_array($dec) ? $dec : array_filter(array_map('trim', explode(',', $rawMedDays)));
+        } elseif (is_array($rawMedDays)) {
+            $allowedMedDays = $rawMedDays;
+        }
+        if (empty($allowedMedDays)) {
+            $allowedMedDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+        }
+        $pluralMap = ['Mon' => 'Mondays', 'Tue' => 'Tuesdays', 'Wed' => 'Wednesdays', 'Thu' => 'Thursdays', 'Fri' => 'Fridays', 'Sat' => 'Saturdays', 'Sun' => 'Sundays'];
+        $medDaysLabel = implode(', ', array_map(fn($d) => $pluralMap[$d] ?? $d, $allowedMedDays));
+        $curDayCode = date('D', $ts);
+        $isMedDay = in_array($curDayCode, $allowedMedDays, true);
+
         // Weekend check
-        if ($dow === 0 || $dow === 6) {
-            $label = ($hearingType === 'Conciliation') ? 'Conciliation' : 'Mediation';
+        if ($dow === 0) {
             return [
-                'hearing_type' => 'Weekend Restriction',
+                'hearing_type' => 'Sunday Restriction',
                 'hearing_date' => $hearingDateTime,
                 'venue' => $venue,
                 'case_number' => '',
-                'message' => "{$label} hearings cannot be scheduled on weekends."
+                'message' => 'Hearings cannot be scheduled on Sundays.'
+            ];
+        }
+        if ($dow === 6 && (!$isMedDay || $hearingType !== 'Mediation')) {
+            return [
+                'hearing_type' => 'Saturday Restriction',
+                'hearing_date' => $hearingDateTime,
+                'venue' => $venue,
+                'case_number' => '',
+                'message' => 'Hearings cannot be scheduled on Saturdays unless designated in Settings.'
             ];
         }
 
-        // Conciliation Tuesday restriction (Barangay Tumana Rule - Mediation exclusively on Tuesdays)
-        if ($hearingType === 'Conciliation' && $dow === 2) {
-            return [
-                'hearing_type' => 'Tuesday Restriction',
-                'hearing_date' => $hearingDateTime,
-                'venue' => $venue,
-                'case_number' => '',
-                'message' => 'Tuesdays reserved exclusively for Punong Barangay Mediation. Conciliation hearings must be scheduled on non-Tuesday weekdays (Mondays, Wednesdays, Thursdays, or Fridays).'
-            ];
+        // Mediation designated days check
+        if ($hearingType === 'Mediation') {
+            if (!$isMedDay) {
+                return [
+                    'hearing_type' => 'Mediation Day Restriction',
+                    'hearing_date' => $hearingDateTime,
+                    'venue' => $venue,
+                    'case_number' => '',
+                    'message' => "Mediation hearings can only be scheduled on designated mediation days ({$medDaysLabel})."
+                ];
+            }
+        } elseif ($hearingType === 'Conciliation') {
+            if ($isMedDay) {
+                return [
+                    'hearing_type' => 'Mediation Reserved Day Restriction',
+                    'hearing_date' => $hearingDateTime,
+                    'venue' => $venue,
+                    'case_number' => '',
+                    'message' => "{$curDayCode} is a designated Mediation Day reserved exclusively for Punong Barangay Mediation ({$medDaysLabel}). Conciliation hearings must be scheduled on non-mediation weekdays."
+                ];
+            }
         }
 
         // Lunch break check
@@ -698,16 +735,37 @@ class Summons
             ];
         }
 
-        // Operating hours check: 8:00 AM (480 mins) to 5:00 PM (1020 mins)
-        if ($timeMinutes < 480 || $timeMinutes > 1020) {
-            $label = ($hearingType === 'Conciliation') ? 'Conciliation' : 'Mediation';
-            return [
-                'hearing_type' => 'Operating Hours Restriction',
-                'hearing_date' => $hearingDateTime,
-                'venue' => $venue,
-                'case_number' => '',
-                'message' => "{$label} hearings must be scheduled during regular Barangay working hours (8:00 AM to 5:00 PM, Monday to Friday)."
-            ];
+        // Operating hours check
+        $medHoursStart = Setting::getSetting('mediation_hours_start', '08:00');
+        $medHoursEnd = Setting::getSetting('mediation_hours_end', '17:00');
+        $workHoursStart = Setting::getSetting('working_hours_start', '08:00');
+        $workHoursEnd = Setting::getSetting('working_hours_end', '17:00');
+        $timeStr = date('H:i', $ts);
+
+        if ($hearingType === 'Mediation') {
+            if ($timeStr < $medHoursStart || $timeStr > $medHoursEnd) {
+                $startFmt = date('g:i A', strtotime($medHoursStart));
+                $endFmt = date('g:i A', strtotime($medHoursEnd));
+                return [
+                    'hearing_type' => 'Mediation Window Restriction',
+                    'hearing_date' => $hearingDateTime,
+                    'venue' => $venue,
+                    'case_number' => '',
+                    'message' => "Mediation hearings must be scheduled during the designated mediation session window ({$startFmt} – {$endFmt})."
+                ];
+            }
+        } else {
+            if ($timeStr < $workHoursStart || $timeStr > $workHoursEnd) {
+                $startFmt = date('g:i A', strtotime($workHoursStart));
+                $endFmt = date('g:i A', strtotime($workHoursEnd));
+                return [
+                    'hearing_type' => 'Working Hours Restriction',
+                    'hearing_date' => $hearingDateTime,
+                    'venue' => $venue,
+                    'case_number' => '',
+                    'message' => "Conciliation hearings must be scheduled during working hours ({$startFmt} – {$endFmt})."
+                ];
+            }
         }
 
         // Check for time overlap with any active hearing at the same venue on this date (Elastic Duration: 45-min buffer)

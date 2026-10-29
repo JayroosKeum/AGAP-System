@@ -24,7 +24,7 @@ $db = (new Database())->connect();
 
 
 
-$caseId = filter_var($_GET['case_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+$caseId = filter_var($_GET['case_id'] ?? $_GET['id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 
 $complaintId = filter_var($_GET['complaint_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 
@@ -60,7 +60,47 @@ if (!$caseId) {
 
 
 
+require_once __DIR__ . '/../../../backend/models/Setting.php';
+$sysSettings = Setting::all();
+$rawMedDays = $sysSettings['mediation_day_of_week'] ?? 'Mon,Tue,Wed,Thu,Fri';
+$allowedMedDays = [];
+if (is_string($rawMedDays)) {
+    $dec = json_decode($rawMedDays, true);
+    $allowedMedDays = is_array($dec) ? $dec : array_filter(array_map('trim', explode(',', $rawMedDays)));
+} elseif (is_array($rawMedDays)) {
+    $allowedMedDays = $rawMedDays;
+}
+if (empty($allowedMedDays)) {
+    $allowedMedDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+}
+$pluralMap = [
+    'Mon' => 'Mondays', 'Tue' => 'Tuesdays', 'Wed' => 'Wednesdays',
+    'Thu' => 'Thursdays', 'Fri' => 'Fridays', 'Sat' => 'Saturdays', 'Sun' => 'Sundays'
+];
+$dayNumMap = ['Sun' => 0, 'Mon' => 1, 'Tue' => 2, 'Wed' => 3, 'Thu' => 4, 'Fri' => 5, 'Sat' => 6];
+$medDaysPlural = array_map(fn($d) => $pluralMap[$d] ?? $d, $allowedMedDays);
+$medDaysLabel = implode(', ', $medDaysPlural);
+$allowedMedDayNumbers = array_values(array_unique(array_filter(array_map(fn($d) => $dayNumMap[$d] ?? null, $allowedMedDays), fn($n) => $n !== null)));
+$medHoursStart = $sysSettings['mediation_hours_start'] ?? '08:00';
+$medHoursEnd = $sysSettings['mediation_hours_end'] ?? '17:00';
+$workHoursStart = $sysSettings['working_hours_start'] ?? '08:00';
+$workHoursEnd = $sysSettings['working_hours_end'] ?? '17:00';
+$medVenue = $sysSettings['mediation_venue'] ?? 'Lupon Court Room';
+
 include '../../layouts/header.php';
+?>
+<script>
+window.AGAP_SETTINGS = window.AGAP_SETTINGS || {};
+window.AGAP_SETTINGS.mediation_days = <?= json_encode($allowedMedDays) ?>;
+window.AGAP_SETTINGS.mediation_days_label = <?= json_encode($medDaysLabel) ?>;
+window.AGAP_SETTINGS.mediation_day_numbers = <?= json_encode($allowedMedDayNumbers) ?>;
+window.AGAP_SETTINGS.mediation_hours_start = <?= json_encode($medHoursStart) ?>;
+window.AGAP_SETTINGS.mediation_hours_end = <?= json_encode($medHoursEnd) ?>;
+window.AGAP_SETTINGS.working_hours_start = <?= json_encode($workHoursStart) ?>;
+window.AGAP_SETTINGS.working_hours_end = <?= json_encode($workHoursEnd) ?>;
+window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
+</script>
+<?php
 
 ?>
 
@@ -347,6 +387,9 @@ include '../../layouts/header.php';
                 </div>
 
 
+
+                <!-- Session Switcher: 1st Mediation vs 2nd Mediation (Distinct Page Views) -->
+                <div id="wsSessionNavContainer" style="margin-bottom: 20px;"></div>
 
                 <!-- Section 2.5: Hearing Session Attendance Card -->
 

@@ -14,6 +14,7 @@ require_once __DIR__ . '/../../services/KpFormService.php';
 $conn = (new Database())->connect();
 $documentId = filter_input(INPUT_GET, 'document_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: (isset($_GET['document_id']) ? (int) $_GET['document_id'] : null);
 $caseId = filter_input(INPUT_GET, 'case_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: (isset($_GET['case_id']) ? (int) $_GET['case_id'] : null);
+$complaintId = filter_input(INPUT_GET, 'complaint_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: (isset($_GET['complaint_id']) ? (int) $_GET['complaint_id'] : null);
 $hearingId = filter_input(INPUT_GET, 'hearing_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: (isset($_GET['hearing_id']) ? (int) $_GET['hearing_id'] : null);
 $formCode = trim((string) ($_GET['form_code'] ?? 'KP Form 10'));
 $asPdf = isset($_GET['pdf']) && $_GET['pdf'] == '1';
@@ -67,6 +68,13 @@ if ($documentId) {
     }
 }
 
+if (!$caseId && $complaintId) {
+    $cStmt = $conn->prepare("SELECT case_id FROM cases WHERE complaint_id = ? LIMIT 1");
+    $cStmt->execute([$complaintId]);
+    $foundCaseId = $cStmt->fetchColumn();
+    $caseId = $foundCaseId ? (int)$foundCaseId : (int)$complaintId;
+}
+
 if (!$caseId) {
     http_response_code(404);
     exit('Valid case ID or document ID required.');
@@ -104,9 +112,19 @@ if (!$isPreview) {
             $haStmt = $conn->prepare("
                 SELECT COUNT(*) FROM hearing_attendance ha
                 INNER JOIN complaint_parties cp ON cp.resident_id = ha.resident_id AND cp.complaint_id = ?
-                WHERE ha.hearing_id = ? AND cp.party_type = 'Complainant' AND ha.attendance_status = 'Absent'
+                WHERE (ha.hearing_id = ? OR ha.hearing_id = (SELECT rescheduled_from_id FROM hearings WHERE hearing_id = ?))
+                  AND cp.party_type = 'Complainant' AND ha.attendance_status = 'Absent'
             ");
-            $haStmt->execute([(int) $formData['complaint_id'], $hearingId]);
+            $haStmt->execute([(int) $formData['complaint_id'], $hearingId, $hearingId]);
+            $isCompAbsent = ((int) $haStmt->fetchColumn() > 0);
+        } else {
+            // Check any hearing in this case
+            $haStmt = $conn->prepare("
+                SELECT COUNT(*) FROM hearing_attendance ha
+                INNER JOIN complaint_parties cp ON cp.resident_id = ha.resident_id AND cp.complaint_id = ?
+                WHERE cp.party_type = 'Complainant' AND ha.attendance_status = 'Absent'
+            ");
+            $haStmt->execute([(int) $formData['complaint_id']]);
             $isCompAbsent = ((int) $haStmt->fetchColumn() > 0);
         }
         if (!$isCompAbsent) {
@@ -119,9 +137,19 @@ if (!$isPreview) {
             $haStmt = $conn->prepare("
                 SELECT COUNT(*) FROM hearing_attendance ha
                 INNER JOIN complaint_parties cp ON cp.resident_id = ha.resident_id AND cp.complaint_id = ?
-                WHERE ha.hearing_id = ? AND cp.party_type = 'Respondent' AND ha.attendance_status = 'Absent'
+                WHERE (ha.hearing_id = ? OR ha.hearing_id = (SELECT rescheduled_from_id FROM hearings WHERE hearing_id = ?))
+                  AND cp.party_type = 'Respondent' AND ha.attendance_status = 'Absent'
             ");
-            $haStmt->execute([(int) $formData['complaint_id'], $hearingId]);
+            $haStmt->execute([(int) $formData['complaint_id'], $hearingId, $hearingId]);
+            $isRespAbsent = ((int) $haStmt->fetchColumn() > 0);
+        } else {
+            // Check any hearing in this case
+            $haStmt = $conn->prepare("
+                SELECT COUNT(*) FROM hearing_attendance ha
+                INNER JOIN complaint_parties cp ON cp.resident_id = ha.resident_id AND cp.complaint_id = ?
+                WHERE cp.party_type = 'Respondent' AND ha.attendance_status = 'Absent'
+            ");
+            $haStmt->execute([(int) $formData['complaint_id']]);
             $isRespAbsent = ((int) $haStmt->fetchColumn() > 0);
         }
         if (!$isRespAbsent) {

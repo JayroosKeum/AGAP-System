@@ -84,10 +84,10 @@ if ($isLocked) {
             <div style="font-size: 3rem; margin-bottom: 12px;">🔒</div>
             <h2 style="margin: 0 0 10px; color: #78350f;">Court Transmittal Letter is Locked</h2>
             <p style="font-size: 0.92rem; line-height: 1.6; color: #92400e; margin: 0 0 16px;">
-                Pursuant to <strong>Section 416 of Republic Act No. 7160</strong> (The Local Government Code of 1991), formal transmittal of the case records to the Metropolitan Trial Court is barred during the mandatory 10-business-day repudiation window.
+                Pursuant to <strong>Section 416 of Republic Act No. 7160</strong> (The Local Government Code of 1991), formal transmittal of the case records to the Metropolitan Trial Court is barred during the mandatory 10-working-day repudiation window.
             </p>
             <div class="countdown-badge">
-                <?= $daysRemaining ?> business day<?= $daysRemaining === 1 ? '' : 's' ?> remaining
+                <?= $daysRemaining ?> working day<?= $daysRemaining === 1 ? '' : 's' ?> remaining
             </div>
             <p style="font-size: 0.82rem; color: #a16207; margin-top: 10px;">
                 Statutory transmittal unlocks on <strong><?= htmlspecialchars($unlockDate) ?></strong> (excluding weekends and official Philippine holidays).

@@ -47,6 +47,7 @@ if (!$overview) {
 $overview['mediation_sessions'] = $stageModel->getSessions($caseId, 'Mediation');
 $overview['conciliation_sessions'] = $stageModel->getSessions($caseId, 'Conciliation');
 $overview['arbitration_sessions'] = $stageModel->getSessions($caseId, 'Arbitration');
+$overview['conciliation_show_cause_hearings'] = $stageModel->getShowCauseHearings($caseId, 'Conciliation');
 
 echo json_encode([
     'success' => true,

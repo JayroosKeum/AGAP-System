@@ -162,24 +162,65 @@ class OfficeLogisticsService
         $minute = (int) $start->format('i');
 
         if ($hearingType === 'Mediation') {
-            if ($dayOfWeek === 0 || $dayOfWeek === 6) {
+            $rawMedDays = $this->getSetting('mediation_day_of_week', 'Mon,Tue,Wed,Thu,Fri');
+            $allowedMedDays = [];
+            if (is_string($rawMedDays)) {
+                $dec = json_decode($rawMedDays, true);
+                $allowedMedDays = is_array($dec) ? $dec : array_filter(array_map('trim', explode(',', $rawMedDays)));
+            } elseif (is_array($rawMedDays)) {
+                $allowedMedDays = $rawMedDays;
+            }
+            if (empty($allowedMedDays)) {
+                $allowedMedDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+            }
+            $pluralMap = ['Mon' => 'Mondays', 'Tue' => 'Tuesdays', 'Wed' => 'Wednesdays', 'Thu' => 'Thursdays', 'Fri' => 'Fridays', 'Sat' => 'Saturdays', 'Sun' => 'Sundays'];
+            $medDaysLabel = implode(', ', array_map(fn($d) => $pluralMap[$d] ?? $d, $allowedMedDays));
+            $curDayCode = $start->format('D');
+            $isMedDay = in_array($curDayCode, $allowedMedDays, true);
+
+            if ($dayOfWeek === 0) {
                 return [
                     'valid' => false,
-                    'message' => 'Mediation hearings can only be scheduled on working days (Monday to Friday).'
+                    'message' => 'Mediation hearings cannot be scheduled on Sundays.'
                 ];
             }
-            if (($hour < 8 || $hour >= 17) || ($hour >= 12 && $hour < 13)) {
+            if ($dayOfWeek === 6 && !$isMedDay) {
                 return [
                     'valid' => false,
-                    'message' => 'Mediation hearings must be during regular office hours (8:00 AM – 5:00 PM, excluding 12:00 PM – 1:00 PM lunch break).'
+                    'message' => 'Mediation hearings cannot be scheduled on Saturdays unless designated in Settings.'
                 ];
             }
-            $endHour = (int) $end->format('H');
-            $endMin = (int) $end->format('i');
-            if ($endHour > 17 || ($endHour === 17 && $endMin > 0)) {
+            if (!$isMedDay) {
                 return [
                     'valid' => false,
-                    'message' => 'Mediation hearings must conclude by 5:00 PM.'
+                    'message' => "Mediation hearings can only be scheduled on designated mediation days ({$medDaysLabel})."
+                ];
+            }
+
+            $medHoursStart = $this->getSetting('mediation_hours_start', '08:00');
+            $medHoursEnd = $this->getSetting('mediation_hours_end', '17:00');
+            $timeStr = $start->format('H:i');
+            $endTimeStr = $end->format('H:i');
+
+            if ($timeStr < $medHoursStart || $timeStr > $medHoursEnd) {
+                $startFmt = date('g:i A', strtotime($medHoursStart));
+                $endFmt = date('g:i A', strtotime($medHoursEnd));
+                return [
+                    'valid' => false,
+                    'message' => "Mediation hearings must be scheduled during the designated mediation session window ({$startFmt} – {$endFmt})."
+                ];
+            }
+            if ($endTimeStr > $medHoursEnd) {
+                $endFmt = date('g:i A', strtotime($medHoursEnd));
+                return [
+                    'valid' => false,
+                    'message' => "Mediation hearings must conclude by {$endFmt}."
+                ];
+            }
+            if ($timeStr >= '12:00' && $timeStr < '13:00') {
+                return [
+                    'valid' => false,
+                    'message' => 'Mediation hearings cannot be scheduled during lunch break (12:00 PM – 1:00 PM).'
                 ];
             }
         } elseif ($hearingType === 'Conciliation') {

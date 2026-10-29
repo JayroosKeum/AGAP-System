@@ -165,7 +165,7 @@
 
         <!-- Footer Info -->
         <div class="modal-actions" style="padding: 10px 20px; border-top: 1px solid #475569; background: #1e293b; margin-top: 0; flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; color: #94a3b8;">
-            <span id="transmittalModalFooterCountdown">10-business-day statutory print lock enforced under RA 7160 Section 416</span>
+            <span id="transmittalModalFooterCountdown">10-working-day statutory print lock enforced under RA 7160 Section 416</span>
             <button type="button" class="btn-secondary" onclick="closePreviewTransmittalModal()" style="font-size: 0.8rem; padding: 5px 14px; background: #334155; color: #f8fafc; border-color: #475569;">
                 Close Preview
             </button>

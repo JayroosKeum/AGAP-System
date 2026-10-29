@@ -1538,3 +1538,14 @@ textarea.is-invalid {
     text-overflow: ellipsis;
     display: block;
 }
+
+
+/* Session Minutes Tabs */
+.session-minutes-tab:hover {
+    border-color: #94a3b8 !important;
+    background: #f8fafc !important;
+}
+.session-minutes-tab.active:hover {
+    border-color: #2563eb !important;
+    background: #eff6ff !important;
+}

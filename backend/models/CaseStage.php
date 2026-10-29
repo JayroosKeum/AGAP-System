@@ -1011,10 +1011,167 @@ class CaseStage
                 'finalized_at' => $h['finalized_at'],
                 'parties' => $parties
             ];
+
+            // Fetch any linked show-cause hearings spawned from this session
+            $scStmt = $this->conn->prepare("
+                SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.venue, h.status,
+                       sce.evaluation_id, sce.party_type AS evaluated_party, sce.is_justified, sce.action_taken,
+                       sce.justification_category, sce.justification_notes
+                FROM hearings h
+                LEFT JOIN show_cause_evaluations sce ON sce.hearing_id = h.hearing_id
+                WHERE h.case_id = ? AND h.rescheduled_from_id = ?
+                  AND h.hearing_type IN ('Show Cause (Complainant)', 'Show Cause (Respondent)')
+                ORDER BY h.hearing_date ASC
+            ");
+            $scStmt->execute([$caseId, $hId]);
+            $sessions[count($sessions) - 1]['show_cause_hearings'] = $scStmt->fetchAll(PDO::FETCH_ASSOC);
+
             $index++;
         }
 
         return $sessions;
+    }
+
+    /**
+     * Returns show-cause hearings and their evaluations for a specific stage (e.g., Conciliation).
+     */
+    public function getShowCauseHearings(int $caseId, string $stageType = 'Conciliation'): array
+    {
+        $stmt = $this->conn->prepare("
+            SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.venue, h.status,
+                   h.queue_status, h.actual_start_time, h.actual_end_time, h.actual_duration_minutes,
+                   h.rescheduled_from_id, h.remarks,
+                   h.complainant_attendance, h.respondent_attendance,
+                   h.attendance_recorded_at, h.attendance_notes,
+                   TRIM(CONCAT_WS(' ', po.first_name, po.middle_name, po.last_name)) AS presiding_officer_name,
+                   orig_h.hearing_type AS original_hearing_type,
+                   orig_h.hearing_date AS original_hearing_date,
+                   sce.evaluation_id,
+                   sce.party_type AS evaluated_party_type,
+                   sce.form_type AS evaluation_form_type,
+                   sce.is_justified,
+                   sce.justification_category,
+                   sce.justification_notes,
+                   sce.rescheduled_hearing_id,
+                   sce.action_taken,
+                   sce.evaluated_by,
+                   sce.created_at AS evaluated_at,
+                   TRIM(CONCAT_WS(' ', eval_u.first_name, eval_u.middle_name, eval_u.last_name)) AS evaluator_name
+            FROM hearings h
+            LEFT JOIN hearings orig_h ON orig_h.hearing_id = h.rescheduled_from_id
+            INNER JOIN cases c ON c.case_id = h.case_id
+            LEFT JOIN users po ON po.user_id = h.presiding_officer_id
+            LEFT JOIN show_cause_evaluations sce ON sce.hearing_id = h.hearing_id
+            LEFT JOIN users eval_u ON eval_u.user_id = sce.evaluated_by
+            WHERE h.case_id = ?
+              AND h.hearing_type IN ('Show Cause (Complainant)', 'Show Cause (Respondent)')
+              AND (
+                  orig_h.hearing_type = ?
+                  OR (orig_h.hearing_id IS NULL AND c.case_status = ?)
+                  OR (orig_h.hearing_id IS NULL AND LOWER(h.remarks) LIKE CONCAT('%', LOWER(?), '%'))
+              )
+            ORDER BY h.hearing_date ASC, h.hearing_id ASC
+        ");
+        $stmt->execute([$caseId, $stageType, $stageType, $stageType]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $partyStmt = $this->conn->prepare("
+            SELECT cp.resident_id, cp.party_type,
+                   TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS full_name,
+                   r.address,
+                   ha.attendance_status, ha.is_justified, ha.justification_reason,
+                   (
+                       (SELECT COUNT(*) FROM hearing_party_services hps WHERE hps.hearing_id = ? AND hps.resident_id = cp.resident_id AND hps.service_result = 'Served')
+                       +
+                       (SELECT COUNT(*) FROM summon_deliveries sd WHERE sd.hearing_id = ? AND (sd.resident_id = cp.resident_id OR sd.party_type = cp.party_type) AND sd.delivery_status IN ('Served Personal', 'Served Substituted', 'Served Refused'))
+                   ) AS service_confirmed_count
+            FROM complaint_parties cp
+            INNER JOIN residents r ON r.resident_id = cp.resident_id
+            INNER JOIN cases c ON c.complaint_id = cp.complaint_id
+            LEFT JOIN hearing_attendance ha ON ha.hearing_id = ? AND ha.resident_id = cp.resident_id
+            WHERE c.case_id = ?
+            ORDER BY FIELD(cp.party_type, 'Complainant', 'Respondent', 'Witness'), r.last_name
+        ");
+
+        $docStmt = $this->conn->prepare("
+            SELECT gd.document_id, dt.template_name, gd.file_path, gd.generated_at
+            FROM generated_documents gd
+            INNER JOIN document_templates dt ON dt.template_id = gd.template_id
+            WHERE gd.case_id = ?
+            ORDER BY gd.document_id DESC
+        ");
+        $docStmt->execute([$caseId]);
+        $caseDocs = $docStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $results = [];
+        foreach ($rows as $row) {
+            $hId = (int) $row['hearing_id'];
+            $partyStmt->execute([$hId, $hId, $hId, $caseId]);
+            $parties = $partyStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $proofStatus = 'Pending Delivery';
+            foreach ($parties as $p) {
+                if ((int) $p['service_confirmed_count'] > 0) {
+                    $proofStatus = 'Served';
+                    break;
+                }
+            }
+
+            $targetParty = ($row['hearing_type'] === 'Show Cause (Complainant)') ? 'Complainant' : 'Respondent';
+            $formCode = ($targetParty === 'Complainant') ? 'KP Form 18' : 'KP Form 19';
+
+            $evaluation = null;
+            if (!empty($row['evaluation_id'])) {
+                $evaluation = [
+                    'evaluation_id' => (int) $row['evaluation_id'],
+                    'party_type' => $row['evaluated_party_type'],
+                    'form_type' => $row['evaluation_form_type'],
+                    'is_justified' => (int) $row['is_justified'],
+                    'justification_category' => $row['justification_category'],
+                    'justification_notes' => $row['justification_notes'],
+                    'rescheduled_hearing_id' => $row['rescheduled_hearing_id'] ? (int) $row['rescheduled_hearing_id'] : null,
+                    'action_taken' => $row['action_taken'],
+                    'evaluated_by' => $row['evaluated_by'] ? (int) $row['evaluated_by'] : null,
+                    'evaluator_name' => $row['evaluator_name'],
+                    'evaluated_at' => $row['evaluated_at']
+                ];
+            }
+
+            // Match relevant docs (KP 18, 19, 20, 20-A, 20-B, 21, 22)
+            $relevantDocs = array_filter($caseDocs, function ($d) use ($formCode) {
+                $name = $d['template_name'] ?? '';
+                return str_contains($name, $formCode)
+                    || str_contains($name, str_replace('KP Form ', '', $formCode))
+                    || str_contains($name, '20')
+                    || str_contains($name, '21')
+                    || str_contains($name, '22');
+            });
+
+            $results[] = [
+                'hearing_id' => $hId,
+                'case_id' => (int) $row['case_id'],
+                'hearing_type' => $row['hearing_type'],
+                'hearing_date' => $row['hearing_date'],
+                'venue' => $row['venue'],
+                'status' => $row['status'],
+                'queue_status' => $row['queue_status'] ?? 'Waiting',
+                'rescheduled_from_id' => $row['rescheduled_from_id'] ? (int) $row['rescheduled_from_id'] : null,
+                'original_hearing_type' => $row['original_hearing_type'],
+                'original_hearing_date' => $row['original_hearing_date'],
+                'remarks' => $row['remarks'],
+                'complainant_attendance' => $row['complainant_attendance'],
+                'respondent_attendance' => $row['respondent_attendance'],
+                'presiding_officer_name' => $row['presiding_officer_name'],
+                'proof_of_service_status' => $proofStatus,
+                'target_party' => $targetParty,
+                'form_code' => $formCode,
+                'parties' => $parties,
+                'evaluation' => $evaluation,
+                'documents' => array_values($relevantDocs)
+            ];
+        }
+
+        return $results;
     }
 
     /**

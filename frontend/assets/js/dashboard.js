@@ -356,12 +356,83 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    const openQuickAttendanceModal = (hearing) => {
+    const checkDashboardCompAbsence = () => {
+        const compRadios = document.querySelectorAll('input[name^="quick_att_party_"][data-party-type="Complainant"]:checked');
+        let anyAbsent = false;
+        compRadios.forEach(r => {
+            if (r.value === 'Absent') anyAbsent = true;
+        });
+        const notice = document.getElementById('quickCompAbsentNotice');
+        if (notice) notice.style.display = anyAbsent ? 'block' : 'none';
+    };
+
+    const renderQuickAttendanceParties = (parties, defaultCompAtt = 'Present', defaultRespAtt = 'Present') => {
+        const container = document.getElementById('quickAttPartiesContainer');
+        if (!container) return;
+
+        if (!parties || parties.length === 0) {
+            container.innerHTML = '<div style="color: #64748b; font-size: 0.85rem; padding: 12px; text-align: center;">Walang nakatalang panig para sa pagdinig na ito.</div>';
+            return;
+        }
+
+        container.innerHTML = parties.map(p => {
+            const isComp = (p.party_type === 'Complainant');
+            let st = p.attendance_status;
+            if (!st || st === 'Pending' || st === 'Not Recorded') {
+                st = isComp ? defaultCompAtt : defaultRespAtt;
+            }
+            if (st !== 'Late' && st !== 'Absent') st = 'Present';
+
+            const roleBadgeStyle = isComp
+                ? 'background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;'
+                : 'background: #fdf2f8; color: #be185d; border: 1px solid #fbcfe8;';
+            const roleLabel = isComp ? 'Nagpaanyaya (Complainant)' : 'Inanyayahan (Respondent)';
+            const partyName = p.resident_name || p.full_name || (isComp ? 'Complainant' : 'Respondent');
+
+            return `
+                <div class="quick-att-party-card" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
+                    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 10px; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px;">
+                        <div style="min-width: 0;">
+                            <div style="font-size: 0.94rem; font-weight: 700; color: #0f172a; line-height: 1.35;">
+                                👤 ${escapeHtml(partyName)}
+                            </div>
+                            ${p.address ? `<div style="font-size: 0.75rem; color: #64748b; margin-top: 2px;">📍 ${escapeHtml(p.address)}</div>` : ''}
+                        </div>
+                        <span style="font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 9999px; white-space: nowrap; ${roleBadgeStyle}">
+                            ${roleLabel}
+                        </span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 7px; font-size: 0.84rem;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; border-radius: 6px; background: #f0fdf4; border: 1px solid #bbf7d0;">
+                            <input type="radio" name="quick_att_party_${p.resident_id}" data-party-type="${escapeHtml(p.party_type)}" value="Present" ${st === 'Present' ? 'checked' : ''} style="accent-color: #16a34a; width: 15px; height: 15px; margin: 0;">
+                            <span style="color: #15803d; font-weight: 600;">🟢 Dumalo sa Oras (Present)</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; border-radius: 6px; background: #fffbeb; border: 1px solid #fde68a;">
+                            <input type="radio" name="quick_att_party_${p.resident_id}" data-party-type="${escapeHtml(p.party_type)}" value="Late" ${st === 'Late' ? 'checked' : ''} style="accent-color: #d97706; width: 15px; height: 15px; margin: 0;">
+                            <span style="color: #b45309; font-weight: 600;">🟡 Nahuli / Late (Pasok sa 1-hour grace period)</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; border-radius: 6px; background: #fef2f2; border: 1px solid #fecaca;">
+                            <input type="radio" name="quick_att_party_${p.resident_id}" data-party-type="${escapeHtml(p.party_type)}" value="Absent" ${st === 'Absent' ? 'checked' : ''} style="accent-color: #dc2626; width: 15px; height: 15px; margin: 0;">
+                            <span style="color: #991b1b; font-weight: 600;">🔴 Hindi Dumalo (Absent - Lampas 1 oras)</span>
+                        </label>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        container.querySelectorAll('input[type="radio"]').forEach(r => {
+            r.addEventListener('change', checkDashboardCompAbsence);
+        });
+        checkDashboardCompAbsence();
+    };
+
+    const openQuickAttendanceModal = async (hearing) => {
         const modal = document.getElementById('quickDashboardAttendanceModal');
         if (!modal) return;
 
         state.activeQuickAttHearing = hearing;
         state.activeQuickAttHearingId = hearing.hearing_id;
+        state.activeQuickAttData = null;
 
         const caseBadge = document.getElementById('quickAttCaseNumBadge');
         if (caseBadge) caseBadge.textContent = hearing.case_number ? `Case #${hearing.case_number}` : 'Case';
@@ -375,26 +446,46 @@ document.addEventListener('DOMContentLoaded', () => {
         const venueEl = document.getElementById('quickAttHearingVenue');
         if (venueEl) venueEl.textContent = hearing.venue || 'Lupon Court Room';
 
-        const compNameEl = document.getElementById('quickAttComplainantName');
-        if (compNameEl) compNameEl.textContent = hearing.complainant_names || 'Complainant';
-
-        const respNameEl = document.getElementById('quickAttRespondentName');
-        if (respNameEl) respNameEl.textContent = hearing.respondent_names || 'Respondent';
-
         const remarksEl = document.getElementById('quickAttRemarks');
         if (remarksEl) remarksEl.value = hearing.attendance_notes || '';
 
-        // Select correct radios
+        const container = document.getElementById('quickAttPartiesContainer');
+        if (container) {
+            container.innerHTML = '<div style="text-align: center; padding: 20px; color: #64748b; font-size: 0.85rem;">Kinukuha ang talaan ng mga panig...</div>';
+        }
+
+        const notice = document.getElementById('quickCompAbsentNotice');
+        if (notice) notice.style.display = 'none';
+
+        modal.style.display = 'flex';
+
         const compVal = hearing.complainant_attendance || 'Present';
         const respVal = hearing.respondent_attendance || 'Present';
 
-        const compRadio = document.querySelector(`input[name="quick_comp_att"][value="${compVal}"]`) || document.querySelector('input[name="quick_comp_att"][value="Present"]');
-        if (compRadio) compRadio.checked = true;
-
-        const respRadio = document.querySelector(`input[name="quick_resp_att"][value="${respVal}"]`) || document.querySelector('input[name="quick_resp_att"][value="Present"]');
-        if (respRadio) respRadio.checked = true;
-
-        modal.style.display = 'flex';
+        try {
+            const res = await fetch(`../../../backend/api/hearings/attendance.php?hearing_id=${encodeURIComponent(hearing.hearing_id)}`);
+            const json = await res.json();
+            if (json.success && json.data) {
+                state.activeQuickAttData = json.data;
+                const parties = json.data.parties || [];
+                renderQuickAttendanceParties(parties, compVal, respVal);
+            } else {
+                throw new Error(json.message || 'Failed to fetch parties');
+            }
+        } catch (err) {
+            console.error('Error fetching hearing attendance:', err);
+            const fallbackParties = [];
+            const compNames = (hearing.complainant_names || 'Complainant').split(',').map(s => s.trim()).filter(Boolean);
+            const respNames = (hearing.respondent_names || 'Respondent').split(',').map(s => s.trim()).filter(Boolean);
+            let fakeId = 1;
+            compNames.forEach(name => {
+                fallbackParties.push({ resident_id: fakeId++, party_type: 'Complainant', resident_name: name, attendance_status: compVal });
+            });
+            respNames.forEach(name => {
+                fallbackParties.push({ resident_id: fakeId++, party_type: 'Respondent', resident_name: name, attendance_status: respVal });
+            });
+            renderQuickAttendanceParties(fallbackParties, compVal, respVal);
+        }
     };
 
     const closeQuickAttendanceModal = () => {
@@ -402,15 +493,49 @@ document.addEventListener('DOMContentLoaded', () => {
         if (modal) modal.style.display = 'none';
         state.activeQuickAttHearing = null;
         state.activeQuickAttHearingId = null;
+        state.activeQuickAttData = null;
     };
 
     const submitQuickAttendance = async () => {
         const hearingId = state.activeQuickAttHearingId;
         if (!hearingId) return;
 
-        const compAtt = document.querySelector('input[name="quick_comp_att"]:checked')?.value || 'Present';
-        const respAtt = document.querySelector('input[name="quick_resp_att"]:checked')?.value || 'Present';
         const remarks = (document.getElementById('quickAttRemarks')?.value || '').trim();
+        const parties = (state.activeQuickAttData && state.activeQuickAttData.parties) ? state.activeQuickAttData.parties : [];
+
+        let partyRecords = [];
+        let compOverall = 'Present';
+        let respOverall = 'Present';
+
+        if (parties.length > 0) {
+            partyRecords = parties.map(p => {
+                const checked = document.querySelector(`input[name="quick_att_party_${p.resident_id}"]:checked`);
+                const st = checked ? checked.value : (p.attendance_status || 'Present');
+                const isPresentOrLate = (st === 'Present' || st === 'Late');
+                return {
+                    resident_id: p.resident_id,
+                    party_type: p.party_type,
+                    attendance_status: st,
+                    is_justified: isPresentOrLate ? 0 : (remarks ? 1 : 0),
+                    justification_reason: isPresentOrLate ? null : (remarks || null),
+                    verification_status: isPresentOrLate ? 'Verified Served' : 'Pending'
+                };
+            });
+
+            const compStatuses = partyRecords.filter(p => p.party_type === 'Complainant').map(p => p.attendance_status);
+            const respStatuses = partyRecords.filter(p => p.party_type === 'Respondent').map(p => p.attendance_status);
+
+            if (compStatuses.length > 0) {
+                if (compStatuses.every(s => s === 'Absent')) compOverall = 'Absent';
+                else if (compStatuses.some(s => s === 'Late')) compOverall = 'Late';
+                else compOverall = 'Present';
+            }
+            if (respStatuses.length > 0) {
+                if (respStatuses.every(s => s === 'Absent')) respOverall = 'Absent';
+                else if (respStatuses.some(s => s === 'Late')) respOverall = 'Late';
+                else respOverall = 'Present';
+            }
+        }
 
         const saveBtn = document.getElementById('quickAttSaveBtn');
         if (saveBtn) {
@@ -419,6 +544,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
+            const payload = {
+                hearing_id: hearingId,
+                complainant_attendance: compOverall,
+                respondent_attendance: respOverall,
+                attendance_notes: remarks,
+                session_remarks: remarks,
+                remarks: remarks,
+                parties: partyRecords
+            };
+
             const res = await fetch('../../../backend/api/hearings/attendance.php', {
                 method: 'POST',
                 headers: {
@@ -426,14 +561,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     'Accept': 'application/json',
                     'X-CSRF-Token': getCsrfToken()
                 },
-                body: JSON.stringify({
-                    hearing_id: hearingId,
-                    complainant_attendance: compAtt,
-                    respondent_attendance: respAtt,
-                    attendance_notes: remarks,
-                    session_remarks: remarks,
-                    remarks: remarks
-                })
+                body: JSON.stringify(payload)
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok || !data.success) {

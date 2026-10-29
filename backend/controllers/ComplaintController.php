@@ -68,6 +68,74 @@ class ComplaintController
                 ));
                 $complaint['case_workspace'] = null;
             }
+        } elseif (($complaint['status'] ?? '') === 'Settled' || !empty($complaint['resolved_without_docketing'])) {
+            try {
+                require_once __DIR__ . '/../services/MediationDeadlineService.php';
+                require_once __DIR__ . '/../models/CaseTransmittal.php';
+
+                $db = (new Database())->connect();
+                $pMinStmt = $db->prepare("
+                    SELECT minutes_id, agreed_terms, dialogue_date, created_at
+                    FROM paanyaya_minutes
+                    WHERE complaint_id = ? AND outcome = 'Settled'
+                    ORDER BY minutes_id DESC LIMIT 1
+                ");
+                $pMinStmt->execute([$id]);
+                $pMin = $pMinStmt->fetch(PDO::FETCH_ASSOC);
+
+                $settlementDate = !empty($pMin['dialogue_date'])
+                    ? substr($pMin['dialogue_date'], 0, 10)
+                    : (!empty($pMin['created_at']) ? substr($pMin['created_at'], 0, 10) : substr($complaint['updated_at'] ?? date('Y-m-d'), 0, 10));
+
+                $expiryDate = MediationDeadlineService::calculateBusinessDays($settlementDate, 10);
+                $transModel = new CaseTransmittal($db);
+                $workingDays = $transModel->calculateWorkingDaysRemaining($expiryDate);
+                $isLocked = ($workingDays > 0);
+
+                $complaint['case_workspace'] = [
+                    'case' => [
+                        'case_id' => 0,
+                        'complaint_id' => $id,
+                        'case_number' => $complaint['complaint_number'],
+                        'case_type' => $complaint['case_type'] ?? 'Civil',
+                        'case_status' => 'Settled',
+                        'docket_date' => substr($complaint['created_at'], 0, 10),
+                    ],
+                    'settlement' => [
+                        'settlement_id' => !empty($pMin['minutes_id']) ? (int) $pMin['minutes_id'] : 0,
+                        'case_id' => 0,
+                        'complaint_id' => $id,
+                        'settlement_date' => $settlementDate,
+                        'agreement_details' => $pMin['agreed_terms'] ?? '',
+                        'repudiation_deadline' => $expiryDate,
+                        'working_days_remaining' => $workingDays,
+                        'repudiation_status' => 'Within Repudiation Period',
+                        'compliance_status' => 'Pending'
+                    ],
+                    'transmittal' => [
+                        'transmittal_id' => 0,
+                        'case_id' => 0,
+                        'complaint_id' => $id,
+                        'transmittal_number' => sprintf('TR-%s-%04d', date('Y'), $id),
+                        'settlement_date' => $settlementDate,
+                        'ten_day_expiry_date' => $expiryDate,
+                        'repudiation_deadline' => $expiryDate,
+                        'working_days_remaining' => $workingDays,
+                        'is_locked' => $isLocked,
+                        'is_repudiated' => false,
+                        'target_agency' => 'Both',
+                        'status' => 'Pending'
+                    ],
+                    'stages' => null,
+                    'hearings' => [],
+                    'documents' => [],
+                    'proofs' => [],
+                    'assignments' => []
+                ];
+            } catch (Throwable $exception) {
+                error_log('Unable to build pre-docket settlement workspace for complaint ' . $id . ': ' . $exception->getMessage());
+                $complaint['case_workspace'] = null;
+            }
         } else {
             $complaint['case_workspace'] = null;
         }
