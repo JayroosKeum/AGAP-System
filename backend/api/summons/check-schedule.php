@@ -125,12 +125,20 @@ $isTuesday = ($dayOfWeek === 2);
         $booked = $dailyCounts[$dStr] ?? 0;
 
         if ($hearingType === 'Conciliation') {
-            // Conciliation blocked on designated mediation days, weekends, and holidays
-            if ($isWeekend || $isHoliday || $isMedDay) {
+            // Conciliation rule:
+            // Mon, Wed, Thu, Fri: 8:00 AM - 12:00 PM & 1:00 PM - 5:00 PM (8 slots max)
+            // Tue: Morning only 8:00 AM - 12:00 PM (4 slots max, afternoons reserved for Formal Mediation)
+            // Weekends and holidays: closed
+            if ($isWeekend || $isHoliday) {
                 $maxSlots = 0;
                 $avail = 0;
                 $isFull = false;
                 $canSchedule = false;
+            } elseif ($curDayCode === 'Tue') {
+                $maxSlots = 4;
+                $avail = max(0, $maxSlots - $booked);
+                $isFull = ($booked >= $maxSlots);
+                $canSchedule = ($dStr >= $todayStr) && !$isFull;
             } else {
                 $maxSlots = 8;
                 $avail = max(0, $maxSlots - $booked);
@@ -160,6 +168,7 @@ $isTuesday = ($dayOfWeek === 2);
             'available' => $avail,
             'is_fully_booked' => $isFull,
             'is_weekend' => $isWeekend,
+            'is_tuesday_morning_only' => ($curDayCode === 'Tue' && $hearingType === 'Conciliation'),
             'is_non_working_day' => $isHoliday,
             'is_mediation_day' => $isMedDay,
             'is_non_mediation_day' => ($hearingType === 'Mediation' && !$isMedDay),
@@ -248,22 +257,43 @@ if ($hearingType === 'Mediation') {
         }
     }
 } elseif ($hearingType === 'Conciliation') {
-    if ($isCurMedDay) {
+    if ($isWeekend || $isNonWorkingDay) {
         echo json_encode([
             'success' => false,
             'has_conflict' => true,
             'is_invalid_day' => true,
-            'message' => "{$curDayCode} is designated for Punong Barangay Mediation ({$medDaysLabel}). Conciliation must be scheduled on non-mediation weekdays.",
+            'message' => "Conciliation hearings cannot be scheduled on weekends or non-working holidays.",
             'conflict' => [
-                'message' => "{$curDayCode} is reserved for Punong Barangay Mediation. Conciliation hearings must be scheduled on other weekdays."
+                'message' => "Selected date is a " . ($isWeekend ? "weekend" : "non-working holiday") . ". Conciliation hearings are held on Mon, Tue morning, Wed, Thu, Fri."
             ]
         ]);
         exit;
     }
+    if ($curDayCode === 'Tue' && $time !== '') {
+        $hourCheck = (int) date('H', strtotime($time));
+        if ($hourCheck >= 12) {
+            echo json_encode([
+                'success' => false,
+                'has_conflict' => true,
+                'is_invalid_time' => true,
+                'message' => "Tuesday afternoons (1:00 PM – 5:00 PM) are exclusively reserved for Punong Barangay Formal Mediation. Conciliation on Tuesdays is permitted in the morning only (8:00 AM – 12:00 PM).",
+                'conflict' => [
+                    'message' => "Tuesday afternoons are reserved for Formal Mediation. Please select a morning time (8:00 AM – 12:00 PM) or another weekday."
+                ]
+            ]);
+            exit;
+        }
+    }
 }
 
 if ($hearingType === 'Conciliation') {
-    $maxSlots = ($isWeekend || $isNonWorkingDay || $isCurMedDay) ? 0 : 8;
+    if ($isWeekend || $isNonWorkingDay) {
+        $maxSlots = 0;
+    } elseif ($curDayCode === 'Tue') {
+        $maxSlots = 4;
+    } else {
+        $maxSlots = 8;
+    }
 } else {
     $isSatBlocked = ($dayOfWeek === 6 && !$isCurMedDay);
     $isSunBlocked = ($dayOfWeek === 7);

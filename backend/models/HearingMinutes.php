@@ -388,7 +388,7 @@ class HearingMinutes
                 $nextDate = trim((string) $data['next_hearing_date']);
                 $nextTime = trim((string) $data['next_hearing_time']);
                 $nextDateTime = $nextDate . ' ' . (strlen($nextTime) === 5 ? ($nextTime . ':00') : $nextTime);
-                $targetType = $hearing['hearing_type']; // 'Mediation' or 'Conciliation'
+                $targetType = ($hearing['hearing_type'] === 'Conciliation') ? 'Conciliation' : 'Mediation';
 
                 // Verify if a subsequent hearing is already booked for this case & stage
                 $checkNext = $this->conn->prepare("

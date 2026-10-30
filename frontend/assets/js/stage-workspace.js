@@ -2996,7 +2996,19 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
     if (compAtt === 'Absent') {
 
-        if (isSecondOrLater) {
+        if (mode === 'Conciliation') {
+
+            compConsequenceHtml = `
+
+                <div style="margin-top: 5px; font-size: 0.74rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; padding: 5px 8px;">
+
+                    <span style="color: #991b1b; font-weight: 700;">Complainant Non-appearance (${escapeHtml(sessionLabel)})</span>
+
+                </div>
+
+            `;
+
+        } else if (isSecondOrLater) {
 
             compConsequenceHtml = `
 
@@ -3048,7 +3060,19 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
     if (respAtt === 'Absent') {
 
-        if (isSecondOrLater) {
+        if (mode === 'Conciliation') {
+
+            respConsequenceHtml = `
+
+                <div style="margin-top: 5px; font-size: 0.74rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; padding: 5px 8px;">
+
+                    <span style="color: #991b1b; font-weight: 700;">Respondent Non-appearance (${escapeHtml(sessionLabel)})</span>
+
+                </div>
+
+            `;
+
+        } else if (isSecondOrLater) {
 
             respConsequenceHtml = `
 
@@ -3723,6 +3747,7 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false, hearingId 
     const caseId = stageWorkspaceState.caseId;
 
     const activeSession = stageWorkspaceState.sessions.find(s => Number(s.hearing_id) === Number(activeHearingId)) || {};
+    activeSession.session_outcome = outcomeVal;
 
     const sessionIndex = Number(activeSession.session_index || 1);
 
@@ -4391,7 +4416,11 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skip
 
             } else if (outcomeVal === 'Party Absent' || outcomeVal === 'Non-Appearance') {
 
-                if (compAtt === 'Absent' && respAtt !== 'Absent') {
+                if (stageWorkspaceState.mode === 'Conciliation') {
+
+                    targetKpForm = null;
+
+                } else if (compAtt === 'Absent' && respAtt !== 'Absent') {
 
                     targetKpForm = 'KP Form 18';
 
@@ -4446,6 +4475,11 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skip
                     const seqLabel = json.next_hearing?.sequence === 2 ? '2nd' : (json.next_hearing?.sequence === 3 ? '3rd' : 'Next');
 
                     notifyUser(`Session minutes saved successfully!\n${seqLabel} Mediation hearing booked for ${json.next_hearing.hearing_date} at ${json.next_hearing.venue || 'Barangay Hall'}.`, 'success', 'Session Minutes Saved', 5000);
+
+                } else if (json.next_hearing_error) {
+
+                    notifyUser(`Session minutes saved, but 2nd Mediation could not be booked:
+${json.next_hearing_error}`, 'warning', 'Next Session Scheduling Notice', 8000);
 
                 } else {
 
@@ -4975,6 +5009,8 @@ async function openScheduleModal(hearingId = null, targetStageType = null) {
 
         if (existing.length >= 1) {
 
+            const lastSession = existing[existing.length - 1];
+
             const curCount = existing.length;
 
             const nextIndex = curCount + 1;
@@ -4987,7 +5023,7 @@ async function openScheduleModal(hearingId = null, targetStageType = null) {
 
             const isSettled = existing.some(s => (s.session_outcome || s.outcome || '').toLowerCase().includes('settle')) ||
 
-                              (document.getElementById('minOutcome')?.value || '').toLowerCase().includes('settle');
+                              ((getMinutesField('minOutcome', lastSession?.hearing_id)?.value || document.getElementById('minOutcome')?.value || '')).toLowerCase().includes('settle');
 
             if (isSettled) {
 
@@ -5007,7 +5043,7 @@ async function openScheduleModal(hearingId = null, targetStageType = null) {
 
             const isArbitration = existing.some(s => (s.session_outcome || s.outcome || '').toLowerCase().includes('arbitrat')) ||
 
-                                  (document.getElementById('minOutcome')?.value || '').toLowerCase().includes('arbitrat');
+                                  ((getMinutesField('minOutcome', lastSession?.hearing_id)?.value || document.getElementById('minOutcome')?.value || '')).toLowerCase().includes('arbitrat');
 
             if (isArbitration) {
 
@@ -5041,8 +5077,6 @@ async function openScheduleModal(hearingId = null, targetStageType = null) {
 
 
 
-            const lastSession = existing[existing.length - 1];
-
             const alreadyHasNext = existing.some(s => Number(s.session_index || 1) === nextIndex || (s.hearing_type || '').includes(nextOrdinal));
 
             if (alreadyHasNext) {
@@ -5058,35 +5092,22 @@ async function openScheduleModal(hearingId = null, targetStageType = null) {
                 return;
 
             }
-
-
-
-            const lastDate = new Date(lastSession.hearing_date);
-
-            const isFuture = !isNaN(lastDate.getTime()) && lastDate.getTime() > Date.now();
-
+            const activeHearingId = stageWorkspaceState.activeSessionHearingId || lastSession?.hearing_id;
+            const liveSelect = getMinutesField('minOutcome', activeHearingId) || 
+                               getMinutesField('minOutcome', lastSession?.hearing_id) || 
+                               document.getElementById(`minOutcome_${activeHearingId}`) || 
+                               document.getElementById('minOutcome');
+            const liveOutcome = (liveSelect?.value || '').toLowerCase();
             const lastOutcome = (lastSession.session_outcome || '').toLowerCase();
-
-            const liveOutcome = (document.getElementById('minOutcome')?.value || '').toLowerCase();
-
+            const isContinueOutcome = liveOutcome.includes('continue') || lastOutcome.includes('continue');
             const isPendingOutcome = (!lastOutcome || lastOutcome === 'pending') && (!liveOutcome || liveOutcome === 'pending');
 
-            const hasNoMinutes = !lastSession.minutes_status || lastSession.minutes_status === 'Not Recorded';
-
-
-
-            if (isFuture || (isPendingOutcome && hasNoMinutes)) {
-
+            if (!isContinueOutcome && isPendingOutcome && lastSession.status !== 'Completed' && lastSession.queue_status !== 'Concluded') {
                 const msg = `Cannot schedule ${nextOrdinal} Conciliation: The ${curOrdinal} Conciliation session is currently ongoing. Please conduct the ${curOrdinal} session and record its outcome/minutes before booking the ${nextOrdinal} session.`;
-
                 if (typeof notifyUser === 'function') notifyUser(msg, 'warning', `${curOrdinal} Conciliation Ongoing`);
-
                 else alert(msg);
-
                 modal.style.display = 'none';
-
                 return;
-
             }
 
         }
@@ -5211,6 +5232,8 @@ async function openScheduleModal(hearingId = null, targetStageType = null) {
     } else if (isConciliation) {
 
         if (presiderGroupEl) presiderGroupEl.style.display = 'none';
+        const typeInput = document.getElementById('schedHearingType');
+        if (typeInput) typeInput.value = 'Conciliation';
 
         const conciliationCount = stageWorkspaceState.sessions ? stageWorkspaceState.sessions.length : 0;
 
@@ -5284,7 +5307,7 @@ async function openScheduleModal(hearingId = null, targetStageType = null) {
 
     // Load statutory window and available slots
 
-    const caseId = stageWorkspaceState.caseId;
+    const caseId = stageWorkspaceState.caseId || document.getElementById('schedCaseId')?.value || '';
 
     const complaintId = document.getElementById('schedComplaintId')?.value || '';
 
@@ -5913,6 +5936,8 @@ async function submitSchedule(e) {
 
         if (existing.length >= 1) {
 
+            const lastSession = existing[existing.length - 1];
+
             const curCount = existing.length;
 
             const nextIndex = curCount + 1;
@@ -5925,7 +5950,7 @@ async function submitSchedule(e) {
 
             const isSettled = existing.some(s => (s.session_outcome || s.outcome || '').toLowerCase().includes('settle')) ||
 
-                              (document.getElementById('minOutcome')?.value || '').toLowerCase().includes('settle');
+                              ((getMinutesField('minOutcome', lastSession?.hearing_id)?.value || document.getElementById('minOutcome')?.value || '')).toLowerCase().includes('settle');
 
             if (isSettled) {
 
@@ -5939,7 +5964,7 @@ async function submitSchedule(e) {
 
             const isArbitration = existing.some(s => (s.session_outcome || s.outcome || '').toLowerCase().includes('arbitrat')) ||
 
-                                  (document.getElementById('minOutcome')?.value || '').toLowerCase().includes('arbitrat');
+                                  ((getMinutesField('minOutcome', lastSession?.hearing_id)?.value || document.getElementById('minOutcome')?.value || '')).toLowerCase().includes('arbitrat');
 
             if (isArbitration) {
 
@@ -5965,8 +5990,6 @@ async function submitSchedule(e) {
 
 
 
-            const lastSession = existing[existing.length - 1];
-
             const alreadyHasNext = existing.some(s => Number(s.session_index || 1) === nextIndex || (s.hearing_type || '').includes(nextOrdinal));
 
             if (alreadyHasNext) {
@@ -5978,31 +6001,20 @@ async function submitSchedule(e) {
                 return;
 
             }
-
-
-
-            const lastDate = new Date(lastSession.hearing_date);
-
-            const isFuture = !isNaN(lastDate.getTime()) && lastDate.getTime() > Date.now();
-
+            const activeHearingId = stageWorkspaceState.activeSessionHearingId || lastSession?.hearing_id;
+            const liveSelect = getMinutesField('minOutcome', activeHearingId) || 
+                               getMinutesField('minOutcome', lastSession?.hearing_id) || 
+                               document.getElementById(`minOutcome_${activeHearingId}`) || 
+                               document.getElementById('minOutcome');
+            const liveOutcome = (liveSelect?.value || '').toLowerCase();
             const lastOutcome = (lastSession.session_outcome || '').toLowerCase();
-
-            const liveOutcome = (document.getElementById('minOutcome')?.value || '').toLowerCase();
-
+            const isContinueOutcome = liveOutcome.includes('continue') || lastOutcome.includes('continue');
             const isPendingOutcome = (!lastOutcome || lastOutcome === 'pending') && (!liveOutcome || liveOutcome === 'pending');
 
-            const hasNoMinutes = !lastSession.minutes_status || lastSession.minutes_status === 'Not Recorded';
-
-
-
-            if (isFuture || (isPendingOutcome && hasNoMinutes)) {
-
+            if (!isContinueOutcome && isPendingOutcome && lastSession.status !== 'Completed' && lastSession.queue_status !== 'Concluded') {
                 notifyUser(`Cannot schedule ${nextOrdinal} Conciliation: The ${curOrdinal} Conciliation session is currently ongoing. Please conduct the ${curOrdinal} session and record its outcome/minutes before booking the ${nextOrdinal} session.`, 'warning');
-
                 if (btn) btn.disabled = false;
-
                 return;
-
             }
 
         }
@@ -6991,6 +7003,39 @@ function renderPartyAbsentOutcomeBanner(bannerEl, caseId, activeHearingId) {
         if (isResp && rad.value === 'Absent') isRespAbsent = true;
     });
 
+    const currentMode = stageWorkspaceState.mode || stageWorkspaceState.stageType;
+    if (currentMode === 'Conciliation') {
+        if (isCompAbsent && isRespAbsent) {
+            bannerEl.innerHTML = `
+                <div style="background: #fef2f2; border: 1.5px solid #fca5a5; border-radius: 8px; padding: 14px 18px;">
+                    <strong style="color: #991b1b; font-size: 0.95rem; display: block;">Magkabilang Panig Hindi Dumalo (Mutual Non-Appearance)</strong>
+                    <p style="margin: 4px 0 0; font-size: 0.84rem; color: #7f1d1d;">
+                        Parehong hindi sumipot ang Nagrereklamo at Inirereklamo sa itinakdang sesyon ng conciliation.
+                    </p>
+                </div>
+            `;
+        } else if (isRespAbsent) {
+            bannerEl.innerHTML = `
+                <div style="background: #fef2f2; border: 1.5px solid #fca5a5; border-radius: 8px; padding: 14px 18px;">
+                    <strong style="color: #991b1b; font-size: 0.95rem; display: block;">Inirereklamo Hindi Dumalo (Respondent Non-Appearance)</strong>
+                    <div style="font-size: 0.84rem; color: #7f1d1d; margin-top: 3px;">
+                        Hindi sumipot ang inirereklamo sa itinakdang pagdinig sa conciliation.
+                    </div>
+                </div>
+            `;
+        } else {
+            bannerEl.innerHTML = `
+                <div style="background: #fef2f2; border: 1.5px solid #fca5a5; border-radius: 8px; padding: 14px 18px;">
+                    <strong style="color: #991b1b; font-size: 0.95rem; display: block;">Nagrereklamo Hindi Dumalo (Complainant Non-Appearance)</strong>
+                    <div style="font-size: 0.84rem; color: #7f1d1d; margin-top: 3px;">
+                        Hindi sumipot ang nagrereklamo sa itinakdang pagdinig sa conciliation.
+                    </div>
+                </div>
+            `;
+        }
+        return;
+    }
+
     if (isCompAbsent && isRespAbsent) {
         bannerEl.innerHTML = `
             <div style="background: #fef2f2; border: 1.5px solid #fca5a5; border-radius: 8px; padding: 14px 18px;">
@@ -7156,6 +7201,19 @@ async function initInlineMediationScheduler(hearingId) {
 
     if (!dateInput || !gridEl) return;
 
+    const activeSession = (stageWorkspaceState.sessions || []).find(s => Number(s.hearing_id) === Number(hearingId));
+    const curHearingDate = (activeSession?.hearing_date || '').substring(0, 10);
+
+    if (curHearingDate) {
+        // Minimum date for 2nd mediation must be strictly after the current session date
+        const curD = new Date(curHearingDate + 'T00:00:00');
+        curD.setDate(curD.getDate() + 1);
+        const y = curD.getFullYear();
+        const m = String(curD.getMonth() + 1).padStart(2, '0');
+        const d = String(curD.getDate()).padStart(2, '0');
+        dateInput.min = `${y}-${m}-${d}`;
+    }
+
     try {
         const res = await fetch(getStageApiUrl(`summons/check-schedule.php?case_id=${encodeURIComponent(caseId)}&complaint_id=${encodeURIComponent(complaintId)}&hearing_type=Mediation&get_window=1`));
         const json = await res.json();
@@ -7164,16 +7222,17 @@ async function initInlineMediationScheduler(hearingId) {
             const allowedNums = window.AGAP_SETTINGS?.mediation_day_numbers || [2];
             const allowedDays = window.AGAP_SETTINGS?.mediation_days || ['Tue'];
 
-            // Find first available Tuesday that is not past and not fully booked
+            // Find first available mediation day that is strictly AFTER the current hearing date and not fully booked
             const firstOpen = Object.values(json.window.daily_slots).find(d => {
                 const parts = d.date.split('-');
                 const dt = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
                 const isMedDay = allowedNums.includes(dt.getDay()) || allowedDays.includes(d.day_name);
-                return isMedDay && !d.is_past && !d.is_fully_booked;
+                const isAfterCurrent = !curHearingDate || (d.date > curHearingDate);
+                return isMedDay && !d.is_past && !d.is_fully_booked && isAfterCurrent;
             });
 
-            const initialDate = firstOpen ? firstOpen.date : Object.keys(json.window.daily_slots)[0];
-            if (initialDate && !dateInput.value) {
+            const initialDate = firstOpen ? firstOpen.date : Object.keys(json.window.daily_slots).find(d => !curHearingDate || d > curHearingDate);
+            if (initialDate && (!dateInput.value || (curHearingDate && dateInput.value <= curHearingDate))) {
                 dateInput.value = initialDate;
             }
 
@@ -7191,6 +7250,9 @@ function renderInlineSchedVisualDays(hearingId, windowMeta, selectedDate) {
     const noticeEl = document.getElementById(`minInlineSchedDateStatusNotice_${hearingId}`);
     if (!gridEl || !windowMeta?.daily_slots) return;
 
+    const activeSession = (stageWorkspaceState.sessions || []).find(s => Number(s.hearing_id) === Number(hearingId));
+    const curHearingDate = (activeSession?.hearing_date || '').substring(0, 10);
+
     const allDays = Object.values(windowMeta.daily_slots);
     const allowedNums = window.AGAP_SETTINGS?.mediation_day_numbers || [2];
     const allowedDays = window.AGAP_SETTINGS?.mediation_days || ['Tue'];
@@ -7207,6 +7269,7 @@ function renderInlineSchedVisualDays(hearingId, windowMeta, selectedDate) {
 
     gridEl.innerHTML = days.slice(0, 8).map(d => {
         const isSelected = (d.date === selectedDate);
+        const isCurrentOrPrior = curHearingDate && (d.date <= curHearingDate);
         let badgeText = `${d.available} open`;
         let badgeBg = '#dcfce7';
         let badgeColor = '#15803d';
@@ -7214,7 +7277,16 @@ function renderInlineSchedVisualDays(hearingId, windowMeta, selectedDate) {
         let disabledAttr = '';
         let tooltip = `${d.date}: ${d.available} of ${d.max || 8} slots available.`;
 
-        if (d.is_fully_booked || (d.max > 0 && d.available <= 0)) {
+        if (isCurrentOrPrior) {
+            badgeText = (d.date === curHearingDate) ? 'Current Day' : 'Prior Date';
+            badgeBg = '#f1f5f9';
+            badgeColor = '#64748b';
+            cardStyle = 'border: 1px dashed #cbd5e1; background: #f8fafc; color: #94a3b8; cursor: not-allowed; opacity: 0.6;';
+            disabledAttr = 'disabled';
+            tooltip = (d.date === curHearingDate)
+                ? `${d.date}: Current session date. 2nd mediation must be scheduled on a future date.`
+                : `${d.date}: Prior date. Cannot schedule on or before current session date.`;
+        } else if (d.is_fully_booked || (d.max > 0 && d.available <= 0)) {
             badgeText = `${d.max || 8}/${d.max || 8} Full`;
             badgeBg = '#fee2e2';
             badgeColor = '#b91c1c';
@@ -7250,9 +7322,13 @@ function renderInlineSchedVisualDays(hearingId, windowMeta, selectedDate) {
     if (noticeEl) {
         if (selectedDate && windowMeta.daily_slots[selectedDate]) {
             const sd = windowMeta.daily_slots[selectedDate];
-            noticeEl.innerHTML = sd.is_fully_booked || sd.available <= 0
-                ? `<span style="color: #dc2626; font-weight: 600;">Selected date is fully booked (${sd.max || 8} of ${sd.max || 8} slots).</span>`
-                : `<span style="color: #1e40af; font-weight: 600;">Date selected (${escapeHtml(selectedDate)}): ${sd.available} slot${sd.available === 1 ? '' : 's'} remaining.</span>`;
+            if (curHearingDate && selectedDate <= curHearingDate) {
+                noticeEl.innerHTML = `<span style="color: #dc2626; font-weight: 600;">Cannot schedule 2nd mediation on or before current session date (${escapeHtml(curHearingDate)}). Please select a subsequent date.</span>`;
+            } else if (sd.is_fully_booked || sd.available <= 0) {
+                noticeEl.innerHTML = `<span style="color: #dc2626; font-weight: 600;">Selected date is fully booked (${sd.max || 8} of ${sd.max || 8} slots).</span>`;
+            } else {
+                noticeEl.innerHTML = `<span style="color: #1e40af; font-weight: 600;">Date selected (${escapeHtml(selectedDate)}): ${sd.available} slot${sd.available === 1 ? '' : 's'} remaining.</span>`;
+            }
         } else {
             noticeEl.innerHTML = '<span style="color: #64748b;">Click an available Tuesday above to select date.</span>';
         }

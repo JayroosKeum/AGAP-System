@@ -3992,11 +3992,8 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
     {
         $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
         $bagongPath = __DIR__ . '/../../frontend/assets/images/bagong_pilipinas_logo.png';
-        $signaturePath = __DIR__ . '/../../frontend/assets/images/captain_signature.png';
-
         $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
         $bagongLogo = file_exists($bagongPath) ? 'data:image/png;base64,' . base64_encode(file_get_contents($bagongPath)) : '';
-        $captainSignature = file_exists($signaturePath) ? 'data:image/png;base64,' . base64_encode(file_get_contents($signaturePath)) : '';
 
         $case = $data['case'] ?? [];
         $transmittal = $data['transmittal'] ?? [];
@@ -4218,7 +4215,7 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
     <!-- Sign-off -->
     <div class="signoff-block">
         <div class="sincerely-line">Sincerely,</div>
-        ' . (!empty($captainSignature) ? '<div class="sig-space"><img src="' . $captainSignature . '" class="sig-img" alt="Signature"></div>' : '<div style="height: 38px;"></div>') . '
+        <div class="sig-space"></div>
         <div class="pb-name">' . $pbName . '</div>
         <div class="pb-title">Punong Barangay</div>
     </div>
@@ -4366,11 +4363,9 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
 
         $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
         $bagongPath = __DIR__ . '/../../frontend/assets/images/bagong_pilipinas_logo.png';
-        $signaturePath = __DIR__ . '/../../frontend/assets/images/captain_signature.png';
-
         $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
         $bagongLogo = file_exists($bagongPath) ? 'data:image/png;base64,' . base64_encode(file_get_contents($bagongPath)) : '';
-        $sigLogo = file_exists($signaturePath) ? 'data:image/png;base64,' . base64_encode(file_get_contents($signaturePath)) : '';
+        $sigLogo = '';
 
         $compNames = array_column($complainants, 'full_name');
         $respNames = array_column($respondents, 'full_name');
@@ -4486,7 +4481,7 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
                         <div class="sig-role">Tagapagtala / Lupon Clerk</div>
                     </td>
                     <td>
-                        <div style="position: relative; display: inline-block; width: 100%;">' . ($sigLogo ? '<img src="' . $sigLogo . '" style="position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); width: 110px; height: auto;" alt="Signature">' : '') . '</div>
+                        <div style="height: 35px;"></div>
                         <div class="sig-line">HON. AKIKO LYNNE CENTENO</div>
                         <div class="sig-role">Punong Barangay</div>
                     </td>
@@ -4606,11 +4601,9 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
     {
         $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
         $bagongPath = __DIR__ . '/../../frontend/assets/images/bagong_pilipinas_logo.png';
-        $signaturePath = __DIR__ . '/../../frontend/assets/images/captain_signature.png';
-
         $tumanaLogo = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
         $bagongLogo = file_exists($bagongPath) ? 'data:image/png;base64,' . base64_encode(file_get_contents($bagongPath)) : '';
-        $sigLogo = file_exists($signaturePath) ? 'data:image/png;base64,' . base64_encode(file_get_contents($signaturePath)) : '';
+        $sigLogo = '';
 
         $complainants = $data['complainants'] ?? [];
         $respondents = $data['respondents'] ?? [];
@@ -4664,9 +4657,7 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
         $attemptNumber = (int)($data['attempt_number'] ?? 1);
         $docTitleText = ($attemptNumber === 2) ? 'I K A L A W A N G   P A A N Y A Y A' : 'P A A N Y A Y A';
 
-        $signatureHtml = ($hasESignature && $sigLogo !== '')
-            ? '<img src="' . $sigLogo . '" class="sig-img" alt="Hon. Akiko Lynne Centeno">'
-            : '';
+        $signatureHtml = '';
 
         $cssStyles = $forPdf ? '
         @page { size: A4 portrait; margin: 15mm 18mm 15mm 18mm; }
