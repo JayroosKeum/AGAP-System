@@ -1596,15 +1596,11 @@ function renderOfficialKpForms(workspace, complaint) {
                         <div class="kp-form-meta-text">
                             <span>Dialogue: ${escapeHtml(pDate)} ${escapeHtml(pTime)}</span>
                             <span>&bull; Status: ${escapeHtml(pStatus)}</span>
-                            ${p1Officer ? `<span>&bull; Officer: <strong>${escapeHtml(p1Officer)}</strong></span>` : ''}
-                            ${stg1Count > 0 ? `<span>&bull; Attempt: ${stg1Count} of 6</span>` : ''}
+                            ${stg1Details.invitee_name ? `<span>&bull; Invitee: <strong>${escapeHtml(stg1Details.invitee_name)}</strong></span>` : ''}
                         </div>
                     </div>
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                    <button type="button" class="btn-small-link" onclick="openRecordReturnModal('Paanyaya 1')" style="color: #2563eb; border-color: #bfdbfe; font-weight: 600;" title="Record Officer's Return for Paanyaya 1">
-                        Record / Return
-                    </button>
                     ${stg1Latest?.proof_file_path ? `
                         <a href="../../../${escapeHtml(stg1Latest.proof_file_path)}" target="_blank" class="btn-small-link" style="color: #16a34a; border-color: #bbf7d0; text-decoration: none;" title="View uploaded proof / receipt">
                             View Proof
@@ -1659,15 +1655,11 @@ function renderOfficialKpForms(workspace, complaint) {
                         </div>
                         <div class="kp-form-meta-text">
                             <span>Date: ${escapeHtml(p2Date)}</span>
-                            ${p2Officer ? `<span>&bull; Officer: <strong>${escapeHtml(p2Officer)}</strong></span>` : ''}
-                            ${stg2Count > 0 ? `<span>&bull; Attempt: ${stg2Count} of 6</span>` : ''}
+                            ${stg2Details.invitee_name ? `<span>&bull; Invitee: <strong>${escapeHtml(stg2Details.invitee_name)}</strong></span>` : ''}
                         </div>
                     </div>
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                    <button type="button" class="btn-small-link" onclick="openRecordReturnModal('Paanyaya 2')" style="color: #2563eb; border-color: #bfdbfe; font-weight: 600;" title="Record Officer's Return for Paanyaya 2">
-                        Record / Return
-                    </button>
                     ${stg2Latest?.proof_file_path ? `
                         <a href="../../../${escapeHtml(stg2Latest.proof_file_path)}" target="_blank" class="btn-small-link" style="color: #16a34a; border-color: #bbf7d0; text-decoration: none;" title="View uploaded proof / receipt">
                             View Proof
@@ -2531,21 +2523,11 @@ function renderPaanyayaStageCard(stageNum, stageData, caseNum, compNames, respNa
             statusBadge.style.display = 'inline-block';
             statusBadge.style.background = '#dcfce7';
             statusBadge.style.color = '#15803d';
-        } else if (stageData?.is_delivered || details.status === 'Successfully Delivered' || latest?.delivery_outcome === 'Successfully delivered') {
-            statusBadge.textContent = 'Successfully Delivered';
+        } else if (details.status && details.status !== 'Not Started') {
+            statusBadge.textContent = 'Scheduled';
             statusBadge.style.display = 'inline-block';
             statusBadge.style.background = '#dcfce7';
             statusBadge.style.color = '#15803d';
-        } else if (stageData?.is_exhausted) {
-            statusBadge.textContent = 'Attempts Exhausted';
-            statusBadge.style.display = 'inline-block';
-            statusBadge.style.background = '#fee2e2';
-            statusBadge.style.color = '#991b1b';
-        } else if (details.status && details.status !== 'Not Started') {
-            statusBadge.textContent = `Pending Service (${count} attempt${count === 1 ? '' : 's'})`;
-            statusBadge.style.display = 'inline-block';
-            statusBadge.style.background = '#fef3c7';
-            statusBadge.style.color = '#92400e';
         } else {
             statusBadge.textContent = isP2 ? 'Locked' : 'Not Started';
             statusBadge.style.display = 'inline-block';
@@ -2559,12 +2541,11 @@ function renderPaanyayaStageCard(stageNum, stageData, caseNum, compNames, respNa
         if (details.status && details.status !== 'Not Started') {
             const dateStr = details.invitation_date ? formatDateReadable(details.invitation_date) : 'Scheduled';
             const timeStr = details.invitation_time ? formatTime12(details.invitation_time) : '';
-            const officerStr = details.assigned_officer_name || (latest?.serving_officer_name) || '';
+            const inviteeStr = details.invitee_name || window.complaintData?.respondent_name || window.complaintData?.respondent || '';
             schedMeta.innerHTML = `
                 <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; margin: 10px 0 12px; font-size: 0.82rem;">
                     <div><strong>Takdang Pag-uusap:</strong> ${escapeHtml(dateStr)}${timeStr ? ` at ${escapeHtml(timeStr)}` : ''} &bull; ${escapeHtml(details.venue || 'Tanggapan ng Barangay Tumana')}</div>
-                    ${officerStr ? `<div style="margin-top: 3px;"><strong>Nakatakdang Tagapaghatid:</strong> ${escapeHtml(officerStr)}</div>` : ''}
-                    ${latest ? `<div style="margin-top: 4px; padding-top: 4px; border-top: 1px dashed #e2e8f0; color: ${stageData?.is_delivered ? '#166534' : '#b45309'}; font-weight: 600;">Huling Return: Attempt #${latest.attempt_number} &bull; ${escapeHtml(latest.delivery_outcome)} (${formatDateTimeReadable(latest.service_datetime || latest.created_at)})</div>` : ''}
+                    ${inviteeStr ? `<div style="margin-top: 3px;"><strong>Inaanyayahan:</strong> ${escapeHtml(inviteeStr)}</div>` : ''}
                 </div>
             `;
             schedMeta.style.display = 'block';
@@ -2587,10 +2568,8 @@ function renderPaanyayaStageCard(stageNum, stageData, caseNum, compNames, respNa
 
     const isDelivered = Boolean(
         stageData?.is_delivered || 
-        (details.status === 'Successfully Delivered') || 
-        (latest?.delivery_outcome === 'Successfully delivered') ||
-        String(details?.status || '').toLowerCase().includes('delivered') ||
-        String(latest?.delivery_outcome || '').toLowerCase().includes('delivered')
+        (details.status && details.status !== 'Not Started') ||
+        details.issued_at !== null
     );
     const p2Started = isP2 ? false : Boolean(window.paanyayaStagesData?.stage_2?.details?.status && window.paanyayaStagesData?.stage_2?.details?.status !== 'Not Started');
     const hasMinutes = Boolean(stageData?.minutes_recorded && stageData?.minutes);
@@ -2603,15 +2582,13 @@ function renderPaanyayaStageCard(stageNum, stageData, caseNum, compNames, respNa
         btnIssue.style.cursor = '';
     }
     if (btnRecordReturn) {
-        const isIssued = Boolean(details.status && details.status !== 'Not Started');
-        const canRecordReturn = isIssued && !isDelivered && !stageData?.is_exhausted && !hasMinutes && !isMediationGraduatedStage;
-        btnRecordReturn.style.display = canRecordReturn ? 'inline-flex' : 'none';
+        btnRecordReturn.style.display = 'none'; // Officer's Return removed from Paanyaya
     }
     if (btnPreview) {
         btnPreview.style.display = (details.status && details.status !== 'Not Started') ? 'inline-flex' : 'none';
     }
     if (btnReview) {
-        btnReview.style.display = (stageData?.needs_review && !isMediationGraduatedStage) ? 'inline-flex' : 'none';
+        btnReview.style.display = 'none'; // Officer's Return review removed
     }
     if (btnViewMinutes) {
         btnViewMinutes.style.display = hasMinutes ? 'inline-flex' : 'none';
@@ -7009,9 +6986,12 @@ window.openPaanyayaScheduleModal = function() {
     const dateInput = document.getElementById('modalPaanyayaDate');
     const timeInput = document.getElementById('modalPaanyayaTime');
     const venueInput = document.getElementById('modalPaanyayaVenue');
-    const salaysayInput = document.getElementById('modalPaanyayaSalaysay');
+    const inviteeInput = document.getElementById('modalPaanyayaInvitee');
     const sigInput = document.getElementById('modalPaanyayaHasSig');
 
+    if (inviteeInput) {
+        inviteeInput.value = p.invitee_name || window.complaintData?.respondent_name || window.complaintData?.respondent || '';
+    }
     if (dateInput) {
         dateInput.value = p.invitation_date || new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
     }
@@ -7020,9 +7000,6 @@ window.openPaanyayaScheduleModal = function() {
     }
     if (venueInput) {
         venueInput.value = p.venue || 'Tanggapan ng Barangay Tumana';
-    }
-    if (salaysayInput) {
-        salaysayInput.value = p.salaysay || window.complaintData?.narrative || '';
     }
     if (sigInput) {
         sigInput.value = '1';
@@ -7047,13 +7024,14 @@ window.submitSchedulePaanyaya = async function(event) {
     const errBox = document.getElementById('paanyayaScheduleError');
 
     const formData = new FormData(form);
+    const sigInputEl = form.querySelector('input[name="has_e_signature"]');
     const payload = {
         complaint_id: formData.get('complaint_id'),
+        invitee_name: formData.get('invitee_name'),
         invitation_date: formData.get('invitation_date'),
         invitation_time: formData.get('invitation_time'),
         venue: formData.get('venue'),
-        salaysay: formData.get('salaysay'),
-        has_e_signature: form.querySelector('input[name="has_e_signature"]').checked ? 1 : 0
+        has_e_signature: sigInputEl ? (sigInputEl.type === 'checkbox' ? (sigInputEl.checked ? 1 : 0) : 1) : 1
     };
 
     try {
@@ -7572,7 +7550,7 @@ window.openIssuePaanyayaModal = function(stageType) {
     const dateInput = document.getElementById('issueStageDate');
     const timeInput = document.getElementById('issueStageTime');
     const venueInput = document.getElementById('issueStageVenue');
-    const salaysayInput = document.getElementById('issueStageSalaysay');
+    const inviteeInput = document.getElementById('issueStageInvitee');
     const errBox = document.getElementById('issueStageError');
 
     if (inputType) inputType.value = stageType;
@@ -7594,18 +7572,8 @@ window.openIssuePaanyayaModal = function(stageType) {
     }
     if (timeInput) timeInput.value = '14:00';
     if (venueInput) venueInput.value = 'Tanggapan ng Barangay Tumana';
-    if (salaysayInput) salaysayInput.value = window.complaintData?.narrative || '';
+    if (inviteeInput) inviteeInput.value = window.complaintData?.respondent_name || window.complaintData?.respondent || '';
     if (errBox) errBox.style.display = 'none';
-
-    const officerSelect = document.getElementById('issueStageOfficer');
-    if (officerSelect) {
-        if (officerSelect.options.length <= 1 && window.paanyayaStagesData?.serving_officers) {
-            populatePaanyayaOfficersSelect(window.paanyayaStagesData.serving_officers);
-        }
-        if (!officerSelect.value && officerSelect.options.length > 1) {
-            officerSelect.selectedIndex = 1;
-        }
-    }
 
     modal.style.display = 'flex';
 };
@@ -7628,11 +7596,10 @@ window.submitIssuePaanyayaStage = async function(event) {
     const payload = {
         complaint_id: parseInt(formData.get('complaint_id'), 10),
         stage_type: formData.get('stage_type'),
+        invitee_name: formData.get('invitee_name'),
         invitation_date: formData.get('invitation_date'),
         invitation_time: formData.get('invitation_time'),
-        assigned_officer_id: formData.get('assigned_officer_id') ? parseInt(formData.get('assigned_officer_id'), 10) : null,
         venue: formData.get('venue'),
-        salaysay: formData.get('salaysay'),
         has_e_signature: hasSig
     };
 
@@ -8219,9 +8186,6 @@ window.proceedToOfficersReturnFromPreview = function() {
     if (typeof closePaanyayaPreviewModal === 'function') {
         closePaanyayaPreviewModal();
     }
-    const params = new URLSearchParams(window.location.search);
-    const complaintId = params.get('id') || params.get('complaint_id') || window.complaintData?.complaint_id;
-    window.location.href = `../gps/proof-service.php?complaint_id=${encodeURIComponent(complaintId)}&stage=Paanyaya+1&open_return=1`;
 };
 
 // ===================================================================

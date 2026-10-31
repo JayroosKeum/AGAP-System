@@ -11,8 +11,8 @@ echo "Testing Paanyaya flow...\n";
 $db = (new Database())->connect();
 $cleanup = new TestDataCleanup($db);
 
-// Ensure we have 2 residents
-$res = $db->query("SELECT resident_id FROM residents LIMIT 2")->fetchAll(PDO::FETCH_COLUMN);
+// Ensure we have 2 Tumana residents
+$res = $db->query("SELECT resident_id FROM residents WHERE barangay = 'Tumana' ORDER BY resident_id ASC LIMIT 2")->fetchAll(PDO::FETCH_COLUMN);
 $c_res = (int) ($res[0] ?? 1);
 $r_res = (int) ($res[1] ?? 2);
 
@@ -44,20 +44,21 @@ if (empty($createRes['success']) || $cid <= 0) {
 }
 echo "Complaint created: ID {$cid}\n";
 
-// 2. Schedule Paanyaya
+// 2. Schedule independent Paanyaya (tracking only Name, Date, Time)
 $paanyayaModel = new Paanyaya();
 $scheduleRes = $paanyayaModel->schedule([
     'complaint_id' => $cid,
-    'invitation_date' => '2026-10-22',
-    'invitation_time' => '14:00',
+    'invitee_name' => 'Ferlei Flormata',
+    'scheduled_date' => '2026-10-22',
+    'scheduled_time' => '14:00',
     'venue' => 'Lupon Court Room',
     'has_e_signature' => 1,
-    'salaysay' => 'PAG-AAYOS SA HINDI PAGKAKAUNAWAAN HINGGIL SA BAKOD',
     'remarks' => 'Pre-docketing dialogue'
 ], 1);
 echo "Paanyaya scheduled: " . json_encode($scheduleRes) . "\n";
-$paanyayaId = (int)($scheduleRes['session_id'] ?? 0);
-if (empty($scheduleRes['success']) || $paanyayaId <= 0) {
+$sessionId = (int)($scheduleRes['session_id'] ?? 0);
+$paanyayaId = (int)($scheduleRes['paanyaya_id'] ?? 0);
+if (empty($scheduleRes['success']) || $sessionId <= 0 || $paanyayaId <= 0) {
     throw new RuntimeException('Paanyaya scheduling failed: ' . ($scheduleRes['message'] ?? 'Unknown error'));
 }
 
@@ -75,20 +76,28 @@ echo "PDF generated at: {$pdfPath} (File size: " . (file_exists($pdfPath) ? file
 $html = $pdfService->renderPaanyayaHtml($cid);
 $hasTumana = strpos($html, 'BARANGAY TUMANA') !== false;
 $hasSignature = strpos($html, 'AKIKO LYNNE CENTENO') !== false;
-$hasSalaysay = strpos($html, 'PAG-AAYOS SA HINDI PAGKAKAUNAWAAN HINGGIL SA BAKOD') !== false;
-echo "HTML Verification -> Tumana: " . ($hasTumana ? 'YES' : 'NO') . ", Signature: " . ($hasSignature ? 'YES' : 'NO') . ", Salaysay: " . ($hasSalaysay ? 'YES' : 'NO') . "\n";
+$hasInvitee = strpos($html, 'Ferlei Flormata') !== false;
+echo "HTML Verification -> Tumana: " . ($hasTumana ? 'YES' : 'NO') . ", Signature: " . ($hasSignature ? 'YES' : 'NO') . ", Invitee: " . ($hasInvitee ? 'YES' : 'NO') . "\n";
 
 // 3B. Test Outcome 1: Resolved Informally
-$resolvedResult = $paanyayaModel->recordOutcome($paanyayaId, 'Resolved', 'Parties met and shook hands informally.', 1);
+$resolvedResult = $paanyayaModel->recordOutcome($sessionId, 'Resolved', 'Parties met and shook hands informally.', 1);
 echo "Resolved Outcome result: " . json_encode($resolvedResult['success'] ?? false) . "\n";
 if (empty($resolvedResult['success'])) {
     throw new RuntimeException('Paanyaya settlement failed: ' . ($resolvedResult['message'] ?? 'Unknown error'));
 }
 $compResolved = $complaintModel->getById($cid);
-echo "Complaint status after resolution: {$compResolved['status']} (Expected: Resolved at Paanyaya / Closed)\n";
+echo "Complaint status after resolution: {$compResolved['status']} (Expected: Settled)\n";
 if (($compResolved['status'] ?? '') !== 'Settled') {
     throw new RuntimeException('Expected settled Paanyaya status, got: ' . ($compResolved['status'] ?? 'missing'));
 }
+
+// 4. Verify independent Paanyaya record
+$paaRecord = $paanyayaModel->getPaanyayaById($paanyayaId);
+echo "Independent Paanyaya Entity Status: {$paaRecord['status']} (Expected: Resolved)\n";
+if (($paaRecord['status'] ?? '') !== 'Resolved') {
+    throw new RuntimeException('Expected independent Paanyaya entity status Resolved, got: ' . ($paaRecord['status'] ?? 'missing'));
+}
+echo "Independent Paanyaya Invitee: {$paaRecord['invitee_name']} (Expected: Ferlei Flormata)\n";
 
 if (file_exists($testPdfFile)) @unlink($testPdfFile);
 

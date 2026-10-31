@@ -283,15 +283,39 @@ CREATE TABLE paanyaya_sessions (
     CONSTRAINT fk_paanyaya_sessions_user FOREIGN KEY (scheduled_by) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
--- Legacy compatibility record used alongside the newer paanyaya_stages flow.
+-- =====================================================
+-- PAANYAYA ENTITY (Independent Workflow)
+-- =====================================================
+-- Independent entity containing only Invitee Name, Scheduled Date, Scheduled Time, and status.
+-- References Mediation/Complaint record without duplicating complaint details.
+CREATE TABLE IF NOT EXISTS paanyayas (
+    paanyaya_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    complaint_id INT UNSIGNED NULL,
+    invitee_name VARCHAR(255) NOT NULL,
+    scheduled_date DATE NOT NULL,
+    scheduled_time TIME NOT NULL,
+    status ENUM('Scheduled', 'Completed', 'Cancelled', 'Resolved', 'Unresolved') NOT NULL DEFAULT 'Scheduled',
+    venue VARCHAR(255) NOT NULL DEFAULT 'Tanggapan ng Barangay Tumana',
+    pdf_path VARCHAR(255) NULL,
+    scheduled_by INT UNSIGNED NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_paanyayas_complaint (complaint_id),
+    KEY idx_paanyayas_status (status),
+    KEY idx_paanyayas_date (scheduled_date),
+    CONSTRAINT fk_paanyayas_complaint FOREIGN KEY (complaint_id) REFERENCES complaints (complaint_id) ON DELETE SET NULL,
+    CONSTRAINT fk_paanyayas_scheduled_by FOREIGN KEY (scheduled_by) REFERENCES users (user_id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Legacy compatibility record used alongside the newer paanyayas flow.
 CREATE TABLE complaint_paanyaya (
     paanyaya_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     complaint_id INT UNSIGNED NOT NULL,
+    invitee_name VARCHAR(255) NULL,
     invitation_date DATE NOT NULL,
     invitation_time TIME NOT NULL,
     venue VARCHAR(255) NOT NULL DEFAULT 'Tanggapan ng Barangay Tumana',
     hearing_day VARCHAR(50) NULL,
-    salaysay TEXT NULL,
     status ENUM('Scheduled', 'Resolved', 'Failed', 'Escalated') NOT NULL DEFAULT 'Scheduled',
     resolution_notes TEXT NULL,
     pdf_path VARCHAR(255) NULL,
@@ -307,21 +331,17 @@ CREATE TABLE complaint_paanyaya (
     CONSTRAINT fk_paanyaya_complaint FOREIGN KEY (complaint_id) REFERENCES complaints (complaint_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
--- Migration: 20261020_001_create_paanyaya_stages_and_returns.sql
--- Description: Create dedicated tables for Paanyaya 1 & Paanyaya 2 preliminary stages with independent Officer's Return tracking (up to 6 attempts each)
-
 CREATE TABLE IF NOT EXISTS paanyaya_stages (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     complaint_id INT UNSIGNED NOT NULL,
     stage_type ENUM('Paanyaya 1', 'Paanyaya 2') NOT NULL,
-    status ENUM('Not Started', 'In Progress', 'Successfully Delivered', 'Attempts Exhausted – For Review', 'Completed', 'Cancelled') NOT NULL DEFAULT 'Not Started',
+    invitee_name VARCHAR(255) NULL,
+    status ENUM('Not Started', 'In Progress', 'Completed', 'Cancelled') NOT NULL DEFAULT 'Not Started',
     issued_at DATETIME NULL,
     issued_by INT UNSIGNED NULL,
-    assigned_officer_id INT UNSIGNED NULL,
     invitation_date DATE NULL,
     invitation_time TIME NULL,
     venue VARCHAR(255) NOT NULL DEFAULT 'Tanggapan ng Barangay Tumana',
-    salaysay TEXT NULL,
     has_e_signature TINYINT(1) NOT NULL DEFAULT 1,
     pdf_path VARCHAR(255) NULL,
     review_status ENUM('None', 'Pending Review', 'Approved for Paanyaya 2', 'Approved for Summons', 'Case Closed') NOT NULL DEFAULT 'None',
@@ -332,53 +352,10 @@ CREATE TABLE IF NOT EXISTS paanyaya_stages (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_complaint_stage (complaint_id, stage_type),
     KEY idx_paanyaya_stage_status (status),
-    KEY idx_paanyaya_stage_assigned (assigned_officer_id),
     CONSTRAINT fk_paanyaya_stage_complaint FOREIGN KEY (complaint_id) REFERENCES complaints (complaint_id) ON DELETE CASCADE,
     CONSTRAINT fk_paanyaya_stage_issued_by FOREIGN KEY (issued_by) REFERENCES users (user_id) ON DELETE SET NULL,
-    CONSTRAINT fk_paanyaya_stage_assigned FOREIGN KEY (assigned_officer_id) REFERENCES users (user_id) ON DELETE SET NULL,
     CONSTRAINT fk_paanyaya_stage_reviewed_by FOREIGN KEY (reviewed_by) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS paanyaya_officer_returns (
-    return_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    paanyaya_stage_id INT UNSIGNED NOT NULL,
-    complaint_id INT UNSIGNED NOT NULL,
-    stage_type ENUM('Paanyaya 1', 'Paanyaya 2') NOT NULL,
-    attempt_number TINYINT UNSIGNED NOT NULL,
-    service_datetime DATETIME NOT NULL,
-    serving_officer_id INT UNSIGNED NOT NULL,
-    recipient_name VARCHAR(255) NOT NULL,
-    service_address TEXT NOT NULL,
-    delivery_outcome ENUM(
-        'Successfully delivered',
-        'Recipient unavailable',
-        'Recipient refused to receive',
-        'Respondent not found at the address',
-        'Incorrect or incomplete address',
-        'Other reason'
-    ) NOT NULL,
-    unsuccessful_reason VARCHAR(255) NULL,
-    remarks TEXT NULL,
-    proof_file_path VARCHAR(500) NULL,
-    latitude DECIMAL(10, 8) NULL,
-    longitude DECIMAL(11, 8) NULL,
-    service_location VARCHAR(255) NULL,
-    recorded_by INT UNSIGNED NOT NULL,
-    submitted_at DATETIME NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uq_stage_attempt (paanyaya_stage_id, attempt_number),
-    KEY idx_por_complaint_stage (complaint_id, stage_type),
-    KEY idx_por_officer (serving_officer_id),
-    KEY idx_por_outcome (delivery_outcome),
-    KEY idx_paanyaya_return_coords (latitude, longitude),
-    CONSTRAINT fk_por_stage FOREIGN KEY (paanyaya_stage_id) REFERENCES paanyaya_stages (id) ON DELETE CASCADE,
-    CONSTRAINT fk_por_complaint FOREIGN KEY (complaint_id) REFERENCES complaints (complaint_id) ON DELETE CASCADE,
-    CONSTRAINT fk_por_officer FOREIGN KEY (serving_officer_id) REFERENCES users (user_id) ON DELETE RESTRICT,
-    CONSTRAINT fk_por_recorded_by FOREIGN KEY (recorded_by) REFERENCES users (user_id) ON DELETE RESTRICT
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- Migration: 20261020_002_create_paanyaya_minutes_table.sql
 CREATE TABLE IF NOT EXISTS paanyaya_minutes (
     minutes_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     complaint_id INT UNSIGNED NOT NULL,

@@ -227,3 +227,15 @@ For existing databases updating to support complaint dismissal upon complainant 
 
 
 
+
+## Separation of Paanyaya and Mediation Entities & Officer's Return Removal (October 2026)
+
+For databases implementing clean separation between informal pre-docketing Paanyaya invitations and formal Mediation proceedings:
+- `database/migrations/20261031_001_separate_paanyaya_and_mediation.sql` & `20261031_002_clean_paanyaya_stages_officer_and_status.sql`:
+  - **`paanyayas` Table (NEW Canonical Entity)**:
+    - Stores strictly: `paanyaya_id`, `complaint_id`, `invitee_name`, `scheduled_date`, `scheduled_time`, `venue`, `status` (`'Scheduled'`, `'Completed'`, `'Cancelled'`, `'Resolved'`, `'Unresolved'`), `scheduled_by`, and timestamps.
+    - No complaint narrative or salaysay duplicated; mediation records handle dispute specifics.
+  - **Removal of Officer's Return from Paanyaya**:
+    - Dropped table `paanyaya_officer_returns`. Officer's Return / proof of service belongs exclusively to formal summonses and hearings in Mediation/Conciliation/Arbitration.
+    - Removed `assigned_officer_id` and delivery tracking statuses from `paanyaya_stages`.
+    - Removed `salaysay` column from `complaint_paanyaya`, `paanyaya_stages`, and `paanyaya_sessions`.

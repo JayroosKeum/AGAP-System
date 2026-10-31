@@ -27,8 +27,8 @@ If these cannot be named clearly, propose a simplification plan before implement
 | Attendance and non-appearance | `hearing_attendance`, `hearings.complainant_attendance`, `hearings.respondent_attendance` |
 | Show-cause justification evaluation | `show_cause_evaluations` |
 | Hearing minutes and settlement notes | `hearing_minutes` |
-| Preliminary Paanyaya stages & schedules | `paanyaya_stages` |
-| Paanyaya delivery attempts & Officer's Returns | `paanyaya_officer_returns` |
+| Preliminary Paanyaya invitations (Independent Entity) | `paanyayas` |
+| Paanyaya dialogue minutes & outcomes | `paanyaya_minutes` |
 | Summons service attempts | `summon_deliveries` |
 | Pangkat membership & challenges | `pangkat_groups`, `pangkat_members`, `pangkat_challenges`, `pangkat_extensions` |
 | Generated KP forms & templates | `document_templates`, `generated_documents` |
@@ -39,9 +39,9 @@ Do not introduce another table that represents the same fact. Dashboards may der
 ## 3. Canonical case flow
 
 ```text
-Complaint → Reviewed → Pre-Docketed (Paanyaya 1: up to 6 delivery attempts)
-                     → Paanyaya 2 (if required: up to 6 delivery attempts)
-                     → Docketed (upon service or review escalation)
+Complaint → Reviewed → Pre-Docketed (Optional informal Paanyaya 1 & 2 dialogue)
+                     → Docketed (upon completion or escalation)
+                     → Mediation Summon issued (KP Form 8 & 9) → Officer's Return recorded
                      → Summons issued (KP Form 8 & 9) → Service recorded
                      → Mediation (1st → 2nd → 3rd) → approved outcome
                          ├─ Settled (KP Form 16) / dismissed / final outcome

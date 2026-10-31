@@ -4560,6 +4560,18 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
             }
         }
 
+        // Fetch from independent paanyayas table first
+        $paaRecord = null;
+        if (!empty($options['paanyaya_id'])) {
+            $paStmt = $this->conn->prepare('SELECT * FROM paanyayas WHERE paanyaya_id = ? LIMIT 1');
+            $paStmt->execute([(int)$options['paanyaya_id']]);
+            $paaRecord = $paStmt->fetch(PDO::FETCH_ASSOC);
+        } elseif ($complaintId > 0) {
+            $paStmt = $this->conn->prepare('SELECT * FROM paanyayas WHERE complaint_id = ? ORDER BY paanyaya_id DESC LIMIT 1');
+            $paStmt->execute([$complaintId]);
+            $paaRecord = $paStmt->fetch(PDO::FETCH_ASSOC);
+        }
+
         // Fetch latest paanyaya session record if exists
         $sessionStmt = $this->conn->prepare('SELECT * FROM paanyaya_sessions WHERE complaint_id = ? ORDER BY attempt_number DESC, session_id DESC LIMIT 1');
         $sessionStmt->execute([$complaintId]);
@@ -4569,6 +4581,14 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
             $paaStmt = $this->conn->prepare('SELECT * FROM complaint_paanyaya WHERE complaint_id = ? ORDER BY paanyaya_id DESC LIMIT 1');
             $paaStmt->execute([$complaintId]);
             $paanyaya = $paaStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        }
+
+        $inviteeName = trim((string)($options['invitee_name'] ?? ($paaRecord['invitee_name'] ?? ($options['name'] ?? ''))));
+        if ($inviteeName === '' && !empty($respondents[0]['full_name'])) {
+            $inviteeName = $respondents[0]['full_name'];
+        }
+        if ($inviteeName === '') {
+            $inviteeName = 'Inanyayahang Residente';
         }
 
         // Punong barangay setting
@@ -4582,12 +4602,12 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
             'complaint' => $complaint,
             'complainants' => $complainants,
             'respondents' => $respondents,
+            'invitee_name' => $inviteeName,
             'paanyaya' => $paanyaya,
             'attempt_number' => $attemptNumber,
-            'invitation_date' => $options['invitation_date'] ?? ($paanyaya['scheduled_date'] ?? ($paanyaya['invitation_date'] ?? date('Y-m-d', strtotime('+3 weekdays')))),
-            'invitation_time' => $options['invitation_time'] ?? ($paanyaya['scheduled_time'] ?? ($paanyaya['invitation_time'] ?? '14:00:00')),
-            'venue' => $options['venue'] ?? ($paanyaya['venue'] ?? 'Tanggapan ng Barangay Tumana'),
-            'salaysay' => $options['salaysay'] ?? ($paanyaya['salaysay'] ?? ($complaint['narrative'] ?? '')),
+            'invitation_date' => $options['invitation_date'] ?? ($paaRecord['scheduled_date'] ?? ($paanyaya['scheduled_date'] ?? ($paanyaya['invitation_date'] ?? date('Y-m-d', strtotime('+3 weekdays'))))),
+            'invitation_time' => $options['invitation_time'] ?? ($paaRecord['scheduled_time'] ?? ($paanyaya['scheduled_time'] ?? ($paanyaya['invitation_time'] ?? '14:00:00'))),
+            'venue' => $options['venue'] ?? ($paaRecord['venue'] ?? ($paanyaya['venue'] ?? 'Tanggapan ng Barangay Tumana')),
             'has_e_signature' => isset($options['has_e_signature']) ? (bool)$options['has_e_signature'] : (!isset($paanyaya['has_e_signature']) || (bool)$paanyaya['has_e_signature']),
             'captain_name' => $options['captain_name'] ?? $captainName,
             'issued_date' => $options['issued_date'] ?? (!empty($paanyaya['created_at']) ? substr($paanyaya['created_at'], 0, 10) : date('Y-m-d')),
@@ -4723,6 +4743,13 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
         }
         ';
 
+        $inviteeName = !empty($data['invitee_name']) ? trim((string)$data['invitee_name']) : $respNameStr;
+        if ($inviteeName === '') {
+            $inviteeName = 'INANYAYAHAN';
+        }
+
+        $caseRefStr = !empty($data['complaint']['complaint_number']) ? $data['complaint']['complaint_number'] : '';
+
         $sheetContent = '
         <table class="header-table">
             <tr>
@@ -4758,14 +4785,14 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
             <div class="party-address">' . $this->escape($compAddrStr) . '</div>
             <div class="party-divider">--- --- --- --- ---</div>
             <div class="party-role">(Inanyayahan)</div>
-            <div class="party-name">' . $this->escape($respNameStr) . '</div>
+            <div class="party-name">' . $this->escape($inviteeName) . '</div>
             <div class="party-address">' . $this->escape($respAddrStr) . '</div>
         </div>
 
-        <div class="salutation">Mahal na G/Gng/Bb:</div>
+        <div class="salutation">Mahal na G/Gng/Bb ' . $this->escape($inviteeName) . ':</div>
 
         <div class="body-p">
-            Kayo po ay malugod na inaanyayahan sa <strong>' . $venue . '</strong>, sa ika <strong>' . $petsa . '</strong> ng <strong>' . $buwan . '</strong>, <strong>' . $taon . '</strong> araw ng <strong>' . $araw . '</strong> sa ganap na <strong>' . $oras . '</strong> upang pagusapan at mabigyang linaw ukol sa inihaing alintana o usapin ' . $niNina . ' <strong>' . $this->escape($compNameStr) . '</strong>. Dahil ayon sa kanila ' . $salaysay . ' Kung kaya\'t ' . $pronoun . ' ay dumulog sa Barangay upang kayo ay Paanyayahan.
+            Kayo po ay malugod na inaanyayahan sa <strong>' . $venue . '</strong>, sa ika <strong>' . $petsa . '</strong> ng <strong>' . $buwan . '</strong>, <strong>' . $taon . '</strong> araw ng <strong>' . $araw . '</strong> sa ganap na <strong>' . $oras . '</strong> upang magkaroon ng maayos at mapayapang pag-uusap at paglilinaw sa Tanggapan ng Punong Barangay ukol sa inihaing usapin ni <strong>' . $this->escape($compNameStr) . '</strong>' . ($caseRefStr !== '' ? ' (Usapin Blg: ' . $this->escape($caseRefStr) . ')' : '') . '.
         </div>
 
         <div class="body-p">
@@ -4773,7 +4800,7 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
         </div>
 
         <div class="body-p">
-            Kung Kaya\'t inaasahan ang inyong pagtalima sa inyong imbitasyon.
+            Kung kaya\'t inaasahan ang inyong pagtalima sa imbitasyong ito.
         </div>
 
         <div class="body-p" style="margin-bottom: 2mm;">

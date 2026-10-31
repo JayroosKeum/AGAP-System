@@ -1908,3 +1908,20 @@ A series of key refinements were implemented to conform strictly to Barangay Tum
     - Replaced the unique key in the database and `database/schema.sql` with `uq_hearing_party_form_attempt (hearing_id, party_type, resident_id, form_type, attempt_number)`.
     - Created migration `database/migrations/20261029_002_fix_multi_party_summon_deliveries_unique_index.sql`.
     - Hardened `backend/api/gps/proof-service.php` with a `try...catch (Throwable $e)` block and output buffer cleanup (`ob_clean()`) to guarantee that all errors return valid, structured JSON payloads with appropriate HTTP status codes.
+
+
+- **Separation of Paanyaya and Mediation Entities & Officer's Return Removal (October 2026)**:
+  - **Entity Decoupling**: Refactored the system to treat **Paanyaya and Mediation as separate entities with distinct workflows**, rather than combining them into a single process.
+  - **Independent Paanyaya Entity**:
+    - Created canonical `paanyayas` table storing strictly: Invitee Name (`invitee_name`), Scheduled Date (`scheduled_date`), Scheduled Time (`scheduled_time`), Venue (`venue`), Status (`status`), and Reference to Complaint (`complaint_id`).
+    - Paanyaya entity holds zero complaint narrative, dispute allegations, or case descriptions. All dispute narrative and mediation details are preserved under Mediation.
+    - Added dedicated REST APIs for independent Paanyaya management: `backend/api/paanyaya/list.php`, `backend/api/paanyaya/get.php`, and `backend/api/paanyaya/update-status.php`.
+  - **Removal of Officer's Return from Paanyaya**:
+    - Dropped table `paanyaya_officer_returns` and removed `assigned_officer_id` from `paanyaya_stages`.
+    - Officer's Return and delivery tracking belongs exclusively to formal summonses and hearings in Mediation/Conciliation/Arbitration (`summon_deliveries`).
+    - Stripped all Paanyaya officer return delivery queries and routing logic from `GPSController.php` and `ProofOfService.php`.
+    - Removed Officer's Return UI modals (`recordOfficersReturnModal`, `viewOfficersReturnModal`, `editOfficersReturnModal`) and action buttons from `complaint-details.php` and `complaints.js`.
+    - Updated `PDFService.php` to load invitee name directly from `paanyayas` table, generating formal Paanyaya letters without duplicating complaint salaysay narratives.
+    - Updated `complaint-create.php` and `ComplaintController.php` to make Paanyaya intake optional and simplified (storing only Invitee Name, Date, and Time).
+    - Added database migrations `20261031_001_separate_paanyaya_and_mediation.sql` and `20261031_002_clean_paanyaya_stages_officer_and_status.sql`.
+    - Verified complete end-to-end functionality with `backend/tests/test_paanyaya_e2e.php` (100% pass) and `backend/tests/test_kp_workflow_e2e.php` (all 83 assertions pass).

@@ -94,7 +94,7 @@ final class TestDataCleanup
                     $this->deleteManagedFile((string) $file);
                 }
 
-                foreach (['paanyaya_minutes', 'paanyaya_sessions', 'paanyaya_officer_returns', 'complaint_paanyaya', 'complaint_parties', 'incident_locations', 'complaint_attachments'] as $table) {
+                foreach (['paanyayas', 'paanyaya_stages', 'paanyaya_minutes', 'paanyaya_sessions', 'complaint_paanyaya', 'complaint_parties', 'incident_locations', 'complaint_attachments'] as $table) {
                     try {
                         $this->db->prepare("DELETE FROM {$table} WHERE complaint_id = ?")->execute([$complaintId]);
                     } catch (Throwable) {}

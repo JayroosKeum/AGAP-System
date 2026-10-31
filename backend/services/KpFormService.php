@@ -2248,7 +2248,7 @@ class KpFormService
 
             $concHearing = $caseData['conc_hearing'] ?? [];
 
-            $assocHearingId = !empty($concHearing['hearing_id']) ? (int) $concHearing['hearing_id'] : $hearingId;
+            $assocHearingId = !empty($options['hearing_id']) ? (int) $options['hearing_id'] : (!empty($hearingId) ? $hearingId : (!empty($concHearing['hearing_id']) ? (int) $concHearing['hearing_id'] : null));
 
 
 
@@ -2273,7 +2273,7 @@ class KpFormService
             ");
             $updDeliv = $this->conn->prepare("
                 UPDATE summon_deliveries
-                SET document_id = COALESCE(document_id, ?),
+                SET document_id = ?,
                     form_type = 'KP Form 12',
                     remarks = COALESCE(?, remarks)
                 WHERE delivery_id = ?

@@ -41,191 +41,194 @@ class Paanyaya
      * Schedules a Paanyaya dialogue session (Attempt #1 or Attempt #2).
      * Enforces the "Dalawang Beses Lang" (Max 2 Attempts) rule.
      */
+    /**
+     * Schedules a Paanyaya dialogue invitation.
+     * Contains ONLY essential info: Invitee Name, Scheduled Date, Scheduled Time, and status.
+     * References Mediation record when provided without duplicating complaint details.
+     */
     public function schedule(array $data, ?int $userId = null): array
     {
         $complaintId = (int) ($data['complaint_id'] ?? 0);
-        if ($complaintId <= 0) {
-            return ['success' => false, 'message' => 'Invalid complaint ID.'];
+        $complaint = null;
+
+        if ($complaintId > 0) {
+            $cStmt = $this->conn->prepare('SELECT complaint_id, complaint_number, complaint_title, status, paanyaya_attempt_count, max_paanyaya_reached, resolved_without_docketing FROM complaints WHERE complaint_id = ? LIMIT 1');
+            $cStmt->execute([$complaintId]);
+            $complaint = $cStmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$complaint) {
+                return ['success' => false, 'message' => 'Referenced complaint not found.'];
+            }
+
+            if (!empty($complaint['resolved_without_docketing']) || $complaint['status'] === 'Settled' || $complaint['status'] === 'Resolved at Paanyaya / Closed') {
+                return ['success' => false, 'message' => 'This dispute has already been resolved and is closed.'];
+            }
         }
 
-        // Fetch complaint
-        $cStmt = $this->conn->prepare('SELECT complaint_id, complaint_number, complaint_title, narrative, status, paanyaya_attempt_count, max_paanyaya_reached, resolved_without_docketing FROM complaints WHERE complaint_id = ? LIMIT 1');
-        $cStmt->execute([$complaintId]);
-        $complaint = $cStmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$complaint) {
-            return ['success' => false, 'message' => 'Complaint not found.'];
+        // 1. Name of the person being invited
+        $inviteeName = trim((string) ($data['invitee_name'] ?? ($data['name'] ?? '')));
+        if ($inviteeName === '' && $complaintId > 0) {
+            // Reference respondent from mediation record without duplicating complaint narrative
+            $rStmt = $this->conn->prepare("
+                SELECT GROUP_CONCAT(TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) SEPARATOR ', ')
+                FROM complaint_parties cp
+                JOIN residents r ON r.resident_id = cp.resident_id
+                WHERE cp.complaint_id = ? AND cp.party_type = 'Respondent'
+            ");
+            $rStmt->execute([$complaintId]);
+            $inviteeName = (string) $rStmt->fetchColumn();
+        }
+        if ($inviteeName === '') {
+            $inviteeName = 'Inanyayahang Residente';
         }
 
-        if (!empty($complaint['resolved_without_docketing']) || $complaint['status'] === 'Settled' || $complaint['status'] === 'Resolved at Paanyaya / Closed') {
-            return ['success' => false, 'message' => 'This dispute has already been resolved at the Paanyaya stage and is closed.'];
-        }
-
-        // Count previous sessions
-        $countStmt = $this->conn->prepare('SELECT COUNT(*) FROM paanyaya_sessions WHERE complaint_id = ?');
-        $countStmt->execute([$complaintId]);
-        $existingSessionCount = (int) $countStmt->fetchColumn();
-
-        // Determine attempt number
-        $attemptNumber = isset($data['attempt_number']) ? (int) $data['attempt_number'] : ($existingSessionCount + 1);
-        if ($attemptNumber < 1) {
-            $attemptNumber = 1;
-        }
-
-        // Enforce Dalawang Beses Lang (Max 2 attempts)
-        if ($attemptNumber > self::MAX_ATTEMPTS || $existingSessionCount >= self::MAX_ATTEMPTS) {
-            return [
-                'success' => false,
-                'max_reached' => true,
-                'message' => 'Maximum 2 Paanyaya attempts reached (Dalawang Beses Lang). The informal invitation stage is closed and the dispute must be escalated to formal case docketing.'
-            ];
-        }
-
-        $invitationDate = trim((string) ($data['invitation_date'] ?? ''));
-        $invitationTime = trim((string) ($data['invitation_time'] ?? ''));
-        $venue = trim((string) ($data['venue'] ?? 'Tanggapan ng Barangay Tumana'));
-        $salaysay = trim((string) ($data['salaysay'] ?? ''));
-        $hasESignature = isset($data['has_e_signature']) ? (int) ((bool) $data['has_e_signature']) : 1;
-
-        if ($invitationDate === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $invitationDate)) {
+        // 2. Scheduled Date
+        $scheduledDate = trim((string) ($data['scheduled_date'] ?? ($data['invitation_date'] ?? ($data['date'] ?? ''))));
+        if ($scheduledDate === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $scheduledDate)) {
             return ['success' => false, 'message' => 'Please provide a valid invitation date (YYYY-MM-DD).'];
         }
 
-        if ($invitationTime === '' || !preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', $invitationTime)) {
+        // 3. Scheduled Time
+        $scheduledTime = trim((string) ($data['scheduled_time'] ?? ($data['invitation_time'] ?? ($data['time'] ?? ''))));
+        if ($scheduledTime === '' || !preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', $scheduledTime)) {
             return ['success' => false, 'message' => 'Please provide a valid invitation time (HH:MM).'];
         }
 
-        if (empty($salaysay)) {
-            $salaysay = $complaint['narrative'] ?: 'naisin nilang magkausap at magkaliwanagan.';
+        $venue = trim((string) ($data['venue'] ?? 'Tanggapan ng Barangay Tumana'));
+        if ($venue === '') {
+            $venue = 'Tanggapan ng Barangay Tumana';
         }
 
-        $dowMap = [
-            0 => 'Linggo',
-            1 => 'Lunes',
-            2 => 'Martes',
-            3 => 'Miyerkules',
-            4 => 'Huwebes',
-            5 => 'Biyernes',
-            6 => 'Sabado'
-        ];
-        $dow = (int) date('w', strtotime($invitationDate));
-        $hearingDay = $dowMap[$dow] ?? date('l', strtotime($invitationDate));
+        $hasESignature = isset($data['has_e_signature']) ? (int) ((bool) $data['has_e_signature']) : 1;
 
         try {
             $this->conn->beginTransaction();
 
-            // Insert into paanyaya_sessions
-            $insSession = $this->conn->prepare("
-                INSERT INTO paanyaya_sessions (
-                    complaint_id, attempt_number, scheduled_date, scheduled_time,
-                    venue, has_e_signature, salaysay, scheduled_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            // Insert into independent paanyayas entity
+            $insPaanyaya = $this->conn->prepare("
+                INSERT INTO paanyayas (
+                    complaint_id, invitee_name, scheduled_date, scheduled_time,
+                    status, venue, scheduled_by
+                ) VALUES (?, ?, ?, ?, 'Scheduled', ?, ?)
             ");
-            $insSession->execute([
-                $complaintId,
-                $attemptNumber,
-                $invitationDate,
-                $invitationTime,
+            $insPaanyaya->execute([
+                $complaintId > 0 ? $complaintId : null,
+                $inviteeName,
+                $scheduledDate,
+                $scheduledTime,
                 $venue,
-                $hasESignature,
-                $salaysay,
                 $userId
             ]);
-            $sessionId = (int) $this->conn->lastInsertId();
+            $paanyayaId = (int) $this->conn->lastInsertId();
 
-            // Update complaints table state
-            $statusToSet = ($attemptNumber === 1) ? 'Pre-Docketed (Paanyaya)' : 'Paanyaya In Progress';
-            $updComplaint = $this->conn->prepare("
-                UPDATE complaints
-                SET status = ?,
-                    paanyaya_attempt_count = ?,
-                    max_paanyaya_reached = ?,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE complaint_id = ?
-            ");
-            $updComplaint->execute([
-                $statusToSet,
-                $attemptNumber,
-                ($attemptNumber >= self::MAX_ATTEMPTS ? 1 : 0),
-                $complaintId
-            ]);
+            $sessionId = null;
+            $attemptNumber = 1;
 
-            // Sync with legacy complaint_paanyaya table for backward-compatibility
-            $legacyIns = $this->conn->prepare("
-                INSERT INTO complaint_paanyaya (
-                    complaint_id, invitation_date, invitation_time, venue,
-                    hearing_day, salaysay, status, has_e_signature, scheduled_by
-                ) VALUES (?, ?, ?, ?, ?, ?, 'Scheduled', ?, ?)
-            ");
-            $legacyIns->execute([
-                $complaintId,
-                $invitationDate,
-                $invitationTime,
-                $venue,
-                $hearingDay,
-                $salaysay,
-                $hasESignature,
-                $userId
-            ]);
-            $legacyId = (int) $this->conn->lastInsertId();
+            if ($complaintId > 0) {
+                // Count previous sessions for attempt counter
+                $countStmt = $this->conn->prepare('SELECT COUNT(*) FROM paanyaya_sessions WHERE complaint_id = ?');
+                $countStmt->execute([$complaintId]);
+                $existingSessionCount = (int) $countStmt->fetchColumn();
+                $attemptNumber = isset($data['attempt_number']) ? (int) $data['attempt_number'] : ($existingSessionCount + 1);
+                if ($attemptNumber < 1) $attemptNumber = 1;
 
-            // Generate official Paanyaya PDF letter
+                // Sync with paanyaya_sessions
+                $insSession = $this->conn->prepare("
+                    INSERT INTO paanyaya_sessions (
+                        complaint_id, invitee_name, attempt_number, scheduled_date, scheduled_time,
+                        venue, has_e_signature, scheduled_by
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ");
+                $insSession->execute([
+                    $complaintId,
+                    $inviteeName,
+                    $attemptNumber,
+                    $scheduledDate,
+                    $scheduledTime,
+                    $venue,
+                    $hasESignature,
+                    $userId
+                ]);
+                $sessionId = (int) $this->conn->lastInsertId();
+
+                // Update complaints state
+                $statusToSet = ($attemptNumber === 1) ? 'Pre-Docketed (Paanyaya)' : 'Paanyaya In Progress';
+                $updComplaint = $this->conn->prepare("
+                    UPDATE complaints
+                    SET status = ?,
+                        paanyaya_attempt_count = ?,
+                        max_paanyaya_reached = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE complaint_id = ?
+                ");
+                $updComplaint->execute([
+                    $statusToSet,
+                    $attemptNumber,
+                    ($attemptNumber >= self::MAX_ATTEMPTS ? 1 : 0),
+                    $complaintId
+                ]);
+
+                // Sync with legacy complaint_paanyaya
+                $legacyIns = $this->conn->prepare("
+                    INSERT INTO complaint_paanyaya (
+                        complaint_id, invitee_name, invitation_date, invitation_time, venue,
+                        status, has_e_signature, scheduled_by
+                    ) VALUES (?, ?, ?, ?, ?, 'Scheduled', ?, ?)
+                ");
+                $legacyIns->execute([
+                    $complaintId,
+                    $inviteeName,
+                    $scheduledDate,
+                    $scheduledTime,
+                    $venue,
+                    $hasESignature,
+                    $userId
+                ]);
+            }
+
+            // Generate official Paanyaya PDF invitation letter
             $storageDir = __DIR__ . '/../../storage/paanyaya';
             if (!is_dir($storageDir)) {
                 @mkdir($storageDir, 0777, true);
             }
 
-            $pdfFileName = sprintf('paanyaya_%d_attempt%d_%s.pdf', $complaintId, $attemptNumber, date('Ymd_His'));
+            $pdfFileName = sprintf('paanyaya_%d_%s.pdf', $paanyayaId, date('Ymd_His'));
             $pdfFullPath = $storageDir . '/' . $pdfFileName;
             $pdfRelativePath = 'storage/paanyaya/' . $pdfFileName;
 
-            $this->pdf->generatePaanyaya($complaintId, [
+            $this->pdf->generatePaanyaya($complaintId > 0 ? $complaintId : 0, [
                 'save_path' => $pdfFullPath,
-                'attempt_number' => $attemptNumber,
-                'invitation_date' => $invitationDate,
-                'invitation_time' => $invitationTime,
+                'paanyaya_id' => $paanyayaId,
+                'invitee_name' => $inviteeName,
+                'invitation_date' => $scheduledDate,
+                'invitation_time' => $scheduledTime,
                 'venue' => $venue,
-                'salaysay' => $salaysay,
                 'has_e_signature' => $hasESignature,
             ]);
 
-            // Update PDF path in both tables
-            $updPdf = $this->conn->prepare('UPDATE paanyaya_sessions SET pdf_path = ? WHERE session_id = ?');
-            $updPdf->execute([$pdfRelativePath, $sessionId]);
+            // Save PDF path to paanyayas
+            $this->conn->prepare('UPDATE paanyayas SET pdf_path = ? WHERE paanyaya_id = ?')->execute([$pdfRelativePath, $paanyayaId]);
 
-            if ($legacyId > 0) {
-                $updLegPdf = $this->conn->prepare('UPDATE complaint_paanyaya SET pdf_path = ? WHERE paanyaya_id = ?');
-                $updLegPdf->execute([$pdfRelativePath, $legacyId]);
+            if ($sessionId) {
+                $this->conn->prepare('UPDATE paanyaya_sessions SET pdf_path = ? WHERE session_id = ?')->execute([$pdfRelativePath, $sessionId]);
             }
 
             if ($userId) {
-                $ordinal = ($attemptNumber === 1) ? '1st' : '2nd';
-                $this->audit->log($userId, "Issued {$ordinal} Paanyaya (Informal Invitation)", 'Complaints', $complaintId);
-            }
-
-            try {
-                require_once __DIR__ . '/../services/NotificationService.php';
-                $notifService = new NotificationService();
-                $cNum = $complaint['complaint_number'] ?? "CMP-{$complaintId}";
-                $notifService->notifyRoles(
-                    ['Administrator', 'Lupon Clerk', 'Summons Server'],
-                    "Paanyaya {$attemptNumber} Scheduled",
-                    "Paanyaya {$attemptNumber} dialogue for {$cNum} is scheduled on " . date('M j, Y', strtotime($invitationDate)) . " at " . date('g:i A', strtotime($invitationTime)) . " ({$venue}).",
-                    $userId
-                );
-            } catch (Throwable $ne) {
-                error_log('Failed to dispatch Paanyaya notification: ' . $ne->getMessage());
-
+                $this->audit->log($userId, "Scheduled Paanyaya for {$inviteeName}", 'Paanyaya', $complaintId ?: null);
             }
 
             $this->conn->commit();
 
             return [
                 'success' => true,
+                'paanyaya_id' => $paanyayaId,
                 'session_id' => $sessionId,
                 'attempt_number' => $attemptNumber,
+                'invitee_name' => $inviteeName,
+                'scheduled_date' => $scheduledDate,
+                'scheduled_time' => $scheduledTime,
                 'pdf_path' => $pdfRelativePath,
-                'message' => "Paanyaya session (Attempt #{$attemptNumber} of 2) successfully scheduled."
+                'message' => "Paanyaya invitation for {$inviteeName} successfully scheduled."
             ];
         } catch (Throwable $e) {
             if ($this->conn->inTransaction()) {
@@ -237,6 +240,83 @@ class Paanyaya
                 'message' => 'Error scheduling Paanyaya: ' . $e->getMessage()
             ];
         }
+    }
+
+    /**
+     * Lists all independent Paanyaya records with optional filters.
+     */
+    public function getAllPaanyayas(?string $status = null, ?string $search = null): array
+    {
+        $sql = "
+            SELECT p.*,
+                   c.complaint_number,
+                   c.complaint_title,
+                   TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS scheduled_by_name
+            FROM paanyayas p
+            LEFT JOIN complaints c ON c.complaint_id = p.complaint_id
+            LEFT JOIN users u ON u.user_id = p.scheduled_by
+            WHERE 1=1
+        ";
+        $params = [];
+
+        if ($status !== null && $status !== '' && $status !== 'all') {
+            $sql .= " AND p.status = ?";
+            $params[] = $status;
+        }
+
+        if ($search !== null && trim($search) !== '') {
+            $sql .= " AND (p.invitee_name LIKE ? OR c.complaint_number LIKE ? OR c.complaint_title LIKE ?)";
+            $term = '%' . trim($search) . '%';
+            $params[] = $term;
+            $params[] = $term;
+            $params[] = $term;
+        }
+
+        $sql .= " ORDER BY p.scheduled_date DESC, p.scheduled_time DESC, p.paanyaya_id DESC";
+
+        $stmt = $this->conn->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Gets a single Paanyaya record by ID.
+     */
+    public function getPaanyayaById(int $paanyayaId): ?array
+    {
+        $stmt = $this->conn->prepare("
+            SELECT p.*,
+                   c.complaint_number,
+                   c.complaint_title,
+                   TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS scheduled_by_name
+            FROM paanyayas p
+            LEFT JOIN complaints c ON c.complaint_id = p.complaint_id
+            LEFT JOIN users u ON u.user_id = p.scheduled_by
+            WHERE p.paanyaya_id = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$paanyayaId]);
+        return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+
+    /**
+     * Updates status of an independent Paanyaya entity.
+     */
+    public function updatePaanyayaStatus(int $paanyayaId, string $status, ?int $userId = null): array
+    {
+        $validStatuses = ['Scheduled', 'Completed', 'Cancelled', 'Resolved', 'Unresolved'];
+        if (!in_array($status, $validStatuses, true)) {
+            return ['success' => false, 'message' => 'Invalid status specified.'];
+        }
+
+        $stmt = $this->conn->prepare("UPDATE paanyayas SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE paanyaya_id = ?");
+        $stmt->execute([$status, $paanyayaId]);
+
+        if ($userId) {
+            $this->audit->log($userId, "Updated Paanyaya #{$paanyayaId} status to {$status}", 'Paanyaya', null);
+        }
+
+        return ['success' => true, 'message' => "Paanyaya status updated to {$status}."];
     }
 
     /**
@@ -470,6 +550,9 @@ class Paanyaya
                     $this->audit->log($userId, 'Complaint Dismissed at Paanyaya (Complainant Absent)', 'Complaints', $complaintId);
                 }
 
+                // Sync independent paanyayas entity
+                $this->conn->prepare("UPDATE paanyayas SET status = 'Cancelled', updated_at = CURRENT_TIMESTAMP WHERE complaint_id = ?")->execute([$complaintId]);
+
                 $this->conn->commit();
 
                 return [
@@ -513,6 +596,9 @@ class Paanyaya
                     WHERE complaint_id = ? AND stage_type = ?
                 ");
                 $updStages->execute([$complaintId, $stageType]);
+
+                // Sync independent paanyayas entity
+                $this->conn->prepare("UPDATE paanyayas SET status = 'Resolved', updated_at = CURRENT_TIMESTAMP WHERE complaint_id = ?")->execute([$complaintId]);
 
                 if ($stageType === self::STAGE_1) {
                     $this->conn->prepare("
@@ -1171,11 +1257,9 @@ class Paanyaya
         $stmt = $this->conn->prepare("
             SELECT ps.*,
                    TRIM(CONCAT_WS(' ', u_iss.first_name, u_iss.middle_name, u_iss.last_name)) AS issued_by_name,
-                   TRIM(CONCAT_WS(' ', u_off.first_name, u_off.middle_name, u_off.last_name)) AS assigned_officer_name,
                    TRIM(CONCAT_WS(' ', u_rev.first_name, u_rev.middle_name, u_rev.last_name)) AS reviewed_by_name
             FROM paanyaya_stages ps
             LEFT JOIN users u_iss ON u_iss.user_id = ps.issued_by
-            LEFT JOIN users u_off ON u_off.user_id = ps.assigned_officer_id
             LEFT JOIN users u_rev ON u_rev.user_id = ps.reviewed_by
             WHERE ps.complaint_id = ? AND ps.stage_type = ?
             LIMIT 1
@@ -1202,49 +1286,23 @@ class Paanyaya
      */
     public function getStageAttempts(int $paanyayaStageId): array
     {
-        $stmt = $this->conn->prepare("
-            SELECT por.*, por.return_id AS id,
-                   TRIM(CONCAT_WS(' ', u_off.first_name, u_off.middle_name, u_off.last_name)) AS serving_officer_name,
-                   TRIM(CONCAT_WS(' ', u_rec.first_name, u_rec.middle_name, u_rec.last_name)) AS recorded_by_name
-            FROM paanyaya_officer_returns por
-            LEFT JOIN users u_off ON u_off.user_id = por.serving_officer_id
-            LEFT JOIN users u_rec ON u_rec.user_id = por.recorded_by
-            WHERE por.paanyaya_stage_id = ?
-            ORDER BY por.attempt_number ASC, por.return_id ASC
-        ");
-        $stmt->execute([$paanyayaStageId]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        // Officer's Return is completely removed from Paanyaya workflow
+        return [];
     }
 
     /**
      * Checks if the required Paanyaya stages have been satisfied to unlock the formal summons workflow.
      */
+    /**
+     * Checks if mediation summons is allowed. Paanyaya and Mediation operate as separate workflows.
+     * Officer's Return is removed from Paanyaya, so summons is never gated by paanyaya delivery attempts.
+     */
     public function checkSummonsPrerequisite(int $complaintId): array
     {
-        $stages = $this->conn->prepare("SELECT * FROM paanyaya_stages WHERE complaint_id = ?");
-        $stages->execute([$complaintId]);
-        $rows = $stages->fetchAll(PDO::FETCH_ASSOC);
-
-        $stage1 = null;
-        $stage2 = null;
-        foreach ($rows as $r) {
-            if ($r['stage_type'] === self::STAGE_1) $stage1 = $r;
-            if ($r['stage_type'] === self::STAGE_2) $stage2 = $r;
-        }
-
-        // If Paanyaya 1 doesn't exist or is Not Started
-        if (!$stage1 || $stage1['status'] === 'Not Started') {
-            return [
-                'allowed' => false,
-                'reason' => 'paanyaya_not_started',
-                'message' => 'Complete the required Paanyaya preliminary delivery attempts before issuing the first formal summons.'
-            ];
-        }
-
-        // Check complaint status (if dismissed or settled, cannot issue summons)
         $cStmt = $this->conn->prepare('SELECT status FROM complaints WHERE complaint_id = ? LIMIT 1');
         $cStmt->execute([$complaintId]);
         $compRow = $cStmt->fetch(PDO::FETCH_ASSOC);
+
         if ($compRow && in_array($compRow['status'], ['Dismissed', 'Settled', 'Closed', 'Resolved at Paanyaya / Closed'], true)) {
             return [
                 'allowed' => false,
@@ -1253,120 +1311,31 @@ class Paanyaya
             ];
         }
 
-        $minutes1 = $this->getStageMinutes($complaintId, self::STAGE_1);
-        $minutes2 = $this->getStageMinutes($complaintId, self::STAGE_2);
-
-        // Check attempts and outcomes for Stage 1
-        $countStmt = $this->conn->prepare("
-            SELECT COUNT(*) AS total_count,
-                   SUM(CASE WHEN delivery_outcome = 'Successfully delivered' THEN 1 ELSE 0 END) AS delivered_count
-            FROM paanyaya_officer_returns
-            WHERE paanyaya_stage_id = ?
-        ");
-        $countStmt->execute([(int)$stage1['id']]);
-        $stats1 = $countStmt->fetch(PDO::FETCH_ASSOC);
-        $maxAttempts = $this->getMaxStageAttempts();
-        $count1 = (int)($stats1['total_count'] ?? 0);
-        $isDelivered1 = ((int)($stats1['delivered_count'] ?? 0) > 0) || ($stage1['status'] === 'Successfully Delivered');
-        $isExhausted1 = ($count1 >= self::MAX_STAGE_ATTEMPTS && !$isDelivered1) || ($stage1['status'] === 'Attempts Exhausted – For Review');
-
-        // Check if explicitly approved by Lupon review
-        if ($stage1['review_status'] === 'Approved for Summons' || ($stage2 && $stage2['review_status'] === 'Approved for Summons')) {
-            return [
-                'allowed' => true,
-                'message' => 'Formal summons unlocked via authorized Lupon review approval.'
-            ];
-        }
-
-        // Check if Paanyaya 1 chose 2nd Paanyaya
-        $isP2Chosen = ($minutes1 && ($minutes1['complainant_choice'] ?? '') === 'Request_Paanyaya_2');
-
-        // If Paanyaya 2 was chosen, initiated, or active
-        $isPaanyaya2Active = $isP2Chosen || ($stage1['review_status'] === 'Approved for Paanyaya 2') || ($stage2 && in_array($stage2['status'], ['In Progress', 'Successfully Delivered', 'Attempts Exhausted – For Review', 'Completed'], true));
-
-        if ($isPaanyaya2Active) {
-            $count2 = 0;
-            $isDelivered2 = false;
-            $isExhausted2 = false;
-
-            if ($stage2) {
-                $countStmt->execute([(int)$stage2['id']]);
-                $stats2 = $countStmt->fetch(PDO::FETCH_ASSOC);
-                $count2 = (int)($stats2['total_count'] ?? 0);
-                $isDelivered2 = ((int)($stats2['delivered_count'] ?? 0) > 0) || ($stage2['status'] === 'Successfully Delivered');
-                $isExhausted2 = ($count2 >= $maxAttempts && !$isDelivered2) || ($stage2['status'] === 'Attempts Exhausted – For Review');
-            }
-
-            // 1. If Paanyaya 2 delivery attempts exhausted -> UNLOCKED!
-            if ($isExhausted2 || $count2 >= $maxAttempts) {
-                return [
-                    'allowed' => true,
-                    'message' => "{$maxAttempts} Paanyaya 2 delivery attempts completed without service. Formal summons unlocked to proceed with formal docketing."
-                ];
-            }
-
-            // 2. If Paanyaya 2 dialogue minutes recorded and escalate to Mediation -> UNLOCKED!
-            if ($minutes2 && ($minutes2['outcome'] === 'No_Agreement' || $minutes2['complainant_choice'] === 'Escalate_Mediation')) {
-                return [
-                    'allowed' => true,
-                    'message' => 'Paanyaya 2 dialogue completed with no settlement. Formal summons unlocked for Mediation.'
-                ];
-            }
-
-            // 3. Otherwise, formal summons must remain locked until Paanyaya 2 is concluded
-            return [
-                'allowed' => false,
-                'reason' => 'paanyaya_2_in_progress',
-                'message' => 'Ikalawang Paanyaya ang piniling hakbang. Tapusin muna ang Paanyaya 2 bago maglabas ng pormal na summons para sa Mediation.'
-            ];
-        }
-
-        // 1. If Paanyaya 1 was served -> UNLOCKED!
-        if ($isDelivered1 || $stage1['status'] === 'Completed') {
-            return [
-                'allowed' => true,
-                'message' => 'Paanyaya 1 successfully served. Formal summons unlocked.'
-            ];
-        }
-
-        // 2. If 6 attempts failed on Paanyaya 1 -> UNLOCKED!
-        if ($isExhausted1 || $count1 >= $maxAttempts) {
-            return [
-                'allowed' => true,
-                'message' => "{$maxAttempts} Paanyaya delivery attempts completed without service. Formal summons unlocked to proceed with formal docketing."
-            ];
-        }
-
-        // Paanyaya 1 is still in progress (< 6 attempts and unserved)
         return [
-            'allowed' => false,
-            'reason' => 'paanyaya_in_progress',
-            'message' => 'Paanyaya delivery attempt ' . $count1 . ' of ' . $maxAttempts . ' recorded. Must be served or complete ' . $maxAttempts . ' failed attempts before issuing formal summons.'
+            'allowed' => true,
+            'message' => 'Mediation summons unlocked.'
         ];
     }
-
-    /**
-     * Gets complete Paanyaya workflow status for both stages.
-     */
     public function getTwoStagesData(int $complaintId): array
     {
         $stage1 = $this->getOrCreateStage($complaintId, self::STAGE_1);
         $stage2 = $this->getOrCreateStage($complaintId, self::STAGE_2);
 
-        $attempts1 = $this->getStageAttempts((int)$stage1['id']);
-        $attempts2 = $this->getStageAttempts((int)$stage2['id']);
+        // Officer's Return removed from Paanyaya — no attempt tracking
+        $attempts1 = [];
+        $attempts2 = [];
+        $count1 = 0;
+        $count2 = 0;
+        $latest1 = null;
+        $latest2 = null;
 
-        $count1 = count($attempts1);
-        $count2 = count($attempts2);
+        // Delivery no longer tracked for Paanyaya — invitation is considered delivered once issued
+        $isDelivered1 = ($stage1['status'] === 'Completed') || ($stage1['issued_at'] !== null);
+        $isDelivered2 = ($stage2['status'] === 'Completed') || ($stage2['issued_at'] !== null);
 
-        $latest1 = !empty($attempts1) ? end($attempts1) : null;
-        $latest2 = !empty($attempts2) ? end($attempts2) : null;
-
-        $isDelivered1 = ($stage1['status'] === 'Successfully Delivered') || ($latest1 && $latest1['delivery_outcome'] === 'Successfully delivered');
-        $isDelivered2 = ($stage2['status'] === 'Successfully Delivered') || ($latest2 && $latest2['delivery_outcome'] === 'Successfully delivered');
-
-        $isExhausted1 = ($count1 >= self::MAX_STAGE_ATTEMPTS && !$isDelivered1);
-        $isExhausted2 = ($count2 >= self::MAX_STAGE_ATTEMPTS && !$isDelivered2);
+        // Exhaustion not applicable without officer returns
+        $isExhausted1 = false;
+        $isExhausted2 = false;
 
         $minutes1 = $this->getStageMinutes($complaintId, self::STAGE_1);
         $minutes2 = $this->getStageMinutes($complaintId, self::STAGE_2);
@@ -1382,7 +1351,7 @@ class Paanyaya
                       (($compRow['paanyaya_1_outcome'] ?? '') === 'Dismissed') ||
                       ($minutes1 && in_array($minutes1['outcome'], ['Settled', 'Dismissed'], true));
 
-        $p2WasIssued = ($stage2['issued_at'] !== null) || ($count2 > 0);
+        $p2WasIssued = ($stage2['issued_at'] !== null); // count2 always 0 (no officer returns)
 
         $canUnlockP2FromMinutes = !$isP1Solved && ($minutes1 !== null) &&
             in_array($minutes1['outcome'], ['No_Agreement', 'Party_Absent'], true) &&
@@ -1394,8 +1363,9 @@ class Paanyaya
                         ($stage1['status'] === 'Completed') ||
                         in_array($stage1['review_status'], ['Approved for Paanyaya 2', 'Approved for Summons', 'Case Closed'], true);
 
-        $canRecordAttempt1 = ($stage1['status'] === 'In Progress') && ($count1 < self::MAX_STAGE_ATTEMPTS) && !$isDelivered1;
-        $canRecordAttempt2 = ($stage2['status'] === 'In Progress') && ($count2 < self::MAX_STAGE_ATTEMPTS) && !$isDelivered2;
+        // Officer's Return removed — attempt recording is no longer applicable
+        $canRecordAttempt1 = false;
+        $canRecordAttempt2 = false;
 
         $prereq = $this->checkSummonsPrerequisite($complaintId);
 
@@ -1412,7 +1382,7 @@ class Paanyaya
                 'is_completed' => $isCompleted1,
                 'can_issue' => ($stage1['status'] === 'Not Started'),
                 'can_record_attempt' => $canRecordAttempt1,
-                'needs_review' => ($stage1['status'] === 'Attempts Exhausted – For Review' || ($isExhausted1 && $stage1['review_status'] === 'None')),
+                'needs_review' => false, // Officer's Return removed — review triggered by minutes outcome
                 'minutes_recorded' => ($minutes1 !== null),
                 'minutes' => $minutes1,
                 'outcome' => $minutes1['outcome'] ?? null,
@@ -1432,7 +1402,7 @@ class Paanyaya
                 'is_completed' => ($p2WasIssued && ($minutes2 !== null || $stage2['status'] === 'Completed' || in_array($stage2['review_status'], ['Approved for Summons', 'Case Closed'], true))),
                 'can_issue' => ($isEligible2 && $stage2['status'] === 'Not Started'),
                 'can_record_attempt' => ($isEligible2 && $canRecordAttempt2),
-                'needs_review' => ($stage2['status'] === 'Attempts Exhausted – For Review' || ($isExhausted2 && $stage2['review_status'] === 'None')),
+                'needs_review' => false, // Officer's Return removed — no exhaustion-based review
                 'minutes_recorded' => ($minutes2 !== null),
                 'minutes' => $minutes2,
                 'outcome' => $minutes2['outcome'] ?? null,
@@ -1448,13 +1418,18 @@ class Paanyaya
     /**
      * Issues Paanyaya 1 or Paanyaya 2 preliminary invitation.
      */
+    /**
+     * Issues Paanyaya 1 or Paanyaya 2 preliminary invitation.
+     * Stores only Invitee Name, Scheduled Date, Scheduled Time, and status.
+     * Officer's Return is excluded from this workflow.
+     */
     public function issueStage(int $complaintId, string $stageType, array $data, ?int $userId = null): array
     {
         if (!in_array($stageType, [self::STAGE_1, self::STAGE_2], true)) {
             return ['success' => false, 'message' => 'Invalid Paanyaya stage specified.'];
         }
 
-        $cStmt = $this->conn->prepare('SELECT complaint_id, complaint_number, complaint_title, narrative, status FROM complaints WHERE complaint_id = ? LIMIT 1');
+        $cStmt = $this->conn->prepare('SELECT complaint_id, complaint_number, complaint_title, status FROM complaints WHERE complaint_id = ? LIMIT 1');
         $cStmt->execute([$complaintId]);
         $complaint = $cStmt->fetch(PDO::FETCH_ASSOC);
 
@@ -1478,12 +1453,26 @@ class Paanyaya
             }
         }
 
+        // Invitee Name
+        $inviteeName = trim((string)($data['invitee_name'] ?? ($data['name'] ?? '')));
+        if ($inviteeName === '') {
+            $rStmt = $this->conn->prepare("
+                SELECT GROUP_CONCAT(TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) SEPARATOR ', ')
+                FROM complaint_parties cp
+                JOIN residents r ON r.resident_id = cp.resident_id
+                WHERE cp.complaint_id = ? AND cp.party_type = 'Respondent'
+            ");
+            $rStmt->execute([$complaintId]);
+            $inviteeName = (string) $rStmt->fetchColumn();
+        }
+        if ($inviteeName === '') {
+            $inviteeName = 'Inanyayahang Residente';
+        }
+
         $invitationDate = trim((string) ($data['invitation_date'] ?? ''));
         $invitationTime = trim((string) ($data['invitation_time'] ?? ''));
         $venue = trim((string) ($data['venue'] ?? 'Tanggapan ng Barangay Tumana'));
-        $salaysay = trim((string) ($data['salaysay'] ?? ''));
         $hasESignature = isset($data['has_e_signature']) ? (int) ((bool) $data['has_e_signature']) : 1;
-        $assignedOfficerId = !empty($data['assigned_officer_id']) ? (int) $data['assigned_officer_id'] : null;
 
         if ($invitationDate === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $invitationDate)) {
             $invitationDate = date('Y-m-d', strtotime('+3 days'));
@@ -1491,10 +1480,6 @@ class Paanyaya
 
         if ($invitationTime === '' || !preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', $invitationTime)) {
             $invitationTime = '14:00';
-        }
-
-        if (empty($salaysay)) {
-            $salaysay = $complaint['narrative'] ?: 'naisin nilang magkausap at magkaliwanagan.';
         }
 
         try {
@@ -1515,10 +1500,10 @@ class Paanyaya
                 'save_path' => $pdfFullPath,
                 'attempt_number' => $attemptNum,
                 'stage_type' => $stageType,
+                'invitee_name' => $inviteeName,
                 'invitation_date' => $invitationDate,
                 'invitation_time' => $invitationTime,
                 'venue' => $venue,
-                'salaysay' => $salaysay,
                 'has_e_signature' => $hasESignature,
             ]);
 
@@ -1527,11 +1512,10 @@ class Paanyaya
                 SET status = 'In Progress',
                     issued_at = CURRENT_TIMESTAMP,
                     issued_by = ?,
-                    assigned_officer_id = ?,
+                    invitee_name = ?,
                     invitation_date = ?,
                     invitation_time = ?,
                     venue = ?,
-                    salaysay = ?,
                     has_e_signature = ?,
                     pdf_path = ?,
                     updated_at = CURRENT_TIMESTAMP
@@ -1539,14 +1523,30 @@ class Paanyaya
             ");
             $upd->execute([
                 $userId,
-                $assignedOfficerId,
+                $inviteeName,
                 $invitationDate,
                 $invitationTime,
                 $venue,
-                $salaysay,
                 $hasESignature,
                 $pdfRelativePath,
                 (int)$stage['id']
+            ]);
+
+            // Sync with independent paanyayas table
+            $insP = $this->conn->prepare("
+                INSERT INTO paanyayas (
+                    complaint_id, invitee_name, scheduled_date, scheduled_time,
+                    status, venue, pdf_path, scheduled_by
+                ) VALUES (?, ?, ?, ?, 'Scheduled', ?, ?, ?)
+            ");
+            $insP->execute([
+                $complaintId,
+                $inviteeName,
+                $invitationDate,
+                $invitationTime,
+                $venue,
+                $pdfRelativePath,
+                $userId
             ]);
 
             $updComp = $this->conn->prepare("
@@ -1559,7 +1559,7 @@ class Paanyaya
             $updComp->execute([$attemptNum, $complaintId]);
 
             if ($userId) {
-                $this->audit->log($userId, "Issued {$stageType} (Preliminary Invitation)", 'Paanyaya', $complaintId);
+                $this->audit->log($userId, "Issued {$stageType} for {$inviteeName}", 'Paanyaya', $complaintId);
             }
 
             $this->conn->commit();
@@ -1568,8 +1568,11 @@ class Paanyaya
                 'success' => true,
                 'stage_type' => $stageType,
                 'stage_id' => (int)$stage['id'],
+                'invitee_name' => $inviteeName,
+                'invitation_date' => $invitationDate,
+                'invitation_time' => $invitationTime,
                 'pdf_path' => $pdfRelativePath,
-                'message' => "{$stageType} successfully issued. You may now record delivery attempts via Officer's Return."
+                'message' => "{$stageType} successfully issued for {$inviteeName}."
             ];
         } catch (Throwable $e) {
             if ($this->conn->inTransaction()) {
@@ -1581,332 +1584,29 @@ class Paanyaya
     }
 
     /**
-     * Records an Officer's Return attempt for Paanyaya 1 or Paanyaya 2.
-     * Enforces up to 6 delivery attempts with independent attempt counter per stage.
+     * Officer's Return is not applicable to Paanyaya invitations.
      */
     public function recordOfficerReturn(int $complaintId, string $stageType, array $data, ?int $userId = null, ?array $proofFile = null): array
     {
-        if (!in_array($stageType, [self::STAGE_1, self::STAGE_2], true)) {
-            return ['success' => false, 'message' => 'Invalid Paanyaya stage specified.'];
-        }
-
-        $stage = $this->getOrCreateStage($complaintId, $stageType);
-        $stageId = (int) $stage['id'];
-
-        if ($stage['status'] === 'Not Started') {
-            return [
-                'success' => false,
-                'message' => "Cannot record an Officer's Return because {$stageType} has not been issued yet. Please issue the invitation first."
-            ];
-        }
-
-        $countStmt = $this->conn->prepare("SELECT COUNT(*) FROM paanyaya_officer_returns WHERE paanyaya_stage_id = ?");
-        $countStmt->execute([$stageId]);
-        $existingCount = (int) $countStmt->fetchColumn();
-
-        $maxAttempts = $this->getMaxStageAttempts();
-        if ($existingCount >= $maxAttempts) {
-            return [
-                'success' => false,
-                'message' => "Maximum {$maxAttempts} delivery attempts have already been recorded for {$stageType}. No further attempts may be added."
-            ];
-        }
-
-        $attemptNumber = $existingCount + 1;
-
-        $serviceDatetime = trim((string) ($data['service_datetime'] ?? ''));
-        if ($serviceDatetime === '') {
-            $serviceDatetime = date('Y-m-d H:i:s');
-        } else {
-            $ts = strtotime($serviceDatetime);
-            if ($ts === false) {
-                return ['success' => false, 'message' => 'Invalid date and time for service attempt.'];
-            }
-            $serviceDatetime = date('Y-m-d H:i:s', $ts);
-        }
-
-        $servingOfficerId = !empty($data['serving_officer_id']) ? (int) $data['serving_officer_id'] : ($stage['assigned_officer_id'] ?: $userId);
-        if (!$servingOfficerId) {
-            return ['success' => false, 'message' => 'Please select an assigned serving officer.'];
-        }
-
-        $recipientName = trim((string) ($data['recipient_name'] ?? ''));
-        if ($recipientName === '') {
-            return ['success' => false, 'message' => 'Respondent or intended recipient name is required.'];
-        }
-
-        $serviceAddress = trim((string) ($data['service_address'] ?? ''));
-        if ($serviceAddress === '') {
-            return ['success' => false, 'message' => 'Address visited is required.'];
-        }
-
-        $deliveryOutcome = trim((string) ($data['delivery_outcome'] ?? ''));
-        if (!in_array($deliveryOutcome, self::VALID_DELIVERY_OUTCOMES, true)) {
-            return [
-                'success' => false,
-                'message' => 'Invalid delivery outcome selected. Please choose a valid outcome.'
-            ];
-        }
-
-        $unsuccessfulReason = trim((string) ($data['unsuccessful_reason'] ?? ''));
-        $remarks = trim((string) ($data['remarks'] ?? ''));
-        $latitude = !empty($data['latitude']) ? (float) $data['latitude'] : null;
-        $longitude = !empty($data['longitude']) ? (float) $data['longitude'] : null;
-        $serviceLocation = trim((string) ($data['service_location'] ?? ''));
-
-        $proofFilePath = null;
-        if (!empty($proofFile) && !empty($proofFile['tmp_name']) && is_uploaded_file($proofFile['tmp_name'])) {
-            $ext = strtolower(pathinfo($proofFile['name'], PATHINFO_EXTENSION));
-            $allowedExts = ['jpg', 'jpeg', 'png', 'pdf', 'webp'];
-            if (!in_array($ext, $allowedExts, true)) {
-                return ['success' => false, 'message' => 'Invalid proof file type. Allowed formats: JPG, PNG, WEBP, PDF.'];
-            }
-            if ($proofFile['size'] > 10 * 1024 * 1024) {
-                return ['success' => false, 'message' => 'Proof file size exceeds 10MB limit.'];
-            }
-
-            $storageProofDir = __DIR__ . '/../../storage/paanyaya/proofs';
-            if (!is_dir($storageProofDir)) {
-                @mkdir($storageProofDir, 0777, true);
-            }
-            $stageSlug = ($stageType === self::STAGE_1) ? 'p1' : 'p2';
-            $fileName = sprintf('proof_%d_%s_att%d_%s.%s', $complaintId, $stageSlug, $attemptNumber, date('Ymd_His'), $ext);
-            $targetPath = $storageProofDir . '/' . $fileName;
-
-            if (move_uploaded_file($proofFile['tmp_name'], $targetPath)) {
-                $proofFilePath = 'storage/paanyaya/proofs/' . $fileName;
-            }
-        } elseif (!empty($data['proof_file_path'])) {
-            $proofFilePath = trim((string)$data['proof_file_path']);
-        }
-
-        $isDelivered = ($deliveryOutcome === 'Successfully delivered');
-
-        try {
-            $this->conn->beginTransaction();
-
-            $insStmt = $this->conn->prepare("
-                INSERT INTO paanyaya_officer_returns (
-                    paanyaya_stage_id, complaint_id, stage_type, attempt_number,
-                    service_datetime, serving_officer_id, recipient_name, service_address,
-                    delivery_outcome, unsuccessful_reason, remarks, proof_file_path,
-                    latitude, longitude, service_location, recorded_by, submitted_at
-                ) VALUES (
-                    ?, ?, ?, ?,
-                    ?, ?, ?, ?,
-                    ?, ?, ?, ?,
-                    ?, ?, ?, ?, CURRENT_TIMESTAMP
-                )
-            ");
-            $insStmt->execute([
-                $stageId,
-                $complaintId,
-                $stageType,
-                $attemptNumber,
-                $serviceDatetime,
-                $servingOfficerId,
-                $recipientName,
-                $serviceAddress,
-                $deliveryOutcome,
-                $unsuccessfulReason ?: null,
-                $remarks ?: null,
-                $proofFilePath,
-                $latitude,
-                $longitude,
-                $serviceLocation ?: null,
-                $userId ?? 1
-            ]);
-            $returnId = (int) $this->conn->lastInsertId();
-
-            if ($isDelivered) {
-                $newStageStatus = 'Successfully Delivered';
-            } elseif ($attemptNumber >= self::MAX_STAGE_ATTEMPTS) {
-                $newStageStatus = 'Attempts Exhausted – For Review';
-            } else {
-                $newStageStatus = 'In Progress';
-            }
-
-            $updStage = $this->conn->prepare("
-                UPDATE paanyaya_stages
-                SET status = ?,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            ");
-            $updStage->execute([$newStageStatus, $stageId]);
-
-            if ($userId) {
-                $this->audit->log(
-                    $userId,
-                    "Recorded Officer's Return: {$stageType} Attempt {$attemptNumber}/{$maxAttempts} — Outcome: {$deliveryOutcome}",
-                    'Paanyaya',
-                    $complaintId
-                );
-            }
-
-            $this->conn->commit();
-
-            try {
-                $cStmt = $this->conn->prepare("SELECT complaint_number FROM complaints WHERE complaint_id = ? LIMIT 1");
-                $cStmt->execute([$complaintId]);
-                $complaintNumber = (string) ($cStmt->fetchColumn() ?: "ID #{$complaintId}");
-
-                $servingOfficerName = 'Process Server / Tanod';
-                $serverLookupId = $servingOfficerId ?: $userId;
-                if ($serverLookupId) {
-                    $uStmt = $this->conn->prepare("
-                        SELECT TRIM(CONCAT_WS(' ', first_name, middle_name, last_name)) AS full_name 
-                        FROM users 
-                        WHERE user_id = ? 
-                        LIMIT 1
-                    ");
-                    $uStmt->execute([$serverLookupId]);
-                    $name = trim((string) $uStmt->fetchColumn());
-                    if ($name !== '') {
-                        $servingOfficerName = $name;
-                    }
-                }
-
-                require_once __DIR__ . '/../services/NotificationService.php';
-                $notifService = new NotificationService();
-                $notifService->notifyPaanyayaServed(
-                    $complaintId,
-                    $complaintNumber,
-                    $stageType,
-                    $recipientName,
-                    $servingOfficerName,
-                    $isDelivered,
-                    $deliveryOutcome,
-                    $userId
-                );
-            } catch (Throwable $ne) {
-                error_log("Failed to dispatch Paanyaya delivery notification: " . $ne->getMessage());
-            }
-
-            return [
-                'success' => true,
-                'return_id' => $returnId,
-                'stage_type' => $stageType,
-                'attempt_number' => $attemptNumber,
-                'delivery_outcome' => $deliveryOutcome,
-                'stage_status' => $newStageStatus,
-                'is_delivered' => $isDelivered,
-                'is_exhausted' => ($attemptNumber >= $maxAttempts && !$isDelivered),
-                'message' => $isDelivered
-                    ? "Officer's Return recorded: {$stageType} successfully delivered!"
-                    : ($attemptNumber >= $maxAttempts
-                        ? "Officer's Return recorded. All {$maxAttempts} attempts for {$stageType} are exhausted. Case flagged for review."
-                        : "Officer's Return recorded for Attempt {$attemptNumber} of {$maxAttempts}.")
-            ];
-        } catch (Throwable $e) {
-            if ($this->conn->inTransaction()) {
-                $this->conn->rollBack();
-            }
-            error_log("Record Officer's Return error: " . $e->getMessage());
-            return ['success' => false, 'message' => "Error recording Officer's Return: " . $e->getMessage()];
-        }
-    }
-
-    /**
-     * Gets complete details of a single Officer's Return record.
-     */
-    public function getOfficerReturnDetails(int $returnId): ?array
-    {
-        $stmt = $this->conn->prepare("
-            SELECT por.*, por.return_id AS id,
-                   c.complaint_number, c.complaint_title,
-                   TRIM(CONCAT_WS(' ', u_off.first_name, u_off.middle_name, u_off.last_name)) AS serving_officer_name,
-                   TRIM(CONCAT_WS(' ', u_rec.first_name, u_rec.middle_name, u_rec.last_name)) AS recorded_by_name
-            FROM paanyaya_officer_returns por
-            INNER JOIN complaints c ON c.complaint_id = por.complaint_id
-            LEFT JOIN users u_off ON u_off.user_id = por.serving_officer_id
-            LEFT JOIN users u_rec ON u_rec.user_id = por.recorded_by
-            WHERE por.return_id = ?
-            LIMIT 1
-        ");
-        $stmt->execute([$returnId]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (!$row) return null;
-
-        // Fetch audit log corrections for this return
-        $auditStmt = $this->conn->prepare("
-            SELECT at.*, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS user_name
-            FROM audit_trails at
-            LEFT JOIN users u ON u.user_id = at.user_id
-            WHERE at.affected_record = ? AND at.action LIKE ?
-            ORDER BY at.audit_id DESC
-        ");
-        $auditStmt->execute([(int)$row['complaint_id'], "%Edited Officer's Return #{$returnId}%"]);
-        $row['corrections'] = $auditStmt->fetchAll(PDO::FETCH_ASSOC);
-
-        return $row;
-    }
-
-    /**
-     * Updates permitted fields of an Officer's Return (correction workflow) and logs to audit.
-     */
-    public function updateOfficerReturn(int $returnId, array $data, ?int $userId = null): array
-    {
-        $existing = $this->getOfficerReturnDetails($returnId);
-        if (!$existing) {
-            return ['success' => false, 'message' => "Officer's Return record not found."];
-        }
-
-        $remarks = isset($data['remarks']) ? trim((string)$data['remarks']) : $existing['remarks'];
-        $unsuccessfulReason = isset($data['unsuccessful_reason']) ? trim((string)$data['unsuccessful_reason']) : $existing['unsuccessful_reason'];
-        $serviceAddress = isset($data['service_address']) ? trim((string)$data['service_address']) : $existing['service_address'];
-        $recipientName = !empty($data['recipient_name']) ? trim((string)$data['recipient_name']) : $existing['recipient_name'];
-        $deliveryOutcome = !empty($data['delivery_outcome']) ? trim((string)$data['delivery_outcome']) : $existing['delivery_outcome'];
-        $serviceDatetime = !empty($data['service_datetime']) ? date('Y-m-d H:i:s', strtotime($data['service_datetime'])) : $existing['service_datetime'];
-        $proofFilePath = !empty($data['proof_file_path']) ? $data['proof_file_path'] : $existing['proof_file_path'];
-        $correctionNotes = trim((string)($data['correction_notes'] ?? 'Administrative correction'));
-
-        $upd = $this->conn->prepare("
-            UPDATE paanyaya_officer_returns
-            SET remarks = ?,
-                unsuccessful_reason = ?,
-                service_address = ?,
-                recipient_name = ?,
-                delivery_outcome = ?,
-                service_datetime = ?,
-                proof_file_path = ?,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE return_id = ?
-        ");
-        $upd->execute([
-            $remarks,
-            $unsuccessfulReason,
-            $serviceAddress,
-            $recipientName,
-            $deliveryOutcome,
-            $serviceDatetime,
-            $proofFilePath,
-            $returnId
-        ]);
-
-        // If outcome was updated to Successfully delivered, update stage status
-        if ($deliveryOutcome === 'Successfully delivered') {
-            $stgUpd = $this->conn->prepare("UPDATE paanyaya_stages SET status = 'Successfully Delivered', updated_at = CURRENT_TIMESTAMP WHERE id = ?");
-            $stgUpd->execute([$existing['paanyaya_stage_id']]);
-        }
-
-        if ($userId) {
-            $this->audit->log(
-                $userId,
-                "Edited Officer's Return #{$returnId} ({$existing['stage_type']} Attempt {$existing['attempt_number']}): {$correctionNotes}",
-                'Paanyaya',
-                (int)$existing['complaint_id']
-            );
-        }
-
         return [
-            'success' => true,
-            'message' => "Officer's Return record updated successfully."
+            'success' => false,
+            'message' => "Officer's Return is not associated with Paanyaya invitations. Summons and Officer's Returns belong to the Mediation workflow."
         ];
     }
 
-    /**
-     * Records an authorized Lupon review decision when attempts are exhausted or custom transition needed.
-     */
+    public function getOfficerReturnDetails(int $returnId): ?array
+    {
+        return null;
+    }
+
+    public function updateOfficerReturn(int $returnId, array $data, ?int $userId = null): array
+    {
+        return [
+            'success' => false,
+            'message' => "Officer's Return is not associated with Paanyaya invitations."
+        ];
+    }
+
     public function reviewStage(int $complaintId, string $stageType, array $data, ?int $userId = null): array
     {
         if (!in_array($stageType, [self::STAGE_1, self::STAGE_2], true)) {
@@ -2387,8 +2087,6 @@ class Paanyaya
                 if ($p2Venue === '') {
                     $p2Venue = 'Lupon Courtroom';
                 }
-                $p2OfficerId = !empty($data['p2_assigned_officer_id']) ? (int)$data['p2_assigned_officer_id'] : null;
-
                 $scheduledP2 = false;
                 $msg = 'Dialogue minutes recorded: No agreement reached. Complainant requested 2nd Paanyaya. Paanyaya 2 card is now unlocked!';
 
@@ -2397,9 +2095,7 @@ class Paanyaya
                         'invitation_date' => $p2Date,
                         'invitation_time' => $p2Time,
                         'venue' => $p2Venue,
-                        'assigned_officer_id' => $p2OfficerId,
-                        'salaysay' => $data['salaysay'] ?? '',
-                        'has_e_signature' => 1
+                            'has_e_signature' => 1
                     ];
                     $issueRes = $this->issueStage($complaintId, self::STAGE_2, $issueData, $userId);
 

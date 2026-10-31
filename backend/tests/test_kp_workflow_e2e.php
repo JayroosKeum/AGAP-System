@@ -78,6 +78,26 @@ function getNextWorkingDay(string $from, int $days = 1): string {
     return $dt->format('Y-m-d');
 }
 
+/**
+ * Returns the next Tuesday designated for Mediation hearings in Barangay Tumana,
+ * skipping Philippine holidays.
+ */
+function getNextMediationDay(string $from, int $occurrences = 1): string {
+    global $db;
+    $logistics = new OfficeLogisticsService($db);
+    $dt = new DateTime($from);
+    $found = 0;
+    while ($found < $occurrences) {
+        $dt->modify('+1 day');
+        if ((int)$dt->format('w') === 2) { // 2 = Tuesday
+            if ($logistics->isPhilippineHoliday($dt->format('Y-m-d')) === null) {
+                $found++;
+            }
+        }
+    }
+    return $dt->format('Y-m-d');
+}
+
 // -------------------------------------------------------------------------
 // STEP 1: Fixtures Setup (Residents, Users, Complaint, Docketed Case)
 // -------------------------------------------------------------------------
@@ -143,7 +163,7 @@ $cleanup->trackComplaint($complaintId);
 
 // Docket case and issue 1st Mediation summons
 $summonsModel = new Summons();
-$firstMedDate = getNextWorkingDay(date('Y-m-d'), 1);
+$firstMedDate = getNextMediationDay(date('Y-m-d'), 1);
 $issueRes = $summonsModel->issueFirstSummon($complaintId, 1, [
     'mediation_date' => $firstMedDate,
     'mediation_time' => '10:00',
@@ -220,7 +240,7 @@ testAssert(empty($earlyReferral['success']), "Elevation blocked after 1 mediatio
 
 // 3.3 Schedule 2nd Mediation session
 $hearingModel = new Hearing();
-$med2Date = getNextWorkingDay($firstMedDate, 1);
+$med2Date = getNextMediationDay($firstMedDate, 1);
 $med2Res = $hearingModel->createProgression([
     'case_id' => $caseId,
     'hearing_type' => 'Mediation',
@@ -229,10 +249,13 @@ $med2Res = $hearingModel->createProgression([
     'venue' => 'Lupon Court Room',
     'remarks' => '2nd Mediation Hearing before Punong Barangay'
 ], null, 1);
+if (empty($med2Res['success'])) {
+    echo "  [DEBUG med2Res error]: " . ($med2Res['message'] ?? 'Unknown') . "\n";
+}
 testAssert(!empty($med2Res['success']), "2nd Mediation session scheduled (Sequence 2)");
 
 // 3.4 Attempt 3rd Mediation -> rejected by statutory 2-session cap
-$med3Date = getNextWorkingDay($med2Date, 1);
+$med3Date = getNextMediationDay($med2Date, 1);
 $med3Res = $hearingModel->createProgression([
     'case_id' => $caseId,
     'hearing_type' => 'Mediation',

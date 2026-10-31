@@ -401,17 +401,16 @@ include '../../layouts/header.php';
                                 </div>
                             </div>
 
-                            <!-- Mandatory Pre-Docketing Phase (1st Paanyaya) -->
+                            <!-- Pre-Docketing Phase (Paanyaya Invitation) -->
                             <div class="paanyaya-intake-card" style="margin-bottom: 24px; background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 10px; padding: 18px 20px;">
                                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
                                     <div style="display: flex; align-items: center; gap: 10px;">
-                                        
                                         <div>
                                             <h4 style="margin: 0; font-size: 1.02rem; color: #166534; font-weight: 800; letter-spacing: -0.01em;">
-                                                Mandatory Pre-Docketing Phase: 1st Paanyaya (Informal Invitation 1 of 2)
+                                                Pre-Docketing Phase: Paanyaya (Informal Invitation)
                                             </h4>
                                             <span style="font-size: 0.82rem; color: #15803d; line-height: 1.4; display: block; margin-top: 2px;">
-                                                Under LTIA &amp; Barangay Tumana KP rules, all disputes start with informal dialogue. Formal Case Docket Numbers are withheld until mediation is required.
+                                                Under LTIA &amp; Barangay Tumana KP rules, disputes may start with an informal dialogue. Paanyaya tracks only the invitee name, date, and time.
                                             </span>
                                         </div>
                                     </div>
@@ -420,27 +419,25 @@ include '../../layouts/header.php';
                                     </span>
                                 </div>
 
+                                <div class="form-group" style="margin-bottom: 12px;">
+                                    <label for="paanyayaInvitee" style="color: #166534; font-weight: 700; font-size: 0.85rem;">Invitee Name (Person Being Invited)</label>
+                                    <input type="text" id="paanyayaInvitee" name="paanyaya_invitee_name" placeholder="Leave blank to use respondent's name" style="border-color: #86efac; width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid #86efac; background: #ffffff; font-size: 0.88rem;">
+                                </div>
+
                                 <div class="form-row-2">
                                     <div class="form-group">
-                                        <label for="paanyayaDate" style="color: #166534; font-weight: 700; font-size: 0.85rem;">1st Invitation Date <span class="required-mark">*</span></label>
-                                        <input type="date" id="paanyayaDate" name="paanyaya_date" value="<?php echo date('Y-m-d', strtotime('+3 weekdays')); ?>" required style="border-color: #86efac;">
+                                        <label for="paanyayaDate" style="color: #166534; font-weight: 700; font-size: 0.85rem;">Invitation Date</label>
+                                        <input type="date" id="paanyayaDate" name="paanyaya_date" value="<?php echo date('Y-m-d', strtotime('+3 weekdays')); ?>" style="border-color: #86efac;">
                                     </div>
                                     <div class="form-group">
-                                        <label for="paanyayaTime" style="color: #166534; font-weight: 700; font-size: 0.85rem;">1st Invitation Time <span class="required-mark">*</span></label>
-                                        <input type="time" id="paanyayaTime" name="paanyaya_time" value="14:00" required style="border-color: #86efac;">
+                                        <label for="paanyayaTime" style="color: #166534; font-weight: 700; font-size: 0.85rem;">Invitation Time</label>
+                                        <input type="time" id="paanyayaTime" name="paanyaya_time" value="14:00" style="border-color: #86efac;">
                                     </div>
                                 </div>
 
                                 <div class="form-group" style="margin-top: 10px;">
                                     <label for="paanyayaVenue" style="color: #166534; font-weight: 700; font-size: 0.85rem;">Dialogue Venue</label>
                                     <input type="text" id="paanyayaVenue" name="paanyaya_venue" value="Tanggapan ng Barangay Tumana" style="border-color: #86efac;">
-                                    <input type="hidden" name="paanyaya_has_e_signature" value="1">
-                                </div>
-
-                                <div class="form-group" style="margin-top: 10px;">
-                                    <label for="paanyayaSalaysay" style="color: #166534; font-weight: 700; font-size: 0.85rem;">Specific Salaysay / Reason for Invitation (Optional override)</label>
-                                    <textarea id="paanyayaSalaysay" name="paanyaya_salaysay" rows="2" placeholder="Leave blank to automatically use the complaint narrative as {salaysay}..." style="font-size: 0.88rem; width: 100%; border: 1px solid #86efac; border-radius: 6px; padding: 8px; background: #ffffff;"></textarea>
-                                    <small style="color: #15803d; display: block; margin-top: 4px;">Inserted into <em>"...Dahil ayon sa kanila {salaysay}..."</em> in the official Paanyaya letter.</small>
                                 </div>
                             </div>
 
@@ -1854,7 +1851,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const submitBtn = document.getElementById('btnSubmitComplaint');
             if (submitBtn) {
                 submitBtn.disabled = true;
-                submitBtn.textContent = 'Saving & Issuing 1st Paanyaya...';
+                submitBtn.textContent = 'Saving & Scheduling Paanyaya...';
             }
         });
     }

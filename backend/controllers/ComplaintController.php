@@ -222,46 +222,31 @@ class ComplaintController
                 }
             }
 
-            // Mandatory Entry: Automatic Paanyaya (Stage 0: Pre-Docketing) - No pathway choice
-            if ($complaintId > 0 && !$isDraft) {
+            // Optional: If Paanyaya schedule details were provided, schedule an independent Paanyaya referencing this dispute
+            if ($complaintId > 0 && !$isDraft && !empty($data['paanyaya_date']) && !empty($data['paanyaya_time'])) {
                 require_once __DIR__ . '/../models/Paanyaya.php';
                 $paanyayaModel = new Paanyaya();
-                $paaDate = !empty($data['paanyaya_date']) ? trim((string)$data['paanyaya_date']) : date('Y-m-d', strtotime('+3 weekdays'));
-                $paaTime = !empty($data['paanyaya_time']) ? trim((string)$data['paanyaya_time']) : '14:00';
+                $paaDate = trim((string)$data['paanyaya_date']);
+                $paaTime = trim((string)$data['paanyaya_time']);
                 $paaVenue = !empty($data['paanyaya_venue']) ? trim((string)$data['paanyaya_venue']) : 'Tanggapan ng Barangay Tumana';
-                $paaSig = isset($data['paanyaya_has_e_signature']) ? (int) ((bool) $data['paanyaya_has_e_signature']) : 1;
-                $paaSalaysay = !empty($data['paanyaya_salaysay']) ? trim((string)$data['paanyaya_salaysay']) : ($data['narrative'] ?? '');
+                $paaInvitee = !empty($data['invitee_name']) ? trim((string)$data['invitee_name']) : (!empty($data['paanyaya_invitee_name']) ? trim((string)$data['paanyaya_invitee_name']) : '');
 
                 $paaResult = $paanyayaModel->schedule([
                     'complaint_id' => $complaintId,
-                    'attempt_number' => 1,
-                    'invitation_date' => $paaDate,
-                    'invitation_time' => $paaTime,
+                    'invitee_name' => $paaInvitee,
+                    'scheduled_date' => $paaDate,
+                    'scheduled_time' => $paaTime,
                     'venue' => $paaVenue,
-                    'salaysay' => $paaSalaysay,
-                    'has_e_signature' => $paaSig,
                 ], (int) ($_SESSION['user_id'] ?? 1));
 
                 if ($paaResult['success']) {
-                    $result['message'] .= ' (1st Paanyaya informal dialogue scheduled: Complaint placed in Pre-Docketing.)';
-                    $result['paanyaya_session_id'] = $paaResult['session_id'] ?? null;
-                    $result['pdf_path'] = $paaResult['pdf_path'] ?? null;
-
-                    // Automatically initialize Paanyaya 1 stage in paanyaya_stages table
-                    try {
-                        $paanyayaModel->issueStage($complaintId, 'Paanyaya 1', [
-                            'invitation_date' => $paaDate,
-                            'invitation_time' => $paaTime,
-                            'venue' => $paaVenue,
-                            'salaysay' => $paaSalaysay,
-                            'has_e_signature' => $paaSig,
-                            'assigned_officer_id' => (int) ($_SESSION['user_id'] ?? 1)
-                        ], (int) ($_SESSION['user_id'] ?? 1));
-                    } catch (Throwable $stageErr) {
-                        error_log('Paanyaya 1 stage auto-issue notice: ' . $stageErr->getMessage());
-                    }
+                    $result['message'] .= ' (Paanyaya invitation scheduled.)';
+                    $result['paanyaya_id'] = $paaResult['paanyaya_id'] ?? null;
                 }
-                $result['redirect_url'] = '../../frontend/pages/complaints/complaint-details.php?id=' . $complaintId . '&tab=paanyaya&preview=1';
+            }
+
+            if (empty($result['redirect_url'])) {
+                $result['redirect_url'] = '../../frontend/pages/complaints/complaint-details.php?id=' . $complaintId;
             }
         }
 

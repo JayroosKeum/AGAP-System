@@ -869,8 +869,8 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
             <input type="hidden" name="has_e_signature" value="1">
 
             <div class="form-group" style="margin-top: 10px;">
-                <label for="secondSalaysay" style="font-weight: 700; font-size: 0.85rem;">Salaysay / Reason for 2nd Invitation (Optional override)</label>
-                <textarea id="secondSalaysay" name="salaysay" rows="2" placeholder="Leave blank to use complaint narrative..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.88rem;"></textarea>
+                <label for="secondInvitee" style="font-weight: 700; font-size: 0.85rem;">Invitee Name (Person Being Invited)</label>
+                <input type="text" id="secondInvitee" name="invitee_name" placeholder="Name of person being invited..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.88rem;">
             </div>
 
             <div id="scheduleSecondError" class="alert alert-danger" style="display: none; font-size: 0.84rem; margin-top: 10px;"></div>
