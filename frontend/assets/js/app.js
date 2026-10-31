@@ -346,9 +346,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.updateNavNotificationBadge(Number(result.unread_count || 0));
             }
             const unseen = (result.data || []).filter((item) => !Number(item.is_read) && !seen.has(String(item.notification_id)));
-            unseen.slice(0, 3).forEach((item) => {
+            unseen.slice(0, 3).forEach((item, index) => {
                 seen.add(String(item.notification_id));
                 window.agapNotify(item.message, item.severity || 'info', item.title || 'New notification');
+                // A displayed workflow alert has been acknowledged. Persisting this
+                // server-side keeps it from appearing again after a later login.
+                fetch('../../../backend/api/notifications/read.php', {
+                    method: 'POST',
+                    body: new URLSearchParams({ notification_id: String(item.notification_id) })
+                }).then((markReadResponse) => {
+                    if (markReadResponse.ok && typeof window.updateNavNotificationBadge === 'function') {
+                        const unreadAfterDisplay = Math.max(0, Number(result.unread_count || 0) - index - 1);
+                        window.updateNavNotificationBadge(unreadAfterDisplay);
+                    }
+                }).catch(() => null);
             });
             sessionStorage.setItem(seenKey, JSON.stringify([...seen].slice(-100)));
         } catch (_) { /* Notification polling must not interrupt page work. */ }

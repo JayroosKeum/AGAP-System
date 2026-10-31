@@ -104,8 +104,8 @@ async function saveUser(event) {
             && !/^[\p{L}\p{M}]+(?:[ '-][\p{L}\p{M}]+)*$/u.test(field.value)) {
             field.setCustomValidity('Please enter a valid name using letters, spaces, hyphens, or apostrophes.');
         }
-        if (field.name === 'contact_no' && field.value && !validPhilippinePhone(field.value)) {
-            field.setCustomValidity('Please enter a valid Philippine mobile or telephone number.');
+        if (field.name === 'contact_no' && !validPhilippinePhone(field.value)) {
+            field.setCustomValidity('Enter a valid Philippine mobile or telephone number, such as 09171234567 or +639171234567.');
         }
     }
     if (!form.reportValidity()) return;

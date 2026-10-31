@@ -72,9 +72,9 @@ include '../../layouts/header.php';
             </div>
 
             <div class="form-group">
-                <label>Contact Number</label>
-                <input id="contactNo" type="tel" name="contact_no" maxlength="20" pattern="[0-9+() .-]{7,20}" inputmode="tel" aria-describedby="contactNoHelp">
-                <small id="contactNoHelp">Optional. Enter a valid Philippine mobile or telephone number.</small>
+                <label for="contactNo">Contact Number</label>
+                <input id="contactNo" type="tel" name="contact_no" maxlength="20" pattern="[0-9+() .-]{10,20}" inputmode="tel" autocomplete="tel" placeholder="09XXXXXXXXX or +639XXXXXXXXX" aria-describedby="contactNoHelp" required>
+                <small id="contactNoHelp">Required. Enter a valid Philippine mobile or telephone number.</small>
             </div>
             
             <div class="form-group">

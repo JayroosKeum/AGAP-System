@@ -7,7 +7,6 @@
             <img src="../../assets/images/tumana_logo.jpg" alt="">
             <span><strong>AGAP</strong><small>Barangay Tumana</small></span>
         </a>
-        <a href="../auth/login.php" class="landing-login">Staff sign in</a>
     </nav>
 
     <section class="landing-hero" aria-labelledby="landing-title">
@@ -16,7 +15,7 @@
             <h1 id="landing-title">Better coordination.<br><span>Stronger communities.</span></h1>
             <p class="hero-description">A clear, connected workspace for managing barangay complaints, mediation, hearings, and case outcomes—with accountability at every step.</p>
             <div class="hero-actions">
-                <a href="../auth/login.php" class="landing-cta">Sign In</a>
+                <a href="../auth/login.php" class="landing-cta">Staff sign in</a>
                 <span class="hero-note">For authorized barangay personnel</span>
             </div>
         </div>
@@ -87,7 +86,6 @@
     <section class="landing-bottom">
         <div class="bottom-mark"><img src="../../assets/images/marikina_logo.jpg" alt="City of Marikina seal"></div>
         <div><p class="landing-kicker">Public service, with clarity</p><h2>Supporting fair and orderly community resolution.</h2></div>
-        <a href="../auth/login.php" class="bottom-link">Sign in to AGAP</a>
     </section>
 </main>
 

@@ -62,7 +62,8 @@ class UserController {
         if ($this->user->usernameInUse($username, $exceptUserId)) return ['success' => false, 'message' => 'That username is already in use. Please choose another.'];
         if ($email === '' || mb_strlen($email) > 150 || !ValidationService::email($email)) return ['success' => false, 'message' => 'Please enter a valid email address (up to 150 characters).'];
         if ($this->user->emailInUse($email, $exceptUserId)) return ['success' => false, 'message' => 'That email address is already in use. Please enter another.'];
-        if (!ValidationService::phone($contactNo) || mb_strlen($contactNo) > 20) return ['success' => false, 'message' => 'Please enter a valid Philippine telephone number (up to 20 characters).'];
+        if ($contactNo === '') return ['success' => false, 'message' => 'A Philippine mobile or telephone number is required.'];
+        if (!ValidationService::phone($contactNo) || mb_strlen($contactNo) > 20) return ['success' => false, 'message' => 'Please enter a valid Philippine mobile or telephone number (up to 20 characters).'];
         if (!$roleId || !$this->user->roleExists((int) $roleId)) return ['success' => false, 'message' => 'Choose a valid role.'];
         if ($passwordRequired && trim($password) === '') return ['success' => false, 'message' => 'Please enter a password for the new user account.'];
         if ($password !== '' && (strlen($password) < 12 || !preg_match('/[a-z]/', $password) || !preg_match('/[A-Z]/', $password) || !preg_match('/\\d/', $password))) return ['success' => false, 'message' => 'Use at least 12 characters with uppercase, lowercase, and a number for the password.'];
