@@ -676,13 +676,29 @@ class CaseStage
         $attendanceFinalized = ($sessionCount > 0 && ($complainantAtt['present'] + $complainantAtt['absent'] + $complainantAtt['excused']) > 0);
         $outcome = $stageRecord['outcome'] ?? (!empty($arbRecord['award_date']) ? 'Arbitration Award' : 'Pending');
 
+        // Presiding Officer determination: Pangkat Chairman if Pangkat constituted, else Punong Barangay
+        $arbitratorName = $stageRecord['presiding_officer'] ?? $pbName;
+        $pChairStmt = $this->conn->prepare("
+            SELECT TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS chairman_name
+            FROM pangkat_members pm
+            INNER JOIN pangkat_groups pg ON pg.pangkat_id = pm.pangkat_id
+            INNER JOIN users u ON u.user_id = pm.member_id
+            WHERE pg.case_id = ? AND pm.position = 'Chairman'
+            LIMIT 1
+        ");
+        $pChairStmt->execute([$caseId]);
+        $pChairName = $pChairStmt->fetchColumn();
+        if ($pChairName) {
+            $arbitratorName = $pChairName . ' (Pangkat Chairman)';
+        }
+
         return [
             'stage_name' => 'Arbitration',
             'stage_description' => 'Binding dispute arbitration pursuant to KP Form 14 / Sec 413, RA 7160',
             'stage_status' => $stageStatus,
             'badge_class' => self::getBadgeClass($stageStatus),
             'is_locked' => !$isUnlocked,
-            'presiding_officer' => $stageRecord['presiding_officer'] ?? $pbName,
+            'presiding_officer' => $arbitratorName,
             'sessions_count' => $sessionCount,
             'next_hearing' => $nextHearing,
             'latest_hearing_date' => $latestHearingDate,
@@ -1253,33 +1269,36 @@ class CaseStage
                 $updCase->execute([$caseId]);
                 $updComp = $this->conn->prepare("UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = 'Dismissed', co.updated_at = NOW() WHERE c.case_id = ?");
                 $updComp->execute([$caseId]);
-            } elseif ($outcome === 'Arbitration' || $outcome === 'Arbitration Award') {
+            } elseif ($outcome === 'Arbitration Award') {
+                $updCase = $this->conn->prepare("UPDATE cases SET case_status = 'Settled', updated_at = NOW() WHERE case_id = ?");
+                $updCase->execute([$caseId]);
+                $updComp = $this->conn->prepare("UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = 'Settled', co.updated_at = NOW() WHERE c.case_id = ?");
+                $updComp->execute([$caseId]);
+            } elseif ($outcome === 'Arbitration') {
                 $updCase = $this->conn->prepare("UPDATE cases SET case_status = 'Arbitration', updated_at = NOW() WHERE case_id = ?");
                 $updCase->execute([$caseId]);
                 $updComp = $this->conn->prepare("UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = 'Arbitration', co.updated_at = NOW() WHERE c.case_id = ?");
                 $updComp->execute([$caseId]);
 
-                if ($outcome === 'Arbitration') {
-                    $chkArb = $this->conn->prepare("SELECT arbitration_id FROM arbitration_records WHERE case_id = ? LIMIT 1");
-                    $chkArb->execute([$caseId]);
-                    $arbId = $chkArb->fetchColumn();
-                    if (!$arbId) {
-                        $insArb = $this->conn->prepare("
-                            INSERT INTO arbitration_records (case_id, agreement_date, award_details)
-                            VALUES (?, CURDATE(), ?)
-                        ");
-                        $insArb->execute([
-                            $caseId,
-                            $remarks ?: 'Both parties voluntarily agreed in writing to submit their dispute to binding arbitration under RA 7160 Sec. 413 (KP Form 14).'
-                        ]);
-                    } else {
-                        $updArb = $this->conn->prepare("
-                            UPDATE arbitration_records
-                            SET agreement_date = COALESCE(agreement_date, CURDATE())
-                            WHERE arbitration_id = ?
-                        ");
-                        $updArb->execute([$arbId]);
-                    }
+                $chkArb = $this->conn->prepare("SELECT arbitration_id FROM arbitration_records WHERE case_id = ? LIMIT 1");
+                $chkArb->execute([$caseId]);
+                $arbId = $chkArb->fetchColumn();
+                if (!$arbId) {
+                    $insArb = $this->conn->prepare("
+                        INSERT INTO arbitration_records (case_id, agreement_date, award_details)
+                        VALUES (?, CURDATE(), ?)
+                    ");
+                    $insArb->execute([
+                        $caseId,
+                        $remarks ?: 'Both parties voluntarily agreed in writing to submit their dispute to binding arbitration under RA 7160 Sec. 413 (KP Form 14).'
+                    ]);
+                } else {
+                    $updArb = $this->conn->prepare("
+                        UPDATE arbitration_records
+                        SET agreement_date = COALESCE(agreement_date, CURDATE())
+                        WHERE arbitration_id = ?
+                    ");
+                    $updArb->execute([$arbId]);
                 }
             }
 

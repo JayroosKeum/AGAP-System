@@ -20,10 +20,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const caseSelect = document.getElementById('cfaCaseId');
     const presetSelect = document.getElementById('cfaPresetReason');
     const reasonText = document.getElementById('cfaReasonText');
+    const cfaTypeSelect = document.getElementById('cfaType');
     const form = document.getElementById('cfaIssueForm');
 
     caseSelect?.addEventListener('change', () => {
         loadCasePreview(caseSelect.value);
+    });
+
+    cfaTypeSelect?.addEventListener('change', () => {
+        const btn = document.getElementById('btnSubmitCfa');
+        if (btn) btn.textContent = `Issue ${cfaTypeSelect.value || 'CFA'}`;
     });
 
     presetSelect?.addEventListener('change', () => {
@@ -68,16 +74,18 @@ async function loadCasePreview(caseId) {
     const preview = document.getElementById('cfaCaseCasePreview') || document.getElementById('cfaCasePreview');
     const presetSelect = document.getElementById('cfaPresetReason');
     const reasonText = document.getElementById('cfaReasonText');
+    const cfaTypeSelect = document.getElementById('cfaType');
+    const submitBtn = document.getElementById('btnSubmitCfa');
     if (!preview) return;
 
     if (!caseId) {
-        preview.textContent = 'Select a case above to review its current status and mediation timeline.';
+        preview.textContent = 'Select a case above to review its current status, proceedings outcome, and eligibility.';
         preview.className = 'document-preview muted';
         return;
     }
 
     try {
-        preview.textContent = 'Loading case details...';
+        preview.textContent = 'Loading case details and evaluating eligibility...';
         const [res, cfaStatusRes] = await Promise.all([
             cfaApi(`../../../backend/api/cases/workspace.php?id=${encodeURIComponent(caseId)}`),
             cfaApi(`../../../backend/api/documents/cfa.php?case_id=${encodeURIComponent(caseId)}`).catch(() => ({ success: true, cfa_eligibility: null }))
@@ -87,6 +95,90 @@ async function loadCasePreview(caseId) {
         const timer = item.mediation_timer || {};
         const cfaElig = cfaStatusRes.cfa_eligibility || null;
         window.currentCaseCfaEligibility = cfaElig;
+
+        // Populate cfaType options based on backend determination
+        if (cfaTypeSelect && cfaElig) {
+            const avail = cfaElig.available_forms || ['KP Form 20'];
+            cfaTypeSelect.innerHTML = '';
+
+            const formLabels = {
+                'KP Form 20': 'KP Form 20 — Certificate to File Action (Katibayan Upang Makadulog sa Hukuman)',
+                'KP Form 20-A': 'KP Form 20-A — Certificate to Bar Action (Katibayan Upang Hadlangan ang Paghahain ng Aksyon)',
+                'KP Form 20-B': 'KP Form 20-B — Certificate to Bar Counterclaim (Katibayan Upang Hadlangan ang Ganting-Sakdal)'
+            };
+
+            avail.forEach((formCode) => {
+                const opt = document.createElement('option');
+                opt.value = formCode;
+                opt.textContent = formLabels[formCode] || formCode;
+                cfaTypeSelect.appendChild(opt);
+            });
+
+            if (cfaElig.recommended_form && avail.includes(cfaElig.recommended_form)) {
+                cfaTypeSelect.value = cfaElig.recommended_form;
+            }
+            if (submitBtn) {
+                submitBtn.textContent = `Issue ${cfaTypeSelect.value || 'CFA'}`;
+            }
+        }
+
+        let statusBannerHtml = '';
+        if (cfaElig) {
+            if (cfaElig.eligible) {
+                const isBarredComp = cfaElig.barred_complainant;
+                const isRespDef = cfaElig.defaulted_respondent;
+
+                if (isBarredComp) {
+                    statusBannerHtml = `
+                        <div style="margin-top: 0.75rem; padding: 12px 16px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; color: #991b1b; font-size: 0.88rem;">
+                            <strong>Complainant Barred from Action (KP Form 20-A):</strong>
+                            <p style="margin: 4px 0 0;">${escapeHtml(cfaElig.reason || 'Complainant willfully failed to appear. KP Form 20 is barred; only KP Form 20-A can be issued.')}</p>
+                        </div>
+                    `;
+                    if (presetSelect && reasonText) {
+                        presetSelect.value = 'Complainant willfully failed or refused to appear for hearing after summons without justifiable cause. Bar action issued pursuant to Sec. 412(b)(1).';
+                        reasonText.value = presetSelect.value;
+                    }
+                } else if (isRespDef) {
+                    statusBannerHtml = `
+                        <div style="margin-top: 0.75rem; padding: 12px 16px; background: #fefce8; border: 1px solid #fef08a; border-radius: 8px; color: #854d0e; font-size: 0.88rem;">
+                            <strong>Respondent Default Established:</strong>
+                            <p style="margin: 4px 0 0;">${escapeHtml(cfaElig.reason || 'Respondent willfully failed to appear. Counterclaim is barred (KP Form 20-B) and Complainant may receive KP Form 20.')}</p>
+                        </div>
+                    `;
+                    if (presetSelect && reasonText) {
+                        presetSelect.value = 'Respondent willfully failed or refused to appear for mediation after repeated summons without justifiable cause.';
+                        reasonText.value = presetSelect.value;
+                    }
+                } else {
+                    statusBannerHtml = `
+                        <div style="margin-top: 0.75rem; padding: 12px 16px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; color: #166534; font-size: 0.88rem;">
+                            <strong>CFA Grounds Met (${escapeHtml(cfaElig.recommended_form || 'KP Form 20')}):</strong>
+                            <p style="margin: 4px 0 0;">${escapeHtml(cfaElig.reason || 'Case has satisfied statutory requirements for Certificate to File Action issuance.')}</p>
+                        </div>
+                    `;
+                    if (presetSelect && reasonText && !reasonText.value) {
+                        if (cfaElig.ground === 'CONCILIATION_IMPASSE') {
+                            presetSelect.value = 'Conciliation proceedings before the Pangkat Tagapagkasundo failed to reach an amicable settlement within the statutory period.';
+                        } else if (cfaElig.ground === 'REPUDIATED_SETTLEMENT') {
+                            presetSelect.value = 'Amicable settlement was formally repudiated by a party within the 10-day statutory period.';
+                        } else if (cfaElig.ground === 'SUMMONS_DELIVERY_FAILURE') {
+                            presetSelect.value = 'Respondent summons unserved after documented delivery attempts (Delivery Failure).';
+                        }
+                        if (presetSelect.value && presetSelect.value !== 'custom') {
+                            reasonText.value = presetSelect.value;
+                        }
+                    }
+                }
+            } else {
+                statusBannerHtml = `
+                    <div style="margin-top: 0.75rem; padding: 12px 16px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; color: #92400e; font-size: 0.88rem;">
+                        <strong>CFA Not Yet Eligible:</strong>
+                        <p style="margin: 4px 0 0;">${escapeHtml(cfaElig.reason || 'Dispute is currently active and has not met statutory conditions for CFA issuance.')}</p>
+                    </div>
+                `;
+            }
+        }
 
         let timerHtml = '';
         if (item.case_status === 'Mediation' && timer.timer_status) {
@@ -103,48 +195,14 @@ async function loadCasePreview(caseId) {
             `;
         }
 
-        let summonsBannerHtml = '';
-        if (cfaElig) {
-            if (cfaElig.eligible) {
-                summonsBannerHtml = `
-                    <div style="margin-top: 0.75rem; padding: 12px 16px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; color: #166534; font-size: 0.88rem; display: flex; align-items: center; gap: 8px;">
-                        
-                        <div>
-                            <strong>CFA Unlocked (3 Failed Summons Attempts):</strong> ${escapeHtml(cfaElig.reason || 'All three summons delivery attempts have resulted in qualifying delivery failure.')}
-                        </div>
-                    </div>
-                `;
-                // Pre-fill reason with summons failure ground
-                if (presetSelect && reasonText) {
-                    presetSelect.value = 'Respondent summons unserved after three (3) documented delivery attempts (Delivery Failure).';
-                    reasonText.value = presetSelect.value;
-                }
-            } else if (cfaElig.attempts_count > 0) {
-                summonsBannerHtml = `
-                    <div style="margin-top: 0.75rem; padding: 12px 16px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; color: #92400e; font-size: 0.88rem; display: flex; align-items: center; gap: 8px;">
-                        
-                        <div>
-                            <strong>Summons Delivery Status:</strong> ${escapeHtml(cfaElig.reason || 'CFA is locked through this path.')}
-                        </div>
-                    </div>
-                `;
-            }
-        }
-
         preview.className = 'document-preview';
         preview.innerHTML = `
             <div><strong>Case:</strong> ${escapeHtml(item.case_number)} — ${escapeHtml(item.complaint_title)}</div>
             <div><strong>Stage / Status:</strong> ${escapeHtml(item.case_status)}</div>
             <div><strong>Docket Date:</strong> ${escapeHtml(item.docket_date)}</div>
             ${timerHtml}
-            ${summonsBannerHtml}
+            ${statusBannerHtml}
         `;
-
-        // If the case mediation has lapsed, prefill the reason automatically!
-        if (timer.is_lapsed && presetSelect && reasonText && (!cfaElig || !cfaElig.eligible)) {
-            presetSelect.value = '15-day statutory mediation period has lapsed without settlement or constitution of Pangkat Tagapagkasundo (RA 7160 Sec. 410(b)).';
-            reasonText.value = presetSelect.value;
-        }
     } catch (err) {
         preview.textContent = 'Unable to load case preview: ' + err.message;
         preview.className = 'document-preview text-danger';
@@ -158,6 +216,7 @@ async function handleCfaSubmit(event) {
     setMessage('', false);
 
     const caseId = document.getElementById('cfaCaseId')?.value;
+    const cfaType = document.getElementById('cfaType')?.value || 'KP Form 20';
     const reason = document.getElementById('cfaReasonText')?.value?.trim();
 
     if (!caseId) {
@@ -166,24 +225,25 @@ async function handleCfaSubmit(event) {
     }
 
     if (!reason) {
-        setMessage('Please specify the ground or findings for issuing the CFA.', false);
+        setMessage('Please specify the ground or findings for issuing this certification.', false);
         return;
     }
-
-    // Validate three summons failed delivery condition
-    const isSummonsFailureReason = reason.includes('documented delivery attempts')
-        || reason.includes('delivery failure')
-        || reason.includes('summons unserved')
-        || reason.includes('failed to appear after repeated summons');
 
     const elig = window.currentCaseCfaEligibility;
-    if (isSummonsFailureReason && elig && !elig.eligible) {
-        setMessage(elig.reason || 'CFA Locked — 6 summons delivery attempts must result in qualifying failure before CFA can be issued on this ground.', false);
-        window.agapNotify?.(elig.reason || 'CFA is locked until all 6 summons attempts have failed.', 'warning', 'CFA Locked');
+    if (elig && !elig.eligible) {
+        setMessage(elig.reason || 'Case is not eligible for CFA issuance under KP rules.', false);
+        window.agapNotify?.(elig.reason || 'CFA issuance blocked by procedural rules.', 'warning', 'CFA Ineligible');
         return;
     }
 
-    if (!window.confirm('Are you sure you want to issue a Certificate to File Action (CFA) for this case? This will mark the case as CFA Issued and generate KP Form No. 20.')) {
+    if (elig?.barred_complainant && cfaType !== 'KP Form 20-A') {
+        const msg = 'Complainant is barred from action: Only KP Form 20-A can be issued.';
+        setMessage(msg, false);
+        window.agapNotify?.(msg, 'error', 'Invalid Form Selection');
+        return;
+    }
+
+    if (!window.confirm(`Are you sure you want to issue ${cfaType} for this case? This action will formally record the certification and generate the official document.`)) {
         return;
     }
 
@@ -196,8 +256,8 @@ async function handleCfaSubmit(event) {
             body: formData
         });
 
-        setMessage(res.message || 'CFA issued successfully!', true);
-        window.agapNotify?.(res.message || 'CFA issued successfully. KP Form No. 20 generated.', 'success', 'Certificate to File Action Issued');
+        setMessage(res.message || `${cfaType} issued successfully!`, true);
+        window.agapNotify?.(res.message || `${cfaType} issued successfully.`, 'success', 'Certificate Issued');
         form.reset();
         await Promise.all([loadCases(), loadCfaRecords()]);
         const preview = document.getElementById('cfaCasePreview');
@@ -207,14 +267,14 @@ async function handleCfaSubmit(event) {
                 printActionHtml = `
                     <div style="margin-top: 10px;">
                         <a href="${escapeHtml(res.pdf_url)}" target="_blank" class="btn-create" style="display: inline-flex; align-items: center; gap: 6px; text-decoration: none;">
-                            Print KP Form 20 (CFA Document)
+                            Print ${escapeHtml(res.cfa_type || 'CFA Document')}
                         </a>
                     </div>
                 `;
             }
             preview.innerHTML = `
                 <div style="color: #166534; font-weight: 600;">
-                    CFA was successfully issued and KP Form No. 20 has been generated.
+                    ${escapeHtml(res.cfa_type || 'Certificate')} was successfully issued.
                 </div>
                 ${printActionHtml}
             `;
@@ -237,21 +297,26 @@ async function loadCfaRecords() {
         const records = res.data || [];
 
         if (!records.length) {
-            table.innerHTML = '<tr><td colspan="5" class="empty-state">No Certificate to File Action (CFA) records found.</td></tr>';
+            table.innerHTML = '<tr><td colspan="6" class="empty-state">No Certificate to File Action (CFA) or Bar records found.</td></tr>';
             return;
         }
 
-        table.innerHTML = records.map((r) => `
-            <tr>
-                <td><strong>${escapeHtml(r.case_number)}</strong></td>
-                <td>${escapeHtml(r.complaint_title || 'Case ' + r.case_number)}</td>
-                <td>${escapeHtml(r.issuance_date)}</td>
-                <td style="max-width: 320px; white-space: normal; font-size: 0.875rem;">${escapeHtml(r.reason)}</td>
-                <td><span class="status status-cfa-issued">CFA Issued</span></td>
-            </tr>
-        `).join('');
+        table.innerHTML = records.map((r) => {
+            const formType = r.cfa_type || 'KP Form 20';
+            const badgeClass = formType === 'KP Form 20-A' ? 'status-barred' : (formType === 'KP Form 20-B' ? 'status-default' : 'status-cfa-issued');
+            return `
+                <tr>
+                    <td><strong>${escapeHtml(r.case_number)}</strong></td>
+                    <td>${escapeHtml(r.complaint_title || 'Case ' + r.case_number)}</td>
+                    <td><span class="badge ${badgeClass}" style="font-weight: 700; font-size: 0.8rem;">${escapeHtml(formType)}</span></td>
+                    <td>${escapeHtml(r.issuance_date)}</td>
+                    <td style="max-width: 320px; white-space: normal; font-size: 0.875rem;">${escapeHtml(r.reason)}</td>
+                    <td><span class="status status-cfa-issued">Issued</span></td>
+                </tr>
+            `;
+        }).join('');
     } catch (err) {
-        table.innerHTML = `<tr><td colspan="5" class="empty-state text-danger">${escapeHtml(err.message)}</td></tr>`;
+        table.innerHTML = `<tr><td colspan="6" class="empty-state text-danger">${escapeHtml(err.message)}</td></tr>`;
     }
 }
 

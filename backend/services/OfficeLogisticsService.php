@@ -266,6 +266,38 @@ class OfficeLogisticsService
                     ];
                 }
             }
+        } elseif ($hearingType === 'Arbitration') {
+            if ($dayOfWeek === 0 || $dayOfWeek === 6) {
+                return [
+                    'valid' => false,
+                    'message' => 'Arbitration hearings cannot be scheduled on weekends.'
+                ];
+            }
+            if (($hour < 8 || $hour >= 17) || ($hour >= 12 && $hour < 13)) {
+                return [
+                    'valid' => false,
+                    'message' => 'Arbitration hearings must be during regular office hours (8:00 AM – 12:00 PM & 1:00 PM – 5:00 PM, excluding 12:00 PM – 1:00 PM lunch break).'
+                ];
+            }
+            if ($hour < 12) {
+                $endHour = (int) $end->format('H');
+                $endMin = (int) $end->format('i');
+                if ($endHour > 12 || ($endHour === 12 && $endMin > 0)) {
+                    return [
+                        'valid' => false,
+                        'message' => 'Morning arbitration hearings must conclude by 12:00 PM for lunch break.'
+                    ];
+                }
+            } else {
+                $endHour = (int) $end->format('H');
+                $endMin = (int) $end->format('i');
+                if ($endHour > 17 || ($endHour === 17 && $endMin > 0)) {
+                    return [
+                        'valid' => false,
+                        'message' => 'Afternoon arbitration hearings must conclude by 5:00 PM.'
+                    ];
+                }
+            }
         }
 
         return [
@@ -497,8 +529,22 @@ class OfficeLogisticsService
         int $caseId,
         string $startDateTime,
         string $endDateTime,
-        ?int $excludeHearingId = null
+        ?int $excludeHearingId = null,
+        ?string $hearingType = null,
+        ?int $presidingOfficerId = null
     ): array {
+        if ($hearingType === 'Arbitration') {
+            if ($presidingOfficerId) {
+                return $this->validateMemberAvailability(
+                    $presidingOfficerId,
+                    $startDateTime,
+                    $endDateTime,
+                    $excludeHearingId,
+                    'Presiding Arbitrator'
+                );
+            }
+            return ['available' => true, 'message' => ''];
+        }
         $stmt = $this->conn->prepare("
             SELECT ca.member_id, ca.assignment_role, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS officer_name
             FROM case_assignments ca

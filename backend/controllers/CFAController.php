@@ -24,9 +24,10 @@ class CFAController
         $result = $this->cfa->create($data, $userId);
 
         if (!empty($result['success'])) {
+            $formType = $result['cfa_type'] ?? 'KP Form 20';
             $this->audit->log(
                 $userId,
-                'Issued Certification To File Action',
+                "Issued {$formType}",
                 'CFA',
                 $data['case_id']
             );
@@ -35,9 +36,19 @@ class CFAController
         return $result;
     }
 
+    public function getEligibility(int $caseId): array
+    {
+        return $this->cfa->determineCfaEligibility($caseId);
+    }
+
     public function getByCase($caseId)
     {
         return $this->cfa->getByCase($caseId);
+    }
+
+    public function getAllByCase($caseId): array
+    {
+        return $this->cfa->getAllByCase($caseId);
     }
 
     public function index()

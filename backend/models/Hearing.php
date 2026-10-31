@@ -618,6 +618,34 @@ class Hearing
             $logistics = new OfficeLogisticsService($this->conn);
             $presidingOfficerId = !empty($data['presiding_officer_id']) ? (int) $data['presiding_officer_id'] : null;
 
+            // For Arbitration: Auto-assign presiding arbitrator if not explicitly provided
+            if ($data['hearing_type'] === 'Arbitration' && empty($presidingOfficerId)) {
+                // Check if Pangkat Chairman exists for this case
+                $pStmt = $this->conn->prepare("
+                    SELECT pm.member_id
+                    FROM pangkat_members pm
+                    INNER JOIN pangkat_groups pg ON pg.pangkat_id = pm.pangkat_id
+                    WHERE pg.case_id = ? AND pm.position = 'Chairman'
+                    LIMIT 1
+                ");
+                $pStmt->execute([(int) $data['case_id']]);
+                $pChairId = $pStmt->fetchColumn();
+                if ($pChairId) {
+                    $presidingOfficerId = (int) $pChairId;
+                } else {
+                    // Default to Punong Barangay
+                    $pbStmt = $this->conn->prepare("
+                        SELECT u.user_id
+                        FROM users u
+                        INNER JOIN roles r ON r.role_id = u.role_id
+                        WHERE r.role_name IN ('Administrator', 'Punong Barangay') AND u.status = 'Active'
+                        ORDER BY u.user_id ASC LIMIT 1
+                    ");
+                    $pbStmt->execute();
+                    $presidingOfficerId = (int) $pbStmt->fetchColumn() ?: null;
+                }
+            }
+
             // 1. Daily Capacity validation (max 8 hearings/day across barangay)
             $capacityCheck = $logistics->validateDailyCapacity($startTime, $presidingOfficerId);
             if (!$capacityCheck['valid']) {
@@ -675,7 +703,7 @@ class Hearing
             }
 
             // 5. Case required Lupon officers availability check
-            $offCheck = $logistics->validateCaseRequiredOfficersAvailability((int) $data['case_id'], $startTime, $endTime);
+            $offCheck = $logistics->validateCaseRequiredOfficersAvailability((int) $data['case_id'], $startTime, $endTime, null, $data['hearing_type'], $presidingOfficerId);
             if (!$offCheck['available']) {
                 $this->conn->rollBack();
                 $alternatives = $logistics->findAlternativeSlots((int) $data['case_id'], $startTime, $durationMin, $venue, $presidingOfficerId);

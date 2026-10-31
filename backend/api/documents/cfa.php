@@ -18,14 +18,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $caseId = filter_var($_GET['case_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
     if ($caseId) {
         $record = $controller->getByCase($caseId);
-        require_once '../../config/database.php';
-        require_once '../../services/SummonDeliveryService.php';
-        $db = (new Database())->connect();
-        $summonService = new SummonDeliveryService($db);
-        $eligibility = $summonService->getCfaEligibility($caseId);
+        $allRecords = $controller->getAllByCase($caseId);
+        $eligibility = $controller->getEligibility($caseId);
         echo json_encode([
             'success' => true,
             'data' => $record ?: null,
+            'records' => $allRecords,
             'cfa_eligibility' => $eligibility
         ]);
         exit;

@@ -1051,7 +1051,7 @@ class KpFormService
 
         // Check Amicable Settlement (KP Form 16)
 
-        $isSettled = ($caseStatus === 'Settled' || $lastOutcome === 'Settled' || !empty($settlement));
+        $isSettled = ($caseStatus === 'Settled' || $lastOutcome === 'Settled' || $lastOutcome === 'Arbitration Award' || !empty($settlement) || !empty($arbitration['award_date']));
 
         if ($isSettled) {
 
@@ -1528,7 +1528,7 @@ class KpFormService
 
         if (str_contains($code, '16')) {
 
-            $isSettled = ($caseStatus === 'Settled' || $lastOutcome === 'Settled' || !empty($settlement));
+            $isSettled = ($caseStatus === 'Settled' || $lastOutcome === 'Settled' || $lastOutcome === 'Arbitration Award' || !empty($settlement) || !empty($arbitration['award_date']));
 
             if (!$isSettled) {
 
@@ -1800,7 +1800,7 @@ class KpFormService
 
         // KP Form 23: Motion for Execution
         if (str_contains($code, '23')) {
-            $isSettled = ($caseStatus === 'Settled' || $lastOutcome === 'Settled' || !empty($settlement));
+            $isSettled = ($caseStatus === 'Settled' || $lastOutcome === 'Settled' || $lastOutcome === 'Arbitration Award' || !empty($settlement) || !empty($arbitration['award_date']));
             $isRepudiated = ($lastOutcome === 'Repudiated' || ($settlement['repudiation_status'] ?? '') === 'Repudiated');
             if ($isRepudiated) {
                 return [
@@ -1820,10 +1820,13 @@ class KpFormService
         }
 
         // KP Form 20: Certificate to File Action
+        $isKp20 = (trim($code) === 'KP Form 20' || trim($code) === 'KP Form No. 20' || preg_match('/^KP\s*Form\s*20\b(?!-[AB])/i', trim($code)));
 
-        if (str_contains($code, '20')) {
+        if ($isKp20) {
 
-            if ($caseStatus === 'DISMISSED_BARRED' && !empty($d['complainant_sc']) && empty($d['complainant_sc']['is_justified'])) {
+            $hasBarredComp = ($caseStatus === 'DISMISSED_BARRED') || (($cfa['cfa_type'] ?? '') === 'KP Form 20-A') || ($caseStatus === 'Dismissed' && !empty($d['complainant_sc']) && empty($d['complainant_sc']['is_justified']));
+
+            if ($hasBarredComp && ($cfa['cfa_type'] ?? '') !== 'KP Form 20') {
 
                 return [
 
@@ -1848,6 +1851,14 @@ class KpFormService
                            $caseStatus === 'Dismissed' || !empty($settlement['repudiation_date']) ||
 
                            ($settlement['repudiation_status'] ?? '') === 'Repudiated');
+
+            if (!$hasCfaElig) {
+                require_once __DIR__ . '/SummonDeliveryService.php';
+                $summonCheck = (new SummonDeliveryService($this->conn))->getCfaEligibility($caseId);
+                if (!empty($summonCheck['eligible'])) {
+                    $hasCfaElig = true;
+                }
+            }
 
             if (!$hasCfaElig) {
 
@@ -2449,6 +2460,11 @@ class KpFormService
     }
 
 
+
+    public function generateAndPersistKp20A(int $caseId, int $userId, array $options = []): array
+    {
+        return $this->generateAndPersistForm('KP Form 20-A', $caseId, $userId, $options);
+    }
 
     public function generateAndPersistKp20(int $caseId, int $userId, array $options = []): array
 

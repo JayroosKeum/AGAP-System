@@ -22,6 +22,21 @@ function testAssert($condition, $message) {
     }
 }
 
+function getNextWorkingDay($startDate = 'now', $daysAhead = 1) {
+    require_once __DIR__ . '/../../backend/services/OfficeLogisticsService.php';
+    $logistics = new OfficeLogisticsService();
+    $curr = new DateTime($startDate);
+    $count = 0;
+    while ($count < $daysAhead) {
+        $curr->modify('+1 day');
+        $w = (int) $curr->format('w');
+        if ($w === 0 || $w === 6) continue;
+        if ($logistics->isPhilippineHoliday($curr) !== null) continue;
+        $count++;
+    }
+    return $curr->format('Y-m-d 09:30:00');
+}
+
 // 1. Setup a test complaint and case
 $db->prepare("DELETE FROM arbitration_records WHERE case_id IN (SELECT case_id FROM cases WHERE case_number LIKE 'ARB-TEST-%')")->execute();
 $db->prepare("DELETE FROM hearings WHERE case_id IN (SELECT case_id FROM cases WHERE case_number LIKE 'ARB-TEST-%')")->execute();
@@ -84,7 +99,7 @@ echo "\n[STEP 3] Scheduling Segregated Arbitration Hearings (Flexible Scheduling
 $hearingModel = new Hearing($db);
 
 // Schedule 1st Arbitration Hearing on same day / tomorrow
-$schedDate = date('Y-m-d 09:30:00', strtotime('+1 weekday'));
+$schedDate = getNextWorkingDay('now', 1);
 $vProg = $hearingModel->validateHearingDateProgression($caseId, $schedDate, null, 'Arbitration');
 testAssert($vProg['valid'], "Arbitration date progression validated successfully");
 
