@@ -19,11 +19,32 @@ $search = isset($_GET['search']) ? trim((string) $_GET['search']) : null;
 try {
     $paanyayaModel = new Paanyaya();
     $paanyayas = $paanyayaModel->getAllPaanyayas($status, $search);
+    $allRecords = ($status !== null || $search !== null) ? $paanyayaModel->getAllPaanyayas() : $paanyayas;
+    $stats = [
+        'all' => count($allRecords),
+        'scheduled' => 0,
+        'settled' => 0,
+        'escalated' => 0,
+        'cancelled' => 0
+    ];
+    foreach ($allRecords as $row) {
+        $st = strtolower($row['status'] ?? '');
+        if ($st === 'scheduled' || $st === 'pending' || $st === 'waiting') {
+            $stats['scheduled']++;
+        } elseif ($st === 'settled' || $st === 'resolved') {
+            $stats['settled']++;
+        } elseif ($st === 'escalated' || $st === 'docketed') {
+            $stats['escalated']++;
+        } elseif ($st === 'cancelled') {
+            $stats['cancelled']++;
+        }
+    }
 
     echo json_encode([
         'success' => true,
         'data' => $paanyayas,
-        'count' => count($paanyayas)
+        'count' => count($paanyayas),
+        'stats' => $stats
     ]);
     exit;
 } catch (Throwable $e) {

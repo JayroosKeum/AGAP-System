@@ -37,7 +37,7 @@
             </div>
         </div>
 
-        <?php if (in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2], true)): ?>
+        <?php if (in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2, 5], true)): ?>
         <!-- ── Top Report & Export Action Dropdowns ────────────────── -->
         <div class="dashboard-report-actions">
             <!-- Generate Report Dropdown -->
@@ -249,7 +249,7 @@
         </div>
     </section>
 
-    <?php if (in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2], true)): ?>
+    <?php if (in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2, 5], true)): ?>
     <!-- ── Report Preview Modal Overlay ───────────────────────────── -->
     <div id="reportPreviewModal" class="report-modal-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="modalReportTitle">
         <div class="report-modal-container">
@@ -319,7 +319,7 @@
     </div>
     <?php endif; ?>
 
-    <?php if (in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2], true)): ?>
+    <?php if (in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2, 5], true)): ?>
     <!-- ── KP Monitoring Form Modal Overlay ───────────────────────── -->
     <div id="kpMonitoringModal" class="report-modal-overlay kp-modal-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="kpDocTitle">
         <div class="report-modal-container kp-modal-container">

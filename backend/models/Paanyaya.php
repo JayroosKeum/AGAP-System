@@ -251,10 +251,25 @@ class Paanyaya
             SELECT p.*,
                    c.complaint_number,
                    c.complaint_title,
+                   c.status AS complaint_status,
+                   c.case_type,
+                   (SELECT GROUP_CONCAT(TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) SEPARATOR ', ')
+                    FROM complaint_parties cp
+                    JOIN residents r ON r.resident_id = cp.resident_id
+                    WHERE cp.complaint_id = p.complaint_id AND cp.party_type = 'Complainant') AS complainant_name,
+                   (SELECT GROUP_CONCAT(TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) SEPARATOR ', ')
+                    FROM complaint_parties cp
+                    JOIN residents r ON r.resident_id = cp.resident_id
+                    WHERE cp.complaint_id = p.complaint_id AND cp.party_type = 'Respondent') AS respondent_name,
+                   COALESCE(ps.attempt_number, 1) AS attempt_number,
+                   ps.session_outcome,
+                   ps.complainant_attended,
+                   ps.respondent_attended,
                    TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS scheduled_by_name
             FROM paanyayas p
             LEFT JOIN complaints c ON c.complaint_id = p.complaint_id
             LEFT JOIN users u ON u.user_id = p.scheduled_by
+            LEFT JOIN paanyaya_sessions ps ON ps.complaint_id = p.complaint_id AND (ps.session_id = p.paanyaya_id OR ps.scheduled_date = p.scheduled_date)
             WHERE 1=1
         ";
         $params = [];

@@ -7,7 +7,7 @@ exit;
 
 if (
     !isset($_SESSION['role_id']) ||
-    !in_array($_SESSION['role_id'], [1, 2])
+    !in_array((int)($_SESSION['role_id'] ?? 0), [1, 2, 5], true)
 ) {
     die('Access Denied');
 }

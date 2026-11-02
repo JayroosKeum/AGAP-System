@@ -708,4 +708,235 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize Holidays Table on initial load
     renderHolidaysTable();
+
+    // =========================================================================
+    // LUPON ACCOUNTS & DUTY ROSTER MANAGEMENT
+    // =========================================================================
+    let cachedLuponMembers = [];
+    let cachedLuponSchedules = [];
+
+    async function loadLuponDutyData() {
+        const tbody = document.getElementById('tbodyLuponDuty');
+        if (!tbody) return;
+        try {
+            const res = await fetch('../../../backend/api/settings/lupon-duty.php');
+            const data = await res.json();
+            if (!data.success) {
+                tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #dc2626; padding: 16px;">Failed to load roster: ${escapeHtml(data.message)}</td></tr>`;
+                return;
+            }
+            cachedLuponMembers = data.members || [];
+            cachedLuponSchedules = data.schedules || [];
+            renderLuponDutyTable();
+            populateDutySelectMember();
+        } catch (e) {
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #dc2626; padding: 16px;">Network error loading Lupon duty roster.</td></tr>`;
+        }
+    }
+
+    function renderLuponDutyTable() {
+        const tbody = document.getElementById('tbodyLuponDuty');
+        if (!tbody) return;
+        if (!cachedLuponMembers || cachedLuponMembers.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #64748b; padding: 20px;">No Lupon members registered yet. Use "+ Add Lupon Account" to add one.</td></tr>`;
+            return;
+        }
+
+        // Group schedules by user_id
+        const scheduleByUser = {};
+        cachedLuponSchedules.forEach(s => {
+            const uid = s.user_id;
+            if (!scheduleByUser[uid]) scheduleByUser[uid] = [];
+            scheduleByUser[uid].push(s);
+        });
+
+        let rowsHtml = '';
+        cachedLuponMembers.forEach(m => {
+            const userScheds = scheduleByUser[m.user_id] || [];
+            let daysBadgeHtml = '';
+            let hoursHtml = '08:00 AM – 05:00 PM';
+            if (userScheds.length === 0) {
+                daysBadgeHtml = `<span style="background: #f1f5f9; color: #64748b; font-size: 0.78rem; padding: 3px 8px; border-radius: 4px;">Unassigned</span>`;
+            } else {
+                daysBadgeHtml = userScheds.map(s => {
+                    return `<span style="display: inline-block; background: #e0f2fe; color: #0369a1; font-weight: 600; font-size: 0.78rem; padding: 2px 7px; border-radius: 4px; margin: 2px;">${escapeHtml(s.duty_day)}</span>`;
+                }).join(' ');
+                if (userScheds[0]?.start_time && userScheds[0]?.end_time) {
+                    hoursHtml = `${userScheds[0].start_time.slice(0, 5)} – ${userScheds[0].end_time.slice(0, 5)}`;
+                }
+            }
+
+            const fullName = `${m.last_name}, ${m.first_name}`;
+            rowsHtml += `
+                <tr>
+                    <td>
+                        <strong style="color: #0f172a;">${escapeHtml(fullName)}</strong>
+                        <div style="font-size: 0.78rem; color: #64748b;">@${escapeHtml(m.username)} · ${escapeHtml(m.contact_no || 'No contact #')}</div>
+                    </td>
+                    <td>${daysBadgeHtml}</td>
+                    <td><span style="font-size: 0.82rem; color: #334155;">${escapeHtml(hoursHtml)}</span></td>
+                    <td>
+                        <span style="background: #dcfce7; color: #15803d; font-size: 0.75rem; font-weight: 600; padding: 3px 8px; border-radius: 4px;">
+                            ${escapeHtml(m.status)}
+                        </span>
+                    </td>
+                    <td style="text-align: right;">
+                        <button type="button" class="btn-secondary btn-sm" onclick="editMemberDuty(${m.user_id})" style="font-size: 0.78rem; padding: 4px 10px;">
+                            📅 Set Days
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
+        tbody.innerHTML = rowsHtml;
+    }
+
+    function populateDutySelectMember(selectedId = null) {
+        const sel = document.getElementById('dutySelectMember');
+        if (!sel) return;
+        let opts = `<option value="">-- Choose Member --</option>`;
+        cachedLuponMembers.forEach(m => {
+            const isSel = (selectedId && Number(selectedId) === Number(m.user_id)) ? 'selected' : '';
+            opts += `<option value="${m.user_id}" ${isSel}>${escapeHtml(m.last_name)}, ${escapeHtml(m.first_name)} (@${escapeHtml(m.username)})</option>`;
+        });
+        sel.innerHTML = opts;
+    }
+
+    window.openCreateLuponModal = function() {
+        document.getElementById('luponNewFirstName').value = '';
+        document.getElementById('luponNewLastName').value = '';
+        document.getElementById('luponNewUsername').value = '';
+        document.getElementById('luponNewPassword').value = '';
+        document.getElementById('luponNewEmail').value = '';
+        document.getElementById('luponNewContact').value = '';
+        document.getElementById('modalCreateLupon').classList.add('active');
+    };
+
+    window.closeCreateLuponModal = function() {
+        document.getElementById('modalCreateLupon')?.classList.remove('active');
+    };
+
+    window.submitCreateLuponAccount = async function() {
+        const fn = document.getElementById('luponNewFirstName')?.value.trim();
+        const ln = document.getElementById('luponNewLastName')?.value.trim();
+        const un = document.getElementById('luponNewUsername')?.value.trim();
+        const pw = document.getElementById('luponNewPassword')?.value;
+        const em = document.getElementById('luponNewEmail')?.value.trim();
+        const ct = document.getElementById('luponNewContact')?.value.trim();
+
+        if (!fn || !ln || !un || !pw) {
+            alert('Please fill in First Name, Last Name, Username, and Password.');
+            return;
+        }
+
+        try {
+            const res = await fetch('../../../backend/api/settings/lupon-duty.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                body: JSON.stringify({
+                    action: 'create_lupon_account',
+                    first_name: fn,
+                    last_name: ln,
+                    username: un,
+                    password: pw,
+                    email: em,
+                    contact_no: ct
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast(data.message, 'success');
+                closeCreateLuponModal();
+                loadLuponDutyData();
+            } else {
+                showToast(data.message, 'error');
+            }
+        } catch (e) {
+            showToast('Failed to create Lupon account: ' + e.message, 'error');
+        }
+    };
+
+    window.openAssignDutyModal = function(memberId = null) {
+        populateDutySelectMember(memberId);
+        onDutyMemberSelected(memberId);
+        document.getElementById('modalAssignDuty').classList.add('active');
+    };
+
+    window.closeAssignDutyModal = function() {
+        document.getElementById('modalAssignDuty')?.classList.remove('active');
+    };
+
+    window.editMemberDuty = function(memberId) {
+        openAssignDutyModal(memberId);
+    };
+
+    window.onDutyMemberSelected = function(memberId) {
+        const checkboxes = document.querySelectorAll('input[name="dutyDaysCb"]');
+        checkboxes.forEach(cb => { cb.checked = false; });
+        if (!memberId) return;
+
+        const userScheds = cachedLuponSchedules.filter(s => Number(s.user_id) === Number(memberId));
+        userScheds.forEach(s => {
+            const cb = document.querySelector(`input[name="dutyDaysCb"][value="${s.duty_day}"]`);
+            if (cb) cb.checked = true;
+        });
+
+        if (userScheds.length > 0) {
+            if (userScheds[0].start_time) document.getElementById('dutyStartTime').value = userScheds[0].start_time.slice(0, 5);
+            if (userScheds[0].end_time) document.getElementById('dutyEndTime').value = userScheds[0].end_time.slice(0, 5);
+            if (userScheds[0].notes) document.getElementById('dutyNotes').value = userScheds[0].notes;
+        }
+    };
+
+    window.submitAssignDuty = async function() {
+        const memberId = document.getElementById('dutySelectMember')?.value;
+        if (!memberId) {
+            alert('Please select a Lupon member.');
+            return;
+        }
+
+        const checkedDays = Array.from(document.querySelectorAll('input[name="dutyDaysCb"]:checked')).map(cb => cb.value);
+        const startTime = document.getElementById('dutyStartTime')?.value || '08:00';
+        const endTime = document.getElementById('dutyEndTime')?.value || '17:00';
+        const notes = document.getElementById('dutyNotes')?.value || '';
+
+        try {
+            const res = await fetch('../../../backend/api/settings/lupon-duty.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                body: JSON.stringify({
+                    user_id: Number(memberId),
+                    duty_days: checkedDays,
+                    start_time: startTime + ':00',
+                    end_time: endTime + ':00',
+                    notes: notes
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast(data.message, 'success');
+                closeAssignDutyModal();
+                loadLuponDutyData();
+            } else {
+                showToast(data.message, 'error');
+            }
+        } catch (e) {
+            showToast('Failed to save duty schedule: ' + e.message, 'error');
+        }
+    };
+
+    // Auto-load Lupon duty data if active tab is tab-lupon-duty or on tab switch
+    const origNavClick = window.settingsTabClickListener;
+    document.querySelectorAll('.settings-nav-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tabId = btn.getAttribute('data-tab');
+            if (tabId === 'tab-lupon-duty') {
+                loadLuponDutyData();
+            }
+        });
+    });
+
+    if (document.getElementById('tab-lupon-duty')?.classList.contains('active')) {
+        loadLuponDutyData();
+    }
 });

@@ -1,7 +1,7 @@
 <?php
 session_start();
 $roleId = (int) ($_SESSION['role_id'] ?? 0);
-if (!in_array($roleId, [1, 2], true)) {
+if (!in_array($roleId, [1, 2, 5], true)) {
     http_response_code(403);
     die('Access Denied');
 }

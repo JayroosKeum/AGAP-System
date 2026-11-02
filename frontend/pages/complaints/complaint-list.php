@@ -4,7 +4,7 @@ session_start();
 
 if (
     !isset($_SESSION['role_id']) ||
-    !in_array($_SESSION['role_id'], [1, 2])
+    !in_array((int)($_SESSION['role_id'] ?? 0), [1, 2, 5], true)
 ) {
     die('Access Denied');
 }
@@ -54,13 +54,19 @@ include '../../layouts/header.php';
                 <p>Record, monitor, and manage community concerns and dispute proceedings.</p>
             </div>
 
-            <a
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <a href="../paanyaya/index.php" class="btn-secondary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px; padding: 10px 16px; border-radius: 8px; font-weight: 600; font-size: 0.88rem; background: #f0fdf4; border: 1.5px solid #86efac; color: #166534;" title="View all preliminary Paanyaya invitations and informal dialogues">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                    Paanyaya Invitations
+                </a>
+                <a
                 href="complaint-create.php"
                 class="btn-create"
                 style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                 Add Complaint
             </a>
+            </div>
         </div>
 
         <?php if ($complaintFlash && !empty($complaintFlash['message'])): ?>

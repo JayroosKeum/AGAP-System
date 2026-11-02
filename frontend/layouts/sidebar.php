@@ -1,12 +1,15 @@
 <?php
 $roleId = (int) ($_SESSION['role_id'] ?? 0);
-$currentPage = basename(parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH));
+$requestPath = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
+$currentPage = basename($requestPath);
+$currentDir = basename(dirname($requestPath));
 $isActive = static function (array $pages) use ($currentPage): string {
     return in_array($currentPage, $pages, true) ? ' class="is-active" aria-current="page"' : '';
 };
-$isGroupActive = static function (array $pages) use ($currentPage): bool {
-    return in_array($currentPage, $pages, true);
+$isGroupActive = static function (array $pages) use ($currentPage, $currentDir): bool {
+    return in_array($currentPage, $pages, true) || in_array($currentDir, $pages, true);
 };
+$isPaanyayaActive = ($currentDir === 'paanyaya') || in_array($currentPage, ['paanyaya-workspace.php'], true);
 $dashboardLink = [1 => '../dashboard/admin-dashboard.php', 2 => '../dashboard/clerk-dashboard.php', 3 => '../dashboard/lupon-dashboard.php', 4 => '../dashboard/server-dashboard.php'][$roleId] ?? '../auth/login.php';
 ?>
 <aside class="sidebar" id="appSidebar">
@@ -41,7 +44,7 @@ $dashboardLink = [1 => '../dashboard/admin-dashboard.php', 2 => '../dashboard/cl
             </div>
         </details>
 
-        <?php if (in_array($roleId, [1, 2], true)): ?>
+        <?php if (in_array($roleId, [1, 2, 5], true)): ?>
             <details class="nav-group"<?php echo $isGroupActive(['complaint-list.php', 'complaint-create.php', 'complaint-details.php', 'case-list.php', 'create-case.php', 'case-assignment.php']) ? ' open' : ''; ?> data-nav-group="case-management">
                 <summary>Case management</summary>
                 <div class="nav-group-links">
@@ -50,6 +53,12 @@ $dashboardLink = [1 => '../dashboard/admin-dashboard.php', 2 => '../dashboard/cl
                             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12.01" y2="18"></line><line x1="12" y1="11" x2="12" y2="15"></line></svg>
                         </span>
                         <span class="nav-link-label">Complaints</span>
+                    </a>
+                    <a href="../paanyaya/index.php"<?php echo $isPaanyayaActive ? ' class="is-active" aria-current="page"' : ''; ?> title="Paanyaya (Invitations)">
+                        <span class="nav-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                        </span>
+                        <span class="nav-link-label">Paanyaya</span>
                     </a>
                     <a href="../cases/case-list.php"<?php echo $isActive(['case-list.php', 'create-case.php', 'case-assignment.php']); ?> title="Cases and assignments">
                         <span class="nav-icon" aria-hidden="true">
@@ -92,7 +101,7 @@ $dashboardLink = [1 => '../dashboard/admin-dashboard.php', 2 => '../dashboard/cl
             </details>
         <?php endif; ?>
 
-        <?php if (in_array($roleId, [1, 2], true)): ?>
+        <?php if (in_array($roleId, [1, 2, 5], true)): ?>
             <details class="nav-group"<?php echo $isGroupActive(['user-list.php', 'roles.php', 'index.php']) ? ' open' : ''; ?> data-nav-group="administration">
                 <summary>Administration</summary>
                 <div class="nav-group-links">
@@ -104,7 +113,7 @@ $dashboardLink = [1 => '../dashboard/admin-dashboard.php', 2 => '../dashboard/cl
                             <span class="nav-link-label">Users and roles</span>
                         </a>
                     <?php endif; ?>
-                    <a href="../settings/index.php"<?php echo $isActive(['index.php']); ?> title="Settings">
+                    <a href="../settings/index.php"<?php echo ($currentDir === 'settings' && $currentPage === 'index.php') ? ' class="is-active" aria-current="page"' : ''; ?> title="Settings">
                         <span class="nav-icon" aria-hidden="true">
                             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                         </span>

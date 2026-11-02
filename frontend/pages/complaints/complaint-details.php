@@ -4,7 +4,7 @@ session_start();
 
 if (
     !isset($_SESSION['role_id']) ||
-    !in_array((int)$_SESSION['role_id'], [1, 2, 3], true)
+    !in_array((int)($_SESSION['role_id'] ?? 0), [1, 2, 3, 5], true)
 ) {
     if ((int)($_SESSION['role_id'] ?? 0) === 4) {
         header('Location: ../gps/proof-service.php');

@@ -809,12 +809,13 @@ async function renderExpandedCaseView(caseId) {
                     subText = 'Awaiting Return';
                 }
 
-                clickAttr = `onclick="openOfficerReturnModal('${partyType}', ${resIdVal}, ${Number(activeHearing.hearing_id)}, ${caseId}, ${escapeGpsJsArgument(att.delivery_status || '')}, ${escapeGpsJsArgument(att.recipient_name || targetPartyName)}, ${escapeGpsJsArgument(att.relationship || '')}, ${escapeGpsJsArgument(att.remarks || '')}, ${escapeGpsJsArgument(att.unserved_reason || '')}, ${num}, ${attDelivId})"`;
+                // Mobile Optimization: Clicking the node toggles that specific attempt's details cleanly below
+                clickAttr = `onclick="togglePartyAttemptDetail('${partyType.toLowerCase()}', ${caseId}, ${num})"`;
                 stepCursor = 'pointer';
             }
 
             return `
-                <button type="button" class="stepper-step" ${clickAttr} title="${ord} Attempt: ${statusText} (${subText}) — Click to view / edit return" style="cursor: ${stepCursor};">
+                <button type="button" class="stepper-step" id="stepper-step-${partyType.toLowerCase()}-${caseId}-${num}" ${clickAttr} title="${ord} Attempt: ${statusText} (${subText}) — Click to view details" style="cursor: ${stepCursor};">
                     <div class="step-circle ${circleClass}">${iconText}</div>
                     <span class="step-label">${ord} Attempt</span>
                     <span class="step-subtext">${escapeGpsHtml(subText)}</span>
@@ -981,25 +982,23 @@ async function renderExpandedCaseView(caseId) {
                 `;
             };
 
-            if (attemptsList.length <= 1) {
-                return attemptsList.map(renderSingleAttemptBlock).join('');
-            }
-
-            const latestAtt = attemptsList[attemptsList.length - 1];
-            const olderAttempts = attemptsList.slice(0, attemptsList.length - 1);
+            // Mobile Optimization: Render each attempt in its own card wrapper with only the active attempt visible
+            // This prevents attempt cards from stacking/piling up and burying the "Log Officer's Return" button.
+            const pKey = partyType.toLowerCase();
+            const activeAttemptNum = (attemptsList.length > 0) ? (attemptsList[attemptsList.length - 1].attempt_number || attemptsList.length) : 1;
 
             return `
-                <div class="active-attempt-container">
-                    ${renderSingleAttemptBlock(latestAtt, attemptsList.length - 1)}
+                <div class="party-attempts-display-deck" id="attempts-deck-${pKey}-${caseId}">
+                    ${attemptsList.map((att, idx) => {
+                        const attNum = att.attempt_number || (idx + 1);
+                        const isVisible = (attNum === activeAttemptNum);
+                        return `
+                            <div class="attempt-detail-pane" id="attempt-pane-${pKey}-${caseId}-${attNum}" style="display: ${isVisible ? 'block' : 'none'};">
+                                ${renderSingleAttemptBlock(att, idx)}
+                            </div>
+                        `;
+                    }).join('')}
                 </div>
-                <details class="older-attempts-drawer" style="margin-top: 8px; border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px 10px; background: #f8fafc;">
-                    <summary style="cursor: pointer; font-size: 0.78rem; font-weight: 700; color: #0284c7; user-select: none;">
-                        📋 Past Attempts History (${olderAttempts.length})
-                    </summary>
-                    <div style="margin-top: 8px;">
-                        ${olderAttempts.map(renderSingleAttemptBlock).join('')}
-                    </div>
-                </details>
             `;
         };
 
@@ -1861,3 +1860,28 @@ function toggleTimelineVisibility() {
     }
 }
 window.toggleTimelineVisibility = toggleTimelineVisibility;
+function togglePartyAttemptDetail(partyKey, caseId, attemptNum) {
+    const deck = document.getElementById(`attempts-deck-${partyKey}-${caseId}`);
+    if (!deck) return;
+    const panes = deck.querySelectorAll('.attempt-detail-pane');
+    panes.forEach(p => {
+        p.style.display = 'none';
+    });
+    const targetPane = document.getElementById(`attempt-pane-${partyKey}-${caseId}-${attemptNum}`);
+    if (targetPane) {
+        targetPane.style.display = 'block';
+    }
+    // Update active visual on stepper nodes
+    const stepperSteps = document.querySelectorAll(`[id^="stepper-step-${partyKey}-${caseId}-"]`);
+    stepperSteps.forEach(s => {
+        s.style.outline = 'none';
+        s.style.boxShadow = 'none';
+    });
+    const activeStep = document.getElementById(`stepper-step-${partyKey}-${caseId}-${attemptNum}`);
+    if (activeStep) {
+        activeStep.style.outline = '2px solid #0284c7';
+        activeStep.style.boxShadow = '0 0 0 3px rgba(2, 132, 199, 0.2)';
+        activeStep.style.borderRadius = '8px';
+    }
+}
+window.togglePartyAttemptDetail = togglePartyAttemptDetail;

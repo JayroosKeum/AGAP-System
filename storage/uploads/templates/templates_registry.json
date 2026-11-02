@@ -701,5 +701,37 @@
         "uploaded_by": 1,
         "signatory_profile": "punong_barangay",
         "updated_at": "2026-10-22 15:23:28"
+    },
+    "patawag": {
+        "code": "PATAWAG",
+        "title": "PATAWAG (Blangkong Paanyaya / Pre-docketing Form)",
+        "file_path": "storage/uploads/templates/patawag_template_20261102_114844.pdf",
+        "file_name": "KP_Form_16_P-10-02-2026.pdf",
+        "file_size": 111296,
+        "is_docx": false,
+        "header_mode": "keep",
+        "paper_mode": "shared",
+        "status": "published",
+        "version": 1,
+        "inspection": null,
+        "uploaded_at": "2026-11-02 11:48:44",
+        "uploaded_by": 1
+    },
+    "kp_2": {
+        "code": "KP Form No. 2",
+        "title": "Appointment",
+        "file_path": "storage/uploads/templates/kp_2_template_20261102_114858.pdf",
+        "file_name": "KP_Form_16_P-10-02-2026.pdf",
+        "file_size": 111296,
+        "is_docx": false,
+        "header_mode": "keep",
+        "paper_mode": "shared",
+        "status": "published",
+        "version": 2,
+        "inspection": null,
+        "uploaded_at": "2026-11-02 11:48:58",
+        "uploaded_by": 1,
+        "signatory_profile": "punong_barangay",
+        "updated_at": "2026-11-02 11:49:04"
     }
 }

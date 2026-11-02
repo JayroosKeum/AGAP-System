@@ -16,7 +16,7 @@ if ($userId <= 0) {
     exit;
 }
 
-$isAdmin = in_array($roleId, [1, 2], true);
+$isAdmin = in_array($roleId, [1, 2, 5], true);
 $activeTab = trim((string)($_GET['tab'] ?? ''));
 if (!$activeTab) {
     $activeTab = $isAdmin ? 'tab-barangay' : 'tab-profile';
@@ -1111,6 +1111,103 @@ include '../../layouts/header.php';
 <!-- =========================================================================
      MODAL 4: PUROK & AREA FORM
      ========================================================================= -->
+<!-- =========================================================================
+     MODAL: CREATE LUPON ACCOUNT (ADMIN ONLY)
+     ========================================================================= -->
+<div class="settings-modal-overlay" id="modalCreateLupon">
+    <div class="settings-modal">
+        <div class="settings-modal-header">
+            <h3 class="settings-modal-title">Add New Lupon Account</h3>
+            <button type="button" class="settings-modal-close" onclick="closeCreateLuponModal()">&times;</button>
+        </div>
+        <div class="settings-modal-body">
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label class="form-label">First Name <span class="required">*</span></label>
+                    <input type="text" id="luponNewFirstName" class="form-control" required placeholder="e.g. Juan">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Last Name <span class="required">*</span></label>
+                    <input type="text" id="luponNewLastName" class="form-control" required placeholder="e.g. Dela Cruz">
+                </div>
+            </div>
+            <div class="form-grid-2" style="margin-top: 10px;">
+                <div class="form-group">
+                    <label class="form-label">Username <span class="required">*</span></label>
+                    <input type="text" id="luponNewUsername" class="form-control" required placeholder="e.g. lupon.juandc">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Temporary Password <span class="required">*</span></label>
+                    <input type="password" id="luponNewPassword" class="form-control" required placeholder="Minimum 8 characters">
+                </div>
+            </div>
+            <div class="form-grid-2" style="margin-top: 10px;">
+                <div class="form-group">
+                    <label class="form-label">Email (Optional)</label>
+                    <input type="email" id="luponNewEmail" class="form-control" placeholder="juan@example.com">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Mobile Contact No.</label>
+                    <input type="tel" id="luponNewContact" class="form-control" placeholder="09123456789">
+                </div>
+            </div>
+        </div>
+        <div class="settings-modal-footer">
+            <button type="button" class="btn-secondary" onclick="closeCreateLuponModal()">Cancel</button>
+            <button type="button" class="btn-primary" onclick="submitCreateLuponAccount()">Create Account</button>
+        </div>
+    </div>
+</div>
+
+<!-- =========================================================================
+     MODAL: ASSIGN LUPON DUTY DAYS
+     ========================================================================= -->
+<div class="settings-modal-overlay" id="modalAssignDuty">
+    <div class="settings-modal" style="max-width: 520px;">
+        <div class="settings-modal-header">
+            <h3 class="settings-modal-title">Assign Required Lupon Duty Days</h3>
+            <button type="button" class="settings-modal-close" onclick="closeAssignDutyModal()">&times;</button>
+        </div>
+        <div class="settings-modal-body">
+            <div class="form-group">
+                <label class="form-label">Select Lupon Member <span class="required">*</span></label>
+                <select id="dutySelectMember" class="form-control" onchange="onDutyMemberSelected(this.value)">
+                    <option value="">-- Choose Member --</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin-top: 12px;">
+                <label class="form-label">Required Duty Days at Barangay Hall</label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px;">
+                    <?php foreach (['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as $day): ?>
+                        <label style="display: flex; align-items: center; gap: 6px; font-size: 0.9rem; cursor: pointer;">
+                            <input type="checkbox" name="dutyDaysCb" value="<?php echo $day; ?>">
+                            <span><?php echo $day; ?></span>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <div class="form-grid-2" style="margin-top: 12px;">
+                <div class="form-group">
+                    <label class="form-label">Duty Start Time</label>
+                    <input type="time" id="dutyStartTime" class="form-control" value="08:00">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Duty End Time</label>
+                    <input type="time" id="dutyEndTime" class="form-control" value="17:00">
+                </div>
+            </div>
+            <div class="form-group" style="margin-top: 10px;">
+                <label class="form-label">Duty Notes / Special Assignment</label>
+                <input type="text" id="dutyNotes" class="form-control" placeholder="e.g. Conciliation Panel / Alternate">
+            </div>
+        </div>
+        <div class="settings-modal-footer">
+            <button type="button" class="btn-secondary" onclick="closeAssignDutyModal()">Cancel</button>
+            <button type="button" class="btn-primary" onclick="submitAssignDuty()">Save Duty Schedule</button>
+        </div>
+    </div>
+</div>
+
 <div class="settings-modal-overlay" id="modalPurokForm">
     <div class="settings-modal">
         <div class="settings-modal-header">
