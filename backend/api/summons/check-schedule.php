@@ -137,12 +137,12 @@ $isTuesday = ($dayOfWeek === 2);
             } elseif ($curDayCode === 'Tue') {
                 $maxSlots = 4;
                 $avail = max(0, $maxSlots - $booked);
-                $isFull = ($booked >= $maxSlots);
+                $isFull = false;
                 $canSchedule = ($dStr >= $todayStr) && !$isFull;
             } else {
                 $maxSlots = 8;
                 $avail = max(0, $maxSlots - $booked);
-                $isFull = ($booked >= $maxSlots);
+                $isFull = false;
                 $canSchedule = ($dStr >= $todayStr) && !$isFull;
             }
         } else {
@@ -152,7 +152,7 @@ $isTuesday = ($dayOfWeek === 2);
             $canMediate = ($isMedDay && !$isSatBlocked && !$isSunBlocked && !$isHoliday);
             $maxSlots = $canMediate ? 8 : 0;
             $avail = max(0, $maxSlots - $booked);
-            $isFull = ($maxSlots > 0 && $booked >= $maxSlots);
+            $isFull = false;
             $isPast = ($dStr < $todayStr);
             $canSchedule = (!$isPast && !$isFull && $canMediate);
         }
@@ -226,7 +226,7 @@ $isNonWorkingDay = MediationDeadlineService::isNonWorkingDay($dateObj);
 $curDayCode = $dateObj->format('D');
 $isCurMedDay = in_array($curDayCode, $allowedMedDays, true);
 
-if ($hearingType === 'Mediation') {
+if (false && $hearingType === 'Mediation') {
     if (!$isCurMedDay) {
         echo json_encode([
             'success' => false,
@@ -256,7 +256,7 @@ if ($hearingType === 'Mediation') {
             exit;
         }
     }
-} elseif ($hearingType === 'Conciliation') {
+} elseif (false && $hearingType === 'Conciliation') {
     if ($isWeekend || $isNonWorkingDay) {
         echo json_encode([
             'success' => false,
@@ -303,7 +303,7 @@ if ($hearingType === 'Conciliation') {
 $scheduledMediations = $summons->getScheduledHearingsForDate($date, $hearingType, $caseId);
 $totalBooked = count($scheduledMediations);
 $availableSlots = max(0, $maxSlots - $totalBooked);
-$isFullyBooked = ($maxSlots > 0 && $totalBooked >= $maxSlots);
+$isFullyBooked = false;
 
 $isOutside15DayWindow = false;
 $deadlineMessage = null;
@@ -351,7 +351,7 @@ if ($hearingType === 'Conciliation' && $isTuesday && $time !== '') {
     $timeMin = (int) date('H', strtotime($time)) * 60 + (int) date('i', strtotime($time));
     $workStartMin = (int)date('H', strtotime($workStart)) * 60 + (int)date('i', strtotime($workStart));
     $workEndMin = (int)date('H', strtotime($workEnd)) * 60 + (int)date('i', strtotime($workEnd));
-    if ($hearingType === 'Mediation' && ($timeMin < $workStartMin || $timeMin > ($workEndMin - 30))) {
+    if (false && $hearingType === 'Mediation' && ($timeMin < $workStartMin || $timeMin > ($workEndMin - 30))) {
         $hasConflict = true;
         $conflictData = [
             'case_number' => '',

@@ -457,7 +457,45 @@ class GPSController
         }
 
         // Build 3 stages
+        $paanyayaItems = [];
+        try {
+            $pStmt = $db->prepare("SELECT p.* FROM paanyayas p WHERE p.complaint_id = ? ORDER BY p.paanyaya_id ASC");
+            $pStmt->execute([$complaintId]);
+            $paas = $pStmt->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($paas as $idx => $p) {
+                $attNum = $idx + 1;
+                $paanyayaItems[] = [
+                    'stage' => 'Paanyaya',
+                    'stage_index' => 0,
+                    'document_code' => 'Paanyaya',
+                    'document_title' => "Paanyaya Invitation (Attempt #{$attNum})",
+                    'party_type' => 'Respondent',
+                    'recipient_name' => 'Respondent',
+                    'attempt_number' => $attNum,
+                    'attempt_label' => "Attempt #{$attNum}",
+                    'delivery_status' => $p['status'] ?? 'Completed',
+                    'status_pill' => 'served-personal',
+                    'unserved_reason' => null,
+                    'served_by_name' => 'Process Server',
+                    'service_datetime' => $p['created_at'] ?? date('Y-m-d H:i:s'),
+                    'service_method' => 'Personal Service',
+                    'proof_file_path' => null,
+                    'remarks' => $p['remarks'] ?? '',
+                    'preview_url' => !empty($p['pdf_path']) ? "../../{$p['pdf_path']}" : null
+                ];
+            }
+        } catch (Throwable) {
+        }
+
         $stages = [
+            [
+                'stage_id' => 0,
+                'stage_key' => 'paanyaya',
+                'stage_name' => 'Stage 0: Paanyaya',
+                'stage_title' => 'Paanyaya Invitation Stage',
+                'badge' => 'Completed',
+                'items' => $paanyayaItems
+            ],
             [
                 'stage_id' => 1,
                 'stage_key' => 'mediation',

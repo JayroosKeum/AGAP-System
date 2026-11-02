@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../../backend/config/Database.php';
 require_once __DIR__ . '/../../../backend/models/Setting.php';
+require_once __DIR__ . '/../../../backend/models/Purok.php';
 require_once __DIR__ . '/../../../backend/services/CsrfService.php';
 
 if (session_status() === PHP_SESSION_NONE) {
@@ -40,6 +41,7 @@ $diagnostics = $isAdmin ? $settingModel->getDiagnostics() : [];
 $holidaysJson = $settings['configured_holidays'] ?? '[]';
 $workingDays = json_decode($settings['working_days'] ?? '["Mon","Tue","Wed","Thu","Fri"]', true) ?: ["Mon","Tue","Wed","Thu","Fri"];
 $puroksList = json_decode($settings['barangay_puroks'] ?? '[]', true) ?: [];
+$allPuroks = $isAdmin ? (new Purok())->getPuroks(false) : [];
 
 $pageTitle = 'System & Personal Settings';
 include '../../layouts/header.php';
@@ -105,6 +107,13 @@ include '../../layouts/header.php';
                                 <button type="button" class="settings-nav-btn <?php echo $activeTab === 'tab-categories' ? 'active' : ''; ?>" data-tab="tab-categories">
                                     <span class="nav-icon">📁</span>
                                     <span>Categories &amp; Intake</span>
+                                </button>
+                            </li>
+                            <li class="settings-nav-item">
+                                <button type="button" class="settings-nav-btn <?php echo $activeTab === 'tab-puroks' ? 'active' : ''; ?>" data-tab="tab-puroks">
+                                    <span class="nav-icon">📍</span>
+                                    <span>Puroks &amp; Areas</span>
+                                </button>
                                 </button>
                             </li>
                             <li class="settings-nav-item">
@@ -559,6 +568,58 @@ include '../../layouts/header.php';
                                             <label class="form-label">Interactive Mini-Map Picker</label>
                                             <div id="settingsMiniMap" style="height: 250px; border-radius: 8px; border: 1px solid #cbd5e1;"></div>
                                             <div class="form-help">Drag the marker above to test or update the default map location coordinates.</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- ===================================================================
+                                 TAB: BARANGAY TUMANA PUROKS & AREAS
+                                 =================================================================== -->
+                            <div class="settings-tab-pane <?php echo $activeTab === 'tab-puroks' ? 'active' : ''; ?>" id="tab-puroks">
+                                <div class="settings-card">
+                                    <div class="settings-card-header">
+                                        <div>
+                                            <h3 class="settings-card-title">📍 Barangay Tumana Puroks, Compounds &amp; Subdivisions</h3>
+                                            <p class="settings-card-subtitle">Manage dynamic areas for complaint intake, Process Server routing, and meeting hotspot analytics.</p>
+                                        </div>
+                                        <div>
+                                            <button type="button" class="btn-primary btn-sm" onclick="openPurokModal()">+ Add New Purok / Area</button>
+                                        </div>
+                                    </div>
+                                    <div class="settings-card-body" style="padding: 0;">
+                                        <div class="settings-table-wrapper" style="border: none; border-radius: 0;">
+                                            <table class="settings-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Order</th>
+                                                        <th>Purok / Area Name</th>
+                                                        <th>Description / Landmark</th>
+                                                        <th>Status</th>
+                                                        <th>Linked Cases</th>
+                                                        <th style="text-align: right;">Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="puroksTableTbody">
+                                                    <?php foreach ($allPuroks as $p): ?>
+                                                        <tr>
+                                                            <td style="font-weight: 700; color: #64748b;"><?php echo (int)($p['sort_order'] ?? 0); ?></td>
+                                                            <td><strong><?php echo htmlspecialchars($p['purok_name']); ?></strong></td>
+                                                            <td style="color: #64748b;"><?php echo htmlspecialchars($p['description'] ?? '—'); ?></td>
+                                                            <td>
+                                                                <span class="<?php echo (int)$p['is_active'] === 1 ? 'badge-active' : 'badge-inactive'; ?>">
+                                                                    <?php echo (int)$p['is_active'] === 1 ? 'Active' : 'Inactive / Hidden'; ?>
+                                                                </span>
+                                                            </td>
+                                                            <td><?php echo (int)($p['complaint_count'] ?? 0); ?></td>
+                                                            <td style="text-align: right;">
+                                                                <button type="button" class="btn-secondary btn-sm" onclick='openPurokModal(<?php echo json_encode($p, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>)'>✏️ Edit</button>
+                                                                <button type="button" class="btn-danger btn-sm" onclick='deletePurok(<?php echo $p['id']; ?>, "<?php echo addslashes($p['purok_name']); ?>")'>🗑️</button>
+                                                            </td>
+                                                        </tr>
+                                                    <?php endforeach; ?>
+                                                </tbody>
+                                            </table>
                                         </div>
                                     </div>
                                 </div>
@@ -1043,6 +1104,43 @@ include '../../layouts/header.php';
         <div class="settings-modal-footer">
             <button type="button" class="btn-secondary" onclick="closeTestSmsModal()">Cancel</button>
             <button type="button" class="btn-primary" id="btnSendTestSms" onclick="submitTestSms()">Send Test SMS</button>
+        </div>
+    </div>
+</div>
+
+<!-- =========================================================================
+     MODAL 4: PUROK & AREA FORM
+     ========================================================================= -->
+<div class="settings-modal-overlay" id="modalPurokForm">
+    <div class="settings-modal">
+        <div class="settings-modal-header">
+            <h3 class="settings-modal-title" id="purokModalTitle">Add New Purok / Area</h3>
+            <button type="button" class="settings-modal-close" onclick="closePurokModal()">&times;</button>
+        </div>
+        <div class="settings-modal-body">
+            <input type="hidden" id="purokModalId">
+            <div class="form-group">
+                <label class="form-label">Purok / Area Name <span class="required">*</span></label>
+                <input type="text" id="purokModalName" class="form-control" placeholder="e.g. Farmers Compound" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Landmark / Description</label>
+                <input type="text" id="purokModalDesc" class="form-control" placeholder="e.g. Near Tumana River Dike">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Display Order in Dropdown</label>
+                <input type="number" id="purokModalSort" class="form-control" value="0">
+            </div>
+            <div class="form-group">
+                <label class="form-checkbox-label" style="display:flex; align-items:center; gap:8px;">
+                    <input type="checkbox" id="purokModalActive" checked>
+                    <span>Active (Visible in complaint intake dropdowns)</span>
+                </label>
+            </div>
+        </div>
+        <div class="settings-modal-footer">
+            <button type="button" class="btn-secondary" onclick="closePurokModal()">Cancel</button>
+            <button type="button" class="btn-primary" onclick="submitPurokForm()">Save Purok</button>
         </div>
     </div>
 </div>

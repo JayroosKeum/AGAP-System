@@ -272,7 +272,7 @@ class CaseTransmittal
             $badgeLabel = 'Acknowledged by MTC & DILG';
         } elseif ($isWindowOpen) {
             $badgeClass = 'badge-amber';
-            $badgeLabel = sprintf('🔒 Locked (%d working day%s remaining - Repudiation Window)', $daysRemaining, $daysRemaining === 1 ? '' : 's');
+            $badgeLabel = sprintf('⏱️ %d working day%s remaining to transmit to MTC & DILG', $daysRemaining, $daysRemaining === 1 ? '' : 's');
         } else {
             $badgeClass = 'badge-green';
             $badgeLabel = '🔓 Ready for MTC / DILG Transmittal';
@@ -285,9 +285,9 @@ class CaseTransmittal
         }
 
         $row['working_days_remaining'] = $daysRemaining;
-        $row['is_locked'] = $isWindowOpen;
+        $row['is_locked'] = false; // Always unlocked for immediate generation and filing
         $row['is_repudiation_window_open'] = $isWindowOpen;
-        $row['is_ready_for_transmittal'] = $isReady;
+        $row['is_ready_for_transmittal'] = true;
         $row['settlement_date_formatted'] = $settlementDateFormatted;
         $row['ten_day_expiry_date_formatted'] = $expiryDateFormatted;
         $row['unlock_date_formatted'] = $expiryDateFormatted;

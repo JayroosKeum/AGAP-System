@@ -123,6 +123,11 @@
         </article>
     </div>
 
+    <div style="display: flex; justify-content: flex-end; margin-bottom: 12px;">
+        <button type="button" class="btn-primary" onclick="printMeetingBrief()" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; font-size: 0.85rem; font-weight: 600; cursor: pointer; border-radius: 6px; background: #0f766e; color: #fff; border: none; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+            🖨️ Print Monthly Meeting Brief (Executive Summary)
+        </button>
+    </div>
     <p id="dashboardMessage" class="dashboard-message" role="status"></p>
 
     <!-- Hearings & Calendar Row (Placed Above Cases Table to match layout) -->
@@ -171,6 +176,35 @@
             <div class="dashboard-cal-legend">
                 <span class="cal-legend-item"><span class="cal-legend-dot has-hearing"></span> Hearing Scheduled</span>
                 <span class="cal-legend-item"><span class="cal-legend-dot is-today"></span> Today</span>
+            </div>
+        </section>
+    </div>
+
+    <!-- Meeting Intelligence Row: Purok Hotspots & Prominent Disputes -->
+    <div class="dashboard-panels" style="margin-top: 18px; margin-bottom: 18px;">
+        <!-- Card 1: Purok Case Hotspots -->
+        <section class="dashboard-panel" id="dashboardPurokPanel">
+            <div class="panel-heading">
+                <div>
+                    <h2 style="font-size: 1.05rem; font-weight: 700; color: #0f172a; margin: 0;">📍 Purok Case Hotspots</h2>
+                    <p style="font-size: 0.82rem; color: #64748b; margin: 2px 0 0;">Top Tumana areas for Barangay Council &amp; Tanod peace and order decisions</p>
+                </div>
+            </div>
+            <div id="purokHotspotsList" class="dashboard-list" style="padding: 14px 16px;">
+                <div style="color: #64748b; font-size: 0.85rem;">Loading hotspot data...</div>
+            </div>
+        </section>
+
+        <!-- Card 2: Prominent Dispute Types -->
+        <section class="dashboard-panel" id="dashboardCategoriesPanel">
+            <div class="panel-heading">
+                <div>
+                    <h2 style="font-size: 1.05rem; font-weight: 700; color: #0f172a; margin: 0;">⚖️ Prominent Grievance &amp; Dispute Types</h2>
+                    <p style="font-size: 0.82rem; color: #64748b; margin: 2px 0 0;">Most frequent complaint categories filed in Barangay Tumana</p>
+                </div>
+            </div>
+            <div id="prominentCategoriesList" class="dashboard-list" style="padding: 14px 16px;">
+                <div style="color: #64748b; font-size: 0.85rem;">Loading category trends...</div>
             </div>
         </section>
     </div>

@@ -4315,7 +4315,7 @@ async function checkMediationScheduleConflict() {
         const maxSlots = result.max_slots || 8;
         const availSlots = result.available_slots ?? Math.max(0, maxSlots - bookedCount);
 
-        if (result.is_fully_booked || bookedCount >= maxSlots) {
+        if (false && (result.is_fully_booked || bookedCount >= maxSlots)) {
             if (conflictAlert) {
                 conflictAlert.textContent = `Date Fully Booked: All ${maxSlots} daily mediation slots on this date are occupied. Please select another date.`;
                 conflictAlert.style.display = 'block';
@@ -4352,25 +4352,69 @@ async function checkMediationScheduleConflict() {
             }
         }
 
-        // 4. Time conflict check
+        // 4. Time conflict check with acknowledgment override
+        const conflictAckWrapperId = 'complaintsConflictAckWrap';
+        let ackWrap = document.getElementById(conflictAckWrapperId);
+
         if (result.has_conflict && result.conflict) {
             const conflictMsg = result.conflict.message || 'The selected time overlaps with an existing scheduled mediation.';
             if (conflictAlert) {
-                conflictAlert.textContent = `Schedule Conflict: ${conflictMsg}`;
+                conflictAlert.textContent = `Schedule Warning: ${conflictMsg}`;
                 conflictAlert.style.display = 'block';
+                conflictAlert.style.background = '#fffbeb';
+                conflictAlert.style.borderColor = '#f59e0b';
+                conflictAlert.style.color = '#92400e';
+            }
+
+            if (!ackWrap && conflictAlert) {
+                ackWrap = document.createElement('div');
+                ackWrap.id = conflictAckWrapperId;
+                ackWrap.style.cssText = 'margin-top: 8px; padding: 8px 12px; background: #fefce8; border: 1px solid #fde047; border-radius: 6px;';
+                ackWrap.innerHTML = `
+                    <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: 0.85rem; color: #854d0e; font-weight: 500; margin: 0;">
+                        <input type="checkbox" id="complaintsConflictAckCb" name="conflict_acknowledged" value="1" style="margin-top: 2px;">
+                        <span>I understand that another session is already scheduled at this time and confirm scheduling anyway.</span>
+                    </label>
+                `;
+                conflictAlert.parentNode.insertBefore(ackWrap, conflictAlert.nextSibling);
+
+                document.getElementById('complaintsConflictAckCb')?.addEventListener('change', (e) => {
+                    const isAcked = e.target.checked;
+                    if (submitBtn) {
+                        submitBtn.disabled = !isAcked;
+                        submitBtn.title = isAcked ? '' : 'Please acknowledge the existing session to proceed with scheduling.';
+                    }
+                    if (timeInput) timeInput.setCustomValidity(isAcked ? '' : 'Session time overlaps with another case.');
+                });
+            }
+            if (ackWrap) ackWrap.style.display = 'block';
+
+            const ackCb = document.getElementById('complaintsConflictAckCb');
+            const isAcked = ackCb && ackCb.checked;
+            if (submitBtn) {
+                submitBtn.disabled = !isAcked;
+                submitBtn.title = isAcked ? '' : 'Cannot submit: Please acknowledge existing scheduled session to proceed.';
             }
             if (timeInput) {
-                timeInput.setCustomValidity('Selected time overlaps with another scheduled mediation on this day.');
-            }
-            if (submitBtn) {
-                submitBtn.disabled = true;
-                submitBtn.title = 'Cannot submit: Schedule conflict with an existing mediation on this day.';
+                timeInput.setCustomValidity(isAcked ? '' : 'Selected time overlaps with another scheduled mediation on this day.');
             }
         } else {
+            if (ackWrap) ackWrap.style.display = 'none';
+            const ackCb = document.getElementById('complaintsConflictAckCb');
+            if (ackCb) ackCb.checked = false;
+
             if (conflictAlert) {
                 conflictAlert.textContent = '';
                 conflictAlert.style.display = 'none';
             }
+            if (timeInput) {
+                timeInput.setCustomValidity('');
+            }
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.title = '';
+            }
+        }
             if (timeInput) {
                 timeInput.setCustomValidity('');
             }

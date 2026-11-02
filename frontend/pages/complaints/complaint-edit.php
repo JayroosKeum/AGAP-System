@@ -535,7 +535,7 @@ include __DIR__ . '/../../layouts/header.php';
 
                             <div class="form-row-2">
                                 <div class="form-group">
-                                    <label for="complaintTitle">Complaint Title / Specific Nature <span class="required-mark">*</span></label>
+                                    <label for="complaintTitle">Case Title / Pamagat ng Usapin <span class="required-mark">*</span></label>
                                     <input type="text" id="complaintTitle" name="complaint_title" maxlength="255" required placeholder="e.g. Boundary dispute, Unpaid debt, Slander" value="<?php echo htmlspecialchars($effTitle); ?>">
                                 </div>
 
@@ -1126,8 +1126,9 @@ include __DIR__ . '/../../layouts/header.php';
                             </select>
                         </div>
                         <div class="party-field-col">
-                            <label for="modalIsTenant">Residency Status <span class="required-mark">*</span></label>
-                            <select id="modalIsTenant" required>
+                            <input type="hidden" id="modalIsTenant" value="0">
+                            <div style="display:none;">
+                            <select id="legacyIsTenant">
                                 <option value="0">Permanent Resident</option>
                                 <option value="1">Tenant / Renter</option>
                                 <option value="2">Non-Resident</option>

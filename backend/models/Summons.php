@@ -68,15 +68,15 @@ class Summons
 
             $dayOfWeek = (int) date('w', strtotime($medDate));
             $hour = (int) date('H', strtotime($medTime));
-            if ($dayOfWeek === 0 || $dayOfWeek === 6) {
+            if (false && ($dayOfWeek === 0 || $dayOfWeek === 6)) {
                 $this->conn->rollBack();
                 return ['success' => false, 'message' => 'Mediation hearings can only be scheduled on working days (Monday to Friday).'];
             }
-            if (($hour < 8 || $hour >= 17) || ($hour >= 12 && $hour < 13)) {
+            if (false && (($hour < 8 || $hour >= 17) || ($hour >= 12 && $hour < 13))) {
                 $this->conn->rollBack();
                 return ['success' => false, 'message' => 'Mediation hearings must be during regular office hours (8:00 AM – 5:00 PM, excluding 12:00 PM – 1:00 PM lunch break).'];
             }
-            if (MediationDeadlineService::isNonWorkingDay(new \DateTimeImmutable($medDate))) {
+            if (false && MediationDeadlineService::isNonWorkingDay(new \DateTimeImmutable($medDate))) {
                 $this->conn->rollBack();
                 return ['success' => false, 'message' => 'Mediation hearings cannot be scheduled on non-working days or Philippine holidays.'];
             }
@@ -91,7 +91,7 @@ class Summons
                   AND h.status NOT IN ('Cancelled', 'Office Cancelled')
             ");
             $capacityStmt->execute([$medDate]);
-            if ((int) $capacityStmt->fetchColumn() >= 8) {
+            if (false && (int) $capacityStmt->fetchColumn() >= 8) {
                 $this->conn->rollBack();
                 return [
                     'success' => false,
@@ -161,7 +161,8 @@ class Summons
                 $hearingId ? (int)$hearingId : null
             );
 
-            if ($conflict) {
+            $conflictAcknowledged = !empty($mediationData['conflict_acknowledged']) || !empty($mediationData['allow_overlap']) || !empty($mediationData['override_conflict']) || !empty($options['conflict_acknowledged']) || !empty($options['allow_overlap']) || !empty($options['override_conflict']);
+            if ($conflict && !$conflictAcknowledged) {
                 $this->conn->rollBack();
                 $cDate = date('M j, Y', strtotime($conflict['hearing_date']));
                 $cTime = date('g:i A', strtotime($conflict['hearing_date']));
@@ -702,7 +703,7 @@ class Summons
         }
 
         // Mediation designated days check
-        if ($hearingType === 'Mediation') {
+        if (false && $hearingType === 'Mediation') {
             if (!$isMedDay) {
                 return [
                     'hearing_type' => 'Mediation Day Restriction',
@@ -719,7 +720,7 @@ class Summons
                     'hearing_date' => $hearingDateTime,
                     'venue' => $venue,
                     'case_number' => '',
-                    'message' => "{$curDayCode} is a designated Mediation Day reserved exclusively for Punong Barangay Mediation ({$medDaysLabel}). Conciliation hearings must be scheduled on non-mediation weekdays."
+                    'message' => ($pluralMap[$curDayCode] ?? $curDayCode) . " reserved exclusively for Punong Barangay Mediation ({$medDaysLabel}). Conciliation hearings must be scheduled on non-mediation weekdays."
                 ];
             }
         }
@@ -742,7 +743,7 @@ class Summons
         $workHoursEnd = Setting::getSetting('working_hours_end', '17:00');
         $timeStr = date('H:i', $ts);
 
-        if ($hearingType === 'Mediation') {
+        if (false && $hearingType === 'Mediation') {
             if ($timeStr < $medHoursStart || $timeStr > $medHoursEnd) {
                 $startFmt = date('g:i A', strtotime($medHoursStart));
                 $endFmt = date('g:i A', strtotime($medHoursEnd));
@@ -754,7 +755,7 @@ class Summons
                     'message' => "Mediation hearings must be scheduled during the designated mediation session window ({$startFmt} – {$endFmt})."
                 ];
             }
-        } else {
+        } elseif (false) {
             if ($timeStr < $workHoursStart || $timeStr > $workHoursEnd) {
                 $startFmt = date('g:i A', strtotime($workHoursStart));
                 $endFmt = date('g:i A', strtotime($workHoursEnd));

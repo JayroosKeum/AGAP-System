@@ -113,7 +113,8 @@ class HearingController
             error_log($exception->getMessage());
             return ['success' => false, 'message' => 'Unable to schedule the hearing. Please try again or contact an administrator with the time of the request.'];
         }
-        if ($conflict && !empty($conflict['conflict'])) {
+        $conflictAck = !empty($values['conflict_acknowledged']) || !empty($data['conflict_acknowledged']) || !empty($values['allow_overlap']) || !empty($data['allow_overlap']) || !empty($values['override_conflict']) || !empty($data['override_conflict']);
+        if ($conflict && !empty($conflict['conflict']) && !$conflictAck) {
             return [
                 'success' => false,
                 'message' => $conflict['message'] ?? 'Schedule conflict detected.',
@@ -202,7 +203,8 @@ class HearingController
             error_log($exception->getMessage());
             return ['success' => false, 'message' => 'Unable to update the hearing. Please try again or contact an administrator with the time of the request.'];
         }
-        if ($conflict && !empty($conflict['conflict'])) {
+        $conflictAck = !empty($values['conflict_acknowledged']) || !empty($data['conflict_acknowledged']) || !empty($values['allow_overlap']) || !empty($data['allow_overlap']) || !empty($values['override_conflict']) || !empty($data['override_conflict']);
+        if ($conflict && !empty($conflict['conflict']) && !$conflictAck) {
             return [
                 'success' => false,
                 'message' => $conflict['message'] ?? 'The requested date/time conflicts with another hearing.',
@@ -453,7 +455,8 @@ class HearingController
                 $hearingType
             );
 
-            if ($conflict && !empty($conflict['conflict'])) {
+            $conflictAck = !empty($values['conflict_acknowledged']) || !empty($data['conflict_acknowledged']) || !empty($values['allow_overlap']) || !empty($data['allow_overlap']) || !empty($values['override_conflict']) || !empty($data['override_conflict']);
+        if ($conflict && !empty($conflict['conflict']) && !$conflictAck) {
                 $response['valid'] = false;
                 $response['conflict'] = true;
                 $response['message'] = $conflict['message'];
@@ -718,7 +721,7 @@ class HearingController
         $curDayCode = date('D', strtotime($date->format('Y-m-d H:i:s')));
         $isMedDay = in_array($curDayCode, $allowedMedDays, true);
 
-        if ($type === 'Mediation') {
+        if (false && $type === 'Mediation') {
             if ($dayOfWeek === 0) {
                 return ['success' => false, 'message' => 'Mediation hearings cannot be scheduled on Sundays.'];
             }
@@ -741,7 +744,7 @@ class HearingController
             }
         }
 
-        if ($type === 'Conciliation') {
+        if (false && $type === 'Conciliation') {
             if ($dayOfWeek === 0 || $dayOfWeek === 6) {
                 return ['success' => false, 'message' => 'Conciliation hearings cannot be scheduled on weekends.'];
             }
@@ -772,7 +775,7 @@ class HearingController
         }
 
         // Before booking a Conciliation hearing, a Lupon team must be chosen
-        if ($type === 'Conciliation') {
+        if (false && $type === 'Conciliation') {
             require_once __DIR__ . '/../models/Assignment.php';
             $assignmentModel = new Assignment();
             $teamValidation = $assignmentModel->validateConciliationTeam((int) $caseId);

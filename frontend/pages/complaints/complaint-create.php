@@ -476,7 +476,7 @@ include '../../layouts/header.php';
 
                             <div class="form-row-2">
                                 <div class="form-group">
-                                    <label for="complaintTitle">Complaint Title / Specific Nature <span class="required-mark">*</span></label>
+                                    <label for="complaintTitle">Case Title / Pamagat ng Usapin <span class="required-mark">*</span></label>
                                     <input type="text" id="complaintTitle" name="complaint_title" maxlength="255" required placeholder="e.g. Boundary dispute, Unpaid debt, Slander" value="<?php echo htmlspecialchars($old['complaint_title'] ?? ''); ?>">
                                 </div>
 
@@ -680,7 +680,35 @@ include '../../layouts/header.php';
                             <div class="form-group">
                                 <label for="narrative">Complaint Narrative <span class="required-mark" id="narrativeRequiredStar">*</span></label>
                                 <textarea id="narrative" name="narrative" rows="5" maxlength="15000" required placeholder="Describe in detail what occurred, when, and the circumstances surrounding the incident..."><?php echo htmlspecialchars($old['narrative'] ?? ''); ?></textarea>
-                                <div class="ai-narrative-actions">
+                                <div class="offline-narrative-templates" style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                                    <span style="font-size: 0.8rem; font-weight: 600; color: #64748b;">📋 Mabilisang Template (Offline):</span>
+                                    <button type="button" class="btn-outline-sm" style="font-size: 0.78rem; padding: 4px 8px; cursor: pointer;" onclick="applyNarrativeTemplate('utang')">💰 Hindi Pagbabayad ng Utang</button>
+                                    <button type="button" class="btn-outline-sm" style="font-size: 0.78rem; padding: 4px 8px; cursor: pointer;" onclick="applyNarrativeTemplate('pananakit')">⚠️ Pananakit / Pagbabanta</button>
+                                    <button type="button" class="btn-outline-sm" style="font-size: 0.78rem; padding: 4px 8px; cursor: pointer;" onclick="applyNarrativeTemplate('hangganan')">🏡 Alitan sa Lupa / Hangganan</button>
+                                    <button type="button" class="btn-outline-sm" style="font-size: 0.78rem; padding: 4px 8px; cursor: pointer;" onclick="applyNarrativeTemplate('blotter')">📄 Standard Blotter Summary</button>
+                                </div>
+                                <script>
+                                function applyNarrativeTemplate(type) {
+                                    const ta = document.getElementById('narrative');
+                                    if (!ta) return;
+                                    let template = '';
+                                    if (type === 'utang') {
+                                        template = "HALAGA NG UTANG: ₱\nPETSA KUNG KAILAN INUTANG: \nNAPAGKASUNDUANG PETSA NG BAYARAN: \nBUOD NG PANGYAYARI: Noong [Petsa], humiram si [Pangalan ng Inirereklamo] ng halagang nabanggit na may pangakong babayaran ngunit hanggang sa kasalukuyan ay hindi pa rin ito nababayaran sa kabila ng paulit-ulit na paniningil.";
+                                    } else if (type === 'pananakit') {
+                                        template = "LUGAR NG PANGYAYARI: Barangay Tumana\nORAS AT PETSA: \nBUOD NG PANGYAYARI: Noong nabanggit na petsa at oras, nagkaroon ng komprontasyon kung saan si [Pangalan ng Inirereklamo] ay nagbitaw ng masasamang salita / pananakit / pagbabanta laban sa nagrereklamo na naging sanhi ng takot at pagkabagabag.";
+                                    } else if (type === 'hangganan') {
+                                        template = "LOKASYON NG LUPA / ARI-ARIAN: Barangay Tumana\nBUOD NG ALITAN: Alitan hinggil sa hangganan / bakod / karapatan sa daanan o pamamalagi sa pagitan ng magkabilang panig na hindi maayos-ayos sa mapayapang usapan.";
+                                    } else {
+                                        template = "PETSA AT LUGAR: Barangay Tumana\nNAGANAP NA INSIDENTE: \nDAHILAN NG PAGSASAMPA NG REKLAMO: ";
+                                    }
+                                    if (ta.value.trim() !== '' && !confirm('Palitan ang kasalukuyang nakasulat sa narrative ng template na ito?')) {
+                                        return;
+                                    }
+                                    ta.value = template;
+                                    ta.dispatchEvent(new Event('input'));
+                                }
+                                </script>
+                                <div class="ai-narrative-actions" style="display:none;">
                                     <div class="ai-narrative-tools">
                                         <button type="button" class="btn-outline-sm" data-enhance-narrative>Enhance with AI</button>
                                         <small class="field-hint">Keep statements chronological, clear, and focused on key incident details.</small>
@@ -1109,8 +1137,9 @@ include '../../layouts/header.php';
                             </select>
                         </div>
                         <div class="party-field-col">
-                            <label for="modalIsTenant">Residency Status <span class="required-mark">*</span></label>
-                            <select id="modalIsTenant" required>
+                            <input type="hidden" id="modalIsTenant" value="0">
+                            <div style="display:none;">
+                            <select id="legacyIsTenant">
                                 <option value="0">Permanent Resident</option>
                                 <option value="1">Tenant / Renter</option>
                                 <option value="2">Non-Resident</option>

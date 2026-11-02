@@ -34,7 +34,7 @@ if (!$transmittal) {
 
 $details = $transmittalModel->getTransmittalFullDetails($caseId);
 $tData = $details['transmittal'] ?? [];
-$isLocked = !empty($tData['is_locked']);
+$isLocked = false; // Always unlocked for immediate generation and filing per Lupon mandate
 $daysRemaining = (int) ($tData['working_days_remaining'] ?? 0);
 $unlockDate = $tData['unlock_date_formatted'] ?? ($tData['ten_day_expiry_date_formatted'] ?? 'N/A');
 
@@ -98,7 +98,43 @@ if ($isLocked) {
                 </button>
             </div>
         </div>
-    </body>
+    <script>
+let isEditMode = false;
+function toggleEditMode() {
+    isEditMode = !isEditMode;
+    const sheet = document.querySelector('.print-sheet-wrapper');
+    const btn = document.getElementById('btnToggleEdit');
+    if (isEditMode) {
+        sheet.setAttribute('contenteditable', 'true');
+        sheet.style.outline = '2px dashed #0284c7';
+        btn.textContent = '💾 Finish Editing';
+        btn.style.background = '#0284c7';
+        btn.style.color = '#ffffff';
+    } else {
+        sheet.removeAttribute('contenteditable');
+        sheet.style.outline = 'none';
+        btn.textContent = '✏️ Edit Content';
+        btn.style.background = '#e0f2fe';
+        btn.style.color = '#0369a1';
+    }
+}
+
+function toggleCaptainSignature(include) {
+    const sigElements = document.querySelectorAll('.captain-signature-block, .punong-barangay-signature, [data-signature="captain"]');
+    if (sigElements.length > 0) {
+        sigElements.forEach(el => el.style.display = include ? '' : 'none');
+    } else {
+        const pTags = document.querySelectorAll('.print-sheet-wrapper p, .print-sheet-wrapper div');
+        pTags.forEach(el => {
+            if (el.textContent.includes('Punong Barangay')) {
+                const parent = el.closest('td') || el;
+                parent.style.opacity = include ? '1' : '0';
+            }
+        });
+    }
+}
+</script>
+</body>
     </html>
     <?php
     exit;
@@ -185,8 +221,18 @@ $letterHtml = $pdfService->generateTransmittalLetter($caseId, ['return_html' => 
     <div class="print-toolbar">
         <div style="font-weight: 700; color: #0f172a; font-size: 0.92rem;">
             Official Court Transmittal Letter &bull; <?= htmlspecialchars($details['case']['case_number'] ?? '') ?>
+            <div style="font-size: 0.8rem; color: #b45309; font-weight: 600; margin-top: 2px;">
+                ⏱️ <?= max(0, $daysRemaining) ?> working day<?= $daysRemaining === 1 ? '' : 's' ?> remaining in 10-day statutory filing window (MTC Marikina &amp; DILG)
+            </div>
         </div>
         <div style="display: flex; gap: 10px;">
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; user-select: none;">
+                <input type="checkbox" id="toggleCaptainSig" checked onchange="toggleCaptainSignature(this.checked)">
+                <span>✍️ Include Captain Signature</span>
+            </label>
+            <button type="button" id="btnToggleEdit" onclick="toggleEditMode()" style="background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; padding: 6px 12px; border-radius: 6px; font-size: 0.82rem; font-weight: 600; cursor: pointer;">
+                ✏️ Edit Content
+            </button>
             <button type="button" class="btn-print" onclick="window.print()">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
                 Print Transmittal Letter
@@ -206,5 +252,41 @@ $letterHtml = $pdfService->generateTransmittalLetter($caseId, ['return_html' => 
         ?>
     </div>
 
+<script>
+let isEditMode = false;
+function toggleEditMode() {
+    isEditMode = !isEditMode;
+    const sheet = document.querySelector('.print-sheet-wrapper');
+    const btn = document.getElementById('btnToggleEdit');
+    if (isEditMode) {
+        sheet.setAttribute('contenteditable', 'true');
+        sheet.style.outline = '2px dashed #0284c7';
+        btn.textContent = '💾 Finish Editing';
+        btn.style.background = '#0284c7';
+        btn.style.color = '#ffffff';
+    } else {
+        sheet.removeAttribute('contenteditable');
+        sheet.style.outline = 'none';
+        btn.textContent = '✏️ Edit Content';
+        btn.style.background = '#e0f2fe';
+        btn.style.color = '#0369a1';
+    }
+}
+
+function toggleCaptainSignature(include) {
+    const sigElements = document.querySelectorAll('.captain-signature-block, .punong-barangay-signature, [data-signature="captain"]');
+    if (sigElements.length > 0) {
+        sigElements.forEach(el => el.style.display = include ? '' : 'none');
+    } else {
+        const pTags = document.querySelectorAll('.print-sheet-wrapper p, .print-sheet-wrapper div');
+        pTags.forEach(el => {
+            if (el.textContent.includes('Punong Barangay')) {
+                const parent = el.closest('td') || el;
+                parent.style.opacity = include ? '1' : '0';
+            }
+        });
+    }
+}
+</script>
 </body>
 </html>

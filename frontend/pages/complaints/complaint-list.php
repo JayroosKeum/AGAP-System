@@ -125,8 +125,8 @@ include '../../layouts/header.php';
                     <select id="searchSort" name="sort_by" class="toolbar-select" title="Order records">
                         <option value="case_number_desc">Sort: Case No. (Desc)</option>
                         <option value="case_number">Sort: Case No. (Asc)</option>
-                        <option value="complaint_title">Sort: Complaint Title (A-Z)</option>
-                        <option value="complaint_title_desc">Sort: Complaint Title (Z-A)</option>
+                        <option value="complaint_title">Sort: Case Title (A-Z)</option>
+                        <option value="complaint_title_desc">Sort: Case Title (Z-A)</option>
                         <option value="complaint_number_desc">Sort: Complaint No. (Desc)</option>
                         <option value="complaint_number">Sort: Complaint No. (Asc)</option>
                         <option value="incident_date">Sort: Incident Date (Newest)</option>

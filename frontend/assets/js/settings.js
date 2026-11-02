@@ -448,6 +448,111 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (_) {}
     }
 
+    // 8.1 Puroks & Areas CRUD Handlers
+    window.openPurokModal = function(purokData = null) {
+        document.getElementById('purokModalId').value = purokData ? (purokData.id || '') : '';
+        document.getElementById('purokModalName').value = purokData ? (purokData.purok_name || '') : '';
+        document.getElementById('purokModalDesc').value = purokData ? (purokData.description || '') : '';
+        document.getElementById('purokModalSort').value = purokData ? (purokData.sort_order || 0) : 0;
+        document.getElementById('purokModalActive').checked = purokData ? (Number(purokData.is_active) === 1) : true;
+        document.getElementById('purokModalTitle').textContent = purokData ? 'Edit Purok / Area' : 'Add New Purok / Area';
+        document.getElementById('modalPurokForm')?.classList.add('open');
+    };
+
+    window.closePurokModal = function() {
+        document.getElementById('modalPurokForm')?.classList.remove('open');
+    };
+
+    window.submitPurokForm = async function() {
+        const id = document.getElementById('purokModalId')?.value;
+        const name = document.getElementById('purokModalName')?.value;
+        const desc = document.getElementById('purokModalDesc')?.value;
+        const sort = document.getElementById('purokModalSort')?.value || 0;
+        const active = document.getElementById('purokModalActive')?.checked ? 1 : 0;
+
+        if (!name || !name.trim()) {
+            alert('Purok / Area name is required.');
+            return;
+        }
+
+        try {
+            const res = await fetch('../../../backend/api/settings/puroks.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken
+                },
+                body: JSON.stringify({
+                    id: id,
+                    purok_name: name.trim(),
+                    description: desc.trim(),
+                    sort_order: sort,
+                    is_active: active
+                })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                showToast(data.message, 'success');
+                closePurokModal();
+                reloadPuroksTable();
+            } else {
+                showToast(data.message, 'error');
+            }
+        } catch (err) {
+            showToast('Error saving purok: ' + err.message, 'error');
+        }
+    };
+
+    window.deletePurok = async function(purokId, purokName) {
+        if (!confirm(`Are you sure you want to delete or deactivate purok/area "${purokName}"?`)) return;
+
+        try {
+            const res = await fetch('../../../backend/api/settings/puroks.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken
+                },
+                body: JSON.stringify({ action: 'delete', id: purokId })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                showToast(data.message, 'success');
+                reloadPuroksTable();
+            } else {
+                showToast(data.message, 'error');
+            }
+        } catch (err) {
+            showToast('Error deleting purok: ' + err.message, 'error');
+        }
+    };
+
+    async function reloadPuroksTable() {
+        try {
+            const res = await fetch('../../../backend/api/settings/puroks.php?all=1');
+            const data = await res.json();
+            if (data.success && data.puroks) {
+                const tbody = document.getElementById('puroksTableTbody');
+                if (!tbody) return;
+                tbody.innerHTML = data.puroks.map(p => `
+                    <tr>
+                        <td style="font-weight:700; color:#64748b;">${p.sort_order || 0}</td>
+                        <td><strong>${escapeHtml(p.purok_name)}</strong></td>
+                        <td style="color:#64748b;">${escapeHtml(p.description || '—')}</td>
+                        <td><span class="${Number(p.is_active) === 1 ? 'badge-active' : 'badge-inactive'}">${Number(p.is_active) === 1 ? 'Active' : 'Inactive / Hidden'}</span></td>
+                        <td>${p.complaint_count || 0}</td>
+                        <td style="text-align:right;">
+                            <button type="button" class="btn-secondary btn-sm" onclick='openPurokModal(${JSON.stringify(p)})'>✏️ Edit</button>
+                            <button type="button" class="btn-danger btn-sm" onclick='deletePurok(${p.id}, "${escapeHtml(p.purok_name)}")'>🗑️</button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        } catch (_) {}
+    }
+
     // 9. Holiday Manager Handlers
     window.openAddHolidayModal = function() {
         document.getElementById('holidayDate').value = new Date().toISOString().split('T')[0];

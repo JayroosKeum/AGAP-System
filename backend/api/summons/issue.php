@@ -53,7 +53,8 @@ $mediationData = [
     'mediation_date' => trim((string) ($_POST['mediation_date'] ?? '')),
     'mediation_time' => trim((string) ($_POST['mediation_time'] ?? '')),
     'venue' => trim((string) ($_POST['venue'] ?? 'Lupon Court Room')),
-    'remarks' => trim((string) ($_POST['remarks'] ?? ''))
+    'remarks' => trim((string) ($_POST['remarks'] ?? '')),
+    'conflict_acknowledged' => !empty($_POST['conflict_acknowledged'])
 ];
 
 $summons = new Summons();

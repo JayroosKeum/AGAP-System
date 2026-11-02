@@ -905,7 +905,7 @@ async function renderExpandedCaseView(caseId) {
                 `;
             }
 
-            return attemptsList.map((att, idx) => {
+            const renderSingleAttemptBlock = (att, idx) => {
                 const ord = att.attempt_ordinal || ((ordinals[att.attempt_number] || att.attempt_number + 'th') + ' Attempt');
                 const proofPath = att.proof_file_path || att.attachment_path;
                 const isServed = Boolean(att.is_served);
@@ -979,7 +979,28 @@ async function renderExpandedCaseView(caseId) {
                         </ul>
                     </div>
                 `;
-            }).join('');
+            };
+
+            if (attemptsList.length <= 1) {
+                return attemptsList.map(renderSingleAttemptBlock).join('');
+            }
+
+            const latestAtt = attemptsList[attemptsList.length - 1];
+            const olderAttempts = attemptsList.slice(0, attemptsList.length - 1);
+
+            return `
+                <div class="active-attempt-container">
+                    ${renderSingleAttemptBlock(latestAtt, attemptsList.length - 1)}
+                </div>
+                <details class="older-attempts-drawer" style="margin-top: 8px; border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px 10px; background: #f8fafc;">
+                    <summary style="cursor: pointer; font-size: 0.78rem; font-weight: 700; color: #0284c7; user-select: none;">
+                        📋 Past Attempts History (${olderAttempts.length})
+                    </summary>
+                    <div style="margin-top: 8px;">
+                        ${olderAttempts.map(renderSingleAttemptBlock).join('')}
+                    </div>
+                </details>
+            `;
         };
 
         // Complainant Action Buttons

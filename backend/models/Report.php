@@ -148,6 +148,10 @@ class Report
                 'calendar_hearings' => $calendarHearings,
                 'mediation_deadlines' => $deadlineRows,
                 'status_totals' => $statusRows,
+            'purok_hotspots' => $this->getPurokHotspots($startDate, $endDate),
+            'prominent_categories' => $this->getProminentCategories($startDate, $endDate),
+                'purok_hotspots' => $this->getPurokHotspots(),
+                'prominent_categories' => $this->getProminentCategories(),
                 'cases' => $casesList,
             ];
         }
@@ -332,6 +336,8 @@ class Report
             'calendar_hearings' => $calendarHearings,
             'mediation_deadlines' => $deadlineRows,
             'status_totals' => $statusRows,
+            'purok_hotspots' => $this->getPurokHotspots($startDate, $endDate),
+            'prominent_categories' => $this->getProminentCategories($startDate, $endDate),
             'cases' => $casesList,
         ];
     }
@@ -548,5 +554,63 @@ class Report
         $stmt = $this->conn->prepare($sql);
         $stmt->execute($params);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function getPurokHotspots(?string $startDate = null, ?string $endDate = null): array
+    {
+        try {
+            $sql = "SELECT 
+                        COALESCE(NULLIF(TRIM(c.incident_purok), ''), 'Unspecified') AS purok_name,
+                        COUNT(c.complaint_id) AS total_cases
+                    FROM complaints c
+                    WHERE c.status NOT IN ('Archived', 'Dismissed')";
+            $params = [];
+            if ($startDate && $endDate) {
+                $sql .= " AND DATE(c.created_at) BETWEEN ? AND ?";
+                $params = [$startDate, $endDate];
+            }
+            $sql .= " GROUP BY purok_name ORDER BY total_cases DESC LIMIT 5";
+            $stmt = $this->conn->prepare($sql);
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+            $totalAll = array_sum(array_column($rows, 'total_cases')) ?: 1;
+            foreach ($rows as &$r) {
+                $r['percentage'] = round(($r['total_cases'] / $totalAll) * 100, 1);
+            }
+            return $rows;
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    public function getProminentCategories(?string $startDate = null, ?string $endDate = null): array
+    {
+        try {
+            $sql = "SELECT 
+                        COALESCE(cat.category_name, 'General Dispute') AS category_name,
+                        COALESCE(c.case_type, 'Civil') AS case_type,
+                        COUNT(c.complaint_id) AS total_cases
+                    FROM complaints c
+                    LEFT JOIN complaint_categories cat ON cat.category_id = c.category_id
+                    WHERE c.status NOT IN ('Archived', 'Dismissed')";
+            $params = [];
+            if ($startDate && $endDate) {
+                $sql .= " AND DATE(c.created_at) BETWEEN ? AND ?";
+                $params = [$startDate, $endDate];
+            }
+            $sql .= " GROUP BY category_name, case_type ORDER BY total_cases DESC LIMIT 5";
+            $stmt = $this->conn->prepare($sql);
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+            $totalAll = array_sum(array_column($rows, 'total_cases')) ?: 1;
+            foreach ($rows as &$r) {
+                $r['percentage'] = round(($r['total_cases'] / $totalAll) * 100, 1);
+            }
+            return $rows;
+        } catch (\Throwable $e) {
+            return [];
+        }
     }
 }

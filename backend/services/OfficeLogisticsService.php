@@ -162,65 +162,10 @@ class OfficeLogisticsService
         $minute = (int) $start->format('i');
 
         if ($hearingType === 'Mediation') {
-            $rawMedDays = $this->getSetting('mediation_day_of_week', 'Mon,Tue,Wed,Thu,Fri');
-            $allowedMedDays = [];
-            if (is_string($rawMedDays)) {
-                $dec = json_decode($rawMedDays, true);
-                $allowedMedDays = is_array($dec) ? $dec : array_filter(array_map('trim', explode(',', $rawMedDays)));
-            } elseif (is_array($rawMedDays)) {
-                $allowedMedDays = $rawMedDays;
-            }
-            if (empty($allowedMedDays)) {
-                $allowedMedDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-            }
-            $pluralMap = ['Mon' => 'Mondays', 'Tue' => 'Tuesdays', 'Wed' => 'Wednesdays', 'Thu' => 'Thursdays', 'Fri' => 'Fridays', 'Sat' => 'Saturdays', 'Sun' => 'Sundays'];
-            $medDaysLabel = implode(', ', array_map(fn($d) => $pluralMap[$d] ?? $d, $allowedMedDays));
-            $curDayCode = $start->format('D');
-            $isMedDay = in_array($curDayCode, $allowedMedDays, true);
-
             if ($dayOfWeek === 0) {
                 return [
                     'valid' => false,
                     'message' => 'Mediation hearings cannot be scheduled on Sundays.'
-                ];
-            }
-            if ($dayOfWeek === 6 && !$isMedDay) {
-                return [
-                    'valid' => false,
-                    'message' => 'Mediation hearings cannot be scheduled on Saturdays unless designated in Settings.'
-                ];
-            }
-            if (!$isMedDay) {
-                return [
-                    'valid' => false,
-                    'message' => "Mediation hearings can only be scheduled on designated mediation days ({$medDaysLabel})."
-                ];
-            }
-
-            $medHoursStart = $this->getSetting('mediation_hours_start', '08:00');
-            $medHoursEnd = $this->getSetting('mediation_hours_end', '17:00');
-            $timeStr = $start->format('H:i');
-            $endTimeStr = $end->format('H:i');
-
-            if ($timeStr < $medHoursStart || $timeStr > $medHoursEnd) {
-                $startFmt = date('g:i A', strtotime($medHoursStart));
-                $endFmt = date('g:i A', strtotime($medHoursEnd));
-                return [
-                    'valid' => false,
-                    'message' => "Mediation hearings must be scheduled during the designated mediation session window ({$startFmt} – {$endFmt})."
-                ];
-            }
-            if ($endTimeStr > $medHoursEnd) {
-                $endFmt = date('g:i A', strtotime($medHoursEnd));
-                return [
-                    'valid' => false,
-                    'message' => "Mediation hearings must conclude by {$endFmt}."
-                ];
-            }
-            if ($timeStr >= '12:00' && $timeStr < '13:00') {
-                return [
-                    'valid' => false,
-                    'message' => 'Mediation hearings cannot be scheduled during lunch break (12:00 PM – 1:00 PM).'
                 ];
             }
         } elseif ($hearingType === 'Conciliation') {
@@ -230,41 +175,11 @@ class OfficeLogisticsService
                     'message' => 'Conciliation hearings cannot be scheduled on weekends.'
                 ];
             }
-            if ($dayOfWeek === 2) {
-                // Tuesday morning only: 8:00 AM – 12:00 PM
-                if ($hour < 8 || $hour >= 12) {
-                    return [
-                        'valid' => false,
-                        'message' => 'Conciliation hearings on Tuesdays are permitted only in the morning (8:00 AM – 12:00 PM). Tuesday afternoons (1:00 PM – 5:00 PM) are exclusively reserved for Formal Mediation in the Lupon Court Room.'
-                    ];
-                }
-            } else {
-                // Mon, Wed, Thu, Fri: 8:00 AM – 12:00 PM & 1:00 PM – 5:00 PM
-                if (($hour < 8 || $hour >= 17) || ($hour >= 12 && $hour < 13)) {
-                    return [
-                        'valid' => false,
-                        'message' => 'Conciliation hearings must be during regular office hours (8:00 AM – 12:00 PM & 1:00 PM – 5:00 PM, excluding 12:00 PM – 1:00 PM lunch break).'
-                    ];
-                }
-            }
-            if ($hour < 12) {
-                $endHour = (int) $end->format('H');
-                $endMin = (int) $end->format('i');
-                if ($endHour > 12 || ($endHour === 12 && $endMin > 0)) {
-                    return [
-                        'valid' => false,
-                        'message' => 'Morning conciliation hearings must conclude by 12:00 PM for lunch break.'
-                    ];
-                }
-            } else {
-                $endHour = (int) $end->format('H');
-                $endMin = (int) $end->format('i');
-                if ($endHour > 17 || ($endHour === 17 && $endMin > 0)) {
-                    return [
-                        'valid' => false,
-                        'message' => 'Afternoon conciliation hearings must conclude by 5:00 PM.'
-                    ];
-                }
+            if ($dayOfWeek === 2 && $hour >= 12) {
+                return [
+                    'valid' => false,
+                    'message' => 'Conciliation hearings on Tuesdays are permitted only in the morning (8:00 AM – 12:00 PM). Tuesday afternoons (1:00 PM – 5:00 PM) are exclusively reserved for Formal Mediation in the Lupon Court Room.'
+                ];
             }
         } elseif ($hearingType === 'Arbitration') {
             if ($dayOfWeek === 0 || $dayOfWeek === 6) {
@@ -272,31 +187,6 @@ class OfficeLogisticsService
                     'valid' => false,
                     'message' => 'Arbitration hearings cannot be scheduled on weekends.'
                 ];
-            }
-            if (($hour < 8 || $hour >= 17) || ($hour >= 12 && $hour < 13)) {
-                return [
-                    'valid' => false,
-                    'message' => 'Arbitration hearings must be during regular office hours (8:00 AM – 12:00 PM & 1:00 PM – 5:00 PM, excluding 12:00 PM – 1:00 PM lunch break).'
-                ];
-            }
-            if ($hour < 12) {
-                $endHour = (int) $end->format('H');
-                $endMin = (int) $end->format('i');
-                if ($endHour > 12 || ($endHour === 12 && $endMin > 0)) {
-                    return [
-                        'valid' => false,
-                        'message' => 'Morning arbitration hearings must conclude by 12:00 PM for lunch break.'
-                    ];
-                }
-            } else {
-                $endHour = (int) $end->format('H');
-                $endMin = (int) $end->format('i');
-                if ($endHour > 17 || ($endHour === 17 && $endMin > 0)) {
-                    return [
-                        'valid' => false,
-                        'message' => 'Afternoon arbitration hearings must conclude by 5:00 PM.'
-                    ];
-                }
             }
         }
 
@@ -309,11 +199,6 @@ class OfficeLogisticsService
         ];
     }
 
-    /**
-     * Checks daily scheduled case load across the barangay.
-     * Soft Indicator: Returns case count (e.g. "Tuesday, Oct 27 (4 cases scheduled)").
-     * No hard cap: Does NOT block staff from scheduling as many cases as agreed.
-     */
     public function validateDailyCapacity(string $date, ?int $officerId = null, ?int $excludeHearingId = null): array
     {
         $targetDay = substr($date, 0, 10);

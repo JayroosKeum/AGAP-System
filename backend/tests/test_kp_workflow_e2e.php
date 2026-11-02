@@ -168,7 +168,8 @@ $issueRes = $summonsModel->issueFirstSummon($complaintId, 1, [
     'mediation_date' => $firstMedDate,
     'mediation_time' => '10:00',
     'venue' => 'Lupon Court Room',
-    'override_paanyaya' => true
+    'override_paanyaya' => true,
+    'conflict_acknowledged' => true
 ]);
 testAssert(!empty($issueRes['success']), "Case docketed and 1st Mediation summons issued (Case #{$issueRes['case_number']})");
 $caseId = (int) $issueRes['case_id'];

@@ -5700,7 +5700,7 @@ async function checkWorkspaceScheduleConflict() {
 
 
 
-        if (result.is_fully_booked || bookedCount >= maxSlots) {
+        if (false && (result.is_fully_booked || bookedCount >= maxSlots)) {
 
             if (conflictAlert) {
 
@@ -5728,7 +5728,7 @@ async function checkWorkspaceScheduleConflict() {
         const capBadge = document.getElementById('schedCapacityBadge');
         if (capBadge) {
             capBadge.textContent = result.capacity_badge_text || `${bookedCount} of ${maxSlots} daily mediation slots booked`;
-            if (result.is_fully_booked || bookedCount >= maxSlots) {
+            if (false && (result.is_fully_booked || bookedCount >= maxSlots)) {
                 capBadge.style.background = '#fee2e2';
                 capBadge.style.color = '#991b1b';
                 capBadge.style.border = '1px solid #fca5a5';
@@ -5786,43 +5786,69 @@ async function checkWorkspaceScheduleConflict() {
             }
         }
 
-        // 4. Time conflict check
+        // 4. Time conflict check with acknowledgment override
+        const conflictAckWrapperId = 'stage-workspaceConflictAckWrap';
+        let ackWrap = document.getElementById(conflictAckWrapperId);
 
         if (result.has_conflict && result.conflict) {
-
             const conflictMsg = result.conflict.message || 'The selected time overlaps with an existing scheduled mediation.';
-
             if (conflictAlert) {
-
-                conflictAlert.textContent = `Schedule Conflict: ${conflictMsg}`;
-
+                conflictAlert.textContent = `Schedule Warning: ${conflictMsg}`;
                 conflictAlert.style.display = 'block';
-
+                conflictAlert.style.background = '#fffbeb';
+                conflictAlert.style.borderColor = '#f59e0b';
+                conflictAlert.style.color = '#92400e';
             }
 
-            if (timeInput) {
+            if (!ackWrap && conflictAlert) {
+                ackWrap = document.createElement('div');
+                ackWrap.id = conflictAckWrapperId;
+                ackWrap.style.cssText = 'margin-top: 8px; padding: 8px 12px; background: #fefce8; border: 1px solid #fde047; border-radius: 6px;';
+                ackWrap.innerHTML = `
+                    <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: 0.85rem; color: #854d0e; font-weight: 500; margin: 0;">
+                        <input type="checkbox" id="stage-workspaceConflictAckCb" name="conflict_acknowledged" value="1" style="margin-top: 2px;">
+                        <span>I understand that another session is already scheduled at this time and confirm scheduling anyway.</span>
+                    </label>
+                `;
+                conflictAlert.parentNode.insertBefore(ackWrap, conflictAlert.nextSibling);
 
-                timeInput.setCustomValidity('Selected time overlaps with another scheduled mediation on this day.');
-
+                document.getElementById('stage-workspaceConflictAckCb')?.addEventListener('change', (e) => {
+                    const isAcked = e.target.checked;
+                    if (submitBtn) {
+                        submitBtn.disabled = !isAcked;
+                        submitBtn.title = isAcked ? '' : 'Please acknowledge the existing session to proceed with scheduling.';
+                    }
+                    if (timeInput) timeInput.setCustomValidity(isAcked ? '' : 'Session time overlaps with another case.');
+                });
             }
+            if (ackWrap) ackWrap.style.display = 'block';
 
+            const ackCb = document.getElementById('stage-workspaceConflictAckCb');
+            const isAcked = ackCb && ackCb.checked;
             if (submitBtn) {
-
-                submitBtn.disabled = true;
-
-                submitBtn.title = 'Cannot submit: Schedule conflict with an existing mediation on this day.';
-
+                submitBtn.disabled = !isAcked;
+                submitBtn.title = isAcked ? '' : 'Cannot submit: Please acknowledge existing scheduled session to proceed.';
             }
-
+            if (timeInput) {
+                timeInput.setCustomValidity(isAcked ? '' : 'Selected time overlaps with another scheduled mediation on this day.');
+            }
         } else {
+            if (ackWrap) ackWrap.style.display = 'none';
+            const ackCb = document.getElementById('stage-workspaceConflictAckCb');
+            if (ackCb) ackCb.checked = false;
 
             if (conflictAlert) {
-
                 conflictAlert.textContent = '';
-
                 conflictAlert.style.display = 'none';
-
             }
+            if (timeInput) {
+                timeInput.setCustomValidity('');
+            }
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.title = '';
+            }
+        }
 
             if (timeInput) {
 
@@ -7364,7 +7390,7 @@ async function updateInlineSchedDocketCall(hearingId, dateVal, timeVal) {
 
         if (capBadge) {
             capBadge.textContent = `${bookedCount} of ${maxSlots} daily mediation slots booked`;
-            if (result.is_fully_booked || bookedCount >= maxSlots) {
+            if (false && (result.is_fully_booked || bookedCount >= maxSlots)) {
                 capBadge.style.background = '#fee2e2'; capBadge.style.color = '#991b1b'; capBadge.style.border = '1px solid #fca5a5';
             } else if (bookedCount >= 5) {
                 capBadge.style.background = '#fef3c7'; capBadge.style.color = '#92400e'; capBadge.style.border = '1px solid #fcd34d';

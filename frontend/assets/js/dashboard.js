@@ -990,6 +990,8 @@ document.addEventListener('DOMContentLoaded', () => {
             cell.addEventListener('click', () => {
                 state.calendarCursor = new Date(year, month - 1, 1);
                 renderDashboardCalendar();
+                renderPurokHotspots(data.purok_hotspots || []);
+                renderProminentCategories(data.prominent_categories || []);
                 selectCalendarDate(prevDateStr);
             });
             grid.appendChild(cell);
@@ -1049,6 +1051,8 @@ document.addEventListener('DOMContentLoaded', () => {
             cell.addEventListener('click', () => {
                 state.calendarCursor = new Date(year, month + 1, 1);
                 renderDashboardCalendar();
+                renderPurokHotspots(data.purok_hotspots || []);
+                renderProminentCategories(data.prominent_categories || []);
                 selectCalendarDate(nextDateStr);
             });
             grid.appendChild(cell);
@@ -1255,6 +1259,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderStatuses(data.status_totals || [], periodLabel);
                 renderCasesTable(data.cases || [], periodLabel);
                 renderDashboardCalendar();
+                renderPurokHotspots(data.purok_hotspots || []);
+                renderProminentCategories(data.prominent_categories || []);
 
                 updateUrl();
             })
@@ -1267,6 +1273,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderCasesTable([], 'Error');
                 state.calendarHearings = [];
                 renderDashboardCalendar();
+                renderPurokHotspots(data.purok_hotspots || []);
+                renderProminentCategories(data.prominent_categories || []);
             })
             .finally(() => {
                 state.isLoading = false;
@@ -2011,6 +2019,50 @@ document.addEventListener('DOMContentLoaded', () => {
             renderHearingsPage();
         }
     }, 60000);
+
+    function renderPurokHotspots(hotspots) {
+        const container = document.getElementById('purokHotspotsList');
+        if (!container) return;
+        if (!hotspots || hotspots.length === 0) {
+            container.innerHTML = '<div style="color: #64748b; font-size: 0.85rem;">No purok dispute records for this period.</div>';
+            return;
+        }
+        container.innerHTML = hotspots.map((h, idx) => `
+            <div style="margin-bottom: 10px;">
+                <div style="display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 600; color: #1e293b; margin-bottom: 4px;">
+                    <span>${idx + 1}. ${escapeHtml(h.purok_name)}</span>
+                    <span style="color: #0f766e;">${h.total_cases} case${h.total_cases === 1 ? '' : 's'} (${h.percentage}%)</span>
+                </div>
+                <div style="background: #e2e8f0; height: 8px; border-radius: 9999px; overflow: hidden;">
+                    <div style="background: #0d9488; height: 100%; width: ${Math.min(100, Math.max(5, h.percentage))}%; border-radius: 9999px;"></div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function renderProminentCategories(categories) {
+        const container = document.getElementById('prominentCategoriesList');
+        if (!container) return;
+        if (!categories || categories.length === 0) {
+            container.innerHTML = '<div style="color: #64748b; font-size: 0.85rem;">No complaint categories recorded for this period.</div>';
+            return;
+        }
+        container.innerHTML = categories.map(c => `
+            <div style="margin-bottom: 10px;">
+                <div style="display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 600; color: #1e293b; margin-bottom: 4px;">
+                    <span>• ${escapeHtml(c.category_name)} <small style="color: #64748b; font-weight: 400;">(${c.case_type})</small></span>
+                    <span style="color: #2563eb;">${c.total_cases} (${c.percentage}%)</span>
+                </div>
+                <div style="background: #e2e8f0; height: 8px; border-radius: 9999px; overflow: hidden;">
+                    <div style="background: #3b82f6; height: 100%; width: ${Math.min(100, Math.max(5, c.percentage))}%; border-radius: 9999px;"></div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    window.printMeetingBrief = function() {
+        window.print();
+    };
 
     // Initial load
     fetchDashboardData();
