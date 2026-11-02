@@ -1,2 +1,3 @@
 RewriteEngine On
 RewriteRule ^activate$ activate.php [L,QSA]
+RewriteRule ^verify-email$ verify-email.php [L,QSA]

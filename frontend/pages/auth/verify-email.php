@@ -1,0 +1,9 @@
+<?php
+require_once '../../../backend/controllers/AuthController.php';
+$token = trim((string) ($_GET['token'] ?? ''));
+$validToken = (new AuthController())->isEmailVerificationTokenValid($token);
+include '../../layouts/header.php';
+?>
+<link rel="stylesheet" href="../../assets/css/login.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/login.css'); ?>">
+<div class="login-page"><div class="login-left"><div class="brand"><h1>AGAP</h1><p>Barangay Tumana Portal</p></div></div><div class="login-right"><?php if (!$validToken): ?><div class="login-card"><h2>Verification link unavailable</h2><p>This verification link is invalid, already used, or has expired. Please ask an administrator to resend it.</p><p class="auth-link"><a href="login.php">Back to sign in</a></p></div><?php else: ?><form id="verifyEmailForm" class="login-card"><h2>Verify email and set password</h2><p>Set a password to activate your staff account. This link expires after 24 hours.</p><div id="authMessage" role="alert"></div><input type="hidden" name="token" value="<?php echo htmlspecialchars($token, ENT_QUOTES, 'UTF-8'); ?>"><div class="form-group"><label for="newPassword">New password</label><input id="newPassword" type="password" name="password" autocomplete="new-password" required></div><div class="form-group"><label for="passwordConfirmation">Confirm new password</label><input id="passwordConfirmation" type="password" name="password_confirmation" autocomplete="new-password" required></div><button type="submit">Verify and activate account</button><p class="auth-link"><a href="login.php">Back to sign in</a></p></form><?php endif; ?></div></div>
+<script src="../../assets/js/passwords.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/passwords.js'); ?>"></script><?php include '../../layouts/footer.php'; ?>

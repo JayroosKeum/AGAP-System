@@ -78,6 +78,31 @@ class AuthController {
         return $result + ['message' => $result['success'] ? 'Password reset successfully. You can now sign in.' : $result['message']];
     }
 
+    public function verifyEmail(array $data): array
+    {
+        $token = trim((string) ($data['token'] ?? ''));
+        $password = (string) ($data['password'] ?? '');
+        $confirm = (string) ($data['password_confirmation'] ?? '');
+        if (!preg_match('/^[a-f0-9]{64}$/', $token) || ($error = $this->passwordError($password, $confirm)) !== null) {
+            return ['success' => false, 'message' => $error ?? 'This verification link is invalid or has expired.'];
+        }
+        $result = $this->userModel->consumeEmailVerificationToken(hash('sha256', $token), $password);
+        if ($result['success']) $this->audit->log($result['user_id'], 'Verified staff email and activated account', 'Authentication', $result['user_id']);
+        return $result + ['message' => $result['success'] ? 'Email verified. Your account is now active; you can sign in.' : $result['message']];
+    }
+
+    public function isEmailVerificationTokenValid(string $token): bool
+    {
+        return preg_match('/^[a-f0-9]{64}$/', $token) === 1
+            && $this->userModel->hasValidEmailVerificationToken(hash('sha256', $token));
+    }
+
+    /** Backwards-compatible endpoint for the existing activation page. */
+    public function activateAccount(array $data): array
+    {
+        return $this->verifyEmail($data);
+    }
+
     public function changePassword(array $data, int $userId): array
     {
         $current = (string) ($data['current_password'] ?? '');

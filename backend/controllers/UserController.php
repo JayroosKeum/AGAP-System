@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../models/User.php';
 require_once __DIR__ . '/../services/AuditService.php';
 require_once __DIR__ . '/../services/ValidationService.php';
+require_once __DIR__ . '/../services/StaffVerificationMailer.php';
 
 class UserController {
     private User $user;
@@ -20,11 +21,35 @@ class UserController {
 
     public function create(array $data, int $actorId): array
     {
-        $validated = $this->validate($data, true);
+        $validated = $this->validate($data, false);
         if (!$validated['success']) return $validated;
+        $token = bin2hex(random_bytes(32));
+        $validated['data']['email_verification_token'] = hash('sha256', $token);
+        $validated['data']['email_verification_expires_at'] = (new DateTimeImmutable('+24 hours'))->format('Y-m-d H:i:s');
         $result = $this->user->create($validated['data']);
-        if ($result['success']) $this->audit->log($actorId, 'Created user account', 'User Management', $result['id']);
-        return $result + ['message' => $result['success'] ? 'User account created.' : ($result['message'] ?? 'Unable to create the user account.')];
+        if (!$result['success']) return $result + ['message' => $result['message'] ?? 'Unable to create the user account.'];
+        $this->audit->log($actorId, 'Created pending user account', 'User Management', $result['id']);
+        $delivery = $this->sendVerificationEmail((int) $result['id'], $token);
+        return $result + ['message' => $delivery
+            ? 'User account created. A verification email was sent.'
+            : 'User account created, but the verification email could not be sent. Use Resend verification email after fixing mail settings.', 'email_sent' => $delivery];
+    }
+
+    public function resendVerificationEmail(int $id, int $actorId): array
+    {
+        if ($id < 1) return ['success' => false, 'message' => 'A valid user is required.'];
+        $recipient = $this->user->pendingVerificationRecipient($id);
+        if (!$recipient) return ['success' => false, 'message' => 'Only pending staff accounts can receive a verification email.'];
+        $token = bin2hex(random_bytes(32));
+        $expiresAt = (new DateTimeImmutable('+24 hours'))->format('Y-m-d H:i:s');
+        if (!$this->user->replaceEmailVerificationToken($id, hash('sha256', $token), $expiresAt)) {
+            return ['success' => false, 'message' => 'Unable to create a new verification link.'];
+        }
+        $this->audit->log($actorId, 'Resent staff account verification email', 'User Management', $id);
+        if (!$this->sendVerificationEmail($id, $token)) {
+            return ['success' => false, 'message' => 'The new verification link was saved, but the email could not be sent. Check Gmail SMTP settings and try again.'];
+        }
+        return ['success' => true, 'message' => 'A new verification email was sent.'];
     }
 
     public function update(int $id, array $data, int $actorId): array
@@ -44,6 +69,19 @@ class UserController {
         $result = $this->user->delete($id);
         if ($result['success']) $this->audit->log($actorId, 'Deleted user account', 'User Management', $id);
         return $result + ['message' => $result['success'] ? 'User account deleted.' : ($result['message'] ?? 'Unable to delete the user account.')];
+    }
+
+    private function sendVerificationEmail(int $userId, string $token): bool
+    {
+        try {
+            $recipient = $this->user->pendingVerificationRecipient($userId);
+            if (!$recipient) throw new RuntimeException('Pending verification recipient was not found.');
+            (new StaffVerificationMailer())->send($recipient['email'], $recipient['first_name'], $recipient['username'], $recipient['role_name'], $token);
+            return true;
+        } catch (Throwable $exception) {
+            error_log('AGAP staff verification email failed for user ID ' . $userId . ': ' . $exception->getMessage());
+            return false;
+        }
     }
 
     private function validate(array $data, bool $passwordRequired, ?int $exceptUserId = null): array

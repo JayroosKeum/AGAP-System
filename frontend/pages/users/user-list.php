@@ -30,6 +30,7 @@ include '../../layouts/header.php';
                         <th>Email</th>
                         <th>Contact Number</th>
                         <th>Role</th>
+                        <th>Status</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -61,7 +62,7 @@ include '../../layouts/header.php';
                 </div>
             </div>
             
-            <div class="form-group">
+            <div class="form-group" id="passwordGroup">
                 <label>Username</label>
                 <input id="username" name="username" minlength="3" maxlength="100" pattern="[A-Za-z0-9_.-]{3,100}" required>
             </div>

@@ -34,11 +34,14 @@ class User {
                 email,
                 contact_no,
                 password_hash,
-                role_id
+                role_id,
+                status,
+                email_verification_token,
+                email_verification_expires_at
             )
             VALUES
             (
-                ?,?,?,?,?,?,?
+                ?,?,?,?,?,?, 'Inactive', ?, ?
             )
         ");
 
@@ -49,13 +52,74 @@ class User {
                 $data['username'],
                 $data['email'],
                 $data['contact_no'],
-                password_hash($data['password'], PASSWORD_DEFAULT),
-                $data['role_id']
+                null,
+                $data['role_id'],
+                $data['email_verification_token'],
+                $data['email_verification_expires_at']
             ]);
             return ['success' => true, 'id' => (int) $this->db->lastInsertId()];
         } catch (PDOException $exception) {
             return $this->databaseError($exception);
         }
+    }
+
+    public function pendingVerificationRecipient(int $userId): array|false
+    {
+        $stmt = $this->db->prepare(
+            'SELECT u.user_id, u.first_name, u.username, u.email, r.role_name
+             FROM users u INNER JOIN roles r ON r.role_id = u.role_id
+             WHERE u.user_id = ? AND u.status = \'Inactive\' AND u.email_verification_token IS NOT NULL LIMIT 1'
+        );
+        $stmt->execute([$userId]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
+    public function replaceEmailVerificationToken(int $userId, string $tokenHash, string $expiresAt): bool
+    {
+        $stmt = $this->db->prepare(
+            "UPDATE users SET email_verification_token = ?, email_verification_expires_at = ?
+             WHERE user_id = ? AND status = 'Inactive'"
+        );
+        return $stmt->execute([$tokenHash, $expiresAt, $userId]) && $stmt->rowCount() === 1;
+    }
+
+    public function consumeEmailVerificationToken(string $tokenHash, string $password): array
+    {
+        $this->db->beginTransaction();
+        try {
+            $stmt = $this->db->prepare(
+                "SELECT user_id FROM users
+                 WHERE email_verification_token = ? AND email_verification_expires_at >= NOW()
+                   AND status = 'Inactive' FOR UPDATE"
+            );
+            $stmt->execute([$tokenHash]);
+            $user = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$user) {
+                $this->db->rollBack();
+                return ['success' => false, 'message' => 'This verification link is invalid or has expired.'];
+            }
+            $update = $this->db->prepare(
+                "UPDATE users SET password_hash = ?, status = 'Active', email_verification_token = NULL,
+                 email_verification_expires_at = NULL WHERE user_id = ?"
+            );
+            $update->execute([password_hash($password, PASSWORD_DEFAULT), $user['user_id']]);
+            $this->db->commit();
+            return ['success' => true, 'user_id' => (int) $user['user_id']];
+        } catch (Throwable $exception) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            error_log($exception->getMessage());
+            return ['success' => false, 'message' => 'Unable to verify this account.'];
+        }
+    }
+
+    public function hasValidEmailVerificationToken(string $tokenHash): bool
+    {
+        $stmt = $this->db->prepare(
+            "SELECT 1 FROM users WHERE email_verification_token = ?
+             AND email_verification_expires_at >= NOW() AND status = 'Inactive' LIMIT 1"
+        );
+        $stmt->execute([$tokenHash]);
+        return (bool) $stmt->fetchColumn();
     }
 
     public function findActiveByUsernameOrEmail(string $identity): array|false
@@ -120,7 +184,7 @@ class User {
 
     public function getAll(): array
     {
-        $stmt = $this->db->query('SELECT u.user_id, u.first_name, u.last_name, u.username, u.email, u.contact_no, u.role_id, r.role_name FROM users u INNER JOIN roles r ON r.role_id = u.role_id ORDER BY u.last_name, u.first_name');
+        $stmt = $this->db->query('SELECT u.user_id, u.first_name, u.last_name, u.username, u.email, u.contact_no, u.role_id, u.status, r.role_name FROM users u INNER JOIN roles r ON r.role_id = u.role_id ORDER BY u.last_name, u.first_name');
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 

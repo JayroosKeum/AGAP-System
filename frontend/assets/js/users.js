@@ -50,13 +50,15 @@ async function loadUsers() {
                 <td>${esc(user.email)}</td>
                 <td>${esc(user.contact_no || '—')}</td>
                 <td><span class="role">${esc(user.role_name)}</span></td>
+                <td>${esc(user.status || 'Active')}</td>
                 <td class="action-buttons">
+                    ${user.status === 'Inactive' ? `<button type="button" onclick="resendVerificationEmail(${Number(user.user_id)})">Resend verification</button>` : ''}
                     <button type="button" onclick="editUser(${Number(user.user_id)})">Edit</button>
                     <button type="button" class="delete" onclick="deleteUser(${Number(user.user_id)})">Delete</button>
                 </td>
-            </tr>`).join('') || '<tr><td colspan="6">No users found.</td></tr>';
+            </tr>`).join('') || '<tr><td colspan="7">No users found.</td></tr>';
     } catch (error) {
-        document.getElementById('userTable').innerHTML = `<tr><td colspan="6">${esc(error.message)}</td></tr>`;
+        document.getElementById('userTable').innerHTML = `<tr><td colspan="7">${esc(error.message)}</td></tr>`;
     }
 }
 
@@ -66,8 +68,9 @@ function openUserModal() {
     form.querySelectorAll('input, select').forEach((field) => field.setCustomValidity(''));
     form.action = '../../../backend/api/users/create.php';
     document.getElementById('userModalTitle').textContent = 'Add User';
-    document.getElementById('password').required = true;
-    document.getElementById('passwordHint').textContent = '(required; 12+ characters with uppercase, lowercase, and a number)';
+    document.getElementById('password').required = false;
+    document.getElementById('password').value = '';
+    document.getElementById('passwordGroup').style.display = 'none';
     showMessage('');
     document.getElementById('userModal').style.display = 'flex';
 }
@@ -90,7 +93,20 @@ function editUser(id) {
     document.getElementById('contactNo').value = user.contact_no || '';
     document.getElementById('roleId').value = user.role_id;
     document.getElementById('password').required = false;
+    document.getElementById('passwordGroup').style.display = '';
     document.getElementById('passwordHint').textContent = '(leave blank to keep current password)';
+}
+
+async function resendVerificationEmail(id) {
+    if (!confirm('Send a new email-verification link? Existing links will no longer work.')) return;
+    try {
+        const form = new FormData();
+        form.append('user_id', id);
+        const result = await request('../../../backend/api/users/resend-verification.php', {method: 'POST', body: form});
+        window.agapNotify?.(result.message, 'success', 'User Management');
+    } catch (error) {
+        window.agapNotify?.(error.message, 'error', 'User Management');
+    }
 }
 
 async function saveUser(event) {

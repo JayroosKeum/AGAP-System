@@ -45,9 +45,11 @@ CREATE TABLE users (
     username VARCHAR(100) NOT NULL,
     email VARCHAR(150) NULL,
     contact_no VARCHAR(20) NULL,
-    password_hash VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(255) NULL,
     role_id INT UNSIGNED NOT NULL,
     status ENUM('Active', 'Inactive') NOT NULL DEFAULT 'Active',
+    email_verification_token CHAR(64) NULL,
+    email_verification_expires_at DATETIME NULL,
     notification_audio TINYINT(1) NOT NULL DEFAULT 1,
     notification_inbox TINYINT(1) NOT NULL DEFAULT 1,
     preferred_language VARCHAR(10) NOT NULL DEFAULT 'fil',
@@ -56,7 +58,9 @@ CREATE TABLE users (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_users_username (username),
     UNIQUE KEY uq_users_email (email),
+    UNIQUE KEY uq_users_email_verification_token (email_verification_token),
     KEY idx_users_role_id (role_id),
+    KEY idx_users_email_verification_expiry (email_verification_expires_at),
     CONSTRAINT fk_users_role
         FOREIGN KEY (role_id) REFERENCES roles (role_id) ON DELETE RESTRICT
 ) ENGINE=InnoDB;
