@@ -42,9 +42,15 @@ $dashboardLink = [1 => '../dashboard/admin-dashboard.php', 2 => '../dashboard/cl
         </details>
 
         <?php if (in_array($roleId, [1, 2], true)): ?>
-            <details class="nav-group"<?php echo $isGroupActive(['complaint-list.php', 'complaint-create.php', 'complaint-details.php', 'case-list.php', 'create-case.php', 'case-assignment.php']) ? ' open' : ''; ?> data-nav-group="case-management">
+            <details class="nav-group"<?php echo $isGroupActive(['complaint-list.php', 'complaint-create.php', 'complaint-details.php', 'case-list.php', 'create-case.php', 'case-assignment.php', 'index.php', 'create.php', 'details.php']) ? ' open' : ''; ?> data-nav-group="case-management">
                 <summary>Case management</summary>
                 <div class="nav-group-links">
+                    <a href="../paanyaya/index.php"<?php echo $isActive(['index.php', 'create.php', 'details.php']); ?> title="Paanyaya (Invitations)">
+                        <span class="nav-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                        </span>
+                        <span class="nav-link-label">Paanyaya</span>
+                    </a>
                     <a href="../complaints/complaint-list.php"<?php echo $isActive(['complaint-list.php', 'complaint-create.php', 'complaint-details.php']); ?> title="Complaints">
                         <span class="nav-icon" aria-hidden="true">
                             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12.01" y2="18"></line><line x1="12" y1="11" x2="12" y2="15"></line></svg>

@@ -4502,26 +4502,29 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
             $this->conn = (new Database())->connect();
         }
 
-        // Fetch complaint
-        $cStmt = $this->conn->prepare('SELECT * FROM complaints WHERE complaint_id = ? LIMIT 1');
-        $cStmt->execute([$complaintId]);
-        $complaint = $cStmt->fetch(PDO::FETCH_ASSOC);
-        if (!$complaint) {
-            throw new RuntimeException('Complaint not found.');
+        // Fetch complaint (optional when paanyaya_id provided)
+        $complaint = [];
+        if ($complaintId > 0) {
+            $cStmt = $this->conn->prepare('SELECT * FROM complaints WHERE complaint_id = ? LIMIT 1');
+            $cStmt->execute([$complaintId]);
+            $complaint = $cStmt->fetch(PDO::FETCH_ASSOC) ?: [];
         }
 
         // Fetch parties
-        $pStmt = $this->conn->prepare("
-            SELECT cp.party_type,
-                   TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name, r.suffix)) AS full_name,
-                   r.address, r.purok
-            FROM complaint_parties cp
-            INNER JOIN residents r ON r.resident_id = cp.resident_id
-            WHERE cp.complaint_id = ?
-            ORDER BY FIELD(cp.party_type, 'Complainant', 'Respondent', 'Witness'), r.last_name, r.first_name
-        ");
-        $pStmt->execute([$complaintId]);
-        $parties = $pStmt->fetchAll(PDO::FETCH_ASSOC);
+        $parties = [];
+        if ($complaintId > 0) {
+            $pStmt = $this->conn->prepare("
+                SELECT cp.party_type,
+                       TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name, r.suffix)) AS full_name,
+                       r.address, r.purok
+                FROM complaint_parties cp
+                INNER JOIN residents r ON r.resident_id = cp.resident_id
+                WHERE cp.complaint_id = ?
+                ORDER BY FIELD(cp.party_type, 'Complainant', 'Respondent', 'Witness'), r.last_name, r.first_name
+            ");
+            $pStmt->execute([$complaintId]);
+            $parties = $pStmt->fetchAll(PDO::FETCH_ASSOC);
+        }
 
         $complainants = [];
         $respondents = [];
@@ -4589,6 +4592,13 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
         }
         if ($inviteeName === '') {
             $inviteeName = 'Inanyayahang Residente';
+        }
+
+        $complainantName = trim((string)($options['complainant_name'] ?? ($paaRecord['complainant_name'] ?? '')));
+        if ($complainantName !== '' && empty($complainants)) {
+            $complainants = [
+                ['full_name' => $complainantName, 'address' => 'Barangay Tumana, Marikina City']
+            ];
         }
 
         // Punong barangay setting
@@ -4667,7 +4677,7 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
         $oras = strtoupper($this->filipinoTime(!empty($data['invitation_time']) ? $data['invitation_time'] : '14:00:00'));
 
         $venue = !empty($data['venue']) ? $this->escape($data['venue']) : 'tanggapan ng Barangay Tumana';
-        $salaysayRaw = !empty($data['salaysay']) ? trim((string)$data['salaysay']) : 'naisin nilang magkausap at magkaliwanagan.';
+        $salaysayRaw = !empty($data['salaysay']) ? trim((string)$data['salaysay']) : (!empty($data['complaint']['narrative']) ? trim((string)$data['complaint']['narrative']) : 'naisin nilang magkausap at magkaliwanagan.');
         if ($salaysayRaw !== '' && !in_array(substr($salaysayRaw, -1), ['.', '!', '?'], true)) {
             $salaysayRaw .= '.';
         }
@@ -4789,10 +4799,10 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
             <div class="party-address">' . $this->escape($respAddrStr) . '</div>
         </div>
 
-        <div class="salutation">Mahal na G/Gng/Bb ' . $this->escape($inviteeName) . ':</div>
+        <div class="salutation">Mahal na G/Gng/Bb:</div>
 
         <div class="body-p">
-            Kayo po ay malugod na inaanyayahan sa <strong>' . $venue . '</strong>, sa ika <strong>' . $petsa . '</strong> ng <strong>' . $buwan . '</strong>, <strong>' . $taon . '</strong> araw ng <strong>' . $araw . '</strong> sa ganap na <strong>' . $oras . '</strong> upang magkaroon ng maayos at mapayapang pag-uusap at paglilinaw sa Tanggapan ng Punong Barangay ukol sa inihaing usapin ni <strong>' . $this->escape($compNameStr) . '</strong>' . ($caseRefStr !== '' ? ' (Usapin Blg: ' . $this->escape($caseRefStr) . ')' : '') . '.
+            Kayo po ay malugod na inaanyayahan sa <strong>' . $venue . '</strong>, sa ika <strong>' . $petsa . '</strong> ng <strong>' . $buwan . '</strong>, <strong>' . $taon . '</strong> araw ng <strong>' . $araw . '</strong> sa ganap na <strong>' . $oras . '</strong> upang pagusapan at mabigyang linaw ukol sa inihaing alintana o usapin ' . $niNina . ' <strong>' . $this->escape($compNameStr) . '</strong>. Dahil ayon sa kanila <em>{' . $salaysay . '}</em>. Kung kaya\'t ' . $pronoun . ' ay dumulog sa Barangay upang kayo ay Paanyayahan.
         </div>
 
         <div class="body-p">
@@ -4800,7 +4810,7 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
         </div>
 
         <div class="body-p">
-            Kung kaya\'t inaasahan ang inyong pagtalima sa imbitasyong ito.
+            Kung Kaya\'t inaasahan ang inyong pagtalima sa inyong imbitasyon.
         </div>
 
         <div class="body-p" style="margin-bottom: 2mm;">

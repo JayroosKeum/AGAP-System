@@ -37,7 +37,7 @@
             </div>
         </div>
 
-        <?php if (in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2], true)): ?>
+        <?php if (in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2, 5], true)): ?>
         <!-- ── Top Report & Export Action Dropdowns ────────────────── -->
         <div class="dashboard-report-actions">
             <!-- Generate Report Dropdown -->
@@ -85,6 +85,7 @@
         <?php endif; ?>
     </div>
 
+    <!-- Top KPI Highlights Grid -->
     <div class="stats-grid" id="statsGrid" aria-live="polite">
         <article class="stat-card">
             <p id="totalCasesLabel">Total cases</p>
@@ -125,97 +126,189 @@
 
     <p id="dashboardMessage" class="dashboard-message" role="status"></p>
 
-    <!-- Hearings & Calendar Row (Placed Above Cases Table to match layout) -->
-    <div class="dashboard-panels">
-        <section class="dashboard-panel" id="dashboardHearingsPanel">
-            <div class="panel-heading">
-                <div>
-                    <h2 id="hearingsPanelHeading">Today's hearings</h2>
-                    <p id="hearingsPanelSub">Sessions scheduled for today.</p>
-                </div>
-                <div class="panel-heading-actions">
-                    <span id="periodHearingCountBadge" class="panel-count-badge" style="display:none;">0 hearings</span>
-                </div>
-            </div>
-            <div id="todayHearings" class="dashboard-list" aria-live="polite"></div>
-            <!-- Pagination: Only show 10 at a time -->
-            <div class="dashboard-table-pagination" id="hearingsTablePagination" style="display:none;">
-                <div class="pagination-info" id="hearingsPaginationInfo">Showing 1 to 10 of 0 hearings</div>
-                <div class="pagination-buttons" id="hearingsPaginationButtons">
-                    <button type="button" class="btn-page-nav" id="hearingsPrevPageBtn" disabled>&laquo; Prev</button>
-                    <div class="pagination-page-numbers" id="hearingsPageNumbers"></div>
-                    <button type="button" class="btn-page-nav" id="hearingsNextPageBtn">Next &raquo;</button>
+    <!-- Main Two-Column Layout (Inspired by Reference UI) -->
+    <div class="dash-portal-grid">
+        <!-- LEFT COLUMN: Welcome Banner & Analytics Insights -->
+        <div class="dash-portal-main">
+            <!-- Advisory / Announcement Hero Banner (Reference STI Style) -->
+            <div class="dash-hero-banner">
+                <div class="dash-hero-badge">📢 BARANGAY COUNCIL ADVISORY</div>
+                <h2 class="dash-hero-title">Katarungang Pambarangay Peace &amp; Order Watch</h2>
+                <p class="dash-hero-text">
+                    Lupong Tagapamayapa sessions are actively ongoing in the Lupon Court Room. All mediation, conciliation dialogues, and summons service are expedited in accordance with RA 7160 Katarungang Pambarangay Law.
+                </p>
+                <div class="dash-hero-warning-box">
+                    <span class="warning-icon">⚠️</span>
+                    <span><strong>Statutory Notice:</strong> Transmittal records, amicable settlements, and arbitration awards are strictly preserved in immutable registry records. Hard deletion of cases is prohibited.</span>
                 </div>
             </div>
-        </section>
 
-        <!-- Interactive Monthly Hearings Calendar -->
-        <section class="dashboard-panel dashboard-calendar-panel" id="dashboardCalendarPanel">
-            <div class="panel-heading">
-                <div>
-                    <h2 id="calendarPanelHeading">Hearings Calendar</h2>
-                    <p id="calendarPanelSub">Monthly schedule of dispute hearings</p>
+            <!-- ANALYTICS CARDS (Top Issues, Purok Hotspots, Demographics) -->
+            <div class="dash-analytics-row">
+                <!-- Most Complained Issues -->
+                <div class="dash-analytics-card">
+                    <div class="card-head">
+                        <div>
+                            <h3 class="card-title">⚖️ Most Complained Issues</h3>
+                            <p class="card-sub">Top recurring dispute categories in the barangay</p>
+                        </div>
+                    </div>
+                    <div id="analyticsTopCategories" class="analytics-bars-container">
+                        <div class="analytics-loading">Loading dispute statistics...</div>
+                    </div>
                 </div>
-                <div class="panel-heading-actions">
-                    <div class="dash-cal-nav">
-                        <button type="button" id="dashCalPrevBtn" class="btn-cal-nav" title="Previous Month" aria-label="Previous Month">&#8249;</button>
-                        <span id="dashCalMonthDisplay" class="dash-cal-month-title">October 2026</span>
-                        <button type="button" id="dashCalNextBtn" class="btn-cal-nav" title="Next Month" aria-label="Next Month">&#8250;</button>
-                        <button type="button" id="dashCalTodayBtn" class="btn-cal-today" title="Go to Current Month">Today</button>
+
+                <!-- Purok Dispute Hotspots -->
+                <div class="dash-analytics-card">
+                    <div class="card-head">
+                        <div>
+                            <h3 class="card-title">📍 Purok Dispute Hotspots</h3>
+                            <p class="card-sub">Areas with highest grievance volume</p>
+                        </div>
+                    </div>
+                    <div id="analyticsPurokHotspots" class="analytics-bars-container">
+                        <div class="analytics-loading">Loading area hotspots...</div>
                     </div>
                 </div>
             </div>
-            <div class="dashboard-calendar-wrap">
-                <div class="dashboard-calendar-grid" id="dashboardCalendarGrid" aria-label="Hearing Calendar"></div>
+
+            <!-- DEMOGRAPHICS ROW (Gender & Age Groups) -->
+            <div class="dash-analytics-row" style="margin-top: 18px;">
+                <!-- Gender Breakdown -->
+                <div class="dash-analytics-card">
+                    <div class="card-head">
+                        <div>
+                            <h3 class="card-title">👥 Gender Distribution</h3>
+                            <p class="card-sub">Complainants and Respondents by gender</p>
+                        </div>
+                    </div>
+                    <div id="analyticsGenderBreakdown" class="analytics-demographics-wrap">
+                        <div class="analytics-loading">Loading gender data...</div>
+                    </div>
+                </div>
+
+                <!-- Age Distribution -->
+                <div class="dash-analytics-card">
+                    <div class="card-head">
+                        <div>
+                            <h3 class="card-title">🎂 Age Group Demographics</h3>
+                            <p class="card-sub">Dispute participants by age bracket</p>
+                        </div>
+                    </div>
+                    <div id="analyticsAgeDistribution" class="analytics-demographics-wrap">
+                        <div class="analytics-loading">Loading age demographics...</div>
+                    </div>
+                </div>
             </div>
-            <div class="dashboard-cal-legend">
-                <span class="cal-legend-item"><span class="cal-legend-dot has-hearing"></span> Hearing Scheduled</span>
-                <span class="cal-legend-item"><span class="cal-legend-dot is-today"></span> Today</span>
+        </div>
+
+        <!-- RIGHT COLUMN: Compact Mini-Calendar, To-do/Today's Hearings, Announcements -->
+        <aside class="dash-portal-aside">
+            <!-- 1. Compact Mini Calendar (Inspired by STI reference image) -->
+            <div class="mini-calendar-card" id="miniCalendarCard">
+                <div class="mini-cal-header">
+                    <span class="mini-cal-title-wrap">
+                        <span class="mini-cal-icon">📅</span>
+                        <strong class="mini-cal-title">Calendar</strong>
+                    </span>
+                    <div class="mini-cal-nav">
+                        <button type="button" id="dashCalPrevBtn" class="mini-cal-btn" title="Previous Month" aria-label="Previous Month">&lt;</button>
+                        <span id="dashCalMonthDisplay" class="mini-cal-month-text">Nov 2026</span>
+                        <button type="button" id="dashCalNextBtn" class="mini-cal-btn" title="Next Month" aria-label="Next Month">&gt;</button>
+                    </div>
+                </div>
+
+                <!-- Weekday Headers & Grid -->
+                <div class="mini-cal-body">
+                    <div class="mini-cal-weekdays">
+                        <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+                    </div>
+                    <div class="mini-cal-days-grid" id="dashboardCalendarGrid" aria-label="Hearing Calendar"></div>
+                </div>
+
+                <div class="mini-cal-footer">
+                    <a href="../hearings/calendar.php" class="mini-cal-link">Full calendar &rarr;</a>
+                    <button type="button" class="mini-cal-toggle-btn" id="dashCalTodayBtn">Today</button>
+                </div>
             </div>
-        </section>
+
+            <!-- 2. Today's Hearings / To-do Card -->
+            <div class="dash-aside-card" id="dashboardHearingsPanel">
+                <div class="aside-card-header">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 1.1rem;">⚖️</span>
+                        <div>
+                            <h3 class="aside-card-title" id="hearingsPanelHeading">Today's Hearings</h3>
+                            <p class="aside-card-sub" id="hearingsPanelSub">Scheduled formal sessions</p>
+                        </div>
+                    </div>
+                    <span id="periodHearingCountBadge" class="panel-count-badge" style="display:none;">0</span>
+                </div>
+                <div id="todayHearings" class="dash-aside-list" aria-live="polite">
+                    <div style="text-align: center; color: #64748b; padding: 14px; font-size: 0.85rem;">No hearings scheduled for this date.</div>
+                </div>
+                <!-- Pagination -->
+                <div class="dashboard-table-pagination" id="hearingsTablePagination" style="display:none; padding: 6px 12px;">
+                    <div class="pagination-info" id="hearingsPaginationInfo" style="font-size: 11px;">Showing 1-10</div>
+                    <div class="pagination-buttons" id="hearingsPaginationButtons">
+                        <button type="button" class="btn-page-nav" id="hearingsPrevPageBtn" disabled>&laquo;</button>
+                        <button type="button" class="btn-page-nav" id="hearingsNextPageBtn">&raquo;</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. Dedicated Paanyaya Card (Stage 0 Informal Dialogues) -->
+            <div class="dash-aside-card" id="dashboardPaanyayaPanel">
+                <div class="aside-card-header">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 1.1rem;">✉️</span>
+                        <div>
+                            <h3 class="aside-card-title">Paanyaya Dialogues</h3>
+                            <p class="aside-card-sub">Pre-docketed informal invitations</p>
+                        </div>
+                    </div>
+                    <a href="../paanyaya/index.php" class="mini-cal-link" style="font-size: 0.75rem;">View all &rarr;</a>
+                </div>
+                <div id="todayPaanyayas" class="dash-aside-list" aria-live="polite">
+                    <div style="text-align: center; color: #64748b; padding: 14px; font-size: 0.85rem;">Loading Paanyaya dialogues...</div>
+                </div>
+            </div>
+
+            <!-- 4. Announcements & Advisories Card -->
+            <div class="dash-aside-card">
+                <div class="aside-card-header">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 1.1rem;">📌</span>
+                        <div>
+                            <h3 class="aside-card-title">Announcements</h3>
+                            <p class="aside-card-sub">Barangay Tumana bulletin</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="dash-aside-body" style="padding: 12px 14px;">
+                    <div class="dash-aside-bulletin">
+                        <strong>Monthly Council Meeting</strong>
+                        <p>Katarungang Pambarangay monthly case presentation takes place on the 1st Monday of every month.</p>
+                    </div>
+                    <div class="dash-aside-bulletin" style="margin-top: 10px; border-top: 1px dashed #e2e8f0; padding-top: 10px;">
+                        <strong>Lupon Duty Attendance</strong>
+                        <p>Lupon members are required to report in-person on their assigned weekly duty days in Settings.</p>
+                    </div>
+                </div>
+            </div>
+        </aside>
     </div>
 
-    <!-- Period Cases Panel (10 at a time with pagination) -->
-    <section class="dashboard-panel dashboard-panel-wide" id="dashboardCasesPanel">
-        <div class="panel-heading">
-            <div>
-                <h2>Cases (<span id="casesPeriodTitle">All Time</span>)</h2>
-                <p id="casesPeriodDescription">Docketed cases recorded for this timeframe.</p>
-            </div>
-            <div class="panel-heading-actions">
-                <span id="periodCaseCountBadge" class="panel-count-badge">0 cases</span>
-                <a href="../cases/case-list.php" class="panel-link">View all cases</a>
-            </div>
-        </div>
-        <div class="dashboard-cases-table-wrap">
-            <table class="dashboard-cases-table">
-                <thead>
-                    <tr>
-                        <th>Case #</th>
-                        <th>Complaint Title / Parties</th>
-                        <th>Type</th>
-                        <th>Status</th>
-                        <th>Docket Date</th>
-                        <th style="text-align:right;">Action</th>
-                    </tr>
-                </thead>
-                <tbody id="periodCasesTableBody" aria-live="polite">
-                    <tr><td colspan="6" class="dashboard-empty-row"><p>Loading cases...</p></td></tr>
-                </tbody>
-            </table>
-        </div>
-        <!-- Pagination: Only show 10 at a time -->
-        <div class="dashboard-table-pagination" id="casesTablePagination" style="display:none;">
-            <div class="pagination-info" id="casesPaginationInfo">Showing 1 to 10 of 0 cases</div>
-            <div class="pagination-buttons" id="casesPaginationButtons">
-                <button type="button" class="btn-page-nav" id="casesPrevPageBtn" disabled>&laquo; Prev</button>
-                <div class="pagination-page-numbers" id="casesPageNumbers"></div>
-                <button type="button" class="btn-page-nav" id="casesNextPageBtn">Next &raquo;</button>
-            </div>
-        </div>
-    </section>
+    <!-- Hidden placeholders to maintain backwards compatibility with dashboard.js handlers -->
+    <div id="dashboardCasesPanel" style="display:none;" aria-hidden="true">
+        <span id="casesPeriodTitle"></span>
+        <span id="casesPeriodDescription"></span>
+        <span id="periodCaseCountBadge"></span>
+        <table><tbody id="periodCasesTableBody"></tbody></table>
+        <div id="casesTablePagination"><button id="casesPrevPageBtn"></button><div id="casesPageNumbers"></div><button id="casesNextPageBtn"></button></div>
+    </div>
 
-    <?php if (in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2], true)): ?>
+    <?php if (in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2, 5], true)): ?>
     <!-- ── Report Preview Modal Overlay ───────────────────────────── -->
     <div id="reportPreviewModal" class="report-modal-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="modalReportTitle">
         <div class="report-modal-container">
@@ -240,10 +333,7 @@
                     <span>Generating report preview...</span>
                 </div>
                 <div id="modalContent">
-                    <!-- Key Statistics Cards -->
                     <div class="report-summary" id="modalSummaryCards"></div>
-
-                    <!-- Case Status & Complaint Categories Grid -->
                     <div class="report-grid">
                         <div class="report-card">
                             <h3>Case status</h3>
@@ -254,28 +344,6 @@
                             <div id="modalCategoryTotals"></div>
                         </div>
                     </div>
-
-                    <!-- Case Details Table -->
-                    <div class="report-card" style="margin-top:16px;">
-                        <h3>Case details</h3>
-                        <div class="table-container" style="margin:0; overflow-x:auto;">
-                            <table class="dashboard-cases-table" style="width:100%; border-collapse:collapse;">
-                                <thead>
-                                    <tr>
-                                        <th>Case</th>
-                                        <th>Complaint</th>
-                                        <th>Category</th>
-                                        <th>Type</th>
-                                        <th>Status</th>
-                                        <th>Docketed</th>
-                                        <th>Hearings</th>
-                                        <th>Resolution / Archive</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="modalReportCases"></tbody>
-                            </table>
-                        </div>
-                    </div>
                 </div>
             </div>
             <footer class="report-modal-footer">
@@ -283,9 +351,7 @@
             </footer>
         </div>
     </div>
-    <?php endif; ?>
 
-    <?php if (in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2], true)): ?>
     <!-- ── KP Monitoring Form Modal Overlay ───────────────────────── -->
     <div id="kpMonitoringModal" class="report-modal-overlay kp-modal-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="kpDocTitle">
         <div class="report-modal-container kp-modal-container">
@@ -313,183 +379,7 @@
                     <div class="dash-spinner"></div>
                     <span>Loading KP Monitoring Form data...</span>
                 </div>
-
-                <div id="kpPrintableArea" class="kp-sheet">
-                    <!-- Top Form Metadata -->
-                    <div class="kp-meta-grid">
-                        <div class="kp-meta-row">
-                            <div class="kp-meta-field">
-                                <span class="kp-meta-label">REGION:</span>
-                                <input type="text" id="kpRegionInput" class="kp-input-underline" value="NCR">
-                            </div>
-                            <div class="kp-meta-field">
-                                <span class="kp-meta-label">CITY/MUNICIPALITY:</span>
-                                <input type="text" id="kpCityInput" class="kp-input-underline" value="MARIKINA">
-                            </div>
-                            <div class="kp-meta-field">
-                                <span class="kp-meta-label">BARANGAY:</span>
-                                <input type="text" id="kpBarangayInput" class="kp-input-underline" value="TUMANA">
-                            </div>
-                        </div>
-                        <div class="kp-meta-row kp-meta-row-secondary">
-                            <div class="kp-meta-field">
-                                <span class="kp-meta-label">REPORTING QUARTER:</span>
-                                <select id="kpQuarterInput" class="kp-input-underline kp-select-quarter">
-                                    <option value="Quarter 1">Quarter 1</option>
-                                    <option value="Quarter 2">Quarter 2</option>
-                                    <option value="Quarter 3">Quarter 3</option>
-                                    <option value="Quarter 4">Quarter 4</option>
-                                </select>
-                            </div>
-                            <div class="kp-meta-field">
-                                <span class="kp-meta-label">CY:</span>
-                                <input type="number" id="kpCyInput" class="kp-input-underline kp-input-short" value="2026">
-                            </div>
-                            <div class="kp-meta-field">
-                                <span class="kp-meta-label">DATE ACCOMPLISHED:</span>
-                                <input type="text" id="kpDateAccomplishedInput" class="kp-input-underline" value="">
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Center Title Block -->
-                    <div class="kp-title-section">
-                        <h1 id="kpDocTitle" class="kp-main-heading">LUPONG TAGAPAMAYAPA REPORT</h1>
-                        <h2 class="kp-sub-heading">SUMMARY OF CASES FILED AND ACTIONS TAKEN</h2>
-                        <div class="kp-period-display">
-                            <span>for the month of </span>
-                            <span id="kpMonthDisplay" class="kp-month-name">OCTOBER 2026</span>
-                        </div>
-                    </div>
-
-                    <!-- Top Summary Matrix Table (Multi-Tier matching Image 4) -->
-                    <div class="kp-table-wrapper">
-                        <table class="kp-matrix-table">
-                            <thead>
-                                <tr>
-                                    <th colspan="4" class="th-nature">NATURE OF DISPUTES</th>
-                                    <th colspan="11" class="th-action">ACTION TAKEN</th>
-                                    <th rowspan="3" class="th-savings">ESTIMATED GOVERNMENT SAVINGS</th>
-                                </tr>
-                                <tr>
-                                    <th rowspan="2" class="th-col">CRIMINAL</th>
-                                    <th rowspan="2" class="th-col">CIVIL</th>
-                                    <th rowspan="2" class="th-col">OTHERS</th>
-                                    <th rowspan="2" class="th-col th-subtotal">TOTAL</th>
-                                    <th colspan="4" class="th-settled">SETTLED CASES</th>
-                                    <th colspan="7" class="th-unsettled">UNSETTLED CASES</th>
-                                </tr>
-                                <tr>
-                                    <!-- Settled -->
-                                    <th class="th-col">Mediation</th>
-                                    <th class="th-col">Conciliation</th>
-                                    <th class="th-col">Arbitration</th>
-                                    <th class="th-col th-subtotal">TOTAL</th>
-                                    <!-- Unsettled -->
-                                    <th class="th-col">Repudiated</th>
-                                    <th class="th-col">Dropped</th>
-                                    <th class="th-col">Pending</th>
-                                    <th class="th-col">Dismissed</th>
-                                    <th class="th-col">Certified</th>
-                                    <th class="th-col">Referred</th>
-                                    <th class="th-col th-subtotal">TOTAL</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <!-- Nature Disputes Inputs -->
-                                    <td><input type="number" id="kpInCriminal" class="kp-cell-num kp-in-nature" min="0" value="0"></td>
-                                    <td><input type="number" id="kpInCivil" class="kp-cell-num kp-in-nature" min="0" value="0"></td>
-                                    <td><input type="number" id="kpInOthers" class="kp-cell-num kp-in-nature" min="0" value="0"></td>
-                                    <td class="kp-cell-total"><strong id="kpTotalFiledDisplay">0</strong></td>
-
-                                    <!-- Settled Inputs -->
-                                    <td><input type="number" id="kpInMediation" class="kp-cell-num kp-in-settled" min="0" value="0"></td>
-                                    <td><input type="number" id="kpInConciliation" class="kp-cell-num kp-in-settled" min="0" value="0"></td>
-                                    <td><input type="number" id="kpInArbitration" class="kp-cell-num kp-in-settled" min="0" value="0"></td>
-                                    <td class="kp-cell-total"><strong id="kpTotalSettledDisplay">0</strong></td>
-
-                                    <!-- Unsettled Inputs -->
-                                    <td><input type="number" id="kpInRepudiated" class="kp-cell-num kp-in-unsettled" min="0" value="0"></td>
-                                    <td><input type="number" id="kpInDropped" class="kp-cell-num kp-in-unsettled" min="0" value="0"></td>
-                                    <td><input type="number" id="kpInPending" class="kp-cell-num kp-in-unsettled" min="0" value="0"></td>
-                                    <td><input type="number" id="kpInDismissed" class="kp-cell-num kp-in-unsettled" min="0" value="0"></td>
-                                    <td><input type="number" id="kpInCertified" class="kp-cell-num kp-in-unsettled" min="0" value="0"></td>
-                                    <td><input type="number" id="kpInReferred" class="kp-cell-num kp-in-unsettled" min="0" value="0"></td>
-                                    <td class="kp-cell-total"><strong id="kpTotalUnsettledDisplay">0</strong></td>
-
-                                    <!-- Savings Display -->
-                                    <td class="kp-cell-savings">
-                                        <div class="kp-savings-calc">
-                                            <div class="kp-savings-rate">PHP 9,500.00 / settled case</div>
-                                            <div class="kp-savings-total" id="kpSavingsDisplay">PHP 0.00</div>
-                                        </div>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <!-- Signatories Section -->
-                    <div class="kp-signatories-grid">
-                        <div class="kp-signatory-col">
-                            <p class="kp-sig-role-label">Prepared by:</p>
-                            <input type="text" id="kpPreparedByInput" class="kp-sig-input-name" placeholder="Enter Lupon Member / Secretary Name" value="LUPON MEMBER / SECRETARY">
-                            <p class="kp-sig-role-title">Lupon Member / Secretary</p>
-                        </div>
-                        <div class="kp-signatory-col">
-                            <p class="kp-sig-role-label">Noted by:</p>
-                            <input type="text" id="kpNotedByInput" class="kp-sig-input-name" value="HON. AKIKO LYNNE CENTENO">
-                            <p class="kp-sig-role-title">Punong Barangay / Lupon Chairman</p>
-                        </div>
-                        <div class="kp-signatory-col">
-                            <p class="kp-sig-role-label">Attested by:</p>
-                            <input type="text" id="kpAttestedByInput" class="kp-sig-input-name" value="PAMELA CONSULTA">
-                            <p class="kp-sig-role-title">Barangay Secretary</p>
-                        </div>
-                    </div>
-
-                    <!-- Detailed Cases Section -->
-                    <div class="kp-case-details-section">
-                        <div class="kp-section-head">
-                            <h3 class="kp-section-title">Case Register Listing (<span id="kpEntriesCount">Showing 0 entries</span>)</h3>
-                        </div>
-                        <div class="table-container kp-details-table-wrap">
-                            <table class="kp-register-table">
-                                <thead>
-                                    <tr>
-                                        <th>Case No.</th>
-                                        <th>Complaint No.</th>
-                                        <th>Case Type</th>
-                                        <th>Category</th>
-                                        <th>Dispute Title</th>
-                                        <th>Complainant</th>
-                                        <th>Respondent</th>
-                                        <th>Incident Date</th>
-                                        <th>Docket Date</th>
-                                        <th>Summons Issued</th>
-                                        <th>Summons Served</th>
-                                        <th>Serving Officer</th>
-                                        <th>Delivery Status</th>
-                                        <th>Summons SLA</th>
-                                        <th>Mediation</th>
-                                        <th>Conciliation</th>
-                                        <th>Settlement Date</th>
-                                        <th>Settlement Compliance</th>
-                                        <th>CFA Issuance</th>
-                                        <th>CFA Reason</th>
-                                        <th>Case Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="kpCasesTbody">
-                                    <tr>
-                                        <td colspan="21" class="dashboard-empty-row" style="text-align:center; padding:24px; color:#64748b;">Loading case register...</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
+                <div id="kpPrintableArea" class="kp-sheet"></div>
             </div>
 
             <footer class="report-modal-footer">
@@ -498,7 +388,6 @@
         </div>
     </div>
     <?php endif; ?>
-
 
     <!-- ── Quick Attendance / Check-In Modal ───────────────────────── -->
     <div id="quickDashboardAttendanceModal" class="report-modal-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="quickAttendanceModalTitle">
@@ -517,54 +406,24 @@
 
             <div class="report-modal-body" style="padding: 20px; max-height: 70vh; overflow-y: auto;">
                 <input type="hidden" id="quickAttHearingId" value="">
-
-                <!-- Hearing Details summary bar -->
                 <div style="background: #f1f5f9; border-radius: 8px; padding: 10px 14px; margin-bottom: 18px; font-size: 0.83rem; color: #334155; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                    <div>
-                        <strong id="quickAttHearingType">Mediation Hearing</strong> · <span id="quickAttHearingTime">1:00 PM</span>
-                    </div>
-                    <div style="color: #64748b; font-size: 0.8rem;">
-                        📍 <span id="quickAttHearingVenue">Lupon Court Room</span>
-                    </div>
+                    <div><strong id="quickAttHearingType">Mediation Hearing</strong> · <span id="quickAttHearingTime">1:00 PM</span></div>
+                    <div style="color: #64748b; font-size: 0.8rem;">📍 <span id="quickAttHearingVenue">Lupon Court Room</span></div>
                 </div>
-
-                <!-- Per-Person Party Attendance Container -->
-                <div style="margin-bottom: 16px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                        <span style="font-size: 0.88rem; font-weight: 700; color: #0f172a;">
-                            Pagdalo ng Bawat Panig (Per-Person Attendance) <span style="color: #dc2626;">*</span>
-                        </span>
-                        <span style="font-size: 0.76rem; color: #64748b;">Itala ang pagdalo ayon sa pangalan</span>
-                    </div>
-                    <div id="quickAttPartiesContainer" style="display: flex; flex-direction: column; gap: 12px;">
-                        <div style="text-align: center; padding: 20px; color: #64748b; font-size: 0.85rem;">
-                            Kinukuha ang talaan ng mga panig...
-                        </div>
-                    </div>
-                    <div id="quickCompAbsentNotice" style="display: none; background: #fef2f2; border: 1px solid #fca5a5; border-radius: 6px; padding: 8px 12px; margin-top: 10px; font-size: 0.82rem; color: #991b1b;">
-                        ⚠️ <strong>May Complainant na Hindi Dumalo:</strong> Maaaring maging batayan ito para sa pag-dismiss ng reklamo alinsunod sa KP rules sa katitikan ng pagdinig.
-                    </div>
+                <div id="quickAttPartiesContainer" style="display: flex; flex-direction: column; gap: 12px;"></div>
+                <div id="quickCompAbsentNotice" style="display: none; background: #fef2f2; border: 1px solid #fca5a5; border-radius: 6px; padding: 8px 12px; margin-top: 10px; font-size: 0.82rem; color: #991b1b;">
+                    ⚠️ <strong>May Complainant na Hindi Dumalo:</strong> Maaaring maging batayan ito para sa pag-dismiss ng reklamo alinsunod sa KP rules sa katitikan ng pagdinig.
                 </div>
-
-                <!-- 3. Delay Remarks & Helper Pills -->
-                <div style="margin-bottom: 10px;">
+                <div style="margin-top: 12px;">
                     <label for="quickAttRemarks" style="display: block; font-size: 0.82rem; font-weight: 700; color: #0f172a; margin-bottom: 6px;">
                         Mga Tala ukol sa Pagkaantala / Delay Remarks (Opsyonal)
                     </label>
                     <textarea id="quickAttRemarks" rows="2" placeholder="Maglagay ng dahilan kung nahuli o naantala ang pagsisimula..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.85rem; box-sizing: border-box; font-family: inherit; resize: vertical;"></textarea>
-                    
-                    <!-- Helper Pills -->
-                    <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;" id="quickAttHelperPillsWrap">
-                        <button type="button" class="btn-att-helper-pill" data-remark="Nahuli ang panig" style="font-size: 0.76rem; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 9999px; padding: 3px 10px; color: #475569; cursor: pointer;">• Nahuli ang panig</button>
-                        <button type="button" class="btn-att-helper-pill" data-remark="Naunang kaso sa Court Room ay lumagpas sa oras" style="font-size: 0.76rem; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 9999px; padding: 3px 10px; color: #475569; cursor: pointer;">• Naunang kaso sa Court Room ay lumagpas sa oras</button>
-                        <button type="button" class="btn-att-helper-pill" data-remark="Nagkaroon ng emergency / traffic" style="font-size: 0.76rem; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 9999px; padding: 3px 10px; color: #475569; cursor: pointer;">• Nagkaroon ng emergency / traffic</button>
-                        <button type="button" class="btn-att-helper-pill" data-remark="Naghihintay sa tagapamagitan / Lupon Member" style="font-size: 0.76rem; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 9999px; padding: 3px 10px; color: #475569; cursor: pointer;">• Naghihintay sa tagapamagitan / Lupon Member</button>
-                    </div>
                 </div>
             </div>
 
             <footer class="report-modal-footer" style="padding: 14px 20px; display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #e2e8f0; background: #f8fafc;">
-                <button type="button" class="btn-modal-close-footer" id="quickAttCancelBtn" style="padding: 7px 16px; font-size: 0.85rem; font-weight: 600; border: 1px solid #cbd5e1; background: #fff; border-radius: 6px; cursor: pointer; color: #475569;">Kanselahin (Cancel)</button>
+                <button type="button" class="btn-modal-close-footer" id="quickAttCancelBtn" style="padding: 7px 16px; font-size: 0.85rem; font-weight: 600; border: 1px solid #cbd5e1; background: #fff; border-radius: 6px; cursor: pointer; color: #475569;">Kanselahin</button>
                 <button type="button" id="quickAttSaveBtn" style="padding: 7px 18px; font-size: 0.85rem; font-weight: 600; border: none; background: #0f172a; color: #fff; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
                     💾 I-save ang Attendance
                 </button>

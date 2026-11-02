@@ -1,0 +1,16 @@
+{
+  "name": "agap-system",
+  "version": "1.0.0",
+  "description": "AGAP Barangay Tumana Dispute Case Management System",
+  "main": "index.php",
+  "scripts": {
+    "test": "node tests/run_tests.js",
+    "test:e2e": "C:\\laragon\\bin\\php\\php-8.3.33-Win32-vs16-x64\\php.exe backend/tests/test_kp_workflow_e2e.php",
+    "test:paanyaya": "C:\\laragon\\bin\\php\\php-8.3.33-Win32-vs16-x64\\php.exe backend/tests/test_paanyaya_e2e.php",
+    "test:sched": "C:\\laragon\\bin\\php\\php-8.3.33-Win32-vs16-x64\\php.exe backend/tests/test_scheduling_fixes.php",
+    "test:cfa": "C:\\laragon\\bin\\php\\php-8.3.33-Win32-vs16-x64\\php.exe backend/tests/test_cfa_and_arbitration_workflows_e2e.php"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

@@ -50,6 +50,19 @@ class Report
             );
             $todayHearings->execute([$today]);
 
+            // Today's Paanyaya sessions (Stage 0 Informal Dialogues)
+            $todayPaanyayas = $this->conn->prepare(
+                "SELECT p.paanyaya_id, p.complaint_id, p.invitee_name, p.scheduled_date, p.scheduled_time,
+                        p.status, p.venue, co.complaint_number, co.complaint_title
+                 FROM paanyayas p
+                 LEFT JOIN complaints co ON co.complaint_id = p.complaint_id
+                 WHERE p.scheduled_date = ?
+                   AND p.status = 'Scheduled'
+                 ORDER BY p.scheduled_time ASC, p.paanyaya_id ASC
+                 LIMIT 8"
+            );
+            $todayPaanyayas->execute([$today]);
+
             $deadlineCases = $this->conn->prepare(
                 "SELECT case_id, case_number, case_status, mediation_deadline_date
                  FROM cases
@@ -145,10 +158,12 @@ class Report
                 'active_mediations' => (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status IN ('Mediation', 'Conciliation')")->fetchColumn(),
                 'deadlines_due' => (int) $deadlineCount->fetchColumn(),
                 'today_hearings' => $todayHearings->fetchAll(PDO::FETCH_ASSOC),
+                'today_paanyayas' => $todayPaanyayas->fetchAll(PDO::FETCH_ASSOC),
                 'calendar_hearings' => $calendarHearings,
                 'mediation_deadlines' => $deadlineRows,
                 'status_totals' => $statusRows,
                 'cases' => $casesList,
+                'analytics' => $this->getAnalyticsSummary(),
             ];
         }
 
@@ -191,6 +206,20 @@ class Report
         );
         $hearingsStmt->execute($params);
         $periodHearings = $hearingsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Period Paanyayas
+        $paanyayasStmt = $this->conn->prepare(
+            "SELECT p.paanyaya_id, p.complaint_id, p.invitee_name, p.scheduled_date, p.scheduled_time,
+                    p.status, p.venue, co.complaint_number, co.complaint_title
+             FROM paanyayas p
+             LEFT JOIN complaints co ON co.complaint_id = p.complaint_id
+             WHERE p.scheduled_date BETWEEN ? AND ?
+               AND p.status = 'Scheduled'
+             ORDER BY p.scheduled_date ASC, p.scheduled_time ASC
+             LIMIT 15"
+        );
+        $paanyayasStmt->execute($params);
+        $periodPaanyayas = $paanyayasStmt->fetchAll(PDO::FETCH_ASSOC);
 
         $deadlineStmt = $this->conn->prepare(
             "SELECT case_id, case_number, case_status, mediation_deadline_date
@@ -329,10 +358,121 @@ class Report
             'active_mediations' => (int) $activeMediationStmt->fetchColumn(),
             'deadlines_due' => (int) $deadlineCountStmt->fetchColumn(),
             'today_hearings' => $periodHearings,
+            'today_paanyayas' => $periodPaanyayas,
             'calendar_hearings' => $calendarHearings,
             'mediation_deadlines' => $deadlineRows,
             'status_totals' => $statusRows,
             'cases' => $casesList,
+            'analytics' => $this->getAnalyticsSummary($startDate, $endDate),
+        ];
+    }
+
+        /**
+     * Compute grievance categories, purok dispute hotspots, and demographic breakdowns
+     */
+    public function getAnalyticsSummary(?string $startDate = null, ?string $endDate = null): array
+    {
+        $hasPeriod = !empty($startDate) && !empty($endDate);
+        $periodParams = $hasPeriod ? [$startDate, $endDate] : [];
+
+        // 1. Top Complainant Issues (Dispute Categories)
+        $catSql = "
+            SELECT cat.category_name, COUNT(co.complaint_id) AS total
+            FROM complaint_categories cat
+            LEFT JOIN complaints co ON co.category_id = cat.category_id " .
+            ($hasPeriod ? " AND DATE(co.created_at) BETWEEN ? AND ?" : "") . "
+            GROUP BY cat.category_id, cat.category_name
+            HAVING total > 0
+            ORDER BY total DESC
+            LIMIT 6
+        ";
+        $catStmt = $this->conn->prepare($catSql);
+        $catStmt->execute($periodParams);
+        $topCategories = $catStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Fallback if no categorized complaints yet
+        if (empty($topCategories)) {
+            $fallbackSql = "
+                SELECT cat.category_name, 0 AS total
+                FROM complaint_categories cat
+                ORDER BY cat.category_id ASC
+                LIMIT 5
+            ";
+            $topCategories = $this->conn->query($fallbackSql)->fetchAll(PDO::FETCH_ASSOC);
+        }
+
+        // Clean up category display name (remove slash translations if too long)
+        foreach ($topCategories as &$tc) {
+            $parts = explode('/', $tc['category_name']);
+            $tc['display_name'] = trim($parts[0]);
+            $tc['total'] = (int) $tc['total'];
+        }
+        unset($tc);
+
+        // 2. Purok Dispute Hotspots
+        $purokSql = "
+            SELECT COALESCE(NULLIF(TRIM(co.incident_purok), ''), 'Tumana (General)') AS purok_name,
+                   COUNT(co.complaint_id) AS total
+            FROM complaints co " .
+            ($hasPeriod ? " WHERE DATE(co.created_at) BETWEEN ? AND ?" : "") . "
+            GROUP BY purok_name
+            ORDER BY total DESC
+            LIMIT 7
+        ";
+        $purokStmt = $this->conn->prepare($purokSql);
+        $purokStmt->execute($periodParams);
+        $purokHotspots = $purokStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // 3. Demographics: Gender Breakdown
+        $genderSql = "
+            SELECT COALESCE(r.gender, 'Unspecified') AS gender, COUNT(*) as total
+            FROM complaint_parties cp
+            JOIN residents r ON r.resident_id = cp.resident_id
+            JOIN complaints co ON co.complaint_id = cp.complaint_id " .
+            ($hasPeriod ? " WHERE DATE(co.created_at) BETWEEN ? AND ?" : "") . "
+            GROUP BY gender
+        ";
+        $genderStmt = $this->conn->prepare($genderSql);
+        $genderStmt->execute($periodParams);
+        $gendersRaw = $genderStmt->fetchAll(PDO::FETCH_ASSOC);
+        $genderBreakdown = ['Male' => 0, 'Female' => 0, 'Other' => 0];
+        foreach ($gendersRaw as $g) {
+            $key = ucfirst(strtolower(trim($g['gender'])));
+            if (isset($genderBreakdown[$key])) {
+                $genderBreakdown[$key] += (int) $g['total'];
+            } else {
+                $genderBreakdown['Other'] += (int) $g['total'];
+            }
+        }
+
+        // 4. Demographics: Age Group Distribution
+        $ageSql = "
+            SELECT 
+                SUM(CASE WHEN TIMESTAMPDIFF(YEAR, r.birth_date, CURDATE()) < 18 THEN 1 ELSE 0 END) AS minors,
+                SUM(CASE WHEN TIMESTAMPDIFF(YEAR, r.birth_date, CURDATE()) BETWEEN 18 AND 29 THEN 1 ELSE 0 END) AS youth,
+                SUM(CASE WHEN TIMESTAMPDIFF(YEAR, r.birth_date, CURDATE()) BETWEEN 30 AND 59 THEN 1 ELSE 0 END) AS adults,
+                SUM(CASE WHEN TIMESTAMPDIFF(YEAR, r.birth_date, CURDATE()) >= 60 THEN 1 ELSE 0 END) AS seniors,
+                COUNT(*) AS total_parties
+            FROM complaint_parties cp
+            JOIN residents r ON r.resident_id = cp.resident_id
+            JOIN complaints co ON co.complaint_id = cp.complaint_id " .
+            ($hasPeriod ? " WHERE DATE(co.created_at) BETWEEN ? AND ?" : "") . "
+        ";
+        $ageStmt = $this->conn->prepare($ageSql);
+        $ageStmt->execute($periodParams);
+        $ageRow = $ageStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        return [
+            'top_categories' => $topCategories,
+            'purok_hotspots' => $purokHotspots,
+            'gender_breakdown' => $genderBreakdown,
+            'age_distribution' => [
+                'minors' => (int) ($ageRow['minors'] ?? 0),
+                'youth' => (int) ($ageRow['youth'] ?? 0),
+                'adults' => (int) ($ageRow['adults'] ?? 0),
+                'seniors' => (int) ($ageRow['seniors'] ?? 0),
+                'total' => (int) ($ageRow['total_parties'] ?? 0)
+            ]
         ];
     }
 

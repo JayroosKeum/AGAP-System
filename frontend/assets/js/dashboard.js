@@ -136,6 +136,70 @@ document.addEventListener('DOMContentLoaded', () => {
         return raw;
     };
 
+    const addPaanyayaItem = (container, item) => {
+        const art = document.createElement('article');
+        art.className = 'dashboard-list-item';
+        art.style.padding = '12px 0';
+        art.style.alignItems = 'flex-start';
+
+        const content = document.createElement('div');
+        content.className = 'dashboard-list-content';
+
+        const timeStr = formatTimeOnly(item.scheduled_time || item.scheduled_date) || 'Scheduled';
+        const invitee = item.invitee_name || 'Invited Party';
+        const complaintRef = item.complaint_number ? `Complaint #${item.complaint_number}` : 'Undocketed';
+
+        const headerRow = document.createElement('div');
+        headerRow.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;';
+
+        const timeBadge = document.createElement('span');
+        timeBadge.style.cssText = 'font-size: 0.76rem; font-weight: 700; color: #1e40af; background: #dbeafe; padding: 2px 7px; border-radius: 4px; white-space: nowrap;';
+        timeBadge.textContent = timeStr;
+
+        const heading = document.createElement('h3');
+        heading.style.cssText = 'margin: 0; font-size: 0.90rem; font-weight: 700; color: #0f172a;';
+        heading.textContent = `${complaintRef} · Paanyaya`;
+
+        headerRow.append(timeBadge, heading);
+
+        const inviteeRow = document.createElement('div');
+        inviteeRow.style.cssText = 'font-size: 0.84rem; color: #1e293b; margin-bottom: 3px; line-height: 1.4;';
+        inviteeRow.innerHTML = `<span style="color: #6366f1; font-weight: 700;">Invitee:</span> <strong>${escapeHtml(invitee)}</strong>`;
+
+        const detailsRow = document.createElement('p');
+        detailsRow.style.cssText = 'font-size: 0.78rem; color: #64748b; margin: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;';
+        detailsRow.innerHTML = `<span>📍 ${escapeHtml(item.venue || 'Tanggapan ng Barangay Tumana')}</span>${item.complaint_title ? `<span style="color:#cbd5e1;">•</span><span>${escapeHtml(item.complaint_title)}</span>` : ''}`;
+
+        content.append(headerRow, inviteeRow, detailsRow);
+        art.appendChild(content);
+
+        const actions = document.createElement('div');
+        actions.style.cssText = 'display: flex; align-items: center; gap: 6px; justify-content: flex-end; margin-left: 8px;';
+
+        const viewLink = document.createElement('a');
+        viewLink.className = 'btn-open-case';
+        viewLink.style.cssText = 'padding: 5px 10px; font-size: 11px;';
+        viewLink.textContent = '✉️ Paanyaya';
+        viewLink.href = item.complaint_id ? `../paanyaya/dialogue.php?complaint_id=${encodeURIComponent(item.complaint_id)}` : `../paanyaya/index.php`;
+        actions.appendChild(viewLink);
+
+        art.appendChild(actions);
+        container.appendChild(art);
+    };
+
+    const renderPaanyayas = (paanyayas) => {
+        const container = document.getElementById('todayPaanyayas');
+        if (!container) return;
+        container.replaceChildren();
+
+        const items = paanyayas || [];
+        if (!items.length) {
+            return container.appendChild(emptyState('No informal Paanyaya dialogues scheduled for today.'));
+        }
+
+        items.forEach(item => addPaanyayaItem(container, item));
+    };
+
     const addHearingItem = (container, hearing) => {
         const item = document.createElement('article');
         item.className = 'dashboard-list-item';
@@ -939,6 +1003,109 @@ document.addEventListener('DOMContentLoaded', () => {
         renderCasesPage();
     };
 
+        const renderAnalytics = (analyticsData) => {
+        if (!analyticsData) return;
+
+        // 1. Top Categories
+        const catContainer = document.getElementById('analyticsTopCategories');
+        if (catContainer) {
+            const categories = analyticsData.top_categories || [];
+            if (categories.length === 0) {
+                catContainer.innerHTML = '<div style="color: #64748b; font-size: 0.85rem; text-align: center; padding: 14px;">No categorized complaints recorded yet.</div>';
+            } else {
+                const maxCat = Math.max(...categories.map(c => c.total), 1);
+                catContainer.innerHTML = categories.map(c => {
+                    const pct = Math.round((c.total / maxCat) * 100);
+                    return `
+                        <div class="analytics-bar-item">
+                            <div class="analytics-bar-header">
+                                <span class="analytics-bar-label" title="${escapeHtml(c.category_name)}">${escapeHtml(c.display_name || c.category_name)}</span>
+                                <span class="analytics-bar-count">${c.total} case${c.total === 1 ? '' : 's'}</span>
+                            </div>
+                            <div class="analytics-bar-track">
+                                <div class="analytics-bar-fill" style="width: ${pct}%;"></div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        // 2. Purok Hotspots
+        const purokContainer = document.getElementById('analyticsPurokHotspots');
+        if (purokContainer) {
+            const puroks = analyticsData.purok_hotspots || [];
+            if (puroks.length === 0) {
+                purokContainer.innerHTML = '<div style="color: #64748b; font-size: 0.85rem; text-align: center; padding: 14px;">No purok location data recorded yet.</div>';
+            } else {
+                const maxPurok = Math.max(...puroks.map(p => Number(p.total)), 1);
+                purokContainer.innerHTML = puroks.map(p => {
+                    const totalVal = Number(p.total);
+                    const pct = Math.round((totalVal / maxPurok) * 100);
+                    return `
+                        <div class="analytics-bar-item">
+                            <div class="analytics-bar-header">
+                                <span class="analytics-bar-label">${escapeHtml(p.purok_name)}</span>
+                                <span class="analytics-bar-count" style="color: #ea580c;">${totalVal} dispute${totalVal === 1 ? '' : 's'}</span>
+                            </div>
+                            <div class="analytics-bar-track">
+                                <div class="analytics-bar-fill hotspot-fill" style="width: ${pct}%;"></div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        // 3. Gender Breakdown
+        const genderContainer = document.getElementById('analyticsGenderBreakdown');
+        if (genderContainer) {
+            const genders = analyticsData.gender_breakdown || { Male: 0, Female: 0 };
+            const totalG = (genders.Male || 0) + (genders.Female || 0) + (genders.Other || 0);
+            const malePct = totalG > 0 ? Math.round(((genders.Male || 0) / totalG) * 100) : 0;
+            const femalePct = totalG > 0 ? Math.round(((genders.Female || 0) / totalG) * 100) : 0;
+
+            genderContainer.innerHTML = `
+                <div class="demographic-stat-pill">
+                    <span class="demo-label">👩 Female Parties</span>
+                    <span class="demo-value" style="color: #db2777;">${genders.Female || 0} <small style="font-size: 0.75rem; color: #64748b; font-weight: 500;">(${femalePct}%)</small></span>
+                </div>
+                <div class="demographic-stat-pill">
+                    <span class="demo-label">👨 Male Parties</span>
+                    <span class="demo-value" style="color: #2563eb;">${genders.Male || 0} <small style="font-size: 0.75rem; color: #64748b; font-weight: 500;">(${malePct}%)</small></span>
+                </div>
+                <div class="demographic-stat-pill">
+                    <span class="demo-label">Total Individuals Registered</span>
+                    <span class="demo-value">${totalG}</span>
+                </div>
+            `;
+        }
+
+        // 4. Age Distribution
+        const ageContainer = document.getElementById('analyticsAgeDistribution');
+        if (ageContainer) {
+            const age = analyticsData.age_distribution || { youth: 0, adults: 0, seniors: 0, total: 0 };
+            const youthPct = age.total > 0 ? Math.round((age.youth / age.total) * 100) : 0;
+            const adultPct = age.total > 0 ? Math.round((age.adults / age.total) * 100) : 0;
+            const seniorPct = age.total > 0 ? Math.round((age.seniors / age.total) * 100) : 0;
+
+            ageContainer.innerHTML = `
+                <div class="demographic-stat-pill">
+                    <span class="demo-label">Youth (18 – 29 yrs)</span>
+                    <span class="demo-value" style="color: #0284c7;">${age.youth} <small style="font-size: 0.75rem; color: #64748b; font-weight: 500;">(${youthPct}%)</small></span>
+                </div>
+                <div class="demographic-stat-pill">
+                    <span class="demo-label">Adults (30 – 59 yrs)</span>
+                    <span class="demo-value" style="color: #16a34a;">${age.adults} <small style="font-size: 0.75rem; color: #64748b; font-weight: 500;">(${adultPct}%)</small></span>
+                </div>
+                <div class="demographic-stat-pill">
+                    <span class="demo-label">Senior Citizens (60+ yrs)</span>
+                    <span class="demo-value" style="color: #9333ea;">${age.seniors} <small style="font-size: 0.75rem; color: #64748b; font-weight: 500;">(${seniorPct}%)</small></span>
+                </div>
+            `;
+        }
+    };
+
     const renderDashboardCalendar = () => {
         const grid = document.getElementById('dashboardCalendarGrid');
         const monthDisplay = document.getElementById('dashCalMonthDisplay');
@@ -1251,6 +1418,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 state.calendarHearings = data.calendar_hearings || [];
                 renderHearings(data.today_hearings || [], periodLabel);
+                renderPaanyayas(data.today_paanyayas || []);
                 renderDeadlines(data.mediation_deadlines || [], periodLabel);
                 renderStatuses(data.status_totals || [], periodLabel);
                 renderCasesTable(data.cases || [], periodLabel);

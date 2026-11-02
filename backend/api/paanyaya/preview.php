@@ -12,11 +12,13 @@ if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESS
     exit;
 }
 
-$complaintId = filter_var($_GET['id'] ?? ($_GET['complaint_id'] ?? null), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-if (!$complaintId) {
+$complaintId = filter_var($_GET['id'] ?? ($_GET['complaint_id'] ?? null), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
+$paanyayaId = filter_var($_GET['paanyaya_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
+
+if (!$complaintId && !$paanyayaId) {
     header('Content-Type: application/json; charset=utf-8');
     http_response_code(400);
-    echo json_encode(['success' => false, 'message' => 'Invalid complaint ID.']);
+    echo json_encode(['success' => false, 'message' => 'Valid complaint ID or Paanyaya ID is required.']);
     exit;
 }
 
@@ -25,6 +27,9 @@ $format = $_GET['format'] ?? 'html';
 
 // Allow optional live parameter overrides from modal preview
 $options = [];
+if ($paanyayaId > 0) {
+    $options['paanyaya_id'] = $paanyayaId;
+}
 if (!empty($_GET['invitation_date'])) {
     $options['invitation_date'] = trim((string) $_GET['invitation_date']);
 }

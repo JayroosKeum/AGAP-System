@@ -1470,3 +1470,400 @@
     border-color: #94a3b8 !important;
     color: #0f172a !important;
 }
+
+
+/* =========================================================================
+   NEW SPLIT PORTAL LAYOUT (STI INSPIRATION & DEMOGRAPHIC ANALYTICS)
+   ========================================================================= */
+.dash-portal-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 340px;
+    gap: 20px;
+    margin-top: 20px;
+    align-items: start;
+}
+
+@media (max-width: 1080px) {
+    .dash-portal-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* HERO ADVISORY BANNER */
+.dash-hero-banner {
+    background: linear-gradient(135deg, #0284c7 0%, #0369a1 50%, #075985 100%);
+    border-radius: 14px;
+    padding: 24px 28px;
+    color: #ffffff;
+    box-shadow: 0 4px 15px rgba(2, 132, 199, 0.25);
+    margin-bottom: 20px;
+    position: relative;
+    overflow: hidden;
+}
+
+.dash-hero-banner::after {
+    content: '';
+    position: absolute;
+    right: -20px;
+    top: -20px;
+    width: 180px;
+    height: 180px;
+    background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 70%);
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+.dash-hero-badge {
+    display: inline-block;
+    background: rgba(255, 255, 255, 0.22);
+    backdrop-filter: blur(4px);
+    color: #fef08a;
+    font-size: 11.5px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    padding: 4px 12px;
+    border-radius: 9999px;
+    margin-bottom: 12px;
+}
+
+.dash-hero-title {
+    font-size: 1.5rem;
+    font-weight: 800;
+    margin: 0 0 8px;
+    color: #ffffff;
+    line-height: 1.25;
+}
+
+.dash-hero-text {
+    font-size: 0.92rem;
+    line-height: 1.55;
+    color: #e0f2fe;
+    margin: 0 0 16px;
+    max-width: 90%;
+}
+
+.dash-hero-warning-box {
+    background: rgba(15, 23, 42, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: #f1f5f9;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.dash-hero-warning-box .warning-icon {
+    font-size: 1.1rem;
+    line-height: 1;
+}
+
+/* ANALYTICS ROW & CARDS */
+.dash-analytics-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+@media (max-width: 768px) {
+    .dash-analytics-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+.dash-analytics-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+}
+
+.dash-analytics-card .card-head {
+    margin-bottom: 14px;
+}
+
+.dash-analytics-card .card-title {
+    font-size: 0.98rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0;
+}
+
+.dash-analytics-card .card-sub {
+    font-size: 0.78rem;
+    color: #64748b;
+    margin: 3px 0 0;
+}
+
+/* PROGRESS BARS STYLING */
+.analytics-bars-container {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.analytics-bar-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.analytics-bar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.82rem;
+}
+
+.analytics-bar-label {
+    font-weight: 600;
+    color: #334155;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 80%;
+}
+
+.analytics-bar-count {
+    font-weight: 700;
+    color: #0284c7;
+}
+
+.analytics-bar-track {
+    background: #f1f5f9;
+    height: 8px;
+    border-radius: 9999px;
+    overflow: hidden;
+    position: relative;
+}
+
+.analytics-bar-fill {
+    background: linear-gradient(90deg, #0284c7, #38bdf8);
+    height: 100%;
+    border-radius: 9999px;
+    transition: width 0.4s ease;
+}
+
+.analytics-bar-fill.hotspot-fill {
+    background: linear-gradient(90deg, #ea580c, #fb923c);
+}
+
+/* DEMOGRAPHICS DISPLAY */
+.analytics-demographics-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.demographic-stat-pill {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 8px 12px;
+}
+
+.demographic-stat-pill .demo-label {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #334155;
+}
+
+.demographic-stat-pill .demo-value {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+/* RIGHT COLUMN ASIDE CARDS */
+.dash-portal-aside {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* MINI CALENDAR CARD (STI REFERENCE STYLE) */
+.mini-calendar-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+    padding: 16px;
+    overflow: hidden;
+}
+
+.mini-cal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.mini-cal-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.mini-cal-icon {
+    font-size: 1.05rem;
+}
+
+.mini-cal-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.mini-cal-nav {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.mini-cal-btn {
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    color: #334155;
+    font-size: 0.85rem;
+    font-weight: 700;
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.mini-cal-btn:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+}
+
+.mini-cal-month-text {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #0f172a;
+    min-width: 75px;
+    text-align: center;
+}
+
+.mini-cal-body {
+    margin-bottom: 12px;
+}
+
+.mini-cal-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    text-align: center;
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: #64748b;
+    margin-bottom: 6px;
+}
+
+.mini-cal-days-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 3px;
+}
+
+.mini-cal-days-grid .dash-cal-day {
+    aspect-ratio: 1;
+    min-height: 32px;
+    border-radius: 6px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    padding: 0;
+}
+
+.mini-cal-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid #f1f5f9;
+    padding-top: 10px;
+}
+
+.mini-cal-link {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #0284c7;
+    text-decoration: none;
+}
+
+.mini-cal-link:hover {
+    text-decoration: underline;
+}
+
+.mini-cal-toggle-btn {
+    background: none;
+    border: none;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #64748b;
+    cursor: pointer;
+}
+
+.mini-cal-toggle-btn:hover {
+    color: #0f172a;
+}
+
+/* ASIDE LIST & BULLETINS */
+.dash-aside-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    overflow: hidden;
+}
+
+.aside-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px;
+    border-bottom: 1px solid #f1f5f9;
+    background: #f8fafc;
+}
+
+.aside-card-title {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0;
+}
+
+.aside-card-sub {
+    font-size: 0.72rem;
+    color: #64748b;
+    margin: 0;
+}
+
+.dash-aside-list {
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+.dash-aside-bulletin strong {
+    display: block;
+    font-size: 0.82rem;
+    color: #0f172a;
+    margin-bottom: 2px;
+}
+
+.dash-aside-bulletin p {
+    font-size: 0.76rem;
+    color: #64748b;
+    line-height: 1.4;
+    margin: 0;
+}

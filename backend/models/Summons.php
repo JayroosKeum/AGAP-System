@@ -161,7 +161,8 @@ class Summons
                 $hearingId ? (int)$hearingId : null
             );
 
-            if ($conflict) {
+            $conflictAck = !empty($mediationData['conflict_acknowledged']) || !empty($mediationData['allow_overlap']) || !empty($mediationData['override_conflict']);
+            if ($conflict && !$conflictAck) {
                 $this->conn->rollBack();
                 $cDate = date('M j, Y', strtotime($conflict['hearing_date']));
                 $cTime = date('g:i A', strtotime($conflict['hearing_date']));

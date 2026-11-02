@@ -82,6 +82,19 @@ class Paanyaya
             $inviteeName = 'Inanyayahang Residente';
         }
 
+        // Complainant Name (Nagpaanyaya)
+        $complainantName = trim((string) ($data['complainant_name'] ?? ''));
+        if ($complainantName === '' && $complaintId > 0) {
+            $cStmt = $this->conn->prepare("
+                SELECT GROUP_CONCAT(TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) SEPARATOR ', ')
+                FROM complaint_parties cp
+                JOIN residents r ON r.resident_id = cp.resident_id
+                WHERE cp.complaint_id = ? AND cp.party_type = 'Complainant'
+            ");
+            $cStmt->execute([$complaintId]);
+            $complainantName = (string) $cStmt->fetchColumn();
+        }
+
         // 2. Scheduled Date
         $scheduledDate = trim((string) ($data['scheduled_date'] ?? ($data['invitation_date'] ?? ($data['date'] ?? ''))));
         if ($scheduledDate === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $scheduledDate)) {
@@ -107,12 +120,13 @@ class Paanyaya
             // Insert into independent paanyayas entity
             $insPaanyaya = $this->conn->prepare("
                 INSERT INTO paanyayas (
-                    complaint_id, invitee_name, scheduled_date, scheduled_time,
+                    complaint_id, complainant_name, invitee_name, scheduled_date, scheduled_time,
                     status, venue, scheduled_by
-                ) VALUES (?, ?, ?, ?, 'Scheduled', ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, 'Scheduled', ?, ?)
             ");
             $insPaanyaya->execute([
                 $complaintId > 0 ? $complaintId : null,
+                $complainantName !== '' ? $complainantName : null,
                 $inviteeName,
                 $scheduledDate,
                 $scheduledTime,
@@ -200,6 +214,7 @@ class Paanyaya
                 'save_path' => $pdfFullPath,
                 'paanyaya_id' => $paanyayaId,
                 'invitee_name' => $inviteeName,
+                'complainant_name' => $complainantName,
                 'invitation_date' => $scheduledDate,
                 'invitation_time' => $scheduledTime,
                 'venue' => $venue,
