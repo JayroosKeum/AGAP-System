@@ -186,7 +186,7 @@ document.addEventListener('DOMContentLoaded', () => {
         viewLink.className = 'btn-open-case';
         viewLink.style.cssText = 'padding: 6px 12px; font-size: 11.5px; font-weight: 600;';
         viewLink.textContent = '✉️ Paanyaya';
-        viewLink.href = item.complaint_id ? `../paanyaya/dialogue.php?complaint_id=${encodeURIComponent(item.complaint_id)}` : `../paanyaya/index.php`;
+        viewLink.href = item.complaint_id ? `../complaints/paanyaya-workspace.php?complaint_id=${encodeURIComponent(item.complaint_id)}` : `../paanyaya/index.php`;
         actions.appendChild(viewLink);
 
         art.appendChild(actions);
