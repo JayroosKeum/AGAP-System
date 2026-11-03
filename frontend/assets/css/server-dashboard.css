@@ -1,0 +1,441 @@
+/* ==========================================================================
+   AGAP - Summons / Process Server Dashboard ("Kuya")
+   Focus: Mobile-First Field Dispatch, Purok Routing & 1-Tap Service Logger
+   ========================================================================== */
+
+/* ── Mobile Field Container ── */
+.server-dispatch-view {
+    padding-bottom: 40px;
+}
+
+/* ── Mobile Dispatch Top Header ── */
+.server-header-banner {
+    background: linear-gradient(135deg, #064e3b 0%, #065f46 60%, #047857 100%);
+    color: #ffffff;
+    border-radius: 14px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+    box-shadow: 0 4px 12px rgba(6, 78, 59, 0.2);
+}
+
+.server-header-info h1 {
+    margin: 0;
+    font-size: 1.65rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.server-header-info p {
+    margin: 4px 0 0;
+    color: #a7f3d0;
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+.server-kuya-badge {
+    background: #ecfdf5;
+    color: #065f46;
+    font-size: 0.85rem;
+    font-weight: 800;
+    padding: 6px 14px;
+    border-radius: 9999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1.5px solid #a7f3d0;
+}
+
+/* ── Dispatch Summary KPI Cards (Large, Touch-Friendly) ── */
+.server-kpis-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 14px;
+    margin-bottom: 22px;
+}
+
+.server-kpi-card {
+    background: #ffffff;
+    border: 2px solid #cbd5e1;
+    border-radius: 14px;
+    padding: 18px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    cursor: pointer;
+    transition: all 0.16s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+}
+
+.server-kpi-card:hover {
+    transform: translateY(-2px);
+    border-color: #047857;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.06);
+}
+
+.server-kpi-card.is-active-tab {
+    border-color: #047857;
+    background: #f0fdf4;
+}
+
+.server-kpi-icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.7rem;
+    flex-shrink: 0;
+}
+
+.server-kpi-card.kpi-pending .server-kpi-icon { background: #fef3c7; color: #b45309; }
+.server-kpi-card.kpi-served .server-kpi-icon { background: #dcfce7; color: #15803d; }
+.server-kpi-card.kpi-unserved .server-kpi-icon { background: #fee2e2; color: #b91c1c; }
+
+.server-kpi-details {
+    display: flex;
+    flex-direction: column;
+}
+
+.server-kpi-label {
+    font-size: 0.85rem;
+    font-weight: 800;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.server-kpi-val {
+    font-size: 2rem;
+    font-weight: 900;
+    color: #0f172a;
+    line-height: 1.1;
+    margin: 2px 0;
+}
+
+.server-kpi-sub {
+    font-size: 0.8rem;
+    color: #64748b;
+    font-weight: 600;
+}
+
+/* ── Purok Route & Batch Filter Toolbar ── */
+.server-route-toolbar {
+    background: #ffffff;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 22px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 14px;
+}
+
+.route-filter-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 260px;
+}
+
+.route-filter-label {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #0f172a;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.route-filter-select {
+    width: 100%;
+    max-width: 320px;
+    min-height: 44px;
+    font-size: 1rem;
+    font-weight: 700;
+    padding: 8px 14px;
+    border: 2px solid #047857;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #065f46;
+    outline: none;
+    cursor: pointer;
+}
+
+.route-filter-select:focus {
+    box-shadow: 0 0 0 3px rgba(4, 120, 87, 0.2);
+}
+
+.server-status-pill-group {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.btn-status-filter {
+    background: #f1f5f9;
+    border: 1.5px solid #cbd5e1;
+    color: #334155;
+    padding: 8px 14px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.16s ease;
+}
+
+.btn-status-filter.active,
+.btn-status-filter:hover {
+    background: #047857;
+    border-color: #047857;
+    color: #ffffff;
+}
+
+/* ── Field Dispatch Tasks Stream ── */
+.dispatch-tasks-stream {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.dispatch-task-card {
+    background: #ffffff;
+    border: 2px solid #cbd5e1;
+    border-radius: 14px;
+    padding: 20px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.03);
+    transition: all 0.18s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.dispatch-task-card:hover {
+    border-color: #047857;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.06);
+}
+
+.dispatch-task-card.task-pending { border-left: 6px solid #f59e0b; }
+.dispatch-task-card.task-served { border-left: 6px solid #10b981; }
+.dispatch-task-card.task-unserved { border-left: 6px solid #ef4444; }
+
+.dispatch-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.dispatch-purok-tag {
+    background: #ecfdf5;
+    color: #047857;
+    border: 1px solid #a7f3d0;
+    font-size: 0.88rem;
+    font-weight: 800;
+    padding: 4px 12px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.dispatch-party-name {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #0f172a;
+    margin: 4px 0 2px;
+}
+
+.dispatch-party-type {
+    font-size: 0.85rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+
+.dispatch-party-type.complainant { background: #dbeafe; color: #1e40af; }
+.dispatch-party-type.respondent { background: #fee2e2; color: #991b1b; }
+
+.dispatch-card-address {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #334155;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.dispatch-card-address a {
+    color: #0284c7;
+    text-decoration: underline;
+    font-weight: 700;
+}
+
+.dispatch-card-hearing-meta {
+    font-size: 0.88rem;
+    color: #64748b;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    font-weight: 600;
+}
+
+/* ── 1-Tap Service Logger Quick Actions ── */
+.tap-actions-toolbar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 10px;
+    margin-top: 6px;
+    padding-top: 14px;
+    border-top: 1.5px dashed #e2e8f0;
+}
+
+.btn-tap-action {
+    min-height: 48px;
+    border: none;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    font-weight: 800;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 14px;
+    transition: all 0.16s ease;
+    text-align: center;
+}
+
+.btn-tap-served {
+    background: #047857;
+    color: #ffffff;
+}
+
+.btn-tap-served:hover {
+    background: #065f46;
+    transform: translateY(-1px);
+}
+
+.btn-tap-refused {
+    background: #d97706;
+    color: #ffffff;
+}
+
+.btn-tap-refused:hover {
+    background: #b45309;
+    transform: translateY(-1px);
+}
+
+.btn-tap-unserved {
+    background: #dc2626;
+    color: #ffffff;
+}
+
+.btn-tap-unserved:hover {
+    background: #b91c1c;
+    transform: translateY(-1px);
+}
+
+.btn-tap-photo {
+    background: #f1f5f9;
+    color: #0f172a;
+    border: 1.5px solid #cbd5e1;
+}
+
+.btn-tap-photo:hover {
+    background: #e2e8f0;
+    border-color: #94a3b8;
+}
+
+/* ── Service Logging Modal (with Camera/Photo Upload) ── */
+.server-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(6px);
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+
+.server-modal-card {
+    background: #ffffff;
+    border: 2px solid #0f172a;
+    border-radius: 16px;
+    max-width: 520px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 25px -5px rgba(0,0,0,0.25);
+    display: flex;
+    flex-direction: column;
+}
+
+.server-modal-header {
+    background: #0f172a;
+    color: #ffffff;
+    padding: 16px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.server-modal-header h3 {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 800;
+}
+
+.server-modal-body {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.server-photo-preview-wrap {
+    background: #f8fafc;
+    border: 2px dashed #cbd5e1;
+    border-radius: 10px;
+    padding: 16px;
+    text-align: center;
+    cursor: pointer;
+}
+
+.server-photo-preview-wrap img {
+    max-width: 100%;
+    max-height: 200px;
+    border-radius: 8px;
+    object-fit: cover;
+}
+
+.server-modal-footer {
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    padding: 14px 20px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}

@@ -7,7 +7,8 @@ const suites = [
   { name: 'Scheduling & Working Hours Rules', file: 'backend/tests/test_scheduling_fixes.php' },
   { name: 'CFA & Voluntary Arbitration Workflows', file: 'backend/tests/test_cfa_and_arbitration_workflows_e2e.php' },
   { name: 'Lupon Clerk Dashboard & Metrics', file: 'backend/tests/test_clerk_dashboard.php' },
-  { name: 'Lupon Member Dashboard, Duty & Dossier', file: 'backend/tests/test_lupon_dashboard.php' }
+  { name: 'Lupon Member Dashboard, Duty & Dossier', file: 'backend/tests/test_lupon_dashboard.php' },
+  { name: 'Summons Server Field Dispatch & 1-Tap Logger', file: 'backend/tests/test_server_dashboard.php' }
 ];
 
 console.log('====================================================================');
@@ -39,4 +40,5 @@ if (failed > 0) {
 } else {
   process.exit(0);
 }
+
 
