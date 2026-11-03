@@ -739,3 +739,122 @@ th {
 .agap-draft-dismiss-btn:hover {
     color: #1e40af !important;
 }
+
+/* -- Global Sign Out Confirmation Modal (Blurred Backdrop) -- */
+.agap-signout-modal-overlay {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    animation: agapFadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes agapFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes agapPopIn {
+    from { opacity: 0; transform: scale(0.95) translateY(8px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.agap-signout-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    max-width: 440px;
+    width: 100%;
+    padding: 24px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    animation: agapPopIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.agap-signout-icon-wrap {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: #fee2e2;
+    color: #dc2626;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+    flex-shrink: 0;
+}
+
+.agap-signout-content h3 {
+    margin: 0 0 8px 0;
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #0f172a;
+    letter-spacing: -0.02em;
+}
+
+.agap-signout-content p {
+    margin: 0 0 22px 0;
+    font-size: 0.92rem;
+    color: #64748b;
+    line-height: 1.5;
+}
+
+.agap-signout-actions {
+    display: flex;
+    gap: 12px;
+    width: 100%;
+    justify-content: center;
+}
+
+.btn-signout-cancel {
+    flex: 1;
+    background: #ffffff;
+    border: 1.5px solid #cbd5e1;
+    color: #334155;
+    font-size: 0.92rem;
+    font-weight: 700;
+    padding: 10px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.16s ease;
+    min-height: 42px;
+}
+
+.btn-signout-cancel:hover {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+    color: #0f172a;
+}
+
+.btn-signout-confirm {
+    flex: 1;
+    background: #dc2626;
+    border: 1.5px solid #dc2626;
+    color: #ffffff;
+    font-size: 0.92rem;
+    font-weight: 700;
+    padding: 10px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.16s ease;
+    min-height: 42px;
+    box-shadow: 0 2px 4px rgba(220, 38, 38, 0.2);
+}
+
+.btn-signout-confirm:hover {
+    background: #b91c1c;
+    border-color: #b91c1c;
+    box-shadow: 0 4px 8px rgba(185, 28, 28, 0.3);
+    transform: translateY(-1px);
+}

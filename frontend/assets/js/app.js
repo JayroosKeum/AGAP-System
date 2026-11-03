@@ -366,4 +366,59 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     checkWorkflowNotifications();
     window.setInterval(checkWorkflowNotifications, 45000);
+
+    // Global Sign Out Confirmation Modal Handler
+    const logoutBtn = document.getElementById("globalLogoutBtn");
+    const logoutModal = document.getElementById("globalLogoutModal");
+    const cancelLogoutBtn = document.getElementById("btnCancelSignout");
+    const confirmLogoutBtn = document.getElementById("btnConfirmSignout");
+    const logoutForm = document.getElementById("globalLogoutForm");
+
+    const openLogoutModal = () => {
+        if (logoutModal) {
+            logoutModal.style.display = "flex";
+            document.body.style.overflow = "hidden";
+        }
+    };
+
+    const closeLogoutModal = () => {
+        if (logoutModal) {
+            logoutModal.style.display = "none";
+            document.body.style.overflow = "";
+        }
+    };
+
+    if (logoutBtn) {
+        logoutBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openLogoutModal();
+        });
+    }
+
+    if (cancelLogoutBtn) {
+        cancelLogoutBtn.addEventListener("click", closeLogoutModal);
+    }
+
+    if (confirmLogoutBtn && logoutForm) {
+        confirmLogoutBtn.addEventListener("click", () => {
+            confirmLogoutBtn.disabled = true;
+            confirmLogoutBtn.textContent = "Lumalabas...";
+            logoutForm.submit();
+        });
+    }
+
+    if (logoutModal) {
+        logoutModal.addEventListener("click", (e) => {
+            if (e.target === logoutModal) {
+                closeLogoutModal();
+            }
+        });
+    }
+
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && logoutModal && logoutModal.style.display === "flex") {
+            closeLogoutModal();
+        }
+    });
 });

@@ -65,9 +65,30 @@ $roleName = $roleNames[(int) ($_SESSION['role_id'] ?? 0)] ?? 'Staff Member';
         <div class="user-summary"><strong><?php echo htmlspecialchars($_SESSION['username'] ?? 'User', ENT_QUOTES, 'UTF-8'); ?></strong><span><?php echo $roleName; ?></span></div>
         <a class="notification-link" href="../settings/index.php<?php echo in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2], true) ? '' : '?tab=profile'; ?>">Settings</a>
         <a class="notification-link" href="../auth/change-password.php">Change password</a>
-        <form method="post" action="../../../backend/api/auth/logout.php" style="display: inline;">
+        <form id="globalLogoutForm" method="post" action="../../../backend/api/auth/logout.php" style="display: inline;">
             <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(CsrfService::token(), ENT_QUOTES, 'UTF-8'); ?>">
-            <button type="submit" class="logout-btn">Sign out</button>
+            <button type="button" class="logout-btn" id="globalLogoutBtn">Sign out</button>
         </form>
     </div>
 </nav>
+
+<!-- -- Global Sign Out Confirmation Modal with Blurred Background ----------- -->
+<div id="globalLogoutModal" class="agap-signout-modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="signoutModalTitle">
+    <div class="agap-signout-card">
+        <div class="agap-signout-icon-wrap">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <polyline points="16 17 21 12 16 7"></polyline>
+                <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+        </div>
+        <div class="agap-signout-content">
+            <h3 id="signoutModalTitle">Nais mo bang mag-sign out?</h3>
+            <p>Sigurado ka bang nais mong lumabas sa iyong account? Kakailanganin mong mag-log in muli upang ma-access ang system.</p>
+        </div>
+        <div class="agap-signout-actions">
+            <button type="button" class="btn-signout-cancel" id="btnCancelSignout">Manatili (Cancel)</button>
+            <button type="button" class="btn-signout-confirm" id="btnConfirmSignout">Oo, Mag-sign Out</button>
+        </div>
+    </div>
+</div>
