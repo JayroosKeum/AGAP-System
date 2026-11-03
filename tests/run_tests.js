@@ -5,7 +5,9 @@ const suites = [
   { name: 'Paanyaya E2E Test Suite', file: 'backend/tests/test_paanyaya_e2e.php' },
   { name: 'KP Workflow Integration (KP Forms 10-20)', file: 'backend/tests/test_kp_workflow_e2e.php' },
   { name: 'Scheduling & Working Hours Rules', file: 'backend/tests/test_scheduling_fixes.php' },
-  { name: 'CFA & Voluntary Arbitration Workflows', file: 'backend/tests/test_cfa_and_arbitration_workflows_e2e.php' }
+  { name: 'CFA & Voluntary Arbitration Workflows', file: 'backend/tests/test_cfa_and_arbitration_workflows_e2e.php' },
+  { name: 'Lupon Clerk Dashboard & Metrics', file: 'backend/tests/test_clerk_dashboard.php' },
+  { name: 'Lupon Member Dashboard, Duty & Dossier', file: 'backend/tests/test_lupon_dashboard.php' }
 ];
 
 console.log('====================================================================');
@@ -37,3 +39,4 @@ if (failed > 0) {
 } else {
   process.exit(0);
 }
+

@@ -1,0 +1,679 @@
+/* ==========================================================================
+   AGAP - Lupon Member / Conciliator Dashboard Stylesheet
+   Focus: Senior-Friendly UI, High Contrast, Large Touch Targets,
+   Accessible Duty Schedule, Pangkat Case Dossier & Panel Overview
+   ========================================================================== */
+
+/* ── High Contrast Color Tokens for Senior Eyes ── */
+:root {
+    --lupon-ink: #09090b;
+    --lupon-ink-soft: #18181b;
+    --lupon-muted: #475569;
+    --lupon-canvas: #f8fafc;
+    --lupon-border: #cbd5e1;
+    --lupon-border-strong: #94a3b8;
+    --lupon-primary: #0f172a;
+    --lupon-primary-hover: #1e293b;
+    --lupon-accent-blue: #1d4ed8;
+    --lupon-accent-emerald: #15803d;
+    --lupon-accent-amber: #b45309;
+    --lupon-accent-purple: #7e22ce;
+}
+
+/* ── Accessibility & Font Resizer Bar ── */
+.lupon-accessibility-bar {
+    background: #0f172a;
+    color: #ffffff;
+    padding: 10px 18px;
+    border-radius: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.lupon-accessibility-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.lupon-accessibility-info span {
+    color: #94a3b8;
+}
+
+.lupon-accessibility-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-accessibility-pill {
+    background: #1e293b;
+    color: #ffffff;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 40px;
+}
+
+.btn-accessibility-pill:hover,
+.btn-accessibility-pill.active {
+    background: #3b82f6;
+    border-color: #60a5fa;
+    color: #ffffff;
+}
+
+/* Senior Friendly Mode Overrides (Default or when active) */
+body.font-size-large,
+.lupon-senior-view {
+    font-size: 16px;
+}
+
+.lupon-senior-view .page-header h1 {
+    font-size: 2.1rem;
+    font-weight: 800;
+    color: #09090b;
+}
+
+.lupon-senior-view .page-header p {
+    font-size: 1.05rem;
+    color: #334155;
+    font-weight: 500;
+}
+
+/* High Contrast Mode */
+body.high-contrast-mode .lupon-kpi-card,
+body.high-contrast-mode .lupon-panel-card,
+body.high-contrast-mode .lupon-case-card {
+    border: 2px solid #000000 !important;
+    background: #ffffff !important;
+    box-shadow: none !important;
+}
+
+/* ── Senior-Friendly KPI Summary Grid ── */
+.lupon-kpis-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.lupon-kpi-card {
+    background: #ffffff;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 14px;
+    padding: 20px 22px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+    transition: transform 0.16s ease, border-color 0.16s ease;
+}
+
+.lupon-kpi-card:hover {
+    transform: translateY(-2px);
+    border-color: #94a3b8;
+}
+
+.lupon-kpi-icon {
+    width: 54px;
+    height: 54px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.8rem;
+    flex-shrink: 0;
+}
+
+.lupon-kpi-card.kpi-duty .lupon-kpi-icon { background: #dbeafe; color: #1e40af; }
+.lupon-kpi-card.kpi-assigned .lupon-kpi-icon { background: #e0e7ff; color: #3730a3; }
+.lupon-kpi-card.kpi-chair .lupon-kpi-icon { background: #fef3c7; color: #92400e; }
+.lupon-kpi-card.kpi-today .lupon-kpi-icon { background: #dcfce7; color: #15803d; }
+
+.lupon-kpi-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.lupon-kpi-label {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: #475569;
+    margin-bottom: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.lupon-kpi-value {
+    font-size: 2.1rem;
+    font-weight: 900;
+    color: #0f172a;
+    line-height: 1.1;
+}
+
+.lupon-kpi-sub {
+    font-size: 0.84rem;
+    color: #64748b;
+    margin-top: 3px;
+    font-weight: 600;
+}
+
+/* ── Main Two-Column Layout ── */
+.lupon-main-layout {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 24px;
+    margin-bottom: 30px;
+}
+
+@media (max-width: 1080px) {
+    .lupon-main-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ── Panel Cards & Sections ── */
+.lupon-panel-card {
+    background: #ffffff;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 14px;
+    padding: 24px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+    margin-bottom: 24px;
+}
+
+.lupon-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 2px solid #e2e8f0;
+    padding-bottom: 14px;
+    margin-bottom: 18px;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.lupon-panel-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.lupon-panel-title-wrap h2,
+.lupon-panel-title-wrap h3 {
+    margin: 0;
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.lupon-panel-badge {
+    background: #e0e7ff;
+    color: #3730a3;
+    font-size: 0.85rem;
+    font-weight: 800;
+    padding: 4px 12px;
+    border-radius: 9999px;
+    border: 1px solid #c7d2fe;
+}
+
+/* ── Duty Schedule Banner ── */
+.duty-day-banner {
+    background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%);
+    color: #ffffff;
+    border-radius: 12px;
+    padding: 18px 22px;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+    border: 2px solid #3b82f6;
+}
+
+.duty-day-info h3 {
+    margin: 0;
+    font-size: 1.35rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.duty-day-info p {
+    margin: 4px 0 0;
+    color: #bfdbfe;
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+.duty-day-team-pill {
+    background: #3b82f6;
+    color: #ffffff;
+    font-weight: 800;
+    font-size: 0.92rem;
+    padding: 8px 16px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ── Duty Day Hearing Stream (Large Touch Items) ── */
+.duty-hearings-stream {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.duty-hearing-item {
+    background: #f8fafc;
+    border: 2px solid #cbd5e1;
+    border-radius: 12px;
+    padding: 18px 20px;
+    transition: all 0.18s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.duty-hearing-item:hover {
+    border-color: #3b82f6;
+    background: #ffffff;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.06);
+}
+
+.duty-hearing-item.is-today {
+    border-color: #10b981;
+    background: #f0fdf4;
+}
+
+.duty-hearing-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.duty-hearing-time-pill {
+    background: #1e293b;
+    color: #ffffff;
+    font-size: 0.95rem;
+    font-weight: 800;
+    padding: 6px 12px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.duty-hearing-item.is-today .duty-hearing-time-pill {
+    background: #047857;
+}
+
+.duty-hearing-body h4 {
+    margin: 0 0 6px 0;
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.duty-hearing-parties {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 4px;
+}
+
+.duty-hearing-meta {
+    font-size: 0.92rem;
+    color: #475569;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    font-weight: 600;
+}
+
+.duty-hearing-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+    border-top: 1px solid #e2e8f0;
+    padding-top: 12px;
+}
+
+/* ── Large Touch Buttons for Senior Users ── */
+.btn-lupon-touch {
+    background: #0f172a;
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-size: 0.95rem;
+    font-weight: 800;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    transition: background 0.16s ease, transform 0.16s ease;
+    text-decoration: none;
+}
+
+.btn-lupon-touch:hover {
+    background: #1e293b;
+    transform: translateY(-1px);
+    color: #ffffff;
+}
+
+.btn-lupon-touch.btn-dossier {
+    background: #1d4ed8;
+}
+
+.btn-lupon-touch.btn-dossier:hover {
+    background: #1e40af;
+}
+
+.btn-lupon-touch.btn-secondary {
+    background: #e2e8f0;
+    color: #1e293b;
+    border: 1px solid #cbd5e1;
+}
+
+.btn-lupon-touch.btn-secondary:hover {
+    background: #cbd5e1;
+}
+
+/* ── Assigned Pangkat Cases Cards ── */
+.pangkat-cases-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.pangkat-case-card {
+    background: #ffffff;
+    border: 2px solid #cbd5e1;
+    border-radius: 12px;
+    padding: 20px;
+    transition: all 0.18s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.pangkat-case-card:hover {
+    border-color: #0f172a;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.06);
+}
+
+.pangkat-case-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.role-badge {
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 0.88rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.role-badge.role-chairman { background: #fef3c7; color: #92400e; border: 1.5px solid #fde68a; }
+.role-badge.role-secretary { background: #e0e7ff; color: #3730a3; border: 1.5px solid #c7d2fe; }
+.role-badge.role-member { background: #f1f5f9; color: #334155; border: 1.5px solid #cbd5e1; }
+
+.pangkat-case-number {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.pangkat-case-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 2px 0 6px;
+}
+
+.pangkat-case-parties {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.95rem;
+}
+
+.pangkat-case-parties strong {
+    color: #0f172a;
+}
+
+.pangkat-case-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    font-size: 0.88rem;
+    color: #64748b;
+    font-weight: 600;
+}
+
+/* ── Digital Case Dossier Modal (Accessible & Readable) ── */
+.dossier-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.75);
+    backdrop-filter: blur(4px);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.dossier-modal-container {
+    background: #ffffff;
+    border: 2px solid #0f172a;
+    border-radius: 16px;
+    width: 100%;
+    max-width: 820px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.25);
+    overflow: hidden;
+}
+
+.dossier-modal-header {
+    background: #0f172a;
+    color: #ffffff;
+    padding: 20px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.dossier-modal-title {
+    font-size: 1.4rem;
+    font-weight: 800;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.dossier-modal-sub {
+    margin: 4px 0 0;
+    color: #94a3b8;
+    font-size: 0.95rem;
+}
+
+.dossier-close-btn {
+    background: transparent;
+    border: none;
+    color: #cbd5e1;
+    font-size: 2rem;
+    cursor: pointer;
+    line-height: 1;
+    padding: 4px 8px;
+    border-radius: 6px;
+}
+
+.dossier-close-btn:hover {
+    color: #ffffff;
+    background: #334155;
+}
+
+.dossier-modal-body {
+    padding: 24px;
+    overflow-y: auto;
+    font-size: 1rem;
+    color: #1e293b;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* Dossier Sections */
+.dossier-section {
+    background: #f8fafc;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 10px;
+    padding: 18px 20px;
+}
+
+.dossier-section-title {
+    margin: 0 0 12px 0;
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: #0f172a;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 2px solid #e2e8f0;
+    padding-bottom: 8px;
+}
+
+.dossier-parties-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 14px;
+}
+
+.dossier-party-box {
+    background: #ffffff;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 14px;
+}
+
+.dossier-party-type {
+    font-size: 0.82rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 3px 8px;
+    border-radius: 4px;
+    display: inline-block;
+    margin-bottom: 6px;
+}
+
+.dossier-party-type.complainant { background: #dbeafe; color: #1e40af; }
+.dossier-party-type.respondent { background: #fee2e2; color: #991b1b; }
+
+.dossier-party-name {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.dossier-party-contact {
+    margin-top: 6px;
+    font-size: 0.95rem;
+    color: #334155;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.dossier-party-contact a {
+    color: #1d4ed8;
+    text-decoration: underline;
+    font-weight: 700;
+}
+
+.dossier-history-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.dossier-history-entry {
+    background: #ffffff;
+    border-left: 4px solid #3b82f6;
+    padding: 12px 16px;
+    border-radius: 0 8px 8px 0;
+    border-top: 1px solid #e2e8f0;
+    border-right: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.dossier-history-date {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #64748b;
+}
+
+.dossier-history-title {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: #0f172a;
+    margin: 2px 0 4px;
+}
+
+.dossier-history-terms {
+    background: #f1f5f9;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 0.92rem;
+    color: #1e293b;
+    margin-top: 6px;
+}
+
+.dossier-modal-footer {
+    background: #f8fafc;
+    border-top: 1px solid #cbd5e1;
+    padding: 14px 24px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
