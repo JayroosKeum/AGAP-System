@@ -130,8 +130,33 @@
     <div class="dash-portal-grid">
         <!-- LEFT COLUMN: Analytics Insights, Today's Hearings, Paanyaya Invitations -->
         <div class="dash-portal-main">
+            <!-- 1. Today's Hearings Card (Wide layout in main column per A.png) -->
+            <div class="dash-section-card" id="dashboardHearingsPanel">
+                <div class="aside-card-header">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 1.15rem;">⚖️</span>
+                        <div>
+                            <h3 class="aside-card-title" id="hearingsPanelHeading">Today's Hearings</h3>
+                            <p class="aside-card-sub" id="hearingsPanelSub">Scheduled formal sessions</p>
+                        </div>
+                    </div>
+                    <span id="periodHearingCountBadge" class="panel-count-badge" style="display:none;">0</span>
+                </div>
+                <div id="todayHearings" class="dash-hearings-stream" aria-live="polite">
+                    <div style="text-align: center; color: #64748b; padding: 18px; font-size: 0.85rem;">No hearings scheduled for this date.</div>
+                </div>
+                <!-- Pagination -->
+                <div class="dashboard-table-pagination" id="hearingsTablePagination" style="display:none; padding: 8px 16px;">
+                    <div class="pagination-info" id="hearingsPaginationInfo" style="font-size: 11px;">Showing 1-10</div>
+                    <div class="pagination-buttons" id="hearingsPaginationButtons">
+                        <button type="button" class="btn-page-nav" id="hearingsPrevPageBtn" disabled>&laquo;</button>
+                        <button type="button" class="btn-page-nav" id="hearingsNextPageBtn">&raquo;</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- ANALYTICS CARDS (Top Issues, Purok Hotspots, Demographics) -->
-            <div class="dash-analytics-row">
+            <div class="dash-analytics-row" style="margin-top: 20px;">
                 <!-- Most Complained Issues -->
                 <div class="dash-analytics-card">
                     <div class="card-head">
@@ -184,31 +209,6 @@
                     </div>
                     <div id="analyticsAgeDistribution" class="analytics-demographics-wrap">
                         <div class="analytics-loading">Loading age demographics...</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 1. Today's Hearings Card (Wide layout in main column per A.png) -->
-            <div class="dash-section-card" id="dashboardHearingsPanel" style="margin-top: 20px;">
-                <div class="aside-card-header">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="font-size: 1.15rem;">⚖️</span>
-                        <div>
-                            <h3 class="aside-card-title" id="hearingsPanelHeading">Today's Hearings</h3>
-                            <p class="aside-card-sub" id="hearingsPanelSub">Scheduled formal sessions</p>
-                        </div>
-                    </div>
-                    <span id="periodHearingCountBadge" class="panel-count-badge" style="display:none;">0</span>
-                </div>
-                <div id="todayHearings" class="dash-hearings-stream" aria-live="polite">
-                    <div style="text-align: center; color: #64748b; padding: 18px; font-size: 0.85rem;">No hearings scheduled for this date.</div>
-                </div>
-                <!-- Pagination -->
-                <div class="dashboard-table-pagination" id="hearingsTablePagination" style="display:none; padding: 8px 16px;">
-                    <div class="pagination-info" id="hearingsPaginationInfo" style="font-size: 11px;">Showing 1-10</div>
-                    <div class="pagination-buttons" id="hearingsPaginationButtons">
-                        <button type="button" class="btn-page-nav" id="hearingsPrevPageBtn" disabled>&laquo;</button>
-                        <button type="button" class="btn-page-nav" id="hearingsNextPageBtn">&raquo;</button>
                     </div>
                 </div>
             </div>
