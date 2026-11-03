@@ -48,6 +48,8 @@ CREATE TABLE users (
     password_hash VARCHAR(255) NULL,
     role_id INT UNSIGNED NOT NULL,
     status ENUM('Active', 'Inactive') NOT NULL DEFAULT 'Active',
+    activation_token CHAR(64) NULL,
+    activation_expires_at DATETIME NULL,
     email_verification_token CHAR(64) NULL,
     email_verification_expires_at DATETIME NULL,
     notification_audio TINYINT(1) NOT NULL DEFAULT 1,
@@ -58,8 +60,10 @@ CREATE TABLE users (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_users_username (username),
     UNIQUE KEY uq_users_email (email),
+    UNIQUE KEY uq_users_activation_token (activation_token),
     UNIQUE KEY uq_users_email_verification_token (email_verification_token),
     KEY idx_users_role_id (role_id),
+    KEY idx_users_activation_expiry (activation_expires_at),
     KEY idx_users_email_verification_expiry (email_verification_expires_at),
     CONSTRAINT fk_users_role
         FOREIGN KEY (role_id) REFERENCES roles (role_id) ON DELETE RESTRICT
@@ -261,6 +265,7 @@ CREATE TABLE complaint_intake_screenings (
 CREATE TABLE paanyaya_sessions (
     session_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     complaint_id INT UNSIGNED NOT NULL,
+    invitee_name VARCHAR(255) NULL,
     attempt_number TINYINT UNSIGNED NOT NULL DEFAULT 1,
     scheduled_date DATE NOT NULL,
     scheduled_time TIME NOT NULL,
@@ -272,6 +277,7 @@ CREATE TABLE paanyaya_sessions (
     respondent_attended ENUM('Present', 'Late', 'Absent') DEFAULT 'Absent',
     session_outcome ENUM('Settled', 'Absent_Retry', 'Continued_Dialogue', 'Impasse_Escalate', 'Max_Failed_Escalate', 'Dismissed') NULL,
     outcome_notes TEXT NULL,
+    session_remarks TEXT NULL,
     scheduled_by INT UNSIGNED NULL,
     presiding_officer_ids JSON NULL,
     resolved_at DATETIME NULL,
@@ -295,6 +301,7 @@ CREATE TABLE paanyaya_sessions (
 CREATE TABLE IF NOT EXISTS paanyayas (
     paanyaya_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     complaint_id INT UNSIGNED NULL,
+    complainant_name VARCHAR(255) NULL,
     invitee_name VARCHAR(255) NOT NULL,
     scheduled_date DATE NOT NULL,
     scheduled_time TIME NOT NULL,
@@ -365,10 +372,12 @@ CREATE TABLE IF NOT EXISTS paanyaya_minutes (
     complaint_id INT UNSIGNED NOT NULL,
     stage_type ENUM('Paanyaya 1', 'Paanyaya 2') NOT NULL,
     dialogue_date DATETIME NOT NULL,
+    actual_start_time TIME NULL,
     complainant_attended ENUM('Present', 'Absent') DEFAULT 'Present',
     respondent_attended ENUM('Present', 'Absent') DEFAULT 'Present',
     discussion_summary TEXT NOT NULL,
     agreed_terms TEXT NULL,
+    session_remarks TEXT NULL,
     outcome ENUM('Settled', 'No_Agreement', 'Party_Absent', 'Dismissed') NOT NULL,
     complainant_choice ENUM('Request_Paanyaya_2', 'Escalate_Mediation', 'Dismissed', 'None') DEFAULT 'None',
     scanned_minutes_path VARCHAR(255) NULL,
@@ -438,7 +447,7 @@ CREATE TABLE cases (
     -- Assigned immediately after insert by the model so database-generated IDs remain race-safe.
     case_number VARCHAR(50) NULL,
     case_type ENUM('Civil', 'Criminal') NOT NULL,
-    case_status ENUM('Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Dismissed', 'CFA Issued', 'Archived', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT') NOT NULL DEFAULT 'Docketed',
+    case_status ENUM('Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Dismissed', 'CFA Issued', 'Archived', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated') NOT NULL DEFAULT 'Docketed',
     docket_date DATE NOT NULL,
     archived_date DATE NULL,
     mediation_start_date DATE NULL,
@@ -463,12 +472,14 @@ CREATE TABLE case_transmittals (
     case_id INT UNSIGNED NOT NULL,
     transmittal_number VARCHAR(50) NOT NULL UNIQUE,
     settlement_date DATE NOT NULL,
+    resolution_type VARCHAR(100) NULL,
     ten_day_expiry_date DATE NOT NULL,
     target_agency ENUM('MTC', 'DILG', 'Both') NOT NULL DEFAULT 'Both',
     transmittal_date DATE NULL,
     transmitting_officer_id INT UNSIGNED NULL,
     attesting_officer_id INT UNSIGNED NULL,
     status ENUM('Pending', 'Generated', 'Transmitted', 'Acknowledged') NOT NULL DEFAULT 'Pending',
+    transmittal_notified TINYINT(1) NOT NULL DEFAULT 0,
     mtc_received_date DATE NULL,
     mtc_receiver_name VARCHAR(150) NULL,
     dilg_received_date DATE NULL,
@@ -483,7 +494,7 @@ CREATE TABLE case_transmittals (
 CREATE TABLE case_history (
     history_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     case_id INT UNSIGNED NOT NULL,
-    status ENUM('Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Dismissed', 'CFA Issued', 'Archived') NOT NULL,
+    status ENUM('Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Dismissed', 'CFA Issued', 'Archived', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated', 'Breached') NOT NULL,
     remarks TEXT NULL,
     updated_by INT UNSIGNED NULL,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -781,13 +792,14 @@ CREATE TABLE summon_deliveries (
     party_id INT NULL,
     form_type VARCHAR(100) NOT NULL DEFAULT 'Notice of Hearing',
     attempt_number TINYINT UNSIGNED NOT NULL DEFAULT 1,
+    attempt_count TINYINT UNSIGNED NOT NULL DEFAULT 1,
     delivery_status VARCHAR(50) NOT NULL DEFAULT 'Pending',
     service_method VARCHAR(50) NULL,
     attempted_at DATETIME NULL,
     served_at DATETIME NULL,
     served_by INT UNSIGNED NULL,
     served_by_user_id INT NULL,
-    recipient_name VARCHAR(150) NULL,
+    recipient_name VARCHAR(255) NULL,
     relationship VARCHAR(100) NULL,
     unserved_reason VARCHAR(100) NULL,
     failure_notes TEXT NULL,
@@ -1010,11 +1022,12 @@ CREATE TABLE arbitration_records (
 CREATE TABLE cfa_records (
     cfa_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     case_id INT UNSIGNED NOT NULL,
+    cfa_type ENUM('KP Form 20', 'KP Form 20-A', 'KP Form 20-B') NOT NULL DEFAULT 'KP Form 20',
     issuance_date DATE NOT NULL,
     reason TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uq_cfa_records_case_id (case_id),
+    UNIQUE KEY uq_cfa_records_case_type (case_id, cfa_type),
     CONSTRAINT fk_cfa_records_case
         FOREIGN KEY (case_id) REFERENCES cases (case_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
@@ -1180,38 +1193,40 @@ INSERT INTO roles (role_name) VALUES
     ('Summons Server')
 ON DUPLICATE KEY UPDATE role_name = VALUES(role_name);
 
--- Local development accounts only. Every account below uses password: password.
--- They use the normal password-hash login flow; this is not a login bypass.
--- Remove or change these accounts before deploying outside a local/test environment.
-INSERT INTO users (first_name, last_name, username, email, password_hash, role_id, status)
-SELECT 'Barangay', 'Captain', 'admin', 'admin@agap.test', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', role_id, 'Active'
+-- Initial system administrator account with complete profile details.
+-- Default password: password (checked via standard password-hash login flow).
+-- For production environments, immediately update credentials in Account Settings.
+-- Additional test accounts (clerk, lupon members, summons server) can be seeded
+-- on demand via database/seeds/local_test_users.sql.
+INSERT INTO users (
+    first_name,
+    middle_name,
+    last_name,
+    username,
+    email,
+    contact_no,
+    password_hash,
+    role_id,
+    status,
+    notification_audio,
+    notification_inbox,
+    preferred_language
+)
+SELECT
+    'Barangay',
+    'Tumana',
+    'Captain',
+    'admin',
+    'admin@agap.test',
+    '09763198285',
+    '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi',
+    role_id,
+    'Active',
+    1,
+    1,
+    'fil'
 FROM roles WHERE role_name = 'Administrator'
 AND NOT EXISTS (SELECT 1 FROM users WHERE username = 'admin');
-
-INSERT INTO users (first_name, last_name, username, email, password_hash, role_id, status)
-SELECT 'Clerk', 'User', 'clerk', 'clerk@agap.test', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', role_id, 'Active'
-FROM roles WHERE role_name = 'Lupon Clerk'
-AND NOT EXISTS (SELECT 1 FROM users WHERE username = 'clerk');
-
-INSERT INTO users (first_name, last_name, username, email, password_hash, role_id, status)
-SELECT 'Lupon', 'Head', 'luponhead', 'luponhead@agap.test', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', role_id, 'Active'
-FROM roles WHERE role_name = 'Lupon Member'
-AND NOT EXISTS (SELECT 1 FROM users WHERE username = 'luponhead');
-
-INSERT INTO users (first_name, last_name, username, email, password_hash, role_id, status)
-SELECT 'Lupon', 'Secretary', 'luponsecretary', 'luponsecretary@agap.test', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', role_id, 'Active'
-FROM roles WHERE role_name = 'Lupon Member'
-AND NOT EXISTS (SELECT 1 FROM users WHERE username = 'luponsecretary');
-
-INSERT INTO users (first_name, last_name, username, email, password_hash, role_id, status)
-SELECT 'Lupon', 'Member', 'luponmember', 'luponmember@agap.test', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', role_id, 'Active'
-FROM roles WHERE role_name = 'Lupon Member'
-AND NOT EXISTS (SELECT 1 FROM users WHERE username = 'luponmember');
-
-INSERT INTO users (first_name, last_name, username, email, password_hash, role_id, status)
-SELECT 'Summons', 'Server', 'summonsserver', 'summonsserver@agap.test', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', role_id, 'Active'
-FROM roles WHERE role_name = 'Summons Server'
-AND NOT EXISTS (SELECT 1 FROM users WHERE username = 'summonsserver');
 
 INSERT INTO complaint_categories (category_name, tagalog_name) VALUES
     ('Abandonment of a Minor (Arts. 276, 277) / Pagpapabaya sa Bata o Menor de Edad', 'Pagpapabaya sa Bata o Menor de Edad'),
@@ -1268,18 +1283,27 @@ INSERT INTO complaint_categories (category_name, tagalog_name) VALUES
 ON DUPLICATE KEY UPDATE category_name = VALUES(category_name), tagalog_name = VALUES(tagalog_name);
 
 INSERT INTO document_templates (template_name, description) VALUES
-    ('KP Form 7', 'Complaint'),
-    ('KP Form 8', 'Notice of Hearing'),
-    ('KP Form 9', 'Summons'),
-    ('KP Form 10', 'Notice to Constitute the Pangkat Tagapagkasundo'),
-    ('KP Form 14', 'Arbitration Agreement'),
-    ('KP Form 15', 'Arbitration Award'),
-    ('KP Form 16', 'Amicable Settlement'),
+    ('KP Form 7', 'Complaint (Sumbong)'),
+    ('KP Form 8', 'Notice of Hearing (Paabiso ng Pagdinig)'),
+    ('KP Form 9', 'Summons (Patawag)'),
+    ('KP Form 10', 'Notice to Constitute the Pangkat Tagapagkasundo (Paabiso sa Pagbubuo ng Pangkat)'),
+    ('KP Form 11', 'Notice to Chosen Pangkat Members (Patalastas sa Piniling Miyembro ng Pangkat)'),
+    ('KP Form 12', 'Notice of Hearing for Conciliation (Paabiso ng Pagdinig sa Harap ng Pangkat)'),
+    ('KP Form 13', 'Subpoena (Paanyaya sa mga Saksi)'),
+    ('KP Form 14', 'Arbitration Agreement (Kasunduan sa Pag-aarbitro)'),
+    ('KP Form 15', 'Arbitration Award (Gawad ng Arbitrasyon)'),
+    ('KP Form 16', 'Amicable Settlement (Kasunduang Pag-aayos)'),
+    ('KP Form 17', 'Repudiation of Settlement (Pagtatwa ng Kasunduan)'),
     ('KP Form 18', 'Notice of Hearing (Failure to Appear - Complainant)'),
     ('KP Form 19', 'Notice of Hearing (Failure to Appear - Respondent)'),
-    ('KP Form 20', 'Certificate to File Action'),
+    ('KP Form 20', 'Certificate to File Action (Katibayan Upang Makadulog sa Hukuman)'),
+    ('KP Form 20-A', 'Certificate to Bar Action (Katibayan Upang Hadlangan ang Paghahain ng Aksyon)'),
+    ('KP Form 20-B', 'Certificate to Bar Counterclaim (Katibayan Upang Hadlangan ang Ganting-Sakdal)'),
     ('KP Form 21', 'Certificate to Bar Action'),
-    ('KP Form 22', 'Certificate to Bar Action Counterclaim')
+    ('KP Form 22', 'Certificate to Bar Action Counterclaim'),
+    ('PATAWAG (Pre-docketing Paanyaya Form)', 'Official Blank Paanyaya / Pre-docketing Invitation Form before formal case docketing.'),
+    ('Case Profile & Intake Documentation Jacket', 'Official Case Folder Jacket and Profile Record containing parties, timeline, and document inventory.'),
+    ('Minutes of Hearing (Katitikan ng Pagdinig)', 'Official Blank Minutes of Hearing Form for Mediation, Pangkat Conciliation, and Pre-docketing dialogues.')
 ON DUPLICATE KEY UPDATE description = VALUES(description);
 
 INSERT INTO system_settings (setting_key, setting_value, description) VALUES

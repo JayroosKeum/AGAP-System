@@ -39,22 +39,11 @@ undocketed complaints have no stored case type to recover and therefore keep
 the canonical `Civil` default. Do not run this migration if `complaints.case_type`
 already exists; fresh databases get it from `schema.sql`.
 
-## Local test accounts
+## Initial administrator account & local test accounts
 
-`schema.sql` seeds local-only test accounts. Existing local databases can add
-the same accounts with `database/seeds/local_test_users.sql`. Every account
-uses the password `password`:
+`schema.sql` provisions a single canonical Administrator account (`admin`, password: `password`) with complete profile details (full name, phone number, email, and preferences). Change these credentials before deploying to a production environment.
 
-- `admin` — Administrator
-- `clerk` — Lupon Clerk
-- `luponhead`, `luponsecretary`, `luponmember` — three Lupon Members for the
-  Head, Secretary, and Member case-team test
-- `summonsserver` — Summons Server
-
-These known credentials are intentionally for debugging only. Remove or change
-them before deploying to a real environment. They are ordinary active accounts
-whose passwords are checked through the normal login flow; AGAP has no login
-bypass or role-selection shortcut.
+Additional local-development test accounts (`clerk`, `luponhead`, `luponsecretary`, `luponmember`, `summonsserver`) can be seeded on demand with `database/seeds/local_test_users.sql`. All test accounts use the password `password`.
 
 ## User contact-number upgrade
 
