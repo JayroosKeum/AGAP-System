@@ -169,7 +169,7 @@
 
 /* Lists inside panels */
 .dashboard-list { border-top:1px solid #f1f1f3; }
-.dashboard-list-item { align-items:center; border-bottom:1px solid #f1f1f3; display:flex; gap:12px; justify-content:space-between; padding:12px 0; }
+.dashboard-list-item { align-items:center; border-bottom:1px solid #f1f1f3; display: flex; gap:12px; justify-content:space-between; padding:12px 0; }
 .dashboard-list-content { flex:1 1 auto; min-width:0; }
 .dashboard-list-item h3 { color:#27272a; font-size:13.5px; margin:0; line-height:1.35; overflow-wrap:break-word; }
 .dashboard-list-link { color:#18181b; text-decoration:none; font-weight:600; }
@@ -1864,7 +1864,8 @@
 }
 
 .dash-hearings-stream {
-    max-height: 420px;
+    min-height: 520px;
+    max-height: 520px;
     overflow-y: auto;
     padding: 4px 16px;
 }
@@ -2483,3 +2484,4 @@
     color: #2563eb;
     transform: translateX(3px);
 }
+

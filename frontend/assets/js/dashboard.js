@@ -2194,3 +2194,4 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initial load
     fetchDashboardData();
 });
+
