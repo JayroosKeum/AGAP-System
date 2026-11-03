@@ -258,6 +258,180 @@ if ($useDedicatedPdfHtml) {
     $htmlBody = $kpFormService->renderHtml($formCode, $caseId, $hearingId, false);
 }
 
+// Enrich HTML with data-live-field bindings and #kpFormLiveMeta JSON for 2-Panel Split-Screen Live Editor
+function enrichKpFormHtmlForLiveEditor(string $html, array $formData, string $formCode, int $caseId, ?int $hearingId): string {
+    $compList = [];
+    if (!empty($formData['complainants']) && is_array($formData['complainants'])) {
+        foreach ($formData['complainants'] as $c) {
+            $n = is_array($c) ? ($c['full_name'] ?? '') : (string)$c;
+            if (trim($n) !== '') $compList[] = trim($n);
+        }
+    }
+    $respList = [];
+    if (!empty($formData['respondents']) && is_array($formData['respondents'])) {
+        foreach ($formData['respondents'] as $r) {
+            $n = is_array($r) ? ($r['full_name'] ?? '') : (string)$r;
+            if (trim($n) !== '') $respList[] = trim($n);
+        }
+    }
+
+    $compText = implode(', ', $compList);
+    $respText = implode(', ', $respList);
+
+    $primaryLabel = 'Primary Statement / Narrative / Terms';
+    $primaryText = $formData['complaint_details'] ?? '';
+    $secondaryLabel = 'Relief Sought / Additional Details';
+    $secondaryText = $formData['relief_sought'] ?? '';
+
+    if (str_contains($formCode, '16')) {
+        $primaryLabel = 'Amicable Settlement Terms (Kasunduang Pag-aayos)';
+        $primaryText = $formData['agreement_details'] ?? '';
+        $secondaryLabel = 'Presiding Role';
+        $secondaryText = $formData['presiding_role'] ?? 'Punong Barangay';
+    } elseif (str_contains($formCode, '17')) {
+        $primaryLabel = 'Sworn Grounds for Repudiation (Dahilan ng Pagtanggi)';
+        $primaryText = $formData['repudiation_reason'] ?? ($formData['repudiation_grounds'] ?? '');
+        $secondaryLabel = 'Repudiating Party Name (Tumangging Panig)';
+        $secondaryText = $formData['repudiating_party'] ?? ($formData['repudiating_party_name'] ?? $respText);
+    } elseif (str_contains($formCode, '23') || str_contains($formCode, '25')) {
+        $primaryLabel = 'Violated Settlement Obligation / Agreement Details';
+        $primaryText = $formData['obligation_violated'] ?? ($formData['agreement_details'] ?? '');
+        $secondaryLabel = 'Amount or Relief for Execution';
+        $secondaryText = $formData['amount_or_requirement'] ?? ($formData['execution_amount_words'] ?? '');
+    } elseif (str_contains($formCode, '14')) {
+        $primaryLabel = 'Arbitration Agreement Terms (Kasunduan sa Pag-aarbitro)';
+        $primaryText = $formData['agreement_details'] ?? '';
+    } elseif (str_contains($formCode, '15')) {
+        $primaryLabel = 'Arbitration Award Decision (Gawad ng Paghahatol)';
+        $primaryText = $formData['award_details'] ?? ($formData['award_terms'] ?? '');
+    } elseif (str_contains($formCode, '20-A') || str_contains($formCode, '21') || str_contains($formCode, '20-B') || str_contains($formCode, '22')) {
+        $primaryLabel = 'Unjustified Absence Findings / Bar Grounds';
+        $primaryText = $formData['absence_reason'] ?? '';
+    } elseif (str_contains($formCode, '20')) {
+        $primaryLabel = 'Certification to File Action (CFA) Grounds';
+        $primaryText = $formData['cfa_reason'] ?? '';
+    } elseif (str_contains($formCode, '11')) {
+        $secondaryLabel = 'Appointed Pangkat Members';
+        $secondaryText = $formData['chosen_member'] ?? '';
+    }
+
+    // Wrap single-line & multi-line values in <span class="live-doc-field" data-live-field="...">
+    $wrapMap = [
+        'case_number' => (string)($formData['case_number'] ?? ''),
+        'complaint_title' => (string)($formData['complaint_title'] ?? ''),
+        'venue' => (string)($formData['venue'] ?? ''),
+        'official_name' => (string)($formData['official_name'] ?? ($formData['captain_name'] ?? '')),
+        'secretary_name' => (string)($formData['secretary_name'] ?? ''),
+        'primary_body_text' => (string)$primaryText,
+        'secondary_body_text' => (string)$secondaryText,
+    ];
+
+    foreach ($wrapMap as $fieldKey => $rawVal) {
+        $trimmed = trim($rawVal);
+        if ($trimmed === '' || mb_strlen($trimmed) < 2) continue;
+        if (strpos($html, 'data-live-field="' . $fieldKey . '"') !== false) continue;
+
+        $escaped = htmlspecialchars($trimmed, ENT_QUOTES, 'UTF-8');
+        $nl2brEscaped = nl2br($escaped);
+
+        // Try nl2br match first, then single-line escaped match (outside HTML attributes)
+        $candidates = array_unique([$nl2brEscaped, $escaped]);
+        foreach ($candidates as $cand) {
+            if ($cand === '') continue;
+            $pattern = '/(?<![="\'a-zA-Z0-9_-])' . preg_quote($cand, '/') . '(?![a-zA-Z0-9_-])/u';
+            $replaced = preg_replace(
+                $pattern,
+                '<span class="live-doc-field" data-live-field="' . $fieldKey . '">' . $cand . '</span>',
+                $html,
+                2,
+                $count
+            );
+            if ($count > 0 && $replaced !== null) {
+                $html = $replaced;
+                break;
+            }
+        }
+    }
+
+    // Also wrap primary complainant & respondent names
+    if (!empty($compList[0])) {
+        $cEsc = htmlspecialchars($compList[0], ENT_QUOTES, 'UTF-8');
+        $html = preg_replace(
+            '/(?<![="\'a-zA-Z0-9_-])' . preg_quote($cEsc, '/') . '/u',
+            '<span class="live-doc-field" data-live-field="complainants_text">' . $cEsc . '</span>',
+            $html,
+            2
+        ) ?? $html;
+    }
+    if (!empty($respList[0])) {
+        $rEsc = htmlspecialchars($respList[0], ENT_QUOTES, 'UTF-8');
+        $html = preg_replace(
+            '/(?<![="\'a-zA-Z0-9_-])' . preg_quote($rEsc, '/') . '/u',
+            '<span class="live-doc-field" data-live-field="respondents_text">' . $rEsc . '</span>',
+            $html,
+            2
+        ) ?? $html;
+    }
+
+    $metaPayload = [
+        'case_id' => $caseId,
+        'complaint_id' => (int)($formData['complaint_id'] ?? 0),
+        'hearing_id' => $hearingId,
+        'form_code' => $formCode,
+        'fields' => [
+            'case_number' => (string)($formData['case_number'] ?? ''),
+            'complaint_title' => (string)($formData['complaint_title'] ?? ''),
+            'complainants_text' => $compText,
+            'respondents_text' => $respText,
+            'venue' => (string)($formData['venue'] ?? ''),
+            'hearing_date' => !empty($formData['hearing_date']) ? date('Y-m-d\TH:i', strtotime((string)$formData['hearing_date'])) : '',
+            'notice_date' => !empty($formData['notice_date']) ? date('Y-m-d', strtotime((string)$formData['notice_date'])) : date('Y-m-d'),
+            'official_name' => (string)($formData['official_name'] ?? ($formData['captain_name'] ?? '')),
+            'secretary_name' => (string)($formData['secretary_name'] ?? ''),
+            'primary_body_text' => (string)$primaryText,
+            'secondary_body_text' => (string)$secondaryText,
+        ],
+        'labels' => [
+            'primary_body_label' => $primaryLabel,
+            'secondary_body_label' => $secondaryLabel,
+        ]
+    ];
+
+    $injectBlock = '
+<style>
+    .live-doc-field {
+        transition: background-color 0.25s ease, box-shadow 0.25s ease;
+        border-radius: 2px;
+    }
+    .live-doc-field.live-field-flash {
+        background-color: rgba(37, 99, 235, 0.18) !important;
+        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.28);
+    }
+    body.direct-edit-active .preview-sheet *,
+    body.direct-edit-active .page-sheet * {
+        cursor: text;
+    }
+    body.direct-edit-active .live-doc-field {
+        outline: 1px dashed rgba(37, 99, 235, 0.45);
+    }
+    body.direct-edit-active [contenteditable="true"]:focus {
+        outline: 2px solid #2563eb !important;
+        background-color: rgba(239, 246, 255, 0.7) !important;
+    }
+</style>
+<script id="kpFormLiveMeta" type="application/json">' . json_encode($metaPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . '</script>';
+
+    if (stripos($html, '</body>') !== false) {
+        $html = str_ireplace('</body>', $injectBlock . "\n</body>", $html);
+    } else {
+        $html .= $injectBlock;
+    }
+
+    return $html;
+}
+
+$htmlBody = enrichKpFormHtmlForLiveEditor($htmlBody, $formData, $formCode, $caseId, $hearingId);
+
 // Check if this request is loaded in an iframe or wants the bare official form
 $isBare = isset($_GET['bare']) && $_GET['bare'] == '1';
 

@@ -855,7 +855,80 @@ class KpFormService
 
         }
 
-
+        // Apply Live Split-Screen Editor Overrides (if provided via GET/POST)
+        $req = array_merge($_GET ?? [], $_POST ?? []);
+        if (!empty($req['case_number'])) {
+            $formData['case_number'] = trim((string) $req['case_number']);
+        }
+        if (!empty($req['complaint_title'])) {
+            $formData['complaint_title'] = trim((string) $req['complaint_title']);
+        }
+        if (!empty($req['complainants_text'])) {
+            $names = array_filter(array_map('trim', explode(',', (string) $req['complainants_text'])));
+            if (!empty($names)) {
+                $formData['complainants'] = array_map(fn($n) => ['full_name' => $n], $names);
+                $formData['complainant_name'] = $names[0];
+            }
+        }
+        if (!empty($req['respondents_text'])) {
+            $names = array_filter(array_map('trim', explode(',', (string) $req['respondents_text'])));
+            if (!empty($names)) {
+                $formData['respondents'] = array_map(fn($n) => ['full_name' => $n], $names);
+                $formData['respondent_name'] = $names[0];
+                $formData['target_party_name'] = $names[0];
+            }
+        }
+        if (!empty($req['venue'])) {
+            $formData['venue'] = trim((string) $req['venue']);
+        }
+        if (!empty($req['hearing_date'])) {
+            $formData['hearing_date'] = trim((string) $req['hearing_date']);
+        }
+        if (!empty($req['notice_date'])) {
+            $nd = trim((string) $req['notice_date']);
+            $formData['notice_date'] = $nd;
+            $formData['issuance_date'] = $nd;
+            $formData['settlement_date'] = $nd;
+            $formData['award_date'] = $nd;
+            $formData['repudiation_date'] = $nd;
+            $formData['motion_date'] = $nd;
+        }
+        if (!empty($req['official_name'])) {
+            $off = trim((string) $req['official_name']);
+            $formData['official_name'] = $off;
+            $formData['captain_name'] = $off;
+            $formData['pangkat_chairman'] = $off;
+            $formData['pangkat_chairman_name'] = $off;
+        }
+        if (!empty($req['secretary_name'])) {
+            $sec = trim((string) $req['secretary_name']);
+            $formData['secretary_name'] = $sec;
+            $formData['pangkat_secretary'] = $sec;
+            $formData['pangkat_secretary_name'] = $sec;
+        }
+        if (isset($req['primary_body_text']) && trim((string) $req['primary_body_text']) !== '') {
+            $pb = trim((string) $req['primary_body_text']);
+            $formData['complaint_details'] = $pb;
+            $formData['narrative'] = $pb;
+            $formData['agreement_details'] = $pb;
+            $formData['award_details'] = $pb;
+            $formData['award_terms'] = $pb;
+            $formData['repudiation_reason'] = $pb;
+            $formData['repudiation_grounds'] = $pb;
+            $formData['grounds'] = $pb;
+            $formData['cfa_reason'] = $pb;
+            $formData['absence_reason'] = $pb;
+            $formData['obligation_violated'] = $pb;
+        }
+        if (isset($req['secondary_body_text']) && trim((string) $req['secondary_body_text']) !== '') {
+            $sb = trim((string) $req['secondary_body_text']);
+            $formData['relief_sought'] = $sb;
+            $formData['amount_or_requirement'] = $sb;
+            $formData['execution_amount_words'] = $sb;
+            $formData['chosen_member'] = $sb;
+            $formData['repudiating_party'] = $sb;
+            $formData['repudiating_party_name'] = $sb;
+        }
 
         return $formData;
 

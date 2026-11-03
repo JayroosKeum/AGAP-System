@@ -366,14 +366,14 @@ class DocxTemplateService
         if (!empty($replacements)) {
             foreach ($replacements as $k => $v) {
                 $cleanKey = trim((string)$k, '{} ');
-                $val = htmlspecialchars((string)$v);
+                $val = htmlspecialchars((string)$v, ENT_XML1 | ENT_QUOTES, 'UTF-8');
                 $patterns = [
                     '{{' . $cleanKey . '}}',
                     '{{ ' . $cleanKey . ' }}',
                     '{' . $cleanKey . '}',
                     '{ ' . $cleanKey . ' }',
                 ];
-                $xml = str_replace($patterns, $val, $xml);
+                $xml = str_replace($patterns, '[[LIVE_FIELD_START:' . $cleanKey . ']]' . $val . '[[LIVE_FIELD_END]]', $xml);
             }
         }
 
@@ -438,6 +438,30 @@ class DocxTemplateService
             $html .= self::renderDocxParagraphToHtml($node, $xpath);
         }
         $html .= '</div>';
+        $html = preg_replace_callback(
+            '/\[\[LIVE_FIELD_START:([a-zA-Z0-9_]+)\]\](.*?)\[\[LIVE_FIELD_END\]\]/s',
+            function ($m) {
+                return '<span class="live-doc-field" data-live-field="' . htmlspecialchars($m[1], ENT_QUOTES, 'UTF-8') . '">' . nl2br($m[2]) . '</span>';
+            },
+            $html
+        );
+        // Also wrap any static sample values that were not placeholder-tagged
+        if (!empty($replacements)) {
+            foreach ($replacements as $k => $v) {
+                $cleanKey = trim((string)$k, '{} ');
+                $strVal = trim((string)$v);
+                if ($strVal === '' || mb_strlen($strVal) < 4) continue;
+                if (strpos($html, 'data-live-field="' . $cleanKey . '"') === false) {
+                    $escapedVal = htmlspecialchars($strVal, ENT_QUOTES, 'UTF-8');
+                    $html = preg_replace(
+                        '/(?<!data-live-field="' . preg_quote($cleanKey, '/') . '">)' . preg_quote($escapedVal, '/') . '/u',
+                        '<span class="live-doc-field" data-live-field="' . htmlspecialchars($cleanKey, ENT_QUOTES, 'UTF-8') . '">' . $escapedVal . '</span>',
+                        $html,
+                        1
+                    );
+                }
+            }
+        }
         return $html;
     }
 
@@ -1267,32 +1291,35 @@ class DocxTemplateService
             'execution_amount_words' => 'Dalawampu’t Limang Libong Piso',
             'execution_amount_numbers' => '25,000.00',
             'agreement_details' => 'Bayaran nang buo ang halagang napagkasunduan sa loob ng itinakdang panahon.',
-        ], $sampleData);
+            'punong_barangay' => $branding['officers']['punong_barangay']['name'] ?? 'HON. AKIKO LYNNE CENTENO',
+            'officer_title' => $branding['officers']['punong_barangay']['title'] ?? 'Punong Barangay / Lupon Chairman',
+            'barangay_secretary' => $branding['officers']['barangay_secretary']['name'] ?? 'MARIA CRISTINA SANTOS',
+            'lupon_chairperson' => $branding['officers']['punong_barangay']['name'] ?? 'HON. AKIKO LYNNE CENTENO',
+            'pangkat_chairperson' => $branding['officers']['pangkat_secretary']['name'] ?? 'ANTONIO V. REYES',
+        ], $templateConfig['sample_data'] ?? [], $sampleData);
 
-        // Header HTML
-        $headerHtml = '';
-        if ($headerMode !== 'keep') {
-            $tumanaLogo = self::getLogoDataUri($branding['logo_primary'] ?? 'tumana_logo.jpg', 'tumana_logo.jpg');
-            $marikinaLogo = self::getLogoDataUri($branding['logo_secondary'] ?? 'marikina_logo.jpg', 'marikina_logo.jpg');
+        // Header HTML (always rendered so split-screen live editor can toggle header_mode in real time)
+        $tumanaLogo = self::getLogoDataUri($branding['logo_primary'] ?? 'tumana_logo.jpg', 'tumana_logo.jpg');
+        $marikinaLogo = self::getLogoDataUri($branding['logo_secondary'] ?? 'marikina_logo.jpg', 'marikina_logo.jpg');
+        $headerDisplay = ($headerMode === 'keep' || $headerMode === 'keep_docx_header') ? 'display: none;' : '';
 
-            $headerHtml = '
-            <header class="preview-header">
-                <div class="preview-header-layout">
-                    ' . ($tumanaLogo ? '<img src="' . $tumanaLogo . '" class="preview-logo preview-logo-left" alt="Barangay Tumana Seal">' : '') . '
-                    <div class="preview-header-text">
-                        <div class="rep-title">' . htmlspecialchars($branding['republic_heading'] ?? 'REPUBLIKA NG PILIPINAS') . '</div>
-                        <div class="prov-title">' . htmlspecialchars($branding['province_name'] ?? 'LALAWIGAN NG RIZAL') . '</div>
-                        <div class="city-title">' . htmlspecialchars($branding['city_name'] ?? 'LUNGSOD NG MARIKINA') . '</div>
-                        <div class="brgy-title">' . htmlspecialchars($branding['barangay_name'] ?? 'BARANGAY TUMANA') . '</div>
-                    </div>
-                    ' . ($marikinaLogo ? '<img src="' . $marikinaLogo . '" class="preview-logo preview-logo-right" alt="City of Marikina Seal">' : '') . '
+        $headerHtml = '
+        <header class="preview-header" id="livePreviewHeader" style="' . $headerDisplay . '">
+            <div class="preview-header-layout">
+                ' . ($tumanaLogo ? '<img src="' . $tumanaLogo . '" class="preview-logo preview-logo-left" alt="Barangay Tumana Seal">' : '') . '
+                <div class="preview-header-text">
+                    <div class="rep-title" data-live-field="republic_heading">' . htmlspecialchars($branding['republic_heading'] ?? 'REPUBLIKA NG PILIPINAS') . '</div>
+                    <div class="prov-title" data-live-field="province_name">' . htmlspecialchars($branding['province_name'] ?? 'LALAWIGAN NG RIZAL') . '</div>
+                    <div class="city-title" data-live-field="city_name">' . htmlspecialchars($branding['city_name'] ?? 'LUNGSOD NG MARIKINA') . '</div>
+                    <div class="brgy-title" data-live-field="barangay_name">' . htmlspecialchars($branding['barangay_name'] ?? 'BARANGAY TUMANA') . '</div>
                 </div>
-                <div class="preview-header-contact">
-                    ' . htmlspecialchars($branding['address'] ?? '') . ' &bull; Tel: ' . htmlspecialchars($branding['phone'] ?? '') . ' &bull; Email: ' . htmlspecialchars($branding['email'] ?? '') . '
-                </div>
-                <div class="preview-header-divider"></div>
-            </header>';
-        }
+                ' . ($marikinaLogo ? '<img src="' . $marikinaLogo . '" class="preview-logo preview-logo-right" alt="City of Marikina Seal">' : '') . '
+            </div>
+            <div class="preview-header-contact" data-live-field="header_contact">
+                ' . htmlspecialchars($branding['address'] ?? '') . ' &bull; Tel: ' . htmlspecialchars($branding['phone'] ?? '') . ' &bull; Email: ' . htmlspecialchars($branding['email'] ?? '') . '
+            </div>
+            <div class="preview-header-divider"></div>
+        </header>';
 
         // Body content: Follow uploaded template format if available
         $bodyHtml = '';
@@ -1537,19 +1564,55 @@ class DocxTemplateService
 </style>
 </head>
 <body>
-<div class="page-sheet">
+<style>
+    .live-doc-field {
+        transition: background-color 0.25s ease, box-shadow 0.25s ease;
+        border-radius: 2px;
+    }
+    .live-doc-field.live-field-flash {
+        background-color: rgba(37, 99, 235, 0.16) !important;
+        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.22);
+    }
+    body.direct-edit-active .live-doc-field,
+    body.direct-edit-active .docx-rendered-body p,
+    body.direct-edit-active .narrative-body,
+    body.direct-edit-active .narrative-quote {
+        outline: 1px dashed rgba(37, 99, 235, 0.35);
+        cursor: text;
+    }
+    body.direct-edit-active .live-doc-field:focus,
+    body.direct-edit-active [contenteditable="true"]:focus {
+        outline: 2px solid #2563eb;
+        background-color: rgba(239, 246, 255, 0.7);
+    }
+</style>
+<div class="page-sheet" id="livePageSheet" data-paper-size="' . htmlspecialchars($paperSize) . '" style="width: ' . ($paperSize === 'A4' ? '210mm' : '215.9mm') . '; max-width: 100%; min-height: ' . ($paperSize === 'A4' ? '297mm' : '355.6mm') . '; padding: ' . $marginTop . 'mm ' . $marginRight . 'mm ' . $marginBottom . 'mm ' . $marginLeft . 'mm;">
     <div class="preview-watermark">AGAP MASTER TEMPLATE</div>
     ' . $headerHtml . '
+    <div id="liveDocumentBodyContainer">
     ' . $bodyHtml . '
+    </div>
 </div>
+<script id="docxLiveInitialData" type="application/json">' . json_encode([
+    'form_key' => $formKey,
+    'data' => $data,
+    'paper' => [
+        'paper_size' => $paperSize,
+        'margin_top' => $marginTop,
+        'margin_bottom' => $marginBottom,
+        'margin_left' => $marginLeft,
+        'margin_right' => $marginRight,
+    ],
+    'header_mode' => $headerMode,
+], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . '</script>
 </body>
 </html>';
     }
 
     private static function getFormBodyHtml(string $formKey, array $data, array $branding): string
     {
-        $officer = $branding['officers']['punong_barangay']['name'] ?? 'HON. AKIKO LYNNE CENTENO';
-        $officerTitle = $branding['officers']['punong_barangay']['title'] ?? 'Punong Barangay / Lupon Chairman';
+        $officer = $data['punong_barangay'] ?? ($branding['officers']['punong_barangay']['name'] ?? 'HON. AKIKO LYNNE CENTENO');
+        $officerTitle = $data['officer_title'] ?? ($branding['officers']['punong_barangay']['title'] ?? 'Punong Barangay / Lupon Chairman');
 
         switch ($formKey) {
             case 'kp_7':
@@ -1559,30 +1622,30 @@ class DocxTemplateService
                     <h3 class="form-title">REKLAMO (COMPLAINT)</h3>
                 </div>
                 <table class="case-meta-table">
-                    <tr><td style="width: 170px;"><strong>Usaping Barangay Blg.:</strong></td><td>' . htmlspecialchars($data['case_number']) . '</td></tr>
-                    <tr><td><strong>Ukol sa:</strong></td><td>' . htmlspecialchars($data['complaint_title']) . '</td></tr>
+                    <tr><td style="width: 170px;"><strong>Usaping Barangay Blg.:</strong></td><td><span class="live-doc-field" data-live-field="case_number">' . htmlspecialchars($data['case_number']) . '</span></td></tr>
+                    <tr><td><strong>Ukol sa:</strong></td><td><span class="live-doc-field" data-live-field="complaint_title">' . htmlspecialchars($data['complaint_title']) . '</span></td></tr>
                 </table>
                 <div class="parties-block">
                     <div class="party-title">MGA MAY-SUMBONG (Complainants):</div>
-                    <div class="party-names">' . htmlspecialchars($data['complainants']) . '</div>
+                    <div class="party-names"><span class="live-doc-field" data-live-field="complainants">' . htmlspecialchars($data['complainants']) . '</span></div>
                     <div class="vs-divider">— laban kay / kina —</div>
                     <div class="party-title">MGA IPINAGSUSUMBONG (Respondents):</div>
-                    <div class="party-names">' . htmlspecialchars($data['respondents']) . '</div>
+                    <div class="party-names"><span class="live-doc-field" data-live-field="respondents">' . htmlspecialchars($data['respondents']) . '</span></div>
                 </div>
                 <div class="narrative-body">
                     AKO/KAMI ay pormal na nagrereklamo laban sa ipinagsusumbong na binanggit sa itaas dahil sa paglabag sa aking/aming karapatan at kapakanan gaya ng sumusunod:
                 </div>
                 <div class="narrative-quote">
-                    ' . nl2br(htmlspecialchars($data['complaint_details'])) . '
+                    <span class="live-doc-field" data-live-field="complaint_details">' . nl2br(htmlspecialchars($data['complaint_details'])) . '</span>
                 </div>
                 <div class="narrative-body">
                     DAHIL DITO, magalang kong/naming hinihiling ang sumusunod na lunas o kapasyahan:
                 </div>
                 <div class="narrative-quote">
-                    ' . nl2br(htmlspecialchars($data['relief_prayed_for'])) . '
+                    <span class="live-doc-field" data-live-field="relief_prayed_for">' . nl2br(htmlspecialchars($data['relief_prayed_for'])) . '</span>
                 </div>
                 <div class="date-statement">
-                    Isinagawa ngayong ika-<strong>' . htmlspecialchars($data['date_today']) . '</strong> dito sa Barangay Tumana, Marikina City.
+                    Isinagawa ngayong ika-<strong><span class="live-doc-field" data-live-field="date_today">' . htmlspecialchars($data['date_today']) . '</span></strong> dito sa Barangay Tumana, Marikina City.
                 </div>
                 <div class="signature-row">
                     <div class="signature-box">
@@ -1590,12 +1653,12 @@ class DocxTemplateService
                     </div>
                 </div>
                 <div style="margin-top: 30px; font-size: 11pt;">
-                    Tinatanggap at pormal na inilagak ngayong ika-<strong>' . htmlspecialchars($data['docket_date']) . '</strong>.
+                    Tinatanggap at pormal na inilagak ngayong ika-<strong><span class="live-doc-field" data-live-field="docket_date">' . htmlspecialchars($data['docket_date']) . '</span></strong>.
                 </div>
                 <div class="signature-row">
                     <div class="signature-box">
-                        <div class="sig-line">' . htmlspecialchars($officer) . '</div>
-                        <div class="sig-title">' . htmlspecialchars($officerTitle) . '</div>
+                        <div class="sig-line"><span class="live-doc-field" data-live-field="punong_barangay">' . htmlspecialchars($officer) . '</span></div>
+                        <div class="sig-title"><span class="live-doc-field" data-live-field="officer_title">' . htmlspecialchars($officerTitle) . '</span></div>
                     </div>
                 </div>';
 
@@ -1607,27 +1670,27 @@ class DocxTemplateService
                     <div class="form-subtitle">Para sa May-sumbong ukol sa Pamamagitan</div>
                 </div>
                 <table class="case-meta-table">
-                    <tr><td style="width: 170px;"><strong>Usaping Barangay Blg.:</strong></td><td>' . htmlspecialchars($data['case_number']) . '</td></tr>
-                    <tr><td><strong>Ukol sa:</strong></td><td>' . htmlspecialchars($data['complaint_title']) . '</td></tr>
+                    <tr><td style="width: 170px;"><strong>Usaping Barangay Blg.:</strong></td><td><span class="live-doc-field" data-live-field="case_number">' . htmlspecialchars($data['case_number']) . '</span></td></tr>
+                    <tr><td><strong>Ukol sa:</strong></td><td><span class="live-doc-field" data-live-field="complaint_title">' . htmlspecialchars($data['complaint_title']) . '</span></td></tr>
                 </table>
                 <div class="parties-block">
                     <div class="party-title">PARA KAY / KINA:</div>
-                    <div class="party-names">' . htmlspecialchars($data['complainants']) . '</div>
+                    <div class="party-names"><span class="live-doc-field" data-live-field="complainants">' . htmlspecialchars($data['complainants']) . '</span></div>
                     <div style="font-size: 10pt; color: #475569; padding-left: 20px;">(Mga May-Sumbong)</div>
                 </div>
                 <div class="narrative-body">
-                    KAYO AY DITO PINAGBIBIGAYANG-ALAM na magsadya sa harap ng Punong Barangay / Lupong Tagapamayapa sa <strong>' . htmlspecialchars($data['hearing_date']) . '</strong> sa ganap na <strong>' . htmlspecialchars($data['hearing_time']) . '</strong> sa <strong>' . htmlspecialchars($data['venue']) . '</strong> para sa pagdinig ng inyong sumbong.
+                    KAYO AY DITO PINAGBIBIGAYANG-ALAM na magsadya sa harap ng Punong Barangay / Lupong Tagapamayapa sa <strong><span class="live-doc-field" data-live-field="hearing_date">' . htmlspecialchars($data['hearing_date']) . '</span></strong> sa ganap na <strong><span class="live-doc-field" data-live-field="hearing_time">' . htmlspecialchars($data['hearing_time']) . '</span></strong> sa <strong><span class="live-doc-field" data-live-field="venue">' . htmlspecialchars($data['venue']) . '</span></strong> para sa pagdinig ng inyong sumbong.
                 </div>
                 <div class="narrative-body">
                     Ang inyong di-pagharap nang walang sapat na dahilan ay maaaring maging sanhi ng pagpapawalang-bisa sa inyong reklamo o pagpataw ng mga karampatang parusa alinsunod sa batas.
                 </div>
                 <div class="date-statement">
-                    Iginawad ngayong ika-<strong>' . htmlspecialchars($data['date_today']) . '</strong> sa Barangay Tumana, Lungsod ng Marikina.
+                    Iginawad ngayong ika-<strong><span class="live-doc-field" data-live-field="date_today">' . htmlspecialchars($data['date_today']) . '</span></strong> sa Barangay Tumana, Lungsod ng Marikina.
                 </div>
                 <div class="signature-row">
                     <div class="signature-box">
-                        <div class="sig-line">' . htmlspecialchars($officer) . '</div>
-                        <div class="sig-title">' . htmlspecialchars($officerTitle) . '</div>
+                        <div class="sig-line"><span class="live-doc-field" data-live-field="punong_barangay">' . htmlspecialchars($officer) . '</span></div>
+                        <div class="sig-title"><span class="live-doc-field" data-live-field="officer_title">' . htmlspecialchars($officerTitle) . '</span></div>
                     </div>
                 </div>';
 
@@ -1639,27 +1702,27 @@ class DocxTemplateService
                     <div class="form-subtitle">Patawag sa Inirereklamo ukol sa Pamamagitan</div>
                 </div>
                 <table class="case-meta-table">
-                    <tr><td style="width: 170px;"><strong>Usaping Barangay Blg.:</strong></td><td>' . htmlspecialchars($data['case_number']) . '</td></tr>
-                    <tr><td><strong>Ukol sa:</strong></td><td>' . htmlspecialchars($data['complaint_title']) . '</td></tr>
+                    <tr><td style="width: 170px;"><strong>Usaping Barangay Blg.:</strong></td><td><span class="live-doc-field" data-live-field="case_number">' . htmlspecialchars($data['case_number']) . '</span></td></tr>
+                    <tr><td><strong>Ukol sa:</strong></td><td><span class="live-doc-field" data-live-field="complaint_title">' . htmlspecialchars($data['complaint_title']) . '</span></td></tr>
                 </table>
                 <div class="parties-block">
                     <div class="party-title">PARA KAY / KINA:</div>
-                    <div class="party-names">' . htmlspecialchars($data['respondents']) . '</div>
+                    <div class="party-names"><span class="live-doc-field" data-live-field="respondents">' . htmlspecialchars($data['respondents']) . '</span></div>
                     <div style="font-size: 10pt; color: #475569; padding-left: 20px;">(Mga Ipinagsusumbong)</div>
                 </div>
                 <div class="narrative-body">
-                    KAYO AY DITO INIUTOS NA PERSONAL NA HUMARAP sa akin kasama ang inyong mga testigo sa <strong>' . htmlspecialchars($data['hearing_date']) . '</strong> sa ganap na <strong>' . htmlspecialchars($data['hearing_time']) . '</strong> sa <strong>' . htmlspecialchars($data['venue']) . '</strong> upang sagutin ang sumbong na ginawa laban sa inyo na nakalakip dito.
+                    KAYO AY DITO INIUTOS NA PERSONAL NA HUMARAP sa akin kasama ang inyong mga testigo sa <strong><span class="live-doc-field" data-live-field="hearing_date">' . htmlspecialchars($data['hearing_date']) . '</span></strong> sa ganap na <strong><span class="live-doc-field" data-live-field="hearing_time">' . htmlspecialchars($data['hearing_time']) . '</span></strong> sa <strong><span class="live-doc-field" data-live-field="venue">' . htmlspecialchars($data['venue']) . '</span></strong> upang sagutin ang sumbong na ginawa laban sa inyo na nakalakip dito.
                 </div>
                 <div class="narrative-body">
                     KAYO AY PINAPAG-IINGAT na ang inyong pagtanggi o kabiguang humarap nang walang sapat na dahilan ay magdudulot ng paghadlang sa paghahain ng ganting-sakdal at maaaring idulog sa hukuman para sa direct contempt of court.
                 </div>
                 <div class="date-statement">
-                    Ipinag-utos ngayong ika-<strong>' . htmlspecialchars($data['date_today']) . '</strong> sa Barangay Tumana, Lungsod ng Marikina.
+                    Ipinag-utos ngayong ika-<strong><span class="live-doc-field" data-live-field="date_today">' . htmlspecialchars($data['date_today']) . '</span></strong> sa Barangay Tumana, Lungsod ng Marikina.
                 </div>
                 <div class="signature-row">
                     <div class="signature-box">
-                        <div class="sig-line">' . htmlspecialchars($officer) . '</div>
-                        <div class="sig-title">' . htmlspecialchars($officerTitle) . '</div>
+                        <div class="sig-line"><span class="live-doc-field" data-live-field="punong_barangay">' . htmlspecialchars($officer) . '</span></div>
+                        <div class="sig-title"><span class="live-doc-field" data-live-field="officer_title">' . htmlspecialchars($officerTitle) . '</span></div>
                     </div>
                 </div>';
 
@@ -1671,26 +1734,26 @@ class DocxTemplateService
                     <div class="form-subtitle">(Certification to Bar Counterclaim)</div>
                 </div>
                 <table class="case-meta-table">
-                    <tr><td style="width: 170px;"><strong>Usaping Barangay Blg.:</strong></td><td>' . htmlspecialchars($data['case_number']) . '</td></tr>
-                    <tr><td><strong>Ukol sa:</strong></td><td>' . htmlspecialchars($data['complaint_title']) . '</td></tr>
+                    <tr><td style="width: 170px;"><strong>Usaping Barangay Blg.:</strong></td><td><span class="live-doc-field" data-live-field="case_number">' . htmlspecialchars($data['case_number']) . '</span></td></tr>
+                    <tr><td><strong>Ukol sa:</strong></td><td><span class="live-doc-field" data-live-field="complaint_title">' . htmlspecialchars($data['complaint_title']) . '</span></td></tr>
                 </table>
                 <div class="parties-block">
-                    <div><strong>May-sumbong:</strong> ' . htmlspecialchars($data['complainants']) . '</div>
-                    <div style="margin-top: 4px;"><strong>Ipinagsusumbong:</strong> ' . htmlspecialchars($data['respondents']) . '</div>
+                    <div><strong>May-sumbong:</strong> <span class="live-doc-field" data-live-field="complainants">' . htmlspecialchars($data['complainants']) . '</span></div>
+                    <div style="margin-top: 4px;"><strong>Ipinagsusumbong:</strong> <span class="live-doc-field" data-live-field="respondents">' . htmlspecialchars($data['respondents']) . '</span></div>
                 </div>
                 <div class="narrative-body">
-                    ITO AY PAGPAPATUNAY na matapos maisilbi ang nararapat na patawag at paabiso, ang ipinagsusumbong na si/sina <strong>' . htmlspecialchars($data['respondents']) . '</strong> ay tahasang BUMIGONG HUMARAP nang walang anumang makatwirang dahilan sa itinakdang pagdinig sa harap ng Punong Barangay / Pangkat noong <strong>' . htmlspecialchars($data['hearing_date']) . '</strong>.
+                    ITO AY PAGPAPATUNAY na matapos maisilbi ang nararapat na patawag at paabiso, ang ipinagsusumbong na si/sina <strong><span class="live-doc-field" data-live-field="respondents">' . htmlspecialchars($data['respondents']) . '</span></strong> ay tahasang BUMIGONG HUMARAP nang walang anumang makatwirang dahilan sa itinakdang pagdinig sa harap ng Punong Barangay / Pangkat noong <strong><span class="live-doc-field" data-live-field="hearing_date">' . htmlspecialchars($data['hearing_date']) . '</span></strong>.
                 </div>
                 <div class="narrative-body">
                     Dahil dito, alinsunod sa Seksiyon 412 ng Kodigo ng Pamahalaang Lokal (Batas Pambansa Blg. 7160), ang nabanggit na ipinagsusumbong ay HINAHADLANGAN NA MAGHAIN NG ANUMANG GANTING-HABLA o sakdal sa hukuman o tanggapan ng pamahalaan ukol sa usaping ito.
                 </div>
                 <div class="date-statement">
-                    Inilagda ngayong ika-<strong>' . htmlspecialchars($data['date_today']) . '</strong> sa Barangay Tumana, Marikina City.
+                    Inilagda ngayong ika-<strong><span class="live-doc-field" data-live-field="date_today">' . htmlspecialchars($data['date_today']) . '</span></strong> sa Barangay Tumana, Marikina City.
                 </div>
                 <div class="signature-row">
                     <div class="signature-box">
-                        <div class="sig-line">' . htmlspecialchars($officer) . '</div>
-                        <div class="sig-title">' . htmlspecialchars($officerTitle) . '</div>
+                        <div class="sig-line"><span class="live-doc-field" data-live-field="punong_barangay">' . htmlspecialchars($officer) . '</span></div>
+                        <div class="sig-title"><span class="live-doc-field" data-live-field="officer_title">' . htmlspecialchars($officerTitle) . '</span></div>
                     </div>
                 </div>';
 
@@ -1702,21 +1765,21 @@ class DocxTemplateService
                     <div class="form-subtitle">Ukol sa Mosyon sa Pagpapatupad / Notice of Hearing re: Motion for Execution</div>
                 </div>
                 <table class="case-meta-table">
-                    <tr><td style="width: 170px;"><strong>Usaping Barangay Blg.:</strong></td><td>' . htmlspecialchars($data['case_number']) . '</td></tr>
-                    <tr><td><strong>Para sa:</strong></td><td>' . htmlspecialchars($data['complaint_title']) . '</td></tr>
+                    <tr><td style="width: 170px;"><strong>Usaping Barangay Blg.:</strong></td><td><span class="live-doc-field" data-live-field="case_number">' . htmlspecialchars($data['case_number']) . '</span></td></tr>
+                    <tr><td><strong>Para sa:</strong></td><td><span class="live-doc-field" data-live-field="complaint_title">' . htmlspecialchars($data['complaint_title']) . '</span></td></tr>
                 </table>
                 <div class="parties-block">
                     <div><strong>Naghain ng Mosyon:</strong> ' . htmlspecialchars($data['moving_party_name']) . '</div>
                     <div style="margin-top: 4px;"><strong>PARA KAY:</strong> ' . htmlspecialchars($data['opposing_party_name']) . '</div>
                 </div>
                 <div class="narrative-body">
-                    IPINAGBIBIGAY-ALAM na ang Mosyon para sa Pagpapatupad sa usaping ito ay diringgin sa <strong>' . htmlspecialchars($data['hearing_date']) . '</strong> sa ganap na <strong>' . htmlspecialchars($data['hearing_time']) . '</strong> sa <strong>' . htmlspecialchars($data['venue']) . '</strong>. Ikaw/kayo ay hinihiling na humarap upang maipahayag ang anumang pagtutol o paliwanag ukol sa nasabing mosyon.
+                    IPINAGBIBIGAY-ALAM na ang Mosyon para sa Pagpapatupad sa usaping ito ay diringgin sa <strong><span class="live-doc-field" data-live-field="hearing_date">' . htmlspecialchars($data['hearing_date']) . '</span></strong> sa ganap na <strong><span class="live-doc-field" data-live-field="hearing_time">' . htmlspecialchars($data['hearing_time']) . '</span></strong> sa <strong><span class="live-doc-field" data-live-field="venue">' . htmlspecialchars($data['venue']) . '</span></strong>. Ikaw/kayo ay hinihiling na humarap upang maipahayag ang anumang pagtutol o paliwanag ukol sa nasabing mosyon.
                 </div>
                 <div class="narrative-body">
                     Kung hindi makakaharap nang walang sapat na dahilan, ang pagdinig ay maaaring ituloy at ang mosyon ay pagpasiyahan batay sa mga rekord at ebidensiyang nasa harap ng Lupon/Pangkat.
                 </div>
-                <div class="date-statement">Ipinagkaloob ngayong <strong>' . htmlspecialchars($data['date_today']) . '</strong> sa Barangay Tumana, Lungsod ng Marikina.</div>
-                <div class="signature-row"><div class="signature-box"><div class="sig-line">' . htmlspecialchars($officer) . '</div><div class="sig-title">' . htmlspecialchars($officerTitle) . '</div></div></div>';
+                <div class="date-statement">Ipinagkaloob ngayong <strong><span class="live-doc-field" data-live-field="date_today">' . htmlspecialchars($data['date_today']) . '</span></strong> sa Barangay Tumana, Lungsod ng Marikina.</div>
+                <div class="signature-row"><div class="signature-box"><div class="sig-line"><span class="live-doc-field" data-live-field="punong_barangay">' . htmlspecialchars($officer) . '</span></div><div class="sig-title"><span class="live-doc-field" data-live-field="officer_title">' . htmlspecialchars($officerTitle) . '</span></div></div></div>';
 
             case 'kp_25':
                 return '
@@ -1726,16 +1789,16 @@ class DocxTemplateService
                     <div class="form-subtitle">Notice for Execution</div>
                 </div>
                 <table class="case-meta-table">
-                    <tr><td style="width: 170px;"><strong>Usaping Barangay Blg.:</strong></td><td>' . htmlspecialchars($data['case_number']) . '</td></tr>
-                    <tr><td><strong>Para sa:</strong></td><td>' . htmlspecialchars($data['complaint_title']) . '</td></tr>
+                    <tr><td style="width: 170px;"><strong>Usaping Barangay Blg.:</strong></td><td><span class="live-doc-field" data-live-field="case_number">' . htmlspecialchars($data['case_number']) . '</span></td></tr>
+                    <tr><td><strong>Para sa:</strong></td><td><span class="live-doc-field" data-live-field="complaint_title">' . htmlspecialchars($data['complaint_title']) . '</span></td></tr>
                 </table>
-                <div class="parties-block"><div><strong>May-sumbong:</strong> ' . htmlspecialchars($data['complainants']) . '</div><div style="margin-top: 4px;"><strong>Ipinagsusumbong:</strong> ' . htmlspecialchars($data['respondents']) . '</div></div>
+                <div class="parties-block"><div><strong>May-sumbong:</strong> <span class="live-doc-field" data-live-field="complainants">' . htmlspecialchars($data['complainants']) . '</span></div><div style="margin-top: 4px;"><strong>Ipinagsusumbong:</strong> <span class="live-doc-field" data-live-field="respondents">' . htmlspecialchars($data['respondents']) . '</span></div></div>
                 <div class="narrative-body">SAPAGKAT, ang mga panig ay lumagda sa isang matiwasay na pag-aayos o tumanggap ng gawad ng paghahatol noong <strong>' . htmlspecialchars($data['settlement_date']) . '</strong>, at ang nasabing pag-aayos o hatol ay naging pinal at maaari nang ipatupad.</div>
                 <div class="narrative-body">SAPAGKAT, ang natalong panig na si <strong>' . htmlspecialchars($data['defeated_party_name']) . '</strong> ay hindi tumupad nang kusang-loob sa kasunduan o hatol sa loob ng panahong itinakda.</div>
                 <div class="narrative-body">DAHIL DITO, ipinag-uutos ang pagpapatupad ng kasunduan o hatol, kabilang ang halagang <strong>' . htmlspecialchars($data['execution_amount_words']) . ' (₱' . htmlspecialchars($data['execution_amount_numbers']) . ')</strong> at ang sumusunod na mga kondisyon:</div>
-                <div class="narrative-quote">' . nl2br(htmlspecialchars($data['agreement_details'])) . '</div>
-                <div class="date-statement">Nilagdaan ngayong <strong>' . htmlspecialchars($data['date_today']) . '</strong> sa Barangay Tumana, Lungsod ng Marikina.</div>
-                <div class="signature-row"><div class="signature-box"><div class="sig-line">' . htmlspecialchars($officer) . '</div><div class="sig-title">' . htmlspecialchars($officerTitle) . '</div></div></div>';
+                <div class="narrative-quote"><span class="live-doc-field" data-live-field="agreement_details">' . nl2br(htmlspecialchars($data['agreement_details'])) . '</span></div>
+                <div class="date-statement">Nilagdaan ngayong <strong><span class="live-doc-field" data-live-field="date_today">' . htmlspecialchars($data['date_today']) . '</span></strong> sa Barangay Tumana, Lungsod ng Marikina.</div>
+                <div class="signature-row"><div class="signature-box"><div class="sig-line"><span class="live-doc-field" data-live-field="punong_barangay">' . htmlspecialchars($officer) . '</span></div><div class="sig-title"><span class="live-doc-field" data-live-field="officer_title">' . htmlspecialchars($officerTitle) . '</span></div></div></div>';
 
             case 'kp_17':
                 $repParty = htmlspecialchars($data['repudiating_party'] ?? $data['repudiating_party_name'] ?? $data['target_party_name'] ?? 'May-Kinalaman');
@@ -1752,15 +1815,15 @@ class DocxTemplateService
                 <table style="width: 100%; border-collapse: collapse; margin: 10px 0 18px 0;">
                     <tr>
                         <td style="width: 50%; vertical-align: top; padding: 4px 8px;">
-                            <div style="font-weight: bold; text-decoration: underline;">' . htmlspecialchars($data['complainants']) . '</div>
+                            <div style="font-weight: bold; text-decoration: underline;"><span class="live-doc-field" data-live-field="complainants">' . htmlspecialchars($data['complainants']) . '</span></div>
                             <div style="font-size: 9.5pt; color: #475569;">(Mga) Nagrereklamo</div>
                             <div style="text-align: center; margin: 10px 0; font-style: italic; font-size: 10pt;">-laban kay/kina-</div>
-                            <div style="font-weight: bold; text-decoration: underline;">' . htmlspecialchars($data['respondents']) . '</div>
+                            <div style="font-weight: bold; text-decoration: underline;"><span class="live-doc-field" data-live-field="respondents">' . htmlspecialchars($data['respondents']) . '</span></div>
                             <div style="font-size: 9.5pt; color: #475569;">(Mga) Inirereklamo</div>
                         </td>
                         <td style="width: 50%; vertical-align: top; padding: 4px 8px;">
-                            <div style="margin-bottom: 8px;"><strong>Usapin ng Barangay Blg.:</strong> ' . htmlspecialchars($data['case_number']) . '</div>
-                            <div><strong>Para sa:</strong> ' . htmlspecialchars($data['complaint_title']) . '</div>
+                            <div style="margin-bottom: 8px;"><strong>Usapin ng Barangay Blg.:</strong> <span class="live-doc-field" data-live-field="case_number">' . htmlspecialchars($data['case_number']) . '</span></div>
+                            <div><strong>Para sa:</strong> <span class="live-doc-field" data-live-field="complaint_title">' . htmlspecialchars($data['complaint_title']) . '</span></div>
                         </td>
                     </tr>
                 </table>
@@ -1777,7 +1840,7 @@ class DocxTemplateService
                     <div>(' . ($isIntimidation ? ' ✓ ' : ' &nbsp; ') . ') <strong>Pananakot</strong>: ' . ($isIntimidation ? $repReason : '_____________________') . '</div>
                 </div>
                 <div style="margin: 20px 0 25px 0; font-size: 11pt;">
-                    Ngayong ika-<strong>' . htmlspecialchars($data['date_today']) . '</strong>.
+                    Ngayong ika-<strong><span class="live-doc-field" data-live-field="date_today">' . htmlspecialchars($data['date_today']) . '</span></strong>.
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-top: 30px;">
                     <div style="min-width: 220px; text-align: center;">
@@ -1807,15 +1870,15 @@ class DocxTemplateService
                 <table style="width: 100%; border-collapse: collapse; margin: 10px 0 18px 0;">
                     <tr>
                         <td style="width: 50%; vertical-align: top; padding: 4px 8px;">
-                            <div style="font-weight: bold; text-decoration: underline;">' . htmlspecialchars($data['complainants']) . '</div>
+                            <div style="font-weight: bold; text-decoration: underline;"><span class="live-doc-field" data-live-field="complainants">' . htmlspecialchars($data['complainants']) . '</span></div>
                             <div style="font-size: 9.5pt; color: #475569;">(Mga) Nagrereklamo</div>
                             <div style="text-align: center; margin: 10px 0; font-style: italic; font-size: 10pt;">-laban kay/kina-</div>
-                            <div style="font-weight: bold; text-decoration: underline;">' . htmlspecialchars($data['respondents']) . '</div>
+                            <div style="font-weight: bold; text-decoration: underline;"><span class="live-doc-field" data-live-field="respondents">' . htmlspecialchars($data['respondents']) . '</span></div>
                             <div style="font-size: 9.5pt; color: #475569;">(Mga) Inirereklamo</div>
                         </td>
                         <td style="width: 50%; vertical-align: top; padding: 4px 8px;">
-                            <div style="margin-bottom: 8px;"><strong>Usapin ng Barangay Blg.:</strong> ' . htmlspecialchars($data['case_number']) . '</div>
-                            <div><strong>Para sa:</strong> ' . htmlspecialchars($data['complaint_title']) . '</div>
+                            <div style="margin-bottom: 8px;"><strong>Usapin ng Barangay Blg.:</strong> <span class="live-doc-field" data-live-field="case_number">' . htmlspecialchars($data['case_number']) . '</span></div>
+                            <div><strong>Para sa:</strong> <span class="live-doc-field" data-live-field="complaint_title">' . htmlspecialchars($data['complaint_title']) . '</span></div>
                         </td>
                     </tr>
                 </table>
@@ -1839,7 +1902,7 @@ class DocxTemplateService
                 </ol>
                 ') . '
                 <div style="margin: 20px 0 35px 0; font-size: 11pt;">
-                    Ngayong ika-<strong>' . htmlspecialchars($data['date_today']) . '</strong>.
+                    Ngayong ika-<strong><span class="live-doc-field" data-live-field="date_today">' . htmlspecialchars($data['date_today']) . '</span></strong>.
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-top: 40px;">
                     <div style="min-width: 220px; text-align: center;">
@@ -1860,27 +1923,27 @@ class DocxTemplateService
                     <h3 class="form-title">PRE-DOCKETING INVITATION (PAANYAYA)</h3>
                 </div>
                 <table class="case-meta-table">
-                    <tr><td style="width: 170px;"><strong>Talaan Blg.:</strong></td><td>' . htmlspecialchars($data['case_number']) . '</td></tr>
-                    <tr><td><strong>Ukol sa:</strong></td><td>' . htmlspecialchars($data['complaint_title']) . '</td></tr>
+                    <tr><td style="width: 170px;"><strong>Talaan Blg.:</strong></td><td><span class="live-doc-field" data-live-field="case_number">' . htmlspecialchars($data['case_number']) . '</span></td></tr>
+                    <tr><td><strong>Ukol sa:</strong></td><td><span class="live-doc-field" data-live-field="complaint_title">' . htmlspecialchars($data['complaint_title']) . '</span></td></tr>
                 </table>
                 <div class="parties-block">
                     <div class="party-title">PARA KAY:</div>
-                    <div class="party-names">' . htmlspecialchars($data['respondents']) . '</div>
-                    <div style="font-size: 10pt; color: #475569; padding-left: 20px;">Nakatira sa: ' . htmlspecialchars($data['respondent_address']) . '</div>
+                    <div class="party-names"><span class="live-doc-field" data-live-field="respondents">' . htmlspecialchars($data['respondents']) . '</span></div>
+                    <div style="font-size: 10pt; color: #475569; padding-left: 20px;">Nakatira sa: <span class="live-doc-field" data-live-field="respondent_address">' . htmlspecialchars($data['respondent_address']) . '</span></div>
                 </div>
                 <div class="narrative-body">
-                    IKAW AY MALUGOD NA INAANYAYAHAN na magtungo sa Tanggapan ng Punong Barangay / Lupong Tagapamayapa sa <strong>' . htmlspecialchars($data['hearing_date']) . '</strong> sa ganap na <strong>' . htmlspecialchars($data['hearing_time']) . '</strong> sa <strong>' . htmlspecialchars($data['venue']) . '</strong> para sa isang paunang pag-uusap at paglilinaw ukol sa sumbong na inihain ni/nina <strong>' . htmlspecialchars($data['complainants']) . '</strong>.
+                    IKAW AY MALUGOD NA INAANYAYAHAN na magtungo sa Tanggapan ng Punong Barangay / Lupong Tagapamayapa sa <strong><span class="live-doc-field" data-live-field="hearing_date">' . htmlspecialchars($data['hearing_date']) . '</span></strong> sa ganap na <strong><span class="live-doc-field" data-live-field="hearing_time">' . htmlspecialchars($data['hearing_time']) . '</span></strong> sa <strong><span class="live-doc-field" data-live-field="venue">' . htmlspecialchars($data['venue']) . '</span></strong> para sa isang paunang pag-uusap at paglilinaw ukol sa sumbong na inihain ni/nina <strong><span class="live-doc-field" data-live-field="complainants">' . htmlspecialchars($data['complainants']) . '</span></strong>.
                 </div>
                 <div class="narrative-body">
                     Ang paanyayang ito ay bahagi ng paunang hakbang sa ilalim ng Katarungang Pambarangay upang magkaroon ng maayos at mapayapang pag-uusap bago pormal na ipasok sa talaan ng Lupon.
                 </div>
                 <div class="date-statement">
-                    Ipinagkaloob ngayong ika-<strong>' . htmlspecialchars($data['date_today']) . '</strong> sa Barangay Tumana, Lungsod ng Marikina.
+                    Ipinagkaloob ngayong ika-<strong><span class="live-doc-field" data-live-field="date_today">' . htmlspecialchars($data['date_today']) . '</span></strong> sa Barangay Tumana, Lungsod ng Marikina.
                 </div>
                 <div class="signature-row">
                     <div class="signature-box">
-                        <div class="sig-line">' . htmlspecialchars($officer) . '</div>
-                        <div class="sig-title">' . htmlspecialchars($officerTitle) . '</div>
+                        <div class="sig-line"><span class="live-doc-field" data-live-field="punong_barangay">' . htmlspecialchars($officer) . '</span></div>
+                        <div class="sig-title"><span class="live-doc-field" data-live-field="officer_title">' . htmlspecialchars($officerTitle) . '</span></div>
                     </div>
                 </div>';
 
@@ -1891,23 +1954,23 @@ class DocxTemplateService
                     <h3 class="form-title">' . htmlspecialchars($data['complaint_title'] ?? 'KATARUNGANG PAMBARANGAY FORM') . '</h3>
                 </div>
                 <table class="case-meta-table">
-                    <tr><td style="width: 170px;"><strong>Usaping Barangay Blg.:</strong></td><td>' . htmlspecialchars($data['case_number']) . '</td></tr>
-                    <tr><td><strong>Ukol sa:</strong></td><td>' . htmlspecialchars($data['complaint_title']) . '</td></tr>
+                    <tr><td style="width: 170px;"><strong>Usaping Barangay Blg.:</strong></td><td><span class="live-doc-field" data-live-field="case_number">' . htmlspecialchars($data['case_number']) . '</span></td></tr>
+                    <tr><td><strong>Ukol sa:</strong></td><td><span class="live-doc-field" data-live-field="complaint_title">' . htmlspecialchars($data['complaint_title']) . '</span></td></tr>
                 </table>
                 <div class="parties-block">
-                    <div><strong>May-sumbong:</strong> ' . htmlspecialchars($data['complainants']) . '</div>
-                    <div style="margin-top: 4px;"><strong>Ipinagsusumbong:</strong> ' . htmlspecialchars($data['respondents']) . '</div>
+                    <div><strong>May-sumbong:</strong> <span class="live-doc-field" data-live-field="complainants">' . htmlspecialchars($data['complainants']) . '</span></div>
+                    <div style="margin-top: 4px;"><strong>Ipinagsusumbong:</strong> <span class="live-doc-field" data-live-field="respondents">' . htmlspecialchars($data['respondents']) . '</span></div>
                 </div>
                 <div class="narrative-body">
-                    ' . nl2br(htmlspecialchars($data['complaint_details'])) . '
+                    <span class="live-doc-field" data-live-field="complaint_details">' . nl2br(htmlspecialchars($data['complaint_details'])) . '</span>
                 </div>
                 <div class="date-statement">
-                    Isinagawa ngayong ika-<strong>' . htmlspecialchars($data['date_today']) . '</strong> sa Barangay Tumana, Lungsod ng Marikina.
+                    Isinagawa ngayong ika-<strong><span class="live-doc-field" data-live-field="date_today">' . htmlspecialchars($data['date_today']) . '</span></strong> sa Barangay Tumana, Lungsod ng Marikina.
                 </div>
                 <div class="signature-row">
                     <div class="signature-box">
-                        <div class="sig-line">' . htmlspecialchars($officer) . '</div>
-                        <div class="sig-title">' . htmlspecialchars($officerTitle) . '</div>
+                        <div class="sig-line"><span class="live-doc-field" data-live-field="punong_barangay">' . htmlspecialchars($officer) . '</span></div>
+                        <div class="sig-title"><span class="live-doc-field" data-live-field="officer_title">' . htmlspecialchars($officerTitle) . '</span></div>
                     </div>
                 </div>';
         }

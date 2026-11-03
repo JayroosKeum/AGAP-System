@@ -222,9 +222,9 @@ function renderKPFormsGrid() {
                 </div>
 
                 <div class="template-card-actions">
-                    <button type="button" class="btn-card-edit" onclick="openEditModal('${escapeHtml(item.key)}')">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
-                        Edit template
+                    <button type="button" class="btn-card-edit" onclick="openEditModal('${escapeHtml(item.key)}', false, 'live-fields')">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="3" x2="12" y2="21"></line></svg>
+                        Live Split Editor
                     </button>
                     <button type="button" class="btn-card-preview" onclick="openPreviewModal('${escapeHtml(item.key)}', '${escapeJsString(item.title)}')">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
@@ -546,23 +546,24 @@ async function handleSavePrintSettings(event) {
 // =========================================================================
 // 6. Template Configuration & Inspection Modal
 // =========================================================================
+let splitPreviewZoomLevel = 1.0;
+
 function initModalHandlers() {
     // Open Upload Modal Button
     const btnOpenUpload = document.getElementById('btnOpenUploadModal');
     if (btnOpenUpload) {
         btnOpenUpload.addEventListener('click', () => {
-            openEditModal(allKPForms[0]?.key || 'kp_7', true);
+            openEditModal(allKPForms[0]?.key || 'kp_7', true, 'template-setup');
         });
     }
 
-    // Dropzone Click
+    // Dropzone Click & Drag-and-Drop
     const dropzone = document.getElementById('templateDropzone');
     const fileInput = document.getElementById('modalFileInput');
     if (dropzone && fileInput) {
         dropzone.addEventListener('click', () => fileInput.click());
         fileInput.addEventListener('change', handleModalFileSelected);
 
-        // Drag & Drop
         dropzone.addEventListener('dragover', (e) => {
             e.preventDefault();
             dropzone.classList.add('dragover');
@@ -580,23 +581,66 @@ function initModalHandlers() {
         });
     }
 
-    // Modal Form Key Change
+    // Modal Form Key Change -> Immediately update 2-Panel Split Editor & Live Preview
     const selectKey = document.getElementById('modalFormKeySelect');
     if (selectKey) {
         selectKey.addEventListener('change', (e) => {
             activeEditFormKey = e.target.value;
-            loadTemplateInspection(activeEditFormKey);
+            openEditModal(activeEditFormKey, true);
         });
     }
 
-    // Paper Mode Toggle
+    // Real-Time DOM Sync on all [data-live-input] fields
+    const liveInputs = document.querySelectorAll('[data-live-input]');
+    liveInputs.forEach(input => {
+        input.addEventListener('input', () => {
+            const fieldKey = input.getAttribute('data-live-input');
+            syncFieldToPreviewIframe(fieldKey, input.value, true);
+            updateSplitDownloadUrls();
+        });
+    });
+
+    // Header Mode Radio Change -> Immediately update live paper header in iframe
+    const headerRadios = document.querySelectorAll('input[name="modal_header_mode"]');
+    headerRadios.forEach(r => {
+        r.addEventListener('change', () => {
+            syncHeaderModeToPreviewIframe(r.value);
+            updateSplitDownloadUrls();
+        });
+    });
+
+    // Paper Mode & Custom Paper Dimensions Change -> Immediately resize live paper sheet in iframe
     const paperRadios = document.querySelectorAll('input[name="modal_paper_mode"]');
     paperRadios.forEach(r => {
         r.addEventListener('change', () => {
             const row = document.getElementById('customPaperInputsRow');
             if (row) row.style.display = (r.value === 'custom') ? 'grid' : 'none';
+            syncPaperSettingsToPreviewIframe();
+            updateSplitDownloadUrls();
         });
     });
+
+    ['modal_custom_paper_size', 'modal_custom_margin_top', 'modal_custom_margin_bottom', 'modal_custom_margin_left'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', () => {
+                syncPaperSettingsToPreviewIframe();
+                updateSplitDownloadUrls();
+            });
+            el.addEventListener('change', () => {
+                syncPaperSettingsToPreviewIframe();
+                updateSplitDownloadUrls();
+            });
+        }
+    });
+
+    // Signatory Profile Change -> Immediately update live signatory name & title
+    const sigSelect = document.getElementById('modal_signatory_profile');
+    if (sigSelect) {
+        sigSelect.addEventListener('change', () => {
+            syncSignatoryProfileToLiveFields(sigSelect.value);
+        });
+    }
 
     // Save Template Config Button
     const btnSave = document.getElementById('btnSaveTemplateConfig');
@@ -609,19 +653,16 @@ function initModalHandlers() {
     if (btnDownload) {
         btnDownload.addEventListener('click', () => {
             if (activeEditFormKey) {
-                window.location.href = `../../../backend/api/documents/templates.php?action=download_docx&form_key=${encodeURIComponent(activeEditFormKey)}`;
+                window.location.href = buildLiveDocxUrl('download_docx');
             }
         });
     }
 
-    // Modal Preview DOCX Button
-    const btnPrev = document.getElementById('btnModalPreviewDocx');
-    if (btnPrev) {
-        btnPrev.addEventListener('click', () => {
-            if (activeEditFormKey) {
-                const item = allKPForms.find(f => f.key === activeEditFormKey);
-                openPreviewModal(activeEditFormKey, item?.title || 'Preview');
-            }
+    // When #previewIframe finishes loading, hydrate Left Panel inputs from iframe #docxLiveInitialData
+    const previewIframe = document.getElementById('previewIframe');
+    if (previewIframe) {
+        previewIframe.addEventListener('load', () => {
+            hydrateSplitInputsFromIframe();
         });
     }
 
@@ -629,7 +670,6 @@ function initModalHandlers() {
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             closeEditModal();
-            closePreviewModal();
         }
     });
 
@@ -639,33 +679,329 @@ function initModalHandlers() {
             if (e.target === editOverlay) closeEditModal();
         });
     }
+}
 
-    const prevOverlay = document.getElementById('templatePreviewModal');
-    if (prevOverlay) {
-        prevOverlay.addEventListener('click', (e) => {
-            if (e.target === prevOverlay) closePreviewModal();
-        });
+function switchSplitEditorTab(tabName) {
+    document.querySelectorAll('.split-left-tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-split-tab') === tabName);
+    });
+    const fieldsPanel = document.getElementById('splitTabPanelLiveFields');
+    const setupPanel = document.getElementById('splitTabPanelTemplateSetup');
+    if (fieldsPanel) fieldsPanel.style.display = (tabName === 'live-fields') ? 'block' : 'none';
+    if (setupPanel) setupPanel.style.display = (tabName === 'template-setup') ? 'block' : 'none';
+}
+window.switchSplitEditorTab = switchSplitEditorTab;
+
+function toggleSplitEditorLayout() {
+    const ws = document.getElementById('splitEditorWorkspace');
+    const lbl = document.getElementById('splitLayoutToggleLabel');
+    if (!ws) return;
+    const isPreviewOnly = ws.classList.toggle('preview-only-mode');
+    if (lbl) {
+        lbl.textContent = isPreviewOnly ? 'Show 50/50 Split Editor' : '50/50 Split Active';
+    }
+}
+window.toggleSplitEditorLayout = toggleSplitEditorLayout;
+
+function collectLiveFieldValues() {
+    const out = {};
+    document.querySelectorAll('[data-live-input]').forEach(el => {
+        const key = el.getAttribute('data-live-input');
+        if (key && el.value.trim() !== '') {
+            out[key] = el.value.trim();
+        }
+    });
+    return out;
+}
+
+function buildLiveDocxUrl(action = 'preview') {
+    const params = new URLSearchParams();
+    params.set('action', action);
+    params.set('form_key', activeEditFormKey || 'kp_7');
+
+    const headerMode = document.querySelector('input[name="modal_header_mode"]:checked')?.value || 'shared';
+    params.set('header_mode', headerMode);
+
+    const paperMode = document.querySelector('input[name="modal_paper_mode"]:checked')?.value || 'shared';
+    if (paperMode === 'custom') {
+        params.set('paper_size', document.getElementById('modal_custom_paper_size')?.value || 'Legal');
+        params.set('margin_top', document.getElementById('modal_custom_margin_top')?.value || '15');
+        params.set('margin_bottom', document.getElementById('modal_custom_margin_bottom')?.value || '15');
+        params.set('margin_left', document.getElementById('modal_custom_margin_left')?.value || '18');
+        params.set('margin_right', document.getElementById('modal_custom_margin_left')?.value || '18');
+    }
+
+    const fields = collectLiveFieldValues();
+    Object.entries(fields).forEach(([k, v]) => {
+        params.set(k, v);
+    });
+
+    return `../../../backend/api/documents/templates.php?${params.toString()}`;
+}
+
+function updateSplitDownloadUrls() {
+    const dlBtn = document.getElementById('previewDownloadDocxBtn');
+    if (dlBtn && activeEditFormKey) {
+        dlBtn.href = buildLiveDocxUrl('download_docx');
     }
 }
 
-async function openEditModal(formKey, isUploadTrigger = false) {
+function hydrateSplitInputsFromIframe() {
+    const iframe = document.getElementById('previewIframe');
+    if (!iframe) return;
+    try {
+        const doc = iframe.contentDocument || iframe.contentWindow?.document;
+        if (!doc) return;
+
+        const metaScript = doc.getElementById('docxLiveInitialData');
+        if (metaScript) {
+            const parsed = JSON.parse(metaScript.textContent || '{}');
+            const d = parsed.data || {};
+            document.querySelectorAll('[data-live-input]').forEach(input => {
+                const key = input.getAttribute('data-live-input');
+                if (key && d[key] !== undefined) {
+                    input.value = d[key];
+                }
+            });
+
+            if (parsed.paper?.paper_size) {
+                updatePaperBadgeText(parsed.paper.paper_size);
+            }
+        }
+
+        // Attach reverse two-way sync if user edits directly on the paper
+        doc.querySelectorAll('.live-doc-field').forEach(span => {
+            span.addEventListener('input', () => {
+                const key = span.getAttribute('data-live-field');
+                if (!key) return;
+                const input = document.querySelector(`[data-live-input="${key}"]`);
+                if (input && document.activeElement !== input) {
+                    input.value = span.innerText;
+                    updateSplitDownloadUrls();
+                }
+            });
+        });
+
+        const chkDirect = document.getElementById('chkDirectPaperEdit');
+        if (chkDirect && chkDirect.checked) {
+            toggleDirectPaperEdit(true);
+        }
+        updateSplitDownloadUrls();
+    } catch (err) {
+        console.warn('Could not hydrate split editor inputs from iframe:', err);
+    }
+}
+
+function syncFieldToPreviewIframe(fieldKey, value, flashHighlight = false) {
+    const iframe = document.getElementById('previewIframe');
+    if (!iframe) return;
+    try {
+        const doc = iframe.contentDocument || iframe.contentWindow?.document;
+        if (!doc) return;
+
+        // Also map complaint_details <-> agreement_details so KP Form 16/25/etc. update seamlessly
+        const targetKeys = [fieldKey];
+        if (fieldKey === 'complaint_details') targetKeys.push('agreement_details');
+
+        targetKeys.forEach(k => {
+            const nodes = doc.querySelectorAll(`[data-live-field="${k}"]`);
+            nodes.forEach(node => {
+                if (node.tagName === 'TEXTAREA' || node.tagName === 'INPUT') {
+                    node.value = value;
+                } else {
+                    node.innerHTML = escapeHtml(value).replace(/\n/g, '<br>');
+                }
+                if (flashHighlight) {
+                    node.classList.remove('live-field-flash');
+                    void node.offsetWidth;
+                    node.classList.add('live-field-flash');
+                    clearTimeout(node._flashTimer);
+                    node._flashTimer = setTimeout(() => node.classList.remove('live-field-flash'), 550);
+                }
+            });
+        });
+    } catch (err) {
+        console.warn('Live DOM sync error:', err);
+    }
+}
+
+function syncHeaderModeToPreviewIframe(mode) {
+    const iframe = document.getElementById('previewIframe');
+    if (!iframe) return;
+    try {
+        const doc = iframe.contentDocument || iframe.contentWindow?.document;
+        if (!doc) return;
+        const headerEl = doc.getElementById('livePreviewHeader') || doc.querySelector('.preview-header');
+        if (headerEl) {
+            headerEl.style.display = (mode === 'keep') ? 'none' : '';
+        }
+    } catch (err) {
+        console.warn('Header mode sync error:', err);
+    }
+}
+
+function syncPaperSettingsToPreviewIframe() {
+    const iframe = document.getElementById('previewIframe');
+    if (!iframe) return;
+    try {
+        const doc = iframe.contentDocument || iframe.contentWindow?.document;
+        if (!doc) return;
+
+        const paperMode = document.querySelector('input[name="modal_paper_mode"]:checked')?.value || 'shared';
+        let paperSize = currentPaper?.paper_size || 'Legal';
+        let mTop = currentPaper?.margin_top ?? 15;
+        let mBottom = currentPaper?.margin_bottom ?? 15;
+        let mLeft = currentPaper?.margin_left ?? 18;
+        let mRight = currentPaper?.margin_right ?? 18;
+
+        if (paperMode === 'custom') {
+            paperSize = document.getElementById('modal_custom_paper_size')?.value || 'Legal';
+            mTop = parseInt(document.getElementById('modal_custom_margin_top')?.value || '15', 10);
+            mBottom = parseInt(document.getElementById('modal_custom_margin_bottom')?.value || '15', 10);
+            mLeft = parseInt(document.getElementById('modal_custom_margin_left')?.value || '18', 10);
+            mRight = mLeft;
+        }
+
+        const sheet = doc.getElementById('livePageSheet') || doc.querySelector('.page-sheet');
+        if (sheet) {
+            sheet.setAttribute('data-paper-size', paperSize);
+            sheet.style.width = (paperSize === 'A4') ? '210mm' : '215.9mm';
+            sheet.style.minHeight = (paperSize === 'A4') ? '297mm' : '355.6mm';
+            sheet.style.padding = `${mTop}mm ${mRight}mm ${mBottom}mm ${mLeft}mm`;
+        }
+        updatePaperBadgeText(paperSize);
+    } catch (err) {
+        console.warn('Paper settings sync error:', err);
+    }
+}
+
+function updatePaperBadgeText(paperSize) {
+    const badge = document.getElementById('livePreviewPaperBadge');
+    if (badge) {
+        badge.innerHTML = (paperSize === 'A4')
+            ? 'A4 PAPER (8.27" &times; 11.69" / 210&times;297mm)'
+            : 'LEGAL PAPER (8.5" &times; 14" / 216&times;356mm)';
+    }
+}
+
+function syncSignatoryProfileToLiveFields(profile) {
+    const officers = currentBranding?.officers || {};
+    let name = officers.punong_barangay?.name || 'HON. AKIKO LYNNE CENTENO';
+    let title = officers.punong_barangay?.title || 'Punong Barangay / Lupon Chairman';
+
+    if (profile === 'lupon_secretary') {
+        name = officers.lupon_secretary?.name || officers.barangay_secretary?.name || 'MARIA CRISTINA SANTOS';
+        title = officers.lupon_secretary?.title || 'Kalihim ng Lupon';
+    } else if (profile === 'pangkat_chairman') {
+        name = officers.pangkat_chairman?.name || 'JUAN C. DELA CRUZ';
+        title = officers.pangkat_chairman?.title || 'Tagapangulo ng Pangkat';
+    } else if (profile === 'pangkat_secretary') {
+        name = officers.pangkat_secretary?.name || 'ANTONIO V. REYES';
+        title = officers.pangkat_secretary?.title || 'Kalihim ng Pangkat';
+    }
+
+    setVal('liveInput_punong_barangay', name);
+    setVal('liveInput_officer_title', title);
+    syncFieldToPreviewIframe('punong_barangay', name, true);
+    syncFieldToPreviewIframe('officer_title', title, true);
+    updateSplitDownloadUrls();
+}
+
+function toggleDirectPaperEdit(enabled) {
+    const iframe = document.getElementById('previewIframe');
+    if (!iframe) return;
+    try {
+        const doc = iframe.contentDocument || iframe.contentWindow?.document;
+        if (!doc || !doc.body) return;
+        doc.body.classList.toggle('direct-edit-active', !!enabled);
+        const editableTargets = doc.querySelectorAll('.live-doc-field, .docx-rendered-body p, .narrative-body, .narrative-quote');
+        editableTargets.forEach(el => {
+            if (enabled) {
+                el.setAttribute('contenteditable', 'true');
+            } else {
+                el.removeAttribute('contenteditable');
+            }
+        });
+    } catch (err) {
+        console.warn('Direct paper edit toggle error:', err);
+    }
+}
+window.toggleDirectPaperEdit = toggleDirectPaperEdit;
+
+function zoomSplitPreview(action) {
+    const iframe = document.getElementById('previewIframe');
+    if (!iframe) return;
+    try {
+        const doc = iframe.contentDocument || iframe.contentWindow?.document;
+        if (!doc) return;
+        const sheet = doc.getElementById('livePageSheet') || doc.querySelector('.page-sheet');
+        if (!sheet) return;
+
+        if (action === '+') {
+            splitPreviewZoomLevel = Math.min(1.5, +(splitPreviewZoomLevel + 0.1).toFixed(2));
+        } else if (action === '-') {
+            splitPreviewZoomLevel = Math.max(0.55, +(splitPreviewZoomLevel - 0.1).toFixed(2));
+        } else if (action === 'fit') {
+            const wrap = document.getElementById('splitPreviewCanvasWrap');
+            const availW = (wrap ? wrap.clientWidth : 640) - 48;
+            splitPreviewZoomLevel = Math.min(1.0, Math.max(0.6, +(availW / 816).toFixed(2)));
+        } else {
+            splitPreviewZoomLevel = 1.0;
+        }
+
+        sheet.style.transformOrigin = 'top center';
+        sheet.style.transform = `scale(${splitPreviewZoomLevel})`;
+        sheet.style.transition = 'transform 0.15s ease';
+
+        const resetBtn = document.getElementById('splitZoomResetBtn');
+        if (resetBtn) resetBtn.textContent = `${Math.round(splitPreviewZoomLevel * 100)}%`;
+    } catch (err) {
+        console.warn('Zoom split preview error:', err);
+    }
+}
+window.zoomSplitPreview = zoomSplitPreview;
+
+function refreshSplitLivePreviewIframe() {
+    const iframe = document.getElementById('previewIframe');
+    if (iframe && activeEditFormKey) {
+        iframe.src = buildLiveDocxUrl('preview');
+    }
+}
+window.refreshSplitLivePreviewIframe = refreshSplitLivePreviewIframe;
+
+function resetLiveEditorFieldsToDefault() {
+    if (!activeEditFormKey) return;
+    const iframe = document.getElementById('previewIframe');
+    if (iframe) {
+        iframe.src = `../../../backend/api/documents/templates.php?action=preview&form_key=${encodeURIComponent(activeEditFormKey)}`;
+    }
+}
+window.resetLiveEditorFieldsToDefault = resetLiveEditorFieldsToDefault;
+
+async function openEditModal(formKey, isUploadTrigger = false, defaultTab = 'live-fields') {
     activeEditFormKey = formKey;
     const item = allKPForms.find(f => f.key === formKey);
 
     const titleEl = document.getElementById('editModalTitle');
     const subEl = document.getElementById('editModalSubtitle');
-    const selectGroup = document.getElementById('modalFormSelectGroup');
     const selectKey = document.getElementById('modalFormKeySelect');
 
     if (titleEl) {
-        titleEl.textContent = isUploadTrigger ? 'Upload template' : `Upload template — ${item?.kp_number || item?.code || formKey}`;
+        titleEl.textContent = `${item?.kp_number || item?.code || formKey} — ${item?.title || 'Live Document Editor'}`;
     }
     if (subEl) {
-        subEl.textContent = item?.title ? `${item.title} (${item.category})` : 'Configure master DOCX file and header settings.';
+        subEl.textContent = `50% Live Form & Template Controls + 50% Live A4/Legal Paper Preview (${item?.category || 'Official KP Form'})`;
     }
 
     if (selectKey) selectKey.value = formKey;
-    if (selectGroup) selectGroup.style.display = isUploadTrigger ? 'block' : 'none';
+
+    // Ensure 50/50 Split Mode is visible
+    const ws = document.getElementById('splitEditorWorkspace');
+    const lbl = document.getElementById('splitLayoutToggleLabel');
+    if (ws) ws.classList.remove('preview-only-mode');
+    if (lbl) lbl.textContent = '50/50 Split Active';
+
+    switchSplitEditorTab(defaultTab || 'live-fields');
 
     // Reset current file indicator
     const curFile = document.getElementById('dropzoneCurrentFile');
@@ -691,22 +1027,42 @@ async function openEditModal(formKey, isUploadTrigger = false) {
     const row = document.getElementById('customPaperInputsRow');
     if (row) row.style.display = (paperMode === 'custom') ? 'grid' : 'none';
 
-    // Load inspection
-    await loadTemplateInspection(formKey);
+    if (item?.custom_template?.custom_paper) {
+        const cp = item.custom_template.custom_paper;
+        if (cp.paper_size) setVal('modal_custom_paper_size', cp.paper_size);
+        if (cp.margin_top) setVal('modal_custom_margin_top', cp.margin_top);
+        if (cp.margin_bottom) setVal('modal_custom_margin_bottom', cp.margin_bottom);
+        if (cp.margin_left) setVal('modal_custom_margin_left', cp.margin_left);
+    }
+
+    // Load live paper preview into right-hand 50% panel iframe
+    const iframe = document.getElementById('previewIframe');
+    const previewUrl = `../../../backend/api/documents/templates.php?action=preview&form_key=${encodeURIComponent(formKey)}`;
+    if (iframe) {
+        iframe.src = previewUrl;
+    }
+
+    const downloadDocxBtn = document.getElementById('previewDownloadDocxBtn');
+    if (downloadDocxBtn) {
+        downloadDocxBtn.href = `../../../backend/api/documents/templates.php?action=download_docx&form_key=${encodeURIComponent(formKey)}`;
+    }
 
     const modal = document.getElementById('templateEditModal');
     if (modal) modal.style.display = 'flex';
 }
+window.openEditModal = openEditModal;
 
 function closeEditModal() {
     const modal = document.getElementById('templateEditModal');
     if (modal) modal.style.display = 'none';
     const fileInput = document.getElementById('modalFileInput');
     if (fileInput) fileInput.value = '';
+    const iframe = document.getElementById('previewIframe');
+    if (iframe) iframe.src = 'about:blank';
 }
+window.closeEditModal = closeEditModal;
 
 async function loadTemplateInspection(formKey) {
-    // Inspection card removed per UI simplification
     return;
 }
 
@@ -737,9 +1093,8 @@ async function handleModalFileSelected(event) {
             curFile.textContent = `Uploaded: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
         }
 
-        // Auto-refresh inspection and template list
-        await loadTemplateInspection(activeEditFormKey);
         await loadKPForms();
+        refreshSplitLivePreviewIframe();
     } catch (err) {
         notify(err.message, false);
         if (curFile) {
@@ -766,6 +1121,7 @@ async function handleSaveTemplateConfig() {
         header_mode: headerMode,
         paper_mode: paperMode,
         signatory_profile: signatoryProfile,
+        sample_data: collectLiveFieldValues(),
         status: 'published'
     };
 
@@ -790,8 +1146,8 @@ async function handleSaveTemplateConfig() {
         });
 
         notify(result.message || 'Template configuration saved successfully!', true);
-        closeEditModal();
         await loadKPForms();
+        refreshSplitLivePreviewIframe();
     } catch (err) {
         notify(err.message, false);
     } finally {
@@ -803,34 +1159,17 @@ async function handleSaveTemplateConfig() {
 }
 
 // =========================================================================
-// 7. Synchronized Visual Preview Modal
+// 7. Synchronized Visual Preview Modal (Routes to Unified 2-Panel Split Editor)
 // =========================================================================
 function openPreviewModal(formKey, title) {
-    const modal = document.getElementById('templatePreviewModal');
-    const titleEl = document.getElementById('previewModalTitle');
-    const subEl = document.getElementById('previewModalSubtitle');
-    const iframe = document.getElementById('previewIframe');
-    const downloadDocxBtn = document.getElementById('previewDownloadDocxBtn');
-
-    const item = allKPForms.find(f => f.key === formKey);
-    const kpNum = item?.kp_number || item?.code || formKey;
-
-    const previewUrl = `../../../backend/api/documents/templates.php?action=preview&form_key=${encodeURIComponent(formKey)}`;
-    const downloadUrl = `../../../backend/api/documents/templates.php?action=download_docx&form_key=${encodeURIComponent(formKey)}`;
-
-    if (titleEl) titleEl.textContent = kpNum;
-    if (subEl) subEl.textContent = '';
-    if (downloadDocxBtn) downloadDocxBtn.href = downloadUrl;
-    if (iframe) iframe.src = previewUrl;
-    if (modal) modal.style.display = 'flex';
+    openEditModal(formKey, false, 'live-fields');
 }
+window.openPreviewModal = openPreviewModal;
 
 function closePreviewModal() {
-    const modal = document.getElementById('templatePreviewModal');
-    const iframe = document.getElementById('previewIframe');
-    if (modal) modal.style.display = 'none';
-    if (iframe) iframe.src = 'about:blank';
+    closeEditModal();
 }
+window.closePreviewModal = closePreviewModal;
 
 function printPreviewIframe() {
     const iframe = document.getElementById('previewIframe');
@@ -839,6 +1178,7 @@ function printPreviewIframe() {
         iframe.contentWindow.print();
     }
 }
+window.printPreviewIframe = printPreviewIframe;
 
 // =========================================================================
 // Utilities & Notifications

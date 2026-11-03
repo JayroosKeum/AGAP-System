@@ -526,6 +526,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $action === 'save_templa
     if (!empty($input['custom_paper'])) {
         $current['custom_paper'] = $input['custom_paper'];
     }
+    if (!empty($input['sample_data']) && is_array($input['sample_data'])) {
+        $current['sample_data'] = array_merge($current['sample_data'] ?? [], $input['sample_data']);
+    }
     $current['status'] = $input['status'] ?? ($current['status'] ?? 'published');
     $current['signatory_profile'] = $input['signatory_profile'] ?? ($current['signatory_profile'] ?? 'punong_barangay');
     $current['version'] = ($current['version'] ?? 1) + 1;
@@ -564,18 +567,39 @@ if ($action === 'download_docx') {
     }
 
     $tmpDownload = DocxTemplateService::getStorageDir() . "/download_{$formKey}_" . session_id() . ".docx";
-    $sampleData = [
+    $sampleData = array_merge([
         'case_number' => 'KP-2026-10-0042',
         'complaint_title' => $masterForms[$formKey]['title'],
         'complainants' => 'Juan Dela Cruz y Santos',
         'respondents' => 'Pedro Garcia at Maria Garcia',
         'respondent_address' => 'Barangay Tumana, Marikina City',
+        'complaint_details' => 'Noong ika-15 ng Setyembre 2026, ang inirereklamo ay humiram ng halagang PHP 25,000 na nangakong babayaran sa loob ng isang buwan ngunit hanggang sa kasalukuyan ay hindi pa tumutupad sa kasunduan.',
+        'relief_prayed_for' => 'Mabayaran nang buo ang halagang hiniram at magkaroon ng mapayapang kasunduan sa harap ng Lupon.',
         'hearing_date' => date('F d, Y', strtotime('+3 days')),
         'hearing_time' => '9:30 AM',
         'venue' => 'Tanggapan ng Lupong Tagapamayapa, Barangay Hall, Tumana',
         'docket_date' => date('F d, Y'),
         'date_today' => date('F d, Y'),
-    ];
+    ], $templateConfig['sample_data'] ?? []);
+
+    $liveOverrideKeys = ['case_number', 'complaint_title', 'complainants', 'respondents', 'respondent_address', 'complaint_details', 'relief_prayed_for', 'hearing_date', 'hearing_time', 'venue', 'docket_date', 'date_today', 'punong_barangay', 'officer_title', 'barangay_secretary'];
+    foreach ($liveOverrideKeys as $lk) {
+        if (isset($_GET[$lk]) && trim((string)$_GET[$lk]) !== '') {
+            $sampleData[$lk] = trim((string)$_GET[$lk]);
+        }
+    }
+    if (!empty($sampleData['punong_barangay'])) {
+        $branding['officers']['punong_barangay']['name'] = $sampleData['punong_barangay'];
+    }
+    if (!empty($sampleData['officer_title'])) {
+        $branding['officers']['punong_barangay']['title'] = $sampleData['officer_title'];
+    }
+    if (!empty($_GET['paper_size']) && in_array($_GET['paper_size'], ['Legal', 'A4'], true)) {
+        $effectivePaper['paper_size'] = $_GET['paper_size'];
+    }
+    if (!empty($_GET['header_mode'])) {
+        $headerMode = (string)$_GET['header_mode'];
+    }
 
     DocxTemplateService::processAndFillDocx($masterDocx, $tmpDownload, $sampleData, $headerMode, $branding, $effectivePaper);
 
@@ -618,9 +642,28 @@ if ($action === 'preview') {
         }
     }
 
+    $sampleOverrides = [];
+    $liveOverrideKeys = ['case_number', 'complaint_title', 'complainants', 'respondents', 'respondent_address', 'complaint_details', 'relief_prayed_for', 'hearing_date', 'hearing_time', 'venue', 'docket_date', 'date_today', 'punong_barangay', 'officer_title', 'barangay_secretary'];
+    foreach ($liveOverrideKeys as $lk) {
+        if (isset($_GET[$lk]) && trim((string)$_GET[$lk]) !== '') {
+            $sampleOverrides[$lk] = trim((string)$_GET[$lk]);
+        }
+    }
+    if (!empty($_GET['header_mode'])) {
+        $customUpload['header_mode'] = (string)$_GET['header_mode'];
+    }
+    if (!empty($_GET['paper_size']) && in_array($_GET['paper_size'], ['Legal', 'A4'], true)) {
+        $effectivePaper['paper_size'] = $_GET['paper_size'];
+    }
+    foreach (['margin_top', 'margin_bottom', 'margin_left', 'margin_right'] as $mk) {
+        if (isset($_GET[$mk]) && is_numeric($_GET[$mk])) {
+            $effectivePaper[$mk] = (int)$_GET[$mk];
+        }
+    }
+
     // Render synchronized visual preview using DocxTemplateService
     header('Content-Type: text/html; charset=utf-8');
-    echo DocxTemplateService::renderDocxHtmlPreview($formKey, $customUpload, $branding, $effectivePaper);
+    echo DocxTemplateService::renderDocxHtmlPreview($formKey, $customUpload, $branding, $effectivePaper, $sampleOverrides);
     exit;
 }
 

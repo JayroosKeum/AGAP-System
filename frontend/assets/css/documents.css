@@ -1346,3 +1346,308 @@
 .btn-preview-accent:hover {
     background: #1e293b;
 }
+
+
+/* =========================================================================
+   9. Unified 2-Panel Split-Screen Live Document Editor (50/50 Layout)
+   ========================================================================= */
+.modal-dialog-split-editor {
+    width: 96vw;
+    max-width: 1480px;
+    height: 92vh;
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.split-editor-header {
+    padding: 14px 22px;
+    background: #0f172a;
+    color: #f8fafc;
+    border-bottom: 1px solid #1e293b;
+    align-items: center;
+}
+
+.split-editor-header .modal-title-custom {
+    color: #f8fafc;
+    font-size: 1.08rem;
+}
+
+.split-editor-header .modal-desc-custom {
+    color: #94a3b8;
+    font-size: 0.78rem;
+}
+
+.split-editor-header .modal-close-btn {
+    color: #94a3b8;
+}
+
+.split-editor-header .modal-close-btn:hover {
+    color: #ffffff;
+}
+
+.split-editor-header-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+}
+
+.split-live-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(34, 197, 94, 0.14);
+    border: 1px solid rgba(34, 197, 94, 0.4);
+    color: #4ade80;
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    padding: 4px 10px;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+
+.split-live-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #22c55e;
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.25);
+}
+
+.split-editor-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.split-editor-header-actions .btn-preview-action {
+    background: #1e293b;
+    color: #e2e8f0;
+    border-color: #334155;
+}
+
+.split-editor-header-actions .btn-preview-action:hover {
+    background: #334155;
+    color: #ffffff;
+}
+
+.split-editor-header-actions .btn-preview-accent {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #ffffff;
+}
+
+.split-editor-header-actions .btn-preview-accent:hover {
+    background: #1d4ed8;
+}
+
+/* 50% / 50% Split Workspace Grid */
+.split-editor-workspace {
+    display: grid;
+    grid-template-columns: 50% 50%;
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: hidden;
+    background: #f8fafc;
+}
+
+.split-editor-workspace.preview-only-mode {
+    grid-template-columns: 0px 100%;
+}
+
+.split-editor-workspace.preview-only-mode .split-editor-left-panel {
+    display: none;
+}
+
+@media (max-width: 1024px) {
+    .split-editor-workspace {
+        grid-template-columns: 1fr;
+        overflow-y: auto;
+    }
+    .split-editor-right-panel {
+        min-height: 560px;
+    }
+}
+
+/* Left 50% Panel */
+.split-editor-left-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    border-right: 1px solid #cbd5e1;
+    background: #ffffff;
+}
+
+.split-left-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    padding: 10px 16px;
+    background: #f1f5f9;
+    border-bottom: 1px solid #e2e8f0;
+    flex-shrink: 0;
+}
+
+.split-left-tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: #475569;
+    font-size: 0.8rem;
+    font-weight: 700;
+    padding: 8px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: all 0.15s ease;
+}
+
+.split-left-tab-btn:hover {
+    color: #0f172a;
+    background: rgba(255, 255, 255, 0.6);
+}
+
+.split-left-tab-btn.active {
+    background: #ffffff;
+    color: #0f172a;
+    border-color: #cbd5e1;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.split-left-scroll-body {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 16px 20px 24px;
+}
+
+.live-sync-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    margin-bottom: 14px;
+}
+
+.live-sync-banner strong {
+    display: block;
+    font-size: 0.8rem;
+    color: #1e40af;
+}
+
+.live-sync-banner span {
+    display: block;
+    font-size: 0.74rem;
+    color: #3b82f6;
+    margin-top: 1px;
+}
+
+.btn-reset-live-fields {
+    background: #ffffff;
+    border: 1px solid #93c5fd;
+    color: #1d4ed8;
+    font-size: 0.74rem;
+    font-weight: 700;
+    padding: 5px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.btn-reset-live-fields:hover {
+    background: #dbeafe;
+}
+
+/* Right 50% Panel (Live A4/Legal Paper Preview) */
+.split-editor-right-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    background: #475569;
+}
+
+.split-preview-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background: #334155;
+    border-bottom: 1px solid #64748b;
+    color: #f8fafc;
+    flex-shrink: 0;
+    gap: 10px;
+}
+
+.split-preview-toolbar-left,
+.split-preview-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.paper-format-pill {
+    background: #1e293b;
+    border: 1px solid #64748b;
+    color: #e2e8f0;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 3px 9px;
+    border-radius: 5px;
+    letter-spacing: 0.03em;
+}
+
+.direct-edit-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #cbd5e1;
+    cursor: pointer;
+    user-select: none;
+    background: rgba(15, 23, 42, 0.45);
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.direct-edit-toggle input {
+    margin: 0;
+    cursor: pointer;
+}
+
+.preview-zoom-btn {
+    background: #1e293b;
+    border: 1px solid #64748b;
+    color: #f8fafc;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 4px 9px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.preview-zoom-btn:hover {
+    background: #0f172a;
+}
+
+.split-preview-canvas-wrap {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    overflow: hidden;
+    background: #525659;
+}

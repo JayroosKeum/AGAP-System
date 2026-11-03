@@ -6388,6 +6388,10 @@ function openKpDocumentPreviewModal(documentId, templateName, caseNumber, caseId
         dlBtn.style.display = 'inline-flex';
     }
 
+    if (typeof window.toggleKpDocSplitEditor === 'function') {
+        window.toggleKpDocSplitEditor(true);
+    }
+
     modal.style.display = 'flex';
 }
 window.openKpDocumentPreviewModal = openKpDocumentPreviewModal;
@@ -8842,6 +8846,9 @@ function openKpFormModal(caseId, formCode, hearingId = null, complaintId = null)
 
     if (iframe) iframe.src = src;
     if (dlBtn) dlBtn.href = dl;
+    if (typeof window.toggleKpDocSplitEditor === 'function') {
+        window.toggleKpDocSplitEditor(true);
+    }
     if (modal) modal.style.display = 'flex';
 }
 window.openKpFormModal = openKpFormModal;
@@ -9183,9 +9190,15 @@ function openFileRepudiationModal() {
         }
     }
 
-    const swornDateInput = document.getElementById('repudiationSwornDate');
+    const swornDateInput = document.getElementById('repudiationSwornDate') || document.getElementById('repudiationDateInput');
     if (swornDateInput) {
         swornDateInput.value = new Date().toISOString().split('T')[0];
+    }
+
+    const caseId = data.case_id || ws.case?.case_id || (new URLSearchParams(window.location.search)).get('case_id') || (new URLSearchParams(window.location.search)).get('id') || '';
+    const iframe = document.getElementById('liveSplitKp17Iframe');
+    if (iframe && caseId) {
+        iframe.src = `../../../backend/api/documents/kp-form.php?case_id=${encodeURIComponent(caseId)}&form_code=KP+Form+17&preview=1&bare=1&_t=${Date.now()}`;
     }
 
     modal.style.display = 'flex';
@@ -9311,6 +9324,11 @@ function openEditSettlementTermsModal() {
         respInput.value = settlement.responsible_party;
     }
 
+    const iframe = document.getElementById('liveSplitKp16Iframe');
+    if (iframe && caseId) {
+        iframe.src = `../../../backend/api/documents/kp-form.php?case_id=${encodeURIComponent(caseId)}&form_code=KP+Form+16&preview=1&bare=1&_t=${Date.now()}`;
+    }
+
     modal.style.display = 'flex';
 }
 window.openEditSettlementTermsModal = openEditSettlementTermsModal;
@@ -9433,9 +9451,77 @@ function openIssueExecutionModal() {
         dateInput.value = new Date().toISOString().split('T')[0];
     }
 
+    const caseId = data.case_id || ws.case?.case_id || (new URLSearchParams(window.location.search)).get('case_id') || (new URLSearchParams(window.location.search)).get('id') || '';
+    const iframe = document.getElementById('liveSplitKp23Iframe');
+    if (iframe && caseId) {
+        iframe.src = `../../../backend/api/documents/kp-form.php?case_id=${encodeURIComponent(caseId)}&form_code=KP+Form+23&preview=1&bare=1&_t=${Date.now()}`;
+    }
+
     modal.style.display = 'flex';
 }
 window.openIssueExecutionModal = openIssueExecutionModal;
+
+function syncWorkflowSplitPreview(which) {
+    try {
+        if (which === 'kp16') {
+            const iframe = document.getElementById('liveSplitKp16Iframe');
+            const doc = iframe?.contentDocument || iframe?.contentWindow?.document;
+            if (!doc) return;
+            const val = document.getElementById('editSettleTermsText')?.value || '';
+            const nodes = doc.querySelectorAll('[data-live-field="primary_body_text"], [data-live-field="agreement_details"]');
+            nodes.forEach(n => {
+                const div = document.createElement('div');
+                div.textContent = val;
+                n.innerHTML = div.innerHTML.replace(/\n/g, '<br>');
+                n.classList.add('live-field-flash');
+                clearTimeout(n._ft);
+                n._ft = setTimeout(() => n.classList.remove('live-field-flash'), 500);
+            });
+        } else if (which === 'kp17') {
+            const iframe = document.getElementById('liveSplitKp17Iframe');
+            const doc = iframe?.contentDocument || iframe?.contentWindow?.document;
+            if (!doc) return;
+            const reason = document.getElementById('repudiationReasonText')?.value || '';
+            const sel = document.getElementById('repudiatingPartySelect');
+            const partyText = (sel && sel.selectedIndex > 0) ? sel.options[sel.selectedIndex].text.replace(/\s*\([^)]*\)\s*$/, '') : '';
+            doc.querySelectorAll('[data-live-field="primary_body_text"]').forEach(n => {
+                const div = document.createElement('div');
+                div.textContent = reason;
+                n.innerHTML = div.innerHTML.replace(/\n/g, '<br>');
+                n.classList.add('live-field-flash');
+                clearTimeout(n._ft);
+                n._ft = setTimeout(() => n.classList.remove('live-field-flash'), 500);
+            });
+            if (partyText) {
+                doc.querySelectorAll('[data-live-field="secondary_body_text"]').forEach(n => {
+                    n.textContent = partyText;
+                });
+            }
+        } else if (which === 'kp23') {
+            const iframe = document.getElementById('liveSplitKp23Iframe');
+            const doc = iframe?.contentDocument || iframe?.contentWindow?.document;
+            if (!doc) return;
+            const ob = document.getElementById('execObligationText')?.value || '';
+            const amt = document.getElementById('execAmountReq')?.value || '';
+            doc.querySelectorAll('[data-live-field="primary_body_text"]').forEach(n => {
+                const div = document.createElement('div');
+                div.textContent = ob;
+                n.innerHTML = div.innerHTML.replace(/\n/g, '<br>');
+                n.classList.add('live-field-flash');
+                clearTimeout(n._ft);
+                n._ft = setTimeout(() => n.classList.remove('live-field-flash'), 500);
+            });
+            if (amt) {
+                doc.querySelectorAll('[data-live-field="secondary_body_text"]').forEach(n => {
+                    n.textContent = amt;
+                });
+            }
+        }
+    } catch (e) {
+        console.warn('Workflow split preview sync error:', e);
+    }
+}
+window.syncWorkflowSplitPreview = syncWorkflowSplitPreview;
 
 function closeIssueExecutionModal() {
     const modal = document.getElementById('modalIssueExecutionKp23');

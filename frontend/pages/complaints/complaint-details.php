@@ -1647,207 +1647,252 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
 <?php include __DIR__ . '/../../layouts/transmittal-modal.php'; ?>
 <?php include __DIR__ . '/../../layouts/kp-form-preview-modal.php'; ?>
 
-<!-- MODAL: Sworn Statement of Repudiation (KP Form 17 - RA 7160 Sec. 416) -->
-<div id="modalFileRepudiation" class="modal" role="dialog" aria-modal="true" style="display: none; padding: 12px; z-index: 9999;">
-    <div class="modal-content" style="max-width: 580px; width: 95vw; border-radius: 12px; padding: 24px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.25);">
-        <div class="modal-header" style="margin-bottom: 14px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
-            <div>
-                <h2 style="font-size: 1.2rem; font-weight: 800; color: #991b1b; margin: 0; display: flex; align-items: center; gap: 8px;">
-                    <span>⚠️</span> File Repudiation (KP Form 17)
-                </h2>
-                <p style="margin: 3px 0 0; font-size: 0.8rem; color: #64748b;">
-                    Pagtatwa ng Kasunduan &bull; RA 7160 Section 416 (Vitiated Consent)
-                </p>
-            </div>
-            <button type="button" class="close-btn" onclick="closeFileRepudiationModal()" style="font-size: 1.5rem; border: none; background: transparent; cursor: pointer; color: #64748b;">&times;</button>
-        </div>
-        <form onsubmit="handleRepudiationSubmit(event)">
-            <input type="hidden" id="repudiationSettlementId" name="settlement_id">
-
-            <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.82rem; color: #991b1b; line-height: 1.45;">
-                <strong>Statutory Notice (RA 7160 Sec. 416):</strong> Any party may, within ten (10) days from execution, repudiate the settlement by filing a sworn statement alleging that consent was vitiated by fraud, violence, or intimidation. Submitting this will invalidate the settlement and route the case to issue <strong>KP Form 20 (Certificate to File Action)</strong>.
-            </div>
-
-            <!-- Filing Party -->
-            <div class="form-group" style="margin-bottom: 14px;">
-                <label for="repudiatingPartySelect" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
-                    Repudiating Party (Naghahain ng Pagtatwa) <span style="color: #dc2626;">*</span>
-                </label>
-                <select id="repudiatingPartySelect" name="repudiated_by" required style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box;">
-                    <option value="">— Select Party Filing Repudiation —</option>
-                </select>
-            </div>
-
-            <!-- Statutory Grounds -->
-            <div class="form-group" style="margin-bottom: 14px;">
-                <label style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 6px;">
-                    Statutory Legal Grounds (RA 7160 Sec. 416) <span style="color: #dc2626;">*</span>
-                </label>
-                <div style="display: flex; flex-direction: column; gap: 6px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 12px; font-size: 0.85rem;">
-                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                        <input type="checkbox" name="ground" value="Fraud (Panlilinlang)" onchange="updateRepudiationGroundsText()">
-                        <span><strong>Panlilinlang (Fraud)</strong> &mdash; Misrepresentation of terms or deceit</span>
-                    </label>
-                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                        <input type="checkbox" name="ground" value="Violence (Karahasan)" onchange="updateRepudiationGroundsText()">
-                        <span><strong>Karahasan (Violence)</strong> &mdash; Physical force, coercion, or assault</span>
-                    </label>
-                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                        <input type="checkbox" name="ground" value="Intimidation (Pananakot)" onchange="updateRepudiationGroundsText()">
-                        <span><strong>Pananakot (Intimidation)</strong> &mdash; Duress, threats, or grave harassment</span>
-                    </label>
+<!-- MODAL: Sworn Statement of Repudiation (KP Form 17 - 2-Panel 50/50 Split-Screen Live Editor) -->
+<div id="modalFileRepudiation" class="modal" role="dialog" aria-modal="true" style="display: none; padding: 14px; z-index: 9999;">
+    <div class="modal-content" style="max-width: 1380px; width: 96vw; height: 90vh; max-height: 90vh; border-radius: 12px; padding: 0; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 25px 40px -5px rgba(0,0,0,0.35);">
+        <div class="modal-header" style="padding: 14px 22px; margin-bottom: 0; border-bottom: 1px solid #e2e8f0; background: #0f172a; color: #f8fafc; display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <span style="background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.5); color: #fca5a5; font-size: 0.7rem; font-weight: 800; padding: 3px 9px; border-radius: 999px;">50/50 LIVE SPLIT EDITOR</span>
+                <div>
+                    <h2 style="font-size: 1.1rem; font-weight: 800; color: #f8fafc; margin: 0;">
+                        File Sworn Repudiation &mdash; KP Form 17 Live Editor
+                    </h2>
+                    <p style="margin: 2px 0 0; font-size: 0.76rem; color: #94a3b8;">
+                        Pagtatwa ng Kasunduan &bull; RA 7160 Section 416 (50% Form Inputs + 50% Real-Time KP Form 17 Paper Preview)
+                    </p>
                 </div>
             </div>
-
-            <!-- Sworn Narrative -->
-            <div class="form-group" style="margin-bottom: 14px;">
-                <label for="repudiationReasonText" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
-                    Sworn Statement / Narrative Details (Salaysay ng Pagtatwa) <span style="color: #dc2626;">*</span>
-                </label>
-                <textarea id="repudiationReasonText" name="repudiation_reason" rows="3" required placeholder="State specific acts of fraud, violence, or intimidation that vitiated consent..." style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.85rem; box-sizing: border-box;"></textarea>
-            </div>
-
-            <!-- Date of Sworn Statement -->
-            <div class="form-group" style="margin-bottom: 18px;">
-                <label for="repudiationDateInput" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
-                    Date of Sworn Statement (Petsa ng Sinumpaang Salaysay) <span style="color: #dc2626;">*</span>
-                </label>
-                <input type="date" id="repudiationDateInput" name="repudiation_date" required style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box;">
-            </div>
-
-            <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 0;">
-                <button type="button" class="btn-secondary" onclick="closeFileRepudiationModal()">Cancel</button>
-                <button type="submit" id="btnSubmitRepudiation" class="btn-create" style="background: #dc2626; border-color: #dc2626;">
-                    Submit Sworn Repudiation &rarr;
-                </button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- MODAL: Edit Settlement Terms (KP Form 16) -->
-<div id="modalEditSettlementTerms" class="modal" role="dialog" aria-modal="true" style="display: none; padding: 12px; z-index: 9999;">
-    <div class="modal-content" style="max-width: 580px; width: 95vw; border-radius: 12px; padding: 24px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.25);">
-        <div class="modal-header" style="margin-bottom: 14px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
-            <div>
-                <h2 style="font-size: 1.15rem; font-weight: 800; color: #0f172a; margin: 0;">
-                    Edit Settlement Agreement Terms
-                </h2>
-                <p style="margin: 2px 0 0; font-size: 0.8rem; color: #64748b;">
-                    KP Form No. 16 (Kasunduang Pag-aayos)
-                </p>
-            </div>
-            <button type="button" class="close-btn" onclick="closeEditSettlementTermsModal()" style="font-size: 1.5rem; border: none; background: transparent; cursor: pointer; color: #64748b;">&times;</button>
+            <button type="button" class="close-btn" onclick="closeFileRepudiationModal()" style="font-size: 1.6rem; border: none; background: transparent; cursor: pointer; color: #94a3b8;">&times;</button>
         </div>
-        <form onsubmit="handleEditSettlementSubmit(event)">
-            <input type="hidden" id="editSettleCaseId" name="case_id">
-            <input type="hidden" id="editSettleId" name="settlement_id">
+        <div style="display: grid; grid-template-columns: 50% 50%; flex: 1 1 0; min-height: 0; overflow: hidden;">
+            <!-- Left 50%: Form Inputs -->
+            <form onsubmit="handleRepudiationSubmit(event)" style="padding: 20px 24px; overflow-y: auto; background: #ffffff; border-right: 1px solid #cbd5e1; display: flex; flex-direction: column;">
+                <input type="hidden" id="repudiationSettlementId" name="settlement_id">
 
-            <div class="form-group" style="margin-bottom: 14px;">
-                <label for="editSettleDate" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
-                    Date of Execution (Petsa ng Kasunduan) <span style="color: #dc2626;">*</span>
-                </label>
-                <input type="date" id="editSettleDate" name="settlement_date" required style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box;">
-            </div>
-
-            <div class="form-group" style="margin-bottom: 14px;">
-                <label for="editSettleTermsText" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
-                    Detailed Terms of Settlement (Mga Napagkasunduan) <span style="color: #dc2626;">*</span>
-                </label>
-                <textarea id="editSettleTermsText" name="agreement_details" rows="5" required placeholder="Specify obligations, amounts, installment dates, or conditions..." style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box;"></textarea>
-            </div>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px;">
-                <div class="form-group" style="margin-bottom: 0;">
-                    <label for="editSettleAmount" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
-                        Settlement Amount (PHP) <span style="font-weight: 400; color: #64748b;">Optional</span>
-                    </label>
-                    <input type="number" step="0.01" min="0" id="editSettleAmount" name="total_amount" placeholder="0.00" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box;">
+                <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.8rem; color: #991b1b; line-height: 1.45;">
+                    <strong>Statutory Notice (RA 7160 Sec. 416):</strong> Any party may, within ten (10) days from execution, repudiate the settlement by filing a sworn statement alleging that consent was vitiated by fraud, violence, or intimidation.
                 </div>
-                <div class="form-group" style="margin-bottom: 0;">
-                    <label for="editSettleResponsible" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
-                        Responsible Party
+
+                <!-- Filing Party -->
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <label for="repudiatingPartySelect" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
+                        Repudiating Party (Naghahain ng Pagtatwa) <span style="color: #dc2626;">*</span>
                     </label>
-                    <select id="editSettleResponsible" name="responsible_party" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box;">
-                        <option value="Respondent" selected>Respondent</option>
-                        <option value="Complainant">Complainant</option>
-                        <option value="Both">Both Parties</option>
+                    <select id="repudiatingPartySelect" name="repudiated_by" required onchange="syncWorkflowSplitPreview('kp17')" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box;">
+                        <option value="">— Select Party Filing Repudiation —</option>
                     </select>
                 </div>
-            </div>
 
-            <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 0;">
-                <button type="button" class="btn-secondary" onclick="closeEditSettlementTermsModal()">Cancel</button>
-                <button type="submit" id="btnSubmitEditSettlement" class="btn-create">Save Changes &amp; Refresh Preview</button>
-            </div>
-        </form>
-    </div>
-</div>
+                <!-- Statutory Grounds -->
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <label style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 6px;">
+                        Statutory Legal Grounds (RA 7160 Sec. 416) <span style="color: #dc2626;">*</span>
+                    </label>
+                    <div style="display: flex; flex-direction: column; gap: 6px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 12px; font-size: 0.84rem;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" name="ground" value="Fraud (Panlilinlang)" onchange="updateRepudiationGroundsText(); syncWorkflowSplitPreview('kp17');">
+                            <span><strong>Panlilinlang (Fraud)</strong> &mdash; Misrepresentation of terms or deceit</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" name="ground" value="Violence (Karahasan)" onchange="updateRepudiationGroundsText(); syncWorkflowSplitPreview('kp17');">
+                            <span><strong>Karahasan (Violence)</strong> &mdash; Physical force, coercion, or assault</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" name="ground" value="Intimidation (Pananakot)" onchange="updateRepudiationGroundsText(); syncWorkflowSplitPreview('kp17');">
+                            <span><strong>Pananakot (Intimidation)</strong> &mdash; Duress, threats, or grave harassment</span>
+                        </label>
+                    </div>
+                </div>
 
-<!-- MODAL: Issue Motion for Execution (KP Form 23 - RA 7160 Sec. 417) -->
-<div id="modalIssueExecutionKp23" class="modal" role="dialog" aria-modal="true" style="display: none; padding: 12px; z-index: 9999;">
-    <div class="modal-content" style="max-width: 580px; width: 95vw; border-radius: 12px; padding: 24px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.25);">
-        <div class="modal-header" style="margin-bottom: 14px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
-            <div>
-                <h2 style="font-size: 1.15rem; font-weight: 800; color: #0f172a; margin: 0; display: flex; align-items: center; gap: 8px;">
-                    <span>📜</span> Issue Motion for Execution (KP Form 23)
-                </h2>
-                <p style="margin: 2px 0 0; font-size: 0.8rem; color: #64748b;">
-                    Mosyon sa Pagpapatupad &bull; RA 7160 Sec. 417 (Enforcement of Final Settlement)
-                </p>
+                <!-- Sworn Narrative -->
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <label for="repudiationReasonText" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
+                        Sworn Statement / Narrative Details (Salaysay ng Pagtatwa) <span style="color: #dc2626;">*</span>
+                    </label>
+                    <textarea id="repudiationReasonText" name="repudiation_reason" rows="4" required oninput="syncWorkflowSplitPreview('kp17')" placeholder="State specific acts of fraud, violence, or intimidation that vitiated consent..." style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.85rem; box-sizing: border-box;"></textarea>
+                </div>
+
+                <!-- Date of Sworn Statement -->
+                <div class="form-group" style="margin-bottom: 18px;">
+                    <label for="repudiationDateInput" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
+                        Date of Sworn Statement (Petsa ng Sinumpaang Salaysay) <span style="color: #dc2626;">*</span>
+                    </label>
+                    <input type="date" id="repudiationDateInput" name="repudiation_date" required onchange="syncWorkflowSplitPreview('kp17')" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box;">
+                </div>
+
+                <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: auto; padding-top: 12px; border-top: 1px solid #e2e8f0;">
+                    <button type="button" class="btn-secondary" onclick="closeFileRepudiationModal()">Cancel</button>
+                    <button type="submit" id="btnSubmitRepudiation" class="btn-create" style="background: #dc2626; border-color: #dc2626;">
+                        Submit Sworn Repudiation &rarr;
+                    </button>
+                </div>
+            </form>
+            <!-- Right 50%: Live KP Form 17 Paper Preview -->
+            <div style="background: #334155; padding: 14px; display: flex; flex-direction: column; overflow: hidden;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; color: #e2e8f0; font-size: 0.76rem; font-weight: 700;">
+                    <span>LIVE KP FORM 17 PAPER PREVIEW (REAL-TIME DOM UPDATE)</span>
+                    <button type="button" onclick="document.getElementById('liveSplitKp17Iframe')?.contentWindow?.print()" style="background: #1e293b; border: 1px solid #475569; color: #f8fafc; font-size: 0.72rem; padding: 3px 9px; border-radius: 4px; cursor: pointer;">Print Preview</button>
+                </div>
+                <iframe id="liveSplitKp17Iframe" title="Live KP Form 17 Preview" style="width: 100%; flex: 1 1 0; border: 0; border-radius: 4px; background: #ffffff;"></iframe>
             </div>
-            <button type="button" class="close-btn" onclick="closeIssueExecutionModal()" style="font-size: 1.5rem; border: none; background: transparent; cursor: pointer; color: #64748b;">&times;</button>
         </div>
-        <form onsubmit="handleIssueExecutionSubmit(event)">
-            <input type="hidden" id="execSettlementId" name="settlement_id">
-
-            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.82rem; color: #166534; line-height: 1.45;">
-                <strong>Statutory Finality (RA 7160 Sec. 417):</strong> The 10-working-day repudiation window has elapsed without sworn repudiation. The amicable settlement now has the force and effect of a final court judgment and may be executed by the Lupon within six (6) months.
-            </div>
-
-            <!-- Moving Party -->
-            <div class="form-group" style="margin-bottom: 14px;">
-                <label for="execMovingPartySelect" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
-                    Moving Party (Naghain ng Mosyon) <span style="color: #dc2626;">*</span>
-                </label>
-                <select id="execMovingPartySelect" name="motion_filed_by" required style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box;">
-                    <option value="">— Select Moving Party —</option>
-                </select>
-            </div>
-
-            <!-- Obligation Violated -->
-            <div class="form-group" style="margin-bottom: 14px;">
-                <label for="execObligationText" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
-                    Obligation Violated / Unsatisfied Settlement Terms <span style="color: #dc2626;">*</span>
-                </label>
-                <textarea id="execObligationText" name="obligation_violated" rows="3" required placeholder="Specify what the respondent failed or refused to comply with..." style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.85rem; box-sizing: border-box;"></textarea>
-            </div>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px;">
-                <div class="form-group" style="margin-bottom: 0;">
-                    <label for="execAmountReq" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
-                        Amount / Requirement Demanded <span style="color: #dc2626;">*</span>
-                    </label>
-                    <input type="text" id="execAmountReq" name="amount_or_requirement" required placeholder="e.g. PHP 25,000 or Return of Property" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box;">
-                </div>
-                <div class="form-group" style="margin-bottom: 0;">
-                    <label for="execMotionDate" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
-                        Motion Filing Date <span style="color: #dc2626;">*</span>
-                    </label>
-                    <input type="date" id="execMotionDate" name="motion_date" required style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box;">
-                </div>
-            </div>
-
-            <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 0;">
-                <button type="button" class="btn-secondary" onclick="closeIssueExecutionModal()">Cancel</button>
-                <button type="submit" id="btnSubmitExecution" class="btn-create">
-                    Generate KP Form 23 &rarr;
-                </button>
-            </div>
-        </form>
     </div>
 </div>
 
+<!-- MODAL: Edit Settlement Terms (KP Form 16 - 2-Panel 50/50 Split-Screen Live Editor) -->
+<div id="modalEditSettlementTerms" class="modal" role="dialog" aria-modal="true" style="display: none; padding: 14px; z-index: 9999;">
+    <div class="modal-content" style="max-width: 1380px; width: 96vw; height: 90vh; max-height: 90vh; border-radius: 12px; padding: 0; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 25px 40px -5px rgba(0,0,0,0.35);">
+        <div class="modal-header" style="padding: 14px 22px; margin-bottom: 0; border-bottom: 1px solid #e2e8f0; background: #0f172a; color: #f8fafc; display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <span style="background: rgba(34,197,94,0.18); border: 1px solid rgba(34,197,94,0.45); color: #4ade80; font-size: 0.7rem; font-weight: 800; padding: 3px 9px; border-radius: 999px;">50/50 LIVE SPLIT EDITOR</span>
+                <div>
+                    <h2 style="font-size: 1.1rem; font-weight: 800; color: #f8fafc; margin: 0;">
+                        Edit Settlement Agreement Terms &mdash; KP Form 16 Live Editor
+                    </h2>
+                    <p style="margin: 2px 0 0; font-size: 0.76rem; color: #94a3b8;">
+                        KP Form No. 16 (Kasunduang Pag-aayos &bull; 50% Form Inputs + 50% Real-Time Paper Preview)
+                    </p>
+                </div>
+            </div>
+            <button type="button" class="close-btn" onclick="closeEditSettlementTermsModal()" style="font-size: 1.6rem; border: none; background: transparent; cursor: pointer; color: #94a3b8;">&times;</button>
+        </div>
+        <div style="display: grid; grid-template-columns: 50% 50%; flex: 1 1 0; min-height: 0; overflow: hidden;">
+            <!-- Left 50%: Form Inputs -->
+            <form onsubmit="handleEditSettlementSubmit(event)" style="padding: 20px 24px; overflow-y: auto; background: #ffffff; border-right: 1px solid #cbd5e1; display: flex; flex-direction: column;">
+                <input type="hidden" id="editSettleCaseId" name="case_id">
+                <input type="hidden" id="editSettleId" name="settlement_id">
+
+                <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.8rem; color: #1e3a8a; line-height: 1.4;">
+                    <strong>Real-Time 50/50 Split Preview:</strong> Type or refine the settlement stipulations below and watch the official KP Form 16 sheet on the right update immediately.
+                </div>
+
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <label for="editSettleDate" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
+                        Date of Execution (Petsa ng Kasunduan) <span style="color: #dc2626;">*</span>
+                    </label>
+                    <input type="date" id="editSettleDate" name="settlement_date" required onchange="syncWorkflowSplitPreview('kp16')" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box;">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <label for="editSettleTermsText" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
+                        Detailed Terms of Settlement (Mga Napagkasunduan) <span style="color: #dc2626;">*</span>
+                    </label>
+                    <textarea id="editSettleTermsText" name="agreement_details" rows="7" required oninput="syncWorkflowSplitPreview('kp16')" placeholder="Specify obligations, amounts, installment dates, or conditions..." style="width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem; line-height: 1.5; box-sizing: border-box;"></textarea>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="editSettleAmount" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
+                            Settlement Amount (PHP) <span style="font-weight: 400; color: #64748b;">Optional</span>
+                        </label>
+                        <input type="number" step="0.01" min="0" id="editSettleAmount" name="total_amount" placeholder="0.00" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box;">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="editSettleResponsible" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
+                            Responsible Party
+                        </label>
+                        <select id="editSettleResponsible" name="responsible_party" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box;">
+                            <option value="Respondent" selected>Respondent</option>
+                            <option value="Complainant">Complainant</option>
+                            <option value="Both">Both Parties</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: auto; padding-top: 12px; border-top: 1px solid #e2e8f0;">
+                    <button type="button" class="btn-secondary" onclick="closeEditSettlementTermsModal()">Cancel</button>
+                    <button type="submit" id="btnSubmitEditSettlement" class="btn-create">Save Changes &amp; Refresh Preview</button>
+                </div>
+            </form>
+            <!-- Right 50%: Live KP Form 16 Paper Preview -->
+            <div style="background: #334155; padding: 14px; display: flex; flex-direction: column; overflow: hidden;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; color: #e2e8f0; font-size: 0.76rem; font-weight: 700;">
+                    <span>LIVE KP FORM 16 PAPER PREVIEW (REAL-TIME DOM UPDATE)</span>
+                    <button type="button" onclick="document.getElementById('liveSplitKp16Iframe')?.contentWindow?.print()" style="background: #1e293b; border: 1px solid #475569; color: #f8fafc; font-size: 0.72rem; padding: 3px 9px; border-radius: 4px; cursor: pointer;">Print Preview</button>
+                </div>
+                <iframe id="liveSplitKp16Iframe" title="Live KP Form 16 Preview" style="width: 100%; flex: 1 1 0; border: 0; border-radius: 4px; background: #ffffff;"></iframe>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: Issue Motion for Execution (KP Form 23 - 2-Panel 50/50 Split-Screen Live Editor) -->
+<div id="modalIssueExecutionKp23" class="modal" role="dialog" aria-modal="true" style="display: none; padding: 14px; z-index: 9999;">
+    <div class="modal-content" style="max-width: 1380px; width: 96vw; height: 90vh; max-height: 90vh; border-radius: 12px; padding: 0; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 25px 40px -5px rgba(0,0,0,0.35);">
+        <div class="modal-header" style="padding: 14px 22px; margin-bottom: 0; border-bottom: 1px solid #e2e8f0; background: #0f172a; color: #f8fafc; display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <span style="background: rgba(59,130,246,0.2); border: 1px solid rgba(59,130,246,0.5); color: #93c5fd; font-size: 0.7rem; font-weight: 800; padding: 3px 9px; border-radius: 999px;">50/50 LIVE SPLIT EDITOR</span>
+                <div>
+                    <h2 style="font-size: 1.1rem; font-weight: 800; color: #f8fafc; margin: 0;">
+                        Issue Motion for Execution &mdash; KP Form 23 Live Editor
+                    </h2>
+                    <p style="margin: 2px 0 0; font-size: 0.76rem; color: #94a3b8;">
+                        Mosyon sa Pagpapatupad &bull; RA 7160 Sec. 417 (50% Form Inputs + 50% Real-Time KP Form 23 Paper Preview)
+                    </p>
+                </div>
+            </div>
+            <button type="button" class="close-btn" onclick="closeIssueExecutionModal()" style="font-size: 1.6rem; border: none; background: transparent; cursor: pointer; color: #94a3b8;">&times;</button>
+        </div>
+        <div style="display: grid; grid-template-columns: 50% 50%; flex: 1 1 0; min-height: 0; overflow: hidden;">
+            <!-- Left 50%: Form Inputs -->
+            <form onsubmit="handleIssueExecutionSubmit(event)" style="padding: 20px 24px; overflow-y: auto; background: #ffffff; border-right: 1px solid #cbd5e1; display: flex; flex-direction: column;">
+                <input type="hidden" id="execSettlementId" name="settlement_id">
+
+                <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.8rem; color: #166534; line-height: 1.45;">
+                    <strong>Statutory Finality (RA 7160 Sec. 417):</strong> The 10-working-day repudiation window has elapsed without sworn repudiation. The amicable settlement now has the force and effect of a final court judgment.
+                </div>
+
+                <!-- Moving Party -->
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <label for="execMovingPartySelect" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
+                        Moving Party (Naghain ng Mosyon) <span style="color: #dc2626;">*</span>
+                    </label>
+                    <select id="execMovingPartySelect" name="motion_filed_by" required onchange="syncWorkflowSplitPreview('kp23')" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box;">
+                        <option value="">— Select Moving Party —</option>
+                    </select>
+                </div>
+
+                <!-- Obligation Violated -->
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <label for="execObligationText" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
+                        Obligation Violated / Unsatisfied Settlement Terms <span style="color: #dc2626;">*</span>
+                    </label>
+                    <textarea id="execObligationText" name="obligation_violated" rows="4" required oninput="syncWorkflowSplitPreview('kp23')" placeholder="Specify what the respondent failed or refused to comply with..." style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.85rem; box-sizing: border-box;"></textarea>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="execAmountReq" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
+                            Amount / Requirement Demanded <span style="color: #dc2626;">*</span>
+                        </label>
+                        <input type="text" id="execAmountReq" name="amount_or_requirement" required oninput="syncWorkflowSplitPreview('kp23')" placeholder="e.g. PHP 25,000 or Return of Property" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box;">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="execMotionDate" style="font-weight: 700; font-size: 0.84rem; display: block; margin-bottom: 4px;">
+                            Motion Filing Date <span style="color: #dc2626;">*</span>
+                        </label>
+                        <input type="date" id="execMotionDate" name="motion_date" required onchange="syncWorkflowSplitPreview('kp23')" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box;">
+                    </div>
+                </div>
+
+                <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: auto; padding-top: 12px; border-top: 1px solid #e2e8f0;">
+                    <button type="button" class="btn-secondary" onclick="closeIssueExecutionModal()">Cancel</button>
+                    <button type="submit" id="btnSubmitExecution" class="btn-create">
+                        Generate KP Form 23 &rarr;
+                    </button>
+                </div>
+            </form>
+            <!-- Right 50%: Live KP Form 23 Paper Preview -->
+            <div style="background: #334155; padding: 14px; display: flex; flex-direction: column; overflow: hidden;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; color: #e2e8f0; font-size: 0.76rem; font-weight: 700;">
+                    <span>LIVE KP FORM 23 PAPER PREVIEW (REAL-TIME DOM UPDATE)</span>
+                    <button type="button" onclick="document.getElementById('liveSplitKp23Iframe')?.contentWindow?.print()" style="background: #1e293b; border: 1px solid #475569; color: #f8fafc; font-size: 0.72rem; padding: 3px 9px; border-radius: 4px; cursor: pointer;">Print Preview</button>
+                </div>
+                <iframe id="liveSplitKp23Iframe" title="Live KP Form 23 Preview" style="width: 100%; flex: 1 1 0; border: 0; border-radius: 4px; background: #ffffff;"></iframe>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- =====================================================================
      MODAL: Reopen Settled Case for CFA (RA 7160 Sec. 417 Non-Compliance)

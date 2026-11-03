@@ -154,11 +154,11 @@ window.AGAP_SETTINGS = <?php echo json_encode([
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center;">
                     <button type="button" id="toggleTimelineBtn" class="btn-secondary" onclick="toggleTimelineVisibility()" style="font-size: 0.78rem; padding: 5px 12px; border-radius: 6px; cursor: pointer; background: #fff;">
-                        Collapse Timeline
+                        Expand Timeline
                     </button>
                 </div>
             </div>
-            <div id="caseServiceTimelineContainer" style="padding: 20px; background: #fff;">
+            <div id="caseServiceTimelineContainer" style="display: none; padding: 20px; background: #fff;">
                 <div style="text-align: center; color: #94a3b8; padding: 20px; font-size: 0.88rem;">
                     Select or expand a case above to review its full statutory service history timeline.
                 </div>
@@ -202,6 +202,17 @@ window.AGAP_SETTINGS = <?php echo json_encode([
         <input type="hidden" name="action" value="officer_return">
 
         <div class="proof-drawer-body">
+            <!-- Interactive Attempt Stepper & Collapsed Attempt History Switcher (Single Off-Canvas Drawer UX) -->
+            <div id="drawerAttemptStepperSection" class="drawer-attempt-switcher" style="display: none;">
+                <div class="drawer-attempt-switcher-header">
+                    <span class="drawer-attempt-switcher-title">Attempt History &amp; Node Selector</span>
+                    <span id="drawerAttemptCountPill" class="drawer-attempt-count-pill">1 Attempt</span>
+                </div>
+                <div id="drawerAttemptNodeStrip" class="drawer-attempt-node-strip" role="tablist" aria-label="Select Delivery Attempt"></div>
+                <div id="drawerSelectedAttemptSummary" class="drawer-selected-attempt-summary"></div>
+                <div id="drawerOlderAttemptsCollapse" class="drawer-older-attempts-collapse" style="display: none;"></div>
+            </div>
+
             <!-- Delivery Result / Status -->
             <div class="form-group">
                 <label for="returnDeliveryStatus" style="font-weight: 600; color: #334155; margin-bottom: 6px; display: block; font-size: 0.88rem;">

@@ -428,169 +428,288 @@ include '../../layouts/header.php';
 </div>
 
 <!-- =========================================================================
-     MODAL 1: TEMPLATE CONFIGURATION & INSPECTION MODAL (Edit / Upload DOCX)
+     UNIFIED 2-PANEL SPLIT-SCREEN LIVE DOCUMENT EDITOR MODAL
+     (50% Left Panel: Live Form Inputs & Template Config | 50% Right Panel: Live A4/Legal Paper Preview)
      ========================================================================= -->
 <div class="modal-backdrop-custom" id="templateEditModal" style="display: none;">
-    <div class="modal-dialog-custom modal-dialog-lg">
-        <div class="modal-header-custom">
-            <div>
-                <h3 class="modal-title-custom" id="editModalTitle">Upload template</h3>
-                <p class="modal-desc-custom" id="editModalSubtitle">Configure master DOCX file, header behavior, and paper profile.</p>
-            </div>
-            <button type="button" class="modal-close-btn" onclick="closeEditModal()">&times;</button>
-        </div>
-
-        <div class="modal-body-custom">
-            <!-- Form Selection (Visible if opened from "+ Upload DOCX") -->
-            <div class="form-group-field" id="modalFormSelectGroup">
-                <label class="form-label-custom">Target Katarungang Pambarangay Form</label>
-                <select id="modalFormKeySelect" class="form-control-custom">
-                    <!-- Populated dynamically -->
-                </select>
-            </div>
-
-            <!-- DOCX File Upload Dropzone -->
-            <div class="dropzone-area" id="templateDropzone">
-                <input type="file" id="modalFileInput" accept=".docx,.doc,.pdf" style="display: none;">
-                <div class="dropzone-icon">📄</div>
-                <div class="dropzone-text">
-                    <strong>Click to select or drag and drop a DOCX template file</strong>
-                    <span>Supports OpenXML .docx (Body-Only or Full-Header formats)</span>
-                </div>
-                <div class="dropzone-current" id="dropzoneCurrentFile" style="display: none;"></div>
-            </div>
-
-            <!-- 3 Header Modes (Prompt Requirement) -->
-            <div class="form-group-field" style="margin-top: 18px;">
-                <label class="form-label-custom">Document Header Mode</label>
-                <div class="header-modes-grid">
-                    <label class="mode-radio-card">
-                        <input type="radio" name="modal_header_mode" value="shared" checked>
-                        <div class="mode-radio-body">
-                            <strong>Use Shared Letterhead</strong>
-                            <span>Automatically injects centralized Barangay Tumana seal, Marikina seal, and republic header. (Recommended for Body-Only templates)</span>
-                        </div>
-                    </label>
-                    <label class="mode-radio-card">
-                        <input type="radio" name="modal_header_mode" value="keep">
-                        <div class="mode-radio-body">
-                            <strong>Keep Uploaded DOCX Header</strong>
-                            <span>Preserves the custom embedded header and artwork existing in the uploaded Word document.</span>
-                        </div>
-                    </label>
-                    <label class="mode-radio-card">
-                        <input type="radio" name="modal_header_mode" value="custom">
-                        <div class="mode-radio-body">
-                            <strong>Custom Header for This Form</strong>
-                            <span>Applies form-specific header override without altering shared document defaults.</span>
-                        </div>
-                    </label>
+    <div class="modal-dialog-custom modal-dialog-split-editor" id="splitEditorDialog">
+        <!-- Top Unified Header Bar -->
+        <div class="modal-header-custom split-editor-header">
+            <div class="split-editor-header-left">
+                <span class="split-live-pill">
+                    <span class="split-live-dot"></span>
+                    2-PANEL LIVE EDITOR (50/50)
+                </span>
+                <div>
+                    <h3 class="modal-title-custom" id="editModalTitle">Live Document &amp; Template Editor</h3>
+                    <p class="modal-desc-custom" id="editModalSubtitle">Side-by-side 50% form inputs &amp; template setup with real-time 50% A4/Legal paper DOM preview.</p>
                 </div>
             </div>
-
-            <!-- Paper & Margins Mode (Inherit vs Custom) -->
-            <div class="form-group-field" style="margin-top: 18px;">
-                <label class="form-label-custom">Paper Dimensions &amp; Margins</label>
-                <div class="form-grid-2">
-                    <label class="mode-radio-card">
-                        <input type="radio" name="modal_paper_mode" value="shared" checked>
-                        <div class="mode-radio-body">
-                            <strong>Inherit Shared Settings</strong>
-                            <span>Follows central paper setup (Legal, 15/15/18/18 mm).</span>
-                        </div>
-                    </label>
-                    <label class="mode-radio-card">
-                        <input type="radio" name="modal_paper_mode" value="custom">
-                        <div class="mode-radio-body">
-                            <strong>Custom for This Form</strong>
-                            <span>Specify unique dimensions for this form.</span>
-                        </div>
-                    </label>
-                </div>
-            </div>
-
-            <div id="customPaperInputsRow" class="form-grid-4" style="display: none; margin-top: 12px; padding: 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-                <div class="form-group-field">
-                    <label class="form-label-custom">Paper Size</label>
-                    <select id="modal_custom_paper_size" class="form-control-custom">
-                        <option value="Legal">Legal (8.5" x 14")</option>
-                        <option value="A4">A4 (8.27" x 11.69")</option>
-                    </select>
-                </div>
-                <div class="form-group-field">
-                    <label class="form-label-custom">Top Margin (mm)</label>
-                    <input type="number" id="modal_custom_margin_top" class="form-control-custom" value="15" min="5" max="40">
-                </div>
-                <div class="form-group-field">
-                    <label class="form-label-custom">Bottom Margin (mm)</label>
-                    <input type="number" id="modal_custom_margin_bottom" class="form-control-custom" value="15" min="5" max="40">
-                </div>
-                <div class="form-group-field">
-                    <label class="form-label-custom">Left/Right (mm)</label>
-                    <input type="number" id="modal_custom_margin_left" class="form-control-custom" value="18" min="5" max="40">
-                </div>
-            </div>
-
-            <!-- Signatory Profile -->
-            <div class="form-group-field" style="margin-top: 18px;">
-                <label class="form-label-custom">Authorized Signatory Profile</label>
-                <select id="modal_signatory_profile" class="form-control-custom">
-                    <option value="punong_barangay">Punong Barangay / Lupon Chairman</option>
-                    <option value="lupon_secretary">Kalihim ng Lupon (Lupon Secretary)</option>
-                    <option value="pangkat_chairman">Tagapangulo ng Pangkat (Pangkat Chairman)</option>
-                    <option value="pangkat_secretary">Kalihim ng Pangkat (Pangkat Secretary)</option>
-                </select>
+            <div class="split-editor-header-actions">
+                <button type="button" class="btn-preview-action" id="btnToggleSplitLayout" onclick="toggleSplitEditorLayout()" title="Toggle 50/50 Split View vs Full Paper Preview">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="3" x2="12" y2="21"></line></svg>
+                    <span id="splitLayoutToggleLabel">50/50 Split Active</span>
+                </button>
+                <button type="button" class="btn-preview-action" onclick="printPreviewIframe()">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                    Print / PDF
+                </button>
+                <a href="#" class="btn-preview-action btn-preview-accent" id="previewDownloadDocxBtn">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    Download DOCX
+                </a>
+                <button type="button" class="modal-close-btn" onclick="closeEditModal()">&times;</button>
             </div>
         </div>
 
+        <!-- 2-Panel 50/50 Split Workspace -->
+        <div class="split-editor-workspace" id="splitEditorWorkspace">
+            <!-- LEFT 50% PANEL: Live Document Form Inputs & Template Configuration -->
+            <div class="split-editor-left-panel" id="splitEditorLeftPanel">
+                <!-- Left Panel Mode Switcher -->
+                <div class="split-left-tabs">
+                    <button type="button" class="split-left-tab-btn active" data-split-tab="live-fields" onclick="switchSplitEditorTab('live-fields')">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                        Live Form Fields &amp; Content
+                    </button>
+                    <button type="button" class="split-left-tab-btn" data-split-tab="template-setup" onclick="switchSplitEditorTab('template-setup')">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                        DOCX Upload, Header &amp; Paper Setup
+                    </button>
+                </div>
+
+                <div class="split-left-scroll-body">
+                    <!-- Target KP Form Selector (Always accessible at top of editor) -->
+                    <div class="form-group-field" id="modalFormSelectGroup" style="margin-bottom: 14px;">
+                        <label class="form-label-custom">Active Katarungang Pambarangay Form</label>
+                        <select id="modalFormKeySelect" class="form-control-custom">
+                            <!-- Populated dynamically -->
+                        </select>
+                    </div>
+
+                    <!-- SUB-TAB 1: LIVE DOCUMENT CONTENT & FIELDS (Real-Time DOM Sync) -->
+                    <div id="splitTabPanelLiveFields" class="split-subtab-panel active">
+                        <div class="live-sync-banner">
+                            <div>
+                                <strong>Real-Time DOM Synchronization</strong>
+                                <span>Typing in any field below immediately updates the live A4/Legal paper sheet on the right without page reloads.</span>
+                            </div>
+                            <button type="button" class="btn-reset-live-fields" onclick="resetLiveEditorFieldsToDefault()" title="Reset sample values">Reset Fields</button>
+                        </div>
+
+                        <div class="form-grid-2">
+                            <div class="form-group-field">
+                                <label class="form-label-custom">Case Number (Usaping Brgy. Blg.)</label>
+                                <input type="text" id="liveInput_case_number" data-live-input="case_number" class="form-control-custom" placeholder="e.g., KP-2026-10-0042">
+                            </div>
+                            <div class="form-group-field">
+                                <label class="form-label-custom">Subject / Nature (Ukol sa)</label>
+                                <input type="text" id="liveInput_complaint_title" data-live-input="complaint_title" class="form-control-custom" placeholder="e.g., Singil sa Utang at Hindi Pagkakaunawaan">
+                            </div>
+                        </div>
+
+                        <div class="form-grid-2">
+                            <div class="form-group-field">
+                                <label class="form-label-custom">Complainant(s) (May-Sumbong)</label>
+                                <input type="text" id="liveInput_complainants" data-live-input="complainants" class="form-control-custom" placeholder="Full name(s) of complainant(s)">
+                            </div>
+                            <div class="form-group-field">
+                                <label class="form-label-custom">Respondent(s) (Ipinagsusumbong)</label>
+                                <input type="text" id="liveInput_respondents" data-live-input="respondents" class="form-control-custom" placeholder="Full name(s) of respondent(s)">
+                            </div>
+                        </div>
+
+                        <div class="form-group-field">
+                            <label class="form-label-custom">Respondent Address (Tirahan)</label>
+                            <input type="text" id="liveInput_respondent_address" data-live-input="respondent_address" class="form-control-custom" placeholder="Street, Purok, Barangay Tumana, Marikina City">
+                        </div>
+
+                        <div class="form-grid-3" style="display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 10px;">
+                            <div class="form-group-field">
+                                <label class="form-label-custom">Hearing Date</label>
+                                <input type="text" id="liveInput_hearing_date" data-live-input="hearing_date" class="form-control-custom" placeholder="e.g., November 10, 2026">
+                            </div>
+                            <div class="form-group-field">
+                                <label class="form-label-custom">Hearing Time</label>
+                                <input type="text" id="liveInput_hearing_time" data-live-input="hearing_time" class="form-control-custom" placeholder="e.g., 9:30 AM">
+                            </div>
+                            <div class="form-group-field">
+                                <label class="form-label-custom">Hearing Venue</label>
+                                <input type="text" id="liveInput_venue" data-live-input="venue" class="form-control-custom" placeholder="Tanggapan ng Lupong Tagapamayapa">
+                            </div>
+                        </div>
+
+                        <div class="form-group-field">
+                            <label class="form-label-custom">Statement / Facts / Agreement Terms (Salaysay / Kasunduan)</label>
+                            <textarea id="liveInput_complaint_details" data-live-input="complaint_details" class="form-control-custom" rows="3" placeholder="Enter complaint narrative, settlement terms, or statutory statement..."></textarea>
+                        </div>
+
+                        <div class="form-group-field">
+                            <label class="form-label-custom">Relief Sought / Resolution Conditions (Hinihiling na Lunas)</label>
+                            <textarea id="liveInput_relief_prayed_for" data-live-input="relief_prayed_for" class="form-control-custom" rows="2" placeholder="Enter relief prayed for or specific compliance conditions..."></textarea>
+                        </div>
+
+                        <div class="form-grid-3" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+                            <div class="form-group-field">
+                                <label class="form-label-custom">Issuance Date</label>
+                                <input type="text" id="liveInput_date_today" data-live-input="date_today" class="form-control-custom" placeholder="e.g., November 4, 2026">
+                            </div>
+                            <div class="form-group-field">
+                                <label class="form-label-custom">Presiding Signatory</label>
+                                <input type="text" id="liveInput_punong_barangay" data-live-input="punong_barangay" class="form-control-custom" placeholder="HON. AKIKO LYNNE CENTENO">
+                            </div>
+                            <div class="form-group-field">
+                                <label class="form-label-custom">Signatory Title</label>
+                                <input type="text" id="liveInput_officer_title" data-live-input="officer_title" class="form-control-custom" placeholder="Punong Barangay / Lupon Chairman">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SUB-TAB 2: DOCX TEMPLATE UPLOAD, HEADER & PAPER SETUP -->
+                    <div id="splitTabPanelTemplateSetup" class="split-subtab-panel" style="display: none;">
+                        <!-- DOCX File Upload Dropzone -->
+                        <div class="dropzone-area" id="templateDropzone">
+                            <input type="file" id="modalFileInput" accept=".docx,.doc,.pdf" style="display: none;">
+                            <div class="dropzone-icon">
+                                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+                            </div>
+                            <div class="dropzone-text">
+                                <strong>Click to select or drag and drop a DOCX template file</strong>
+                                <span>Supports OpenXML .docx (Body-Only or Full-Header formats)</span>
+                            </div>
+                            <div class="dropzone-current" id="dropzoneCurrentFile" style="display: none;"></div>
+                        </div>
+
+                        <!-- 3 Header Modes -->
+                        <div class="form-group-field" style="margin-top: 14px;">
+                            <label class="form-label-custom">Document Header Mode (Live Preview Sync)</label>
+                            <div class="header-modes-grid">
+                                <label class="mode-radio-card">
+                                    <input type="radio" name="modal_header_mode" value="shared" checked>
+                                    <div class="mode-radio-body">
+                                        <strong>Use Shared Letterhead</strong>
+                                        <span>Automatically injects centralized Barangay Tumana seal, Marikina seal, and republic header.</span>
+                                    </div>
+                                </label>
+                                <label class="mode-radio-card">
+                                    <input type="radio" name="modal_header_mode" value="keep">
+                                    <div class="mode-radio-body">
+                                        <strong>Keep Uploaded DOCX Header</strong>
+                                        <span>Preserves the custom embedded header and artwork existing in the uploaded Word document.</span>
+                                    </div>
+                                </label>
+                                <label class="mode-radio-card">
+                                    <input type="radio" name="modal_header_mode" value="custom">
+                                    <div class="mode-radio-body">
+                                        <strong>Custom Header for This Form</strong>
+                                        <span>Applies form-specific header override without altering shared document defaults.</span>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Paper & Margins Mode (Inherit vs Custom) -->
+                        <div class="form-group-field" style="margin-top: 14px;">
+                            <label class="form-label-custom">Paper Dimensions &amp; Margins (Live Sheet Resize)</label>
+                            <div class="form-grid-2">
+                                <label class="mode-radio-card">
+                                    <input type="radio" name="modal_paper_mode" value="shared" checked>
+                                    <div class="mode-radio-body">
+                                        <strong>Inherit Shared Settings</strong>
+                                        <span>Follows central paper setup (Legal, 15/15/18/18 mm).</span>
+                                    </div>
+                                </label>
+                                <label class="mode-radio-card">
+                                    <input type="radio" name="modal_paper_mode" value="custom">
+                                    <div class="mode-radio-body">
+                                        <strong>Custom for This Form</strong>
+                                        <span>Specify unique Legal/A4 dimensions &amp; margins.</span>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div id="customPaperInputsRow" class="form-grid-4" style="display: none; margin-top: 10px; padding: 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+                            <div class="form-group-field">
+                                <label class="form-label-custom">Paper Size</label>
+                                <select id="modal_custom_paper_size" class="form-control-custom">
+                                    <option value="Legal">Legal (8.5" x 14")</option>
+                                    <option value="A4">A4 (8.27" x 11.69")</option>
+                                </select>
+                            </div>
+                            <div class="form-group-field">
+                                <label class="form-label-custom">Top (mm)</label>
+                                <input type="number" id="modal_custom_margin_top" class="form-control-custom" value="15" min="5" max="40">
+                            </div>
+                            <div class="form-group-field">
+                                <label class="form-label-custom">Bottom (mm)</label>
+                                <input type="number" id="modal_custom_margin_bottom" class="form-control-custom" value="15" min="5" max="40">
+                            </div>
+                            <div class="form-group-field">
+                                <label class="form-label-custom">Left/Right (mm)</label>
+                                <input type="number" id="modal_custom_margin_left" class="form-control-custom" value="18" min="5" max="40">
+                            </div>
+                        </div>
+
+                        <!-- Signatory Profile -->
+                        <div class="form-group-field" style="margin-top: 14px;">
+                            <label class="form-label-custom">Authorized Signatory Profile</label>
+                            <select id="modal_signatory_profile" class="form-control-custom">
+                                <option value="punong_barangay">Punong Barangay / Lupon Chairman</option>
+                                <option value="lupon_secretary">Kalihim ng Lupon (Lupon Secretary)</option>
+                                <option value="pangkat_chairman">Tagapangulo ng Pangkat (Pangkat Chairman)</option>
+                                <option value="pangkat_secretary">Kalihim ng Pangkat (Pangkat Secretary)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT 50% PANEL: Live A4/Legal Paper Preview with Real-Time DOM/Iframe Update -->
+            <div class="split-editor-right-panel" id="splitEditorRightPanel">
+                <div class="split-preview-toolbar">
+                    <div class="split-preview-toolbar-left">
+                        <span class="paper-format-pill" id="livePreviewPaperBadge">LEGAL PAPER (8.5" &times; 14")</span>
+                        <label class="direct-edit-toggle" title="Click directly on the paper preview to edit text inline">
+                            <input type="checkbox" id="chkDirectPaperEdit" onchange="toggleDirectPaperEdit(this.checked)">
+                            <span>Direct Paper Edit</span>
+                        </label>
+                    </div>
+                    <div class="split-preview-toolbar-right">
+                        <button type="button" class="preview-zoom-btn" onclick="zoomSplitPreview('-')" title="Zoom Out">&minus;</button>
+                        <button type="button" class="preview-zoom-btn" id="splitZoomResetBtn" onclick="zoomSplitPreview('reset')" title="Reset Zoom">100%</button>
+                        <button type="button" class="preview-zoom-btn" onclick="zoomSplitPreview('+')" title="Zoom In">+</button>
+                        <button type="button" class="preview-zoom-btn" onclick="zoomSplitPreview('fit')" title="Fit Paper to Panel">Fit</button>
+                    </div>
+                </div>
+                <div class="split-preview-canvas-wrap" id="splitPreviewCanvasWrap">
+                    <iframe id="previewIframe" class="preview-iframe-element" src="about:blank" title="Live A4/Legal Paper Preview"></iframe>
+                </div>
+            </div>
+        </div>
+
+        <!-- Unified Footer -->
         <div class="modal-footer-custom">
             <div class="modal-footer-left">
                 <button type="button" class="btn-outline-modal" id="btnModalDownloadDocx">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                     Download Master DOCX
                 </button>
-                <button type="button" class="btn-outline-modal" id="btnModalPreviewDocx">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                    Preview Output
+                <button type="button" class="btn-outline-modal" id="btnModalPreviewDocx" onclick="refreshSplitLivePreviewIframe()">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                    Reload Paper Sheet
                 </button>
             </div>
             <div class="modal-footer-right">
-                <button type="button" class="btn-cancel-modal" onclick="closeEditModal()">Cancel</button>
+                <button type="button" class="btn-cancel-modal" onclick="closeEditModal()">Close</button>
                 <button type="button" class="btn-save-primary" id="btnSaveTemplateConfig">Save &amp; Publish Template</button>
             </div>
         </div>
     </div>
 </div>
 
-<!-- =========================================================================
-     MODAL 2: SYNCHRONIZED PREVIEW MODAL
-     ========================================================================= -->
-<div class="modal-backdrop-custom" id="templatePreviewModal" style="display: none;">
-    <div class="modal-dialog-custom modal-dialog-xl">
-        <div class="modal-header-custom">
-            <div>
-                <h3 class="modal-title-custom" id="previewModalTitle">Template Preview</h3>
-                <p class="modal-desc-custom" id="previewModalSubtitle" style="display: none;"></p>
-            </div>
-            <div class="preview-header-actions">
-                <button type="button" class="btn-preview-action" onclick="printPreviewIframe()">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
-                    Print
-                </button>
-                <a href="#" class="btn-preview-action btn-preview-accent" id="previewDownloadDocxBtn">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                    Download DOCX
-                </a>
-                <button type="button" class="modal-close-btn" onclick="closePreviewModal()">&times;</button>
-            </div>
-        </div>
-
-        <div class="modal-body-custom modal-body-iframe">
-            <iframe id="previewIframe" class="preview-iframe-element" src="about:blank"></iframe>
-        </div>
-    </div>
-</div>
-
+<!-- Legacy Preview Modal Alias (kept for backwards compatibility) -->
+<div class="modal-backdrop-custom" id="templatePreviewModal" style="display: none;"></div>
 <script>
 window.AGAP_DOCUMENTS = Object.freeze({
     canManage: <?php echo $canManageDocuments ? 'true' : 'false'; ?>,

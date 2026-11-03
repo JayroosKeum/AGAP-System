@@ -762,32 +762,67 @@ async function renderExpandedCaseView(caseId) {
                 ? `KP Form No. 12 – Notice of Hearing (Pangkat) (${maxAllowedAttempts} Attempts Max)`
                 : `KP Form No. 9 – Summons Delivery Tracking (${maxAllowedAttempts} Attempts Max)`);
 
-        // Helper: Party Stepper Node (Complainant or Respondent)
+        // Store party attempt state for Interactive Stepper Node Circle & Single Off-Canvas Drawer UX
+        window.selectedPartyAttemptMap = window.selectedPartyAttemptMap || {};
+        window.activePartyAttemptsState = window.activePartyAttemptsState || {};
+
+        const latestCompNum = compAttempts.length > 0 ? Number(compAttempts[compAttempts.length - 1].attempt_number || compAttempts.length) : 1;
+        const latestRespNum = respAttempts.length > 0 ? Number(respAttempts[respAttempts.length - 1].attempt_number || respAttempts.length) : 1;
+
+        if (!window.selectedPartyAttemptMap[`${caseId}_Complainant`]) {
+            window.selectedPartyAttemptMap[`${caseId}_Complainant`] = latestCompNum;
+        }
+        if (!window.selectedPartyAttemptMap[`${caseId}_Respondent`]) {
+            window.selectedPartyAttemptMap[`${caseId}_Respondent`] = latestRespNum;
+        }
+
+        window.activePartyAttemptsState[`${caseId}_Complainant`] = {
+            caseId: Number(caseId),
+            hearingId: Number(activeHearing.hearing_id),
+            partyType: 'Complainant',
+            residentId: Number(compResidentId || 0),
+            partyName: compName,
+            maxAttempts: maxAllowedAttempts,
+            anyServed: anyCompServed,
+            attempts: compAttempts,
+            fallbackDeliv: compDeliv
+        };
+        window.activePartyAttemptsState[`${caseId}_Respondent`] = {
+            caseId: Number(caseId),
+            hearingId: Number(activeHearing.hearing_id),
+            partyType: 'Respondent',
+            residentId: Number(respResidentId || 0),
+            partyName: respName,
+            maxAttempts: maxAllowedAttempts,
+            anyServed: anyRespServed,
+            attempts: respAttempts,
+            fallbackDeliv: respDeliv
+        };
+
+        // Helper: Party Stepper Node (Complainant or Respondent) — Interactive Clickable Node Circle
         const renderPartyStepperNode = (num, partyType) => {
             const ord = ordinals[num] || num + 'th';
             const attemptsList = (partyType === 'Complainant') ? compAttempts : respAttempts;
             const anyServed = (partyType === 'Complainant') ? anyCompServed : anyRespServed;
-            const targetResId = (partyType === 'Complainant') ? compResidentId : respResidentId;
-            const targetPartyName = (partyType === 'Complainant') ? compName : respName;
+            const selectedNum = Number(window.selectedPartyAttemptMap[`${caseId}_${partyType}`] || (partyType === 'Complainant' ? latestCompNum : latestRespNum));
+            const latestNum = (partyType === 'Complainant') ? latestCompNum : latestRespNum;
 
-            const att = attemptsList.find(a => a.attempt_number === num) || null;
+            const att = attemptsList.find(a => Number(a.attempt_number) === Number(num)) || null;
             let circleClass = 'unissued';
             let iconText = num;
             let statusText = 'Not Issued';
             let subText = 'Unissued';
             let clickAttr = '';
             let stepCursor = 'default';
+            let extraStepClass = '';
 
             if (att) {
-                const resIdVal = Number(att.resident_id || targetResId) || 0;
-                const deliveryId = Number(att.delivery_id);
-                const attDelivId = (Number.isSafeInteger(deliveryId) && deliveryId > 0) ? deliveryId : 'null';
                 if (att.is_pending && anyServed) {
                     return `
                         <div class="stepper-step" style="cursor: default;" title="${ord} Attempt: Cancelled (Notice already served)">
                             <div class="step-circle pending">✓</div>
-                            <span class="step-label">${ord} Attempt</span>
-                            <span class="step-subtext">Notice Served</span>
+                            <span class="step-label">${ord}</span>
+                            <span class="step-subtext">Served</span>
                         </div>
                     `;
                 }
@@ -796,7 +831,7 @@ async function renderExpandedCaseView(caseId) {
                     circleClass = 'served';
                     iconText = '✓';
                     statusText = 'Served';
-                    subText = att.attempted_at ? formatDateTime(att.attempted_at) : (att.served_at ? formatDateTime(att.served_at) : 'Personal');
+                    subText = 'Served';
                 } else if (att.is_failed) {
                     circleClass = 'failed';
                     iconText = '✕';
@@ -804,19 +839,26 @@ async function renderExpandedCaseView(caseId) {
                     subText = att.unserved_reason || 'Unserved';
                 } else {
                     circleClass = 'pending';
-                    iconText = '⏳';
+                    iconText = num;
                     statusText = 'Pending';
-                    subText = 'Awaiting Return';
+                    subText = 'Pending';
                 }
 
-                clickAttr = `onclick="openOfficerReturnModal('${partyType}', ${resIdVal}, ${Number(activeHearing.hearing_id)}, ${caseId}, ${escapeGpsJsArgument(att.delivery_status || '')}, ${escapeGpsJsArgument(att.recipient_name || targetPartyName)}, ${escapeGpsJsArgument(att.relationship || '')}, ${escapeGpsJsArgument(att.remarks || '')}, ${escapeGpsJsArgument(att.unserved_reason || '')}, ${num}, ${attDelivId})"`;
+                if (Number(num) === selectedNum) {
+                    extraStepClass += ' is-selected';
+                }
+                if (Number(num) < latestNum) {
+                    extraStepClass += ' is-collapsed-history';
+                }
+
+                clickAttr = `onclick="handleStepperNodeClick(${Number(caseId)}, '${partyType}', ${Number(num)}, true)"`;
                 stepCursor = 'pointer';
             }
 
             return `
-                <button type="button" class="stepper-step" ${clickAttr} title="${ord} Attempt: ${statusText} (${subText}) — Click to view / edit return" style="cursor: ${stepCursor};">
+                <button type="button" class="stepper-step${extraStepClass}" data-party="${partyType}" data-attempt="${num}" ${clickAttr} title="${ord} Attempt: ${statusText} (${subText}) — Click node circle to inspect or open Attempt History Drawer" style="cursor: ${stepCursor};">
                     <div class="step-circle ${circleClass}">${iconText}</div>
-                    <span class="step-label">${ord} Attempt</span>
+                    <span class="step-label">${ord}</span>
                     <span class="step-subtext">${escapeGpsHtml(subText)}</span>
                 </button>
             `;
@@ -826,7 +868,7 @@ async function renderExpandedCaseView(caseId) {
             if (isPaanyayaCase) return '';
             let circleClass = isCfaEligible ? 'cfa-ready' : 'cfa-locked';
             let iconText = isCfaEligible ? 'CFA' : '—';
-            let statusText = isCfaEligible ? 'CFA Ready' : 'CFA Locked';
+            let statusText = isCfaEligible ? 'CFA Ready' : 'CFA';
             let subText = isCfaEligible ? 'Eligible' : `${failedCount}/${maxAllowedAttempts} Failed`;
             let clickAction = isCfaEligible
                 ? `onclick="window.location.href='../documents/cfa.php?case_id=${encodeURIComponent(caseId)}'"`
@@ -841,139 +883,69 @@ async function renderExpandedCaseView(caseId) {
             `;
         };
 
-        // Helper: Party Details List (Attempts Cards)
+        // Helper: Single Active Attempt Card (Older attempts are completely collapsed into the interactive stepper & off-canvas drawer)
         const renderPartyDetailsList = (attemptsList, partyType, fallbackDeliv) => {
-            const targetResId = (partyType === 'Complainant') ? compResidentId : respResidentId;
-            const targetPartyName = (partyType === 'Complainant') ? compName : respName;
-
             if (!attemptsList || attemptsList.length === 0) {
                 if (fallbackDeliv) {
-                    const fallbackDelivId = (Number.isSafeInteger(Number(fallbackDeliv?.delivery_id)) && Number(fallbackDeliv?.delivery_id) > 0) ? Number(fallbackDeliv.delivery_id) : 'null';
                     const isServed = Boolean(fallbackDeliv.delivery_status?.startsWith('Served'));
                     const isFailed = fallbackDeliv.delivery_status === 'Unserved';
                     const statusClass = isServed ? 'badge-served' : (isFailed ? 'badge-not-served' : 'badge-warning');
                     const statusLabel = isServed ? (fallbackDeliv.delivery_status || 'Served') : (isFailed ? 'Unserved / Failed' : 'Pending Service');
 
                     return `
-                        <div class="respondent-attempt-block">
-                            <div style="font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
-                                <span>1st Attempt</span>
-                                <div style="display: inline-flex; align-items: center; gap: 8px;">
-                                    <span class="service-result-badge ${statusClass}" style="font-size: 0.72rem; padding: 2px 7px;">${escapeGpsHtml(statusLabel)}</span>
-                                </div>
+                        <div class="respondent-attempt-block active-attempt-single-card" id="partyActiveAttemptCard_${caseId}_${partyType}">
+                            <div class="active-attempt-card-header">
+                                <span class="active-attempt-title">1st Attempt (Active)</span>
+                                <span class="service-result-badge ${statusClass}" style="font-size: 0.72rem; padding: 2px 8px;">${escapeGpsHtml(statusLabel)}</span>
                             </div>
-                            <ul class="delivery-detail-list">
-                                <li>
-                                    <span class="delivery-detail-label">Service Source / Server</span>
+                            <div class="compact-attempt-grid">
+                                <div class="compact-attempt-item">
+                                    <span class="delivery-detail-label">Server</span>
                                     <span class="delivery-detail-val">${escapeGpsHtml(fallbackDeliv.served_by_name || 'Lupon Office (Personal Notice)')}</span>
-                                </li>
+                                </div>
                                 ${fallbackDeliv.served_at ? `
-                                    <li>
+                                    <div class="compact-attempt-item">
                                         <span class="delivery-detail-label">Date/Time Served</span>
                                         <span class="delivery-detail-val">${escapeGpsHtml(formatDateTime(fallbackDeliv.served_at))}</span>
-                                    </li>
+                                    </div>
                                 ` : ''}
-                                <li>
-                                    <span class="delivery-detail-label">Service Method</span>
+                                <div class="compact-attempt-item">
+                                    <span class="delivery-detail-label">Method</span>
                                     <span class="delivery-detail-val">${escapeGpsHtml(fallbackDeliv.service_method || 'Personal Notice')}</span>
-                                </li>
+                                </div>
                                 ${fallbackDeliv.remarks ? `
-                                    <li>
+                                    <div class="compact-attempt-item compact-attempt-full">
                                         <span class="delivery-detail-label">Remarks</span>
                                         <span class="delivery-detail-val">${escapeGpsHtml(fallbackDeliv.remarks)}</span>
-                                    </li>
+                                    </div>
                                 ` : ''}
-                            </ul>
+                            </div>
                         </div>
                     `;
                 }
 
                 return `
-                    <ul class="delivery-detail-list">
-                        <li>
-                            <span class="delivery-detail-label">Service Status</span>
-                            <span class="delivery-detail-val"><span class="service-result-badge badge-warning">Pending Service</span></span>
-                        </li>
-                        <li>
-                            <span class="delivery-detail-label">Service Source / Server</span>
-                            <span class="delivery-detail-val">Unassigned</span>
-                        </li>
-                    </ul>
+                    <div class="respondent-attempt-block active-attempt-single-card">
+                        <div class="compact-attempt-grid">
+                            <div class="compact-attempt-item">
+                                <span class="delivery-detail-label">Service Status</span>
+                                <span class="delivery-detail-val"><span class="service-result-badge badge-warning">Pending Service</span></span>
+                            </div>
+                            <div class="compact-attempt-item">
+                                <span class="delivery-detail-label">Server</span>
+                                <span class="delivery-detail-val">Unassigned</span>
+                            </div>
+                        </div>
+                    </div>
                 `;
             }
 
-            return attemptsList.map((att, idx) => {
-                const ord = att.attempt_ordinal || ((ordinals[att.attempt_number] || att.attempt_number + 'th') + ' Attempt');
-                const proofPath = att.proof_file_path || att.attachment_path;
-                const isServed = Boolean(att.is_served);
-                const isFailed = Boolean(att.is_failed);
-                const timeVal = att.served_at || att.attempted_at;
-                const timeLabel = isServed ? 'Date/Time Served' : (isFailed ? 'Date/Time Attempted' : 'Date/Time Issued');
+            const latestNum = Number(attemptsList[attemptsList.length - 1]?.attempt_number || attemptsList.length);
+            const selectedNum = Number(window.selectedPartyAttemptMap[`${caseId}_${partyType}`] || latestNum);
+            const att = attemptsList.find(a => Number(a.attempt_number) === selectedNum) || attemptsList[attemptsList.length - 1];
+            const collapsedCount = Math.max(0, attemptsList.length - 1);
 
-                let statusBadge = '';
-                if (isServed) {
-                    statusBadge = `<span class="service-result-badge badge-served" style="font-size: 0.72rem; padding: 2px 7px;">${escapeGpsHtml(att.delivery_status || 'Served')}</span>`;
-                } else if (isFailed) {
-                    statusBadge = `<span class="service-result-badge badge-not-served" style="font-size: 0.72rem; padding: 2px 7px;">Unserved / Failed</span>`;
-                } else {
-                    statusBadge = `<span class="service-result-badge badge-warning" style="font-size: 0.72rem; padding: 2px 7px;">Pending Service</span>`;
-                }
-
-                const attDelivId = (Number.isSafeInteger(Number(att.delivery_id)) && Number(att.delivery_id) > 0) ? Number(att.delivery_id) : 'null';
-                const editBtnText = att.is_pending ? 'Log Return' : 'Edit Return';
-                const editBtnIcon = att.is_pending ? '📝' : '✏️';
-
-                return `
-                    <div class="respondent-attempt-block" style="${idx > 0 ? 'margin-top: 10px; padding-top: 8px; border-top: 1px dashed #e2e8f0;' : ''}">
-                        <div style="font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
-                            <span>${escapeGpsHtml(ord)}</span>
-                            <div style="display: inline-flex; align-items: center; gap: 8px;">
-                                <span>${statusBadge}</span>
-                            </div>
-                        </div>
-                        <ul class="delivery-detail-list">
-                            ${timeVal ? `
-                                <li>
-                                    <span class="delivery-detail-label">${timeLabel}</span>
-                                    <span class="delivery-detail-val">${escapeGpsHtml(formatDateTime(timeVal))}</span>
-                                </li>
-                            ` : ''}
-                            <li>
-                                <span class="delivery-detail-label">Service Source / Server</span>
-                                <span class="delivery-detail-val">${escapeGpsHtml(att.served_by_name || 'Unassigned')}</span>
-                            </li>
-                            ${isFailed && att.unserved_reason ? `
-                                <li>
-                                    <span class="delivery-detail-label">Failure Reason</span>
-                                    <span class="delivery-detail-val" style="color: #b91c1c; font-weight: 600;">${escapeGpsHtml(att.unserved_reason)}</span>
-                                </li>
-                            ` : ''}
-                            ${att.service_method ? `
-                                <li>
-                                    <span class="delivery-detail-label">Service Method</span>
-                                    <span class="delivery-detail-val">${escapeGpsHtml(att.service_method)}</span>
-                                </li>
-                            ` : ''}
-                            ${att.remarks ? `
-                                <li>
-                                    <span class="delivery-detail-label">Remarks</span>
-                                    <span class="delivery-detail-val">${escapeGpsHtml(att.remarks)}</span>
-                                </li>
-                            ` : ''}
-                            ${proofPath ? `
-                                <li>
-                                    <span class="delivery-detail-label">Proof / Attachment</span>
-                                    <span class="delivery-detail-val">
-                                        <a href="../../${escapeGpsHtml(proofPath)}" target="_blank" style="color: #0284c7; font-weight: 600; text-decoration: underline; display: inline-flex; align-items: center; gap: 3px;">
-                                            📎 View Proof
-                                        </a>
-                                    </span>
-                                </li>
-                            ` : ''}
-                        </ul>
-                    </div>
-                `;
-            }).join('');
+            return `<div id="partyActiveAttemptWrap_${caseId}_${partyType}">${buildSingleAttemptCardHtml(att, attemptsList.length, collapsedCount, latestNum, caseId, partyType)}</div>`;
         };
 
         // Complainant Action Buttons
@@ -1315,6 +1287,249 @@ window.printKp8Notice = printKp8Notice;
    Task 6: Slide-in Officer's Return Drawer Implementation
    ========================================================================== */
 
+function buildSingleAttemptCardHtml(att, totalAttempts, collapsedCount, latestNum, caseId, partyType) {
+    if (!att) return '';
+    const ordinals = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th'];
+    const attNum = Number(att.attempt_number || 1);
+    const ord = att.attempt_ordinal || ((ordinals[attNum] || attNum + 'th') + ' Attempt');
+    const isLatest = (attNum === Number(latestNum));
+    const proofPath = att.proof_file_path || att.attachment_path;
+    const isServed = Boolean(att.is_served);
+    const isFailed = Boolean(att.is_failed);
+    const timeVal = att.served_at || att.attempted_at;
+    const timeLabel = isServed ? 'Date/Time Served' : (isFailed ? 'Date/Time Attempted' : 'Date/Time Issued');
+
+    let statusBadge = '';
+    if (isServed) {
+        statusBadge = `<span class="service-result-badge badge-served" style="font-size: 0.72rem; padding: 2px 8px;">${escapeGpsHtml(att.delivery_status || 'Served')}</span>`;
+    } else if (isFailed) {
+        statusBadge = `<span class="service-result-badge badge-not-served" style="font-size: 0.72rem; padding: 2px 8px;">Unserved / Failed</span>`;
+    } else {
+        statusBadge = `<span class="service-result-badge badge-warning" style="font-size: 0.72rem; padding: 2px 8px;">Pending Service</span>`;
+    }
+
+    const collapsedHeaderHtml = collapsedCount > 0 ? `
+        <div class="collapsed-history-bar">
+            <div class="collapsed-history-info">
+                <span class="collapsed-history-dot"></span>
+                <span><strong>${collapsedCount} older attempt${collapsedCount > 1 ? 's' : ''} collapsed</strong> &middot; Tap any node circle above</span>
+            </div>
+            <button type="button" class="btn-history-drawer-pill" onclick="handleStepperNodeClick(${Number(caseId)}, '${partyType}', ${attNum}, true)">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                History Drawer (${totalAttempts})
+            </button>
+        </div>
+    ` : '';
+
+    return `
+        ${collapsedHeaderHtml}
+        <div class="respondent-attempt-block active-attempt-single-card" id="partyActiveAttemptCard_${caseId}_${partyType}">
+            <div class="active-attempt-card-header">
+                <div style="display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    <span class="active-attempt-title">${escapeGpsHtml(ord)}</span>
+                    <span class="active-attempt-tag ${isLatest ? 'is-latest' : 'is-historical'}">${isLatest ? 'Latest Attempt' : 'Historical View'}</span>
+                </div>
+                <div style="display: inline-flex; align-items: center; gap: 6px;">
+                    ${statusBadge}
+                    <button type="button" class="btn-Attempt-inspect-inline" onclick="handleStepperNodeClick(${Number(caseId)}, '${partyType}', ${attNum}, true)" title="Open in Off-Canvas Drawer">
+                        ${att.is_pending ? 'Log Return' : 'Inspect / Edit'} &rarr;
+                    </button>
+                </div>
+            </div>
+            <div class="compact-attempt-grid">
+                ${timeVal ? `
+                    <div class="compact-attempt-item">
+                        <span class="delivery-detail-label">${timeLabel}</span>
+                        <span class="delivery-detail-val">${escapeGpsHtml(formatDateTime(timeVal))}</span>
+                    </div>
+                ` : ''}
+                <div class="compact-attempt-item">
+                    <span class="delivery-detail-label">Server</span>
+                    <span class="delivery-detail-val">${escapeGpsHtml(att.served_by_name || 'Unassigned')}</span>
+                </div>
+                ${isFailed && att.unserved_reason ? `
+                    <div class="compact-attempt-item">
+                        <span class="delivery-detail-label">Failure Reason</span>
+                        <span class="delivery-detail-val" style="color: #b91c1c; font-weight: 700;">${escapeGpsHtml(att.unserved_reason)}</span>
+                    </div>
+                ` : ''}
+                ${att.service_method ? `
+                    <div class="compact-attempt-item">
+                        <span class="delivery-detail-label">Service Method</span>
+                        <span class="delivery-detail-val">${escapeGpsHtml(att.service_method)}</span>
+                    </div>
+                ` : ''}
+                ${att.remarks ? `
+                    <div class="compact-attempt-item compact-attempt-full">
+                        <span class="delivery-detail-label">Remarks</span>
+                        <span class="delivery-detail-val">${escapeGpsHtml(att.remarks)}</span>
+                    </div>
+                ` : ''}
+                ${proofPath ? `
+                    <div class="compact-attempt-item compact-attempt-full">
+                        <span class="delivery-detail-label">Proof Photo</span>
+                        <span class="delivery-detail-val">
+                            <a href="../../${escapeGpsHtml(proofPath)}" target="_blank" style="color: #0284c7; font-weight: 700; text-decoration: underline; display: inline-flex; align-items: center; gap: 4px;">
+                                View Geotagged Proof
+                            </a>
+                        </span>
+                    </div>
+                ` : ''}
+            </div>
+        </div>
+    `;
+}
+window.buildSingleAttemptCardHtml = buildSingleAttemptCardHtml;
+
+function handleStepperNodeClick(caseId, partyType, attemptNumber, openDrawer = true) {
+    window.selectedPartyAttemptMap = window.selectedPartyAttemptMap || {};
+    window.selectedPartyAttemptMap[`${caseId}_${partyType}`] = Number(attemptNumber);
+
+    const stateObj = window.activePartyAttemptsState?.[`${caseId}_${partyType}`];
+    if (!stateObj) return;
+
+    const attemptsList = stateObj.attempts || [];
+    const att = attemptsList.find(a => Number(a.attempt_number) === Number(attemptNumber));
+    if (!att) return;
+
+    // 1. Update active node circle selection highlight in the horizontal stepper
+    document.querySelectorAll(`.stepper-step[data-party="${partyType}"]`).forEach(btn => {
+        const btnAtt = Number(btn.getAttribute('data-attempt'));
+        btn.classList.toggle('is-selected', btnAtt === Number(attemptNumber));
+    });
+
+    // 2. Update the single active attempt card inline (no vertical stacking)
+    const wrapEl = document.getElementById(`partyActiveAttemptWrap_${caseId}_${partyType}`);
+    if (wrapEl) {
+        const latestNum = Number(attemptsList[attemptsList.length - 1]?.attempt_number || attemptsList.length);
+        const collapsedCount = Math.max(0, attemptsList.length - 1);
+        wrapEl.innerHTML = buildSingleAttemptCardHtml(att, attemptsList.length, collapsedCount, latestNum, caseId, partyType);
+    }
+
+    // 3. Open or sync the Single Off-Canvas Drawer for inspecting / editing this attempt and viewing collapsed history
+    if (openDrawer) {
+        const resIdVal = Number(att.resident_id || stateObj.residentId) || 0;
+        const deliveryId = Number(att.delivery_id);
+        const attDelivId = (Number.isSafeInteger(deliveryId) && deliveryId > 0) ? deliveryId : null;
+
+        openOfficerReturnModal(
+            partyType,
+            resIdVal,
+            stateObj.hearingId,
+            stateObj.caseId,
+            att.delivery_status || '',
+            att.recipient_name || stateObj.partyName,
+            att.relationship || '',
+            att.remarks || '',
+            att.unserved_reason || '',
+            Number(attemptNumber),
+            attDelivId
+        );
+    }
+}
+window.handleStepperNodeClick = handleStepperNodeClick;
+
+function populateDrawerAttemptHistory(partyType, caseId, activeAttemptNum) {
+    const section = document.getElementById('drawerAttemptStepperSection');
+    const strip = document.getElementById('drawerAttemptNodeStrip');
+    const summaryEl = document.getElementById('drawerSelectedAttemptSummary');
+    const collapseEl = document.getElementById('drawerOlderAttemptsCollapse');
+    const countPill = document.getElementById('drawerAttemptCountPill');
+    if (!section || !strip || !summaryEl || !collapseEl) return;
+
+    const stateObj = window.activePartyAttemptsState?.[`${caseId}_${partyType}`];
+    const attempts = stateObj?.attempts || [];
+    if (!attempts.length) {
+        section.style.display = 'none';
+        return;
+    }
+
+    section.style.display = 'block';
+    const ordinals = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th'];
+    if (countPill) {
+        countPill.textContent = `${attempts.length} Recorded Attempt${attempts.length === 1 ? '' : 's'}`;
+    }
+
+    // Render interactive clickable node circles inside the off-canvas drawer
+    strip.innerHTML = attempts.map(a => {
+        const num = Number(a.attempt_number || 1);
+        const ord = ordinals[num] || num + 'th';
+        const isSelected = (num === Number(activeAttemptNum));
+        let stateClass = 'pending';
+        let icon = num;
+        if (a.is_served) {
+            stateClass = 'served';
+            icon = '✓';
+        } else if (a.is_failed) {
+            stateClass = 'failed';
+            icon = '✕';
+        }
+        return `
+            <button type="button" class="drawer-node-pill ${stateClass} ${isSelected ? 'is-selected' : ''}" onclick="handleStepperNodeClick(${Number(caseId)}, '${partyType}', ${num}, true)">
+                <span class="drawer-node-circle">${icon}</span>
+                <span class="drawer-node-text">${ord}</span>
+            </button>
+        `;
+    }).join('');
+
+    const activeAtt = attempts.find(a => Number(a.attempt_number) === Number(activeAttemptNum)) || attempts[attempts.length - 1];
+    if (activeAtt) {
+        const num = Number(activeAtt.attempt_number || 1);
+        const ord = ordinals[num] || num + 'th';
+        const timeVal = activeAtt.served_at || activeAtt.attempted_at;
+        const proofPath = activeAtt.proof_file_path || activeAtt.attachment_path;
+        const statusStr = activeAtt.is_served
+            ? (activeAtt.delivery_status || 'Served')
+            : (activeAtt.is_failed ? `Failed (${activeAtt.unserved_reason || 'Unserved'})` : 'Pending Officer Return');
+
+        summaryEl.innerHTML = `
+            <div class="drawer-attempt-summary-box">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px;">
+                    <strong style="font-size:0.84rem; color:#0f172a;">${ord} Attempt Record</strong>
+                    <span style="font-size:0.74rem; font-weight:700; color:${activeAtt.is_served ? '#15803d' : (activeAtt.is_failed ? '#b91c1c' : '#b45309')};">${escapeGpsHtml(statusStr)}</span>
+                </div>
+                <div style="display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:6px 12px; font-size:0.78rem; color:#475569;">
+                    <div><span style="color:#64748b;">Server:</span> <strong>${escapeGpsHtml(activeAtt.served_by_name || 'Unassigned')}</strong></div>
+                    <div><span style="color:#64748b;">Timestamp:</span> <strong>${timeVal ? escapeGpsHtml(formatDateTime(timeVal)) : 'Pending'}</strong></div>
+                    ${activeAtt.remarks ? `<div style="grid-column:1 / -1;"><span style="color:#64748b;">Remarks:</span> ${escapeGpsHtml(activeAtt.remarks)}</div>` : ''}
+                    ${proofPath ? `<div style="grid-column:1 / -1;"><a href="../../${escapeGpsHtml(proofPath)}" target="_blank" style="color:#0284c7; font-weight:700; text-decoration:underline;">View Geotagged Photo Proof</a></div>` : ''}
+                </div>
+            </div>
+        `;
+    }
+
+    // Collapsible accordion for all attempts inside the single off-canvas drawer
+    if (attempts.length > 1) {
+        collapseEl.style.display = 'block';
+        collapseEl.innerHTML = `
+            <details class="drawer-collapsed-log-details">
+                <summary>View Full Attempt Log (${attempts.length} Attempts Collapsed)</summary>
+                <div class="drawer-collapsed-log-list">
+                    ${attempts.map(a => {
+                        const n = Number(a.attempt_number || 1);
+                        const o = ordinals[n] || n + 'th';
+                        const t = a.served_at || a.attempted_at;
+                        const st = a.is_served ? (a.delivery_status || 'Served') : (a.is_failed ? `Unserved (${a.unserved_reason || 'Failed'})` : 'Pending');
+                        return `
+                            <div class="drawer-collapsed-log-row ${n === Number(activeAttemptNum) ? 'is-current' : ''}" onclick="handleStepperNodeClick(${Number(caseId)}, '${partyType}', ${n}, true)">
+                                <div>
+                                    <strong>${o} Attempt</strong> &middot; <span>${escapeGpsHtml(st)}</span>
+                                    <div style="font-size:0.73rem; color:#64748b;">${t ? escapeGpsHtml(formatDateTime(t)) : 'No timestamp'} &bull; ${escapeGpsHtml(a.served_by_name || 'Unassigned')}</div>
+                                </div>
+                                <span style="font-size:0.74rem; font-weight:700; color:#0284c7;">Select</span>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </details>
+        `;
+    } else {
+        collapseEl.style.display = 'none';
+        collapseEl.innerHTML = '';
+    }
+}
+window.populateDrawerAttemptHistory = populateDrawerAttemptHistory;
+
 function openOfficerReturnModal(partyType, residentId, hearingId, caseId, currentStatus, currentRecipient, currentRelationship, currentNotes, currentUnservedReason, attemptNumber = 1, deliveryId = null) {
     const modal = document.getElementById('officerReturnModal');
     const overlay = document.getElementById('officerReturnDrawerOverlay');
@@ -1455,6 +1670,7 @@ function openOfficerReturnModal(partyType, residentId, hearingId, caseId, curren
     if (proofImgInput) proofImgInput.value = '';
 
     handleDeliveryStatusChange();
+    populateDrawerAttemptHistory(partyType || 'Respondent', caseId, attemptNumber || 1);
 
     modal.classList.add('is-open');
     if (overlay) overlay.classList.add('is-open');
@@ -1749,9 +1965,68 @@ async function renderCaseServiceTimeline(caseId) {
                     </div>
                 `;
             } else {
-                html += `
-                    <div style="display: flex; flex-direction: column; gap: 12px;">
-                `;
+                const renderTimelineItemCard = (item) => {
+                    let pillBg = '#f1f5f9';
+                    let pillColor = '#475569';
+                    let pillIcon = '•';
+                    if (item.status_pill === 'served-personal') {
+                        pillBg = '#dcfce7'; pillColor = '#15803d'; pillIcon = '✓';
+                    } else if (item.status_pill === 'served-substituted') {
+                        pillBg = '#e0f2fe'; pillColor = '#0369a1'; pillIcon = '✓';
+                    } else if (item.status_pill === 'refused') {
+                        pillBg = '#fef3c7'; pillColor = '#b45309'; pillIcon = '!';
+                    } else if (item.status_pill === 'unserved') {
+                        pillBg = '#fee2e2'; pillColor = '#b91c1c'; pillIcon = '✕';
+                    }
+
+                    const formattedDate = item.service_datetime ? formatDateTime(item.service_datetime) : 'Pending / Not Recorded';
+
+                    return `
+                        <div style="display: flex; gap: 12px; align-items: flex-start; padding: 11px 14px; background: #fafafa; border: 1px solid #eef2f6; border-radius: 8px;">
+                            <div style="flex: 1; min-width: 0;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 4px;">
+                                    <div>
+                                        <strong style="color: #0f172a; font-size: 0.88rem;">${escapeGpsHtml(item.document_code)}</strong>
+                                        <span style="font-size: 0.78rem; color: #475569; margin-left: 6px;">${escapeGpsHtml(item.document_title)}</span>
+                                        ${item.attempt_label ? `<span style="margin-left: 6px; background: #e0f2fe; color: #0369a1; font-size: 0.72rem; font-weight: 700; padding: 1px 7px; border-radius: 999px;">${escapeGpsHtml(item.attempt_label)}</span>` : ''}
+                                    </div>
+                                    <span style="background: ${pillBg}; color: ${pillColor}; font-size: 0.73rem; font-weight: 700; padding: 2px 9px; border-radius: 9999px; display: inline-flex; align-items: center; gap: 4px;">
+                                        ${pillIcon} ${escapeGpsHtml(item.delivery_status)}
+                                    </span>
+                                </div>
+                                <div style="font-size: 0.8rem; color: #475569; margin-bottom: 4px; display: flex; flex-wrap: wrap; gap: 12px;">
+                                    <span>Recipient: <strong>${escapeGpsHtml(item.recipient_name)}</strong> (${escapeGpsHtml(item.party_type)})</span>
+                                    <span>Server: <strong>${escapeGpsHtml(item.served_by_name)}</strong></span>
+                                    <span>Timestamp: <strong>${escapeGpsHtml(formattedDate)}</strong></span>
+                                    ${item.unserved_reason ? `<span style="color: #dc2626;">Reason: <strong>${escapeGpsHtml(item.unserved_reason)}</strong></span>` : ''}
+                                </div>
+                                ${item.remarks ? `<div style="font-size: 0.76rem; color: #64748b; font-style: italic; margin-bottom: 4px;">Notes: ${escapeGpsHtml(item.remarks)}</div>` : ''}
+                                <div style="display: flex; gap: 10px; align-items: center; font-size: 0.78rem;">
+                                    ${item.preview_url ? `<a href="${item.preview_url}" target="_blank" style="color: #0284c7; text-decoration: none; font-weight: 600;">View Document</a>` : ''}
+                                    ${item.proof_file_path ? `<a href="../../${escapeGpsHtml(item.proof_file_path)}" target="_blank" style="color: #16a34a; text-decoration: none; font-weight: 600;">View Photo Proof</a>` : ''}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                };
+
+                const latestItem = items[items.length - 1];
+                const olderItems = items.slice(0, items.length - 1);
+                html += `<div style="display: flex; flex-direction: column; gap: 10px;">`;
+                html += renderTimelineItemCard(latestItem);
+                if (olderItems.length > 0) {
+                    html += `
+                        <details class="timeline-collapsed-attempts">
+                            <summary style="cursor: pointer; font-size: 0.78rem; font-weight: 700; color: #0284c7; padding: 6px 10px; background: #f0f9ff; border: 1px dashed #bae6fd; border-radius: 6px; user-select: none;">
+                                +${olderItems.length} older attempt${olderItems.length > 1 ? 's' : ''} collapsed — Click to expand stage history
+                            </summary>
+                            <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
+                                ${olderItems.map(it => renderTimelineItemCard(it)).join('')}
+                            </div>
+                        </details>
+                    `;
+                }
+                if (false) {
                 items.forEach((item, idx) => {
                     let pillBg = '#f1f5f9';
                     let pillColor = '#475569';
@@ -1807,6 +2082,7 @@ async function renderCaseServiceTimeline(caseId) {
                         </div>
                     `;
                 });
+                }
                 html += `</div>`;
             }
 
