@@ -30,17 +30,17 @@ include '../../layouts/header.php';
             <!-- Senior-Friendly Accessibility Toolbar Controls -->
             <div class="lupon-accessibility-bar" style="margin-bottom: 0;">
                 <div class="lupon-accessibility-info">
-                    <span style="font-size: 1.15rem;">👓</span>
+                    
                     <span style="color:#64748b; font-size:0.85rem;">Senior Mode:</span>
                     <strong id="dutyDayDisplaySub" style="font-size:0.85rem; color:#0f172a;">Pangkat Duty Team</strong>
                 </div>
                 <div class="lupon-accessibility-controls">
                     <button type="button" class="btn-accessibility-pill" id="btnToggleFontSize" title="Palakihin o Paliitin ang Titik">
-                        <span>🔤</span>
+                        
                         <span>Malaking Titik (A+)</span>
                     </button>
                     <button type="button" class="btn-accessibility-pill" id="btnToggleContrast" title="Mataas na Contrast para sa Madaling Pagbasa">
-                        <span>🌓</span>
+                        
                         <span>High Contrast</span>
                     </button>
                 </div>
@@ -53,7 +53,7 @@ include '../../layouts/header.php';
             <section class="lupon-kpis-grid" aria-label="Lupon Member KPIs">
                 <!-- Duty Day Indicator -->
                 <div class="lupon-kpi-card kpi-duty">
-                    <div class="lupon-kpi-icon">📅</div>
+                    <div class="lupon-kpi-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg></div>
                     <div class="lupon-kpi-content">
                         <span class="lupon-kpi-label">Araw ng Duty</span>
                         <div class="lupon-kpi-value" id="dutyDayDisplay">Wednesday</div>
@@ -63,7 +63,7 @@ include '../../layouts/header.php';
 
                 <!-- Total Assigned Cases -->
                 <div class="lupon-kpi-card kpi-assigned">
-                    <div class="lupon-kpi-icon">📁</div>
+                    <div class="lupon-kpi-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg></div>
                     <div class="lupon-kpi-content">
                         <span class="lupon-kpi-label">Hawak na Kaso</span>
                         <div class="lupon-kpi-value" id="kpiTotalAssigned">0</div>
@@ -73,7 +73,7 @@ include '../../layouts/header.php';
 
                 <!-- As Chairperson -->
                 <div class="lupon-kpi-card kpi-chair">
-                    <div class="lupon-kpi-icon">🎖️</div>
+                    <div class="lupon-kpi-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"></circle><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"></path></svg></div>
                     <div class="lupon-kpi-content">
                         <span class="lupon-kpi-label">Bilang Chairperson</span>
                         <div class="lupon-kpi-value" id="kpiChairmanCount">0</div>
@@ -83,7 +83,7 @@ include '../../layouts/header.php';
 
                 <!-- Hearings Today -->
                 <div class="lupon-kpi-card kpi-today">
-                    <div class="lupon-kpi-icon">⏰</div>
+                    <div class="lupon-kpi-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg></div>
                     <div class="lupon-kpi-content">
                         <span class="lupon-kpi-label">Pagdinig Ngayong Araw</span>
                         <div class="lupon-kpi-value" id="kpiTodayHearings">0</div>
@@ -99,7 +99,7 @@ include '../../layouts/header.php';
                 <section class="lupon-panel-card" aria-label="My Duty Day Hearing Calendar">
                     <div class="lupon-panel-header">
                         <div class="lupon-panel-title-wrap">
-                            <span style="font-size: 1.5rem;">🗓️</span>
+                            
                             <h2>My Duty Day Hearing Calendar</h2>
                         </div>
                         <span class="lupon-panel-badge" id="dutyHearingsCountBadge">0 Schedules</span>
@@ -108,11 +108,11 @@ include '../../layouts/header.php';
                     <!-- Duty Banner -->
                     <div class="duty-day-banner">
                         <div class="duty-day-info">
-                            <h3>🏛️ Lupon Chamber / Court Room Conciliation</h3>
+                            <h3>Lupon Chamber / Court Room Conciliation</h3>
                             <p>Awtomatikong nakalaan para sa mga pagdinig ng inyong nakatalagang Pangkat Duty Team.</p>
                         </div>
                         <div class="duty-day-team-pill">
-                            <span>👥</span>
+                            
                             <span>Active Duty Panel</span>
                         </div>
                     </div>
@@ -129,7 +129,7 @@ include '../../layouts/header.php';
                 <section class="lupon-panel-card" aria-label="My Assigned Pangkat Cases">
                     <div class="lupon-panel-header">
                         <div class="lupon-panel-title-wrap">
-                            <span style="font-size: 1.5rem;">⚖️</span>
+                            
                             <h3>My Assigned Pangkat Cases</h3>
                         </div>
                         <span class="lupon-panel-badge" id="assignedCasesCountBadge">0 Kaso</span>
@@ -161,7 +161,7 @@ include '../../layouts/header.php';
             <div>
                 <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 2px;">
                     <h2 class="dossier-modal-title" id="dossierModalTitle">
-                        📂 Digital Case Dossier
+                        Digital Case Dossier
                     </h2>
                     <span id="dossierModalCaseNumber" style="background:#3b82f6; color:#fff; font-size:0.85rem; font-weight:800; padding:3px 10px; border-radius:6px;">Case #</span>
                 </div>
@@ -176,7 +176,7 @@ include '../../layouts/header.php';
 
         <footer class="dossier-modal-footer">
             <button type="button" class="btn-lupon-touch btn-secondary" id="dossierPrintBtn">
-                🖨️ I-print ang Dossier
+                I-print ang Dossier
             </button>
             <button type="button" class="btn-lupon-touch" id="dossierCloseFooterBtn">
                 Isara (Close)

@@ -115,7 +115,7 @@
         if (items.length === 0) {
             container.innerHTML = `
                 <div style="padding: 30px; text-align: center; color: #475569; background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 12px; font-size: 1.05rem;">
-                    <div style="font-size: 2.2rem; margin-bottom: 8px;">🗓️</div>
+                    
                     <strong>Walang nakatakdang pagdinig para sa ${escapeHtml(dutyDay)} Team sa kasalukuyan.</strong>
                     <p style="margin: 6px 0 0; font-size: 0.92rem; color: #64748b;">
                         Awtomatikong lilitaw dito ang mga susunod na sesyon ng pagdinig at conciliation ng iyong grupo.
@@ -141,7 +141,7 @@
                 <div class="duty-hearing-header">
                     <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                         <span class="duty-hearing-time-pill">
-                            ⏰ ${formatTimeOnly(h.hearing_date) || 'Oras ng Pagdinig'}
+                            ${formatTimeOnly(h.hearing_date) || 'Oras ng Pagdinig'}
                         </span>
                         <span style="font-size: 0.95rem; font-weight: 800; color: #0f172a;">
                             ${escapeHtml(formatDateClean(h.hearing_date))} (${escapeHtml(h.day_of_week || dutyDay)})
@@ -154,10 +154,10 @@
                 <div class="duty-hearing-body">
                     <h4>Case #${escapeHtml(h.case_number || 'N/A')} · ${escapeHtml(h.hearing_type || 'Hearing')}${h.mediation_attempt ? ' (Pang-' + h.mediation_attempt + ' Paghaharap)' : ''}</h4>
                     <div class="duty-hearing-parties">
-                        👥 <strong>${escapeHtml(h.complainant_names || 'Complainant')}</strong> vs. <strong>${escapeHtml(h.respondent_names || 'Respondent')}</strong>
+                        <strong>${escapeHtml(h.complainant_names || 'Complainant')}</strong> vs. <strong>${escapeHtml(h.respondent_names || 'Respondent')}</strong>
                     </div>
                     <div class="duty-hearing-meta">
-                        <span>🏛️ ${escapeHtml(h.venue || 'Lupon Chamber / Court Room')}</span>
+                        <span>${escapeHtml(h.venue || 'Lupon Chamber / Court Room')}</span>
                         <span>•</span>
                         <span>Usapin: ${escapeHtml(h.complaint_title || 'N/A')}</span>
                         <span>•</span>
@@ -167,10 +167,10 @@
 
                 <div class="duty-hearing-actions">
                     <button type="button" class="btn-lupon-touch btn-dossier" data-case-id="${h.case_id}">
-                        📂 Buksan ang Digital Case Dossier
+                        Buksan ang Digital Case Dossier
                     </button>
                     <a href="../hearings/index.php?hearing_id=${h.hearing_id}" class="btn-lupon-touch btn-secondary">
-                        🔍 Tingnan ang Attendance &amp; Minutes
+                        Tingnan ang Attendance &amp; Minutes
                     </a>
                 </div>
             `;
@@ -198,7 +198,7 @@
         if (items.length === 0) {
             container.innerHTML = `
                 <div style="padding: 24px; text-align: center; color: #475569; background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 12px;">
-                    <div style="font-size: 2rem; margin-bottom: 6px;">📂</div>
+                    
                     <strong>Walang nakatalagang kaso sa Pangkat sa kasalukuyan.</strong>
                 </div>
             `;
@@ -226,7 +226,7 @@
                 </div>
 
                 <div class="pangkat-case-meta">
-                    <span>📅 Pangkat Formed: ${escapeHtml(formatDateClean(c.formation_date) || 'Recent')}</span>
+                    <span>Pangkat Formed: ${escapeHtml(formatDateClean(c.formation_date) || 'Recent')}</span>
                     <span>•</span>
                     <span>Kabuuang Hearings: <strong>${c.hearing_count || 0}</strong></span>
                     ${c.settlement_status ? `<span>•</span><span style="color:#15803d; font-weight:800;">Kasunduan: ${escapeHtml(c.settlement_status)}</span>` : ''}
@@ -234,7 +234,7 @@
 
                 <div style="margin-top: 4px; display: flex; gap: 10px; flex-wrap: wrap;">
                     <button type="button" class="btn-lupon-touch btn-dossier" data-case-id="${c.case_id}" style="width: 100%; justify-content: center;">
-                        📑 Tingnan ang Case Dossier &amp; Mga Kasunduan
+                        Tingnan ang Case Dossier &amp; Mga Kasunduan
                     </button>
                 </div>
             `;
@@ -261,7 +261,7 @@
         modalBody.innerHTML = '<div style="padding: 40px; text-align: center; color: #475569; font-size: 1.1rem; font-weight: 700;">Kinukuha ang kumpletong Digital Case Dossier...</div>';
 
         try {
-            const url = `../../backend/api/dashboard/lupon-member.php?action=dossier&case_id=${encodeURIComponent(caseId)}`;
+            const url = `../../../backend/api/dashboard/lupon-member.php?action=dossier&case_id=${encodeURIComponent(caseId)}`;
             const res = await fetch(url, { headers: { 'Accept': 'application/json' }, cache: 'no-store' });
             const json = await res.json();
 
@@ -299,7 +299,7 @@
         const overviewSec = document.createElement('section');
         overviewSec.className = 'dossier-section';
         overviewSec.innerHTML = `
-            <h3 class="dossier-section-title">📝 Buod ng Reklamo at Alitan</h3>
+            <h3 class="dossier-section-title">Buod ng Reklamo at Alitan</h3>
             <div style="font-size: 1.05rem; line-height: 1.6; margin-bottom: 12px; color: #0f172a;">
                 <strong>Salaysay (Narrative):</strong><br>
                 ${escapeHtml(c.narrative || 'Walang nakatalang detalyadong salaysay.')}
@@ -309,9 +309,9 @@
                 <strong>Hinihinging Solusyon (Requested Relief):</strong> ${escapeHtml(c.requested_resolution)}
             </div>` : ''}
             <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; font-size: 0.88rem; color: #64748b;">
-                <span>📍 Lokasyon: ${escapeHtml(c.incident_location || c.incident_purok || 'Tumana')}</span>
-                <span>📅 Petsa ng Insidente: ${escapeHtml(formatDateClean(c.incident_date) || 'N/A')}</span>
-                <span>📁 Kategorya: ${escapeHtml(c.category_name || 'Grievance')}</span>
+                <span>Lokasyon: ${escapeHtml(c.incident_location || c.incident_purok || 'Tumana')}</span>
+                <span>Petsa ng Insidente: ${escapeHtml(formatDateClean(c.incident_date) || 'N/A')}</span>
+                <span>Kategorya: ${escapeHtml(c.category_name || 'Grievance')}</span>
             </div>
         `;
         modalBody.appendChild(overviewSec);
@@ -319,7 +319,7 @@
         // 2. Contact & Party Dossier
         const partiesSec = document.createElement('section');
         partiesSec.className = 'dossier-section';
-        partiesSec.innerHTML = `<h3 class="dossier-section-title">👥 Talaan ng mga Panig at Contact Numbers</h3>`;
+        partiesSec.innerHTML = `<h3 class="dossier-section-title">Talaan ng mga Panig at Contact Numbers</h3>`;
 
         const partiesGrid = document.createElement('div');
         partiesGrid.className = 'dossier-parties-list';
@@ -332,9 +332,9 @@
                 <span class="dossier-party-type ${isComp ? 'complainant' : 'respondent'}">${escapeHtml(p.party_type)}</span>
                 <div class="dossier-party-name">${escapeHtml(p.full_name)}</div>
                 <div class="dossier-party-contact">
-                    <div>📞 <strong>Telepono:</strong> ${p.contact_no ? `<a href="tel:${escapeHtml(p.contact_no)}">${escapeHtml(p.contact_no)}</a>` : '<span style="color:#94a3b8;">Walang nakatalang numero</span>'}</div>
-                    <div>📍 <strong>Address:</strong> ${escapeHtml(p.house_street || p.purok || p.address || 'Barangay Tumana')}</div>
-                    ${p.civil_status ? `<div>👤 <strong>Katayuan:</strong> ${escapeHtml(p.civil_status)}</div>` : ''}
+                    <div><strong>Telepono:</strong> ${p.contact_no ? `<a href="tel:${escapeHtml(p.contact_no)}">${escapeHtml(p.contact_no)}</a>` : '<span style="color:#94a3b8;">Walang nakatalang numero</span>'}</div>
+                    <div><strong>Address:</strong> ${escapeHtml(p.house_street || p.purok || p.address || 'Barangay Tumana')}</div>
+                    ${p.civil_status ? `<div><strong>Katayuan:</strong> ${escapeHtml(p.civil_status)}</div>` : ''}
                 </div>
             `;
             partiesGrid.appendChild(pBox);
@@ -346,7 +346,7 @@
         if (pangkat.length > 0) {
             const pangkatSec = document.createElement('section');
             pangkatSec.className = 'dossier-section';
-            pangkatSec.innerHTML = `<h3 class="dossier-section-title">⚖️ Komposisyon ng Pangkat Tagapagkasundo</h3>`;
+            pangkatSec.innerHTML = `<h3 class="dossier-section-title">Komposisyon ng Pangkat Tagapagkasundo</h3>`;
             const panelGrid = document.createElement('div');
             panelGrid.style.cssText = 'display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;';
 
@@ -357,7 +357,7 @@
                 pItem.innerHTML = `
                     <span class="role-badge ${badgeClass}" style="margin-bottom: 6px;">${escapeHtml(pm.position)}</span>
                     <div style="font-weight: 800; color: #0f172a; font-size: 1.05rem;">${escapeHtml(pm.full_name)}</div>
-                    ${pm.contact_no ? `<div style="font-size: 0.88rem; color: #64748b; margin-top: 4px;">📞 ${escapeHtml(pm.contact_no)}</div>` : ''}
+                    ${pm.contact_no ? `<div style="font-size: 0.88rem; color: #64748b; margin-top: 4px;">${escapeHtml(pm.contact_no)}</div>` : ''}
                 `;
                 panelGrid.appendChild(pItem);
             });
@@ -373,15 +373,15 @@
             settleSec.style.background = '#f0fdf4';
             settleSec.innerHTML = `
                 <h3 class="dossier-section-title" style="color: #15803d; border-color: #bbf7d0;">
-                    🤝 Kasunduan at Pinagkasunduang Termino (Amicable Settlement)
+                    Kasunduan at Pinagkasunduang Termino (Amicable Settlement)
                 </h3>
                 <div style="font-size: 1.05rem; line-height: 1.6; color: #14532d; font-weight: 600; margin-bottom: 10px;">
                     ${escapeHtml(settlement.agreement_details || 'Pormal na nagkasundo ang mga panig.')}
                 </div>
                 <div style="display: flex; gap: 14px; flex-wrap: wrap; font-size: 0.88rem; color: #166534; font-weight: 700;">
-                    <span>📅 Petsa ng Kasunduan: ${escapeHtml(formatDateClean(settlement.settlement_date))}</span>
-                    ${settlement.compliance_due_date ? `<span>⏰ Takdang Petsa: ${escapeHtml(formatDateClean(settlement.compliance_due_date))}</span>` : ''}
-                    <span>⚖️ Katayuan: ${escapeHtml(settlement.compliance_status || 'Pending')}</span>
+                    <span>Petsa ng Kasunduan: ${escapeHtml(formatDateClean(settlement.settlement_date))}</span>
+                    ${settlement.compliance_due_date ? `<span>Takdang Petsa: ${escapeHtml(formatDateClean(settlement.compliance_due_date))}</span>` : ''}
+                    <span>Katayuan: ${escapeHtml(settlement.compliance_status || 'Pending')}</span>
                 </div>
             `;
             modalBody.appendChild(settleSec);
@@ -390,7 +390,7 @@
         // 5. Hearing History & Minutes Timeline
         const histSec = document.createElement('section');
         histSec.className = 'dossier-section';
-        histSec.innerHTML = `<h3 class="dossier-section-title">⏱️ Kasaysayan ng Pagdinig at Minutes Timeline</h3>`;
+        histSec.innerHTML = `<h3 class="dossier-section-title">Kasaysayan ng Pagdinig at Minutes Timeline</h3>`;
 
         if (hearings.length === 0) {
             histSec.innerHTML += '<div style="color: #64748b; font-size: 0.95rem;">Wala pang naitalang nakaraang pagdinig.</div>';
@@ -405,12 +405,12 @@
                     <div class="dossier-history-date">Ika-${idx + 1} Pagdinig · ${escapeHtml(formatDateClean(h.hearing_date))} (${formatTimeOnly(h.hearing_date)})</div>
                     <div class="dossier-history-title">${escapeHtml(h.hearing_type)} · ${escapeHtml(h.status)}</div>
                     <div style="font-size: 0.92rem; color: #334155; margin-bottom: 4px;">
-                        🏛️ Lugar: <strong>${escapeHtml(h.venue || 'Lupon Chamber')}</strong> |
+                        Lugar: <strong>${escapeHtml(h.venue || 'Lupon Chamber')}</strong> |
                         Pagdalo: C (${escapeHtml(h.complainant_attendance || 'N/A')}), R (${escapeHtml(h.respondent_attendance || 'N/A')})
                     </div>
                     ${h.agreements_action_items ? `
                     <div class="dossier-history-terms">
-                        <strong>📌 Napagkasunduang Aksyon / Hakbang:</strong><br>
+                        <strong>Napagkasunduang Aksyon / Hakbang:</strong><br>
                         ${escapeHtml(h.agreements_action_items).replace(/\n/g, '<br>')}
                     </div>` : ''}
                     ${h.settlement_discussion_notes ? `
@@ -436,7 +436,7 @@
     const fetchLuponData = async () => {
         state.isLoading = true;
         try {
-            const res = await fetch('../../backend/api/dashboard/lupon-member.php', {
+            const res = await fetch('../../../backend/api/dashboard/lupon-member.php', {
                 headers: { 'Accept': 'application/json' },
                 cache: 'no-store'
             });

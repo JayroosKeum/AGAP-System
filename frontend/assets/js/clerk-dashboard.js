@@ -86,7 +86,7 @@
         }
 
         toast.style.background = isError ? '#991b1b' : '#0f172a';
-        toast.innerHTML = `${isError ? '⚠️' : '✅'} <span>${escapeHtml(message)}</span>`;
+        toast.innerHTML = `<span>${escapeHtml(message)}</span>`;
         toast.style.transform = 'translateY(0)';
         toast.style.opacity = '1';
 
@@ -104,7 +104,7 @@
     // Quick Action Requester
     const postQuickAction = async (payload) => {
         const csrfToken = getCsrfToken();
-        const res = await fetch('../../backend/api/dashboard/quick-action.php', {
+        const res = await fetch('../../../backend/api/dashboard/quick-action.php', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json; charset=utf-8',
@@ -204,7 +204,7 @@
             const emptyDiv = document.createElement('div');
             emptyDiv.style.cssText = 'padding: 32px 16px; text-align: center; color: #64748b; font-size: 0.88rem; background: #f8fafc; border-radius: 8px; border: 1px dashed #cbd5e1;';
             emptyDiv.innerHTML = `
-                <div style="font-size: 1.8rem; margin-bottom: 6px;">📋</div>
+                
                 <strong>Walang nakatakdang sesyon para sa kasalukuyang filter.</strong>
                 <p style="margin: 4px 0 0; font-size: 0.78rem;">Ang mga pormal na hearing at Paanyaya dialogue para sa araw na ito ay awtomatikong lilitaw dito.</p>
             `;
@@ -253,7 +253,7 @@
 
             const venueMeta = document.createElement('div');
             venueMeta.style.cssText = 'font-size: 0.78rem; color: #64748b; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;';
-            venueMeta.innerHTML = `<span>📍 ${escapeHtml(item.venue)}</span>${item.subTitle ? `<span style="color:#cbd5e1;">•</span><span>${escapeHtml(item.subTitle)}</span>` : ''}`;
+            venueMeta.innerHTML = `<span>${escapeHtml(item.venue)}</span>${item.subTitle ? `<span style="color:#cbd5e1;">•</span><span>${escapeHtml(item.subTitle)}</span>` : ''}`;
 
             body.append(partiesDiv, venueMeta);
 
@@ -273,7 +273,7 @@
             const btnPresent = document.createElement('button');
             btnPresent.type = 'button';
             btnPresent.className = 'btn-quick-att att-present';
-            btnPresent.innerHTML = '✅ Present';
+            btnPresent.textContent = 'Present';
             btnPresent.title = '1-click mark all parties present';
             btnPresent.addEventListener('click', async () => {
                 btnPresent.disabled = true;
@@ -297,7 +297,7 @@
                 } catch (err) {
                     showToast(err.message, true);
                     btnPresent.disabled = false;
-                    btnPresent.innerHTML = '✅ Present';
+                    btnPresent.textContent = 'Present';
                 }
             });
             attGroup.appendChild(btnPresent);
@@ -305,7 +305,7 @@
             const btnAbsent = document.createElement('button');
             btnAbsent.type = 'button';
             btnAbsent.className = 'btn-quick-att att-absent';
-            btnAbsent.innerHTML = '❌ Absent';
+            btnAbsent.textContent = 'Absent';
             btnAbsent.title = '1-click mark respondent/invitee absent';
             btnAbsent.addEventListener('click', async () => {
                 btnAbsent.disabled = true;
@@ -329,7 +329,7 @@
                 } catch (err) {
                     showToast(err.message, true);
                     btnAbsent.disabled = false;
-                    btnAbsent.innerHTML = '❌ Absent';
+                    btnAbsent.textContent = 'Absent';
                 }
             });
             attGroup.appendChild(btnAbsent);
@@ -338,7 +338,7 @@
                 const btnCheckin = document.createElement('button');
                 btnCheckin.type = 'button';
                 btnCheckin.className = 'btn-quick-att att-checkin';
-                btnCheckin.innerHTML = '📝 Detailed Check-in';
+                btnCheckin.textContent = 'Detailed Check-in';
                 btnCheckin.addEventListener('click', () => {
                     openQuickAttendanceModal(item.raw);
                 });
@@ -361,7 +361,7 @@
                 const btnSettled = document.createElement('button');
                 btnSettled.type = 'button';
                 btnSettled.className = 'btn-quick-outcome outcome-settled';
-                btnSettled.innerHTML = '🤝 Settled Privately';
+                btnSettled.textContent = 'Settled Privately';
                 btnSettled.title = 'Log private amicable agreement';
                 btnSettled.addEventListener('click', async () => {
                     if (!confirm(`I-log ang 'Settled Privately' para sa Paanyaya na ito?`)) return;
@@ -386,7 +386,7 @@
                 const btnRetry = document.createElement('button');
                 btnRetry.type = 'button';
                 btnRetry.className = 'btn-quick-outcome outcome-retry';
-                btnRetry.innerHTML = '📨 Issue 2nd Paanyaya';
+                btnRetry.textContent = 'Issue 2nd Paanyaya';
                 btnRetry.title = 'Parties absent; schedule 2nd informal invitation';
                 btnRetry.addEventListener('click', async () => {
                     if (!confirm(`Mag-isyu ng 2nd Paanyaya invitation para sa hindi sumipot na partido?`)) return;
@@ -411,7 +411,7 @@
                 const btnEscalate = document.createElement('button');
                 btnEscalate.type = 'button';
                 btnEscalate.className = 'btn-quick-outcome outcome-escalate';
-                btnEscalate.innerHTML = '⚖️ Escalate to Mediation';
+                btnEscalate.textContent = 'Escalate to Mediation';
                 btnEscalate.title = 'Elevate dispute to formal Punong Barangay mediation';
                 btnEscalate.addEventListener('click', async () => {
                     if (!confirm(`I-escalate ang reklamong ito mula sa Paanyaya patungo sa pormal na Mediation?`)) return;
@@ -436,7 +436,7 @@
                 const openCaseLink = document.createElement('a');
                 openCaseLink.className = 'btn-quick-att att-checkin';
                 openCaseLink.style.textDecoration = 'none';
-                openCaseLink.innerHTML = '📂 View Case File';
+                openCaseLink.textContent = 'View Case File';
                 if (item.case_id) {
                     openCaseLink.href = `../cases/case-details.php?id=${encodeURIComponent(item.case_id)}`;
                 } else if (item.complaint_id) {
@@ -526,16 +526,16 @@
             genderContainer.innerHTML = `
                 <div class="demographics-gender-bars">
                     <div class="gender-bar-item">
-                        <div class="gender-label"><span>👨 Lalaki (Male)</span><strong>${male} (${malePct}%)</strong></div>
+                        <div class="gender-label"><span>Lalaki (Male)</span><strong>${male} (${malePct}%)</strong></div>
                         <div class="gender-track"><div class="gender-fill male" style="width: ${malePct}%;"></div></div>
                     </div>
                     <div class="gender-bar-item">
-                        <div class="gender-label"><span>👩 Babae (Female)</span><strong>${female} (${femalePct}%)</strong></div>
+                        <div class="gender-label"><span>Babae (Female)</span><strong>${female} (${femalePct}%)</strong></div>
                         <div class="gender-track"><div class="gender-fill female" style="width: ${femalePct}%;"></div></div>
                     </div>
                     ${unspecified > 0 ? `
                     <div class="gender-bar-item">
-                        <div class="gender-label"><span>⚪ Hindi Tinukoy</span><strong>${unspecified} (${unspecPct}%)</strong></div>
+                        <div class="gender-label"><span>Hindi Tinukoy</span><strong>${unspecified} (${unspecPct}%)</strong></div>
                         <div class="gender-track"><div class="gender-fill unspecified" style="width: ${unspecPct}%;"></div></div>
                     </div>` : ''}
                 </div>
@@ -600,17 +600,8 @@
             const el = document.createElement('div');
             el.className = 'audit-feed-item';
 
-            const actionStr = (item.action || '').toLowerCase();
-            let icon = '📌';
-            if (actionStr.includes('sign') || actionStr.includes('login')) icon = '🔑';
-            else if (actionStr.includes('conflict') || actionStr.includes('override')) icon = '⚠️';
-            else if (actionStr.includes('archiv')) icon = '📦';
-            else if (actionStr.includes('paanyaya')) icon = '✉️';
-            else if (actionStr.includes('hearing') || actionStr.includes('attendance')) icon = '⚖️';
-            else if (actionStr.includes('complaint')) icon = '📝';
-
             el.innerHTML = `
-                <span class="audit-feed-icon">${icon}</span>
+                <span class="audit-feed-icon" style="display:inline-flex;align-items:center;justify-content:center;width:8px;height:8px;border-radius:50%;background:#64748b;margin-top:6px;flex-shrink:0;"></span>
                 <div class="audit-feed-body">
                     <div class="audit-feed-header">
                         <span class="audit-feed-user">${escapeHtml(item.user_name || 'Staff')}</span>
@@ -678,7 +669,7 @@
     const fetchDashboardData = async () => {
         state.isLoading = true;
         try {
-            const url = `../../backend/api/dashboard/statistics.php?period=${encodeURIComponent(state.period)}&offset=${encodeURIComponent(state.offset)}`;
+            const url = `../../../backend/api/dashboard/statistics.php?period=${encodeURIComponent(state.period)}&offset=${encodeURIComponent(state.offset)}`;
             const res = await fetch(url, {
                 headers: { 'Accept': 'application/json' },
                 cache: 'no-store'
@@ -741,7 +732,7 @@
 
         // Load hearing attendance details
         try {
-            const res = await fetch(`../../backend/api/hearings/attendance.php?hearing_id=${encodeURIComponent(hearing.hearing_id)}`);
+            const res = await fetch(`../../../backend/api/hearings/attendance.php?hearing_id=${encodeURIComponent(hearing.hearing_id)}`);
             const data = await res.json();
             if (data.success) {
                 state.activeQuickAttData = data;
@@ -870,7 +861,7 @@
             });
 
             try {
-                const res = await fetch('../../backend/api/hearings/attendance.php', {
+                const res = await fetch('../../../backend/api/hearings/attendance.php', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json; charset=utf-8',

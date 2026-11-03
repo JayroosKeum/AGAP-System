@@ -860,9 +860,6 @@ async function renderExpandedCaseView(caseId) {
                                 <span>1st Attempt</span>
                                 <div style="display: inline-flex; align-items: center; gap: 8px;">
                                     <span class="service-result-badge ${statusClass}" style="font-size: 0.72rem; padding: 2px 7px;">${escapeGpsHtml(statusLabel)}</span>
-                                    <button type="button" class="btn-secondary" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; cursor: pointer; border: 1px solid #cbd5e1; background: #fff;" onclick="openOfficerReturnModal('${partyType}', ${Number(fallbackDeliv.resident_id || targetResId) || 0}, ${Number(activeHearing.hearing_id)}, ${caseId}, ${escapeGpsJsArgument(fallbackDeliv.delivery_status || '')}, ${escapeGpsJsArgument(fallbackDeliv.recipient_name || targetPartyName)}, ${escapeGpsJsArgument(fallbackDeliv.relationship || '')}, ${escapeGpsJsArgument(fallbackDeliv.remarks || '')}, ${escapeGpsJsArgument(fallbackDeliv.unserved_reason || '')}, 1, ${fallbackDelivId})">
-                                        ${fallbackDeliv.delivery_status === 'Pending' ? '📝 Log Return' : '✏️ Edit Return'}
-                                    </button>
                                 </div>
                             </div>
                             <ul class="delivery-detail-list">
@@ -932,9 +929,6 @@ async function renderExpandedCaseView(caseId) {
                             <span>${escapeGpsHtml(ord)}</span>
                             <div style="display: inline-flex; align-items: center; gap: 8px;">
                                 <span>${statusBadge}</span>
-                                <button type="button" class="btn-secondary" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; cursor: pointer; border: 1px solid #cbd5e1; background: #fff;" onclick="openOfficerReturnModal('${partyType}', ${Number(att.resident_id || targetResId) || 0}, ${Number(activeHearing.hearing_id)}, ${caseId}, ${escapeGpsJsArgument(att.delivery_status || '')}, ${escapeGpsJsArgument(att.recipient_name || targetPartyName)}, ${escapeGpsJsArgument(att.relationship || '')}, ${escapeGpsJsArgument(att.remarks || '')}, ${escapeGpsJsArgument(att.unserved_reason || '')}, ${att.attempt_number || (idx + 1)}, ${attDelivId})">
-                                    ${editBtnIcon} ${editBtnText}
-                                </button>
                             </div>
                         </div>
                         <ul class="delivery-detail-list">

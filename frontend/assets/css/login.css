@@ -429,3 +429,226 @@
         transition-duration: .01ms !important;
     }
 }
+
+
+/* ── Passive Authorized Use & Data Privacy Notice + Modal ────────────────── */
+.login-screen .login-card .login-legal-notice {
+    background: #f5f8f5;
+    border: 1px solid #d9e5dc;
+    border-left: 3px solid #2b6b5e;
+    border-radius: 8px;
+    margin-top: 20px;
+    padding: 11px 13px;
+}
+
+.login-screen .login-card .login-legal-notice-head {
+    align-items: center;
+    color: #102b2d;
+    display: flex;
+    font-size: 11px;
+    font-weight: 800;
+    gap: 6px;
+    letter-spacing: 0.02em;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+}
+
+.login-screen .login-card .login-legal-notice-head svg {
+    color: #2b6b5e;
+    flex-shrink: 0;
+}
+
+.login-screen .login-card p.login-legal-notice-text {
+    color: #4b5e59;
+    font-size: 11px;
+    line-height: 1.5;
+    margin: 0;
+}
+
+.login-screen .login-card .login-legal-link,
+.login-footer-link {
+    color: #1d574b;
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.login-screen .login-card .login-legal-link:hover,
+.login-footer-link:hover {
+    color: #102b2d;
+}
+
+.login-legal-modal-overlay[hidden] {
+    display: none !important;
+}
+
+.login-legal-modal-overlay {
+    align-items: center;
+    background: rgba(16, 43, 45, 0.58);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    display: flex;
+    inset: 0;
+    justify-content: center;
+    padding: 20px;
+    position: fixed;
+    z-index: 99999;
+}
+
+.login-legal-modal-card {
+    background: #ffffff;
+    border: 1px solid #d8e2db;
+    border-radius: 14px;
+    box-shadow: 0 24px 60px rgba(16, 43, 45, 0.25);
+    display: flex;
+    flex-direction: column;
+    max-height: 86vh;
+    max-width: 740px;
+    overflow: hidden;
+    width: 100%;
+}
+
+.login-legal-modal-header {
+    align-items: flex-start;
+    background: #eaf2ed;
+    border-bottom: 1px solid #d8e2db;
+    display: flex;
+    gap: 16px;
+    justify-content: space-between;
+    padding: 18px 24px;
+}
+
+.login-legal-modal-eyebrow {
+    color: #2b6b5e;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    margin: 0 0 4px;
+    text-transform: uppercase;
+}
+
+.login-legal-modal-header h2 {
+    color: #102b2d;
+    font-size: 18px;
+    font-weight: 750;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+    margin: 0;
+}
+
+.login-legal-modal-close {
+    align-items: center;
+    background: #ffffff;
+    border: 1px solid #cddbd1;
+    border-radius: 7px;
+    color: #173638;
+    cursor: pointer;
+    display: inline-flex;
+    flex-shrink: 0;
+    font-size: 20px;
+    height: 32px;
+    justify-content: center;
+    line-height: 1;
+    padding: 0;
+    width: 32px;
+}
+
+.login-legal-modal-close:hover {
+    background: #102b2d;
+    border-color: #102b2d;
+    color: #ffffff;
+}
+
+.login-legal-modal-body {
+    color: #273b38;
+    font-size: 13px;
+    line-height: 1.65;
+    overflow-y: auto;
+    padding: 20px 24px;
+}
+
+.login-legal-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.login-legal-badge {
+    background: #f0f6f2;
+    border: 1px solid #cde0d4;
+    border-radius: 999px;
+    color: #1d574b;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 10px;
+}
+
+.login-legal-preamble {
+    background: #f8faf8;
+    border: 1px solid #e2ebe5;
+    border-radius: 8px;
+    color: #344d49;
+    font-size: 12.5px;
+    margin: 0 0 18px;
+    padding: 11px 14px;
+}
+
+.login-legal-section {
+    border-top: 1px solid #edf2ee;
+    padding-top: 14px;
+    margin-top: 14px;
+}
+
+.login-legal-section h3 {
+    color: #102b2d;
+    font-size: 14px;
+    font-weight: 800;
+    margin: 0 0 8px;
+}
+
+.login-legal-section p {
+    margin: 0 0 8px;
+}
+
+.login-legal-section ul {
+    margin: 6px 0 10px;
+    padding-left: 20px;
+}
+
+.login-legal-section li {
+    margin-bottom: 5px;
+}
+
+.login-legal-modal-footer {
+    align-items: center;
+    background: #f8faf8;
+    border-top: 1px solid #d8e2db;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: space-between;
+    padding: 14px 24px;
+}
+
+.login-legal-modal-meta {
+    color: #61776e;
+    font-size: 11.5px;
+    font-weight: 600;
+}
+
+.login-legal-modal-ack-btn {
+    background: #102b2d;
+    border: 0;
+    border-radius: 7px;
+    color: #ffffff;
+    cursor: pointer;
+    font-size: 12.5px;
+    font-weight: 750;
+    padding: 9px 18px;
+    transition: background 0.18s ease;
+}
+
+.login-legal-modal-ack-btn:hover {
+    background: #24544c;
+}

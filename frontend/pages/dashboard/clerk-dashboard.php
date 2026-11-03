@@ -79,7 +79,7 @@ include '../../layouts/header.php';
             <article class="docket-queue-card card-walkin">
                 <div class="card-top">
                     <span class="card-badge">Daily Intake</span>
-                    <span style="font-size: 1.25rem;">🚶</span>
+                    
                 </div>
                 <div class="card-count" id="clerkWalkinsToday">—</div>
                 <h3 class="card-title">Walk-ins / Today's Intakes</h3>
@@ -94,12 +94,12 @@ include '../../layouts/header.php';
             <article class="docket-queue-card card-paanyaya">
                 <div class="card-top">
                     <span class="card-badge">Stage 0 Invitations</span>
-                    <span style="font-size: 1.25rem;">✉️</span>
+                    
                 </div>
                 <div class="card-count" id="clerkActivePaanyaya">—</div>
                 <h3 class="card-title">Active Paanyaya Invitations</h3>
                 <p class="card-desc">1st at 2nd invitations na nakabinbin para sa impormal na pag-uusap</p>
-                <a href="../paanyaya/create.php" class="btn-clerk-secondary" id="btnClerkIssuePaanyaya">
+                <a href="../paanyaya/index.php" class="btn-clerk-secondary" id="btnClerkIssuePaanyaya">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
                     <span>Issue Paanyaya Invitation</span>
                 </a>
@@ -109,7 +109,7 @@ include '../../layouts/header.php';
             <article class="docket-queue-card card-forms">
                 <div class="card-top">
                     <span class="card-badge">Forms &amp; Summons</span>
-                    <span style="font-size: 1.25rem;">📄</span>
+                    
                 </div>
                 <div class="card-count" id="clerkPendingForms">—</div>
                 <h3 class="card-title">Cases Pending Form Issuance</h3>
@@ -124,42 +124,42 @@ include '../../layouts/header.php';
         <!-- ── 3. System Metrics Grid (Small Widgets) ────────────────────────── -->
         <section class="clerk-system-metrics-grid" aria-label="System Metrics Grid">
             <div class="system-metric-pill">
-                <div class="metric-icon icon-total">📁</div>
+                <div class="metric-icon icon-total"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg></div>
                 <div class="metric-info">
                     <div class="metric-val" id="sysMetricTotalCases">—</div>
                     <div class="metric-name">Total Cases</div>
                 </div>
             </div>
             <div class="system-metric-pill">
-                <div class="metric-icon icon-mediation">⚖️</div>
+                <div class="metric-icon icon-mediation"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="M7 21h10"></path><path d="M12 3v18"></path><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"></path></svg></div>
                 <div class="metric-info">
                     <div class="metric-val" id="sysMetricMediation">—</div>
                     <div class="metric-name">Active Mediation</div>
                 </div>
             </div>
             <div class="system-metric-pill">
-                <div class="metric-icon icon-conciliation">👥</div>
+                <div class="metric-icon icon-conciliation"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg></div>
                 <div class="metric-info">
                     <div class="metric-val" id="sysMetricConciliation">—</div>
                     <div class="metric-name">Pangkat Conciliation</div>
                 </div>
             </div>
             <div class="system-metric-pill">
-                <div class="metric-icon icon-settled">🤝</div>
+                <div class="metric-icon icon-settled"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg></div>
                 <div class="metric-info">
                     <div class="metric-val" id="sysMetricSettled">—</div>
                     <div class="metric-name">Settled Cases</div>
                 </div>
             </div>
             <div class="system-metric-pill">
-                <div class="metric-icon icon-archived">📦</div>
+                <div class="metric-icon icon-archived"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg></div>
                 <div class="metric-info">
                     <div class="metric-val" id="sysMetricArchived">—</div>
                     <div class="metric-name">Archived Cases</div>
                 </div>
             </div>
             <div class="system-metric-pill">
-                <div class="metric-icon icon-users">👤</div>
+                <div class="metric-icon icon-users"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg></div>
                 <div class="metric-info">
                     <div class="metric-val" id="sysMetricActiveUsers">—</div>
                     <div class="metric-name">Active Users</div>
@@ -176,7 +176,7 @@ include '../../layouts/header.php';
                 <div class="dash-section-card" id="clerkAgendaPanel" style="margin-bottom: 22px;">
                     <div class="aside-card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                         <div>
-                            <h3 class="aside-card-title">📅 Today's Hearings &amp; Paanyaya Agenda Stream</h3>
+                            <h3 class="aside-card-title">Today's Hearings &amp; Paanyaya Agenda Stream</h3>
                             <p class="aside-card-sub">1-click attendance marking at outcome logging para sa mabilisang sesyon</p>
                         </div>
                         <div class="agenda-filter-tabs">
@@ -184,10 +184,10 @@ include '../../layouts/header.php';
                                 Lahat (<span id="badgeFilterAll">0</span>)
                             </button>
                             <button type="button" class="btn-agenda-filter" data-filter="hearings">
-                                ⚖️ Hearings (<span id="badgeFilterHearings">0</span>)
+                                Hearings (<span id="badgeFilterHearings">0</span>)
                             </button>
                             <button type="button" class="btn-agenda-filter" data-filter="paanyaya">
-                                ✉️ Paanyaya (<span id="badgeFilterPaanyaya">0</span>)
+                                Paanyaya (<span id="badgeFilterPaanyaya">0</span>)
                             </button>
                         </div>
                     </div>
@@ -204,7 +204,7 @@ include '../../layouts/header.php';
                         <div class="dash-analytics-card">
                             <div class="card-head">
                                 <div>
-                                    <h3 class="card-title">⚖️ Most Complained Issues</h3>
+                                    <h3 class="card-title">Most Complained Issues</h3>
                                     <p class="card-sub">Trending grievance categories sa komunidad</p>
                                 </div>
                             </div>
@@ -217,7 +217,7 @@ include '../../layouts/header.php';
                         <div class="dash-analytics-card">
                             <div class="card-head">
                                 <div>
-                                    <h3 class="card-title">📍 Purok Dispute Hotspots</h3>
+                                    <h3 class="card-title">Purok Dispute Hotspots</h3>
                                     <p class="card-sub">Area breakdown para sa peace &amp; order deployment</p>
                                 </div>
                             </div>
@@ -233,7 +233,7 @@ include '../../layouts/header.php';
                         <div class="dash-analytics-card">
                             <div class="card-head">
                                 <div>
-                                    <h3 class="card-title">👥 Gender Distribution</h3>
+                                    <h3 class="card-title">Gender Distribution</h3>
                                     <p class="card-sub">Distribusyon ng Complainants at Respondents ayon sa kasarian</p>
                                 </div>
                             </div>
@@ -246,7 +246,7 @@ include '../../layouts/header.php';
                         <div class="dash-analytics-card">
                             <div class="card-head">
                                 <div>
-                                    <h3 class="card-title">🎂 Age Group Demographics</h3>
+                                    <h3 class="card-title">Age Group Demographics</h3>
                                     <p class="card-sub">Mga lumahok sa pag-aayos ayon sa age bracket</p>
                                 </div>
                             </div>
@@ -266,7 +266,7 @@ include '../../layouts/header.php';
                 <div class="mini-calendar-card" id="miniCalendarCard" style="margin-bottom: 20px;">
                     <div class="mini-cal-header">
                         <span class="mini-cal-title-wrap">
-                            <span class="mini-cal-icon">📅</span>
+                            
                             <strong class="mini-cal-title">Hearing Calendar</strong>
                         </span>
                         <div class="mini-cal-nav">
@@ -293,7 +293,7 @@ include '../../layouts/header.php';
                 <div class="dash-aside-card" style="margin-bottom: 20px;">
                     <div class="aside-card-header">
                         <div style="display: flex; align-items: center; gap: 8px;">
-                            <span style="font-size: 1.15rem;">🛡️</span>
+                            
                             <div>
                                 <h3 class="aside-card-title">Security &amp; Audit Feed</h3>
                                 <p class="aside-card-sub">User sign-ins, conflict overrides, at archival</p>
@@ -311,7 +311,7 @@ include '../../layouts/header.php';
                 <div class="dash-aside-card">
                     <div class="aside-card-header">
                         <div style="display: flex; align-items: center; gap: 8px;">
-                            <span style="font-size: 1.15rem;">⚙️</span>
+                            
                             <div>
                                 <h3 class="aside-card-title">Purok &amp; Settings Management</h3>
                                 <p class="aside-card-sub">Front-desk controls at schedule constraints</p>
@@ -323,7 +323,7 @@ include '../../layouts/header.php';
                             <!-- Purok Management -->
                             <a href="../settings/index.php?tab=barangay" class="setting-quick-card">
                                 <div class="setting-card-left">
-                                    <div class="setting-card-icon">📍</div>
+                                    <div class="setting-card-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg></div>
                                     <div>
                                         <h4 class="setting-card-title">Purok Management</h4>
                                         <p class="setting-card-desc">Active / inactive puroks at boundaries</p>
@@ -335,7 +335,7 @@ include '../../layouts/header.php';
                             <!-- Schedule Constraints -->
                             <a href="../settings/index.php?tab=logistics" class="setting-quick-card">
                                 <div class="setting-card-left">
-                                    <div class="setting-card-icon">⏱️</div>
+                                    <div class="setting-card-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg></div>
                                     <div>
                                         <h4 class="setting-card-title">Schedule Constraints</h4>
                                         <p class="setting-card-desc">Hearing hours, venue limits, at holidays</p>
@@ -375,7 +375,7 @@ include '../../layouts/header.php';
             <input type="hidden" id="quickAttHearingId" value="">
             <div style="background: #f1f5f9; border-radius: 8px; padding: 10px 14px; margin-bottom: 18px; font-size: 0.83rem; color: #334155; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                 <div><strong id="quickAttHearingType">Mediation Hearing</strong> · <span id="quickAttHearingTime">1:00 PM</span></div>
-                <div style="color: #64748b; font-size: 0.8rem;">📍 <span id="quickAttHearingVenue">Lupon Court Room</span></div>
+                <div style="color: #64748b; font-size: 0.8rem;"><span id="quickAttHearingVenue">Lupon Court Room</span></div>
             </div>
             <div id="quickAttPartiesContainer" style="display: flex; flex-direction: column; gap: 12px;"></div>
             <div style="margin-top: 12px;">
@@ -389,7 +389,7 @@ include '../../layouts/header.php';
         <footer class="report-modal-footer" style="padding: 14px 20px; display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #e2e8f0; background: #f8fafc;">
             <button type="button" class="btn-modal-close-footer" id="quickAttCancelBtn" style="padding: 7px 16px; font-size: 0.85rem; font-weight: 600; border: 1px solid #cbd5e1; background: #fff; border-radius: 6px; cursor: pointer; color: #475569;">Kanselahin</button>
             <button type="button" id="quickAttSaveBtn" style="padding: 7px 18px; font-size: 0.85rem; font-weight: 600; border: none; background: #0f172a; color: #fff; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
-                💾 I-save ang Attendance
+                I-save ang Attendance
             </button>
         </footer>
     </div>

@@ -57,9 +57,10 @@ class GPSController
         $hearings = [];
 
         if (!$requestedStage) {
-                $cStmt->execute([$caseId]);
-                $requestedStage = (string)$cStmt->fetchColumn();
-            }
+            $cStmt = $db->prepare("SELECT case_status FROM cases WHERE case_id = ? LIMIT 1");
+            $cStmt->execute([$caseId]);
+            $requestedStage = (string)$cStmt->fetchColumn();
+        }
 
             $orderClauses = [];
             if ($requestedHearingId) {

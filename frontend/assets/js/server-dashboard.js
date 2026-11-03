@@ -75,7 +75,7 @@
         }
 
         toast.style.background = isError ? '#991b1b' : '#064e3b';
-        toast.innerHTML = `${isError ? '⚠️' : '✅'} <span>${escapeHtml(message)}</span>`;
+        toast.innerHTML = `<span>${escapeHtml(message)}</span>`;
         toast.style.transform = 'translateY(0)';
         toast.style.opacity = '1';
 
@@ -102,11 +102,11 @@
         const select = document.getElementById('purokRouteSelect');
         if (!select || !puroks || select.dataset.loaded === 'true') return;
 
-        select.innerHTML = '<option value="all">📍 Lahat ng Purok (All Routes)</option>';
+        select.innerHTML = '<option value="all">Lahat ng Purok (All Routes)</option>';
         puroks.forEach(p => {
             const opt = document.createElement('option');
             opt.value = p;
-            opt.textContent = `📍 ${p}`;
+            opt.textContent = p;
             if (p === state.purok) opt.selected = true;
             select.appendChild(opt);
         });
@@ -127,7 +127,7 @@
         if (items.length === 0) {
             container.innerHTML = `
                 <div style="padding: 36px 20px; text-align: center; color: #475569; background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 14px;">
-                    <div style="font-size: 2.2rem; margin-bottom: 8px;">🛵</div>
+                    
                     <strong style="font-size: 1.15rem; color: #0f172a;">Walang nakatakdang summons delivery para sa filter na ito.</strong>
                     <p style="margin: 6px 0 0; font-size: 0.92rem; color: #64748b;">
                         Pumili ng ibang Purok o i-filter ang status gamit ang mga pindutan sa itaas.
@@ -149,7 +149,7 @@
             card.innerHTML = `
                 <div class="dispatch-card-top">
                     <div>
-                        <span class="dispatch-purok-tag">📍 ${escapeHtml(task.purok || 'Tumana')}</span>
+                        <span class="dispatch-purok-tag">${escapeHtml(task.purok || 'Tumana')}</span>
                         <div class="dispatch-party-name">${escapeHtml(task.full_name)}</div>
                         <span class="dispatch-party-type ${isComp ? 'complainant' : 'respondent'}">${escapeHtml(task.party_type || 'Panig')}</span>
                     </div>
@@ -164,34 +164,34 @@
                 </div>
 
                 <div class="dispatch-card-address">
-                    <div>🏠 <strong>Tirahan:</strong> ${escapeHtml(task.house_street || task.address || task.purok || 'Tumana, Marikina')}</div>
-                    ${task.contact_no ? `<div>📞 <strong>Telepono:</strong> <a href="tel:${escapeHtml(task.contact_no)}">${escapeHtml(task.contact_no)}</a></div>` : ''}
+                    <div><strong>Tirahan:</strong> ${escapeHtml(task.house_street || task.address || task.purok || 'Tumana, Marikina')}</div>
+                    ${task.contact_no ? `<div><strong>Telepono:</strong> <a href="tel:${escapeHtml(task.contact_no)}">${escapeHtml(task.contact_no)}</a></div>` : ''}
                 </div>
 
                 <div class="dispatch-card-hearing-meta">
-                    <span>🗓️ Pagdinig: <strong>${escapeHtml(formatDateClean(task.hearing_date))} (${formatTimeOnly(task.hearing_date)})</strong></span>
+                    <span>Pagdinig: <strong>${escapeHtml(formatDateClean(task.hearing_date))} (${formatTimeOnly(task.hearing_date)})</strong></span>
                     <span>•</span>
                     <span>Lugar: ${escapeHtml(task.venue || 'Lupon Court Room')}</span>
                     <span>•</span>
                     <span style="font-weight: 800; color: ${isServed ? '#15803d' : (isUnserved ? '#b91c1c' : '#b45309')};">
                         Status: ${escapeHtml(task.delivery_status || 'Pending')}
                     </span>
-                    ${task.proof_file_path ? `<span>•</span><a href="../../../${escapeHtml(task.proof_file_path)}" target="_blank" style="color:#0284c7; font-weight:700;">📸 May Litrato</a>` : ''}
+                    ${task.proof_file_path ? `<span>•</span><a href="../../../${escapeHtml(task.proof_file_path)}" target="_blank" style="color:#0284c7; font-weight:700;">Tingnan ang Litrato</a>` : ''}
                 </div>
 
                 <!-- 1-Tap Service Logger Quick Buttons -->
                 <div class="tap-actions-toolbar">
                     <button type="button" class="btn-tap-action btn-tap-served" data-action="served" data-id="${task.delivery_id}">
-                        ✅ Served
+                        Served
                     </button>
                     <button type="button" class="btn-tap-action btn-tap-refused" data-action="refused" data-id="${task.delivery_id}">
-                        ✍️ Refused to Sign
+                        Refused to Sign
                     </button>
                     <button type="button" class="btn-tap-action btn-tap-unserved" data-action="unserved" data-id="${task.delivery_id}">
-                        ❌ Unserved (Not Found)
+                        Unserved (Not Found)
                     </button>
                     <button type="button" class="btn-tap-action btn-tap-photo" data-action="photo" data-id="${task.delivery_id}">
-                        📷 Upload Proof
+                        Upload Proof
                     </button>
                 </div>
             `;
@@ -228,17 +228,17 @@
         recipientInput.value = task.full_name || '';
         remarksInput.value = '';
         if (photoInput) photoInput.value = '';
-        if (photoPreview) photoPreview.innerHTML = '<span style="font-size:2rem; display:block; margin-bottom:4px;">📷</span>I-click upang kumuha o mag-upload ng litrato (Gate/Tirahan/Kopya)';
+        if (photoPreview) photoPreview.innerHTML = '<strong>I-click upang kumuha o mag-upload ng litrato (Gate/Tirahan/Kopya)</strong>';
 
         if (action === 'served' || action === 'photo') {
-            modalTitle.textContent = '✅ Itala bilang "Served" (Naihatid)';
+            modalTitle.textContent = 'Itala bilang "Served" (Naihatid)';
             if (unservedReasonWrap) unservedReasonWrap.style.display = 'none';
         } else if (action === 'refused') {
-            modalTitle.textContent = '✍️ Itala bilang "Refused to Sign" (Tumanggi Lumagda)';
+            modalTitle.textContent = 'Itala bilang "Refused to Sign" (Tumanggi Lumagda)';
             if (unservedReasonWrap) unservedReasonWrap.style.display = 'none';
             remarksInput.value = 'Tumanggi lumagda ang panig ngunit personal na iniwan ang kopya.';
         } else if (action === 'unserved') {
-            modalTitle.textContent = '❌ Itala bilang "Unserved" (Hindi Naihatid / Need Follow-up)';
+            modalTitle.textContent = 'Itala bilang "Unserved" (Hindi Naihatid / Need Follow-up)';
             if (unservedReasonWrap) unservedReasonWrap.style.display = 'block';
         }
 
@@ -265,7 +265,7 @@
         }
 
         try {
-            const res = await fetch('../../backend/api/dashboard/server-dispatch.php', {
+            const res = await fetch('../../../backend/api/dashboard/server-dispatch.php', {
                 method: 'POST',
                 headers: {
                     'X-CSRF-Token': getCsrfToken()
@@ -286,7 +286,7 @@
         } finally {
             if (saveBtn) {
                 saveBtn.disabled = false;
-                saveBtn.textContent = '💾 I-save ang Tala';
+                saveBtn.textContent = 'I-save ang Tala';
             }
         }
     };
@@ -295,7 +295,7 @@
     const fetchServerData = async () => {
         state.isLoading = true;
         try {
-            const url = `../../backend/api/dashboard/server-dispatch.php?purok=${encodeURIComponent(state.purok)}&status=${encodeURIComponent(state.status)}`;
+            const url = `../../../backend/api/dashboard/server-dispatch.php?purok=${encodeURIComponent(state.purok)}&status=${encodeURIComponent(state.status)}`;
             const res = await fetch(url, { headers: { 'Accept': 'application/json' }, cache: 'no-store' });
             const json = await res.json();
 
@@ -312,7 +312,7 @@
 
         } catch (err) {
             console.error('Process Server Dispatch Error:', err);
-            showToast('Unable to load field tasks: ' . err.message, true);
+            showToast('Unable to load field tasks: ' + err.message, true);
         } finally {
             state.isLoading = false;
         }
