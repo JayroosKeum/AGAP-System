@@ -20,6 +20,7 @@ try {
     $categories = $db->query("
         SELECT category_id, category_name 
         FROM complaint_categories 
+        WHERE COALESCE(is_active, 1) = 1 
         ORDER BY 
             CASE 
                 WHEN category_name LIKE 'Others%' OR category_name LIKE 'Iba pa%' THEN 1 

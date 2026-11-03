@@ -76,7 +76,7 @@ if ($mimeType === 'image/jpg') {
 
 // Fetch categories for matching
 $db = (new Database())->connect();
-$categoriesStmt = $db->query("SELECT category_id, category_name FROM complaint_categories ORDER BY category_name ASC");
+$categoriesStmt = $db->query("SELECT category_id, category_name FROM complaint_categories WHERE COALESCE(is_active, 1) = 1 ORDER BY category_name ASC");
 $allCategories = $categoriesStmt ? $categoriesStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
 // Determine Gemini API Key
@@ -107,6 +107,7 @@ Match this exact JSON schema:
   "incident_purok": "Purok 1 through Purok 8, Doña Petra, Bagong Farmers, Bukang Liwayway, Libis Tumana, Bagong Purok, Palay, Mais, Singkamas, or Non-Resident",
   "narrative": "Detailed verbatim or comprehensive English/Tagalog narrative statement of the complaint and facts as written on the document",
   "requested_resolution": "Remedy, settlement, payment amount, repair, or relief demanded by the complainant",
+  "offense_fine_max": "Estimated monetary damages, claim amount, or property value in numbers only, e.g. 5000 or 0 (number)",
   "blotter_ref_no": "Blotter reference number or entry number if found",
   "complainants": [
     {

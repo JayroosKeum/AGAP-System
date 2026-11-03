@@ -35,6 +35,9 @@ include '../../layouts/header.php';
                     <strong id="dutyDayDisplaySub" style="font-size:0.85rem; color:#0f172a;">Pangkat Duty Team</strong>
                 </div>
                 <div class="lupon-accessibility-controls">
+                    <button type="button" class="btn-accessibility-pill" onclick="window.open('../../../backend/api/reports/council_brief.php?autoprint=1', '_blank', 'width=1020,height=820,noopener,noreferrer')" title="I-print ang 1-Page Monthly Council Meeting Executive Brief" style="background:#0f172a; color:#ffffff; border-color:#0f172a;">
+                        <span>1-Click Council Brief</span>
+                    </button>
                     <button type="button" class="btn-accessibility-pill" id="btnToggleFontSize" title="Palakihin o Paliitin ang Titik">
                         
                         <span>Malaking Titik (A+)</span>

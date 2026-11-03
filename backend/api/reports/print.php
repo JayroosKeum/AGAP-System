@@ -21,7 +21,14 @@ if (!in_array($roleId, [1, 2], true)) {
     die('Access Denied');
 }
 
+if (in_array(strtolower($_GET['type'] ?? ''), ['councilbrief', 'council_brief', 'council'], true)) {
+    require __DIR__ . '/council_brief.php';
+    exit;
+}
+
 require_once __DIR__ . '/../../controllers/ReportController.php';
+require_once __DIR__ . '/../../models/Setting.php';
+require_once __DIR__ . '/../../services/DocxTemplateService.php';
 
 // ── Parse & validate parameters ──────────────────────────────────────────────
 $allowedTypes = ['Monthly', 'Quarterly', 'Annual', 'DILG', 'Weekly', 'All Time', 'All'];
@@ -58,11 +65,12 @@ $categories  = $data['categories']   ?? [];
 $cases       = $data['cases']        ?? [];
 
 // ── Barangay metadata ─────────────────────────────────────────────────────────
-$barangay   = 'Barangay Tumana';
-$city       = 'Marikina City';
-$province   = 'Metro Manila';
-$pbName     = 'Hon. [Punong Barangay Name]';
-$secretName = '[Barangay Secretary Name]';
+$sysSettings = (new Setting())->getAllSettings();
+$barangay   = !empty($sysSettings['barangay_name']) ? $sysSettings['barangay_name'] : 'Barangay Tumana';
+$city       = !empty($sysSettings['city_name']) ? $sysSettings['city_name'] : 'Marikina City';
+$province   = !empty($sysSettings['province_name']) ? $sysSettings['province_name'] : 'Metro Manila';
+$pbName     = !empty($sysSettings['captain_name']) ? $sysSettings['captain_name'] : 'HON. AKIKO LYNNE CENTENO';
+$secretName = !empty($sysSettings['lupon_secretary_name']) ? $sysSettings['lupon_secretary_name'] : 'PAMELA CONSULTA';
 
 // ── Build settlement / CFA / hearing summary ──────────────────────────────────
 $settledCount    = $totals['settled_cases']       ?? 0;
@@ -277,14 +285,18 @@ $printedAt = date('F j, Y \a\t h:i A');
 
     <!-- ═══ HEADER ════════════════════════════════════════════════════════════ -->
     <div class="report-header">
-        <div class="seal-row">
-            <div class="seal-placeholder">MARIKINA<br>SEAL</div>
+        <?php
+        $tumanaSealUri   = DocxTemplateService::getLogoDataUri('tumana_logo.jpg', 'tumana_logo.jpg') ?: '../../../frontend/assets/images/tumana_logo.jpg';
+        $marikinaSealUri = DocxTemplateService::getLogoDataUri('marikina_logo.jpg', 'marikina_logo.jpg') ?: '../../../frontend/assets/images/marikina_logo.jpg';
+        ?>
+        <div class="seal-row" style="justify-content: space-between; padding: 0 12px;">
+            <img src="<?php echo htmlspecialchars($tumanaSealUri); ?>" alt="Barangay Tumana Official Seal" style="width: 60px; height: 60px; object-fit: contain;">
             <div class="header-text">
                 <h1>Republic of the Philippines</h1>
-                <h2>City of Marikina — <?php echo htmlspecialchars($barangay); ?></h2>
-                <p>Lupong Tagapamayapa · Katarungang Pambarangay</p>
+                <h2><?php echo htmlspecialchars($city); ?> — <?php echo htmlspecialchars($barangay); ?></h2>
+                <p>Office of the Lupong Tagapamayapa · Katarungang Pambarangay</p>
             </div>
-            <div class="seal-placeholder">BRGY<br>SEAL</div>
+            <img src="<?php echo htmlspecialchars($marikinaSealUri); ?>" alt="Marikina City Official Seal" style="width: 60px; height: 60px; object-fit: contain;">
         </div>
         <div class="report-title-bar">
             DILG / LTIA <?php echo htmlspecialchars(strtoupper($type)); ?> SUMMARY REPORT

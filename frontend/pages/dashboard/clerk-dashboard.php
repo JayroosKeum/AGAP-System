@@ -71,6 +71,14 @@ include '../../layouts/header.php';
                     </button>
                 </div>
             </div>
+
+            <!-- 1-Click Monthly Council Meeting Brief Action -->
+            <div class="dashboard-report-actions">
+                <button type="button" class="btn-report-dropdown" id="btnClerkCouncilBrief" style="background: #0f172a; color: #ffffff; border-color: #0f172a;" title="Generate 1-Page Printable Executive Summary for the Monthly Barangay Council Assembly">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                    <span>1-Click Council Brief</span>
+                </button>
+            </div>
         </div>    
 
         <!-- ── 2. Daily Intake & Docket Queue ───────────────────────────────── -->

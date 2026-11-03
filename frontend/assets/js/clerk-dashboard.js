@@ -840,6 +840,23 @@
             renderMiniCalendar();
         });
 
+        // 1-Click Monthly Council Meeting Brief
+        document.getElementById('btnClerkCouncilBrief')?.addEventListener('click', () => {
+            const st = state.stats || {};
+            const now = new Date();
+            const query = new URLSearchParams({
+                year: String(st.year || now.getFullYear()),
+                month: String(st.month || (now.getMonth() + 1)),
+                autoprint: '1'
+            });
+            if (state.period === 'monthly' && st.start_date && st.end_date) {
+                query.set('start_date', st.start_date);
+                query.set('end_date', st.end_date);
+                if (st.period_label) query.set('period_label', st.period_label);
+            }
+            window.open(`../../../backend/api/reports/council_brief.php?${query.toString()}`, '_blank', 'width=1020,height=820,noopener,noreferrer');
+        });
+
         // Quick Attendance modal close
         document.getElementById('quickAttCloseBtn')?.addEventListener('click', closeQuickAttendanceModal);
         document.getElementById('quickAttCancelBtn')?.addEventListener('click', closeQuickAttendanceModal);

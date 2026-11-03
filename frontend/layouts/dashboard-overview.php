@@ -40,6 +40,12 @@
         <?php if (in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2, 5], true)): ?>
         <!-- ── Top Report & Export Action Dropdowns ────────────────── -->
         <div class="dashboard-report-actions">
+            <!-- Dedicated 1-Click Monthly Council Meeting Brief Button -->
+            <button type="button" class="btn-report-dropdown" id="btnOneClickCouncilBrief" style="background: #0f172a; color: #ffffff; border-color: #0f172a;" title="Generate 1-Page Printable Executive Summary for the Monthly Barangay Council Assembly">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                <span>1-Click Council Brief</span>
+            </button>
+
             <!-- Generate Report Dropdown -->
             <div class="dash-dropdown" id="dropdownGenerateReport">
                 <button type="button" class="btn-report-dropdown" id="btnGenerateReportToggle" aria-haspopup="true" aria-expanded="false" title="Generate reports for the selected period">
@@ -63,6 +69,10 @@
                     <button type="button" class="dash-dropdown-item" id="itemDilgReport" role="menuitem">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="M16 13H8"></path><path d="M16 17H8"></path></svg>
                         <span>DILG Report</span>
+                    </button>
+                    <button type="button" class="dash-dropdown-item" id="itemCouncilBrief" role="menuitem">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                        <span>Monthly Council Meeting Brief (1-Page)</span>
                     </button>
                 </div>
             </div>
@@ -276,6 +286,10 @@
                     <div class="dash-aside-bulletin">
                         <strong>Monthly Council Meeting</strong>
                         <p>Katarungang Pambarangay monthly case presentation takes place on the 1st Monday of every month.</p>
+                        <button type="button" id="btnBulletinCouncilBrief" style="margin-top: 8px; width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 12px; border-radius: 7px; border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; font-size: 0.78rem; font-weight: 700; cursor: pointer; transition: all 0.15s ease;">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                            Print 1-Page Council Meeting Brief
+                        </button>
                     </div>
                     <div class="dash-aside-bulletin" style="margin-top: 12px; border-top: 1px dashed #e2e8f0; padding-top: 12px;">
                         <strong>Lupon Duty Attendance</strong>

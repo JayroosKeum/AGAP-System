@@ -1860,6 +1860,33 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Action 3B: 1-Click Monthly Council Meeting Brief (1-Page Printable Executive Summary)
+    const openMonthlyCouncilBrief = (autoPrint = true) => {
+        closeAllDropdowns();
+        const ap = state.activePeriodData || {};
+        const now = new Date();
+        const yearVal = ap.year || now.getFullYear();
+        const monthVal = ap.month || (now.getMonth() + 1);
+        const query = new URLSearchParams({
+            year: String(yearVal),
+            month: String(monthVal)
+        });
+        if (state.period === 'monthly' && ap.startDate && ap.endDate) {
+            query.set('start_date', ap.startDate);
+            query.set('end_date', ap.endDate);
+            if (ap.periodLabel) query.set('period_label', ap.periodLabel);
+        }
+        if (autoPrint) {
+            query.set('autoprint', '1');
+        }
+        window.open(`../../../backend/api/reports/council_brief.php?${query.toString()}`, '_blank', 'width=1020,height=820,noopener,noreferrer');
+    };
+    window.openMonthlyCouncilBrief = openMonthlyCouncilBrief;
+
+    document.getElementById('btnOneClickCouncilBrief')?.addEventListener('click', () => openMonthlyCouncilBrief(true));
+    document.getElementById('itemCouncilBrief')?.addEventListener('click', () => openMonthlyCouncilBrief(true));
+    document.getElementById('btnBulletinCouncilBrief')?.addEventListener('click', () => openMonthlyCouncilBrief(true));
+
     // Action 4: Export Case Register (Excel .xlsx)
     const exportRegBtn = document.getElementById('itemExportRegister');
     if (exportRegBtn) {

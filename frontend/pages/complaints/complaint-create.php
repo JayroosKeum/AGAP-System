@@ -16,6 +16,7 @@ $db = (new Database())->connect();
 $categoriesStmt = $db->query("
     SELECT category_id, category_name 
     FROM complaint_categories 
+    WHERE COALESCE(is_active, 1) = 1 
     ORDER BY 
         CASE 
             WHEN category_name LIKE 'Others%' OR category_name LIKE 'Iba pa%' THEN 1 
@@ -513,6 +514,9 @@ include '../../layouts/header.php';
                                 <label for="blotterRefNo">Barangay Blotter Ref No. <span class="optional-label">Optional</span></label>
                                 <input type="text" id="blotterRefNo" name="blotter_ref_no" placeholder="e.g. BLOTTER-2026-1089" value="<?php echo htmlspecialchars($old['blotter_ref_no'] ?? ''); ?>">
                                 <small class="field-hint">Record internal or physical blotter reference number if applicable.</small>
+                                <div id="blotterJurisdictionNotice" class="field-hint" style="display:none; color:#b45309; font-weight:600; margin-top:5px; background:#fef3c7; padding:4px 8px; border-radius:4px; border:1px solid #fde68a;">
+                                    ⚠️ Required for damages > ₱5,000 (Police / Court Jurisdiction — Issue Blotter Reference Only).
+                                </div>
                             </div>
 
                             <input type="hidden" name="jurisdiction_screened" id="jurisdictionScreened" value="1">
@@ -703,6 +707,45 @@ include '../../layouts/header.php';
                             <div class="form-group" id="prayerForReliefGroup" style="margin-bottom:0;">
                                 <label for="requestedResolution">Relief / Settlement Desired by Complainant <span class="optional-label">Optional</span></label>
                                 <textarea id="requestedResolution" name="requested_resolution" rows="3" maxlength="5000" placeholder="Specify desired resolution (e.g., payment of debt, boundary wall restoration, public apology, cessation of nuisance)..."><?php echo htmlspecialchars($old['requested_resolution'] ?? ''); ?></textarea>
+                            </div>
+                            <div class="form-group" id="claimAmountGroup" style="margin-top: 14px; margin-bottom: 0;">
+                                <label for="offenseFineMax" style="display:flex; justify-content:space-between; align-items:center;">
+                                    <span>Estimated Damages / Property Value or Monetary Claim (₱) <span class="optional-label">Optional</span></span>
+                                    <span class="threshold-pill" style="font-size:0.75rem; color:#64748b; font-weight:600; background:#f1f5f9; padding:2px 8px; border-radius:4px; border:1px solid #e2e8f0;">KP Statutory Limit: ₱5,000.00</span>
+                                </label>
+                                <div style="position:relative;">
+                                    <span style="position:absolute; left:12px; top:50%; transform:translateY(-50%); font-weight:700; color:#64748b; font-size:0.95rem; pointer-events:none;">₱</span>
+                                    <input type="number" step="0.01" min="0" id="offenseFineMax" name="offense_fine_max" style="padding-left:30px;" placeholder="0.00" value="<?php echo htmlspecialchars($old['offense_fine_max'] ?? ''); ?>">
+                                </div>
+                                <small class="field-hint">Specify total estimated value of property damaged, unpaid money/debt, or compensation claimed.</small>
+                            </div>
+
+                            <!-- Real-time Damages / Statutory Jurisdiction Warning Banner -->
+                            <div id="damagesJurisdictionWarning" class="damages-jurisdiction-banner" style="display:none;">
+                                <div style="display: flex; gap: 12px; align-items: flex-start;">
+                                    <div style="font-size: 1.4rem; line-height: 1; color: #d97706; flex-shrink: 0; margin-top: 2px;">⚠️</div>
+                                    <div style="flex: 1;">
+                                        <div class="banner-header">
+                                            <span>Police / Court Jurisdiction — Issue Blotter Reference Only</span>
+                                            <span class="banner-statute-badge">RA 7160 §408(c)</span>
+                                        </div>
+                                        <p class="banner-desc">
+                                            The estimated damages, claim, or property value (<strong id="damagesDisplayAmount">₱0.00</strong>) exceeds the statutory threshold of <strong>₱5,000.00</strong>. Under Katarungang Pambarangay guidelines and Section 408(c) of R.A. 7160, disputes exceeding this limit are <strong>outside the compulsory conciliation jurisdiction of the Lupon Tagapamayapa</strong>.
+                                        </p>
+                                        <div class="banner-protocol-box">
+                                            <div style="font-size: 0.82rem; color: #78350f; line-height: 1.4; flex: 1;">
+                                                <strong>Mandatory Protocol:</strong> Do not issue a conciliation summons/Paanyaya. Issue an official <em>Barangay Blotter Reference Number</em> and advise the parties to seek direct police assistance or court action.
+                                            </div>
+                                            <button type="button" id="btnFocusBlotterRef" class="btn-blotter-jump">
+                                                <span>Assign / Focus Blotter Ref No.</span> &rarr;
+                                            </button>
+                                        </div>
+                                        <label class="banner-ack-label">
+                                            <input type="checkbox" name="blotter_only_acknowledged" id="blotterOnlyAcknowledged" value="1" <?php echo !empty($old['blotter_only_acknowledged']) ? 'checked' : ''; ?> style="margin-top: 2px;">
+                                            <span>I confirm that this case exceeds ₱5,000 and is recorded strictly as a Blotter Reference (Police / Court Jurisdiction).</span>
+                                        </label>
+                                    </div>
+                                </div>
                             </div>
                         </section>
 
@@ -1625,6 +1668,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
     categorySelectEl?.addEventListener('change', syncOtherCategoryVisibility);
     syncOtherCategoryVisibility();
+    // Auto-select unified Neighborhood Nuisance & Animal Disturbances category on keywords
+    const complaintTitleEl = document.getElementById('complaintTitle');
+    function autoMatchUnifiedNuisanceCategory(text) {
+        if (!categorySelectEl || categorySelectEl.value !== '') return;
+        const lower = (text || '').toLowerCase();
+        if (/\b(stray animal|stray dog|stray cat|barking dog|barking|tahol ng aso|gala na hayop|alagang hayop|loud videoke|videoke|karaoke|ingay|garbage|basura|foul odor|pet waste|dumi ng hayop)\b/i.test(lower)) {
+            for (let i = 0; i < categorySelectEl.options.length; i++) {
+                const optText = categorySelectEl.options[i].text.toLowerCase();
+                if (optText.includes('neighborhood nuisance') || optText.includes('stray animals') || optText.includes('barking dogs') || optText.includes('videoke')) {
+                    categorySelectEl.selectedIndex = i;
+                    syncOtherCategoryVisibility();
+                    break;
+                }
+            }
+        }
+    }
+    complaintTitleEl?.addEventListener('blur', () => autoMatchUnifiedNuisanceCategory(complaintTitleEl.value));
+
 
     // Distinct parties validation
     window.validateDistinctParties = function() {
@@ -1727,6 +1788,30 @@ document.addEventListener('DOMContentLoaded', () => {
     const createForm = document.getElementById('createComplaintForm');
     if (createForm) {
         createForm.addEventListener('submit', (e) => {
+            // Check statutory damages jurisdiction (> ₱5,000)
+            const fineVal = parseFloat(document.getElementById('offenseFineMax')?.value) || 0;
+            if (fineVal > 5000) {
+                const blotterVal = document.getElementById('blotterRefNo')?.value?.trim();
+                const blotterAck = document.getElementById('blotterOnlyAcknowledged')?.checked;
+
+                if (!blotterVal) {
+                    e.preventDefault();
+                    window.agapNotify?.('Police / Court Jurisdiction: Estimated damages exceed ₱5,000. Under Katarungang Pambarangay guidelines (R.A. 7160 §408), please issue and record an official Barangay Blotter Reference Number.', 'error');
+                    const bInput = document.getElementById('blotterRefNo');
+                    bInput?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    bInput?.focus();
+                    bInput?.classList.add('blotter-highlight-pulse');
+                    setTimeout(() => bInput?.classList.remove('blotter-highlight-pulse'), 3000);
+                    return;
+                }
+
+                if (!blotterAck) {
+                    e.preventDefault();
+                    window.agapNotify?.('Please confirm the acknowledgment checkbox: "I confirm that this case exceeds ₱5,000 and is recorded strictly as a Blotter Reference (Police / Court Jurisdiction)."', 'warning');
+                    document.getElementById('blotterOnlyAcknowledged')?.focus();
+                    return;
+                }
+            }
             if (potentialDuplicatesDetected && !document.getElementById('duplicateAcknowledged')?.checked) {
                 e.preventDefault();
                 window.agapNotify?.('Review the potential duplicate record(s) and confirm whether this filing should proceed.', 'error');
@@ -4769,6 +4854,16 @@ document.addEventListener('DOMContentLoaded', () => {
             highlightEl(reliefTa);
         }
 
+        // 6b. Damages / Fine Max
+        if (data.offense_fine_max || data.damages_amount) {
+            const fineInput = document.getElementById('offenseFineMax');
+            if (fineInput) {
+                fineInput.value = data.offense_fine_max || data.damages_amount;
+                fineInput.dispatchEvent(new Event('input'));
+                highlightEl(fineInput);
+            }
+        }
+
         // 7. Complainants List
         if (Array.isArray(data.complainants) && data.complainants.length > 0) {
             complainantsList = data.complainants.map((c, idx) => ({
@@ -4887,6 +4982,78 @@ document.addEventListener('DOMContentLoaded', () => {
         isFormDirty = false;
     });
 });
+
+    // ── Damages > ₱5,000 Statutory Jurisdiction Warning & Blotter Enforcement ──
+    const offenseFineInput = document.getElementById('offenseFineMax');
+    const damagesWarningBanner = document.getElementById('damagesJurisdictionWarning');
+    const damagesDisplaySpan = document.getElementById('damagesDisplayAmount');
+    const blotterRefInput = document.getElementById('blotterRefNo');
+    const blotterNoticeEl = document.getElementById('blotterJurisdictionNotice');
+    const blotterAckBox = document.getElementById('blotterOnlyAcknowledged');
+    const btnJumpBlotter = document.getElementById('btnFocusBlotterRef');
+    const resolutionInput = document.getElementById('requestedResolution');
+
+    function checkDamagesJurisdiction() {
+        if (!offenseFineInput || !damagesWarningBanner) return;
+        let amount = parseFloat(offenseFineInput.value) || 0;
+
+        if (amount <= 0 && resolutionInput && resolutionInput.value) {
+            const matches = resolutionInput.value.match(/(?:(?:₱|php|pesos?|amount|cost|worth)\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})?|[0-9]+(?:\.[0-9]{2})?)|([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})?|[0-9]+(?:\.[0-9]{2})?)\s*(?:pesos?|php))/i);
+            if (matches) {
+                const rawNum = (matches[1] || matches[2] || '').replace(/,/g, '');
+                const parsed = parseFloat(rawNum);
+                if (parsed > 5000) {
+                    amount = parsed;
+                    offenseFineInput.value = parsed.toFixed(2);
+                }
+            }
+        }
+
+        if (amount > 5000) {
+            damagesWarningBanner.style.display = 'block';
+            if (damagesDisplaySpan) {
+                damagesDisplaySpan.textContent = '₱' + amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            }
+            if (blotterNoticeEl) blotterNoticeEl.style.display = 'block';
+            if (blotterRefInput && !blotterRefInput.value.trim()) {
+                blotterRefInput.style.borderColor = '#d97706';
+            }
+        } else {
+            damagesWarningBanner.style.display = 'none';
+            if (blotterNoticeEl) blotterNoticeEl.style.display = 'none';
+            if (blotterRefInput) {
+                blotterRefInput.style.borderColor = '';
+                blotterRefInput.classList.remove('blotter-highlight-pulse');
+            }
+        }
+    }
+
+    offenseFineInput?.addEventListener('input', checkDamagesJurisdiction);
+    offenseFineInput?.addEventListener('change', checkDamagesJurisdiction);
+    resolutionInput?.addEventListener('blur', () => {
+        if (offenseFineInput && (!offenseFineInput.value || parseFloat(offenseFineInput.value) <= 0)) {
+            checkDamagesJurisdiction();
+        }
+    });
+
+    btnJumpBlotter?.addEventListener('click', () => {
+        if (!blotterRefInput) return;
+        blotterRefInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        blotterRefInput.focus();
+        blotterRefInput.classList.add('blotter-highlight-pulse');
+        setTimeout(() => {
+            blotterRefInput.classList.remove('blotter-highlight-pulse');
+        }, 3000);
+
+        if (!blotterRefInput.value.trim()) {
+            const currentYear = new Date().getFullYear();
+            blotterRefInput.value = 'BLOTTER-' + currentYear + '-';
+            blotterRefInput.setSelectionRange(blotterRefInput.value.length, blotterRefInput.value.length);
+        }
+    });
+
+    checkDamagesJurisdiction();
+    window.checkDamagesJurisdiction = checkDamagesJurisdiction;
 </script>
 
 <?php

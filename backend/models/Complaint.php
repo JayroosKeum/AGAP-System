@@ -1352,6 +1352,16 @@ class Complaint
 
         $eval = MediationDeadlineService::evaluateKpJurisdiction($disputeContext);
         if ($eval['excluded']) {
+            // If the only statutory exclusion ground is fine/damages exceeding ₱5,000 (§408(c)),
+            // and an official blotter reference number is provided with acknowledgment,
+            // allow registering as a Blotter Reference Only entry without aborting.
+            $isDamagesOnlyExclusion = count($eval['exclusion_grounds']) === 1 &&
+                str_contains($eval['exclusion_grounds'][0], '§408(c)');
+            $hasBlotterAck = !empty($data['blotter_ref_no']) && !empty($data['blotter_only_acknowledged']);
+
+            if ($isDamagesOnlyExclusion && $hasBlotterAck) {
+                // Permitted as Blotter Reference Only
+            } else {
             return [
                 'success'           => false,
                 'code'              => 'KP_JURISDICTION_EXCLUDED',
@@ -1359,6 +1369,7 @@ class Complaint
                 'exclusion_grounds' => $eval['exclusion_grounds'],
                 'evaluation'        => $eval,
             ];
+            }
         }
 
         return [
@@ -1374,6 +1385,13 @@ class Complaint
             ? $bool('has_private_offended_party')
             : 1;
         $notes = trim((string) ($data['screening_notes'] ?? '')) ?: null;
+        if (!empty($data['blotter_ref_no'])) {
+            $blotterNote = 'Barangay Blotter Ref No: ' . trim((string)$data['blotter_ref_no']);
+            if (!empty($data['blotter_only_acknowledged'])) {
+                $blotterNote .= ' (Police / Court Jurisdiction — Issue Blotter Reference Only; Damages: ₱' . number_format((float)($data['offense_fine_max'] ?? 0), 2) . ')';
+            }
+            $notes = $notes ? ($notes . "\n" . $blotterNote) : $blotterNote;
+        }
         if ($notes !== null && mb_strlen($notes) > 2000) {
             throw new InvalidArgumentException('Screening notes must be 2,000 characters or fewer.');
         }
