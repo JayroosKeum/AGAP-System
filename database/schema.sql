@@ -1317,7 +1317,8 @@ INSERT INTO system_settings (setting_key, setting_value, description) VALUES
     ('mediation_session_interval_days', '3', 'Recommended minimum calendar days between mediation sessions (3-5)'),
     ('party_reschedule_limit', '2', 'Maximum allowed reschedules per party before authorized review is required (1-2)'),
     ('summons_max_attempts', '6', 'Standard cap for summons and officer return delivery attempts before CFA eligibility (1-6)'),
-    ('summons_attempt_interval_days', '1', 'Minimum days between summons service attempts (1-3)')
+    ('summons_attempt_interval_days', '1', 'Minimum days between summons service attempts (1-3)'),
+    ('mediation_day_of_week', 'Tue', 'Dedicated day of week for Punong Barangay mediation hearings (Tuesday Only rule)')
 ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value);
 
 

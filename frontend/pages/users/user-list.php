@@ -62,7 +62,7 @@ include '../../layouts/header.php';
                 </div>
             </div>
             
-            <div class="form-group" id="passwordGroup">
+            <div class="form-group">
                 <label>Username</label>
                 <input id="username" name="username" minlength="3" maxlength="100" pattern="[A-Za-z0-9_.-]{3,100}" required>
             </div>
@@ -78,8 +78,8 @@ include '../../layouts/header.php';
                 <small id="contactNoHelp">Required. Enter a valid Philippine mobile or telephone number.</small>
             </div>
             
-            <div class="form-group">
-                <label>Password <small id="passwordHint">(required)</small></label>
+            <div class="form-group" id="passwordGroup">
+                <label>Password <small id="passwordHint">(optional; leave blank to send verification email)</small></label>
                 <input id="password" type="password" name="password" minlength="12" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9]).{12,}" title="Use at least 12 characters with uppercase, lowercase, and a number.">
             </div>
             

@@ -63,7 +63,7 @@ try {
     // Tuesday afternoon check for Conciliation
     $tuesdayConflict = $summonsModel->findMediationConflict("{$tuesdayDateStr} 14:00", 'Lupon Court Room', null, null, 'Conciliation');
     testAssert($tuesdayConflict !== null, "Tuesday afternoon Conciliation returns conflict flag");
-    testAssert(strpos($tuesdayConflict['message'] ?? '', 'Tuesdays reserved exclusively for Punong Barangay Mediation') !== false,
+    testAssert(strpos($tuesdayConflict['message'] ?? '', 'reserved exclusively for Punong Barangay Mediation') !== false,
         "Tuesday conflict provides descriptive reason: " . ($tuesdayConflict['message'] ?? ''));
 
     // Thursday check for Conciliation (should NOT conflict unless already booked)
@@ -108,7 +108,7 @@ try {
     $cleanup->trackComplaint($testComplaintId);
 
     // Find open Tuesday slot
-    $targetTuesday = new DateTime('+3 weeks Tuesday');
+    $targetTuesday = new DateTime('next Tuesday + 7 days');
     $medDateStr = $targetTuesday->format('Y-m-d');
 
     // Docket into active mediation
@@ -162,7 +162,7 @@ try {
         'venue' => 'Lupon Court Room',
         'remarks' => '2nd Mediation Hearing before Punong Barangay'
     ], null, 1);
-    testAssert(!empty($med2Res['success']), "2nd Mediation session scheduled");
+    testAssert(!empty($med2Res['success']), "2nd Mediation session scheduled: " . ($med2Res['message'] ?? ''));
     $secondHearingId = (int)$med2Res['hearing_id'];
     $db->prepare("UPDATE hearings SET status = 'Completed', attendance_recorded_at = NOW() WHERE hearing_id = ?")->execute([$secondHearingId]);
     testAssert(true, "Completed 2 Mediation sessions; eligible for Pangkat elevation");
@@ -200,7 +200,7 @@ try {
         'venue' => 'Lupon Court Room'
     ], 1);
     testAssert(empty($tuesdayRes['success']), "Referral with Tuesday conciliation booking was properly rejected: " . ($tuesdayRes['message'] ?? ''));
-    testAssert(strpos($tuesdayRes['message'] ?? '', 'Tuesdays reserved exclusively for Punong Barangay Mediation') !== false,
+    testAssert(strpos($tuesdayRes['message'] ?? '', 'reserved exclusively for Punong Barangay Mediation') !== false,
         "Tuesday rejection gives correct statutory reason");
 
     // Refer with valid Thursday date

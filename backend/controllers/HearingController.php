@@ -698,7 +698,7 @@ class HearingController
         $dayOfWeek = (int) date('w', strtotime($date->format('Y-m-d H:i:s'))); // 0 = Sun, 2 = Tue, etc.
         $hour = (int) date('H', strtotime($date->format('Y-m-d H:i:s')));
 
-        $rawMedDays = Setting::getSetting('mediation_day_of_week', 'Mon,Tue,Wed,Thu,Fri');
+        $rawMedDays = Setting::getSetting('mediation_day_of_week', 'Tue');
         $allowedMedDays = [];
         if (is_string($rawMedDays)) {
             $dec = json_decode($rawMedDays, true);
@@ -707,7 +707,7 @@ class HearingController
             $allowedMedDays = $rawMedDays;
         }
         if (empty($allowedMedDays)) {
-            $allowedMedDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+            $allowedMedDays = ['Tue'];
         }
         $pluralNames = [
             'Mon' => 'Mondays', 'Tue' => 'Tuesdays', 'Wed' => 'Wednesdays',

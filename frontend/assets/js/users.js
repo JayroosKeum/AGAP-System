@@ -70,7 +70,8 @@ function openUserModal() {
     document.getElementById('userModalTitle').textContent = 'Add User';
     document.getElementById('password').required = false;
     document.getElementById('password').value = '';
-    document.getElementById('passwordGroup').style.display = 'none';
+    document.getElementById('passwordGroup').style.display = '';
+    document.getElementById('passwordHint').textContent = '(optional; leave blank to send verification email)';
     showMessage('');
     document.getElementById('userModal').style.display = 'flex';
 }
@@ -93,6 +94,7 @@ function editUser(id) {
     document.getElementById('contactNo').value = user.contact_no || '';
     document.getElementById('roleId').value = user.role_id;
     document.getElementById('password').required = false;
+    document.getElementById('password').value = '';
     document.getElementById('passwordGroup').style.display = '';
     document.getElementById('passwordHint').textContent = '(leave blank to keep current password)';
 }

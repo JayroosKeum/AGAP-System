@@ -36,7 +36,7 @@ $getWindow = !empty($input['get_window']) || !empty($input['window']);
 
 $summons = new Summons();
 
-    $rawMedDays = Setting::getSetting('mediation_day_of_week', 'Mon,Tue,Wed,Thu,Fri');
+    $rawMedDays = Setting::getSetting('mediation_day_of_week', 'Tue');
     $allowedMedDays = [];
     if (is_string($rawMedDays)) {
         $dec = json_decode($rawMedDays, true);
@@ -45,7 +45,7 @@ $summons = new Summons();
         $allowedMedDays = $rawMedDays;
     }
     if (empty($allowedMedDays)) {
-        $allowedMedDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+        $allowedMedDays = ['Tue'];
     }
     $pluralMap = [
         'Mon' => 'Mondays', 'Tue' => 'Tuesdays', 'Wed' => 'Wednesdays',

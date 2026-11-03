@@ -666,7 +666,7 @@ class Summons
         $timeMinutes = $hour * 60 + $minute;
 
         require_once __DIR__ . '/Setting.php';
-        $rawMedDays = Setting::getSetting('mediation_day_of_week', 'Mon,Tue,Wed,Thu,Fri');
+        $rawMedDays = Setting::getSetting('mediation_day_of_week', 'Tue');
         $allowedMedDays = [];
         if (is_string($rawMedDays)) {
             $dec = json_decode($rawMedDays, true);
@@ -675,7 +675,7 @@ class Summons
             $allowedMedDays = $rawMedDays;
         }
         if (empty($allowedMedDays)) {
-            $allowedMedDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+            $allowedMedDays = ['Tue'];
         }
         $pluralMap = ['Mon' => 'Mondays', 'Tue' => 'Tuesdays', 'Wed' => 'Wednesdays', 'Thu' => 'Thursdays', 'Fri' => 'Fridays', 'Sat' => 'Saturdays', 'Sun' => 'Sundays'];
         $medDaysLabel = implode(', ', array_map(fn($d) => $pluralMap[$d] ?? $d, $allowedMedDays));

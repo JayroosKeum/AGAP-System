@@ -23,16 +23,21 @@ class UserController {
     {
         $validated = $this->validate($data, false);
         if (!$validated['success']) return $validated;
+        $hasPassword = trim((string) ($validated['data']['password'] ?? '')) !== '';
         $token = bin2hex(random_bytes(32));
         $validated['data']['email_verification_token'] = hash('sha256', $token);
         $validated['data']['email_verification_expires_at'] = (new DateTimeImmutable('+24 hours'))->format('Y-m-d H:i:s');
         $result = $this->user->create($validated['data']);
         if (!$result['success']) return $result + ['message' => $result['message'] ?? 'Unable to create the user account.'];
+        if ($hasPassword) {
+            $this->audit->log($actorId, 'Created user account with initial password', 'User Management', $result['id']);
+            return $result + ['message' => 'User account created successfully.', 'email_sent' => false];
+        }
         $this->audit->log($actorId, 'Created pending user account', 'User Management', $result['id']);
         $delivery = $this->sendVerificationEmail((int) $result['id'], $token);
         return $result + ['message' => $delivery
             ? 'User account created. A verification email was sent.'
-            : 'User account created, but the verification email could not be sent. Use Resend verification email after fixing mail settings.', 'email_sent' => $delivery];
+            : 'User account created, but the verification email could not be sent. You can edit this user to set an initial password or use Resend verification email after configuring mail settings.', 'email_sent' => $delivery];
     }
 
     public function resendVerificationEmail(int $id, int $actorId): array
@@ -50,6 +55,11 @@ class UserController {
             return ['success' => false, 'message' => 'The new verification link was saved, but the email could not be sent. Check Gmail SMTP settings and try again.'];
         }
         return ['success' => true, 'message' => 'A new verification email was sent.'];
+    }
+
+    public function resendActivation(int $id, int $actorId): array
+    {
+        return $this->resendVerificationEmail($id, $actorId);
     }
 
     public function update(int $id, array $data, int $actorId): array

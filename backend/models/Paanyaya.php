@@ -833,7 +833,7 @@ class Paanyaya
             require_once __DIR__ . '/../services/MediationDeadlineService.php';
             require_once __DIR__ . '/Setting.php';
 
-            $rawMedDays = Setting::getSetting('mediation_day_of_week', 'Mon,Tue,Wed,Thu,Fri');
+            $rawMedDays = Setting::getSetting('mediation_day_of_week', 'Tue');
             $allowedMedDays = [];
             if (is_string($rawMedDays)) {
                 $dec = json_decode($rawMedDays, true);

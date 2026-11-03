@@ -25,6 +25,13 @@ class User {
 
     public function create(array $data): array
     {
+        $password = (string) ($data['password'] ?? '');
+        $hasPassword = trim($password) !== '';
+        $passwordHash = $hasPassword ? password_hash($password, PASSWORD_DEFAULT) : null;
+        $status = $hasPassword ? 'Active' : 'Inactive';
+        $token = $hasPassword ? null : ($data['email_verification_token'] ?? null);
+        $expires = $hasPassword ? null : ($data['email_verification_expires_at'] ?? null);
+
         $stmt = $this->db->prepare("
             INSERT INTO users
             (
@@ -41,7 +48,7 @@ class User {
             )
             VALUES
             (
-                ?,?,?,?,?,?, 'Inactive', ?, ?
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
             )
         ");
 
@@ -52,12 +59,13 @@ class User {
                 $data['username'],
                 $data['email'],
                 $data['contact_no'],
-                null,
+                $passwordHash,
                 $data['role_id'],
-                $data['email_verification_token'],
-                $data['email_verification_expires_at']
+                $status,
+                $token,
+                $expires
             ]);
-            return ['success' => true, 'id' => (int) $this->db->lastInsertId()];
+            return ['success' => true, 'id' => (int) $this->db->lastInsertId(), 'status' => $status];
         } catch (PDOException $exception) {
             return $this->databaseError($exception);
         }
@@ -227,7 +235,7 @@ class User {
             $sql = 'UPDATE users SET first_name=?, last_name=?, username=?, email=?, contact_no=?, role_id=?';
             $values = [$data['first_name'], $data['last_name'], $data['username'], $data['email'], $data['contact_no'], $data['role_id']];
             if ($data['password'] !== '') {
-                $sql .= ', password_hash=?';
+                $sql .= ', password_hash=?, status=\'Active\', email_verification_token=NULL, email_verification_expires_at=NULL';
                 $values[] = password_hash($data['password'], PASSWORD_DEFAULT);
             }
             $sql .= ' WHERE user_id=?';
