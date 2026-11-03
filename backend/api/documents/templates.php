@@ -258,7 +258,7 @@ $registry = loadRegistry($registryFile);
 function getActiveBranding(): array {
     $defaults = DocxTemplateService::getSharedBrandingDefaults();
     try {
-        require_once dirname(__DIR__, 2) . '/config/Database.php';
+        require_once dirname(__DIR__, 2) . '/config/database.php';
         require_once dirname(__DIR__, 2) . '/models/Setting.php';
         $settingModel = new Setting();
         $stored = $settingModel->get('kp_branding_config');
@@ -278,7 +278,7 @@ function getActiveBranding(): array {
 function getActivePaperSettings(): array {
     $defaults = DocxTemplateService::getSharedPaperDefaults();
     try {
-        require_once dirname(__DIR__, 2) . '/config/Database.php';
+        require_once dirname(__DIR__, 2) . '/config/database.php';
         require_once dirname(__DIR__, 2) . '/models/Setting.php';
         $settingModel = new Setting();
         $stored = $settingModel->get('kp_paper_settings');
@@ -328,7 +328,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $action === 'save_brandi
     $input = json_decode(file_get_contents('php://input'), true) ?: $_POST;
     $branding = array_replace_recursive(DocxTemplateService::getSharedBrandingDefaults(), $input['branding'] ?? $input);
     try {
-        require_once dirname(__DIR__, 2) . '/config/Database.php';
+        require_once dirname(__DIR__, 2) . '/config/database.php';
         require_once dirname(__DIR__, 2) . '/models/Setting.php';
         $settingModel = new Setting();
         $settingModel->set('kp_branding_config', json_encode($branding, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 'Centralized KP Letterhead & Branding Profile');
@@ -391,7 +391,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $action === 'upload_logo
     }
 
     try {
-        require_once dirname(__DIR__, 2) . '/config/Database.php';
+        require_once dirname(__DIR__, 2) . '/config/database.php';
         require_once dirname(__DIR__, 2) . '/models/Setting.php';
         $settingModel = new Setting();
         $settingModel->set('kp_branding_config', json_encode($branding, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 'Centralized KP Letterhead & Branding Profile');
@@ -428,7 +428,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $action === 'reset_logo'
     }
 
     try {
-        require_once dirname(__DIR__, 2) . '/config/Database.php';
+        require_once dirname(__DIR__, 2) . '/config/database.php';
         require_once dirname(__DIR__, 2) . '/models/Setting.php';
         $settingModel = new Setting();
         $settingModel->set('kp_branding_config', json_encode($branding, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 'Centralized KP Letterhead & Branding Profile');
@@ -460,7 +460,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $action === 'save_paper_
     $input = json_decode(file_get_contents('php://input'), true) ?: $_POST;
     $paper = array_replace_recursive(DocxTemplateService::getSharedPaperDefaults(), $input['paper'] ?? $input);
     try {
-        require_once dirname(__DIR__, 2) . '/config/Database.php';
+        require_once dirname(__DIR__, 2) . '/config/database.php';
         require_once dirname(__DIR__, 2) . '/models/Setting.php';
         $settingModel = new Setting();
         $settingModel->set('kp_paper_settings', json_encode($paper, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 'Centralized KP Paper & Print Profile');

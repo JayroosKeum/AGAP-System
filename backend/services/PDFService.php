@@ -38,7 +38,7 @@ class PDFService
 
         try {
             if (!$this->conn) {
-                require_once __DIR__ . '/../config/Database.php';
+                require_once __DIR__ . '/../config/database.php';
                 $this->conn = (new Database())->connect();
             }
             $pbStmt = $this->conn->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'captain_name' LIMIT 1");

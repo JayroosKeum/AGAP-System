@@ -7,7 +7,7 @@ if (!in_array($roleId, [1, 2, 3], true)) {
 }
 $canManageDocuments = in_array($roleId, [1, 2], true);
 
-require_once __DIR__ . '/../../../backend/config/Database.php';
+require_once __DIR__ . '/../../../backend/config/database.php';
 require_once __DIR__ . '/../../../backend/models/Setting.php';
 require_once __DIR__ . '/../../../backend/services/CsrfService.php';
 

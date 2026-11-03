@@ -62,13 +62,13 @@ $summons = new Summons();
 $db = null;
 
 if (!$caseId && $complaintId) {
-    require_once __DIR__ . '/../../config/Database.php';
+    require_once __DIR__ . '/../../config/database.php';
     $db = (new Database())->connect();
     $stmt = $db->prepare('SELECT case_id FROM cases WHERE complaint_id = ?');
     $stmt->execute([$complaintId]);
     $caseId = (int) $stmt->fetchColumn() ?: null;
 } elseif ($caseId && !$complaintId) {
-    require_once __DIR__ . '/../../config/Database.php';
+    require_once __DIR__ . '/../../config/database.php';
     $db = (new Database())->connect();
     $stmt = $db->prepare('SELECT complaint_id FROM cases WHERE case_id = ?');
     $stmt->execute([$caseId]);
@@ -79,7 +79,7 @@ if (!$caseId && $complaintId) {
 $windowMeta = null;
 if ($complaintId || $getWindow) {
     if (!$db) {
-        require_once __DIR__ . '/../../config/Database.php';
+        require_once __DIR__ . '/../../config/database.php';
         $db = (new Database())->connect();
     }
     $compCreatedAt = null;
