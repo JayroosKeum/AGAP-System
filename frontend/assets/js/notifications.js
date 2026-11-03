@@ -89,6 +89,107 @@
         return div.innerHTML;
     }
 
+    // =========================================================================
+    // 1B. Global Modal Success Pop-up with Blurred Backdrop and OK Button
+    // =========================================================================
+    let activePopupResolve = null;
+
+    function getPopupElements() {
+        let backdrop = document.getElementById('agapGlobalPopupBackdrop');
+        if (!backdrop) {
+            backdrop = document.createElement('div');
+            backdrop.id = 'agapGlobalPopupBackdrop';
+            backdrop.className = 'agap-popup-backdrop';
+            backdrop.innerHTML = `
+                <div class="agap-popup-card" role="dialog" aria-modal="true">
+                    <div class="agap-popup-icon-wrap popup-success" id="agapPopupIcon">✓</div>
+                    <h3 class="agap-popup-title" id="agapPopupTitle">Tagumpay!</h3>
+                    <p class="agap-popup-message" id="agapPopupMessage"></p>
+                    <button type="button" class="agap-popup-btn-ok" id="agapPopupOkBtn">OK</button>
+                </div>
+            `;
+            (document.body || document.documentElement).appendChild(backdrop);
+
+            const okBtn = backdrop.querySelector('#agapPopupOkBtn');
+            const closePopup = () => {
+                backdrop.classList.remove('is-active');
+                if (typeof activePopupResolve === 'function') {
+                    const fn = activePopupResolve;
+                    activePopupResolve = null;
+                    fn();
+                }
+            };
+
+            okBtn.addEventListener('click', closePopup);
+            backdrop.addEventListener('click', (e) => {
+                if (e.target === backdrop) closePopup();
+            });
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && backdrop.classList.contains('is-active')) {
+                    closePopup();
+                }
+            });
+        }
+        return backdrop;
+    }
+
+    window.showSuccessPopup = function(message, title = 'Tagumpay!', callback = null) {
+        return new Promise((resolve) => {
+            const backdrop = getPopupElements();
+            const titleEl = backdrop.querySelector('#agapPopupTitle');
+            const msgEl = backdrop.querySelector('#agapPopupMessage');
+            const iconEl = backdrop.querySelector('#agapPopupIcon');
+            const okBtn = backdrop.querySelector('#agapPopupOkBtn');
+
+            if (titleEl) titleEl.textContent = title || 'Tagumpay!';
+            if (msgEl) msgEl.innerHTML = escapeToastText(message).replace(/\n/g, '<br>');
+            if (iconEl) {
+                iconEl.className = 'agap-popup-icon-wrap popup-success';
+                iconEl.textContent = '✓';
+            }
+
+            activePopupResolve = () => {
+                if (typeof callback === 'function') callback();
+                resolve();
+            };
+
+            backdrop.classList.add('is-active');
+            setTimeout(() => {
+                if (okBtn) okBtn.focus();
+            }, 50);
+        });
+    };
+
+    window.showPopupModal = function(message, type = 'success', title = null, callback = null) {
+        return new Promise((resolve) => {
+            const backdrop = getPopupElements();
+            const titleEl = backdrop.querySelector('#agapPopupTitle');
+            const msgEl = backdrop.querySelector('#agapPopupMessage');
+            const iconEl = backdrop.querySelector('#agapPopupIcon');
+            const okBtn = backdrop.querySelector('#agapPopupOkBtn');
+
+            const isSuccess = type === 'success';
+            const defaultHeading = isSuccess ? 'Tagumpay!' : (type === 'error' ? 'Pansin' : 'Paalala');
+            if (titleEl) titleEl.textContent = title || defaultHeading;
+            if (msgEl) msgEl.innerHTML = escapeToastText(message).replace(/\n/g, '<br>');
+
+            if (iconEl) {
+                iconEl.className = `agap-popup-icon-wrap popup-${type}`;
+                iconEl.textContent = isSuccess ? '✓' : (type === 'error' ? '!' : 'ℹ');
+            }
+
+            activePopupResolve = () => {
+                if (typeof callback === 'function') callback();
+                resolve();
+            };
+
+            backdrop.classList.add('is-active');
+            setTimeout(() => {
+                if (okBtn) okBtn.focus();
+            }, 50);
+        });
+    };
+
     window.agapNotify = function(message, type = 'success', title = null, duration = 4000) {
         if (!message && message !== 0) return;
         const container = getContainer();

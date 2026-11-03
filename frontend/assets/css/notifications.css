@@ -36,6 +36,122 @@
     box-sizing: border-box;
 }
 
+/* ==========================================================================
+   AGAP Success / Status Pop-up Modal (Blurred Backdrop + OK Button)
+   ========================================================================== */
+.agap-popup-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 9999999;
+    background: rgba(15, 23, 42, 0.55);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    box-sizing: border-box;
+}
+
+.agap-popup-backdrop.is-active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.agap-popup-card {
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.35), 0 0 0 1px rgba(226, 232, 240, 0.8);
+    max-width: 440px;
+    width: 100%;
+    padding: 28px 24px 22px 24px;
+    text-align: center;
+    transform: scale(0.92) translateY(10px);
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    box-sizing: border-box;
+}
+
+.agap-popup-backdrop.is-active .agap-popup-card {
+    transform: scale(1) translateY(0);
+}
+
+.agap-popup-icon-wrap {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 16px auto;
+    font-size: 30px;
+}
+
+.agap-popup-icon-wrap.popup-success {
+    background: #dcfce7;
+    color: #16a34a;
+    border: 2px solid #bbf7d0;
+}
+
+.agap-popup-icon-wrap.popup-error {
+    background: #fee2e2;
+    color: #dc2626;
+    border: 2px solid #fecaca;
+}
+
+.agap-popup-icon-wrap.popup-warning {
+    background: #fef3c7;
+    color: #d97706;
+    border: 2px solid #fde68a;
+}
+
+.agap-popup-icon-wrap.popup-info {
+    background: #e0e7ff;
+    color: #4f46e5;
+    border: 2px solid #c7d2fe;
+}
+
+.agap-popup-title {
+    margin: 0 0 8px 0;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #0f172a;
+    line-height: 1.3;
+}
+
+.agap-popup-message {
+    margin: 0 0 22px 0;
+    font-size: 0.94rem;
+    color: #475569;
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+.agap-popup-btn-ok {
+    background: #2563eb;
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 32px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.25), 0 2px 4px -2px rgba(37, 99, 235, 0.25);
+    transition: background 0.15s ease, transform 0.1s ease;
+    min-width: 120px;
+}
+
+.agap-popup-btn-ok:hover {
+    background: #1d4ed8;
+    transform: translateY(-1px);
+}
+
+.agap-popup-btn-ok:active {
+    transform: translateY(0);
+}
+
 .agap-toast.toast-error   { border-left-color: #ef4444; }
 .agap-toast.toast-warning { border-left-color: #f59e0b; }
 .agap-toast.toast-info    { border-left-color: #2563eb; }

@@ -639,17 +639,30 @@ document.addEventListener('DOMContentLoaded', function() {
                 const result = await res.json().catch(() => ({}));
 
                 if (!res.ok || !result.success) {
-                    alert(result.message || 'Hindi ma-iskedyul ang Paanyaya.');
+                    if (typeof window.showPopupModal === 'function') {
+                        await window.showPopupModal(result.message || 'Hindi ma-iskedyul ang Paanyaya.', 'error', 'Pansin');
+                    } else {
+                        alert(result.message || 'Hindi ma-iskedyul ang Paanyaya.');
+                    }
                     submitBtn.disabled = false;
                     submitBtn.textContent = 'Save & Generate Paanyaya';
                     return;
                 }
 
-                alert('Matagumpay na nai-iskedyul ang Paanyaya para kay ' + invitee + '!');
+                closeModal();
+                if (typeof window.showSuccessPopup === 'function') {
+                    await window.showSuccessPopup('Matagumpay na nai-iskedyul ang Paanyaya para kay ' + invitee + '!', 'Tagumpay!');
+                } else {
+                    alert('Matagumpay na nai-iskedyul ang Paanyaya para kay ' + invitee + '!');
+                }
                 window.location.reload();
             } catch (err) {
                 console.error(err);
-                alert('May naganap na error sa pag-save ng Paanyaya.');
+                if (typeof window.showPopupModal === 'function') {
+                    await window.showPopupModal('May naganap na error sa pag-save ng Paanyaya.', 'error', 'Error');
+                } else {
+                    alert('May naganap na error sa pag-save ng Paanyaya.');
+                }
                 submitBtn.disabled = false;
                 submitBtn.textContent = 'Save & Generate Paanyaya';
             }
