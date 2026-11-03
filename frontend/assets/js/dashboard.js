@@ -139,32 +139,33 @@ document.addEventListener('DOMContentLoaded', () => {
     const addPaanyayaItem = (container, item) => {
         const art = document.createElement('article');
         art.className = 'dashboard-list-item';
-        art.style.padding = '12px 0';
-        art.style.alignItems = 'flex-start';
+        art.style.cssText = 'padding: 14px 0; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;';
 
         const content = document.createElement('div');
         content.className = 'dashboard-list-content';
+        content.style.flex = '1';
 
         const timeStr = formatTimeOnly(item.scheduled_time || item.scheduled_date) || 'Scheduled';
-        const invitee = item.invitee_name || 'Invited Party';
-        const complaintRef = item.complaint_number ? `Complaint #${item.complaint_number}` : 'Undocketed';
+        const invitee = item.invitee_name || 'Inanyayahan';
+        const complainant = item.complainant_name || 'Nagpaanyaya';
+        const complaintRef = item.complaint_number ? `Complaint #${item.complaint_number}` : 'Pre-Docketed';
 
         const headerRow = document.createElement('div');
-        headerRow.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;';
+        headerRow.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 5px; flex-wrap: wrap;';
 
         const timeBadge = document.createElement('span');
-        timeBadge.style.cssText = 'font-size: 0.76rem; font-weight: 700; color: #1e40af; background: #dbeafe; padding: 2px 7px; border-radius: 4px; white-space: nowrap;';
+        timeBadge.style.cssText = 'font-size: 0.78rem; font-weight: 700; color: #1e40af; background: #dbeafe; padding: 2px 8px; border-radius: 4px; white-space: nowrap;';
         timeBadge.textContent = timeStr;
 
         const heading = document.createElement('h3');
-        heading.style.cssText = 'margin: 0; font-size: 0.90rem; font-weight: 700; color: #0f172a;';
-        heading.textContent = `${complaintRef} · Paanyaya`;
+        heading.style.cssText = 'margin: 0; font-size: 0.94rem; font-weight: 700; color: #0f172a;';
+        heading.textContent = `${complaintRef} · Paanyaya Invitation`;
 
         headerRow.append(timeBadge, heading);
 
         const inviteeRow = document.createElement('div');
-        inviteeRow.style.cssText = 'font-size: 0.84rem; color: #1e293b; margin-bottom: 3px; line-height: 1.4;';
-        inviteeRow.innerHTML = `<span style="color: #6366f1; font-weight: 700;">Invitee:</span> <strong>${escapeHtml(invitee)}</strong>`;
+        inviteeRow.style.cssText = 'font-size: 0.86rem; color: #1e293b; margin-bottom: 4px; line-height: 1.4;';
+        inviteeRow.innerHTML = `<span style="color: #166534; font-weight: 700;">Nagpaanyaya:</span> <strong>${escapeHtml(complainant)}</strong> <span style="color: #94a3b8; font-weight: 600; margin: 0 4px;">•</span> <span style="color: #6366f1; font-weight: 700;">Inanyayahan:</span> <strong>${escapeHtml(invitee)}</strong>`;
 
         const detailsRow = document.createElement('p');
         detailsRow.style.cssText = 'font-size: 0.78rem; color: #64748b; margin: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;';
@@ -174,11 +175,16 @@ document.addEventListener('DOMContentLoaded', () => {
         art.appendChild(content);
 
         const actions = document.createElement('div');
-        actions.style.cssText = 'display: flex; align-items: center; gap: 6px; justify-content: flex-end; margin-left: 8px;';
+        actions.style.cssText = 'display: flex; align-items: center; gap: 8px; justify-content: flex-end; margin-left: 12px; flex-shrink: 0;';
+
+        const statusPill = document.createElement('span');
+        statusPill.style.cssText = 'font-size: 0.74rem; font-weight: 700; padding: 3px 9px; border-radius: 9999px; background: #e0e7ff; color: #3730a3; white-space: nowrap;';
+        statusPill.textContent = item.status || 'Scheduled';
+        actions.appendChild(statusPill);
 
         const viewLink = document.createElement('a');
         viewLink.className = 'btn-open-case';
-        viewLink.style.cssText = 'padding: 5px 10px; font-size: 11px;';
+        viewLink.style.cssText = 'padding: 6px 12px; font-size: 11.5px; font-weight: 600;';
         viewLink.textContent = '✉️ Paanyaya';
         viewLink.href = item.complaint_id ? `../paanyaya/dialogue.php?complaint_id=${encodeURIComponent(item.complaint_id)}` : `../paanyaya/index.php`;
         actions.appendChild(viewLink);
@@ -194,7 +200,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const items = paanyayas || [];
         if (!items.length) {
-            return container.appendChild(emptyState('No informal Paanyaya dialogues scheduled for today.'));
+            return container.appendChild(emptyState('No informal Paanyaya invitations scheduled for today.'));
         }
 
         items.forEach(item => addPaanyayaItem(container, item));
@@ -203,11 +209,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const addHearingItem = (container, hearing) => {
         const item = document.createElement('article');
         item.className = 'dashboard-list-item';
-        item.style.padding = '14px 0';
-        item.style.alignItems = 'flex-start';
+        item.style.cssText = 'padding: 14px 0; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;';
 
         const content = document.createElement('div');
         content.className = 'dashboard-list-content';
+        content.style.flex = '1';
 
         const scheduledTimeStr = formatTimeOnly(hearing.hearing_date) || 'Scheduled';
         const hearingTypeStr = `${hearing.hearing_type || 'Hearing'}${hearing.mediation_attempt ? ' ' + hearing.mediation_attempt : ''}`;
@@ -1415,6 +1421,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 updateCardSubtitles(state.period, periodLabel);
                 updateControls(state.period, data);
+
+                // Render Analytics Summary
+                if (data.analytics) {
+                    renderAnalytics(data.analytics);
+                }
 
                 state.calendarHearings = data.calendar_hearings || [];
                 renderHearings(data.today_hearings || [], periodLabel);

@@ -1854,6 +1854,34 @@
     overflow-y: auto;
 }
 
+/* WIDE SECTION CARDS IN MAIN COLUMN (PER A.PNG) */
+.dash-section-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    overflow: hidden;
+}
+
+.dash-hearings-stream {
+    max-height: 420px;
+    overflow-y: auto;
+    padding: 4px 16px;
+}
+
+.dash-hearing-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 0;
+    border-bottom: 1px solid #f1f5f9;
+    gap: 16px;
+}
+
+.dash-hearing-item:last-child {
+    border-bottom: none;
+}
+
 .dash-aside-bulletin strong {
     display: block;
     font-size: 0.82rem;

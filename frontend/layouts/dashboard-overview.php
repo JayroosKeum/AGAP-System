@@ -126,23 +126,10 @@
 
     <p id="dashboardMessage" class="dashboard-message" role="status"></p>
 
-    <!-- Main Two-Column Layout (Inspired by Reference UI) -->
+    <!-- Main Two-Column Layout (Following layout and arrangement in A.png) -->
     <div class="dash-portal-grid">
-        <!-- LEFT COLUMN: Welcome Banner & Analytics Insights -->
+        <!-- LEFT COLUMN: Analytics Insights, Today's Hearings, Paanyaya Invitations -->
         <div class="dash-portal-main">
-            <!-- Advisory / Announcement Hero Banner (Reference STI Style) -->
-            <div class="dash-hero-banner">
-                <div class="dash-hero-badge">📢 BARANGAY COUNCIL ADVISORY</div>
-                <h2 class="dash-hero-title">Katarungang Pambarangay Peace &amp; Order Watch</h2>
-                <p class="dash-hero-text">
-                    Lupong Tagapamayapa sessions are actively ongoing in the Lupon Court Room. All mediation, conciliation dialogues, and summons service are expedited in accordance with RA 7160 Katarungang Pambarangay Law.
-                </p>
-                <div class="dash-hero-warning-box">
-                    <span class="warning-icon">⚠️</span>
-                    <span><strong>Statutory Notice:</strong> Transmittal records, amicable settlements, and arbitration awards are strictly preserved in immutable registry records. Hard deletion of cases is prohibited.</span>
-                </div>
-            </div>
-
             <!-- ANALYTICS CARDS (Top Issues, Purok Hotspots, Demographics) -->
             <div class="dash-analytics-row">
                 <!-- Most Complained Issues -->
@@ -200,11 +187,53 @@
                     </div>
                 </div>
             </div>
+
+            <!-- 1. Today's Hearings Card (Wide layout in main column per A.png) -->
+            <div class="dash-section-card" id="dashboardHearingsPanel" style="margin-top: 20px;">
+                <div class="aside-card-header">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 1.15rem;">⚖️</span>
+                        <div>
+                            <h3 class="aside-card-title" id="hearingsPanelHeading">Today's Hearings</h3>
+                            <p class="aside-card-sub" id="hearingsPanelSub">Scheduled formal sessions</p>
+                        </div>
+                    </div>
+                    <span id="periodHearingCountBadge" class="panel-count-badge" style="display:none;">0</span>
+                </div>
+                <div id="todayHearings" class="dash-hearings-stream" aria-live="polite">
+                    <div style="text-align: center; color: #64748b; padding: 18px; font-size: 0.85rem;">No hearings scheduled for this date.</div>
+                </div>
+                <!-- Pagination -->
+                <div class="dashboard-table-pagination" id="hearingsTablePagination" style="display:none; padding: 8px 16px;">
+                    <div class="pagination-info" id="hearingsPaginationInfo" style="font-size: 11px;">Showing 1-10</div>
+                    <div class="pagination-buttons" id="hearingsPaginationButtons">
+                        <button type="button" class="btn-page-nav" id="hearingsPrevPageBtn" disabled>&laquo;</button>
+                        <button type="button" class="btn-page-nav" id="hearingsNextPageBtn">&raquo;</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. Dedicated Paanyaya Invitations Card (Wide layout in main column per A.png) -->
+            <div class="dash-section-card" id="dashboardPaanyayaPanel" style="margin-top: 20px;">
+                <div class="aside-card-header">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 1.15rem;">✉️</span>
+                        <div>
+                            <h3 class="aside-card-title">Paanyaya Invitations</h3>
+                            <p class="aside-card-sub">Pre-docketed informal invitations</p>
+                        </div>
+                    </div>
+                    <a href="../paanyaya/index.php" class="mini-cal-link" style="font-size: 0.82rem; font-weight: 700;">View all &rarr;</a>
+                </div>
+                <div id="todayPaanyayas" class="dash-hearings-stream" aria-live="polite">
+                    <div style="text-align: center; color: #64748b; padding: 18px; font-size: 0.85rem;">Loading Paanyaya invitations...</div>
+                </div>
+            </div>
         </div>
 
-        <!-- RIGHT COLUMN: Compact Mini-Calendar, To-do/Today's Hearings, Announcements -->
+        <!-- RIGHT COLUMN: Compact Mini-Calendar & Announcements (per A.png) -->
         <aside class="dash-portal-aside">
-            <!-- 1. Compact Mini Calendar (Inspired by STI reference image) -->
+            <!-- 1. Compact Mini Calendar -->
             <div class="mini-calendar-card" id="miniCalendarCard">
                 <div class="mini-cal-header">
                     <span class="mini-cal-title-wrap">
@@ -232,49 +261,7 @@
                 </div>
             </div>
 
-            <!-- 2. Today's Hearings / To-do Card -->
-            <div class="dash-aside-card" id="dashboardHearingsPanel">
-                <div class="aside-card-header">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="font-size: 1.1rem;">⚖️</span>
-                        <div>
-                            <h3 class="aside-card-title" id="hearingsPanelHeading">Today's Hearings</h3>
-                            <p class="aside-card-sub" id="hearingsPanelSub">Scheduled formal sessions</p>
-                        </div>
-                    </div>
-                    <span id="periodHearingCountBadge" class="panel-count-badge" style="display:none;">0</span>
-                </div>
-                <div id="todayHearings" class="dash-aside-list" aria-live="polite">
-                    <div style="text-align: center; color: #64748b; padding: 14px; font-size: 0.85rem;">No hearings scheduled for this date.</div>
-                </div>
-                <!-- Pagination -->
-                <div class="dashboard-table-pagination" id="hearingsTablePagination" style="display:none; padding: 6px 12px;">
-                    <div class="pagination-info" id="hearingsPaginationInfo" style="font-size: 11px;">Showing 1-10</div>
-                    <div class="pagination-buttons" id="hearingsPaginationButtons">
-                        <button type="button" class="btn-page-nav" id="hearingsPrevPageBtn" disabled>&laquo;</button>
-                        <button type="button" class="btn-page-nav" id="hearingsNextPageBtn">&raquo;</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 3. Dedicated Paanyaya Card (Stage 0 Informal Dialogues) -->
-            <div class="dash-aside-card" id="dashboardPaanyayaPanel">
-                <div class="aside-card-header">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="font-size: 1.1rem;">✉️</span>
-                        <div>
-                            <h3 class="aside-card-title">Paanyaya Dialogues</h3>
-                            <p class="aside-card-sub">Pre-docketed informal invitations</p>
-                        </div>
-                    </div>
-                    <a href="../paanyaya/index.php" class="mini-cal-link" style="font-size: 0.75rem;">View all &rarr;</a>
-                </div>
-                <div id="todayPaanyayas" class="dash-aside-list" aria-live="polite">
-                    <div style="text-align: center; color: #64748b; padding: 14px; font-size: 0.85rem;">Loading Paanyaya dialogues...</div>
-                </div>
-            </div>
-
-            <!-- 4. Announcements & Advisories Card -->
+            <!-- 2. Announcements & Advisories Card -->
             <div class="dash-aside-card">
                 <div class="aside-card-header">
                     <div style="display: flex; align-items: center; gap: 8px;">
@@ -285,12 +272,12 @@
                         </div>
                     </div>
                 </div>
-                <div class="dash-aside-body" style="padding: 12px 14px;">
+                <div class="dash-aside-body" style="padding: 14px 16px;">
                     <div class="dash-aside-bulletin">
                         <strong>Monthly Council Meeting</strong>
                         <p>Katarungang Pambarangay monthly case presentation takes place on the 1st Monday of every month.</p>
                     </div>
-                    <div class="dash-aside-bulletin" style="margin-top: 10px; border-top: 1px dashed #e2e8f0; padding-top: 10px;">
+                    <div class="dash-aside-bulletin" style="margin-top: 12px; border-top: 1px dashed #e2e8f0; padding-top: 12px;">
                         <strong>Lupon Duty Attendance</strong>
                         <p>Lupon members are required to report in-person on their assigned weekly duty days in Settings.</p>
                     </div>
