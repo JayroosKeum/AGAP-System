@@ -1266,6 +1266,7 @@ INSERT INTO complaint_categories (category_name, tagalog_name) VALUES
     ('Price Control Violations / Paglabag sa Pagkontrol ng Presyo ng Bilihin', 'Paglabag sa Pagkontrol ng Presyo ng Bilihin'),
     ('Removal, Sale or Pledge of Mortgaged Property (Art. 319) / Pag-aalis, Pagbenta, o Pagsangla ng Nakasanglang Ari-arian', 'Pag-aalis, Pagbenta, o Pagsangla ng Nakasanglang Ari-arian'),
     ('Responsibility of Participants in a Duel (Art. 260) / Pananagutan ng mga Kalahok sa Duelo', 'Pananagutan ng mga Kalahok sa Duelo'),
+    ('Safe Spaces Act: Catcalling & Whistling (RA 11313 — 1st Offense Only) / Bawal Bastos: Paninita at Pagsipol (Unang Paglabag Lamang)', 'Bawal Bastos: Paninita at Pagsipol (Unang Paglabag Lamang)'),
     ('Seizure of Correspondence or Secrets with Abuse of Office (Arts. 290, 291) / Pagharang ng Liham o Pagsisiwalat ng Lihim', 'Pagharang ng Liham o Pagsisiwalat ng Lihim'),
     ('Simple Seduction (Art. 338) / Simpleng Panunukso o Pang-aakit (Simple Seduction)', 'Simpleng Panunukso o Pang-aakit (Simple Seduction)'),
     ('Slander and Defamation (Arts. 358, 359) / Paninirang-Puri (Oral Defamation / Slander)', 'Paninirang-Puri (Oral Defamation / Slander)'),

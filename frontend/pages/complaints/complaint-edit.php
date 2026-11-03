@@ -537,7 +537,46 @@ include __DIR__ . '/../../layouts/header.php';
                                     <span class="required-mark">*</span>
                                 </label>
                                 <input type="text" id="otherCategorySpecification" name="other_category_specification" maxlength="255" placeholder="Pakitukoy ang partikular na alitan o kategorya (e.g. Alitan sa bintana, ingay ng aircon)..." value="<?php echo htmlspecialchars($effOtherCategorySpec); ?>" style="border: 1.5px solid #3b82f6; background: #f8fafc; border-radius: 6px; padding: 9px 12px; font-size: 0.9rem;">
-                                <small style="color: #64748b; font-size: 0.8rem; display: block; margin-top: 4px;">Specify the dispute details covered under Katarungang Pambarangay jurisdiction.</small>
+                                <small style="color: #64748b; font-size: 0.8rem; display: block; margin-top: 4px;">Specify the dispute details covered under Katarungang Pambarangay jurisdiction.</small>
+                            </div>
+
+                            <!-- Safe Spaces Act (RA 11313) Mandatory 1st Offense Toggle & VAWC/PNP Routing -->
+                            <div class="safe-spaces-offense-box" id="safeSpacesOffenseWrapper" style="display: none;">
+                                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                                    <label style="margin: 0; font-weight: 700; font-size: 0.92rem; color: #1e293b; display: flex; align-items: center; gap: 6px;">
+                                        <span>Safe Spaces Act (R.A. 11313) Offense Tier Verification</span>
+                                        <span class="required-mark">*</span>
+                                    </label>
+                                    <span style="background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; text-transform: uppercase;">RA 11313 §11(a)</span>
+                                </div>
+                                <p style="margin: 4px 0 0 0; font-size: 0.82rem; color: #475569;">
+                                    Barangay jurisdiction covers <strong>1st Offense Only (Catcalling / Wolf-Whistling)</strong>. Repeat (2nd/3rd) offenses or severe harassment must be routed to the <strong>VAWC Desk / PNP</strong>.
+                                </p>
+                                <div class="safe-spaces-toggle-row">
+                                    <label class="safe-spaces-option-card" id="cardFirstOffenseCatcalling">
+                                        <input type="checkbox" id="chkFirstOffenseCatcalling" name="is_first_offense_catcalling" value="1" <?php echo !empty($complaint['is_first_offense_catcalling']) ? 'checked' : ''; ?> style="margin-top: 3px; width: 16px; height: 16px; accent-color: #16a34a;">
+                                        <div>
+                                            <div style="font-weight: 700; font-size: 0.86rem; color: #14532d;">1st Offense Only (Catcalling/Whistling) <span class="required-mark">*</span></div>
+                                            <div style="font-size: 0.78rem; color: #166534; margin-top: 2px;">Verified 1st offense light street harassment eligible for Barangay handling.</div>
+                                        </div>
+                                    </label>
+                                    <label class="safe-spaces-option-card" id="cardRepeatOffenseVawc">
+                                        <input type="checkbox" id="chkRepeatOffenseVawc" name="is_repeat_offense_vawc" value="1" <?php echo !empty($complaint['is_repeat_offense_vawc']) ? 'checked' : ''; ?> style="margin-top: 3px; width: 16px; height: 16px; accent-color: #dc2626;">
+                                        <div>
+                                            <div style="font-weight: 700; font-size: 0.86rem; color: #7f1d1d;">2nd / 3rd Offense (Route to VAWC / PNP)</div>
+                                            <div style="font-size: 0.78rem; color: #991b1b; margin-top: 2px;">Repeat offender or escalated harassment — outside Lupon conciliation.</div>
+                                        </div>
+                                    </label>
+                                </div>
+                                <div id="vawcPnpRoutingBanner" class="vawc-pnp-routing-banner" style="display: none;">
+                                    <div style="font-weight: 700; font-size: 0.9rem; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+                                        <span>🚨 Mandatory VAWC / PNP Referral — 2nd / 3rd Offense Outside KP Jurisdiction</span>
+                                        <span style="background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; font-size: 0.7rem; padding: 1px 6px; border-radius: 4px;">DO NOT DOCKET FOR MEDIATION</span>
+                                    </div>
+                                    <p style="margin: 0;">
+                                        Under <strong>R.A. 11313 Sec. 11</strong>, 2nd and 3rd offenses of gender-based street harassment carry higher penalties (imprisonment of 6–30 days and fines up to ₱10,000) and cannot be conciliated by the Lupon. Endorse and route this complainant directly to the <strong>Barangay VAWC Desk</strong> or <strong>PNP Women and Children Protection Desk (WCPD)</strong>.
+                                    </p>
+                                </div>
                             </div>
 
                             <div class="form-row-2">
@@ -1441,6 +1480,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const editForm = document.getElementById('editComplaintForm');
     if (editForm) {
         editForm.addEventListener('submit', (e) => {
+            // Check Safe Spaces Act (RA 11313) mandatory 1st Offense toggle & VAWC/PNP routing
+            if (window.isSafeSpacesCategorySelected && window.isSafeSpacesCategorySelected()) {
+                const isRepeatVawc = document.getElementById('chkRepeatOffenseVawc')?.checked;
+                const isFirstOffense = document.getElementById('chkFirstOffenseCatcalling')?.checked;
+                if (isRepeatVawc) {
+                    e.preventDefault();
+                    window.agapNotify?.('VAWC / PNP Jurisdiction: 2nd and 3rd offenses under the Safe Spaces Act (R.A. 11313) cannot be docketed for Lupon mediation. Route this case directly to the Barangay VAWC Desk or PNP WCPD.', 'error');
+                    document.getElementById('vawcPnpRoutingBanner')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    return;
+                }
+                if (!isFirstOffense) {
+                    e.preventDefault();
+                    window.agapNotify?.('Mandatory Verification Required: Confirm "1st Offense Only (Catcalling/Whistling)" to proceed, or route 2nd/3rd offenses to VAWC/PNP.', 'error');
+                    const firstBox = document.getElementById('chkFirstOffenseCatcalling');
+                    firstBox?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    firstBox?.focus();
+                    return;
+                }
+            }
             // Check statutory damages jurisdiction (> ₱5,000)
             const fineVal = parseFloat(document.getElementById('offenseFineMax')?.value) || 0;
             if (fineVal > 5000) {
@@ -4074,6 +4132,70 @@ document.addEventListener('DOMContentLoaded', () => {
 
     checkDamagesJurisdiction();
     window.checkDamagesJurisdiction = checkDamagesJurisdiction;
+
+    // ── Safe Spaces Act (RA 11313) Mandatory 1st Offense Toggle & VAWC/PNP Routing ──
+    const safeSpacesWrapperEl = document.getElementById('safeSpacesOffenseWrapper');
+    const chkFirstOffenseEl = document.getElementById('chkFirstOffenseCatcalling');
+    const chkRepeatVawcEl = document.getElementById('chkRepeatOffenseVawc');
+    const cardFirstOffenseEl = document.getElementById('cardFirstOffenseCatcalling');
+    const cardRepeatVawcEl = document.getElementById('cardRepeatOffenseVawc');
+    const vawcRoutingBannerEl = document.getElementById('vawcPnpRoutingBanner');
+
+    function isSafeSpacesCategorySelected() {
+        if (!categorySelectEl || categorySelectEl.selectedIndex <= 0) return false;
+        const txt = (categorySelectEl.options[categorySelectEl.selectedIndex]?.text || '').toLowerCase();
+        return txt.includes('safe spaces') || txt.includes('catcalling') || txt.includes('bawal bastos') || txt.includes('11313');
+    }
+
+    function syncSafeSpacesOffenseUI() {
+        if (!safeSpacesWrapperEl) return;
+        const active = isSafeSpacesCategorySelected();
+        if (!active) {
+            safeSpacesWrapperEl.style.display = 'none';
+            if (chkFirstOffenseEl) chkFirstOffenseEl.required = false;
+            return;
+        }
+
+        safeSpacesWrapperEl.style.display = 'block';
+        const caseTypeSel = document.getElementById('caseType');
+        if (caseTypeSel && caseTypeSel.value !== 'Criminal') {
+            caseTypeSel.value = 'Criminal';
+        }
+
+        const isFirst = !!chkFirstOffenseEl?.checked;
+        const isRepeat = !!chkRepeatVawcEl?.checked;
+
+        if (chkFirstOffenseEl) {
+            chkFirstOffenseEl.required = !isRepeat;
+        }
+
+        cardFirstOffenseEl?.classList.toggle('active-first', isFirst);
+        cardRepeatVawcEl?.classList.toggle('active-vawc', isRepeat);
+        safeSpacesWrapperEl.classList.toggle('is-verified-first', isFirst && !isRepeat);
+        safeSpacesWrapperEl.classList.toggle('is-vawc-routed', isRepeat);
+
+        if (vawcRoutingBannerEl) {
+            vawcRoutingBannerEl.style.display = isRepeat ? 'block' : 'none';
+        }
+    }
+
+    chkFirstOffenseEl?.addEventListener('change', () => {
+        if (chkFirstOffenseEl.checked && chkRepeatVawcEl) {
+            chkRepeatVawcEl.checked = false;
+        }
+        syncSafeSpacesOffenseUI();
+    });
+
+    chkRepeatVawcEl?.addEventListener('change', () => {
+        if (chkRepeatVawcEl.checked && chkFirstOffenseEl) {
+            chkFirstOffenseEl.checked = false;
+        }
+        syncSafeSpacesOffenseUI();
+    });
+
+    categorySelectEl?.addEventListener('change', syncSafeSpacesOffenseUI);
+    syncSafeSpacesOffenseUI();
+    window.isSafeSpacesCategorySelected = isSafeSpacesCategorySelected;
 </script>
 
 <?php include __DIR__ . '/../../layouts/footer.php'; ?>

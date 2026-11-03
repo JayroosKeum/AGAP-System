@@ -1341,6 +1341,30 @@ class Complaint
             }
         }
 
+        // 2b. Safe Spaces Act (RA 11313) Catcalling/Whistling mandatory 1st Offense verification
+        $catIdCheck = filter_var($data['category_id'] ?? null, FILTER_VALIDATE_INT);
+        if ($catIdCheck) {
+            $cStmt = $this->conn->prepare('SELECT category_name FROM complaint_categories WHERE category_id = ?');
+            $cStmt->execute([$catIdCheck]);
+            $catNameStr = strtolower((string)($cStmt->fetchColumn() ?: ''));
+            if (str_contains($catNameStr, 'safe spaces') || str_contains($catNameStr, 'catcalling') || str_contains($catNameStr, '11313')) {
+                if (!empty($data['is_repeat_offense_vawc'])) {
+                    return [
+                        'success' => false,
+                        'code'    => 'SAFE_SPACES_REPEAT_VAWC_PNP',
+                        'message' => 'RA 11313 §11: 2nd and 3rd offenses under the Safe Spaces Act fall outside Katarungang Pambarangay conciliation and must be routed directly to the Barangay VAWC Desk or PNP WCPD.',
+                    ];
+                }
+                if (empty($data['is_first_offense_catcalling'])) {
+                    return [
+                        'success' => false,
+                        'code'    => 'SAFE_SPACES_FIRST_OFFENSE_REQUIRED',
+                        'message' => 'Mandatory toggle required: Confirm "1st Offense Only (Catcalling/Whistling)" to proceed under Barangay jurisdiction (2nd/3rd offenses route to VAWC/PNP).',
+                    ];
+                }
+            }
+        }
+
         // 3. Real property check: category 6 (Property and Rental Disputes)
         $categoryId = filter_var($data['category_id'] ?? null, FILTER_VALIDATE_INT);
         if ($categoryId === 6) {
@@ -1385,6 +1409,10 @@ class Complaint
             ? $bool('has_private_offended_party')
             : 1;
         $notes = trim((string) ($data['screening_notes'] ?? '')) ?: null;
+        if (!empty($data['is_first_offense_catcalling'])) {
+            $ssaNote = 'Safe Spaces Act (RA 11313): Verified 1st Offense Only (Catcalling/Whistling)';
+            $notes = $notes ? ($notes . "\n" . $ssaNote) : $ssaNote;
+        }
         if (!empty($data['blotter_ref_no'])) {
             $blotterNote = 'Barangay Blotter Ref No: ' . trim((string)$data['blotter_ref_no']);
             if (!empty($data['blotter_only_acknowledged'])) {

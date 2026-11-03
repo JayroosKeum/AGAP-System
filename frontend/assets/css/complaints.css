@@ -4488,3 +4488,67 @@ input[data-ai-external-consent]:focus {
         border-color: #b45309 !important;
     }
 }
+
+/* Safe Spaces Act (RA 11313) Mandatory 1st Offense Toggle & VAWC/PNP Routing */
+.safe-spaces-offense-box {
+    background: #f8fafc;
+    border: 1.5px solid #cbd5e1;
+    border-left: 4px solid #2563eb;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-top: 8px;
+    margin-bottom: 14px;
+    animation: fadeIn 0.2s ease-out;
+}
+.safe-spaces-offense-box.is-verified-first {
+    background: #f0fdf4;
+    border-color: #86efac;
+    border-left-color: #16a34a;
+}
+.safe-spaces-offense-box.is-vawc-routed {
+    background: #fef2f2;
+    border-color: #fca5a5;
+    border-left-color: #dc2626;
+}
+.safe-spaces-toggle-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 10px;
+}
+.safe-spaces-option-card {
+    flex: 1 1 260px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.safe-spaces-option-card:hover {
+    border-color: #94a3b8;
+}
+.safe-spaces-option-card.active-first {
+    border-color: #16a34a;
+    background: #f0fdf4;
+    box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.15);
+}
+.safe-spaces-option-card.active-vawc {
+    border-color: #dc2626;
+    background: #fff1f2;
+    box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.15);
+}
+.vawc-pnp-routing-banner {
+    margin-top: 12px;
+    padding: 12px 14px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-left: 4px solid #dc2626;
+    border-radius: 6px;
+    color: #991b1b;
+    font-size: 0.84rem;
+    line-height: 1.45;
+}
