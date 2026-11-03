@@ -14,13 +14,7 @@ $dashboardLink = [1 => '../dashboard/admin-dashboard.php', 2 => '../dashboard/cl
         <div class="sidebar-brand-main">
             <img class="brand-mark" src="../../assets/images/tumana_logo.jpg" alt="Barangay Tumana seal">
             <div class="sidebar-brand-text"><strong>AGAP</strong><span>Case Management</span></div>
-        </div>
-        <button type="button" class="sidebar-collapse-btn" id="sidebarCollapseBtn" aria-label="Toggle sidebar" title="Toggle sidebar">
-            <svg class="sidebar-collapse-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="11 17 6 12 11 7"></polyline>
-                <polyline points="18 17 13 12 18 7"></polyline>
-            </svg>
-        </button>
+        </div>     
     </div>
     <nav class="sidebar-nav" aria-label="Main navigation">
         <details class="nav-group" open data-nav-group="workspace">

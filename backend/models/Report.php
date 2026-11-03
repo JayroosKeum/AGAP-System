@@ -53,13 +53,19 @@ class Report
             // Today's Paanyaya sessions (Stage 0 Informal Dialogues)
             $todayPaanyayas = $this->conn->prepare(
                 "SELECT p.paanyaya_id, p.complaint_id, p.invitee_name, p.scheduled_date, p.scheduled_time,
-                        p.status, p.venue, co.complaint_number, co.complaint_title
+                        p.status, p.venue, co.complaint_number, co.complaint_title,
+                        COALESCE(ps.session_id, 0) AS session_id,
+                        COALESCE(ps.attempt_number, 1) AS attempt_number,
+                        COALESCE(ps.complainant_attended, 'Absent') AS complainant_attended,
+                        COALESCE(ps.respondent_attended, 'Absent') AS respondent_attended,
+                        ps.session_outcome
                  FROM paanyayas p
                  LEFT JOIN complaints co ON co.complaint_id = p.complaint_id
+                 LEFT JOIN paanyaya_sessions ps ON ps.complaint_id = p.complaint_id AND ps.scheduled_date = p.scheduled_date
                  WHERE p.scheduled_date = ?
                    AND p.status = 'Scheduled'
                  ORDER BY p.scheduled_time ASC, p.paanyaya_id ASC
-                 LIMIT 8"
+                 LIMIT 25"
             );
             $todayPaanyayas->execute([$today]);
 
@@ -145,6 +151,24 @@ class Report
             );
             $calendarHearings = $calendarHearingsStmt->fetchAll(PDO::FETCH_ASSOC);
 
+            $walkinsToday = (int) $this->conn->query("SELECT COUNT(*) FROM complaints WHERE DATE(created_at) = '$today'")->fetchColumn();
+            $activePaanyaya = (int) $this->conn->query("SELECT COUNT(*) FROM paanyayas WHERE status = 'Scheduled'")->fetchColumn();
+            $pendingForms = (int) $this->conn->query("SELECT COUNT(DISTINCT c.case_id) FROM cases c LEFT JOIN summon_deliveries sd ON sd.case_id = c.case_id WHERE c.case_status = 'Mediation' AND (sd.delivery_id IS NULL OR sd.delivery_status = 'Pending')")->fetchColumn();
+            $pangkatConciliations = (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status = 'Conciliation'")->fetchColumn();
+            $activeUsers = (int) $this->conn->query("SELECT COUNT(*) FROM users WHERE status = 'Active'")->fetchColumn();
+
+            $auditStmt = $this->conn->query(
+                "SELECT a.audit_id, a.action, a.module_name, a.audit_date,
+                        COALESCE(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), u.username, 'System') AS user_name,
+                        COALESCE(r.role_name, 'Staff') AS role_name
+                 FROM audit_trails a
+                 LEFT JOIN users u ON u.user_id = a.user_id
+                 LEFT JOIN roles r ON r.role_id = u.role_id
+                 ORDER BY a.audit_date DESC, a.audit_id DESC
+                 LIMIT 10"
+            );
+            $auditFeed = $auditStmt ? $auditStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+
             return [
                 'total_cases' => (int) $this->conn->query('SELECT COUNT(*) FROM cases')->fetchColumn(),
                 'settled_cases' => (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status = 'Settled'")->fetchColumn(),
@@ -155,7 +179,13 @@ class Report
                 'draft_complaints' => 0,
                 'hearings_today' => (int) $hearingCountToday->fetchColumn(),
                 'hearings_this_week' => (int) $hearingCountWeek->fetchColumn(),
-                'active_mediations' => (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status IN ('Mediation', 'Conciliation')")->fetchColumn(),
+                'active_mediations' => (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status = 'Mediation'")->fetchColumn(),
+                'pangkat_conciliations' => $pangkatConciliations,
+                'active_users' => $activeUsers,
+                'walkins_today' => $walkinsToday,
+                'active_paanyaya' => $activePaanyaya,
+                'pending_forms' => $pendingForms,
+                'audit_feed' => $auditFeed,
                 'deadlines_due' => (int) $deadlineCount->fetchColumn(),
                 'today_hearings' => $todayHearings->fetchAll(PDO::FETCH_ASSOC),
                 'today_paanyayas' => $todayPaanyayas->fetchAll(PDO::FETCH_ASSOC),
@@ -210,13 +240,19 @@ class Report
         // Period Paanyayas
         $paanyayasStmt = $this->conn->prepare(
             "SELECT p.paanyaya_id, p.complaint_id, p.invitee_name, p.scheduled_date, p.scheduled_time,
-                    p.status, p.venue, co.complaint_number, co.complaint_title
+                    p.status, p.venue, co.complaint_number, co.complaint_title,
+                    COALESCE(ps.session_id, 0) AS session_id,
+                    COALESCE(ps.attempt_number, 1) AS attempt_number,
+                    COALESCE(ps.complainant_attended, 'Absent') AS complainant_attended,
+                    COALESCE(ps.respondent_attended, 'Absent') AS respondent_attended,
+                    ps.session_outcome
              FROM paanyayas p
              LEFT JOIN complaints co ON co.complaint_id = p.complaint_id
+             LEFT JOIN paanyaya_sessions ps ON ps.complaint_id = p.complaint_id AND ps.scheduled_date = p.scheduled_date
              WHERE p.scheduled_date BETWEEN ? AND ?
                AND p.status = 'Scheduled'
              ORDER BY p.scheduled_date ASC, p.scheduled_time ASC
-             LIMIT 15"
+             LIMIT 25"
         );
         $paanyayasStmt->execute($params);
         $periodPaanyayas = $paanyayasStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -345,6 +381,36 @@ class Report
         );
         $calendarHearings = $calendarHearingsStmt->fetchAll(PDO::FETCH_ASSOC);
 
+        $walkinsStmt = $this->conn->prepare("SELECT COUNT(*) FROM complaints WHERE DATE(created_at) BETWEEN ? AND ?");
+        $walkinsStmt->execute($params);
+        $walkinsToday = (int) $walkinsStmt->fetchColumn();
+
+        $activePaanyayaStmt = $this->conn->prepare("SELECT COUNT(*) FROM paanyayas WHERE status = 'Scheduled' AND scheduled_date BETWEEN ? AND ?");
+        $activePaanyayaStmt->execute($params);
+        $activePaanyaya = (int) $activePaanyayaStmt->fetchColumn();
+
+        $pangkatConciliationStmt = $this->conn->prepare("SELECT COUNT(*) FROM cases WHERE case_status = 'Conciliation' AND docket_date BETWEEN ? AND ?");
+        $pangkatConciliationStmt->execute($params);
+        $pangkatConciliations = (int) $pangkatConciliationStmt->fetchColumn();
+        if ($pangkatConciliations === 0) {
+            $pangkatConciliations = (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status = 'Conciliation'")->fetchColumn();
+        }
+
+        $activeUsers = (int) $this->conn->query("SELECT COUNT(*) FROM users WHERE status = 'Active'")->fetchColumn();
+        $pendingForms = (int) $this->conn->query("SELECT COUNT(DISTINCT c.case_id) FROM cases c LEFT JOIN summon_deliveries sd ON sd.case_id = c.case_id WHERE c.case_status = 'Mediation' AND (sd.delivery_id IS NULL OR sd.delivery_status = 'Pending')")->fetchColumn();
+
+        $auditStmt = $this->conn->query(
+            "SELECT a.audit_id, a.action, a.module_name, a.audit_date,
+                    COALESCE(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), u.username, 'System') AS user_name,
+                    COALESCE(r.role_name, 'Staff') AS role_name
+             FROM audit_trails a
+             LEFT JOIN users u ON u.user_id = a.user_id
+             LEFT JOIN roles r ON r.role_id = u.role_id
+             ORDER BY a.audit_date DESC, a.audit_id DESC
+             LIMIT 10"
+        );
+        $auditFeed = $auditStmt ? $auditStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+
         return [
             'total_cases' => (int) $totalCasesStmt->fetchColumn(),
             'settled_cases' => (int) $settledStmt->fetchColumn(),
@@ -356,6 +422,12 @@ class Report
             'hearings_today' => count($periodHearings),
             'hearings_this_week' => (int) $hearingCountStmt->fetchColumn(),
             'active_mediations' => (int) $activeMediationStmt->fetchColumn(),
+            'pangkat_conciliations' => $pangkatConciliations,
+            'active_users' => $activeUsers,
+            'walkins_today' => $walkinsToday,
+            'active_paanyaya' => $activePaanyaya,
+            'pending_forms' => $pendingForms,
+            'audit_feed' => $auditFeed,
             'deadlines_due' => (int) $deadlineCountStmt->fetchColumn(),
             'today_hearings' => $periodHearings,
             'today_paanyayas' => $periodPaanyayas,
