@@ -22,29 +22,29 @@
 
 /* ── Accessibility & Font Resizer Bar ── */
 .lupon-accessibility-bar {
-    background: #0f172a;
-    color: #ffffff;
-    padding: 10px 18px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    color: #0f172a;
+    padding: 6px 14px;
     border-radius: 12px;
     display: flex;
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
     gap: 12px;
-    margin-bottom: 20px;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .lupon-accessibility-info {
     display: flex;
     align-items: center;
-    gap: 10px;
-    font-size: 0.95rem;
+    gap: 8px;
+    font-size: 0.88rem;
     font-weight: 600;
 }
 
 .lupon-accessibility-info span {
-    color: #94a3b8;
+    color: #64748b;
 }
 
 .lupon-accessibility-controls {
@@ -54,25 +54,25 @@
 }
 
 .btn-accessibility-pill {
-    background: #1e293b;
-    color: #ffffff;
-    border: 1px solid #334155;
+    background: #f8fafc;
+    color: #0f172a;
+    border: 1px solid #cbd5e1;
     border-radius: 8px;
-    padding: 6px 14px;
-    font-size: 0.9rem;
+    padding: 6px 12px;
+    font-size: 0.85rem;
     font-weight: 700;
     cursor: pointer;
     transition: all 0.18s ease;
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    min-height: 40px;
+    min-height: 36px;
 }
 
 .btn-accessibility-pill:hover,
 .btn-accessibility-pill.active {
-    background: #3b82f6;
-    border-color: #60a5fa;
+    background: #0f172a;
+    border-color: #0f172a;
     color: #ffffff;
 }
 
@@ -113,19 +113,20 @@ body.high-contrast-mode .lupon-case-card {
 
 .lupon-kpi-card {
     background: #ffffff;
-    border: 1.5px solid #cbd5e1;
-    border-radius: 14px;
-    padding: 20px 22px;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 18px 20px;
     display: flex;
     align-items: center;
     gap: 16px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     transition: transform 0.16s ease, border-color 0.16s ease;
 }
 
 .lupon-kpi-card:hover {
     transform: translateY(-2px);
-    border-color: #94a3b8;
+    border-color: #cbd5e1;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.05);
 }
 
 .lupon-kpi-icon {
@@ -189,10 +190,10 @@ body.high-contrast-mode .lupon-case-card {
 /* ── Panel Cards & Sections ── */
 .lupon-panel-card {
     background: #ffffff;
-    border: 1.5px solid #cbd5e1;
-    border-radius: 14px;
-    padding: 24px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 20px 22px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     margin-bottom: 24px;
 }
 

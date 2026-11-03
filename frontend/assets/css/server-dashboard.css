@@ -63,26 +63,26 @@
 
 .server-kpi-card {
     background: #ffffff;
-    border: 2px solid #cbd5e1;
-    border-radius: 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
     padding: 18px 20px;
     display: flex;
     align-items: center;
     gap: 16px;
     cursor: pointer;
     transition: all 0.16s ease;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
 }
 
 .server-kpi-card:hover {
     transform: translateY(-2px);
-    border-color: #047857;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.06);
+    border-color: #cbd5e1;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.05);
 }
 
 .server-kpi-card.is-active-tab {
-    border-color: #047857;
-    background: #f0fdf4;
+    border-color: #0f172a;
+    background: #f8fafc;
 }
 
 .server-kpi-icon {
@@ -130,15 +130,16 @@
 /* ── Purok Route & Batch Filter Toolbar ── */
 .server-route-toolbar {
     background: #ffffff;
-    border: 1.5px solid #cbd5e1;
+    border: 1px solid #e2e8f0;
     border-radius: 12px;
-    padding: 16px 20px;
-    margin-bottom: 22px;
+    padding: 14px 18px;
+    margin-bottom: 20px;
     display: flex;
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
     gap: 14px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
 }
 
 .route-filter-group {
@@ -162,20 +163,22 @@
 .route-filter-select {
     width: 100%;
     max-width: 320px;
-    min-height: 44px;
-    font-size: 1rem;
-    font-weight: 700;
+    min-height: 42px;
+    font-size: 0.95rem;
+    font-weight: 600;
     padding: 8px 14px;
-    border: 2px solid #047857;
+    border: 1px solid #cbd5e1;
     border-radius: 8px;
     background: #ffffff;
-    color: #065f46;
+    color: #0f172a;
     outline: none;
     cursor: pointer;
+    transition: border-color 0.16s ease;
 }
 
 .route-filter-select:focus {
-    box-shadow: 0 0 0 3px rgba(4, 120, 87, 0.2);
+    border-color: #0f172a;
+    box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.1);
 }
 
 .server-status-pill-group {
@@ -185,11 +188,11 @@
 }
 
 .btn-status-filter {
-    background: #f1f5f9;
-    border: 1.5px solid #cbd5e1;
-    color: #334155;
-    padding: 8px 14px;
-    font-size: 0.9rem;
+    background: #f4f4f5;
+    border: 1px solid #e4e4e7;
+    color: #52525b;
+    padding: 7px 14px;
+    font-size: 0.88rem;
     font-weight: 700;
     border-radius: 8px;
     cursor: pointer;
@@ -198,8 +201,8 @@
 
 .btn-status-filter.active,
 .btn-status-filter:hover {
-    background: #047857;
-    border-color: #047857;
+    background: #09090b;
+    border-color: #09090b;
     color: #ffffff;
 }
 
@@ -212,10 +215,10 @@
 
 .dispatch-task-card {
     background: #ffffff;
-    border: 2px solid #cbd5e1;
-    border-radius: 14px;
-    padding: 20px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.03);
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 18px 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     transition: all 0.18s ease;
     display: flex;
     flex-direction: column;
@@ -223,8 +226,8 @@
 }
 
 .dispatch-task-card:hover {
-    border-color: #047857;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.06);
+    border-color: #cbd5e1;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.05);
 }
 
 .dispatch-task-card.task-pending { border-left: 6px solid #f59e0b; }

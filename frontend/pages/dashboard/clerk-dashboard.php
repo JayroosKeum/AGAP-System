@@ -24,14 +24,11 @@ include '../../layouts/header.php';
         <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; margin-bottom: 8px;">
             <div>
                 <div style="display: flex; align-items: center; gap: 8px;">
-                    <h1 style="margin: 0; font-size: 1.6rem; color: #0f172a;">📋 Lupon Clerk Dashboard</h1>
+                    <h1 style="margin: 0; font-size: 1.6rem; color: #0f172a;">Lupon Clerk Dashboard</h1>
                     <span style="background: #e0e7ff; color: #3730a3; font-size: 0.75rem; font-weight: 700; padding: 3px 10px; border-radius: 9999px;">
                         Front-Desk &amp; Docket Intake
                     </span>
                 </div>
-                <p style="margin: 4px 0 0; color: #64748b; font-size: 0.88rem;">
-                    Focus: Front-desk intake, queue management, notice dispatch, and docketing throughput · Barangay Tumana
-                </p>
             </div>
         </div>
 
@@ -74,29 +71,7 @@ include '../../layouts/header.php';
                     </button>
                 </div>
             </div>
-        </div>
-
-        <!-- ── 1. Quick Intake Actions ──────────────────────────────────────── -->
-        <section class="clerk-quick-actions-bar" aria-label="Quick Intake Actions">
-            <div class="clerk-quick-actions-info">
-                <h3>⚡ Quick Front-Desk Actions</h3>
-                <p>Mabilisang pagsisimula ng intake, pagpapatawag, at pag-imprenta ng mga form</p>
-            </div>
-            <div class="clerk-quick-actions-btns">
-                <a href="../complaints/complaint-create.php" class="btn-clerk-primary" id="btnClerkNewIntake">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                    <span>+ New Complaint Intake</span>
-                </a>
-                <a href="../paanyaya/create.php" class="btn-clerk-secondary" id="btnClerkIssuePaanyaya">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
-                    <span>+ Issue Paanyaya Invitation</span>
-                </a>
-                <a href="../documents/document-center.php" class="btn-clerk-outline" id="btnClerkPrintRepo">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
-                    <span>Print Blank KP Forms Repository</span>
-                </a>
-            </div>
-        </section>
+        </div>    
 
         <!-- ── 2. Daily Intake & Docket Queue ───────────────────────────────── -->
         <section class="clerk-docket-queue-grid" aria-label="Daily Intake & Docket Queue">
@@ -109,7 +84,10 @@ include '../../layouts/header.php';
                 <div class="card-count" id="clerkWalkinsToday">—</div>
                 <h3 class="card-title">Walk-ins / Today's Intakes</h3>
                 <p class="card-desc">Mga bagong reklamong naitala at sumailalim sa screening ngayong araw</p>
-                <a href="../complaints/complaint-list.php" class="card-action-link">Tingnan ang talaan ng mga reklamo &rarr;</a>
+                <a href="../complaints/complaint-create.php" class="btn-clerk-primary" id="btnClerkNewIntake">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    <span>New Complaint Intake</span>
+                </a>            
             </article>
 
             <!-- Active Paanyaya Invitations -->
@@ -121,7 +99,10 @@ include '../../layouts/header.php';
                 <div class="card-count" id="clerkActivePaanyaya">—</div>
                 <h3 class="card-title">Active Paanyaya Invitations</h3>
                 <p class="card-desc">1st at 2nd invitations na nakabinbin para sa impormal na pag-uusap</p>
-                <a href="../paanyaya/index.php" class="card-action-link">Pamahalaan ang Paanyaya queue &rarr;</a>
+                <a href="../paanyaya/create.php" class="btn-clerk-secondary" id="btnClerkIssuePaanyaya">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                    <span>Issue Paanyaya Invitation</span>
+                </a>
             </article>
 
             <!-- Cases Pending Form Issuance -->
@@ -133,7 +114,10 @@ include '../../layouts/header.php';
                 <div class="card-count" id="clerkPendingForms">—</div>
                 <h3 class="card-title">Cases Pending Form Issuance</h3>
                 <p class="card-desc">Mga kasong nangangailangan ng pagpapalabas ng KP Forms 7, 8, at 9</p>
-                <a href="../documents/document-center.php" class="card-action-link">Bumuo at mag-isyu ng KP Forms &rarr;</a>
+                <a href="../documents/document-center.php" class="btn-clerk-outline" id="btnClerkPrintRepo">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                    <span>Print Blank KP Forms Repository</span>
+                </a>            
             </article>
         </section>
 

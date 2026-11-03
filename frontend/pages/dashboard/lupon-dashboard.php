@@ -21,13 +21,18 @@ include '../../layouts/header.php';
 
         <?php include '../../layouts/navbar.php'; ?>
 
-        <!-- ── Senior-Friendly Accessibility Toolbar ──────────────────────── -->
-        <section class="dashboard-overview" aria-label="Lupon Member Dashboard Overview" style="padding-bottom: 0;">
-            <div class="lupon-accessibility-bar">
+        <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; margin-bottom: 8px;">
+            <div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <h1 style="margin: 0; font-size: 1.6rem; color: #0f172a;">Lupon Member &amp; Conciliator Dashboard</h1>
+                </div>
+            </div>
+            <!-- Senior-Friendly Accessibility Toolbar Controls -->
+            <div class="lupon-accessibility-bar" style="margin-bottom: 0;">
                 <div class="lupon-accessibility-info">
-                    <span style="font-size: 1.3rem;">👓</span>
-                    <span>Senior-Friendly Mode:</span>
-                    <strong id="dutyDayDisplaySub">Pangkat Duty Team</strong>
+                    <span style="font-size: 1.15rem;">👓</span>
+                    <span style="color:#64748b; font-size:0.85rem;">Senior Mode:</span>
+                    <strong id="dutyDayDisplaySub" style="font-size:0.85rem; color:#0f172a;">Pangkat Duty Team</strong>
                 </div>
                 <div class="lupon-accessibility-controls">
                     <button type="button" class="btn-accessibility-pill" id="btnToggleFontSize" title="Palakihin o Paliitin ang Titik">
@@ -40,21 +45,9 @@ include '../../layouts/header.php';
                     </button>
                 </div>
             </div>
+        </div>
 
-            <!-- Page Header -->
-            <div class="page-header" style="padding: 0 0 20px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 14px;">
-                <div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <h1 style="margin: 0; font-size: 1.85rem; color: #0f172a;">⚖️ Lupon Member &amp; Conciliator Dashboard</h1>
-                        <span class="lupon-panel-badge" style="background:#dbeafe; color:#1e40af; border-color:#bfdbfe;">
-                            Tungkulin sa Pangkat
-                        </span>
-                    </div>
-                    <p style="margin: 6px 0 0; color: #475569; font-size: 1.05rem;">
-                        Malugod na pagdating, <strong><?php echo htmlspecialchars($_SESSION['username'] ?? 'Lupon Member'); ?></strong> · Barangay Tumana Katarungang Pambarangay
-                    </p>
-                </div>
-            </div>
+        <section class="dashboard-overview" aria-label="Lupon Member Dashboard Overview">
 
             <!-- ── Top KPIs Summary Cards (Senior-Friendly, High Contrast) ─────── -->
             <section class="lupon-kpis-grid" aria-label="Lupon Member KPIs">

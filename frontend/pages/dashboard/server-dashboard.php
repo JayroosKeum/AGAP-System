@@ -21,19 +21,15 @@ include '../../layouts/header.php';
 
         <?php include '../../layouts/navbar.php'; ?>
 
-        <section class="dashboard-overview" aria-label="Summons Server Field Dispatch Overview">
-
-            <!-- Mobile-first Header Banner -->
-            <div class="server-header-banner">
-                <div class="server-header-info">
-                    <h1>🛵 Summons &amp; Field Dispatch Dashboard</h1>
-                    <p>Mobile-first field dispatch, purok-based batch routing, at 1-tap proof-of-service · Barangay Tumana</p>
-                </div>
-                <div class="server-kuya-badge">
-                    <span>⚡</span>
-                    <span>Kuya Server Dispatch Portal</span>
+        <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; margin-bottom: 8px;">
+            <div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <h1 style="margin: 0; font-size: 1.6rem; color: #0f172a;">Summons &amp; Field Dispatch Dashboard</h1>
                 </div>
             </div>
+        </div>
+
+        <section class="dashboard-overview" aria-label="Summons Server Field Dispatch Overview">
 
             <!-- ── 1. Dispatch Summary KPIs ────────────────────────────────────── -->
             <section class="server-kpis-grid" aria-label="Dispatch Summary KPIs">
