@@ -545,7 +545,7 @@ class Complaint
         }
     }
 
-    private function validateIncidentInput(array $data): array
+    private function validateIncidentInput(array &$data): array
     {
         $categoryId = filter_var($data['category_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         $categoryNameInput = trim((string)($data['category_name'] ?? ''));

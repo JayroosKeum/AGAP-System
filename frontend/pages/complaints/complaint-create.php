@@ -4995,14 +4995,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             </div>
         `;
-                    <button type="button" class="btn-secondary btn-sm" id="btnCancelScanReview">Discard</button>
-                    <button type="button" class="btn-create btn-sm" id="btnApplyScanReview" style="display:inline-flex; align-items:center; gap:6px; font-weight:700;">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                        Apply to Form Fields
-                    </button>
-                </div>
-            </div>
-        `;
 
         modalEl.style.display = 'flex';
 
@@ -5243,7 +5235,6 @@ document.addEventListener('DOMContentLoaded', () => {
         isSubmitting = true;
         isFormDirty = false;
     });
-});
 
     // ── Damages > ₱5,000 Statutory Jurisdiction Warning & Blotter Enforcement ──
     const offenseFineInput = document.getElementById('offenseFineMax');
@@ -5380,6 +5371,7 @@ document.addEventListener('DOMContentLoaded', () => {
     categorySelectEl?.addEventListener('change', syncSafeSpacesOffenseUI);
     syncSafeSpacesOffenseUI();
     window.isSafeSpacesCategorySelected = isSafeSpacesCategorySelected;
+});
 </script>
 
 <?php
