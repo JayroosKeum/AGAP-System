@@ -66,7 +66,14 @@ class Paanyaya
         }
 
         // 1. Name of the person being invited
-        $inviteeName = trim((string) ($data['invitee_name'] ?? ($data['name'] ?? '')));
+        $inviteeFirst = trim((string) ($data['invitee_first_name'] ?? ''));
+        $inviteeMiddle = trim((string) ($data['invitee_middle_name'] ?? ''));
+        $inviteeLast = trim((string) ($data['invitee_last_name'] ?? ''));
+        if ($inviteeFirst !== '' || $inviteeLast !== '') {
+            $inviteeName = trim(preg_replace('/\s+/', ' ', "{$inviteeFirst} {$inviteeMiddle} {$inviteeLast}"));
+        } else {
+            $inviteeName = trim((string) ($data['invitee_name'] ?? ($data['name'] ?? '')));
+        }
         if ($inviteeName === '' && $complaintId > 0) {
             // Reference respondent from mediation record without duplicating complaint narrative
             $rStmt = $this->conn->prepare("
@@ -83,7 +90,14 @@ class Paanyaya
         }
 
         // Complainant Name (Nagpaanyaya)
-        $complainantName = trim((string) ($data['complainant_name'] ?? ''));
+        $compFirst = trim((string) ($data['complainant_first_name'] ?? ''));
+        $compMiddle = trim((string) ($data['complainant_middle_name'] ?? ''));
+        $compLast = trim((string) ($data['complainant_last_name'] ?? ''));
+        if ($compFirst !== '' || $compLast !== '') {
+            $complainantName = trim(preg_replace('/\s+/', ' ', "{$compFirst} {$compMiddle} {$compLast}"));
+        } else {
+            $complainantName = trim((string) ($data['complainant_name'] ?? ''));
+        }
         if ($complainantName === '' && $complaintId > 0) {
             $cStmt = $this->conn->prepare("
                 SELECT GROUP_CONCAT(TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) SEPARATOR ', ')
@@ -105,6 +119,32 @@ class Paanyaya
         $scheduledTime = trim((string) ($data['scheduled_time'] ?? ($data['invitation_time'] ?? ($data['time'] ?? ''))));
         if ($scheduledTime === '' || !preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', $scheduledTime)) {
             return ['success' => false, 'message' => 'Please provide a valid invitation time (HH:MM).'];
+        }
+
+        // Validate that scheduled date & time are strictly in the future
+        $now = new DateTime();
+        $scheduledDateTime = DateTime::createFromFormat('Y-m-d H:i:s', $scheduledDate . ' ' . (strlen($scheduledTime) === 5 ? $scheduledTime . ':00' : $scheduledTime));
+        if (!$scheduledDateTime) {
+            $scheduledDateTime = DateTime::createFromFormat('Y-m-d H:i', $scheduledDate . ' ' . substr($scheduledTime, 0, 5));
+        }
+
+        if ($scheduledDateTime) {
+            $today = new DateTime($now->format('Y-m-d'));
+            $schedDay = new DateTime($scheduledDateTime->format('Y-m-d'));
+
+            if ($schedDay < $today) {
+                return [
+                    'success' => false,
+                    'message' => 'The scheduled date cannot be in the past. Please select today or a future date.'
+                ];
+            }
+
+            if ($scheduledDateTime <= $now) {
+                return [
+                    'success' => false,
+                    'message' => 'The scheduled date and time must be in the future.'
+                ];
+            }
         }
 
         $venue = trim((string) ($data['venue'] ?? 'Tanggapan ng Barangay Tumana'));
