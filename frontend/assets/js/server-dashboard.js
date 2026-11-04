@@ -326,32 +326,51 @@
             fetchServerData();
         });
 
+        const updateServerKpiActiveUI = () => {
+            document.getElementById('kpiPendingCard')?.classList.toggle('is-active-tab', state.status === 'pending');
+            document.getElementById('kpiServedCard')?.classList.toggle('is-active-tab', state.status === 'served');
+            document.getElementById('kpiUnservedCard')?.classList.toggle('is-active-tab', state.status === 'unserved');
+        };
+
+        const setServerStatus = (newStatus) => {
+            if (state.status === newStatus) {
+                state.status = 'all';
+            } else {
+                state.status = newStatus;
+            }
+            document.querySelectorAll('.btn-status-filter').forEach(b => b.classList.toggle('active', b.dataset.status === state.status));
+            updateServerKpiActiveUI();
+            fetchServerData();
+            document.getElementById('dispatchTasksContainer')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        };
+
         // Status Tabs click
         document.querySelectorAll('.btn-status-filter').forEach(btn => {
             btn.addEventListener('click', () => {
                 document.querySelectorAll('.btn-status-filter').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 state.status = btn.dataset.status;
+                updateServerKpiActiveUI();
                 fetchServerData();
             });
         });
 
-        // KPI card quick click
-        document.getElementById('kpiPendingCard')?.addEventListener('click', () => {
-            state.status = 'pending';
-            document.querySelectorAll('.btn-status-filter').forEach(b => b.classList.toggle('active', b.dataset.status === 'pending'));
-            fetchServerData();
-        });
-        document.getElementById('kpiServedCard')?.addEventListener('click', () => {
-            state.status = 'served';
-            document.querySelectorAll('.btn-status-filter').forEach(b => b.classList.toggle('active', b.dataset.status === 'served'));
-            fetchServerData();
-        });
-        document.getElementById('kpiUnservedCard')?.addEventListener('click', () => {
-            state.status = 'unserved';
-            document.querySelectorAll('.btn-status-filter').forEach(b => b.classList.toggle('active', b.dataset.status === 'unserved'));
-            fetchServerData();
-        });
+        // KPI card quick click & keyboard navigation
+        const bindKpiCard = (id, targetStatus) => {
+            const card = document.getElementById(id);
+            if (!card) return;
+            card.addEventListener('click', () => setServerStatus(targetStatus));
+            card.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setServerStatus(targetStatus);
+                }
+            });
+        };
+
+        bindKpiCard('kpiPendingCard', 'pending');
+        bindKpiCard('kpiServedCard', 'served');
+        bindKpiCard('kpiUnservedCard', 'unserved');
 
         // Modal triggers
         document.getElementById('loggerCloseBtn')?.addEventListener('click', closeLoggerModal);

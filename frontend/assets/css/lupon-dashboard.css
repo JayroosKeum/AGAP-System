@@ -120,7 +120,19 @@ body.high-contrast-mode .lupon-case-card {
     align-items: center;
     gap: 16px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.03);
-    transition: transform 0.16s ease, border-color 0.16s ease;
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+.lupon-kpi-card:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(37,99,235,0.35);
+}
+.lupon-kpi-card.is-active {
+    border-color: #2563eb;
+    background: #f8faff;
+    box-shadow: 0 0 0 2px rgba(37,99,235,0.25);
 }
 
 .lupon-kpi-card:hover {

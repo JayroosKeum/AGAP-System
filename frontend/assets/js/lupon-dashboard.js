@@ -483,6 +483,61 @@
         document.getElementById('dossierPrintBtn')?.addEventListener('click', () => {
             window.print();
         });
+
+        // KPI Cards Click & Filter Navigation
+        document.querySelectorAll('.lupon-kpi-card[data-lupon-card]').forEach(card => {
+            const clickHandler = () => {
+                const type = card.dataset.luponCard;
+                const wasActive = card.classList.contains('is-active');
+                document.querySelectorAll('.lupon-kpi-card').forEach(c => c.classList.remove('is-active'));
+
+                if (type === 'chair') {
+                    if (wasActive) {
+                        renderAssignedCases(state.data?.assigned_cases || []);
+                    } else {
+                        card.classList.add('is-active');
+                        const allCases = state.data?.assigned_cases || [];
+                        const chairCases = allCases.filter(c => c.my_role === 'Chairman');
+                        renderAssignedCases(chairCases);
+                        const countBadge = document.getElementById('assignedCasesCountBadge');
+                        if (countBadge) countBadge.textContent = `${chairCases.length} Kaso (Chairperson)`;
+                    }
+                    document.getElementById('luponAssignedCasesContainer')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                } else if (type === 'assigned') {
+                    if (!wasActive) card.classList.add('is-active');
+                    renderAssignedCases(state.data?.assigned_cases || []);
+                    document.getElementById('luponAssignedCasesContainer')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                } else if (type === 'today') {
+                    const allHearings = state.data?.duty_hearings || [];
+                    const todayDateStr = new Date().toISOString().split('T')[0];
+                    if (wasActive) {
+                        renderDutyHearings(allHearings, state.data?.duty_day);
+                    } else {
+                        card.classList.add('is-active');
+                        const todayOnly = allHearings.filter(h => {
+                            const hDateOnly = (h.hearing_date || '').split(' ')[0] || (h.hearing_date || '').split('T')[0];
+                            return hDateOnly === todayDateStr;
+                        });
+                        renderDutyHearings(todayOnly, state.data?.duty_day);
+                        const countBadge = document.getElementById('dutyHearingsCountBadge');
+                        if (countBadge) countBadge.textContent = `${todayOnly.length} Schedule (Ngayong Araw)`;
+                    }
+                    document.getElementById('luponDutyHearingsContainer')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                } else if (type === 'duty') {
+                    if (!wasActive) card.classList.add('is-active');
+                    renderDutyHearings(state.data?.duty_hearings || [], state.data?.duty_day);
+                    document.getElementById('luponDutyHearingsContainer')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            };
+
+            card.addEventListener('click', clickHandler);
+            card.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    clickHandler();
+                }
+            });
+        });
     };
 
     // Bootstrap

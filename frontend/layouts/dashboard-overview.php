@@ -97,37 +97,37 @@
 
     <!-- Top KPI Highlights Grid -->
     <div class="stats-grid" id="statsGrid" aria-live="polite">
-        <article class="stat-card">
+        <article class="stat-card" data-target-stat="all-cases" role="button" tabindex="0" title="Click to view all cases in Case Register">
             <p id="totalCasesLabel">Total cases</p>
             <h2 id="totalCases">—</h2>
             <span id="totalCasesSub">All recorded cases</span>
         </article>
-        <article class="stat-card">
+        <article class="stat-card" data-target-stat="hearings-today" role="button" tabindex="0" title="Click to view today's scheduled hearings">
             <p id="hearingsTodayLabel">Hearings</p>
             <h2 id="hearingsToday">—</h2>
             <span id="hearingsTodaySub">Scheduled sessions</span>
         </article>
-        <article class="stat-card">
+        <article class="stat-card" data-target-stat="archived-cases" role="button" tabindex="0" title="Click to filter closed and archived cases">
             <p id="archivedCasesLabel">Archived cases</p>
             <h2 id="archivedCases">—</h2>
             <span id="archivedCasesSub">Closed and archived records</span>
         </article>
-        <article class="stat-card">
+        <article class="stat-card" data-target-stat="active-mediation" role="button" tabindex="0" title="Click to filter active mediation and conciliation cases">
             <p id="activeMediationsLabel">Active mediation</p>
             <h2 id="activeMediations">—</h2>
             <span id="activeMediationsSub">Mediation or conciliation cases</span>
         </article>
-        <article class="stat-card">
+        <article class="stat-card" data-target-stat="hearings-week" role="button" tabindex="0" title="Click to view scheduled hearings for this week">
             <p id="hearingsThisWeekLabel">Hearings in period</p>
             <h2 id="hearingsThisWeek">—</h2>
             <span id="hearingsThisWeekSub">Next 7 calendar days</span>
         </article>
-        <article class="stat-card">
+        <article class="stat-card" data-target-stat="paanyaya" role="button" tabindex="0" title="Click to view pre-docketed Paanyaya invitations">
             <p id="paanyayaComplaintsLabel">Paanyaya</p>
             <h2 id="paanyayaComplaints">—</h2>
             <span id="paanyayaComplaintsSub">Undocketed complaints</span>
         </article>
-        <article class="stat-card">
+        <article class="stat-card" data-target-stat="settled-cases" role="button" tabindex="0" title="Click to filter cases resolved through settlement">
             <p id="settledCasesLabel">Settled cases</p>
             <h2 id="settledCases">—</h2>
             <span id="settledCasesSub">Resolved through settlement</span>
@@ -239,6 +239,8 @@
                     <div style="text-align: center; color: #64748b; padding: 18px; font-size: 0.85rem;">Loading Paanyaya invitations...</div>
                 </div>
             </div>
+
+
         </div>
 
         <!-- RIGHT COLUMN: Compact Mini-Calendar & Announcements (per A.png) -->
@@ -300,14 +302,7 @@
         </aside>
     </div>
 
-    <!-- Hidden placeholders to maintain backwards compatibility with dashboard.js handlers -->
-    <div id="dashboardCasesPanel" style="display:none;" aria-hidden="true">
-        <span id="casesPeriodTitle"></span>
-        <span id="casesPeriodDescription"></span>
-        <span id="periodCaseCountBadge"></span>
-        <table><tbody id="periodCasesTableBody"></tbody></table>
-        <div id="casesTablePagination"><button id="casesPrevPageBtn"></button><div id="casesPageNumbers"></div><button id="casesNextPageBtn"></button></div>
-    </div>
+
 
     <?php if (in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2, 5], true)): ?>
     <!-- ── Report Preview Modal Overlay ───────────────────────────── -->

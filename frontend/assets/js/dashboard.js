@@ -3,6 +3,9 @@ document.addEventListener('DOMContentLoaded', () => {
         period: 'all',
         offset: 0,
         isLoading: false,
+        allRawCases: [],
+        activeCaseFilter: 'all',
+        activeStatTarget: null,
         cases: [],
         casesPage: 1,
         casesPerPage: 10,
@@ -990,23 +993,177 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    const renderCasesTable = (cases, periodLabel) => {
-        state.cases = cases || [];
-        state.casesPage = 1;
-        state.currentPeriodLabel = periodLabel;
+    const updateStatCardsActiveUI = () => {
+        document.querySelectorAll('.stat-card[data-target-stat]').forEach(card => {
+            const isActive = card.dataset.targetStat === state.activeStatTarget;
+            card.classList.toggle('is-active', isActive);
+            card.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        });
+    };
 
-        const titleSpan = document.getElementById('casesPeriodTitle');
+    const scrollToElement = (id) => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    };
+
+    const flashHighlight = (id) => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.classList.remove('panel-highlight-flash');
+            void el.offsetWidth;
+            el.classList.add('panel-highlight-flash');
+        }
+    };
+
+    const applyCaseFilter = (filterType, targetStat, titleLabel) => {
+        if (state.activeStatTarget === targetStat) {
+            resetCaseFilter();
+            return;
+        }
+        state.activeStatTarget = targetStat;
+        state.activeCaseFilter = filterType;
+        state.casesPage = 1;
+        updateStatCardsActiveUI();
+
+        if (filterType === 'all') {
+            state.cases = state.allRawCases || [];
+        } else if (filterType === 'Archived') {
+            state.cases = (state.allRawCases || []).filter(c => c.case_status === 'Archived');
+        } else if (filterType === 'Mediation') {
+            state.cases = (state.allRawCases || []).filter(c => c.case_status === 'Mediation' || c.case_status === 'Conciliation');
+        } else if (filterType === 'Settled') {
+            state.cases = (state.allRawCases || []).filter(c => c.case_status === 'Settled');
+        }
+
+        const titleSpan = document.getElementById('casesPanelHeaderTitle');
         const descP = document.getElementById('casesPeriodDescription');
         const countBadge = document.getElementById('periodCaseCountBadge');
+        const resetBtn = document.getElementById('btnResetCaseFilter');
 
-        if (titleSpan) titleSpan.textContent = periodLabel;
-        if (descP) descP.textContent = `Docketed cases recorded for ${periodLabel}.`;
+        if (titleSpan) titleSpan.textContent = titleLabel || 'Case Register';
+        if (descP) descP.textContent = filterType === 'all' 
+            ? `Recorded dispute cases for ${state.currentPeriodLabel}.`
+            : `Showing ${filterType} dispute cases recorded for ${state.currentPeriodLabel}.`;
         if (countBadge) {
             const count = state.cases.length;
             countBadge.textContent = `${count} case${count === 1 ? '' : 's'}`;
         }
+        if (resetBtn) resetBtn.style.display = filterType === 'all' ? 'none' : 'inline-block';
 
         renderCasesPage();
+        scrollToElement('dashboardCasesPanel');
+        flashHighlight('dashboardCasesPanel');
+    };
+
+    const resetCaseFilter = () => {
+        state.activeStatTarget = null;
+        state.activeCaseFilter = 'all';
+        state.casesPage = 1;
+        state.cases = state.allRawCases || [];
+        updateStatCardsActiveUI();
+
+        const titleSpan = document.getElementById('casesPanelHeaderTitle');
+        const descP = document.getElementById('casesPeriodDescription');
+        const countBadge = document.getElementById('periodCaseCountBadge');
+        const resetBtn = document.getElementById('btnResetCaseFilter');
+
+        if (titleSpan) titleSpan.textContent = 'Case Register';
+        if (descP) descP.textContent = `Recorded dispute cases for ${state.currentPeriodLabel}.`;
+        if (countBadge) {
+            const count = state.cases.length;
+            countBadge.textContent = `${count} case${count === 1 ? '' : 's'}`;
+        }
+        if (resetBtn) resetBtn.style.display = 'none';
+
+        renderCasesPage();
+    };
+
+    const renderCasesTable = (cases, periodLabel) => {
+        state.allRawCases = cases || [];
+        state.casesPage = 1;
+        state.currentPeriodLabel = periodLabel;
+
+        if (state.activeCaseFilter === 'Archived') {
+            state.cases = (state.allRawCases || []).filter(c => c.case_status === 'Archived');
+        } else if (state.activeCaseFilter === 'Mediation') {
+            state.cases = (state.allRawCases || []).filter(c => c.case_status === 'Mediation' || c.case_status === 'Conciliation');
+        } else if (state.activeCaseFilter === 'Settled') {
+            state.cases = (state.allRawCases || []).filter(c => c.case_status === 'Settled');
+        } else {
+            state.cases = state.allRawCases || [];
+        }
+
+        const titleSpan = document.getElementById('casesPeriodTitle');
+        const headerTitle = document.getElementById('casesPanelHeaderTitle');
+        const descP = document.getElementById('casesPeriodDescription');
+        const countBadge = document.getElementById('periodCaseCountBadge');
+        const resetBtn = document.getElementById('btnResetCaseFilter');
+
+        if (titleSpan) titleSpan.textContent = periodLabel;
+        if (headerTitle) {
+            if (state.activeCaseFilter === 'Archived') headerTitle.textContent = 'Case Register — Archived Cases';
+            else if (state.activeCaseFilter === 'Mediation') headerTitle.textContent = 'Case Register — Active Mediation / Conciliation';
+            else if (state.activeCaseFilter === 'Settled') headerTitle.textContent = 'Case Register — Settled Cases';
+            else headerTitle.textContent = 'Case Register';
+        }
+        if (descP) descP.textContent = state.activeCaseFilter === 'all'
+            ? `Recorded dispute cases for ${periodLabel}.`
+            : `Showing ${state.activeCaseFilter} cases for ${periodLabel}.`;
+        if (countBadge) {
+            const count = state.cases.length;
+            countBadge.textContent = `${count} case${count === 1 ? '' : 's'}`;
+        }
+        if (resetBtn) resetBtn.style.display = state.activeCaseFilter === 'all' ? 'none' : 'inline-block';
+
+        renderCasesPage();
+    };
+
+    // Bind Stat Card Click Handlers
+    const initStatCardClickHandlers = () => {
+        document.querySelectorAll('.stat-card[data-target-stat]').forEach(card => {
+            const clickAction = () => {
+                const target = card.dataset.targetStat;
+                if (target === 'all-cases') {
+                    window.location.href = '../cases/case-list.php';
+                } else if (target === 'archived-cases') {
+                    window.location.href = '../cases/case-list.php?status=Archived';
+                } else if (target === 'active-mediation') {
+                    window.location.href = '../cases/case-list.php?status=Mediation';
+                } else if (target === 'settled-cases') {
+                    window.location.href = '../cases/case-list.php?status=Settled';
+                } else if (target === 'hearings-today') {
+                    state.activeStatTarget = (state.activeStatTarget === 'hearings-today') ? null : 'hearings-today';
+                    updateStatCardsActiveUI();
+                    scrollToElement('dashboardHearingsPanel');
+                    flashHighlight('dashboardHearingsPanel');
+                } else if (target === 'hearings-week') {
+                    state.activeStatTarget = (state.activeStatTarget === 'hearings-week') ? null : 'hearings-week';
+                    updateStatCardsActiveUI();
+                    scrollToElement('dashboardHearingsPanel');
+                    flashHighlight('dashboardHearingsPanel');
+                } else if (target === 'paanyaya') {
+                    state.activeStatTarget = (state.activeStatTarget === 'paanyaya') ? null : 'paanyaya';
+                    updateStatCardsActiveUI();
+                    scrollToElement('dashboardPaanyayaPanel');
+                    flashHighlight('dashboardPaanyayaPanel');
+                }
+            };
+
+            card.addEventListener('click', clickAction);
+            card.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    clickAction();
+                }
+            });
+        });
+
+        const btnReset = document.getElementById('btnResetCaseFilter');
+        if (btnReset) {
+            btnReset.addEventListener('click', resetCaseFilter);
+        }
     };
 
         const renderAnalytics = (analyticsData) => {
@@ -2210,6 +2367,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize Quick Attendance / Check-In Modal
     initQuickAttendanceModal();
+
+    // Initialize Top KPI Stat Cards Click Navigation & Filtering
+    initStatCardClickHandlers();
 
     // Auto-refresh countdown timers and queue statuses every 60 seconds
     setInterval(() => {

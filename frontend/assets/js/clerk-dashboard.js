@@ -788,12 +788,91 @@
     // Initialize Event Listeners
     const initListeners = () => {
         // Agenda filter tabs
+        const setClerkAgendaFilter = (filterName, clickedElement = null) => {
+            state.activeAgendaFilter = filterName;
+            document.querySelectorAll('.btn-agenda-filter').forEach(b => {
+                b.classList.toggle('active', b.getAttribute('data-filter') === filterName);
+            });
+            document.querySelectorAll('.docket-queue-card, .system-metric-pill').forEach(el => {
+                el.classList.remove('is-active');
+            });
+            if (clickedElement) {
+                clickedElement.classList.add('is-active');
+            }
+            renderAgendaStream();
+            const panel = document.getElementById('clerkAgendaPanel');
+            if (panel) {
+                panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                panel.classList.remove('panel-highlight-flash');
+                void panel.offsetWidth;
+                panel.classList.add('panel-highlight-flash');
+            }
+        };
+
         document.querySelectorAll('.btn-agenda-filter').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                document.querySelectorAll('.btn-agenda-filter').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                state.activeAgendaFilter = btn.getAttribute('data-filter') || 'all';
-                renderAgendaStream();
+                const filter = btn.getAttribute('data-filter') || 'all';
+                setClerkAgendaFilter(filter);
+            });
+        });
+
+        // Docket Queue Cards click handlers
+        document.querySelectorAll('.docket-queue-card[data-clerk-card]').forEach(card => {
+            const handleCardClick = (e) => {
+                if (e.target.closest('a, button')) return;
+                const cardType = card.dataset.clerkCard;
+                if (cardType === 'paanyaya') {
+                    if (card.classList.contains('is-active') && state.activeAgendaFilter === 'paanyaya') {
+                        setClerkAgendaFilter('all');
+                    } else {
+                        setClerkAgendaFilter('paanyaya', card);
+                    }
+                } else if (cardType === 'walkin') {
+                    const btn = card.querySelector('a');
+                    if (btn && btn.href) window.location.href = btn.href;
+                } else if (cardType === 'forms') {
+                    if (card.classList.contains('is-active') && state.activeAgendaFilter === 'hearings') {
+                        setClerkAgendaFilter('all');
+                    } else {
+                        setClerkAgendaFilter('hearings', card);
+                    }
+                }
+            };
+            card.addEventListener('click', handleCardClick);
+            card.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleCardClick(e);
+                }
+            });
+        });
+
+        // System Metric Pills click handlers
+        document.querySelectorAll('.system-metric-pill[data-clerk-metric]').forEach(pill => {
+            const handlePillClick = () => {
+                const metric = pill.dataset.clerkMetric;
+                if (metric === 'total') {
+                    setClerkAgendaFilter('all', pill);
+                } else if (metric === 'mediation' || metric === 'conciliation') {
+                    if (pill.classList.contains('is-active') && state.activeAgendaFilter === 'hearings') {
+                        setClerkAgendaFilter('all');
+                    } else {
+                        setClerkAgendaFilter('hearings', pill);
+                    }
+                } else if (metric === 'settled') {
+                    window.location.href = '../cases/case-list.php?status=Settled';
+                } else if (metric === 'archived') {
+                    window.location.href = '../cases/case-list.php?status=Archived';
+                } else if (metric === 'users') {
+                    window.location.href = '../users/user-list.php';
+                }
+            };
+            pill.addEventListener('click', handlePillClick);
+            pill.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handlePillClick();
+                }
             });
         });
 

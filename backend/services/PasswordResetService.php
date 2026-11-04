@@ -166,16 +166,25 @@ HTML;
     private function baseUrl(): string
     {
         $configured = $this->environment('AGAP_APP_URL');
+        if (!filter_var($configured, FILTER_VALIDATE_URL)) {
+            $configured = $this->environment('APP_URL');
+        }
         if (is_string($configured) && filter_var($configured, FILTER_VALIDATE_URL)) {
             return rtrim($configured, '/');
         }
 
-        // Auto-detect host from request if running under web server
+        // Auto-detect host and scheme from request if running under web server
         if (!empty($_SERVER['HTTP_HOST'])) {
-            $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-            $basePath = '/AGAP';
-            if (isset($_SERVER['SCRIPT_NAME']) && str_starts_with($_SERVER['SCRIPT_NAME'], '/AGAP/')) {
-                $basePath = '/AGAP';
+            $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+                || (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')
+                || (!empty($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443);
+            $scheme = $isHttps ? 'https' : 'http';
+
+            $scriptName = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '');
+            if (preg_match('#^(.*?)/(?:frontend|backend)/#', $scriptName, $matches)) {
+                $basePath = rtrim($matches[1], '/');
+            } else {
+                $basePath = (str_starts_with($scriptName, '/AGAP/') || str_starts_with($scriptName, '/AGAP')) ? '/AGAP' : '';
             }
             return $scheme . '://' . $_SERVER['HTTP_HOST'] . $basePath;
         }
@@ -183,8 +192,49 @@ HTML;
         return 'http://localhost/AGAP';
     }
 
+    private static bool $envLoaded = false;
+    private static array $envValues = [];
+
+    private function loadEnv(): void
+    {
+        if (self::$envLoaded) return;
+        self::$envLoaded = true;
+
+        $envFile = dirname(__DIR__, 2) . '/.env';
+        if (!file_exists($envFile)) return;
+
+        $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        if ($lines === false) return;
+
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line === '' || str_starts_with($line, '#')) continue;
+            if (str_contains($line, '=')) {
+                [$k, $v] = explode('=', $line, 2);
+                $k = trim($k);
+                $v = trim($v, " \t\n\r\0\x0B\"'");
+                if ($k !== '') {
+                    self::$envValues[$k] = $v;
+                    if (getenv($k) === false) {
+                        putenv("$k=$v");
+                    }
+                    if (!isset($_ENV[$k])) {
+                        $_ENV[$k] = $v;
+                    }
+                    if (!isset($_SERVER[$k])) {
+                        $_SERVER[$k] = $v;
+                    }
+                }
+            }
+        }
+    }
+
     private function environment(string $name): string
     {
+        $this->loadEnv();
+        if (array_key_exists($name, self::$envValues)) {
+            return self::$envValues[$name];
+        }
         $val = getenv($name);
         if (is_string($val) && $val !== '') {
             return $val;

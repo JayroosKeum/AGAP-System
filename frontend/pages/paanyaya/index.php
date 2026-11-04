@@ -109,6 +109,44 @@ include '../../layouts/header.php';
     border-radius: 12px;
     padding: 16px 20px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    cursor: pointer;
+    text-decoration: none;
+    display: block;
+    user-select: none;
+    position: relative;
+    transition: all .18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.paanyaya-stat-card:hover {
+    transform: translateY(-2px);
+    border-color: #cbd5e1;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.06);
+}
+.paanyaya-stat-card:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(37,99,235,0.35);
+}
+.paanyaya-stat-card.is-active {
+    border-width: 2px;
+}
+.paanyaya-stat-card.card-all.is-active {
+    border-color: #0f172a;
+    background: #f8fafc;
+    box-shadow: 0 0 0 1px #0f172a;
+}
+.paanyaya-stat-card.card-scheduled.is-active {
+    border-color: #2563eb;
+    background: #f8faff;
+    box-shadow: 0 0 0 1px #2563eb;
+}
+.paanyaya-stat-card.card-settled.is-active {
+    border-color: #16a34a;
+    background: #f0fdf4;
+    box-shadow: 0 0 0 1px #16a34a;
+}
+.paanyaya-stat-card.card-cancelled.is-active {
+    border-color: #64748b;
+    background: #f8fafc;
+    box-shadow: 0 0 0 1px #64748b;
 }
 .paanyaya-stat-card .stat-label {
     font-size: 0.82rem;
@@ -380,23 +418,39 @@ include '../../layouts/header.php';
             </div>
 
             <!-- Summary KPI Grid -->
-            <div class="paanyaya-stats-grid">
-                <div class="paanyaya-stat-card">
+            <div class="paanyaya-stats-grid" id="paanyayaStatsGrid" role="region" aria-label="Paanyaya Summary Metrics">
+                <a href="index.php<?php echo $searchFilter !== '' ? '?search=' . urlencode($searchFilter) : ''; ?>" 
+                   class="paanyaya-stat-card card-all <?php echo $statusFilter === '' ? 'is-active' : ''; ?>" 
+                   data-status="" 
+                   id="paanyayaCardAll"
+                   title="Click to view all Paanyayas (Ipakita ang lahat ng Paanyaya)">
                     <div class="stat-label">Total Paanyayas</div>
                     <div class="stat-value"><?php echo $countTotal; ?></div>
-                </div>
-                <div class="paanyaya-stat-card">
+                </a>
+                <a href="index.php?status=Scheduled<?php echo $searchFilter !== '' ? '&search=' . urlencode($searchFilter) : ''; ?>" 
+                   class="paanyaya-stat-card card-scheduled <?php echo $statusFilter === 'Scheduled' ? 'is-active' : ''; ?>" 
+                   data-status="Scheduled" 
+                   id="paanyayaCardScheduled"
+                   title="Click to filter scheduled / pending Paanyayas">
                     <div class="stat-label">Scheduled / Pending</div>
                     <div class="stat-value" style="color: #2563eb;"><?php echo $countScheduled; ?></div>
-                </div>
-                <div class="paanyaya-stat-card">
+                </a>
+                <a href="index.php?status=Resolved<?php echo $searchFilter !== '' ? '&search=' . urlencode($searchFilter) : ''; ?>" 
+                   class="paanyaya-stat-card card-settled <?php echo in_array($statusFilter, ['Resolved', 'Completed', 'Settled']) ? 'is-active' : ''; ?>" 
+                   data-status="Resolved" 
+                   id="paanyayaCardSettled"
+                   title="Click to filter settled / closed Paanyayas">
                     <div class="stat-label">Settled / Closed</div>
                     <div class="stat-value" style="color: #16a34a;"><?php echo $countCompleted; ?></div>
-                </div>
-                <div class="paanyaya-stat-card">
+                </a>
+                <a href="index.php?status=Cancelled<?php echo $searchFilter !== '' ? '&search=' . urlencode($searchFilter) : ''; ?>" 
+                   class="paanyaya-stat-card card-cancelled <?php echo in_array($statusFilter, ['Cancelled', 'Escalated', 'Failed']) ? 'is-active' : ''; ?>" 
+                   data-status="Cancelled" 
+                   id="paanyayaCardCancelled"
+                   title="Click to filter cancelled / escalated Paanyayas">
                     <div class="stat-label">Cancelled / Escalated</div>
                     <div class="stat-value" style="color: #64748b;"><?php echo $countCancelled; ?></div>
-                </div>
+                </a>
             </div>
 
             <!-- Main Table Card -->
@@ -413,12 +467,7 @@ include '../../layouts/header.php';
                         <?php endif; ?>
                     </form>
 
-                    <div class="paanyaya-filter-tabs">
-                        <a href="index.php<?php echo $searchFilter !== '' ? '?search=' . urlencode($searchFilter) : ''; ?>" class="paanyaya-filter-btn <?php echo $statusFilter === '' ? 'active' : ''; ?>">All (<?php echo $countTotal; ?>)</a>
-                        <a href="index.php?status=Scheduled<?php echo $searchFilter !== '' ? '&search=' . urlencode($searchFilter) : ''; ?>" class="paanyaya-filter-btn <?php echo $statusFilter === 'Scheduled' ? 'active' : ''; ?>">Scheduled</a>
-                        <a href="index.php?status=Resolved<?php echo $searchFilter !== '' ? '&search=' . urlencode($searchFilter) : ''; ?>" class="paanyaya-filter-btn <?php echo in_array($statusFilter, ['Resolved', 'Completed']) ? 'active' : ''; ?>">Resolved</a>
-                        <a href="index.php?status=Cancelled<?php echo $searchFilter !== '' ? '&search=' . urlencode($searchFilter) : ''; ?>" class="paanyaya-filter-btn <?php echo $statusFilter === 'Cancelled' ? 'active' : ''; ?>">Cancelled</a>
-                    </div>
+
                 </div>
 
                 <div class="table-responsive">
@@ -461,7 +510,7 @@ include '../../layouts/header.php';
                                             <?php endif; ?>
                                         </td>
                                         <td>
-                                            <strong style="color: #166534; font-size: 0.88rem;"><?php echo htmlspecialchars($p['complainant_name'] ?: 'Nagpaanyaya'); ?></strong>
+                                            <strong style="color: #166534; font-size: 0.88rem;"><?php echo htmlspecialchars(!empty($p['complainant_name']) ? $p['complainant_name'] : 'Nagpaanyaya'); ?></strong>
                                         </td>
                                         <td>
                                             <div style="font-weight: 600; color: #0f172a;"><?php echo $d; ?></div>
@@ -668,6 +717,18 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+
+    // Summary Cards toggle & click handling
+    document.querySelectorAll('.paanyaya-stat-card').forEach(card => {
+        card.addEventListener('click', function(e) {
+            // If clicking already active filtered card, reset to All
+            if (this.classList.contains('is-active') && this.dataset.status !== '') {
+                e.preventDefault();
+                const searchParam = new URLSearchParams(window.location.search).get('search');
+                window.location.href = 'index.php' + (searchParam ? '?search=' + encodeURIComponent(searchParam) : '');
+            }
+        });
+    });
 });
 </script>
 

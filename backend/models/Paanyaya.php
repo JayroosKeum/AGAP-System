@@ -266,6 +266,12 @@ class Paanyaya
             SELECT p.*,
                    c.complaint_number,
                    c.complaint_title,
+                   COALESCE((
+                       SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')
+                       FROM complaint_parties cp
+                       INNER JOIN residents r ON r.resident_id = cp.resident_id
+                       WHERE cp.complaint_id = p.complaint_id AND cp.party_type = 'Complainant'
+                   ), 'Nagpaanyaya') AS complainant_name,
                    TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS scheduled_by_name
             FROM paanyayas p
             LEFT JOIN complaints c ON c.complaint_id = p.complaint_id
@@ -275,8 +281,18 @@ class Paanyaya
         $params = [];
 
         if ($status !== null && $status !== '' && $status !== 'all') {
-            $sql .= " AND p.status = ?";
-            $params[] = $status;
+            if (in_array($status, ['Resolved', 'Completed', 'Settled'], true)) {
+                $sql .= " AND p.status IN ('Resolved', 'Completed')";
+            } elseif (in_array($status, ['Cancelled', 'Failed', 'Escalated'], true)) {
+                $sql .= " AND p.status IN ('Cancelled', 'Failed', 'Escalated')";
+            } elseif (in_array($status, ['Scheduled', 'Pending'], true)) {
+                $sql .= " AND p.status IN ('Scheduled', 'Pending')";
+            } else {
+                $sql .= " AND p.status = ?";
+                $params[] = $status;
+            }
+
+
         }
 
         if ($search !== null && trim($search) !== '') {
@@ -303,6 +319,12 @@ class Paanyaya
             SELECT p.*,
                    c.complaint_number,
                    c.complaint_title,
+                   COALESCE((
+                       SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')
+                       FROM complaint_parties cp
+                       INNER JOIN residents r ON r.resident_id = cp.resident_id
+                       WHERE cp.complaint_id = p.complaint_id AND cp.party_type = 'Complainant'
+                   ), 'Nagpaanyaya') AS complainant_name,
                    TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS scheduled_by_name
             FROM paanyayas p
             LEFT JOIN complaints c ON c.complaint_id = p.complaint_id
