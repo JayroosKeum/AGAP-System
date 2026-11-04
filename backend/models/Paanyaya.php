@@ -157,12 +157,15 @@ class Paanyaya
         try {
             $this->conn->beginTransaction();
 
+            // Salaysay (statement narrative)
+            $salaysay = trim((string) ($data['salaysay'] ?? ''));
+
             // Insert into independent paanyayas entity
             $insPaanyaya = $this->conn->prepare("
                 INSERT INTO paanyayas (
                     complaint_id, complainant_name, invitee_name, scheduled_date, scheduled_time,
-                    status, venue, scheduled_by
-                ) VALUES (?, ?, ?, ?, ?, 'Scheduled', ?, ?)
+                    status, venue, salaysay, scheduled_by
+                ) VALUES (?, ?, ?, ?, ?, 'Scheduled', ?, ?, ?)
             ");
             $insPaanyaya->execute([
                 $complaintId > 0 ? $complaintId : null,
@@ -171,6 +174,7 @@ class Paanyaya
                 $scheduledDate,
                 $scheduledTime,
                 $venue,
+                $salaysay !== '' ? $salaysay : null,
                 $userId
             ]);
             $paanyayaId = (int) $this->conn->lastInsertId();
@@ -190,8 +194,8 @@ class Paanyaya
                 $insSession = $this->conn->prepare("
                     INSERT INTO paanyaya_sessions (
                         complaint_id, invitee_name, attempt_number, scheduled_date, scheduled_time,
-                        venue, has_e_signature, scheduled_by
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        venue, salaysay, has_e_signature, scheduled_by
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ");
                 $insSession->execute([
                     $complaintId,
@@ -200,6 +204,7 @@ class Paanyaya
                     $scheduledDate,
                     $scheduledTime,
                     $venue,
+                    $salaysay !== '' ? $salaysay : null,
                     $hasESignature,
                     $userId
                 ]);
@@ -250,19 +255,24 @@ class Paanyaya
             $pdfFullPath = $storageDir . '/' . $pdfFileName;
             $pdfRelativePath = 'storage/paanyaya/' . $pdfFileName;
 
-            $this->pdf->generatePaanyaya($complaintId > 0 ? $complaintId : 0, [
-                'save_path' => $pdfFullPath,
-                'paanyaya_id' => $paanyayaId,
-                'invitee_name' => $inviteeName,
-                'complainant_name' => $complainantName,
-                'invitation_date' => $scheduledDate,
-                'invitation_time' => $scheduledTime,
-                'venue' => $venue,
-                'has_e_signature' => $hasESignature,
-            ]);
+            try {
+                $this->pdf->generatePaanyaya($complaintId > 0 ? $complaintId : 0, [
+                    'save_path' => $pdfFullPath,
+                    'paanyaya_id' => $paanyayaId,
+                    'invitee_name' => $inviteeName,
+                    'complainant_name' => $complainantName,
+                    'invitation_date' => $scheduledDate,
+                    'invitation_time' => $scheduledTime,
+                    'venue' => $venue,
+                    'salaysay' => $salaysay,
+                    'has_e_signature' => (bool)$hasESignature,
+                ]);
 
-            // Save PDF path to paanyayas
-            $this->conn->prepare('UPDATE paanyayas SET pdf_path = ? WHERE paanyaya_id = ?')->execute([$pdfRelativePath, $paanyayaId]);
+                // Save PDF path to paanyayas
+                $this->conn->prepare('UPDATE paanyayas SET pdf_path = ? WHERE paanyaya_id = ?')->execute([$pdfRelativePath, $paanyayaId]);
+            } catch (Throwable $pdfEx) {
+                error_log("Paanyaya PDF pre-generation skipped: " . $pdfEx->getMessage());
+            }
 
             if ($sessionId) {
                 $this->conn->prepare('UPDATE paanyaya_sessions SET pdf_path = ? WHERE session_id = ?')->execute([$pdfRelativePath, $sessionId]);
@@ -2309,6 +2319,294 @@ class Paanyaya
             }
             error_log("Paanyaya recordMinutes error: " . $e->getMessage());
             return ['success' => false, 'message' => 'Error recording dialogue minutes: ' . $e->getMessage()];
+        }
+    }
+
+
+
+
+    /**
+     * Records attendance, dialogue statement (Salaysay), notes, and executes resolution or escalation.
+     */
+    public function recordAttendanceAndAction(int $paanyayaId, ?int $userId, array $data): array
+    {
+        $paanyaya = $this->getPaanyayaById($paanyayaId);
+        if (!$paanyaya) {
+            return ['success' => false, 'message' => 'Hindi natagpuan ang tala ng Paanyaya.'];
+        }
+
+        $compAttended = in_array($data['complainant_attended'] ?? '', ['Present', 'Late', 'Absent'], true)
+            ? $data['complainant_attended'] : 'Present';
+        $invAttended = in_array($data['invitee_attended'] ?? '', ['Present', 'Late', 'Absent'], true)
+            ? $data['invitee_attended'] : 'Present';
+        $salaysay = trim((string)($data['salaysay'] ?? ($paanyaya['salaysay'] ?? '')));
+        $dialogueNotes = trim((string)($data['dialogue_notes'] ?? ($paanyaya['dialogue_notes'] ?? '')));
+        $action = trim((string)($data['action'] ?? 'save_attendance'));
+
+        // Handle Escalation to Formal Mediation
+        if ($action === 'escalate') {
+            $complaintId = (int)($paanyaya['complaint_id'] ?? 0);
+            if ($complaintId <= 0) {
+                // Pre-docketed Paanyaya: create complaint, transfer salaysay and attendance, then docket into mediation
+                return $this->escalatePreDocketedPaanyaya($paanyayaId, $userId, [
+                    'complainant_attended' => $compAttended,
+                    'invitee_attended' => $invAttended,
+                    'salaysay' => $salaysay,
+                    'dialogue_notes' => $dialogueNotes
+                ]);
+            } else {
+                // Complaint already exists: update attendance on Paanyaya and execute escalation docketing
+                $upd = $this->conn->prepare("
+                    UPDATE paanyayas
+                    SET complainant_attended = ?,
+                        invitee_attended = ?,
+                        salaysay = ?,
+                        dialogue_notes = ?,
+                        attendance_recorded_at = NOW(),
+                        status = 'Escalated',
+                        updated_at = NOW()
+                    WHERE paanyaya_id = ?
+                ");
+                $upd->execute([$compAttended, $invAttended, $salaysay, $dialogueNotes, $paanyayaId]);
+
+                // Also update complaint narrative if complaint narrative was empty
+                if ($salaysay !== '') {
+                    $this->conn->prepare("
+                        UPDATE complaints
+                        SET narrative = COALESCE(NULLIF(TRIM(narrative), ''), ?)
+                        WHERE complaint_id = ?
+                    ")->execute([$salaysay, $complaintId]);
+                }
+
+                $notes = "Inilipat mula sa Stage 0 (Paanyaya #{$paanyayaId}). Pagdalo: Nagpaanyaya={$compAttended}, Inanyayahan={$invAttended}. " . $dialogueNotes;
+                $docketResult = $this->escalateToFormalDocketing($complaintId, $userId, $notes);
+
+                return [
+                    'success' => true,
+                    'complaint_id' => $complaintId,
+                    'case_id' => $docketResult['case_id'] ?? null,
+                    'case_number' => $docketResult['case_number'] ?? null,
+                    'message' => 'Matagumpay na nai-akyat ang Paanyaya sa Pormal na Mediation (Stage 1). Nailipat ang Salaysay at rekord ng Pagdalo!'
+                ];
+            }
+        }
+
+        // Handle Resolution (Kasunduan)
+        if ($action === 'resolve') {
+            $upd = $this->conn->prepare("
+                UPDATE paanyayas
+                SET complainant_attended = ?,
+                    invitee_attended = ?,
+                    salaysay = ?,
+                    dialogue_notes = ?,
+                    status = 'Resolved',
+                    attendance_recorded_at = NOW(),
+                    updated_at = NOW()
+                WHERE paanyaya_id = ?
+            ");
+            $upd->execute([$compAttended, $invAttended, $salaysay, $dialogueNotes, $paanyayaId]);
+
+            $complaintId = (int)($paanyaya['complaint_id'] ?? 0);
+            if ($complaintId > 0) {
+                $this->conn->prepare("
+                    UPDATE complaints
+                    SET status = 'Resolved at Paanyaya / Closed',
+                        resolved_without_docketing = 1,
+                        updated_at = NOW()
+                    WHERE complaint_id = ?
+                ")->execute([$complaintId]);
+            }
+
+            return [
+                'success' => true,
+                'message' => 'Matagumpay na naitala ang kasunduan at naging "Resolved" ang Paanyaya.'
+            ];
+        }
+
+        // Default: Save Attendance Only
+        $upd = $this->conn->prepare("
+            UPDATE paanyayas
+            SET complainant_attended = ?,
+                invitee_attended = ?,
+                salaysay = ?,
+                dialogue_notes = ?,
+                attendance_recorded_at = NOW(),
+                updated_at = NOW()
+            WHERE paanyaya_id = ?
+        ");
+        $upd->execute([$compAttended, $invAttended, $salaysay, $dialogueNotes, $paanyayaId]);
+
+        return [
+            'success' => true,
+            'message' => 'Matagumpay na naitala ang Pagdalo (Attendance) at mga Tala ng Paanyaya.'
+        ];
+    }
+
+    /**
+     * Seamlessly escalates a pre-docketed Paanyaya into a formal complaint and Mediation case.
+     * Transfers Complainant, Invitee/Respondent, Salaysay (narrative), and Attendance records.
+     */
+    public function escalatePreDocketedPaanyaya(int $paanyayaId, ?int $userId = null, array $attendanceData = []): array
+    {
+        try {
+            $this->conn->beginTransaction();
+
+            $pStmt = $this->conn->prepare('SELECT * FROM paanyayas WHERE paanyaya_id = ? LIMIT 1 FOR UPDATE');
+            $pStmt->execute([$paanyayaId]);
+            $paanyaya = $pStmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$paanyaya) {
+                $this->conn->rollBack();
+                return ['success' => false, 'message' => 'Hindi natagpuan ang tala ng Paanyaya.'];
+            }
+
+            // Check if already escalated
+            if (!empty($paanyaya['complaint_id']) && $paanyaya['status'] === 'Escalated') {
+                $this->conn->rollBack();
+                return [
+                    'success' => true,
+                    'already_escalated' => true,
+                    'complaint_id' => (int)$paanyaya['complaint_id'],
+                    'message' => 'Ang Paanyaya na ito ay nai-akyat na sa Pormal na Mediation.'
+                ];
+            }
+
+            $compAttended = $attendanceData['complainant_attended'] ?? ($paanyaya['complainant_attended'] ?? 'Present');
+            $invAttended = $attendanceData['invitee_attended'] ?? ($paanyaya['invitee_attended'] ?? 'Absent');
+            $salaysay = trim((string)($attendanceData['salaysay'] ?? ($paanyaya['salaysay'] ?? '')));
+            $dialogueNotes = trim((string)($attendanceData['dialogue_notes'] ?? ($paanyaya['dialogue_notes'] ?? '')));
+
+            $complainantName = trim((string)($paanyaya['complainant_name'] ?: 'Nagpaanyaya'));
+            $inviteeName = trim((string)($paanyaya['invitee_name'] ?: 'Inanyayahan'));
+
+            // 1. Helper to find or create resident
+            $findOrCreateResident = function(string $fullName) use ($userId): int {
+                $clean = trim(preg_replace('/\s+/', ' ', $fullName));
+                if ($clean === '' || $clean === 'Nagpaanyaya' || $clean === 'Inanyayahan') return 1;
+
+                $stmt = $this->conn->prepare("
+                    SELECT resident_id FROM residents
+                    WHERE TRIM(CONCAT_WS(' ', first_name, middle_name, last_name)) = ?
+                       OR TRIM(CONCAT_WS(' ', first_name, last_name)) = ?
+                    LIMIT 1
+                ");
+                $stmt->execute([$clean, $clean]);
+                $rId = (int)$stmt->fetchColumn();
+                if ($rId > 0) return $rId;
+
+                $parts = explode(' ', $clean);
+                $first = $parts[0] ?? 'Residente';
+                $last = (count($parts) > 1) ? end($parts) : 'Barangay';
+                $middle = (count($parts) > 2) ? implode(' ', array_slice($parts, 1, -1)) : null;
+
+                $ins = $this->conn->prepare("
+                    INSERT INTO residents (first_name, middle_name, last_name, birth_date, gender, civil_status, address, barangay, city_municipality)
+                    VALUES (?, ?, ?, '1990-01-01', 'Prefer not to say', 'Single', 'Barangay Tumana, Marikina City', 'Tumana', 'Marikina City')
+                ");
+                $ins->execute([$first, $middle, $last]);
+                return (int)$this->conn->lastInsertId();
+            };
+
+            $compResidentId = $findOrCreateResident($complainantName);
+            $respResidentId = $findOrCreateResident($inviteeName);
+
+            // 2. Format detailed narrative with attendance history
+            $complaintNarrative = $salaysay !== '' ? $salaysay : "Inilipat mula sa Stage 0 (Paanyaya) para sa Pormal na Mediation.";
+            $compDetails = sprintf(
+                "Nagmula sa Stage 0 (Paanyaya #%d).\nTala ng Pagdalo (Attendance):\n- Nagpaanyaya (%s): %s\n- Inanyayahan (%s): %s\nPetsa ng Paanyaya: %s %s\nTala ng Pag-uusap: %s",
+                $paanyayaId,
+                $complainantName,
+                $compAttended,
+                $inviteeName,
+                $invAttended,
+                $paanyaya['scheduled_date'],
+                $paanyaya['scheduled_time'],
+                $dialogueNotes !== '' ? $dialogueNotes : 'Walang naitalang kasunduan sa informal dialogue.'
+            );
+
+            // 3. Create formal complaint
+            $year = date('Y');
+            $seqStmt = $this->conn->query("SELECT MAX(complaint_id) FROM complaints");
+            $nextSeq = ((int)$seqStmt->fetchColumn()) + 1;
+            $complaintNo = sprintf("%s-%04d", $year, $nextSeq);
+
+            $insComplaint = $this->conn->prepare("
+                INSERT INTO complaints (
+                    complaint_number, complaint_title, narrative, additional_details,
+                    incident_date, incident_location, incident_city, incident_barangay,
+                    status, case_type, category_id,
+                    encoded_by, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, 'Barangay Tumana, Marikina City', 'Marikina City', 'Tumana', 'Accepted', 'Civil', 1, ?, NOW(), NOW())
+            ");
+            $title = "Usapin: {$complainantName} laban kay {$inviteeName}";
+            $insComplaint->execute([
+                $complaintNo,
+                $title,
+                $complaintNarrative,
+                $compDetails,
+                $paanyaya['scheduled_date'],
+                $userId
+            ]);
+            $complaintId = (int)$this->conn->lastInsertId();
+
+            // 4. Link Complaint Parties
+            $insParty = $this->conn->prepare("
+                INSERT INTO complaint_parties (complaint_id, resident_id, party_type)
+                VALUES (?, ?, ?)
+            ");
+            $insParty->execute([$complaintId, $compResidentId, 'Complainant']);
+            $insParty->execute([$complaintId, $respResidentId, 'Respondent']);
+
+            // 5. Update Paanyaya with attendance and link to newly created complaint
+            $updPaanyaya = $this->conn->prepare("
+                UPDATE paanyayas
+                SET status = 'Escalated',
+                    complaint_id = ?,
+                    escalated_to_complaint_id = ?,
+                    complainant_attended = ?,
+                    invitee_attended = ?,
+                    salaysay = ?,
+                    dialogue_notes = ?,
+                    attendance_recorded_at = NOW(),
+                    updated_at = NOW()
+                WHERE paanyaya_id = ?
+            ");
+            $updPaanyaya->execute([
+                $complaintId,
+                $complaintId,
+                $compAttended,
+                $invAttended,
+                $salaysay,
+                $dialogueNotes,
+                $paanyayaId
+            ]);
+
+            $this->conn->commit();
+
+            // 6. Perform formal docketing using existing docketing pipeline
+            $docketResult = $this->escalateToFormalDocketing(
+                $complaintId,
+                $userId,
+                "Inilipat mula sa Stage 0 (Paanyaya #{$paanyayaId}) patungong Formal Mediation. " . $compDetails
+            );
+
+            return [
+                'success' => true,
+                'complaint_id' => $complaintId,
+                'case_id' => $docketResult['case_id'] ?? null,
+                'case_number' => $docketResult['case_number'] ?? $complaintNo,
+                'hearing' => $docketResult['hearing'] ?? null,
+                'message' => 'Matagumpay na nai-akyat ang Paanyaya sa Pormal na Mediation (Stage 1). Nailipat ang Salaysay at rekord ng Pagdalo!'
+            ];
+        } catch (Throwable $e) {
+            if ($this->conn->inTransaction()) {
+                $this->conn->rollBack();
+            }
+            error_log("Error in escalatePreDocketedPaanyaya: " . $e->getMessage());
+            return [
+                'success' => false,
+                'message' => 'Failed to escalate Paanyaya to formal Mediation: ' . $e->getMessage()
+            ];
         }
     }
 

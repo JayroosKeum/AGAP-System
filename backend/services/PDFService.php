@@ -4593,6 +4593,11 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
         if ($inviteeName === '') {
             $inviteeName = 'Inanyayahang Residente';
         }
+        if (!empty($inviteeName) && empty($respondents)) {
+            $respondents = [
+                ['full_name' => $inviteeName, 'address' => 'Barangay Tumana, Marikina City']
+            ];
+        }
 
         $complainantName = trim((string)($options['complainant_name'] ?? ($paaRecord['complainant_name'] ?? '')));
         if ($complainantName !== '' && empty($complainants)) {
@@ -4618,6 +4623,7 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
             'invitation_date' => $options['invitation_date'] ?? ($paaRecord['scheduled_date'] ?? ($paanyaya['scheduled_date'] ?? ($paanyaya['invitation_date'] ?? date('Y-m-d', strtotime('+3 weekdays'))))),
             'invitation_time' => $options['invitation_time'] ?? ($paaRecord['scheduled_time'] ?? ($paanyaya['scheduled_time'] ?? ($paanyaya['invitation_time'] ?? '14:00:00'))),
             'venue' => $options['venue'] ?? ($paaRecord['venue'] ?? ($paanyaya['venue'] ?? 'Tanggapan ng Barangay Tumana')),
+            'salaysay' => $options['salaysay'] ?? ($paaRecord['salaysay'] ?? ($paanyaya['salaysay'] ?? ($complaint['narrative'] ?? ($complaint['complaint_details'] ?? '')))),
             'has_e_signature' => isset($options['has_e_signature']) ? (bool)$options['has_e_signature'] : (!isset($paanyaya['has_e_signature']) || (bool)$paanyaya['has_e_signature']),
             'captain_name' => $options['captain_name'] ?? $captainName,
             'issued_date' => $options['issued_date'] ?? (!empty($paanyaya['created_at']) ? substr($paanyaya['created_at'], 0, 10) : date('Y-m-d')),
