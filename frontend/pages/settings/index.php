@@ -603,11 +603,11 @@ include '../../layouts/header.php';
                                             <div class="form-group">
                                                 <label class="form-label">Gemini Model Identifier</label>
                                                 <select name="gemini_model" class="form-control">
-                                                    <option value="gemini-2.5-flash" <?php echo ($settings['gemini_model'] ?? 'gemini-2.5-flash') === 'gemini-2.5-flash' ? 'selected' : ''; ?>>Gemini 2.5 Flash (Fast, Recommended)</option>
+                                                    <option value="gemini-3.5-flash" <?php echo ($settings['gemini_model'] ?? 'gemini-3.5-flash') === 'gemini-3.5-flash' ? 'selected' : ''; ?>>Gemini 3.5 Flash (Fast, Recommended)</option>
+                                                    <option value="gemini-3.8-flash" <?php echo ($settings['gemini_model'] ?? '') === 'gemini-3.8-flash' ? 'selected' : ''; ?>>Gemini 3.8 Flash</option>
+                                                    <option value="gemini-flash-latest" <?php echo ($settings['gemini_model'] ?? '') === 'gemini-flash-latest' ? 'selected' : ''; ?>>Gemini Flash Latest</option>
+                                                    <option value="gemini-2.5-flash" <?php echo ($settings['gemini_model'] ?? '') === 'gemini-2.5-flash' ? 'selected' : ''; ?>>Gemini 2.5 Flash</option>
                                                     <option value="gemini-2.5-pro" <?php echo ($settings['gemini_model'] ?? '') === 'gemini-2.5-pro' ? 'selected' : ''; ?>>Gemini 2.5 Pro (Deep Analysis)</option>
-                                                    <option value="gemini-2.0-flash" <?php echo ($settings['gemini_model'] ?? '') === 'gemini-2.0-flash' ? 'selected' : ''; ?>>Gemini 2.0 Flash</option>
-                                                    <option value="gemini-1.5-flash" <?php echo ($settings['gemini_model'] ?? '') === 'gemini-1.5-flash' ? 'selected' : ''; ?>>Gemini 1.5 Flash (Legacy)</option>
-                                                    <option value="gemini-1.5-pro" <?php echo ($settings['gemini_model'] ?? '') === 'gemini-1.5-pro' ? 'selected' : ''; ?>>Gemini 1.5 Pro (Legacy)</option>
                                                 </select>
                                             </div>
                                         </div>

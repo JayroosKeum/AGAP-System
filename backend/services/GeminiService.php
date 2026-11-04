@@ -5,8 +5,8 @@ require_once __DIR__ . '/../config/gemini.php';
 class GeminiService
 {
     private string $apiKey = '';
-    private string $model = 'gemini-2.5-flash';
-    private array $fallbackModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    private string $model = 'gemini-3.5-flash';
+    private array $fallbackModels = ['gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.5-flash'];
 
     public function __construct(?string $model = null, ?string $apiKey = null)
     {
@@ -84,7 +84,7 @@ class GeminiService
             } catch (Throwable $t) {}
         }
 
-        return 'gemini-2.5-flash';
+        return 'gemini-3.5-flash';
     }
 
     public function getApiKey(): string
@@ -197,7 +197,7 @@ class GeminiService
         $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . urlencode($modelName) . ':generateContent';
 
         $ch = curl_init($url);
-        curl_setopt_array($ch, [
+        $curlOptions = [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST => true,
             CURLOPT_HTTPHEADER => [
@@ -208,13 +208,17 @@ class GeminiService
             CURLOPT_CONNECTTIMEOUT => 12,
             CURLOPT_TIMEOUT => 65,
             CURLOPT_SSL_VERIFYPEER => true
-        ]);
+        ];
+        if (defined('CURLSSLOPT_NATIVE_CA')) {
+            $curlOptions[CURLOPT_SSL_OPTIONS] = CURLSSLOPT_NATIVE_CA;
+        }
+        curl_setopt_array($ch, $curlOptions);
 
         $startTime = microtime(true);
         $response = curl_exec($ch);
         $curlError = curl_error($ch);
         $statusCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        @curl_close($ch);
 
         $latencyMs = round((microtime(true) - $startTime) * 1000);
 

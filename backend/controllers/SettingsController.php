@@ -288,8 +288,8 @@ class SettingsController
             return ['success' => false, 'message' => 'Gemini API Key is empty. Please enter an API key first or configure GEMINI_API_KEY in your .env file.'];
         }
 
-        $configuredModel = (string)$this->model->get('gemini_model', 'gemini-2.5-flash');
-        $modelsToTry = array_values(array_unique(array_filter([$configuredModel, 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'])));
+        $configuredModel = (string)$this->model->get('gemini_model', 'gemini-3.5-flash');
+        $modelsToTry = array_values(array_unique(array_filter([$configuredModel, 'gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.5-flash'])));
 
         $payload = json_encode([
             'contents' => [
@@ -316,22 +316,22 @@ class SettingsController
                 'Content-Type: application/json',
                 'x-goog-api-key: ' . $key
             ]);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 12);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 20);
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+            if (defined('CURLSSLOPT_NATIVE_CA')) {
+                curl_setopt($ch, CURLOPT_SSL_OPTIONS, CURLSSLOPT_NATIVE_CA);
+            }
 
             $response = curl_exec($ch);
             $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
             $error = curl_error($ch);
-            curl_close($ch);
+            @curl_close($ch);
 
             $lastLatency = round((microtime(true) - $startTime) * 1000);
 
             if ($error) {
-                return [
-                    'success' => false,
-                    'message' => "Connection failed: {$error}",
-                    'latency_ms' => $lastLatency
-                ];
+                $lastError = "Connection failed for {$candidateModel}: {$error}";
+                continue;
             }
 
             if ($httpCode === 200 && $response) {
@@ -403,7 +403,7 @@ class SettingsController
             $res = curl_exec($ch);
             $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             $err = curl_error($ch);
-            curl_close($ch);
+            @curl_close($ch);
 
             if ($err) {
                 return ['success' => false, 'message' => "SMS dispatch failed: {$err}"];
