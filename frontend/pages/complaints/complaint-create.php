@@ -380,115 +380,63 @@ include '../../layouts/header.php';
                             <span>Formal Complaint Intake &amp; Docketing</span>
                         </div>
 
-                        <!-- SECTION 1: FILING METHOD & CASE CLASSIFICATION -->
+                        <!-- SECTION 1: CASE CLASSIFICATION -->
                         <section id="section-ingestion" class="intake-section-card">
                             <div class="intake-section-header">
                                 <div class="section-header-left">
                                     <span class="section-badge-num">1</span>
                                     <div class="section-title-wrap">
-                                        <h3>Filing Method &amp; Case Classification</h3>
-                                        <p>Select intake channel and specify dispute categorization</p>
+                                        <h3>Case Classification</h3>
+                                        <p>Specify dispute categorization and complaint details</p>
                                     </div>
                                 </div>
                                 <span class="section-step-indicator">Section 1 of 5</span>
                             </div>
 
-                            <!-- Filing Method Dynamic Selector -->
-                            <div style="margin-bottom: 20px;">
-                                <label style="display:block; font-size:0.75rem; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:10px;">
-                                    How is this complaint being received? <span class="required-mark">*</span>
-                                </label>
-                                <div class="filing-method-grid">
-                                    <label id="labelMethodDigital" class="filing-method-card is-selected">
-                                        <input type="radio" name="filing_method" value="digital" checked>
-                                        <div>
-                                            <span class="filing-method-title">Digital Filing</span>
-                                            <span class="filing-method-desc">Encode complaint narrative and dispute details directly into the digital record.</span>
-                                        </div>
-                                    </label>
-
-                                    <label id="labelMethodPaper" class="filing-method-card">
-                                        <input type="radio" name="filing_method" value="paper">
-                                        <div>
-                                            <span class="filing-method-title">Upload Pre-Signed Paper Form</span>
-                                            <span class="filing-method-desc">Upload scanned handwritten KP Form No. 7 signed directly by the complainant.</span>
-                                        </div>
-                                    </label>
-                                </div>
-
-                                <!-- Hardcopy KP Form 7 Upload Section (Collapsible) -->
-                                <div id="paperUploadBox" style="display: none; margin-top: 14px;">
-                                    <div class="intake-card kp7-upload-card" id="kp7UploadSection" style="margin: 0; background: #f8fafc;">
-                                        <div class="intake-card-header">
-                                            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; flex-wrap: wrap; gap: 8px;">
-                                                <div>
-                                                    <h3 style="margin: 0; display: flex; align-items: center; gap: 8px; font-size: 0.98rem;">
-                                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #0284c7;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                                                        Formal Complaint Document (KP Form 7)
-                                                    </h3>
-                                                    <span class="card-subtitle">Scanned PDF or high-resolution photo up to 25 MB</span>
-                                                </div>
-                                                <div>
-                                                    <span class="badge-doc-status badge-doc-no-scan" id="kp7DocStatusBadge">No Scan Uploaded</span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- Upload Dropzone -->
-                                        <div class="kp7-upload-dropzone" id="kp7DropZone">
-                                            <input type="file" id="scannedKp7Input" name="scanned_kp7" accept=".pdf,image/jpeg,image/png" style="display: none;">
-                                            <div class="kp7-dropzone-icon">
-                                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                                                    <polyline points="17 8 12 3 7 8"/>
-                                                    <line x1="12" y1="3" x2="12" y2="15"/>
-                                                </svg>
-                                            </div>
-                                            <div class="kp7-dropzone-title">Upload Handwritten KP Form 7</div>
-                                            <div class="kp7-dropzone-hint">Drag &amp; drop your scanned document or photo here, or browse from computer</div>
-                                            <button type="button" class="btn-outline-sm" id="btnBrowseKp7">Browse Document</button>
-                                            <div style="font-size: 0.74rem; color: #64748b; margin-top: 8px;">Accepted formats: PDF, JPG, JPEG, PNG (up to 25 MB)</div>
-                                        </div>
-
-                                        <!-- Selected File Preview Container (hidden by default) -->
-                                        <div id="kp7SelectedPreview" class="kp7-selected-preview" style="display: none;">
-                                            <div class="kp7-preview-left">
-                                                <div id="kp7ThumbWrap"></div>
-                                                <div class="kp7-preview-info">
-                                                    <div class="kp7-preview-name" id="kp7FileName">filename.pdf</div>
-                                                    <div class="kp7-preview-meta">
-                                                        <span class="badge-pill" id="kp7FileTypeBadge">PDF</span>
-                                                        <span id="kp7FileSize">0 MB</span>
-                                                        <span style="color: #16a34a; font-weight: 600;">Ready to attach</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
-                                                <button type="button" class="btn-outline-sm" id="btnPreviewKp7Modal" title="Preview document before saving">Preview</button>
-                                                <button type="button" class="btn-outline-sm" id="btnReplaceKp7" title="Select a different file">Change</button>
-                                                <button type="button" class="btn-outline-sm" id="btnRemoveKp7" style="color: #dc2626; border-color: #fca5a5;" title="Remove this file">&times; Remove</button>
-                                            </div>
-                                        </div>
-
-                                        <div id="kp7UploadAlert" class="alert alert-danger" style="display: none; margin-top: 10px; font-size: 0.85rem; padding: 8px 12px;"></div>
-                                    </div>
-                                </div>
-                            </div>
-
-
+                            <!-- Filing Method Hidden: Default to Digital Intake -->
+                            <input type="hidden" name="filing_method" id="filingMethod" value="digital">
 
                             <!-- Dispute Classification Grid -->
                             <div class="form-row-2" style="margin-top: 10px;">
                                 <div class="form-group">
-                                    <label for="categoryId">Complaint Category <span class="required-mark">*</span></label>
-                                    <select id="categoryId" name="category_id" required>
-                                        <option value="">Select Category</option>
-                                        <?php foreach ($categories as $cat): ?>
-                                            <option value="<?php echo (int)$cat['category_id']; ?>" <?php echo ((string)($old['category_id'] ?? '') === (string)$cat['category_id']) ? 'selected' : ''; ?>>
-                                                 <?php echo htmlspecialchars($cat['category_name']); ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
+                                    <label for="primaryCategoryInput">Complaint Category <span class="required-mark">*</span></label>
+                                    <div style="position: relative;">
+                                        <input type="text" 
+                                               id="primaryCategoryInput" 
+                                               name="category_name" 
+                                               list="categoriesList" 
+                                               class="form-control" 
+                                               placeholder="Select category or type complaint..." 
+                                               autocomplete="off" 
+                                               required 
+                                               value="<?php 
+                                                   $oldCatName = '';
+                                                   if (!empty($old['category_id'])) {
+                                                       foreach ($categories as $cat) {
+                                                           if ((string)$cat['category_id'] === (string)$old['category_id']) {
+                                                               $oldCatName = $cat['category_name'];
+                                                               break;
+                                                           }
+                                                       }
+                                                   }
+                                                   if (empty($oldCatName) && !empty($old['other_category_specification'])) {
+                                                       $oldCatName = $old['other_category_specification'];
+                                                   }
+                                                   echo htmlspecialchars($oldCatName); 
+                                               ?>"
+                                               style="width: 100%; border: 1.5px solid #cbd5e1; border-radius: 6px; padding: 9px 12px; font-size: 0.92rem;">
+                                        
+                                        <!-- Synchronized select for backward-compatibility with scripts and form post -->
+                                        <select id="categoryId" name="category_id" style="display: none;">
+                                            <option value="">Select Category</option>
+                                            <?php foreach ($categories as $cat): ?>
+                                                <option value="<?php echo (int)$cat['category_id']; ?>" <?php echo ((string)($old['category_id'] ?? '') === (string)$cat['category_id']) ? 'selected' : ''; ?>>
+                                                     <?php echo htmlspecialchars($cat['category_name']); ?>
+                                                </option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                    <small style="color: #64748b; font-size: 0.78rem; display: block; margin-top: 4px;">Pumili sa listahan o i-type ang kategorya ng reklamo.</small>
                                 </div>
 
                                 <div class="form-group">
@@ -500,7 +448,7 @@ include '../../layouts/header.php';
                                 </div>
                             </div>
 
-                            <!-- "Others Please Specify" Input (Dynamically shown when Others is selected) -->
+                            <!-- "Others Please Specify" Input (Dynamically shown when explicitly selected/customized) -->
                             <div class="form-group" id="otherCategoryWrapper" style="display: none; margin-top: 8px; margin-bottom: 12px;">
                                 <label for="otherCategorySpecification" style="font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 6px;">
                                     <span>Specify Complaint Category / Pakitukoy ang Kategorya</span>
@@ -509,6 +457,61 @@ include '../../layouts/header.php';
                                 <input type="text" id="otherCategorySpecification" name="other_category_specification" maxlength="255" placeholder="Pakitukoy ang partikular na alitan o kategorya (e.g. Alitan sa bintana, ingay ng aircon)..." value="<?php echo htmlspecialchars($old['other_category_specification'] ?? ''); ?>" style="border: 1.5px solid #3b82f6; background: #f8fafc; border-radius: 6px; padding: 9px 12px; font-size: 0.9rem;">
                                 <small style="color: #64748b; font-size: 0.8rem; display: block; margin-top: 4px;">Specify the dispute details covered under Katarungang Pambarangay jurisdiction.</small>
                             </div>
+
+                            <?php 
+                                $hasSecondCategory = !empty($old['secondary_category_id']) || !empty($old['secondary_other_category_specification']) || !empty($old['secondary_category_name']); 
+                                $oldSecName = $old['secondary_category_name'] ?? '';
+                                if (empty($oldSecName) && !empty($old['secondary_category_id'])) {
+                                    foreach ($categories as $cat) {
+                                        if ((string)$cat['category_id'] === (string)$old['secondary_category_id']) {
+                                            $oldSecName = $cat['category_name'];
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (empty($oldSecName) && !empty($old['secondary_other_category_specification'])) {
+                                    $oldSecName = $old['secondary_other_category_specification'];
+                                }
+                            ?>
+
+                            <!-- SECOND COMPLAINT CATEGORY (Takes 1 or 2 different complaints) -->
+                            <div style="margin-top: 8px; margin-bottom: 14px;">
+                                <button type="button" class="btn-outline-sm" id="btnAddSecondCategory" style="display: <?php echo $hasSecondCategory ? 'none' : 'inline-flex'; ?>; align-items: center; gap: 6px; font-weight: 600; color: #0284c7; border: 1.5px dashed #0284c7; background: #f0f9ff; padding: 7px 14px; border-radius: 6px; cursor: pointer; transition: all 0.2s ease;">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                    <span>+ Add 2nd Complaint / Ikalawang Reklamo (Optional)</span>
+                                </button>
+
+                                <div id="secondCategoryContainer" style="display: <?php echo $hasSecondCategory ? 'block' : 'none'; ?>; margin-top: 10px; padding: 14px 16px; background: #f8fafc; border: 1.5px dashed #0284c7; border-radius: 8px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                        <label for="secondaryCategoryInput" style="font-weight: 700; color: #0369a1; font-size: 0.88rem; display: flex; align-items: center; gap: 6px; margin: 0;">
+                                            <span style="background: #0284c7; color: #fff; border-radius: 50%; width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 800;">2</span>
+                                            <span>Second Complaint Category / Ikalawang Reklamo (Optional)</span>
+                                        </label>
+                                        <button type="button" id="btnRemoveSecondCategory" style="background: none; border: none; color: #ef4444; font-size: 0.82rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 4px;">
+                                            &times; Remove 2nd Complaint
+                                        </button>
+                                    </div>
+                                    <input type="text" 
+                                           id="secondaryCategoryInput" 
+                                           name="secondary_category_name" 
+                                           list="categoriesList" 
+                                           class="form-control" 
+                                           placeholder="Search or type 2nd complaint category (e.g. Slander, Unjust Vexation, Paninira ng Ari-arian)..." 
+                                           autocomplete="off" 
+                                           value="<?php echo htmlspecialchars($oldSecName); ?>"
+                                           style="width: 100%; border: 1.5px solid #cbd5e1; border-radius: 6px; padding: 9px 12px; font-size: 0.92rem;">
+                                    <input type="hidden" id="secondaryCategoryId" name="secondary_category_id" value="<?php echo htmlspecialchars($old['secondary_category_id'] ?? ''); ?>">
+                                    <input type="hidden" id="secondaryOtherSpecification" name="secondary_other_category_specification" value="<?php echo htmlspecialchars($old['secondary_other_category_specification'] ?? ''); ?>">
+                                    <small style="color: #64748b; font-size: 0.78rem; display: block; margin-top: 4px;">Pumili o mag-type kung may ikalawang reklamong isinasampa.</small>
+                                </div>
+                            </div>
+
+                            <!-- Shared HTML5 Datalist for Categories Autocomplete -->
+                            <datalist id="categoriesList">
+                                <?php foreach ($categories as $cat): ?>
+                                    <option value="<?php echo htmlspecialchars($cat['category_name']); ?>"></option>
+                                <?php endforeach; ?>
+                            </datalist>
 
                             <!-- Safe Spaces Act (RA 11313) Mandatory 1st Offense Toggle & VAWC/PNP Routing -->
                             <div class="safe-spaces-offense-box" id="safeSpacesOffenseWrapper" style="display: none;">
@@ -1719,10 +1722,29 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Dynamic "Others (Please Specify)" Category Handler
+    // Dynamic "Others (Please Specify)" and Typeable / Dual Category Handlers
     const categorySelectEl = document.getElementById('categoryId');
+    const primaryCategoryInputEl = document.getElementById('primaryCategoryInput');
     const otherCategoryWrapperEl = document.getElementById('otherCategoryWrapper');
     const otherCategoryInputEl = document.getElementById('otherCategorySpecification');
+    const btnAddSecondCategory = document.getElementById('btnAddSecondCategory');
+    const btnRemoveSecondCategory = document.getElementById('btnRemoveSecondCategory');
+    const secondCategoryContainer = document.getElementById('secondCategoryContainer');
+    const secondaryCategoryInputEl = document.getElementById('secondaryCategoryInput');
+    const secondaryCategoryIdEl = document.getElementById('secondaryCategoryId');
+    const secondaryOtherSpecificationEl = document.getElementById('secondaryOtherSpecification');
+    const complaintTitleInputEl = document.getElementById('complaintTitle');
+
+    // Build category map: name -> id
+    const categoriesMap = {};
+    if (categorySelectEl) {
+        for (let i = 0; i < categorySelectEl.options.length; i++) {
+            const opt = categorySelectEl.options[i];
+            if (opt.value) {
+                categoriesMap[opt.text.trim().toLowerCase()] = opt.value;
+            }
+        }
+    }
 
     function syncOtherCategoryVisibility() {
         if (!categorySelectEl || !otherCategoryWrapperEl || !otherCategoryInputEl) return;
@@ -1733,12 +1755,101 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isOthers) {
             otherCategoryWrapperEl.style.display = 'block';
             otherCategoryInputEl.required = true;
-            otherCategoryInputEl.focus();
         } else {
             otherCategoryWrapperEl.style.display = 'none';
             otherCategoryInputEl.required = false;
         }
     }
+
+    let isTitleUserCustomized = false;
+    if (complaintTitleInputEl) {
+        if (complaintTitleInputEl.value.trim() !== '') {
+            isTitleUserCustomized = true;
+        }
+        complaintTitleInputEl.addEventListener('input', () => {
+            isTitleUserCustomized = (complaintTitleInputEl.value.trim() !== '');
+        });
+    }
+
+    function autoUpdateComplaintTitle() {
+        if (isTitleUserCustomized || !complaintTitleInputEl) return;
+        const cat1 = primaryCategoryInputEl?.value?.trim() || '';
+        const cat2 = secondaryCategoryInputEl?.value?.trim() || '';
+        if (cat1 && cat2) {
+            complaintTitleInputEl.value = cat1 + ' & ' + cat2;
+        } else if (cat1) {
+            complaintTitleInputEl.value = cat1;
+        } else if (cat2) {
+            complaintTitleInputEl.value = cat2;
+        }
+    }
+
+    function handlePrimaryCategoryInput() {
+        if (!primaryCategoryInputEl || !categorySelectEl) return;
+        const val = primaryCategoryInputEl.value.trim();
+        const lower = val.toLowerCase();
+
+        if (lower in categoriesMap) {
+            categorySelectEl.value = categoriesMap[lower];
+            categorySelectEl.dispatchEvent(new Event('change'));
+            if (categoriesMap[lower] !== '51') {
+                if (otherCategoryInputEl) otherCategoryInputEl.value = '';
+            }
+        } else if (val !== '') {
+            // Custom typed category: set select to 51 (Others) and store specification
+            categorySelectEl.value = '51';
+            categorySelectEl.dispatchEvent(new Event('change'));
+            if (otherCategoryInputEl) otherCategoryInputEl.value = val;
+        } else {
+            categorySelectEl.value = '';
+            categorySelectEl.dispatchEvent(new Event('change'));
+            if (otherCategoryInputEl) otherCategoryInputEl.value = '';
+        }
+        autoUpdateComplaintTitle();
+    }
+
+    function handleSecondaryCategoryInput() {
+        if (!secondaryCategoryInputEl || !secondaryCategoryIdEl) return;
+        const val = secondaryCategoryInputEl.value.trim();
+        const lower = val.toLowerCase();
+
+        if (lower in categoriesMap) {
+            secondaryCategoryIdEl.value = categoriesMap[lower];
+            if (secondaryOtherSpecificationEl) {
+                secondaryOtherSpecificationEl.value = (categoriesMap[lower] === '51') ? val : '';
+            }
+        } else if (val !== '') {
+            secondaryCategoryIdEl.value = '51';
+            if (secondaryOtherSpecificationEl) secondaryOtherSpecificationEl.value = val;
+        } else {
+            secondaryCategoryIdEl.value = '';
+            if (secondaryOtherSpecificationEl) secondaryOtherSpecificationEl.value = '';
+        }
+        autoUpdateComplaintTitle();
+    }
+
+    primaryCategoryInputEl?.addEventListener('input', handlePrimaryCategoryInput);
+    primaryCategoryInputEl?.addEventListener('change', handlePrimaryCategoryInput);
+    primaryCategoryInputEl?.addEventListener('blur', handlePrimaryCategoryInput);
+
+    secondaryCategoryInputEl?.addEventListener('input', handleSecondaryCategoryInput);
+    secondaryCategoryInputEl?.addEventListener('change', handleSecondaryCategoryInput);
+    secondaryCategoryInputEl?.addEventListener('blur', handleSecondaryCategoryInput);
+
+    btnAddSecondCategory?.addEventListener('click', () => {
+        if (secondCategoryContainer) secondCategoryContainer.style.display = 'block';
+        if (btnAddSecondCategory) btnAddSecondCategory.style.display = 'none';
+        secondaryCategoryInputEl?.focus();
+    });
+
+    btnRemoveSecondCategory?.addEventListener('click', () => {
+        if (secondaryCategoryInputEl) secondaryCategoryInputEl.value = '';
+        if (secondaryCategoryIdEl) secondaryCategoryIdEl.value = '';
+        if (secondaryOtherSpecificationEl) secondaryOtherSpecificationEl.value = '';
+        if (secondCategoryContainer) secondCategoryContainer.style.display = 'none';
+        if (btnAddSecondCategory) btnAddSecondCategory.style.display = 'inline-flex';
+        autoUpdateComplaintTitle();
+    });
 
     categorySelectEl?.addEventListener('change', syncOtherCategoryVisibility);
     syncOtherCategoryVisibility();

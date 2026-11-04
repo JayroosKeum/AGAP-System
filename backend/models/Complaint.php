@@ -31,6 +31,8 @@ class Complaint
                 FROM complaints c
                 LEFT JOIN complaint_categories cc
                     ON c.category_id = cc.category_id
+                LEFT JOIN complaint_categories cc2
+                    ON c.secondary_category_id = cc2.category_id
                 LEFT JOIN cases cs
                     ON cs.complaint_id = c.complaint_id
                 ORDER BY c.created_at DESC
@@ -46,6 +48,14 @@ class Complaint
                     $row['category_name_display'] = 'Others: ' . $row['other_category_specification'];
                 } else {
                     $row['category_name_display'] = $row['category_name'] ?? '';
+                }
+                if (!empty($row['secondary_category_id']) || !empty($row['secondary_other_category_specification'])) {
+                    $secDisplay = (!empty($row['secondary_other_category_specification']) && (stripos($row['secondary_category_name'] ?? '', 'Others') !== false || stripos($row['secondary_category_name'] ?? '', 'Iba pa') !== false))
+                        ? 'Others: ' . $row['secondary_other_category_specification']
+                        : ($row['secondary_category_name'] ?? $row['secondary_other_category_specification'] ?? '');
+                    if (!empty($secDisplay)) {
+                        $row['category_name_display'] .= ' & ' . $secDisplay;
+                    }
                 }
             }
             unset($row);
@@ -68,10 +78,11 @@ class Complaint
 
             $stmt =
             $this->conn->prepare("
-                SELECT c.*, cs.case_id, cs.case_number, cs.case_status, cat.category_name
+                SELECT c.*, cs.case_id, cs.case_number, cs.case_status, cat.category_name, cat2.category_name AS secondary_category_name
                 FROM complaints c
                 LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
                 LEFT JOIN complaint_categories cat ON cat.category_id = c.category_id
+                LEFT JOIN complaint_categories cat2 ON cat2.category_id = c.secondary_category_id
                 WHERE c.complaint_id=?
             ");
 
@@ -91,6 +102,14 @@ class Complaint
                     $row['category_name_display'] = 'Others: ' . $row['other_category_specification'];
                 } else {
                     $row['category_name_display'] = $row['category_name'] ?? '';
+                }
+                if (!empty($row['secondary_category_id']) || !empty($row['secondary_other_category_specification'])) {
+                    $secDisplay = (!empty($row['secondary_other_category_specification']) && (stripos($row['secondary_category_name'] ?? '', 'Others') !== false || stripos($row['secondary_category_name'] ?? '', 'Iba pa') !== false))
+                        ? 'Others: ' . $row['secondary_other_category_specification']
+                        : ($row['secondary_category_name'] ?? $row['secondary_other_category_specification'] ?? '');
+                    if (!empty($secDisplay)) {
+                        $row['category_name_display'] .= ' & ' . $secDisplay;
+                    }
                 }
             }
             return $row;
@@ -172,7 +191,9 @@ class Complaint
                 INSERT INTO complaints
                 (
                     category_id,
+                    secondary_category_id,
                     other_category_specification,
+                    secondary_other_category_specification,
                     case_type,
                     complaint_title,
                     incident_date,
@@ -196,14 +217,18 @@ class Complaint
                 )
                 VALUES
                 (
-                    ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+                    ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
                 )
             ");
 
             $timeVal = !empty($data['is_time_unknown']) ? null : (trim((string) ($data['incident_time'] ?? '')) ?: null);
+            $secCatId = filter_var($data['secondary_category_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
+            $secOtherSpec = trim((string)($data['secondary_other_category_specification'] ?? '')) ?: null;
             $stmt->execute([
                 $data['category_id'],
+                $secCatId,
                 trim((string) ($data['other_category_specification'] ?? '')) ?: null,
+                $secOtherSpec,
                 $caseType,
                 trim((string) $data['complaint_title']),
                 $data['incident_date'],
@@ -344,7 +369,9 @@ class Complaint
                 UPDATE complaints
                 SET
                     category_id=?,
+                    secondary_category_id=?,
                     other_category_specification=?,
+                    secondary_other_category_specification=?,
                     case_type=?,
                     complaint_title=?,
                     incident_date=?,
@@ -366,9 +393,13 @@ class Complaint
             ");
 
             $timeVal = !empty($data['is_time_unknown']) ? null : (trim((string) ($data['incident_time'] ?? '')) ?: null);
+            $secCatId = filter_var($data['secondary_category_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
+            $secOtherSpec = trim((string)($data['secondary_other_category_specification'] ?? '')) ?: null;
             $stmt->execute([
                 $data['category_id'],
+                $secCatId,
                 trim((string) ($data['other_category_specification'] ?? '')) ?: null,
+                $secOtherSpec,
                 $caseType,
                 trim((string) $data['complaint_title']),
                 $data['incident_date'],
@@ -517,7 +548,46 @@ class Complaint
     private function validateIncidentInput(array $data): array
     {
         $categoryId = filter_var($data['category_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $categoryNameInput = trim((string)($data['category_name'] ?? ''));
+        if (!$categoryId && $categoryNameInput !== '') {
+            $catStmt = $this->conn->prepare('SELECT category_id, category_name FROM complaint_categories WHERE category_name = ? OR category_name LIKE ? LIMIT 1');
+            $catStmt->execute([$categoryNameInput, '%' . $categoryNameInput . '%']);
+            $catRow = $catStmt->fetch(PDO::FETCH_ASSOC);
+            if ($catRow) {
+                $categoryId = (int)$catRow['category_id'];
+                $data['category_id'] = $categoryId;
+            } else {
+                $categoryId = 51;
+                $data['category_id'] = 51;
+                if (empty($data['other_category_specification'])) {
+                    $data['other_category_specification'] = $categoryNameInput;
+                }
+            }
+        }
+
+        $secCatId = filter_var($data['secondary_category_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
+        $secNameInput = trim((string)($data['secondary_category_name'] ?? ''));
+        if (!$secCatId && $secNameInput !== '') {
+            $catStmt2 = $this->conn->prepare('SELECT category_id, category_name FROM complaint_categories WHERE category_name = ? OR category_name LIKE ? LIMIT 1');
+            $catStmt2->execute([$secNameInput, '%' . $secNameInput . '%']);
+            $catRow2 = $catStmt2->fetch(PDO::FETCH_ASSOC);
+            if ($catRow2) {
+                $secCatId = (int)$catRow2['category_id'];
+                $data['secondary_category_id'] = $secCatId;
+            } else {
+                $secCatId = 51;
+                $data['secondary_category_id'] = 51;
+                if (empty($data['secondary_other_category_specification'])) {
+                    $data['secondary_other_category_specification'] = $secNameInput;
+                }
+            }
+        }
+
         $title = trim((string) ($data['complaint_title'] ?? $data['title'] ?? ''));
+        if ($title === '' && $categoryNameInput !== '') {
+            $title = $categoryNameInput . ($secNameInput !== '' ? ' & ' . $secNameInput : '');
+            $data['complaint_title'] = $title;
+        }
         $date = trim((string) ($data['incident_date'] ?? ''));
         $time = trim((string) ($data['incident_time'] ?? ''));
         $narrative = trim((string) ($data['narrative'] ?? $data['complaint_description'] ?? ''));

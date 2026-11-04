@@ -226,6 +226,7 @@ class ComplaintController
             }
 
             // Optional: If Paanyaya schedule details were provided, schedule an independent Paanyaya referencing this dispute
+            $isDraft = !empty($data['is_draft']);
             if ($complaintId > 0 && !$isDraft && !empty($data['paanyaya_date']) && !empty($data['paanyaya_time'])) {
                 require_once __DIR__ . '/../models/Paanyaya.php';
                 $paanyayaModel = new Paanyaya();
