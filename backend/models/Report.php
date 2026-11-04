@@ -52,7 +52,7 @@ class Report
 
             // Today's Paanyaya sessions (Stage 0 Informal Dialogues)
             $todayPaanyayas = $this->conn->prepare(
-                "SELECT p.paanyaya_id, p.complaint_id, p.invitee_name, p.scheduled_date, p.scheduled_time,
+                "SELECT p.paanyaya_id, p.complaint_id, p.complainant_name, p.invitee_name, p.scheduled_date, p.scheduled_time,
                         p.status, p.venue, co.complaint_number, co.complaint_title,
                         COALESCE(ps.session_id, 0) AS session_id,
                         COALESCE(ps.attempt_number, 1) AS attempt_number,
@@ -239,7 +239,7 @@ class Report
 
         // Period Paanyayas
         $paanyayasStmt = $this->conn->prepare(
-            "SELECT p.paanyaya_id, p.complaint_id, p.invitee_name, p.scheduled_date, p.scheduled_time,
+            "SELECT p.paanyaya_id, p.complaint_id, p.complainant_name, p.invitee_name, p.scheduled_date, p.scheduled_time,
                     p.status, p.venue, co.complaint_number, co.complaint_title,
                     COALESCE(ps.session_id, 0) AS session_id,
                     COALESCE(ps.attempt_number, 1) AS attempt_number,
