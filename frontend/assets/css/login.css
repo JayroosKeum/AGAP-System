@@ -95,8 +95,8 @@
 .auth-link { margin-top:18px; text-align:center; }
 .auth-link a { color:#18181b; font-weight:700; }
 .auth-message { border-radius:8px; margin:0 0 16px; padding:10px 12px; }
-.auth-message.success { background:#e8f7ee; color:#176b3a; }
-.auth-message.error { background:#fdecec; color:#9d2525; }
+.auth-message.success { background:#e8f7ee; color:#176b3a; border: 1px solid #c2ebce; }
+.auth-message.error { background:#fdecec; color:#9d2525; border: 1px solid #f8c8c8; }
 
 .login-screen {
     --auth-ink: #173638;

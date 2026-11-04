@@ -64,10 +64,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Handle initial hash in URL
-    const initialHash = window.location.hash.replace('#', '');
-    if (initialHash && document.getElementById('tab-' + initialHash)) {
-        switchSettingsTab('tab-' + initialHash);
+    // Handle initial query param or hash in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const queryTab = urlParams.get('tab');
+    const targetTabName = queryTab || window.location.hash.replace('#', '');
+    if (targetTabName) {
+        const fullTabId = targetTabName.startsWith('tab-') ? targetTabName : 'tab-' + targetTabName;
+        if (document.getElementById(fullTabId)) {
+            switchSettingsTab(fullTabId);
+        }
     }
 
     // 2. Form Dirty Tracking & Floating Save Bar
@@ -559,12 +564,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const conf = document.getElementById('passConfirm')?.value || '';
 
         if (!cur || !newP || !conf) {
-            alert('Please fill in all password fields.');
+            showToast('Please fill in all password fields.', 'error');
             return;
         }
 
         if (newP !== conf) {
-            alert('New password and confirm password do not match.');
+            showToast('New password and confirm password do not match.', 'error');
+            return;
+        }
+
+        if (newP.length < 12 || !/[a-z]/.test(newP) || !/[A-Z]/.test(newP) || !/\d/.test(newP)) {
+            showToast('Use at least 12 characters with uppercase, lowercase, and a number.', 'error');
             return;
         }
 

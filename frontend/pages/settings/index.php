@@ -26,7 +26,8 @@ if (!str_starts_with($activeTab, 'tab-')) {
 if ($activeTab === 'tab-documents') {
     $activeTab = 'tab-barangay';
 }
-if (!$isAdmin) {
+$allowedPersonalTabs = ['tab-profile', 'tab-password'];
+if (!$isAdmin && !in_array($activeTab, $allowedPersonalTabs, true)) {
     $activeTab = 'tab-profile';
 }
 
@@ -128,7 +129,13 @@ include '../../layouts/header.php';
                         <li class="settings-nav-item">
                             <button type="button" class="settings-nav-btn <?php echo $activeTab === 'tab-profile' ? 'active' : ''; ?>" data-tab="tab-profile">
                                 <span class="nav-icon">👤</span>
-                                <span>User Profile &amp; Account</span>
+                                <span>User Profile</span>
+                            </button>
+                        </li>
+                        <li class="settings-nav-item">
+                            <button type="button" class="settings-nav-btn <?php echo $activeTab === 'tab-password' ? 'active' : ''; ?>" data-tab="tab-password">
+                                <span class="nav-icon">🔑</span>
+                                <span>Change Password</span>
                             </button>
                         </li>
                     </ul>
@@ -891,9 +898,24 @@ include '../../layouts/header.php';
                                             </select>
                                         </div>
                                     </div>
+
+                                    <div style="margin-top: 20px; padding: 14px 18px; background: #f8faf8; border: 1px solid #dbe6df; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                                        <div>
+                                            <strong style="color: #173638; font-size: 13.5px;">Account Credentials &amp; Security</strong>
+                                            <div style="font-size: 12px; color: #687a76; margin-top: 2px;">Update your login password and security credentials.</div>
+                                        </div>
+                                        <button type="button" class="btn-secondary btn-sm" onclick="switchSettingsTab('tab-password')">
+                                            🔑 Change Password &rarr;
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
+                        </div>
 
+                        <!-- ===================================================================
+                             TAB: CHANGE ACCOUNT PASSWORD (FOR ALL ROLES)
+                             =================================================================== -->
+                        <div class="settings-tab-pane <?php echo $activeTab === 'tab-password' ? 'active' : ''; ?>" id="tab-password">
                             <div class="settings-card">
                                 <div class="settings-card-header">
                                     <div>
@@ -910,16 +932,29 @@ include '../../layouts/header.php';
                                     <div class="form-grid-3">
                                         <div class="form-group">
                                             <label class="form-label">Current Password <span class="required">*</span></label>
-                                            <input type="password" id="passCurrent" class="form-control" autocomplete="current-password" required>
+                                            <input type="password" id="passCurrent" class="form-control" autocomplete="current-password" placeholder="Enter current password" required>
                                         </div>
                                         <div class="form-group">
-                                            <label class="form-label">New Password (Min 8 chars) <span class="required">*</span></label>
-                                            <input type="password" id="passNew" class="form-control" autocomplete="new-password" required>
+                                            <label class="form-label">New Password <span class="required">*</span></label>
+                                            <input type="password" id="passNew" class="form-control" autocomplete="new-password" placeholder="Min. 12 characters" required>
                                         </div>
                                         <div class="form-group">
                                             <label class="form-label">Confirm New Password <span class="required">*</span></label>
-                                            <input type="password" id="passConfirm" class="form-control" autocomplete="new-password" required>
+                                            <input type="password" id="passConfirm" class="form-control" autocomplete="new-password" placeholder="Re-enter new password" required>
                                         </div>
+                                    </div>
+
+                                    <div style="margin-top: 20px; padding: 14px 18px; background: #f8faf8; border: 1px solid #dbe6df; border-radius: 8px;">
+                                        <h4 style="font-size: 0.82rem; font-weight: 800; color: #173638; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.06em;">
+                                            Password Security Policy
+                                        </h4>
+                                        <ul style="margin: 0; padding-left: 18px; font-size: 12px; color: #4e635f; line-height: 1.65;">
+                                            <li>Must contain at least <strong>12 characters</strong> in length</li>
+                                            <li>Must include at least one <strong>uppercase letter</strong> (A-Z)</li>
+                                            <li>Must include at least one <strong>lowercase letter</strong> (a-z)</li>
+                                            <li>Must include at least one <strong>number</strong> (0-9)</li>
+                                            <li>Must be different from your current password</li>
+                                        </ul>
                                     </div>
                                 </div>
                             </div>

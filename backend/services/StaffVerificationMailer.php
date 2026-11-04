@@ -7,14 +7,16 @@ final class StaffVerificationMailer
     {
         $autoload = __DIR__ . '/../../vendor/autoload.php';
         if (!is_file($autoload)) {
-            throw new RuntimeException('PHPMailer is not installed. Run composer install before sending verification emails.');
+            throw new RuntimeException('PHPMailer is not installed.');
         }
         require_once $autoload;
 
-        $smtpUser = getenv('GMAIL_SMTP_USERNAME');
-        $smtpPassword = getenv('GMAIL_SMTP_APP_PASSWORD');
-        if (!is_string($smtpUser) || $smtpUser === '' || !is_string($smtpPassword) || $smtpPassword === '') {
-            throw new RuntimeException('Gmail SMTP credentials are not configured.');
+        $smtpUser = $this->environment('GMAIL_SMTP_USERNAME');
+        $smtpPassword = $this->environment('GMAIL_SMTP_APP_PASSWORD');
+        if ($smtpUser === '' || $smtpPassword === '') {
+            $link = $this->verificationLink($token);
+            $this->logMessage("Gmail SMTP not configured. Account verification link for {$username} ({$email}): {$link}");
+            return;
         }
 
         $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
@@ -27,6 +29,15 @@ final class StaffVerificationMailer
         $mail->Port = 587;
         $mail->Timeout = 15;
         $mail->CharSet = 'UTF-8';
+
+        $mail->SMTPOptions = [
+            'ssl' => [
+                'verify_peer' => true,
+                'verify_peer_name' => true,
+                'allow_self_signed' => true,
+            ],
+        ];
+
         $mail->setFrom($smtpUser, 'Barangay Tumana Portal');
         $mail->addAddress($email, $firstName);
         $mail->isHTML(true);
@@ -43,14 +54,30 @@ final class StaffVerificationMailer
         $mail->AltBody = "Hello {$firstName},\n\nYour {$role} staff account has been created. Your username is {$username}.\n\n"
             . "Verify your email and set your password within 24 hours:\n{$link}";
         $mail->send();
+        $this->logMessage("Verification email sent via Gmail SMTP to {$email} for user {$username}.");
     }
 
     private function verificationLink(string $token): string
     {
-        $configured = getenv('AGAP_APP_URL');
+        $configured = $this->environment('AGAP_APP_URL');
         $baseUrl = is_string($configured) && filter_var($configured, FILTER_VALIDATE_URL)
             ? rtrim($configured, '/')
             : 'http://localhost/AGAP';
         return $baseUrl . '/verify-email?token=' . rawurlencode($token);
+    }
+
+    private function environment(string $name): string
+    {
+        $val = getenv($name);
+        if (is_string($val) && $val !== '') return $val;
+        $val = $_ENV[$name] ?? ($_SERVER[$name] ?? '');
+        return is_string($val) ? trim($val) : '';
+    }
+
+    private function logMessage(string $msg): void
+    {
+        $logDir = dirname(__DIR__, 2) . '/storage/logs';
+        if (!is_dir($logDir)) @mkdir($logDir, 0777, true);
+        @file_put_contents($logDir . '/mail.log', '[' . date('Y-m-d H:i:s') . '] ' . $msg . "\n", FILE_APPEND);
     }
 }

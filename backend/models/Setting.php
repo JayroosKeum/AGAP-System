@@ -426,8 +426,12 @@ class Setting
      */
     public function updateUserPassword(int $userId, string $currentPassword, string $newPassword): array
     {
-        if (strlen($newPassword) < 8) {
-            return ['success' => false, 'message' => 'New password must be at least 8 characters long.'];
+        if (strlen($newPassword) < 12 || !preg_match('/[a-z]/', $newPassword) || !preg_match('/[A-Z]/', $newPassword) || !preg_match('/\d/', $newPassword)) {
+            return ['success' => false, 'message' => 'Use at least 12 characters with uppercase, lowercase, and a number.'];
+        }
+
+        if ($currentPassword === $newPassword) {
+            return ['success' => false, 'message' => 'Choose a password different from your current password.'];
         }
 
         $stmt = $this->conn->prepare("SELECT password_hash FROM users WHERE user_id = ? LIMIT 1");
@@ -435,14 +439,14 @@ class Setting
         $currentHash = $stmt->fetchColumn();
 
         if (!$currentHash || !password_verify($currentPassword, (string)$currentHash)) {
-            return ['success' => false, 'message' => 'Current password entered is incorrect.'];
+            return ['success' => false, 'message' => 'Your current password is incorrect.'];
         }
 
         $newHash = password_hash($newPassword, PASSWORD_DEFAULT);
         $upStmt = $this->conn->prepare("UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?");
         $upStmt->execute([$newHash, $userId]);
 
-        return ['success' => true, 'message' => 'Password has been updated successfully.'];
+        return ['success' => true, 'message' => 'Password updated successfully.'];
     }
 
     private function formatBytes(int $bytes): string

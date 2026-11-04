@@ -190,6 +190,16 @@ class User {
         }
     }
 
+    public function hasValidPasswordResetToken(string $tokenHash): bool
+    {
+        $stmt = $this->db->prepare(
+            'SELECT 1 FROM password_reset_tokens
+             WHERE token_hash = ? AND used_at IS NULL AND expires_at >= NOW() LIMIT 1'
+        );
+        $stmt->execute([$tokenHash]);
+        return (bool) $stmt->fetchColumn();
+    }
+
     public function getAll(): array
     {
         $stmt = $this->db->query('SELECT u.user_id, u.first_name, u.last_name, u.username, u.email, u.contact_no, u.role_id, u.status, r.role_name FROM users u INNER JOIN roles r ON r.role_id = u.role_id ORDER BY u.last_name, u.first_name');
