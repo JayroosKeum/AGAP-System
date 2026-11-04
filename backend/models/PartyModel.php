@@ -304,8 +304,10 @@ class PartyModel
             INNER JOIN complaints c ON c.complaint_id = cp.complaint_id
             LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
             WHERE cp.resident_id = ?
-              AND c.status NOT IN ('Archived', 'Dismissed')
-              AND (cs.case_status IS NULL OR cs.case_status NOT IN ('Archived', 'Dismissed', 'Settled', 'DISMISSED_BARRED'))
+              AND c.status NOT IN ('Archived', 'Dismissed', 'Settled', 'Resolved')
+              AND c.status NOT LIKE 'Dismissed%'
+              AND c.status NOT LIKE 'Settled%'
+              AND (cs.case_status IS NULL OR (cs.case_status NOT IN ('Archived', 'Dismissed', 'Settled', 'DISMISSED_BARRED') AND cs.case_status NOT LIKE 'Dismissed%' AND cs.case_status NOT LIKE 'Settled%'))
         ";
         $params = [$residentId];
 

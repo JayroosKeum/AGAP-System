@@ -563,7 +563,7 @@ async function saveKpLiveTermsToDatabase() {
         if (currentKpLiveMeta.complaint_id) fd.append('complaint_id', String(currentKpLiveMeta.complaint_id));
         fd.append('agreement_details', terms);
 
-        const res = await fetch('../../../backend/api/cases/index.php', {
+        const res = await fetch('../../../backend/api/settlements/save.php', {
             method: 'POST',
             body: fd,
             credentials: 'same-origin'

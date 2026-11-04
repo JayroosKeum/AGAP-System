@@ -28,10 +28,24 @@ class I18nManager {
      */
     async loadDictionaries() {
         try {
-            const [tlRes, enRes] = await Promise.all([
-                fetch('../../lang/tl/landing.json').catch(() => null),
-                fetch('../../lang/en/landing.json').catch(() => null)
+            const getLangBase = () => {
+                const match = window.location.pathname.match(/^(.*\/frontend\/)/);
+                if (match) return match[1] + 'lang/';
+                return '../../lang/';
+            };
+            const langBase = getLangBase();
+            let [tlRes, enRes] = await Promise.all([
+                fetch(langBase + 'tl/landing.json').catch(() => null),
+                fetch(langBase + 'en/landing.json').catch(() => null)
             ]);
+
+            // Fallback to relative path if dynamic match failed
+            if ((!tlRes || !tlRes.ok) && langBase !== '../../lang/') {
+                [tlRes, enRes] = await Promise.all([
+                    fetch('../../lang/tl/landing.json').catch(() => null),
+                    fetch('../../lang/en/landing.json').catch(() => null)
+                ]);
+            }
 
             if (tlRes && tlRes.ok) {
                 this.dictionaries.tl = await tlRes.json();

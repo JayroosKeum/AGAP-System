@@ -63,29 +63,33 @@ class LuponDashboardController
      */
     public function getMemberDutySchedule(int $userId): array
     {
-        $stmt = $this->conn->prepare("
-            SELECT id, user_id, duty_day, start_time, end_time, notes, is_active
-            FROM lupon_duty_schedules
-            WHERE user_id = ? AND is_active = 1
-            LIMIT 1
-        ");
-        $stmt->execute([$userId]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        try {
+            $stmt = $this->conn->prepare("
+                SELECT id, user_id, duty_day, start_time, end_time, notes, is_active
+                FROM lupon_duty_schedules
+                WHERE user_id = ? AND is_active = 1
+                LIMIT 1
+            ");
+            $stmt->execute([$userId]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if (!$row) {
-            // Provide sensible defaults: Wednesday Team
-            return [
-                'id' => 0,
-                'user_id' => $userId,
-                'duty_day' => 'Wednesday',
-                'start_time' => '08:00:00',
-                'end_time' => '17:00:00',
-                'notes' => 'Wednesday Conciliation Team (Regular Duty)',
-                'is_active' => 1
-            ];
+            if ($row) {
+                return $row;
+            }
+        } catch (PDOException $e) {
+            error_log("Failed to query lupon_duty_schedules: " . $e->getMessage());
         }
 
-        return $row;
+        // Provide sensible defaults: Wednesday Team
+        return [
+            'id' => 0,
+            'user_id' => $userId,
+            'duty_day' => 'Wednesday',
+            'start_time' => '08:00:00',
+            'end_time' => '17:00:00',
+            'notes' => 'Wednesday Conciliation Team (Regular Duty)',
+            'is_active' => 1
+        ];
     }
 
     /**

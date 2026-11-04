@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once __DIR__ . '/../../controllers/ServerDashboardController.php';
 
 header('Content-Type: application/json; charset=utf-8');

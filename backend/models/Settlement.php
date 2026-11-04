@@ -226,8 +226,11 @@ class Settlement
         $complianceDueDate = !empty($data['compliance_due_date']) ? date('Y-m-d', strtotime($data['compliance_due_date'])) : null;
         $complianceStatus = in_array($data['compliance_status'] ?? '', ['Pending', 'Partially Paid', 'Fully Paid', 'Overdue', 'Breached', 'Complied', 'Violated'], true) ? $data['compliance_status'] : 'Pending';
 
+        $isNested = $this->conn->inTransaction();
         try {
-            $this->conn->beginTransaction();
+            if (!$isNested) {
+                $this->conn->beginTransaction();
+            }
 
             $stmt = $this->conn->prepare("
                 INSERT INTO settlements (
@@ -333,7 +336,9 @@ class Settlement
                 }
             }
 
-            $this->conn->commit();
+            if (!$isNested) {
+                $this->conn->commit();
+            }
             return [
                 'success' => true,
                 'message' => 'Amicable settlement recorded successfully.',
@@ -341,7 +346,7 @@ class Settlement
                 'repudiation_deadline' => $repudiationDeadline,
             ];
         } catch (Throwable $e) {
-            if ($this->conn->inTransaction()) {
+            if (!$isNested && $this->conn->inTransaction()) {
                 $this->conn->rollBack();
             }
             return ['success' => false, 'message' => 'Failed to save settlement: ' . $e->getMessage()];
@@ -353,8 +358,11 @@ class Settlement
      */
     public function recordInstallmentPayment(int $installmentId, array $data, int $actorUserId): array
     {
+        $isNested = $this->conn->inTransaction();
         try {
-            $this->conn->beginTransaction();
+            if (!$isNested) {
+                $this->conn->beginTransaction();
+            }
 
             $stmt = $this->conn->prepare('SELECT * FROM settlement_installments WHERE installment_id = ? FOR UPDATE');
             $stmt->execute([$installmentId]);
@@ -462,8 +470,11 @@ class Settlement
             ];
         }
 
+        $isNested = $this->conn->inTransaction();
         try {
-            $this->conn->beginTransaction();
+            if (!$isNested) {
+                $this->conn->beginTransaction();
+            }
 
             $docPath = trim((string) ($data['supporting_document_path'] ?? ''));
 
@@ -571,8 +582,11 @@ class Settlement
             return ['success' => false, 'message' => 'Please provide the violated obligation, required remedy/amount, and filing party.'];
         }
 
+        $isNested = $this->conn->inTransaction();
         try {
-            $this->conn->beginTransaction();
+            if (!$isNested) {
+                $this->conn->beginTransaction();
+            }
 
             $ins = $this->conn->prepare("
                 INSERT INTO settlement_executions (
@@ -634,8 +648,11 @@ class Settlement
             return ['success' => false, 'message' => 'Invalid execution status.'];
         }
 
+        $isNested = $this->conn->inTransaction();
         try {
-            $this->conn->beginTransaction();
+            if (!$isNested) {
+                $this->conn->beginTransaction();
+            }
 
             $stmt = $this->conn->prepare('SELECT * FROM settlement_executions WHERE execution_id = ?');
             $stmt->execute([$executionId]);

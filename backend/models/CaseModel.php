@@ -310,8 +310,11 @@ class CaseModel
             return false;
         }
 
+        $isNested = $this->conn->inTransaction();
         try {
-            $this->conn->beginTransaction();
+            if (!$isNested) {
+                $this->conn->beginTransaction();
+            }
             $stmt = $this->conn->prepare("
             INSERT INTO cases
             (
@@ -360,10 +363,12 @@ class CaseModel
                 error_log('Failed to register Next-Working-Day Summons SLA: ' . $sE->getMessage());
             }
 
-            $this->conn->commit();
+            if (!$isNested) {
+                $this->conn->commit();
+            }
             return true;
         } catch (Exception $e) {
-            if ($this->conn->inTransaction()) {
+            if (!$isNested && $this->conn->inTransaction()) {
                 $this->conn->rollBack();
             }
 
@@ -617,8 +622,11 @@ class CaseModel
         }
 
         $teamUpdated = false;
+        $isNested = $this->conn->inTransaction();
         try {
-            $this->conn->beginTransaction();
+            if (!$isNested) {
+                $this->conn->beginTransaction();
+            }
             $caseQuery = $this->conn->prepare('SELECT case_id, case_status FROM cases WHERE case_id = ? FOR UPDATE');
             $caseQuery->execute([$caseId]);
             $currentCase = $caseQuery->fetch(PDO::FETCH_ASSOC);
@@ -684,16 +692,18 @@ class CaseModel
                 $this->syncPangkatTeam((int) $caseId, $team);
             }
 
-            $this->conn->commit();
+            if (!$isNested) {
+                $this->conn->commit();
+            }
             return [
                 'success' => true,
                 'message' => $teamUpdated ? 'Case and Lupon team updated successfully.' : 'Case updated successfully.'
             ];
         } catch (InvalidArgumentException $exception) {
-            if ($this->conn->inTransaction()) $this->conn->rollBack();
+            if (!$isNested && $this->conn->inTransaction()) $this->conn->rollBack();
             return ['success' => false, 'message' => $exception->getMessage()];
         } catch (Throwable $exception) {
-            if ($this->conn->inTransaction()) $this->conn->rollBack();
+            if (!$isNested && $this->conn->inTransaction()) $this->conn->rollBack();
             error_log($exception->getMessage());
             return ['success' => false, 'message' => 'Unable to update the case. Please try again.'];
         }
