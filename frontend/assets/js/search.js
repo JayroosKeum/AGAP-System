@@ -685,7 +685,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const caseType = String(row.case_type || 'Civil');
         const caseTypeClass = caseType.toLowerCase() === 'criminal' ? 'badge-type-criminal' : 'badge-type-civil';
 
-        const isPaanyaya = (row.status === 'Pre-Docketed (Paanyaya)' || row.lifecycle_status === 'Paanyaya' || (Array.isArray(row.status_labels) && row.status_labels.some(l => String(l).includes('Paanyaya'))) || (!row.case_id && String(row.complaint_number || row.case_number || '').startsWith('P-')));
+        const isPaanyaya = false;
 
         // 1. Case No.
         let caseNumberHtml;
@@ -780,7 +780,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (row.lifecycle_status && row.lifecycle_status !== 'Resolution / Closed') {
                 labelsToRender = [row.lifecycle_status];
             } else if (!row.case_id || isPaanyaya) {
-                labelsToRender = ['1st Paanyaya'];
+                labelsToRender = ['1st Mediation'];
             } else {
                 labelsToRender = ['1st Mediation'];
             }

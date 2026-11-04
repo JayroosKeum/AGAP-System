@@ -32,6 +32,11 @@ if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESS
 
 $controller = new ComplaintController();
 $result = $controller->store($_POST, $_FILES);
+$result['message'] = trim((string)($result['message'] ?? '')) ?: (
+    !empty($result['success'])
+        ? 'Complaint saved successfully.'
+        : 'Unable to save the complaint.'
+);
 
 if ($isJson) {
     header('Content-Type: application/json; charset=utf-8');
@@ -52,18 +57,11 @@ if (!$result['success']) {
 }
 
 if (!empty($result['complaint_id'])) {
-    $escPId = filter_input(INPUT_POST, 'escalated_from_paanyaya_id', FILTER_VALIDATE_INT);
-    if ($escPId > 0) {
-        try {
-            require_once __DIR__ . '/../../config/database.php';
-            $dbConn = (new Database())->connect();
-            $updPaanyaya = $dbConn->prepare("UPDATE paanyayas SET status = 'Escalated', complaint_id = ?, escalated_to_complaint_id = ?, updated_at = NOW() WHERE paanyaya_id = ?");
-            $updPaanyaya->execute([(int)$result['complaint_id'], (int)$result['complaint_id'], $escPId]);
-        } catch (Throwable $pe) {
-            error_log('Failed to update paanyaya status on escalation: ' . $pe->getMessage());
-        }
+    if (!empty($result['escalated_from_paanyaya'])) {
+        header('Location: ../../../frontend/pages/complaints/complaint-details.php?id=' . (int)$result['complaint_id'] . '&tab=mediation');
+        exit;
     }
-    header('Location: ../../../frontend/pages/complaints/complaint-details.php?id=' . (int)$result['complaint_id'] . '&tab=paanyaya&preview=1');
+    header('Location: ../../../frontend/pages/complaints/complaint-details.php?id=' . (int)$result['complaint_id'] . '&tab=mediation');
     exit;
 }
 

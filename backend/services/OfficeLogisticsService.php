@@ -197,8 +197,10 @@ class OfficeLogisticsService
                 ];
             }
 
-            $medHoursStart = $this->getSetting('mediation_hours_start', '08:00');
-            $medHoursEnd = $this->getSetting('mediation_hours_end', '17:00');
+            $medHoursStart = $this->getSetting('mediation_hours_start', '13:00');
+            $medHoursEnd = $this->getSetting('mediation_hours_end', '16:30');
+            $workHoursEnd = $this->getSetting('working_hours_end', '17:00');
+            $medMaxEndStr = max($workHoursEnd, date('H:i', strtotime($medHoursEnd . " +{$maxDur} minutes")));
             $timeStr = $start->format('H:i');
             $endTimeStr = $end->format('H:i');
 
@@ -210,7 +212,7 @@ class OfficeLogisticsService
                     'message' => "Mediation hearings must be scheduled during the designated mediation session window ({$startFmt} – {$endFmt})."
                 ];
             }
-            if ($endTimeStr > $medHoursEnd) {
+            if ($endTimeStr > $medMaxEndStr) {
                 $endFmt = date('g:i A', strtotime($medHoursEnd));
                 return [
                     'valid' => false,

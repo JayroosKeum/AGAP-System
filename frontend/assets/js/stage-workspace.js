@@ -5219,7 +5219,19 @@ async function openScheduleModal(hearingId = null, targetStageType = null) {
         const medVenue = window.AGAP_SETTINGS?.mediation_venue || 'Lupon Court Room';
         const maxCap = window.AGAP_SETTINGS?.daily_capacity || 8;
         if (dateLabelEl) dateLabelEl.textContent = `Mediation Date (${medLabel})`;
-        if (timeLabelEl) timeLabelEl.textContent = `Target Call Time (8:00 AM - 5:00 PM)`;
+        const fmt12 = (t) => { const p = String(t || '00:00').split(':'); const h = parseInt(p[0], 10) || 0; const m = parseInt(p[1], 10) || 0; return `${(h % 12) || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`; };
+        const mStart = (window.AGAP_SETTINGS?.mediation_hours_start || '13:00').slice(0, 5);
+        const mEnd = (window.AGAP_SETTINGS?.mediation_hours_end || '16:30').slice(0, 5);
+        const mDur = Number(window.AGAP_SETTINGS?.mediation_default_duration_min || 45);
+        const mMaxDur = Number(window.AGAP_SETTINGS?.mediation_max_duration_min || 60);
+        if (timeLabelEl) timeLabelEl.textContent = `Target Call Time (${fmt12(mStart)} - ${fmt12(mEnd)})`;
+        const timeHintEl = document.getElementById('schedTimeHint');
+        if (timeHintEl) timeHintEl.textContent = `Designated Mediation session window: ${fmt12(mStart)} – ${fmt12(mEnd)} (${medLabel}). Standard duration: ${mDur} mins (max ${mMaxDur} mins).`;
+        if (timeInput) {
+            timeInput.min = mStart;
+            timeInput.max = mEnd;
+            if (!timeInput.value || timeInput.value < mStart || timeInput.value > mEnd) timeInput.value = mStart;
+        }
         const headerBadge = document.getElementById('schedHeaderBadge');
         if (headerBadge) {
             headerBadge.textContent = `${medLabel} · ${medVenue} (Max ${maxCap}/Day)`;
@@ -5267,7 +5279,17 @@ async function openScheduleModal(hearingId = null, targetStageType = null) {
 
         if (timeHint) {
 
-            timeHint.textContent = 'Regular Conciliation hours: Mon/Wed/Thu/Fri 8:00 AM – 12:00 PM & 1:00 PM – 5:00 PM; Tuesday 8:00 AM – 12:00 PM (Morning only). Standard duration is 1 hour.';
+            const cDur = Number(window.AGAP_SETTINGS?.conciliation_default_duration_min || 60);
+            const cMaxDur = Number(window.AGAP_SETTINGS?.conciliation_max_duration_min || 90);
+            const wStart = (window.AGAP_SETTINGS?.working_hours_start || '08:00').slice(0, 5);
+            const wEnd = (window.AGAP_SETTINGS?.working_hours_end || '17:00').slice(0, 5);
+            const fmt12 = (t) => { const p = String(t || '00:00').split(':'); const h = parseInt(p[0], 10) || 0; const m = parseInt(p[1], 10) || 0; return `${(h % 12) || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`; };
+            timeHint.textContent = `Regular Conciliation hours: ${fmt12(wStart)} – ${fmt12(wEnd)} (excluding 12–1 PM lunch & designated Mediation window). Standard duration: ${cDur} mins (max ${cMaxDur} mins).`;
+            if (timeInput) {
+                timeInput.min = wStart;
+                timeInput.max = wEnd;
+                if (!timeInput.value || timeInput.value < wStart || timeInput.value > wEnd) timeInput.value = wStart;
+            }
 
         }
 
@@ -5321,7 +5343,10 @@ async function openScheduleModal(hearingId = null, targetStageType = null) {
 
         if (json.window) {
 
-            currentWsWindowMeta = json.window;
+            currentWsWindowMeta = json.window; window.currentWsWindowMeta = json.window;
+            if (json.window.settings) {
+                window.AGAP_SETTINGS = Object.assign({}, window.AGAP_SETTINGS || {}, json.window.settings);
+            }
 
             let targetDate = dateInput ? dateInput.value : '';
 
@@ -5334,7 +5359,7 @@ async function openScheduleModal(hearingId = null, targetStageType = null) {
                         const parts = d.date.split('-');
                         const dt = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
                         const isMedDay = allowedNums.includes(dt.getDay()) || allowedDays.includes(d.day_name);
-                        return isMedDay && !d.is_past && !d.is_fully_booked && !d.is_outside_window;
+                        return isMedDay && !d.is_past && !d.is_fully_booked;
                     }
                     return !d.is_past && !d.is_outside_window && !d.is_fully_booked && !d.is_weekend && !d.is_non_working_day;
                 });
@@ -5660,7 +5685,10 @@ async function checkWorkspaceScheduleConflict() {
 
         if (result.window) {
 
-            currentWsWindowMeta = result.window;
+            currentWsWindowMeta = result.window; window.currentWsWindowMeta = result.window;
+            if (typeof window.renderTimeSlotsPillGrid === 'function') {
+                window.renderTimeSlotsPillGrid('schedTimeSlotsGrid', 'schedTime', result.scheduled_mediations || [], typeVal, dateVal, () => checkWorkspaceScheduleConflict());
+            }
 
             renderWorkspaceVisualDatePicker(result.window, dateVal);
 
@@ -6063,7 +6091,10 @@ async function submitSchedule(e) {
 
     payload.append('hearing_date', `${dateVal} ${timeVal}:00`);
 
-    payload.append('duration_minutes', '60');
+    const defaultDurMin = (typeVal === 'Conciliation')
+        ? Number(window.AGAP_SETTINGS?.conciliation_default_duration_min || 60)
+        : Number(window.AGAP_SETTINGS?.mediation_default_duration_min || 45);
+    payload.append('duration_minutes', String(defaultDurMin));
 
     payload.append('venue', venueVal || 'Lupon Court Room');
 

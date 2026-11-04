@@ -245,16 +245,52 @@ class Complaint
                 trim((string) $data['narrative']),
                 trim((string) ($data['additional_details'] ?? '')) ?: null,
                 trim((string) ($data['requested_resolution'] ?? '')) ?: null,
-                'Pre-Docketed (Paanyaya)',
+                'Mediation',
                 'No Scan Uploaded',
                 0,
                 $_SESSION['user_id'] ?? $data['clerk_id'] ?? $data['encoded_by'] ?? 1
             ]);
 
             $complaintId = (int) $this->conn->lastInsertId();
-            $complaintNumber = self::generatePaanyayaCaseNumber($complaintId);
+            require_once __DIR__ . '/CaseModel.php';
+            $docketDate = date('Y-m-d');
+            $caseInsertStmt = $this->conn->prepare("
+                INSERT INTO cases (complaint_id, case_type, case_status, docket_date)
+                VALUES (?, ?, 'Mediation', ?)
+            ");
+            $caseInsertStmt->execute([
+                $complaintId,
+                in_array($caseType, ['Civil', 'Criminal', 'Others'], true) ? $caseType : 'Others',
+                $docketDate
+            ]);
+            $caseId = (int) $this->conn->lastInsertId();
+            $complaintNumber = CaseModel::generateCaseNumber($this->conn, $docketDate, $caseId);
+            $this->conn->prepare('UPDATE cases SET case_number = ? WHERE case_id = ?')
+                ->execute([$complaintNumber, $caseId]);
+            try {
+                $adminStmt = $this->conn->prepare("
+                    SELECT u.user_id FROM users u
+                    JOIN roles r ON u.role_id = r.role_id
+                    WHERE r.role_name = 'Administrator' AND u.status = 'Active'
+                    ORDER BY u.user_id ASC LIMIT 1
+                ");
+                $adminStmt->execute();
+                $adminUserId = (int) $adminStmt->fetchColumn();
+                if ($adminUserId > 0) {
+                    $this->conn->prepare("INSERT INTO case_assignments (case_id, user_id, role_in_case) VALUES (?, ?, 'Head')")
+                        ->execute([$caseId, $adminUserId]);
+                }
+            } catch (Throwable $ae) {
+                error_log('Could not auto-assign Administrator on complaint creation: ' . $ae->getMessage());
+            }
+            try {
+                require_once __DIR__ . '/CaseStage.php';
+                (new CaseStage($this->conn))->startStage($caseId, 'Mediation');
+            } catch (Throwable $se) {
+                error_log('Could not initialize Mediation case_stages row: ' . $se->getMessage());
+            }
             $numberStatement = $this->conn->prepare(
-                'UPDATE complaints SET complaint_number = ?, paanyaya_attempt_count = 1, max_paanyaya_reached = 0, resolved_without_docketing = 0 WHERE complaint_id = ?'
+                'UPDATE complaints SET complaint_number = ?, status = \'Mediation\', paanyaya_attempt_count = 0, max_paanyaya_reached = 0, resolved_without_docketing = 0 WHERE complaint_id = ?'
             );
             $numberStatement->execute([$complaintNumber, $complaintId]);
             $this->applyMapLocation($complaintId, $data);
@@ -264,11 +300,11 @@ class Complaint
                 require_once __DIR__ . '/../services/NotificationService.php';
                 $notifService = new NotificationService();
                 $cNum = $this->conn->query("SELECT complaint_number FROM complaints WHERE complaint_id = {$complaintId}")->fetchColumn() ?: "CMP-#{$complaintId}";
-                $actionUrl = "../complaints/complaint-details.php?id=" . (int) $complaintId;
+                $actionUrl = "../complaints/complaint-details.php?id=" . (int) $complaintId . "&tab=mediation";
                 $notifService->notifyRoles(
                     ['Administrator', 'Lupon Clerk'],
                     'New Complaint Filed',
-                    "New complaint {$cNum} (" . ($data['complaint_title'] ?? 'General Dispute') . ") has been filed and initiated into Pre-Docketing (Paanyaya).",
+                    "New complaint {$cNum} (" . ($data['complaint_title'] ?? 'General Dispute') . ") has been officially filed and placed into Mediation (Stage 1).",
                     $_SESSION['user_id'] ?? null,
                     'info',
                     $actionUrl
@@ -280,7 +316,10 @@ class Complaint
             $this->conn->commit();
             return [
                 'success' => true,
-                'message' => 'Complaint submitted and placed into Pre-Docketing (Paanyaya) stage.',
+                'message' => 'Official complaint filed and docketed into Mediation (Stage 1).',
+                'case_id' => $caseId ?? null,
+                'case_number' => $complaintNumber,
+                'status' => 'Mediation',
                 'complaint_id' => $complaintId,
                 'complaint_number' => $complaintNumber,
                 'is_draft' => false
@@ -439,11 +478,11 @@ class Complaint
                     require_once __DIR__ . '/../services/NotificationService.php';
                     $notifService = new NotificationService();
                     $cNum = $this->conn->query("SELECT complaint_number FROM complaints WHERE complaint_id = {$complaintId}")->fetchColumn() ?: "CMP-#{$complaintId}";
-                    $actionUrl = "../complaints/complaint-details.php?id=" . (int) $complaintId;
+                    $actionUrl = "../complaints/complaint-details.php?id=" . (int) $complaintId . "&tab=mediation";
                     $notifService->notifyRoles(
                         ['Administrator', 'Lupon Clerk'],
                         'New Complaint Filed',
-                        "New complaint {$cNum} (" . ($data['complaint_title'] ?? 'General Dispute') . ") has been filed and initiated into Pre-Docketing (Paanyaya).",
+                        "New complaint {$cNum} (" . ($data['complaint_title'] ?? 'General Dispute') . ") has been officially filed and placed into Mediation (Stage 1).",
                         $_SESSION['user_id'] ?? null,
                         'info',
                         $actionUrl

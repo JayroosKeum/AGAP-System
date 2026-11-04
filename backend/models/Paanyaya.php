@@ -35,6 +35,39 @@ class Paanyaya
         $this->conn = $conn ?: (new Database())->connect();
         $this->audit = new AuditService();
         $this->pdf = new PDFService($this->conn);
+        $this->ensurePartyColumns();
+    }
+
+    private function ensurePartyColumns(): void
+    {
+        try {
+            $cols = $this->conn->query('DESCRIBE paanyayas')->fetchAll(PDO::FETCH_COLUMN);
+            $needed = [
+                'complainant_resident_id' => 'INT NULL',
+                'complainant_address' => 'VARCHAR(255) NULL',
+                'complainant_purok' => 'VARCHAR(100) NULL',
+                'complainant_contact_no' => 'VARCHAR(50) NULL',
+                'complainant_email' => 'VARCHAR(150) NULL',
+                'invitee_resident_id' => 'INT NULL',
+                'invitee_address' => 'VARCHAR(255) NULL',
+                'invitee_purok' => 'VARCHAR(100) NULL',
+                'invitee_contact_no' => 'VARCHAR(50) NULL',
+                'invitee_email' => 'VARCHAR(150) NULL',
+                'complainant_latitude' => 'DECIMAL(10,7) NULL',
+                'complainant_longitude' => 'DECIMAL(10,7) NULL',
+                'invitee_latitude' => 'DECIMAL(10,7) NULL',
+                'invitee_longitude' => 'DECIMAL(10,7) NULL',
+                'location_latitude' => 'DECIMAL(10,7) NULL',
+                'location_longitude' => 'DECIMAL(10,7) NULL',
+            ];
+            foreach ($needed as $col => $def) {
+                if (!in_array($col, $cols, true)) {
+                    $this->conn->exec("ALTER TABLE paanyayas ADD COLUMN {$col} {$def}");
+                }
+            }
+        } catch (Throwable $e) {
+            error_log('Paanyaya::ensurePartyColumns warning: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -154,6 +187,37 @@ class Paanyaya
 
         $hasESignature = isset($data['has_e_signature']) ? (int) ((bool) $data['has_e_signature']) : 1;
 
+        $compResidentId = filter_var($data['complainant_resident_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
+        $compAddress = trim((string) ($data['complainant_address'] ?? ''));
+        $compPurok = trim((string) ($data['complainant_purok'] ?? ''));
+        $compContact = trim((string) ($data['complainant_contact_no'] ?? ''));
+        $compEmail = trim((string) ($data['complainant_email'] ?? ''));
+
+        $invResidentId = filter_var($data['invitee_resident_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
+        $invAddress = trim((string) ($data['invitee_address'] ?? ''));
+        $invPurok = trim((string) ($data['invitee_purok'] ?? ''));
+        $invContact = trim((string) ($data['invitee_contact_no'] ?? ''));
+        $invEmail = trim((string) ($data['invitee_email'] ?? ''));
+        $salaysayCheck = trim((string) ($data['salaysay'] ?? ''));
+
+        if ($complaintId <= 0 && !empty($data['require_party_details'])) {
+            if ($complainantName === '') {
+                return ['success' => false, 'message' => 'Please enter the full name of the Complainant (Nagpaanyaya).'];
+            }
+            if ($compAddress === '' && $compPurok === '') {
+                return ['success' => false, 'message' => 'Please provide the street address or Purok of the Complainant (Nagpaanyaya).'];
+            }
+            if ($inviteeName === '' || $inviteeName === 'Inanyayahang Residente') {
+                return ['success' => false, 'message' => 'Please enter the full name of the Person Being Invited (Inanyayahan).'];
+            }
+            if ($invAddress === '' && $invPurok === '') {
+                return ['success' => false, 'message' => 'Please provide the street address or Purok of the Person Being Invited (Inanyayahan) for invitation delivery.'];
+            }
+            if ($salaysayCheck === '') {
+                return ['success' => false, 'message' => 'Please provide the Salaysay (Statement / Dispute Narrative) for the Paanyaya invitation.'];
+            }
+        }
+
         try {
             $this->conn->beginTransaction();
 
@@ -178,6 +242,49 @@ class Paanyaya
                 $userId
             ]);
             $paanyayaId = (int) $this->conn->lastInsertId();
+            try {
+                $updDetails = $this->conn->prepare("
+                    UPDATE paanyayas
+                    SET complainant_resident_id = ?,
+                        complainant_address = ?,
+                        complainant_purok = ?,
+                        complainant_contact_no = ?,
+                        complainant_email = ?,
+                        invitee_resident_id = ?,
+                        invitee_address = ?,
+                        invitee_purok = ?,
+                        invitee_contact_no = ?,
+                        invitee_email = ?,
+                        complainant_latitude = ?,
+                        complainant_longitude = ?,
+                        invitee_latitude = ?,
+                        invitee_longitude = ?,
+                        location_latitude = ?,
+                        location_longitude = ?
+                    WHERE paanyaya_id = ?
+                ");
+                $updDetails->execute([
+                    $compResidentId,
+                    $compAddress !== '' ? $compAddress : null,
+                    $compPurok !== '' ? $compPurok : null,
+                    $compContact !== '' ? $compContact : null,
+                    $compEmail !== '' ? $compEmail : null,
+                    $invResidentId,
+                    $invAddress !== '' ? $invAddress : null,
+                    $invPurok !== '' ? $invPurok : null,
+                    $invContact !== '' ? $invContact : null,
+                    $invEmail !== '' ? $invEmail : null,
+                    (isset($data['complainant_latitude']) && $data['complainant_latitude'] !== '' && is_numeric($data['complainant_latitude'])) ? (float) $data['complainant_latitude'] : null,
+                    (isset($data['complainant_longitude']) && $data['complainant_longitude'] !== '' && is_numeric($data['complainant_longitude'])) ? (float) $data['complainant_longitude'] : null,
+                    (isset($data['invitee_latitude']) && $data['invitee_latitude'] !== '' && is_numeric($data['invitee_latitude'])) ? (float) $data['invitee_latitude'] : null,
+                    (isset($data['invitee_longitude']) && $data['invitee_longitude'] !== '' && is_numeric($data['invitee_longitude'])) ? (float) $data['invitee_longitude'] : null,
+                    (isset($data['location_latitude']) && $data['location_latitude'] !== '' && is_numeric($data['location_latitude'])) ? (float) $data['location_latitude'] : null,
+                    (isset($data['location_longitude']) && $data['location_longitude'] !== '' && is_numeric($data['location_longitude'])) ? (float) $data['location_longitude'] : null,
+                    $paanyayaId
+                ]);
+            } catch (Throwable $detErr) {
+                error_log('Could not update extra party fields on paanyayas: ' . $detErr->getMessage());
+            }
 
             $sessionId = null;
             $attemptNumber = 1;
@@ -261,6 +368,10 @@ class Paanyaya
                     'paanyaya_id' => $paanyayaId,
                     'invitee_name' => $inviteeName,
                     'complainant_name' => $complainantName,
+                    'complainant_address' => $compAddress,
+                    'complainant_purok' => $compPurok,
+                    'invitee_address' => $invAddress,
+                    'invitee_purok' => $invPurok,
                     'invitation_date' => $scheduledDate,
                     'invitation_time' => $scheduledTime,
                     'venue' => $venue,
@@ -338,7 +449,7 @@ class Paanyaya
                    ) AS invitee_name,
                    TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS scheduled_by_name
             FROM paanyayas p
-            LEFT JOIN complaints c ON c.complaint_id = p.complaint_id
+            LEFT JOIN complaints c ON c.complaint_id = COALESCE(NULLIF(p.complaint_id, 0), p.escalated_to_complaint_id)
             LEFT JOIN users u ON u.user_id = p.scheduled_by
             WHERE 1=1
         ";
@@ -405,7 +516,7 @@ class Paanyaya
                    ) AS invitee_name,
                    TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS scheduled_by_name
             FROM paanyayas p
-            LEFT JOIN complaints c ON c.complaint_id = p.complaint_id
+            LEFT JOIN complaints c ON c.complaint_id = COALESCE(NULLIF(p.complaint_id, 0), p.escalated_to_complaint_id)
             LEFT JOIN users u ON u.user_id = p.scheduled_by
             WHERE p.paanyaya_id = ?
             LIMIT 1
@@ -903,6 +1014,7 @@ class Paanyaya
             if ($existingCase) {
                 $caseId = (int) $existingCase['case_id'];
                 $caseNumber = $existingCase['case_number'];
+                $this->conn->prepare("UPDATE cases SET case_status = 'Mediation' WHERE case_id = ? AND case_status IN ('Docketed', 'Pre-Docketed (Paanyaya)')")->execute([$caseId]);
             } else {
                 // Fetch complaint details to determine case_type
                 $cStmt = $this->conn->prepare('SELECT case_type FROM complaints WHERE complaint_id = ? LIMIT 1');
@@ -927,6 +1039,15 @@ class Paanyaya
                 $newCase = $fetchCase->fetch(PDO::FETCH_ASSOC);
                 $caseId = (int) ($newCase['case_id'] ?? 0);
                 $caseNumber = $newCase['case_number'] ?? '';
+                if ($caseId > 0) {
+                    $this->conn->prepare("UPDATE cases SET case_status = 'Mediation' WHERE case_id = ?")->execute([$caseId]);
+                    try {
+                        require_once __DIR__ . '/CaseStage.php';
+                        (new CaseStage($this->conn))->startStage($caseId, 'Mediation');
+                    } catch (Throwable $se) {
+                        error_log('Could not start Mediation stage on escalation: ' . $se->getMessage());
+                    }
+                }
             }
 
             // 2. Determine 1st Mediation Hearing parameters dynamically based on Office Hours & Session Duration Settings
@@ -958,6 +1079,9 @@ class Paanyaya
             $medDate = !empty($escalationData['mediation_date']) ? trim((string)$escalationData['mediation_date']) : '';
             $medTime = !empty($escalationData['mediation_time']) ? trim((string)$escalationData['mediation_time']) : '';
             $venue = !empty($escalationData['venue']) ? trim((string)$escalationData['venue']) : $venueSetting;
+            $summonsResult = [];
+            $hasExplicitSchedule = ($medDate !== '' && $medTime !== '');
+            if ($hasExplicitSchedule) {
 
             if (!empty($medDate)) {
                 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $medDate)) {
@@ -1072,8 +1196,9 @@ class Paanyaya
 
             // 3. Issue First Summons (Auto-generates KP Form 8 and KP Form 9)
             $summonsResult = $summonsModel->issueFirstSummon($complaintId, $userId ?? 1, $hearingPayload);
+            } // end if ($hasExplicitSchedule)
 
-            if (empty($summonsResult['success'])) {
+            if ($hasExplicitSchedule && empty($summonsResult['success'])) {
                 return [
                     'success' => false,
                     'message' => $summonsResult['message'] ?? 'Failed to issue 1st Mediation summons.'
@@ -1164,7 +1289,7 @@ class Paanyaya
             $this->conn->prepare("UPDATE paanyaya_stages SET status = 'Completed', review_status = 'Approved for Summons', updated_at = CURRENT_TIMESTAMP WHERE complaint_id = ?")->execute([$complaintId]);
 
             if ($userId) {
-                $this->audit->log($userId, "Escalated to Formal Case Docketing: Case #{$caseNumber} assigned with 1st Mediation Summons (KP Forms 7, 8, 9 generated)", 'Complaints', $complaintId);
+                $this->audit->log($userId, "Escalated to Formal Case Docketing: Case #{$caseNumber} assigned and routed to Mediation (Stage 1)", 'Complaints', $complaintId);
             }
 
             try {
@@ -1173,7 +1298,7 @@ class Paanyaya
                 $notifService->notifyRoles(
                     ['Administrator', 'Lupon Clerk'],
                     "Dispute Escalated to Formal Mediation",
-                    "Dispute was escalated to Formal Mediation. Case #{$caseNumber} officially docketed with 1st Mediation hearing on {$medDate} at {$medTime}.",
+                    "Dispute was escalated to Formal Mediation (Stage 1). Case #{$caseNumber} has been officially docketed.",
                     $userId
                 );
             } catch (Throwable $ne) {
@@ -1199,8 +1324,8 @@ class Paanyaya
                 'kp7_generated' => ($kp7Path !== null),
                 'kp8_generated' => ($summonsResult['kp8_document_id'] ?? null) !== null,
                 'kp9_generated' => ($summonsResult['document_id'] ?? null) !== null,
-                'workspace_url' => "../cases/mediation-workspace.php?case_id={$caseId}",
-                'message' => "Formal Docketing complete! Official Case #{$caseNumber} assigned. Dispute escalated to Mediation stage. KP Forms 7, 8, and 9 generated."
+                'workspace_url' => "../complaints/complaint-details.php?id={$complaintId}&tab=mediation",
+                'message' => "Formal Docketing complete! Official Case #{$caseNumber} assigned and routed to Mediation (Stage 1)."
             ];
 
         } catch (Throwable $e) {
@@ -1588,6 +1713,37 @@ class Paanyaya
         $invitationTime = trim((string) ($data['invitation_time'] ?? ''));
         $venue = trim((string) ($data['venue'] ?? 'Tanggapan ng Barangay Tumana'));
         $hasESignature = isset($data['has_e_signature']) ? (int) ((bool) $data['has_e_signature']) : 1;
+
+        $compResidentId = filter_var($data['complainant_resident_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
+        $compAddress = trim((string) ($data['complainant_address'] ?? ''));
+        $compPurok = trim((string) ($data['complainant_purok'] ?? ''));
+        $compContact = trim((string) ($data['complainant_contact_no'] ?? ''));
+        $compEmail = trim((string) ($data['complainant_email'] ?? ''));
+
+        $invResidentId = filter_var($data['invitee_resident_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
+        $invAddress = trim((string) ($data['invitee_address'] ?? ''));
+        $invPurok = trim((string) ($data['invitee_purok'] ?? ''));
+        $invContact = trim((string) ($data['invitee_contact_no'] ?? ''));
+        $invEmail = trim((string) ($data['invitee_email'] ?? ''));
+        $salaysayCheck = trim((string) ($data['salaysay'] ?? ''));
+
+        if ($complaintId <= 0 && !empty($data['require_party_details'])) {
+            if ($complainantName === '') {
+                return ['success' => false, 'message' => 'Please enter the full name of the Complainant (Nagpaanyaya).'];
+            }
+            if ($compAddress === '' && $compPurok === '') {
+                return ['success' => false, 'message' => 'Please provide the street address or Purok of the Complainant (Nagpaanyaya).'];
+            }
+            if ($inviteeName === '' || $inviteeName === 'Inanyayahang Residente') {
+                return ['success' => false, 'message' => 'Please enter the full name of the Person Being Invited (Inanyayahan).'];
+            }
+            if ($invAddress === '' && $invPurok === '') {
+                return ['success' => false, 'message' => 'Please provide the street address or Purok of the Person Being Invited (Inanyayahan) for invitation delivery.'];
+            }
+            if ($salaysayCheck === '') {
+                return ['success' => false, 'message' => 'Please provide the Salaysay (Statement / Dispute Narrative) for the Paanyaya invitation.'];
+            }
+        }
 
         if ($invitationDate === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $invitationDate)) {
             $invitationDate = date('Y-m-d', strtotime('+3 days'));
@@ -2343,6 +2499,21 @@ class Paanyaya
         $dialogueNotes = trim((string)($data['dialogue_notes'] ?? ($paanyaya['dialogue_notes'] ?? '')));
         $action = trim((string)($data['action'] ?? 'save_attendance'));
 
+        $currentStatus = (string)($paanyaya['status'] ?? '');
+        if (in_array($currentStatus, ['Resolved', 'Settled', 'Completed'], true) && in_array($action, ['schedule_second_paanyaya', 'escalate'], true)) {
+            return [
+                'success' => false,
+                'message' => 'Naka-lock ang Paanyaya dahil naresolba na ito sa Kasunduan (Settled).'
+            ];
+        }
+
+        if ($currentStatus === 'Escalated' && in_array($action, ['schedule_second_paanyaya', 'resolve', 'escalate'], true)) {
+            return [
+                'success' => false,
+                'message' => 'Naka-lock ang Paanyaya dahil opisyal na itong nai-akyat sa Mediation.'
+            ];
+        }
+
         // Handle Schedule 2nd Paanyaya
         if ($action === 'schedule_second_paanyaya') {
             return $this->scheduleSecondPaanyaya($paanyayaId, $userId, $data);
@@ -2384,6 +2555,21 @@ class Paanyaya
                 }
 
                 $notes = "Inilipat mula sa Stage 0 (Paanyaya #{$paanyayaId}). Pagdalo: Nagpaanyaya={$compAttended}, Inanyayahan={$invAttended}. " . $dialogueNotes;
+                $this->conn->prepare("
+                    UPDATE paanyaya_sessions
+                    SET session_outcome = 'Impasse_Escalate',
+                        outcome_notes = COALESCE(NULLIF(outcome_notes, ''), ?),
+                        escalated_at = COALESCE(escalated_at, NOW()),
+                        queue_status = 'Concluded',
+                        updated_at = NOW()
+                    WHERE complaint_id = ?
+                ")->execute([$notes, $complaintId]);
+                $this->conn->prepare("
+                    UPDATE complaints
+                    SET paanyaya_1_outcome = COALESCE(NULLIF(paanyaya_1_outcome, ''), 'Impasse_Escalate'),
+                        updated_at = NOW()
+                    WHERE complaint_id = ?
+                ")->execute([$complaintId]);
                 $docketResult = $this->escalateToFormalDocketing($complaintId, $userId, $notes);
 
                 return [
@@ -2512,8 +2698,45 @@ class Paanyaya
                 return (int)$this->conn->lastInsertId();
             };
 
-            $compResidentId = $findOrCreateResident($complainantName);
-            $respResidentId = $findOrCreateResident($inviteeName);
+            $compResidentId = !empty($paanyaya['complainant_resident_id']) ? (int)$paanyaya['complainant_resident_id'] : $findOrCreateResident($complainantName);
+            $respResidentId = !empty($paanyaya['invitee_resident_id']) ? (int)$paanyaya['invitee_resident_id'] : $findOrCreateResident($inviteeName);
+            try {
+                if ($compResidentId > 1 && (!empty($paanyaya['complainant_address']) || !empty($paanyaya['complainant_purok']) || !empty($paanyaya['complainant_contact_no']))) {
+                    $this->conn->prepare("
+                        UPDATE residents
+                        SET address = COALESCE(NULLIF(?, ''), address),
+                            purok = COALESCE(NULLIF(?, ''), purok),
+                            contact_no = COALESCE(NULLIF(?, ''), contact_no),
+                            email = COALESCE(NULLIF(?, ''), email)
+                        WHERE resident_id = ?
+                    ")->execute([
+                        trim((string)($paanyaya['complainant_address'] ?? '')),
+                        trim((string)($paanyaya['complainant_purok'] ?? '')),
+                        trim((string)($paanyaya['complainant_contact_no'] ?? '')),
+                        trim((string)($paanyaya['complainant_email'] ?? '')),
+                        $compResidentId
+                    ]);
+                }
+                if ($respResidentId > 1 && (!empty($paanyaya['invitee_address']) || !empty($paanyaya['invitee_purok']) || !empty($paanyaya['invitee_contact_no']))) {
+                    $this->conn->prepare("
+                        UPDATE residents
+                        SET address = COALESCE(NULLIF(?, ''), address),
+                            purok = COALESCE(NULLIF(?, ''), purok),
+                            contact_no = COALESCE(NULLIF(?, ''), contact_no),
+                            email = COALESCE(NULLIF(?, ''), email)
+                        WHERE resident_id = ?
+                    ")->execute([
+                        trim((string)($paanyaya['invitee_address'] ?? '')),
+                        trim((string)($paanyaya['invitee_purok'] ?? '')),
+                        trim((string)($paanyaya['invitee_contact_no'] ?? '')),
+                        trim((string)($paanyaya['invitee_email'] ?? '')),
+                        $respResidentId
+                    ]);
+                }
+            } catch (Throwable $ruErr) {
+                error_log('Resident sync on escalation warning: ' . $ruErr->getMessage());
+            }
+            // respResidentId resolved above
 
             // 2. Format detailed narrative with attendance history
             $complaintNarrative = $salaysay !== '' ? $salaysay : "Inilipat mula sa Stage 0 (Paanyaya) para sa Pormal na Mediation.";
@@ -2562,7 +2785,28 @@ class Paanyaya
             $insParty->execute([$complaintId, $compResidentId, 'Complainant']);
             $insParty->execute([$complaintId, $respResidentId, 'Respondent']);
 
-            // 5. Update Paanyaya with attendance and link to newly created complaint
+            if (!empty($paanyaya['location_latitude']) && !empty($paanyaya['location_longitude'])) {
+                try {
+                    $locAddr = trim(implode(', ', array_filter([$paanyaya['invitee_address'] ?? '', $paanyaya['invitee_purok'] ?? '', 'Barangay Tumana, Marikina City'])));
+                    $this->conn->prepare("
+                        INSERT INTO complaint_locations (complaint_id, latitude, longitude, address)
+                        VALUES (?, ?, ?, ?)
+                    ")->execute([
+                        $complaintId,
+                        (float) $paanyaya['location_latitude'],
+                        (float) $paanyaya['location_longitude'],
+                        $locAddr !== '' ? $locAddr : 'Barangay Tumana, Marikina City'
+                    ]);
+                } catch (Throwable $locErr) {
+                    error_log('Could not copy Paanyaya pinned location on escalation: ' . $locErr->getMessage());
+                }
+            }
+
+            // 5. Escalation formally concludes the Paanyaya as no agreement.
+            // Preserve that result before linking the new official complaint.
+            $escalationNotes = $dialogueNotes !== ''
+                ? $dialogueNotes
+                : 'No agreement at Paanyaya; escalated to formal Mediation.';
             $updPaanyaya = $this->conn->prepare("
                 UPDATE paanyayas
                 SET status = 'Escalated',
@@ -2582,9 +2826,16 @@ class Paanyaya
                 $compAttended,
                 $invAttended,
                 $salaysay,
-                $dialogueNotes,
+                $escalationNotes,
                 $paanyayaId
             ]);
+
+            $this->conn->prepare("
+                UPDATE complaints
+                SET paanyaya_1_outcome = 'Impasse_Escalate',
+                    updated_at = NOW()
+                WHERE complaint_id = ?
+            ")->execute([$complaintId]);
 
             $this->conn->commit();
 

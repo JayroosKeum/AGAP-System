@@ -23,7 +23,7 @@ class ComplaintLifecycleService
     public static function allowedStatuses(): array
     {
         return [
-            self::PAANYAYA,
+
             self::MEDIATION,
             self::CONCILIATION,
             self::CFA,
@@ -59,7 +59,7 @@ class ComplaintLifecycleService
         int $complaintId
     ): string {
         if ($complaintId < 1) {
-            return self::PAANYAYA;
+            return self::MEDIATION;
         }
 
         $statement = $this->conn->prepare(
@@ -120,7 +120,7 @@ class ComplaintLifecycleService
         );
 
         if (!$record) {
-            return self::PAANYAYA;
+            return self::MEDIATION;
         }
 
         return self::resolveFromValues(
@@ -239,8 +239,8 @@ class ComplaintLifecycleService
         }
 
         /*
-         * Undocketed complaints are in the Paanyaya stage.
+         * Official complaints start directly in the Mediation stage (Stage 1).
          */
-        return self::PAANYAYA;
+        return self::MEDIATION;
     }
 }

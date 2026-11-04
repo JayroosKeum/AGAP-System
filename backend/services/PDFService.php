@@ -4594,19 +4594,62 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
             $inviteeName = 'Inanyayahang Residente';
         }
         if (!empty($inviteeName) && empty($respondents)) {
+            $invAddrCustom = trim(implode(', ', array_filter([
+                trim((string)($options['invitee_address'] ?? ($paaRecord['invitee_address'] ?? ''))),
+                trim((string)($options['invitee_purok'] ?? ($paaRecord['invitee_purok'] ?? ''))),
+            ])));
+            if ($invAddrCustom !== '' && stripos($invAddrCustom, 'Tumana') === false && stripos($invAddrCustom, 'Marikina') === false) {
+                $invAddrCustom .= ', Barangay Tumana, Marikina City';
+            }
             $respondents = [
-                ['full_name' => $inviteeName, 'address' => 'Barangay Tumana, Marikina City']
+                ['full_name' => $inviteeName, 'address' => $invAddrCustom !== '' ? $invAddrCustom : 'Barangay Tumana, Marikina City']
+            ];
+
+            /*
+            $respondents = [
+            $invAddrCustom = trim(implode(', ', array_filter([
+                trim((string)($options['invitee_address'] ?? ($paaRecord['invitee_address'] ?? ''))),
+                trim((string)($options['invitee_purok'] ?? ($paaRecord['invitee_purok'] ?? ''))),
+            ])));
+            if ($invAddrCustom !== '' && stripos($invAddrCustom, 'Tumana') === false && stripos($invAddrCustom, 'Marikina') === false) {
+                $invAddrCustom .= ', Barangay Tumana, Marikina City';
+            }
+            $respondents = [
+                ['full_name' => $inviteeName, 'address' => $invAddrCustom !== '' ? $invAddrCustom : 'Barangay Tumana, Marikina City']
+            ];
             ];
         }
 
-        $complainantName = trim((string)($options['complainant_name'] ?? ($paaRecord['complainant_name'] ?? '')));
+        */ } $complainantName = trim((string)($options['complainant_name'] ?? ($paaRecord['complainant_name'] ?? '')));
         if ($complainantName !== '' && empty($complainants)) {
+            $compAddrCustom = trim(implode(', ', array_filter([
+                trim((string)($options['complainant_address'] ?? ($paaRecord['complainant_address'] ?? ''))),
+                trim((string)($options['complainant_purok'] ?? ($paaRecord['complainant_purok'] ?? ''))),
+            ])));
+            if ($compAddrCustom !== '' && stripos($compAddrCustom, 'Tumana') === false && stripos($compAddrCustom, 'Marikina') === false) {
+                $compAddrCustom .= ', Barangay Tumana, Marikina City';
+            }
             $complainants = [
-                ['full_name' => $complainantName, 'address' => 'Barangay Tumana, Marikina City']
+                ['full_name' => $complainantName, 'address' => $compAddrCustom !== '' ? $compAddrCustom : 'Barangay Tumana, Marikina City']
+            ];
+
+            /*
+            $complainants = [
+            $compAddrCustom = trim(implode(', ', array_filter([
+                trim((string)($options['complainant_address'] ?? ($paaRecord['complainant_address'] ?? ''))),
+                trim((string)($options['complainant_purok'] ?? ($paaRecord['complainant_purok'] ?? ''))),
+            ])));
+            if ($compAddrCustom !== '' && stripos($compAddrCustom, 'Tumana') === false && stripos($compAddrCustom, 'Marikina') === false) {
+                $compAddrCustom .= ', Barangay Tumana, Marikina City';
+            }
+            $complainants = [
+                ['full_name' => $complainantName, 'address' => $compAddrCustom !== '' ? $compAddrCustom : 'Barangay Tumana, Marikina City']
+            ];
             ];
         }
 
-        // Punong barangay setting
+        */ } // Punong barangay setting
+
         $pbStmt = $this->conn->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'captain_name' LIMIT 1");
         $pbStmt->execute();
         $captainName = $pbStmt->fetchColumn() ?: 'HON. AKIKO LYNNE CENTENO';

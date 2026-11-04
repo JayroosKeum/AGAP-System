@@ -1345,7 +1345,7 @@ function buildSingleAttemptCardHtml(att, totalAttempts, collapsedCount, latestNu
                 ` : ''}
                 <div class="compact-attempt-item">
                     <span class="delivery-detail-label">Server</span>
-                    <span class="delivery-detail-val">${escapeGpsHtml(att.served_by_name || 'Unassigned')}</span>
+                    <span class="delivery-detail-val">${escapeGpsHtml(att.served_by_name || window.AGAP_CURRENT_USER_NAME || 'Assigned Process Server')}</span>
                 </div>
                 ${isFailed && att.unserved_reason ? `
                     <div class="compact-attempt-item">
@@ -1489,7 +1489,7 @@ function populateDrawerAttemptHistory(partyType, caseId, activeAttemptNum) {
                     <span style="font-size:0.74rem; font-weight:700; color:${activeAtt.is_served ? '#15803d' : (activeAtt.is_failed ? '#b91c1c' : '#b45309')};">${escapeGpsHtml(statusStr)}</span>
                 </div>
                 <div style="display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:6px 12px; font-size:0.78rem; color:#475569;">
-                    <div><span style="color:#64748b;">Server:</span> <strong>${escapeGpsHtml(activeAtt.served_by_name || 'Unassigned')}</strong></div>
+                    <div><span style="color:#64748b;">Server:</span> <strong id="drawerSummaryServerName">${escapeGpsHtml(activeAtt.served_by_name || window.AGAP_CURRENT_USER_NAME || 'Assigned Process Server')}</strong></div>
                     <div><span style="color:#64748b;">Timestamp:</span> <strong>${timeVal ? escapeGpsHtml(formatDateTime(timeVal)) : 'Pending'}</strong></div>
                     ${activeAtt.remarks ? `<div style="grid-column:1 / -1;"><span style="color:#64748b;">Remarks:</span> ${escapeGpsHtml(activeAtt.remarks)}</div>` : ''}
                     ${proofPath ? `<div style="grid-column:1 / -1;"><a href="../../${escapeGpsHtml(proofPath)}" target="_blank" style="color:#0284c7; font-weight:700; text-decoration:underline;">View Geotagged Photo Proof</a></div>` : ''}
@@ -1514,7 +1514,7 @@ function populateDrawerAttemptHistory(partyType, caseId, activeAttemptNum) {
                             <div class="drawer-collapsed-log-row ${n === Number(activeAttemptNum) ? 'is-current' : ''}" onclick="handleStepperNodeClick(${Number(caseId)}, '${partyType}', ${n}, true)">
                                 <div>
                                     <strong>${o} Attempt</strong> &middot; <span>${escapeGpsHtml(st)}</span>
-                                    <div style="font-size:0.73rem; color:#64748b;">${t ? escapeGpsHtml(formatDateTime(t)) : 'No timestamp'} &bull; ${escapeGpsHtml(a.served_by_name || 'Unassigned')}</div>
+                                    <div style="font-size:0.73rem; color:#64748b;">${t ? escapeGpsHtml(formatDateTime(t)) : 'No timestamp'} &bull; ${escapeGpsHtml(a.served_by_name || window.AGAP_CURRENT_USER_NAME || 'Assigned Process Server')}</div>
                                 </div>
                                 <span style="font-size:0.74rem; font-weight:700; color:#0284c7;">Select</span>
                             </div>
@@ -1668,6 +1668,25 @@ function openOfficerReturnModal(partyType, residentId, hearingId, caseId, curren
 
     const proofImgInput = document.getElementById('returnProofImage');
     if (proofImgInput) proofImgInput.value = '';
+    const servedBySelect = document.getElementById('returnServedBy');
+    if (servedBySelect) {
+        const stateObj = window.activePartyAttemptsState?.[`${caseId}_${partyType || 'Respondent'}`];
+        const attempts = stateObj?.attempts || [];
+        const activeAtt = attempts.find(a => Number(a.attempt_number) === Number(attemptNumber || 1)) || attempts[attempts.length - 1];
+        const targetServerId = Number(activeAtt?.served_by || window.AGAP_CURRENT_USER_ID || 0);
+        if (targetServerId && Array.from(servedBySelect.options).some(o => Number(o.value) === targetServerId)) {
+            servedBySelect.value = String(targetServerId);
+        } else if (window.AGAP_CURRENT_USER_ID && Array.from(servedBySelect.options).some(o => Number(o.value) === Number(window.AGAP_CURRENT_USER_ID))) {
+            servedBySelect.value = String(window.AGAP_CURRENT_USER_ID);
+        }
+        servedBySelect.onchange = function() {
+            const selOpt = servedBySelect.options[servedBySelect.selectedIndex];
+            const summaryServerEl = document.getElementById('drawerSummaryServerName');
+            if (summaryServerEl && selOpt) {
+                summaryServerEl.textContent = selOpt.getAttribute('data-officer-name') || selOpt.textContent.split('—')[0].trim();
+            }
+        };
+    }
 
     handleDeliveryStatusChange();
     populateDrawerAttemptHistory(partyType || 'Respondent', caseId, attemptNumber || 1);

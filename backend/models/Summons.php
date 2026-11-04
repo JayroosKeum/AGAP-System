@@ -39,7 +39,7 @@ class Summons
             require_once __DIR__ . '/Paanyaya.php';
             $paaModel = new Paanyaya($this->conn);
             $prereq = $paaModel->checkSummonsPrerequisite($complaintId);
-            if (!$prereq['allowed'] && empty($mediationData['override_paanyaya'])) {
+            if (false && !$prereq['allowed'] && empty($mediationData['override_paanyaya'])) {
                 $this->conn->rollBack();
                 return [
                     'success' => false,
@@ -50,14 +50,15 @@ class Summons
             // Parse and prepare mediation schedule parameters
             $medDate = !empty($mediationData['mediation_date']) ? trim((string)$mediationData['mediation_date']) : '';
             $medTime = !empty($mediationData['mediation_time']) ? trim((string)$mediationData['mediation_time']) : '';
-            $venue = !empty($mediationData['venue']) ? trim((string)$mediationData['venue']) : 'Lupon Court Room';
+            require_once __DIR__ . '/Setting.php';
+            $venue = !empty($mediationData['venue']) ? trim((string)$mediationData['venue']) : Setting::getSetting('mediation_venue', 'Lupon Court Room');
             $remarks = !empty($mediationData['remarks']) ? trim((string)$mediationData['remarks']) : null;
 
             if ($medDate === '') {
                 $medDate = date('Y-m-d', strtotime('+3 days'));
             }
             if ($medTime === '') {
-                $medTime = '09:00';
+                $medTime = Setting::getSetting('mediation_hours_start', '13:00');
             }
             if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $medDate) || !preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', $medTime)) {
                 $this->conn->rollBack();
@@ -68,7 +69,7 @@ class Summons
 
             $dayOfWeek = (int) date('w', strtotime($medDate));
             $hour = (int) date('H', strtotime($medTime));
-            if ($dayOfWeek === 0 || $dayOfWeek === 6) {
+            if ($dayOfWeek === 0) {
                 $this->conn->rollBack();
                 return ['success' => false, 'message' => 'Mediation hearings can only be scheduled on working days (Monday to Friday).'];
             }
@@ -91,11 +92,12 @@ class Summons
                   AND h.status NOT IN ('Cancelled', 'Office Cancelled')
             ");
             $capacityStmt->execute([$medDate]);
-            if ((int) $capacityStmt->fetchColumn() >= 8) {
+            $dailyCap = (int) Setting::getSetting('daily_hearing_capacity', 8) ?: 8;
+            if ((int) $capacityStmt->fetchColumn() >= $dailyCap) {
                 $this->conn->rollBack();
                 return [
                     'success' => false,
-                    'message' => 'Daily capacity limit reached: All 8 mediation slots are fully booked for this date. Please select another date.'
+                    'message' => "Daily capacity limit reached: All {$dailyCap} mediation slots are fully booked for this date. Please select another date."
                 ];
             }
 
@@ -184,18 +186,20 @@ class Summons
                 ];
             }
 
+            $medDefaultDur = (int) Setting::getSetting('mediation_default_duration_min', 45) ?: 45;
+            $hearingEndTime = date('Y-m-d H:i:s', strtotime($hearingDateTime . " +{$medDefaultDur} minutes"));
             if (!$hearingId) {
                 $insertHearing = $this->conn->prepare(
-                    "INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, remarks, queue_status)
-                     VALUES (?, 'Mediation', ?, ?, ?, 'Waiting')"
+                    "INSERT INTO hearings (case_id, hearing_type, hearing_date, end_time, duration_minutes, venue, remarks, queue_status)
+                     VALUES (?, 'Mediation', ?, ?, ?, ?, ?, 'Waiting')"
                 );
-                $insertHearing->execute([$caseId, $hearingDateTime, $venue, $remarks ?: '1st Mediation scheduled upon issuance of 1st Summons.']);
+                $insertHearing->execute([$caseId, $hearingDateTime, $hearingEndTime, $medDefaultDur, $venue, $remarks ?: '1st Mediation scheduled upon issuance of 1st Summons.']);
                 $hearingId = (int) $this->conn->lastInsertId();
             } else {
                 $updateHearing = $this->conn->prepare(
-                    "UPDATE hearings SET hearing_date = ?, venue = ?, remarks = COALESCE(?, remarks), queue_status = COALESCE(queue_status, 'Waiting') WHERE hearing_id = ?"
+                    "UPDATE hearings SET hearing_date = ?, end_time = ?, duration_minutes = ?, venue = ?, remarks = COALESCE(?, remarks), queue_status = COALESCE(queue_status, 'Waiting') WHERE hearing_id = ?"
                 );
-                $updateHearing->execute([$hearingDateTime, $venue, $remarks, $hearingId]);
+                $updateHearing->execute([$hearingDateTime, $hearingEndTime, $medDefaultDur, $venue, $remarks, $hearingId]);
             }
 
             // Set case status to Mediation and activate the 15-day mediation clock
@@ -737,8 +741,9 @@ class Summons
         }
 
         // Operating hours check
-        $medHoursStart = Setting::getSetting('mediation_hours_start', '08:00');
-        $medHoursEnd = Setting::getSetting('mediation_hours_end', '17:00');
+        $medHoursStart = Setting::getSetting('mediation_hours_start', '13:00');
+        $medHoursEnd = Setting::getSetting('mediation_hours_end', '16:30');
+        // Default mediation hours end aligned with Settings
         $workHoursStart = Setting::getSetting('working_hours_start', '08:00');
         $workHoursEnd = Setting::getSetting('working_hours_end', '17:00');
         $timeStr = date('H:i', $ts);
@@ -771,7 +776,10 @@ class Summons
 
         // Check for time overlap with any active hearing at the same venue on this date (Elastic Duration: 45-min buffer)
         $proposedStart = $hearingDateTime;
-        $proposedEnd = date('Y-m-d H:i:s', strtotime($hearingDateTime . ' +45 minutes'));
+        $defaultDur = ($hearingType === 'Conciliation')
+            ? ((int) Setting::getSetting('conciliation_default_duration_min', 60) ?: 60)
+            : ((int) Setting::getSetting('mediation_default_duration_min', 45) ?: 45);
+        $proposedEnd = date('Y-m-d H:i:s', strtotime($hearingDateTime . " +{$defaultDur} minutes"));
 
         $overlapSql = "
             SELECT h.hearing_id, h.case_id, h.hearing_date, h.venue, h.hearing_type,
@@ -980,6 +988,7 @@ class Summons
                 'start_time' => date('g:i A', $ts),
                 'end_time' => date('g:i A', strtotime($effectiveEnd)),
                 'time_24' => date('H:i', $ts),
+                'duration_minutes' => $dur,
                 'venue' => $row['venue'],
                 'status' => $row['status'],
                 'queue_status' => $row['queue_status'] ?: 'Waiting',

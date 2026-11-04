@@ -161,7 +161,7 @@ try {
                 ?, ?, ?, ?, ?,
                 ?, ?, ?, ?,
                 ?, ?, ?, ?,
-                'Filed', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                'Mediation', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
             )
         ";
         $insStmt = $db->prepare($insertSql);
@@ -182,6 +182,17 @@ try {
             $encodedBy
         ]);
         $complaintId = (int)$db->lastInsertId();
+        if (!$isDraft) {
+            require_once __DIR__ . '/../../models/CaseModel.php';
+            $docketDate = date('Y-m-d');
+            $docketCaseType = in_array($caseType, ['Civil', 'Criminal', 'Others'], true) ? $caseType : 'Others';
+            $caseInsStmt = $db->prepare("INSERT INTO cases (complaint_id, case_type, case_status, docket_date) VALUES (?, ?, 'Mediation', ?)");
+            $caseInsStmt->execute([$complaintId, $docketCaseType, $docketDate]);
+            $caseId = (int)$db->lastInsertId();
+            $complaintNumber = CaseModel::generateCaseNumber($db, $docketDate, $caseId);
+            $db->prepare('UPDATE cases SET case_number = ? WHERE case_id = ?')->execute([$complaintNumber, $caseId]);
+            $db->prepare('UPDATE complaints SET complaint_number = ?, status = ? WHERE complaint_id = ?')->execute([$complaintNumber, 'Mediation', $complaintId]);
+        }
     }
 
     // 5. Link Parties to Complaint
@@ -244,14 +255,14 @@ try {
         'is_update' => $isUpdate,
         'complaint_id' => $complaintId,
         'complaint_number' => $complaintRow['complaint_number'] ?? null,
-        'status' => $complaintRow['status'] ?? 'Filed',
+        'status' => $complaintRow['status'] ?? 'Mediation',
         'complainant_resident_id' => $compResidentId,
         'respondent_resident_id' => $respResidentId,
         'concurrent_disputes' => $concurrentDisputes,
         'message' => $isUpdate 
             ? 'Complaint facts and relational parties successfully updated.' 
             : 'Complaint successfully created with unified resident linkage.',
-        'redirect_url' => '../../frontend/pages/complaints/complaint-details.php?id=' . $complaintId
+        'redirect_url' => '../../frontend/pages/complaints/complaint-details.php?id=' . $complaintId . '&tab=mediation'
     ]);
 
 } catch (Throwable $e) {

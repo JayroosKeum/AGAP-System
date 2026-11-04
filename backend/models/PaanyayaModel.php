@@ -547,13 +547,13 @@ class PaanyayaModel
             ]);
 
             // 4. Update paanyayas table status
-            $pnyStatus = ($outcome === 'Settled') ? 'Resolved' : (($outcome === 'Dismissed') ? 'Cancelled' : 'Completed');
+            $pnyStatus = ($progressionAction === 'escalate_mediation') ? 'Escalated' : (($outcome === 'Settled') ? 'Resolved' : (($outcome === 'Dismissed') ? 'Cancelled' : 'Completed'));
             $pnyUpd = $this->conn->prepare('
                 UPDATE paanyayas
-                SET status = ?, updated_at = NOW()
+                SET status = ?, escalated_to_complaint_id = CASE WHEN ? = "Escalated" THEN ? ELSE escalated_to_complaint_id END, updated_at = NOW()
                 WHERE complaint_id = ?
             ');
-            $pnyUpd->execute([$pnyStatus, $complaintId]);
+            $pnyUpd->execute([$pnyStatus, $pnyStatus, $complaintId, $complaintId]);
 
             // 5. If Escalating to Formal Mediation, perform docketing!
             $docketResult = null;

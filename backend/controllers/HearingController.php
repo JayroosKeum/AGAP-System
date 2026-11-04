@@ -728,8 +728,8 @@ class HearingController
             if (!$isMedDay) {
                 return ['success' => false, 'message' => "Mediation hearings can only be scheduled on designated mediation days ({$medDaysLabel})."];
             }
-            $medHoursStart = Setting::getSetting('mediation_hours_start', '08:00');
-            $medHoursEnd = Setting::getSetting('mediation_hours_end', '17:00');
+            $medHoursStart = Setting::getSetting('mediation_hours_start', '13:00');
+            $medHoursEnd = Setting::getSetting('mediation_hours_end', '16:30');
             $timeStr = $date->format('H:i');
             if ($timeStr < $medHoursStart || $timeStr > $medHoursEnd) {
                 $startFmt = date('g:i A', strtotime($medHoursStart));

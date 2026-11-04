@@ -10,9 +10,35 @@ if (!isset($_SESSION['user_id']) || !in_array($roleId, [1, 2, 4], true)) {
 include '../../layouts/header.php';
 require_once __DIR__ . '/../../../backend/models/Setting.php';
 $sysSettings = Setting::all();
+require_once __DIR__ . '/../../../backend/config/database.php';
+$servingOfficers = [];
+$currentOfficerName = trim((string) ($_SESSION['full_name'] ?? $_SESSION['username'] ?? 'Lupon Officer'));
+try {
+    $dbProof = (new Database())->connect();
+    $offStmt = $dbProof->query("
+        SELECT u.user_id,
+               TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS full_name,
+               COALESCE(r.role_name, 'Barangay Officer') AS role_name
+        FROM users u
+        LEFT JOIN roles r ON r.role_id = u.role_id
+        WHERE COALESCE(u.status, 'Active') = 'Active'
+        ORDER BY FIELD(u.role_id, 4, 2, 1), u.first_name ASC
+    ");
+    $servingOfficers = $offStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    foreach ($servingOfficers as $so) {
+        if ((int) $so['user_id'] === (int) ($_SESSION['user_id'] ?? 0) && !empty($so['full_name'])) {
+            $currentOfficerName = $so['full_name'];
+            break;
+        }
+    }
+} catch (Throwable $e) {
+    $servingOfficers = [];
+}
 ?>
 <script>
 window.AGAP_USER_ROLE_ID = <?php echo (int) $roleId; ?>;
+window.AGAP_CURRENT_USER_ID = <?php echo (int) ($_SESSION['user_id'] ?? 0); ?>;
+window.AGAP_CURRENT_USER_NAME = <?php echo json_encode($currentOfficerName, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
 window.AGAP_SETTINGS = <?php echo json_encode([
     'user_role_id' => (int) $roleId,
     'paanyaya_max_attempts' => (int) ($sysSettings['paanyaya_max_attempts'] ?? 6),
@@ -216,13 +242,31 @@ window.AGAP_SETTINGS = <?php echo json_encode([
             <!-- Delivery Result / Status -->
             <div class="form-group">
                 <label for="returnDeliveryStatus" style="font-weight: 600; color: #334155; margin-bottom: 6px; display: block; font-size: 0.88rem;">
-                    Delivery Result / Service Mode <span style="color: #dc2626;">*</span>
+                    Delivery Result / Service Mode
                 </label>
                 <select id="returnDeliveryStatus" name="delivery_status" required style="width: 100%; min-height: 42px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.9rem;" onchange="handleDeliveryStatusChange()">
                     <option value="Served Personal">Served - Personal (Direct to party)</option>
                     <option value="Served Substituted">Served - Substituted (Competent person of residence)</option>
                     <option value="Served Refused">Refused to Receive (Treated as served under KP rules)</option>
                     <option value="Unserved">Unserved / Delivery Failed (Cannot be served)</option>
+                </select>
+            </div>
+
+            <!-- Serving Officer / Process Server -->
+            <div class="form-group">
+                <label for="returnServedBy" style="font-weight: 600; color: #334155; margin-bottom: 6px; display: block; font-size: 0.88rem;">
+                    Serving Officer / Process Server
+                </label>
+                <select id="returnServedBy" name="served_by" required style="width: 100%; min-height: 42px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.9rem;">
+                    <?php if (empty($servingOfficers)): ?>
+                        <option value="<?php echo (int) ($_SESSION['user_id'] ?? 1); ?>" selected><?php echo htmlspecialchars($currentOfficerName, ENT_QUOTES, 'UTF-8'); ?></option>
+                    <?php else: ?>
+                        <?php foreach ($servingOfficers as $off): ?>
+                            <option value="<?php echo (int) $off['user_id']; ?>" data-officer-name="<?php echo htmlspecialchars($off['full_name'], ENT_QUOTES, 'UTF-8'); ?>" <?php echo ((int) $off['user_id'] === (int) ($_SESSION['user_id'] ?? 0)) ? 'selected' : ''; ?>>
+                                <?php echo htmlspecialchars($off['full_name'] . ' — ' . $off['role_name'], ENT_QUOTES, 'UTF-8'); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
                 </select>
             </div>
 

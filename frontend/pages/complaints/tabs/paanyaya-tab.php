@@ -402,6 +402,23 @@ $isConcluded = $isSettled || $isDismissed || $isEscalated;
         <!-- LEFT COLUMN: STREAMLINED FORM & PROGRESSION -->
         <!-- ========================================== -->
         <div class="paanyaya-form-panel">
+            <?php if ($isSettled): ?>
+                <div style="background: #ecfdf5; border: 1.5px solid #a7f3d0; border-radius: 10px; padding: 12px 16px; display: flex; align-items: center; gap: 10px; color: #065f46; font-size: 0.88rem;">
+                    <span style="font-size: 1.3rem;">🔒</span>
+                    <div>
+                        <strong>Naresolba sa Kasunduan (Settled):</strong>
+                        <span>Naresolba na ang hidwaan sa yugto ng Paanyaya. Naka-lock na ang mga pindutan at hindi na maaaring baguhin.</span>
+                    </div>
+                </div>
+            <?php elseif ($isEscalated): ?>
+                <div style="background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 10px; padding: 12px 16px; display: flex; align-items: center; gap: 10px; color: #92400e; font-size: 0.88rem;">
+                    <span style="font-size: 1.3rem;">🔒</span>
+                    <div>
+                        <strong>Nai-akyat sa Pormal na Mediation:</strong>
+                        <span>Ang usaping ito ay pormal nang nai-doket sa Punong Barangay Mediation. Naka-lock na ang mga pindutan ng aksyon sa Paanyaya.</span>
+                    </div>
+                </div>
+            <?php endif; ?>
 
             <!-- Card 1: Streamlined Paanyaya Inputs -->
             <div class="paanyaya-card-box">
@@ -505,8 +522,8 @@ $isConcluded = $isSettled || $isDismissed || $isEscalated;
 
                     <!-- Save / Update Button -->
                     <div style="margin-top: 18px; display: flex; justify-content: flex-end; gap: 10px;">
-                        <button type="submit" class="btn-create" id="btnSavePaanyayaForm" style="padding: 10px 20px; font-weight: 700;">
-                            Save &amp; Update Paanyaya
+                        <button type="submit" class="btn-create" id="btnSavePaanyayaForm" <?= $isConcluded ? 'disabled style="padding: 10px 20px; font-weight: 700; opacity: 0.55; cursor: not-allowed; background: #94a3b8; border-color: #94a3b8;" title="Naka-lock ang Paanyaya"' : 'style="padding: 10px 20px; font-weight: 700;"' ?>>
+                            <?= $isSettled ? '🔒 Settled in Paanyaya' : ($isEscalated ? '🔒 Escalated to Mediation' : 'Save &amp; Update Paanyaya') ?>
                         </button>
                     </div>
                 </form>
@@ -563,8 +580,8 @@ $isConcluded = $isSettled || $isDismissed || $isEscalated;
 
                     <!-- Submit Progression Button -->
                     <div style="margin-top: 18px; display: flex; justify-content: flex-end;">
-                        <button type="submit" class="btn-create" id="btnConfirmProgression" style="background: #0f172a; border-color: #0f172a; padding: 10px 22px; font-weight: 700;">
-                            Confirm Attendance &amp; Advance Outcome
+                        <button type="submit" class="btn-create" id="btnConfirmProgression" <?= $isConcluded ? 'disabled style="background: #64748b; border-color: #64748b; padding: 10px 22px; font-weight: 700; opacity: 0.55; cursor: not-allowed;" title="Naka-lock ang Paanyaya"' : 'style="background: #0f172a; border-color: #0f172a; padding: 10px 22px; font-weight: 700;"' ?>>
+                            <?= $isSettled ? '🔒 Naresolba sa Kasunduan' : ($isEscalated ? '🔒 Nai-akyat sa Mediation' : 'Confirm Attendance &amp; Advance Outcome') ?>
                         </button>
                     </div>
                 </form>
@@ -690,6 +707,7 @@ function printPreviewIframe() {
 
 // Attendance & Dynamic Outcome Tree Logic
 function updateAttendanceState() {
+    const isEscalated = <?= json_encode($isEscalated) ?>;
     const compPresent = document.querySelector('input[name="complainant_attended"]:checked').value === 'Present';
     const respPresent = document.querySelector('input[name="respondent_attended"]:checked').value === 'Present';
 
@@ -710,7 +728,20 @@ function updateAttendanceState() {
 
     let html = '';
 
-    if (isP1) {
+    if (isEscalated) {
+        // An official Mediation docket can only follow an unresolved Paanyaya.
+        // Keep the historical Paanyaya result explicit instead of showing the
+        // normal editable choice that would suggest a second invitation.
+        html = `
+            <div style="background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 8px; padding: 12px; color: #92400e;">
+                <strong>⚖ No Agreement — Escalated to Formal Mediation</strong>
+                <p style="font-size: 0.82rem; margin-top: 4px; line-height: 1.4;">
+                    Walang naabot na kasunduan sa yugto ng Paanyaya. Ang usapin ay opisyal nang nai-doket para sa Mediation; wala nang kailangang ikalawang Paanyaya.
+                </p>
+                <input type="hidden" name="agreement_status" value="no_agreement">
+            </div>
+        `;
+    } else if (isP1) {
         // ==========================================
         // 1ST PAANYAYA OUTCOME TREE
         // ==========================================
@@ -875,6 +906,10 @@ async function handleProgressionSubmit(e) {
         const data = await res.json();
         if (data.success) {
             alert(data.message || 'Naipatupad ang desisyon sa Paanyaya.');
+            if (payload.progression_action === 'escalate_mediation' && payload.complaint_id) {
+                window.location.href = `../complaints/complaint-details.php?id=${encodeURIComponent(payload.complaint_id)}&tab=mediation`;
+                return;
+            }
             window.location.reload();
         } else {
             alert(data.message || 'Nabigo ang pagsusumite ng desisyon.');
@@ -889,6 +924,12 @@ async function handleProgressionSubmit(e) {
 
 // Initialize on DOM load
 document.addEventListener('DOMContentLoaded', function() {
+    const isConcluded = <?= json_encode((bool)$isConcluded) ?>;
+    if (isConcluded) {
+        document.querySelectorAll('#paanyayaStreamlinedForm input, #paanyayaStreamlinedForm textarea, #progressionEngineForm input, #progressionEngineForm select, #progressionEngineForm button').forEach(el => {
+            el.disabled = true;
+        });
+    }
     updateAttendanceState();
     triggerLivePreviewUpdate();
 });

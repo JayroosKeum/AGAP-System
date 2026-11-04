@@ -204,7 +204,12 @@ include '../../layouts/header.php';
                         <svg class="back-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
                         <span>Back to Complaints</span>
                     </a>
-                    <h1 class="intake-title">File Complaint</h1>
+                    <h1 class="intake-title">File Official Complaint (Direct to Mediation — Stage 1)</h1>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <a href="../paanyaya/index.php" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 8px; background: #f0fdf4; border: 1.5px solid #86efac; color: #166534; font-size: 0.84rem; font-weight: 700;">
+                        <span>🤝 Prefer an Informal Dialogue first? Go to Paanyaya Module &rarr;</span>
+                    </a>
                 </div>
             </div>
 

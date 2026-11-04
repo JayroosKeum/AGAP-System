@@ -27,7 +27,11 @@ $rawTab = trim((string)($_GET['tab'] ?? 'tab-overview'));
 if (!str_starts_with($rawTab, 'tab-')) {
     $rawTab = 'tab-' . $rawTab;
 }
-$validTabs = ['tab-overview', 'tab-paanyaya', 'tab-mediation', 'tab-conciliation', 'tab-arbitration'];
+$validTabs = ['tab-overview', 'tab-mediation', 'tab-conciliation', 'tab-arbitration'];
+if ($rawTab === 'tab-paanyaya') {
+    header('Location: ../paanyaya/stage.php?complaint_id=' . $complaintId);
+    exit;
+}
 $activeTab = in_array($rawTab, $validTabs, true) ? $rawTab : 'tab-overview';
 $complaintFlash = $_SESSION['complaint_flash'] ?? null;
 unset($_SESSION['complaint_flash']);
@@ -76,6 +80,16 @@ $dailyHearingCapacity = (int) ($sysSettings['daily_hearing_capacity'] ?? 8);
 $medHoursStart = $sysSettings['mediation_hours_start'] ?? '13:00';
 $medHoursEnd = $sysSettings['mediation_hours_end'] ?? '16:30';
 $medVenue = $sysSettings['mediation_venue'] ?? 'Lupon Court Room';
+$workHoursStart = $sysSettings['working_hours_start'] ?? '08:00';
+$workHoursEnd = $sysSettings['working_hours_end'] ?? '17:00';
+$medDefaultDuration = (int) ($sysSettings['mediation_default_duration_min'] ?? 45) ?: 45;
+$medMaxDuration = (int) ($sysSettings['mediation_max_duration_min'] ?? 60) ?: 60;
+$concilDefaultDuration = (int) ($sysSettings['conciliation_default_duration_min'] ?? 60) ?: 60;
+$concilMaxDuration = (int) ($sysSettings['conciliation_max_duration_min'] ?? 90) ?: 90;
+$medStartFmt = date('g:i A', strtotime($medHoursStart));
+$medEndFmt = date('g:i A', strtotime($medHoursEnd));
+$workStartFmt = date('g:i A', strtotime($workHoursStart));
+$workEndFmt = date('g:i A', strtotime($workHoursEnd));
 ?>
 <script>
 window.AGAP_SETTINGS = window.AGAP_SETTINGS || {};
@@ -87,6 +101,12 @@ window.AGAP_SETTINGS.daily_capacity = <?= (int) $dailyHearingCapacity ?>;
 window.AGAP_SETTINGS.mediation_hours_start = <?= json_encode($medHoursStart) ?>;
 window.AGAP_SETTINGS.mediation_hours_end = <?= json_encode($medHoursEnd) ?>;
 window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
+window.AGAP_SETTINGS.working_hours_start = <?= json_encode($workHoursStart) ?>;
+window.AGAP_SETTINGS.working_hours_end = <?= json_encode($workHoursEnd) ?>;
+window.AGAP_SETTINGS.mediation_default_duration_min = <?= (int) $medDefaultDuration ?>;
+window.AGAP_SETTINGS.mediation_max_duration_min = <?= (int) $medMaxDuration ?>;
+window.AGAP_SETTINGS.conciliation_default_duration_min = <?= (int) $concilDefaultDuration ?>;
+window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuration ?>;
 </script>
 <?php
 
@@ -180,10 +200,6 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
             <button type="button" class="case-tab-item <?php echo $activeTab === 'tab-overview' ? 'active' : ''; ?>" data-tab="tab-overview" onclick="switchCaseTab('tab-overview')">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
                 <span>Overview &amp; Workflow</span>
-            </button>
-            <button type="button" class="case-tab-item <?php echo $activeTab === 'tab-paanyaya' ? 'active' : ''; ?>" data-tab="tab-paanyaya" onclick="switchCaseTab('tab-paanyaya')">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
-                <span>Paanyaya</span>
             </button>
             <button type="button" class="case-tab-item <?php echo $activeTab === 'tab-mediation' ? 'active' : ''; ?>" data-tab="tab-mediation" onclick="switchCaseTab('tab-mediation')">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
@@ -422,13 +438,6 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
             </div>
 
         </div>
-<!-- ===================================================================
-             TAB PANE: PAANYAYA (STAGE 0: PRE-DOCKETING WORKSPACE)
-             =================================================================== -->
-        <div id="tab-paanyaya" class="case-tab-pane <?php echo $activeTab === 'tab-paanyaya' ? 'active' : ''; ?>">
-            <?php include __DIR__ . '/tabs/paanyaya-tab.php'; ?>
-        </div>
-
         <!-- ===================================================================
              TAB PANE 2: MEDIATION
              =================================================================== -->
@@ -803,7 +812,7 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
                 <div class="form-group" style="margin-bottom: 14px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
                         <label for="summonMediationDate" style="margin-bottom: 0; font-weight: 700; color: #1e293b;">
-                            1st Mediation Date <span class="required-mark" aria-hidden="true">*</span>
+                            1st Mediation Date
                         </label>
                         <span id="summonWindowStatutoryBadge" style="font-size: 0.72rem; background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; padding: 2px 8px; border-radius: 9999px; font-weight: 600;">
                             15-Working-Day Window (RA 7160 Sec. 410)
@@ -847,9 +856,13 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
                 </div>
 
                 <div class="form-group">
-                    <label for="summonMediationTime">1st Mediation Time <span class="required-mark" aria-hidden="true">*</span></label>
-                    <input type="time" id="summonMediationTime" name="mediation_time" value="09:00" min="08:00" max="17:00" step="1800" required>
-                    <small class="field-hint">Regular Lupon hearing hours are 8:00 AM to 5:00 PM (Monday to Friday). Standard duration is 1 hour.</small>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                        <label for="summonMediationTime" style="margin-bottom: 0; font-weight: 700; color: #1e293b;">1st Mediation Time</label>
+                        <span style="font-size: 0.72rem; color: #0369a1; background: #e0f2fe; padding: 2px 8px; border-radius: 9999px; font-weight: 600;">Select Available Time Slot</span>
+                    </div>
+                    <div id="summonTimeSlotsGrid" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-bottom: 8px;"></div>
+                    <input type="time" id="summonMediationTime" name="mediation_time" value="<?= htmlspecialchars($medHoursStart) ?>" min="<?= htmlspecialchars($medHoursStart) ?>" max="<?= htmlspecialchars($medHoursEnd) ?>" step="900" required>
+                    <small id="summonMediationTimeHint" class="field-hint">Designated Mediation session window: <?= htmlspecialchars($medStartFmt) ?> – <?= htmlspecialchars($medEndFmt) ?> (<?= htmlspecialchars($medDaysLabel ?? 'Tuesdays') ?>). Standard duration: <?= (int) $medDefaultDuration ?> mins (max <?= (int) $medMaxDuration ?> mins).</small>
                 </div>
 
                 <!-- Conflict Alert Box -->
@@ -857,9 +870,9 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
                 </div>
 
                 <div class="form-group">
-                    <label for="summonMediationVenue">Venue <span class="required-mark" aria-hidden="true">*</span></label>
+                    <label for="summonMediationVenue">Venue</label>
                     <input type="text" id="summonMediationVenue" name="venue" maxlength="255" value="<?= htmlspecialchars($medVenue) ?>" readonly required style="background: #f8fafc; cursor: not-allowed;">
-                    <small style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Mediation sessions are conducted exclusively in the Lupon Court Room.</small>
+                    <small style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Mediation sessions are conducted in <?= htmlspecialchars($medVenue) ?>.</small>
                 </div>
                 <div class="form-group" style="margin-bottom: 6px;">
                     <label for="summonMediationRemarks">Remarks <span class="optional-label">Optional</span></label>
@@ -1345,7 +1358,7 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
                 <div class="form-group" style="margin-bottom: 14px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
                         <label for="schedDate" style="margin-bottom: 0; font-weight: 700; color: #1e293b;">
-                            <span id="schedDateLabel">Hearing Date</span> <span class="required-mark" aria-hidden="true">*</span>
+                            <span id="schedDateLabel">Hearing Date</span>
                         </label>
                         <span id="schedWindowStatutoryBadge" style="font-size: 0.72rem; background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; padding: 2px 8px; border-radius: 9999px; font-weight: 600;">
                             15-Working-Day Window (RA 7160 Sec. 410)
@@ -1358,7 +1371,7 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
                     <div id="schedVisualDatePickerContainer" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-top: 6px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.78rem; flex-wrap: wrap; gap: 6px;">
                             <span style="font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.03em; font-size: 0.74rem;">
-                                AVAILABLE HEARING DAYS (MAX 8 HEARINGS/DAY):
+                                AVAILABLE MEDIATION DAYS (<?= htmlspecialchars(strtoupper($medDaysLabel ?? 'TUESDAYS')) ?> · MAX 8/DAY):
                             </span>
                             <div style="display: flex; gap: 10px; font-size: 0.72rem; flex-wrap: wrap;">
                                 <span style="display: inline-flex; align-items: center; gap: 4px; color: #166534;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e;"></span> Available</span>
@@ -1389,9 +1402,13 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
                 </div>
 
                 <div class="form-group" style="margin-bottom: 14px;">
-                    <label for="schedTime"><span id="schedTimeLabel">Hearing Time</span> <span class="required-mark" aria-hidden="true">*</span></label>
-                    <input type="time" id="schedTime" name="hearing_time" value="09:00" min="08:00" max="17:00" step="1800" required onchange="handleSchedTimeChange()" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.88rem; box-sizing: border-box; background: #fff;">
-                    <small class="field-hint" style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Regular Lupon hearing hours are 8:00 AM to 5:00 PM (Monday to Friday). Standard duration is 1 hour.</small>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                        <label for="schedTime" style="margin-bottom: 0; font-weight: 700; color: #1e293b;"><span id="schedTimeLabel">Hearing Time</span></label>
+                        <span style="font-size: 0.72rem; color: #0369a1; background: #e0f2fe; padding: 2px 8px; border-radius: 9999px; font-weight: 600;">Select Available Time Slot</span>
+                    </div>
+                    <div id="schedTimeSlotsGrid" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-bottom: 8px;"></div>
+                    <input type="time" id="schedTime" name="hearing_time" value="<?= htmlspecialchars($medHoursStart) ?>" min="<?= htmlspecialchars($medHoursStart) ?>" max="<?= htmlspecialchars($medHoursEnd) ?>" step="900" required onchange="handleSchedTimeChange()" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.88rem; box-sizing: border-box; background: #fff;">
+                    <small id="schedTimeHint" class="field-hint" style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Designated Mediation session window: <?= htmlspecialchars($medStartFmt) ?> – <?= htmlspecialchars($medEndFmt) ?> (<?= htmlspecialchars($medDaysLabel ?? 'Tuesdays') ?>). Standard duration: <?= (int) $medDefaultDuration ?> mins (max <?= (int) $medMaxDuration ?> mins).</small>
                 </div>
 
                 <!-- Conflict Alert Box -->
@@ -1399,9 +1416,9 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
                 </div>
 
                 <div class="form-group" style="margin-bottom: 14px;">
-                    <label for="schedVenue">Venue <span class="required-mark" aria-hidden="true">*</span></label>
+                    <label for="schedVenue">Venue</label>
                     <input type="text" id="schedVenue" name="venue" maxlength="255" value="<?= htmlspecialchars($medVenue) ?>" readonly required style="background: #f8fafc; cursor: not-allowed; width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.88rem; box-sizing: border-box;">
-                    <small style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Hearing sessions are conducted in the Lupon Court Room.</small>
+                    <small style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">Hearing sessions are conducted in <?= htmlspecialchars($medVenue) ?>.</small>
                 </div>
 
                 <div class="form-group" style="margin-bottom: 6px;">

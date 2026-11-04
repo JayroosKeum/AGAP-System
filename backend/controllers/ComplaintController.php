@@ -227,7 +227,7 @@ class ComplaintController
 
             // Optional: If Paanyaya schedule details were provided, schedule an independent Paanyaya referencing this dispute
             $isDraft = !empty($data['is_draft']);
-            if ($complaintId > 0 && !$isDraft && !empty($data['paanyaya_date']) && !empty($data['paanyaya_time'])) {
+            if (false && $complaintId > 0 && !$isDraft && !empty($data['paanyaya_date']) && !empty($data['paanyaya_time'])) {
                 require_once __DIR__ . '/../models/Paanyaya.php';
                 $paanyayaModel = new Paanyaya();
                 $paaDate = trim((string)$data['paanyaya_date']);
@@ -249,8 +249,52 @@ class ComplaintController
                 }
             }
 
+            // A complaint created from Paanyaya must immediately become a formal docket.
+            // Linking the Paanyaya alone left the newly-created complaint in its old
+            // Paanyaya status and made the workflow appear stuck at Stage 0.
+            $escalatedPaanyayaId = (int)($data['escalated_from_paanyaya_id'] ?? ($data['escalate_paanyaya_id'] ?? 0));
+            if ($complaintId > 0 && $escalatedPaanyayaId > 0) {
+                try {
+                    require_once __DIR__ . '/../models/Paanyaya.php';
+                    $paanyayaModel = new Paanyaya();
+                    $docketResult = $paanyayaModel->escalateToFormalDocketing(
+                        $complaintId,
+                        (int) ($_SESSION['user_id'] ?? 1),
+                        "Formal complaint created from Paanyaya #{$escalatedPaanyayaId}."
+                    );
+
+                    if (empty($docketResult['success'])) {
+                        throw new RuntimeException($docketResult['message'] ?? 'Unable to create the formal Mediation docket.');
+                    }
+
+                    $updP = $this->conn->prepare("UPDATE paanyayas SET status = 'Escalated', complaint_id = ?, escalated_to_complaint_id = ?, updated_at = NOW() WHERE paanyaya_id = ?");
+                    $updP->execute([(int)$complaintId, (int)$complaintId, $escalatedPaanyayaId]);
+
+                    // Escalation is the formal conclusion of the informal dialogue:
+                    // there was no agreement at Paanyaya, so preserve that outcome
+                    // for the Paanyaya details and audit trail.
+                    $noAgreementNotes = 'No agreement at Paanyaya; escalated to formal Mediation.';
+                    $this->conn->prepare("\n                        UPDATE paanyaya_sessions\n                        SET session_outcome = 'Impasse_Escalate',\n                            outcome_notes = COALESCE(NULLIF(outcome_notes, ''), ?),\n                            session_remarks = COALESCE(NULLIF(session_remarks, ''), ?),\n                            escalated_at = COALESCE(escalated_at, NOW()),\n                            queue_status = 'Concluded',\n                            updated_at = NOW()\n                        WHERE complaint_id = ?\n                    ")->execute([$noAgreementNotes, $noAgreementNotes, (int)$complaintId]);
+
+                    $this->conn->prepare("\n                        UPDATE complaints\n                        SET paanyaya_1_outcome = COALESCE(NULLIF(paanyaya_1_outcome, ''), 'Impasse_Escalate'),\n                            updated_at = NOW()\n                        WHERE complaint_id = ?\n                    ")->execute([(int)$complaintId]);
+
+                    $result = array_merge($result, $docketResult, [
+                        'escalated_from_paanyaya' => true,
+                        'paanyaya_id' => $escalatedPaanyayaId,
+                        'message' => ($result['message'] ?? 'Complaint created.') . ' Formal docket created and moved to Mediation.'
+                    ]);
+                } catch (Throwable $pe) {
+                    error_log('Failed to docket escalated paanyaya in ComplaintController: ' . $pe->getMessage());
+                    return [
+                        'success' => false,
+                        'complaint_id' => $complaintId,
+                        'message' => 'The official complaint was saved, but it could not be docketed into Mediation: ' . $pe->getMessage()
+                    ];
+                }
+            }
+
             if (empty($result['redirect_url'])) {
-                $result['redirect_url'] = '../../frontend/pages/complaints/complaint-details.php?id=' . $complaintId;
+                $result['redirect_url'] = '../../frontend/pages/complaints/complaint-details.php?id=' . $complaintId . '&tab=mediation';
             }
         }
 

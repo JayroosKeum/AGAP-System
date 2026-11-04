@@ -37,6 +37,7 @@ class SummonDeliveryService
      */
     public function initializeHearingDeliveries(int $hearingId, ?int $actorUserId = null): array
     {
+        if ($actorUserId === null && !empty($_SESSION['user_id'])) { $actorUserId = (int) $_SESSION['user_id']; }
         $hearingStmt = $this->conn->prepare("
             SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.venue, h.rescheduled_from_id,
                    c.complaint_id, c.case_number, c.case_status
@@ -169,6 +170,9 @@ class SummonDeliveryService
                     'status'      => 'Pending',
                 ];
             } else {
+                if ($actorUserId) {
+                    $this->conn->prepare("UPDATE summon_deliveries SET created_by = COALESCE(created_by, ?) WHERE delivery_id = ? AND created_by IS NULL")->execute([$actorUserId, $existingId]);
+                }
                 if ($hType === 'Conciliation') {
                     $this->conn->prepare("
                         UPDATE summon_deliveries
@@ -201,6 +205,7 @@ class SummonDeliveryService
         // First ensure deliveries are initialized for all parties on this hearing
         $this->initializeHearingDeliveries($hearingId);
 
+        if ($actorUserId === null && !empty($_SESSION['user_id'])) { $actorUserId = (int) $_SESSION['user_id']; }
         $hearingStmt = $this->conn->prepare("
             SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.venue, h.status AS hearing_status,
                    h.rescheduled_from_id, c.complaint_id, c.case_number, c.case_status, c.is_paused, c.pause_reason
@@ -256,7 +261,7 @@ class SummonDeliveryService
         $compStmt = $this->conn->prepare("
             SELECT sd.*, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS served_by_name
             FROM summon_deliveries sd
-            LEFT JOIN users u ON u.user_id = COALESCE(sd.served_by_user_id, sd.served_by)
+            LEFT JOIN users u ON u.user_id = COALESCE(sd.served_by_user_id, sd.served_by, sd.created_by)
             WHERE sd.hearing_id = ? AND sd.party_type = 'Complainant'
             ORDER BY sd.delivery_id DESC
             LIMIT 1
@@ -332,7 +337,7 @@ class SummonDeliveryService
                    r.address, r.purok, r.contact_no
             FROM summon_deliveries sd
             INNER JOIN residents r ON r.resident_id = sd.resident_id
-            LEFT JOIN users u ON u.user_id = COALESCE(sd.served_by_user_id, sd.served_by)
+            LEFT JOIN users u ON u.user_id = COALESCE(sd.served_by_user_id, sd.served_by, sd.created_by)
             WHERE sd.hearing_id = ? AND sd.party_type = 'Witness'
             ORDER BY sd.delivery_id ASC
         ");
@@ -954,7 +959,7 @@ class SummonDeliveryService
                    TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS served_by_name,
                    h.hearing_type, h.hearing_date, h.venue
             FROM summon_deliveries sd
-            LEFT JOIN users u ON u.user_id = COALESCE(sd.served_by_user_id, sd.served_by)
+            LEFT JOIN users u ON u.user_id = COALESCE(sd.served_by_user_id, sd.served_by, sd.created_by)
             LEFT JOIN hearings h ON h.hearing_id = sd.hearing_id
             WHERE sd.case_id = ? AND sd.party_type = ? $hSql $stageFilter
             ORDER BY sd.attempt_number ASC, sd.delivery_id ASC
@@ -995,7 +1000,7 @@ class SummonDeliveryService
                 'service_method' => $row['service_method'],
                 'served_at' => $row['served_at'],
                 'attempted_at' => $row['attempted_at'] ?: $row['served_at'] ?: $row['created_at'],
-                'served_by' => $row['served_by'],
+                'served_by' => $row['served_by_user_id'] ?: $row['served_by'] ?: $row['created_by'],
                 'served_by_name' => $row['served_by_name'],
                 'proof_file_path' => $row['proof_file_path'],
                 'hearing_type' => $row['hearing_type'] ?? 'Mediation',

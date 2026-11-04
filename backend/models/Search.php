@@ -37,7 +37,7 @@ class Search
         } elseif ($filterStatus === 'Docketed') {
             $where[] = "(c.case_id IS NOT NULL OR c.case_status = 'Docketed' OR co.status = 'Docketed')";
         } elseif ($filterStatus === 'Mediation') {
-            $where[] = "(EXISTS (SELECT 1 FROM hearings h_m WHERE h_m.case_id = c.case_id AND h_m.hearing_type = 'Mediation') OR c.case_status = 'Mediation' OR co.status = 'Mediation')";
+            $where[] = "(EXISTS (SELECT 1 FROM hearings h_m WHERE h_m.case_id = c.case_id AND h_m.hearing_type = 'Mediation') OR c.case_status IN ('Mediation', 'Docketed') OR co.status IN ('Mediation', 'Docketed', 'Accepted', 'Filed'))";
         } elseif ($filterStatus === 'Conciliation') {
             $where[] = "(EXISTS (SELECT 1 FROM hearings h_c WHERE h_c.case_id = c.case_id AND h_c.hearing_type = 'Conciliation') OR c.case_status = 'Conciliation' OR co.status = 'Conciliation')";
         } elseif ($filterStatus === 'Arbitration') {
@@ -65,7 +65,7 @@ class Search
 
         $stageFilter = trim((string)($filters['current_stage'] ?? ''));
         if ($stageFilter === 'Mediation') {
-            $where[] = "(EXISTS (SELECT 1 FROM hearings h_m WHERE h_m.case_id = c.case_id AND h_m.hearing_type = 'Mediation') OR c.case_status = 'Mediation' OR co.status = 'Mediation')";
+            $where[] = "(EXISTS (SELECT 1 FROM hearings h_m WHERE h_m.case_id = c.case_id AND h_m.hearing_type = 'Mediation') OR c.case_status IN ('Mediation', 'Docketed') OR co.status IN ('Mediation', 'Docketed', 'Accepted', 'Filed'))";
         } elseif ($stageFilter === 'Conciliation') {
             $where[] = "(EXISTS (SELECT 1 FROM hearings h_c WHERE h_c.case_id = c.case_id AND h_c.hearing_type = 'Conciliation') OR c.case_status = 'Conciliation' OR co.status = 'Conciliation')";
         } elseif ($stageFilter === 'Arbitration') {
@@ -247,11 +247,11 @@ class Search
         } else {
             // Paanyaya stage (pre-docketed / no case_id)
             $isSecond = ($paanyayaAttempt >= 2) || str_contains($complaintStatus, '2nd') || str_contains($caseStatus, '2nd');
-            $stage = $isSecond ? '2nd Paanyaya' : '1st Paanyaya';
+            $stage = '1st Mediation';
         }
 
         // 3. Intake / Administrative Status (Current administrative state)
-        $intake = 'Paanyaya';
+        $intake = 'Docketed';
         if ($hasCase || $caseStatus === 'Docketed' || $complaintStatus === 'Docketed' || $stage !== 'None' || $isStageExhausted) {
             $intake = 'Docketed';
         }
@@ -309,9 +309,9 @@ class Search
             return 'Mediation';
         }
         if (str_contains($complaintStatus, 'Paanyaya') || str_contains($caseStatus, 'Paanyaya') || empty($row['case_id'])) {
-            return 'Paanyaya';
+            return 'Mediation';
         }
-        return 'Paanyaya';
+        return 'Mediation';
     }
 
 

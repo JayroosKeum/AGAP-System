@@ -55,13 +55,23 @@ include '../../layouts/header.php';
                 <p>Record, monitor, and manage community concerns and dispute proceedings.</p>
             </div>
 
-            <a
+            <!-- Formal complaint actions rendered below -->
+            <a style="display:none;"
                 href="complaint-create.php"
                 class="btn-create"
                 style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                 Add Complaint
             </a>
+            <div style="display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <a href="../paanyaya/index.php" class="btn-secondary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 8px; font-weight: 600; font-size: 0.86rem; background: #f0fdf4; color: #15803d; border: 1px solid #86efac;">
+                    <span>🤝 Start Informal Dialogue (Paanyaya)</span>
+                </a>
+                <a href="complaint-create.php" class="btn-create" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    File Official Complaint
+                </a>
+            </div>
         </div>
 
         <?php if ($complaintFlash && !empty($complaintFlash['message'])): ?>
@@ -81,7 +91,7 @@ include '../../layouts/header.php';
             <button type="button" class="nav-tab-btn active" data-tab-status="">
                 All <span class="tab-count-pill" id="tabCountAll">0</span>
             </button>
-            <button type="button" class="nav-tab-btn" data-tab-status="Paanyaya">
+            <button type="button" class="nav-tab-btn" data-tab-status="Paanyaya" style="display: none;">
                 Paanyaya <span class="tab-count-pill" id="tabCountPaanyaya">0</span>
             </button>
             <button type="button" class="nav-tab-btn" data-tab-status="Mediation">
@@ -167,7 +177,7 @@ include '../../layouts/header.php';
                                 <option value="Mediation">Mediation (Punong Barangay)</option>
                                 <option value="Conciliation">Conciliation (Pangkat ng Tagapagkasundo)</option>
                                 <option value="Arbitration">Arbitration (Binding Agreement)</option>
-                                <option value="None">None / Pre-docketing</option>
+
                             </select>
                         </div>
                         <div class="drawer-field">

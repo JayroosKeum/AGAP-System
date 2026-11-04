@@ -188,7 +188,7 @@ function initialiseNarrativeEnhancement() {
 }
 
 function canAccessTab(tabId, caseStatus, stageProgress) {
-    if (tabId === 'tab-overview' || tabId === 'tab-paanyaya') {
+    if (tabId === 'tab-overview') {
         return { allowed: true };
     }
 
@@ -216,12 +216,12 @@ function canAccessTab(tabId, caseStatus, stageProgress) {
     const isPaanyayaActive = paanyayaStatuses.includes(complaint.status) && !caseId;
 
     const summonsPrereq = complaint.paanyaya_stages?.summons_prerequisite;
-    const isSummonsLocked = summonsPrereq && (summonsPrereq.allowed === false) && !caseId;
+    const isSummonsLocked = false;
     const p1Choice = complaint.paanyaya_stages?.stage_1?.complainant_choice;
     const p2Stage = complaint.paanyaya_stages?.stage_2;
-    const isP2Pending = (p1Choice === 'Request_Paanyaya_2') && (!p2Stage || !p2Stage.is_completed) && (!summonsPrereq || !summonsPrereq.allowed) && !caseId;
+    const isP2Pending = false;
 
-    const isPaanyayaCompletedOrEscalated = !isPaanyayaActive && !isSummonsLocked && !isP2Pending && (
+    const isPaanyayaCompletedOrEscalated = true || (
         Boolean(caseId) ||
         ['Mediation', 'Conciliation', 'Arbitration', 'CFA', 'Settled', 'Resolution / Closed'].includes(lifecycle) ||
         ['Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Closed'].includes(cStatus) ||
@@ -397,6 +397,15 @@ function initialiseCaseTabs() {
 function switchCaseTab(tabId) {
     if (tabId === 'tab-parties') tabId = 'tab-mediation';
     if (tabId === 'tab-documents') tabId = 'tab-conciliation';
+
+    // Stage 0 is owned by the Paanyaya module, not Complaint Details.
+    if (tabId === 'tab-paanyaya') {
+        const complaintId = new URLSearchParams(window.location.search).get('id');
+        if (complaintId) {
+            window.location.href = `../paanyaya/stage.php?complaint_id=${encodeURIComponent(complaintId)}`;
+        }
+        return true;
+    }
 
     // Sequential stage locking verification
     const access = canAccessTab(tabId);
@@ -613,7 +622,7 @@ async function loadComplaintDetails() {
         }
 
         // Format Docket Number (e.g. 10-17-2026) or Paanyaya Case Number (e.g. P-10-86-2026)
-        const isPaanyayaRecord = data.status === 'Pre-Docketed (Paanyaya)' || (!data.case_id && !data.case_workspace?.case?.case_id);
+        const isPaanyayaRecord = false;
         const formatDocketDisplay = (num, id, dt) => {
             if (num && String(num).startsWith('P-')) return String(num);
             if (num && !String(num).startsWith('CMP-')) return String(num);
@@ -669,7 +678,7 @@ async function loadComplaintDetails() {
             displayStage = 'CFA Stage (Court Referral)';
         } else if (isSettled) {
             displayStage = 'Settled (Amicable Settlement)';
-        } else if (isPaanyayaRecord || data.status === 'Pre-Docketed (Paanyaya)') {
+        } else if (false && (isPaanyayaRecord || data.status === 'Pre-Docketed (Paanyaya)')) {
             displayStage = 'Paanyaya';
         } else {
             const effStage = caseStage || 'Mediation';
@@ -696,7 +705,7 @@ async function loadComplaintDetails() {
                 statusEl.style.background = '#dcfce7';
                 statusEl.style.color = '#15803d';
                 statusEl.style.border = '1px solid #86efac';
-            } else if (isPaanyayaRecord || data.status === 'Pre-Docketed (Paanyaya)') {
+            } else if (false && (isPaanyayaRecord || data.status === 'Pre-Docketed (Paanyaya)')) {
                 statusEl.style.background = '#dcfce7';
                 statusEl.style.color = '#15803d';
                 statusEl.style.border = '1px solid #86efac';
@@ -725,7 +734,7 @@ async function loadComplaintDetails() {
         // Action Bar Status Tracker Button
         const statusBtnLabel = document.getElementById('statusTrackerButtonLabel');
         if (statusBtnLabel) {
-            statusBtnLabel.textContent = 'Status: ' + (data.status === 'Pre-Docketed (Paanyaya)' ? 'Paanyaya' : (data.status === 'Settled' ? 'Settled' : (caseStage || data.lifecycle_status || 'In Progress')));
+            statusBtnLabel.textContent = 'Status: ' + (data.status === 'Settled' ? 'Settled' : (caseStage || data.lifecycle_status || 'Mediation'));
         }
         const statusDot = document.getElementById('statusDotIndicator');
         if (statusDot) {
@@ -1525,7 +1534,7 @@ function renderOfficialKpForms(workspace, complaint) {
     const isPaanyaya = paanyayaStatuses.includes(activeComplaint.status || '') ||
                        Boolean(activeComplaint.resolved_without_docketing) ||
                        (typeof activeComplaint.status === 'string' && activeComplaint.status.toLowerCase().includes('paanyaya'));
-    const hasPaanyayaDoc = isPaanyaya || Boolean(activeComplaint.paanyaya);
+    const hasPaanyayaDoc = false;
 
     // Filter and deduplicate documents:
     // 1. Skip KP Form 7 because Section 1 explicitly renders the primary complaint form.
@@ -1570,7 +1579,7 @@ function renderOfficialKpForms(workspace, complaint) {
     const stg2Details = stg2.details || {};
     const stg2Latest = stg2.latest_attempt || null;
     const stg2Count = stg2.attempts_count || 0;
-    const hasP2Attempt = stg2Count > 0 || Boolean(stg2Details.issued_at && stg2Details.status !== 'Locked');
+    const hasP2Attempt = false;
 
     const totalCount = docs.length + (complaintId > 0 ? (hasPaanyayaDoc ? (hasP2Attempt ? 3 : 2) : 1) : 0) + 2;
     const countText = `${totalCount} Issued`;
@@ -1705,7 +1714,7 @@ function renderOfficialKpForms(workspace, complaint) {
 
     // 1. Primary Complaint Form: KP Form 7 (Reklamo)
     if (complaintId > 0) {
-        if (isPaanyaya) {
+        if (false && isPaanyaya) {
             rowsHtml += `
                 <div class="kp-form-item-row" style="background: #f8fafc; border-left: 4px solid #f59e0b;">
                     <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
@@ -3336,6 +3345,7 @@ function openEmbeddedScheduleModal(stageType = 'Mediation') {
 
     // Initialize date constraints (min today)
     const dateInput = document.getElementById('schedDate');
+    initEmbeddedScheduleModalCalendar(stageType, caseId, complaintId);
     if (dateInput) {
         const todayStr = (new Date()).toISOString().slice(0, 10);
         dateInput.min = todayStr;
@@ -3348,6 +3358,250 @@ function openEmbeddedScheduleModal(stageType = 'Mediation') {
 
     modal.style.display = 'flex';
 }
+function renderTimeSlotsPillGrid(gridElId, timeInputId, scheduledItems = [], hearingType = 'Mediation', selectedDate = '', onSelectCallback = null) {
+    const gridEl = document.getElementById(gridElId);
+    const timeInput = document.getElementById(timeInputId);
+    if (!gridEl || !timeInput) return;
+
+    const cfg = Object.assign({}, window.AGAP_SETTINGS || {}, window.currentWsWindowMeta?.settings || {}, window.currentSummonWindowMeta?.settings || {});
+    const isMed = (hearingType === 'Mediation');
+    const winStart = (isMed ? (cfg.mediation_hours_start || '13:00') : (cfg.working_hours_start || '08:00')).slice(0, 5);
+    const winEnd = (isMed ? (cfg.mediation_hours_end || '16:30') : (cfg.working_hours_end || '17:00')).slice(0, 5);
+    const slotDur = Math.max(15, isMed ? Number(cfg.mediation_default_duration_min || 45) : Number(cfg.conciliation_default_duration_min || 60));
+    timeInput.min = winStart;
+    timeInput.max = winEnd;
+    if (!timeInput.value || timeInput.value.slice(0, 5) < winStart || timeInput.value.slice(0, 5) > winEnd) {
+        timeInput.value = winStart;
+    }
+    const curVal = (timeInput.value || winStart).slice(0, 5);
+    const toMins = (t) => { const p = String(t || '00:00').split(':'); return (parseInt(p[0], 10) || 0) * 60 + (parseInt(p[1], 10) || 0); };
+    const toHHMM = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    const to12h = (m) => { const h24 = Math.floor(m / 60); const mn = m % 60; const ampm = h24 >= 12 ? 'PM' : 'AM'; const h12 = (h24 % 12) || 12; return `${h12}:${String(mn).padStart(2, '0')} ${ampm}`; };
+    const allowedMedDayNums = Array.isArray(cfg.mediation_day_numbers) && cfg.mediation_day_numbers.length ? cfg.mediation_day_numbers : [2];
+    const selDayNum = selectedDate ? (new Date(selectedDate + 'T00:00:00').getDay()) : -1;
+    const isDesignatedMedDay = allowedMedDayNums.includes(selDayNum);
+    const medWinStartMin = toMins(cfg.mediation_hours_start || '13:00');
+    const medWinEndMin = toMins(cfg.mediation_hours_end || '16:30');
+    const dynamicSlots = [];
+    const startMin = toMins(winStart);
+    const endMin = toMins(winEnd);
+    const limitMin = isMed ? endMin : Math.max(startMin, endMin - 30);
+    for (let m = startMin; m <= limitMin; m += slotDur) {
+        if (m >= 720 && m < 780) { m = 780 - slotDur; continue; }
+        dynamicSlots.push({ value: toHHMM(m), label: to12h(m), mins: m, hour: Math.floor(m / 60) });
+    }
+    const isTue = selectedDate ? (new Date(selectedDate + 'T00:00:00').getDay() === 2) : false;
+    const isConcilTuePmRestricted = (hearingType === 'Conciliation' && isTue);
+
+    const standardSlots = [
+        { value: '08:00', label: '8:00 AM', hour: 8 },
+        { value: '09:00', label: '9:00 AM', hour: 9 },
+        { value: '10:00', label: '10:00 AM', hour: 10 },
+        { value: '11:00', label: '11:00 AM', hour: 11 },
+        { value: '13:00', label: '1:00 PM', hour: 13 },
+        { value: '14:00', label: '2:00 PM', hour: 14 },
+        { value: '15:00', label: '3:00 PM', hour: 15 },
+        { value: '16:00', label: '4:00 PM', hour: 16 }
+    ];
+
+    const parseMinsFromItem = (item) => {
+        if (item.time_24) { const p = String(item.time_24).split(':'); return (parseInt(p[0], 10) || 0) * 60 + (parseInt(p[1], 10) || 0); }
+        const raw = String(item.hearing_time || item.start_time || item.scheduled_time_formatted || item.hearing_date || '');
+        const m12 = raw.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+        if (m12) { let h = parseInt(m12[1], 10); const mn = parseInt(m12[2], 10) || 0; const ap = m12[3].toUpperCase(); if (ap === 'PM' && h < 12) h += 12; if (ap === 'AM' && h === 12) h = 0; return h * 60 + mn; }
+        const m24 = raw.match(/(?:T|\s|^)(\d{2}):(\d{2})/);
+        if (m24) return parseInt(m24[1], 10) * 60 + (parseInt(m24[2], 10) || 0);
+        return -1;
+    };
+    const parseHourFromItem = (item) => {
+        const raw = String(item.hearing_time || item.start_time || item.scheduled_time_formatted || item.hearing_date || '');
+        const m24 = raw.match(/(?:T|\s|^)(\d{2}):(\d{2})/);
+        if (m24 && !/am|pm/i.test(raw)) return parseInt(m24[1], 10);
+        const m12 = raw.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+        if (m12) {
+            let h = parseInt(m12[1], 10);
+            const ampm = m12[3].toUpperCase();
+            if (ampm === 'PM' && h < 12) h += 12;
+            if (ampm === 'AM' && h === 12) h = 0;
+            return h;
+        }
+        return -1;
+    };
+
+    const bookedByHour = {};
+    (scheduledItems || []).forEach(s => {
+        const h = parseHourFromItem(s);
+        if (h >= 0) bookedByHour[h] = s;
+    });
+
+    gridEl.innerHTML = dynamicSlots.map(slot => {
+        const slotStart = slot.mins;
+        const slotEnd = slotStart + slotDur;
+        const overlappingItem = (scheduledItems || []).find(s => {
+            const bStart = parseMinsFromItem(s);
+            if (bStart < 0) return false;
+            const bDur = Number(s.duration_minutes || slotDur);
+            const bEnd = bStart + bDur;
+            return (slotStart < bEnd && slotEnd > bStart);
+        });
+        const isSelected = (curVal === slot.value);
+        const bookedItem = overlappingItem || bookedByHour[slot.hour];
+        const isRestrictedAfternoon = (!isMed && isDesignatedMedDay && slot.mins >= medWinStartMin && slot.mins <= medWinEndMin);
+
+        let btnStyle = 'border: 1px solid #bbf7d0; background: #f0fdf4; color: #166534; cursor: pointer;';
+        let statusTag = 'Available';
+        let disabledAttr = '';
+
+        if (isRestrictedAfternoon) {
+            btnStyle = 'border: 1px dashed #cbd5e1; background: #f8fafc; color: #94a3b8; cursor: not-allowed; opacity: 0.65;';
+            statusTag = 'Mediation Only';
+            disabledAttr = 'disabled';
+        } else if (bookedItem) {
+            btnStyle = 'border: 1px solid #fecaca; background: #fef2f2; color: #991b1b; cursor: pointer;';
+            statusTag = bookedItem.case_number ? `Case ${bookedItem.case_number}` : 'Booked';
+        }
+
+        if (isSelected && !isRestrictedAfternoon) {
+            btnStyle = 'border: 2px solid #2563eb; background: #eff6ff; color: #1e40af; font-weight: 700; box-shadow: 0 0 0 2px rgba(37,99,235,0.18); cursor: pointer;';
+            statusTag = bookedItem ? 'Selected (Booked)' : '✓ Selected';
+        }
+
+        return `
+            <button type="button" ${disabledAttr}
+                onclick="selectTimeSlotPill('${gridElId}', '${timeInputId}', '${slot.value}')"
+                style="padding: 6px 6px; border-radius: 6px; text-align: center; transition: all 0.15s; display: flex; flex-direction: column; align-items: center; gap: 2px; ${btnStyle}">
+                <span style="font-size: 0.78rem; font-weight: 700; line-height: 1.1;">${slot.label}</span>
+                <span style="font-size: 0.64rem; opacity: 0.9; line-height: 1.1;">${escapeHtml(statusTag)}</span>
+            </button>
+        `;
+    }).join('');
+
+    gridEl._lastScheduledItems = scheduledItems;
+    gridEl._lastHearingType = hearingType;
+    gridEl._lastSelectedDate = selectedDate;
+    gridEl._onSelectCallback = onSelectCallback;
+}
+window.renderTimeSlotsPillGrid = renderTimeSlotsPillGrid;
+
+function selectTimeSlotPill(gridElId, timeInputId, timeValue) {
+    const timeInput = document.getElementById(timeInputId);
+    const gridEl = document.getElementById(gridElId);
+    if (!timeInput) return;
+    timeInput.value = timeValue;
+    if (gridEl) {
+        renderTimeSlotsPillGrid(
+            gridElId,
+            timeInputId,
+            gridEl._lastScheduledItems || [],
+            gridEl._lastHearingType || 'Mediation',
+            gridEl._lastSelectedDate || '',
+            gridEl._onSelectCallback || null
+        );
+        if (typeof gridEl._onSelectCallback === 'function') {
+            gridEl._onSelectCallback(timeValue);
+        }
+    }
+}
+window.selectTimeSlotPill = selectTimeSlotPill;
+
+async function initEmbeddedScheduleModalCalendar(stageType, caseId, complaintId) {
+    if (window.stageWorkspaceState) {
+        window.stageWorkspaceState.mode = stageType;
+        if (caseId) window.stageWorkspaceState.caseId = Number(caseId);
+    }
+
+    const dateInput = document.getElementById('schedDate');
+    const timeInput = document.getElementById('schedTime');
+    const deckTitle = document.getElementById('schedVisualDeckTitle');
+    const timeHint = document.getElementById('schedTimeHint');
+    const cfg = window.AGAP_SETTINGS || {};
+    const medDaysLbl = (cfg.mediation_days_label || 'Tuesdays');
+    const maxCap = Number(cfg.daily_capacity || 8);
+    const fmtTime12 = (t) => { const p = String(t || '00:00').split(':'); const h = parseInt(p[0], 10) || 0; const m = parseInt(p[1], 10) || 0; return `${(h % 12) || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`; };
+    const medStartStr = (cfg.mediation_hours_start || '13:00').slice(0, 5);
+    const medEndStr = (cfg.mediation_hours_end || '16:30').slice(0, 5);
+    const workStartStr = (cfg.working_hours_start || '08:00').slice(0, 5);
+    const workEndStr = (cfg.working_hours_end || '17:00').slice(0, 5);
+    const medDur = Number(cfg.mediation_default_duration_min || 45);
+    const medMaxDur = Number(cfg.mediation_max_duration_min || 60);
+    const concilDur = Number(cfg.conciliation_default_duration_min || 60);
+    const concilMaxDur = Number(cfg.conciliation_max_duration_min || 90);
+
+    if (deckTitle) {
+        deckTitle.textContent = stageType === 'Conciliation'
+            ? 'AVAILABLE CONCILIATION DAYS (MON, TUE AM, WED, THU, FRI):'
+            : `AVAILABLE MEDIATION DAYS (${medDaysLbl.toUpperCase()} · MAX ${maxCap}/DAY):`;
+    }
+    if (timeHint) {
+        timeHint.textContent = stageType === 'Conciliation'
+            // Conciliation hint uses configured working hours below
+            ? `Conciliation hours: ${fmtTime12(workStartStr)} – ${fmtTime12(workEndStr)} (excluding 12–1 PM lunch & designated Mediation window). Standard duration: ${concilDur} mins (max ${concilMaxDur} mins).`
+            : `Designated Mediation session window: ${fmtTime12(medStartStr)} – ${fmtTime12(medEndStr)} (${medDaysLbl}). Standard duration: ${medDur} mins (max ${medMaxDur} mins).`;
+    }
+    if (timeInput && !timeInput.value) {
+        timeInput.value = stageType === 'Conciliation' ? workStartStr : medStartStr;
+    }
+
+    renderTimeSlotsPillGrid('schedTimeSlotsGrid', 'schedTime', [], stageType, dateInput ? dateInput.value : '', () => {
+        if (typeof checkWorkspaceScheduleConflict === 'function') checkWorkspaceScheduleConflict();
+    });
+
+    const gridEl = document.getElementById('schedVisualDayGrid');
+    if (gridEl) {
+        gridEl.innerHTML = '<div style="text-align: center; color: #64748b; font-size: 0.78rem; padding: 12px; grid-column: 1 / -1;">Loading available mediation dates &amp; capacity...</div>';
+    }
+
+    try {
+        const hParam = stageType === 'Conciliation' ? 'Conciliation' : 'Mediation';
+        const res = await fetch(`../../../backend/api/summons/check-schedule.php?case_id=${encodeURIComponent(caseId || '')}&complaint_id=${encodeURIComponent(complaintId || '')}&hearing_type=${encodeURIComponent(hParam)}&get_window=1`);
+        const json = await res.json();
+        if (json.window) {
+            window.currentWsWindowMeta = json.window;
+            if (json.window.settings) {
+                window.AGAP_SETTINGS = Object.assign({}, window.AGAP_SETTINGS || {}, json.window.settings);
+            }
+            const allowedNums = window.AGAP_SETTINGS?.mediation_day_numbers || [2];
+            const allowedDays = window.AGAP_SETTINGS?.mediation_days || ['Tue'];
+            const isMediation = (stageType !== 'Conciliation' && stageType !== 'Arbitration');
+            let targetDate = dateInput ? dateInput.value : '';
+            const allSlots = Object.values(json.window.daily_slots || {});
+
+            const isDateValidForMode = (dStr) => {
+                if (!dStr) return false;
+                const slot = json.window.daily_slots?.[dStr];
+                if (!slot || slot.is_past || slot.is_fully_booked) return false;
+                if (isMediation) {
+                    const parts = dStr.split('-');
+                    const dt = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+                    return allowedNums.includes(dt.getDay()) || allowedDays.includes(slot.day_name);
+                }
+                return !slot.is_weekend && !slot.is_non_working_day;
+            };
+
+            if (!isDateValidForMode(targetDate)) {
+                const firstOpen = allSlots.find(d => isDateValidForMode(d.date));
+                if (firstOpen) {
+                    targetDate = firstOpen.date;
+                    if (dateInput) dateInput.value = targetDate;
+                }
+            }
+
+            if (typeof renderWorkspaceVisualDatePicker === 'function') {
+                renderWorkspaceVisualDatePicker(json.window, targetDate);
+            } else if (typeof renderSummonVisualDatePicker === 'function') {
+                renderSummonVisualDatePicker(json.window, targetDate);
+            }
+
+            if (targetDate && typeof checkWorkspaceScheduleConflict === 'function') {
+                await checkWorkspaceScheduleConflict();
+            }
+        }
+    } catch (err) {
+        console.warn('Error loading schedule window in initEmbeddedScheduleModalCalendar:', err);
+    }
+}
+window.initEmbeddedScheduleModalCalendar = initEmbeddedScheduleModalCalendar;
+
 window.openEmbeddedScheduleModal = openEmbeddedScheduleModal;
 window.openScheduleModal = openEmbeddedScheduleModal;
 
@@ -3631,12 +3885,25 @@ window.submitEmbeddedReferPangkat = submitEmbeddedReferPangkat;
 
 
 function handleSchedDateChange(val) {
-    // Optional schedule conflict hook
+    if (window.currentWsWindowMeta && typeof renderWorkspaceVisualDatePicker === 'function') {
+        renderWorkspaceVisualDatePicker(window.currentWsWindowMeta, val);
+    }
+    if (typeof checkWorkspaceScheduleConflict === 'function') {
+        checkWorkspaceScheduleConflict();
+    }
 }
 window.handleSchedDateChange = handleSchedDateChange;
 
 function handleSchedTimeChange() {
-    // Optional schedule conflict hook
+    const dateVal = document.getElementById('schedDate')?.value || '';
+    const stageType = document.getElementById('schedHearingType')?.value || 'Mediation';
+    const gridEl = document.getElementById('schedTimeSlotsGrid');
+    if (gridEl && typeof renderTimeSlotsPillGrid === 'function') {
+        renderTimeSlotsPillGrid('schedTimeSlotsGrid', 'schedTime', gridEl._lastScheduledItems || [], stageType, dateVal, gridEl._onSelectCallback || null);
+    }
+    if (typeof checkWorkspaceScheduleConflict === 'function') {
+        checkWorkspaceScheduleConflict();
+    }
 }
 window.handleSchedTimeChange = handleSchedTimeChange;
 
@@ -3666,22 +3933,39 @@ async function submitEmbeddedSchedule(e) {
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Scheduling...'; }
 
     try {
-        const payload = {
-            case_id: caseId,
-            complaint_id: complaintId,
-            hearing_type: hearingType,
-            hearing_date: dateVal,
-            hearing_time: timeVal,
-            venue: venueVal,
-            remarks: remarksVal
-        };
-        if (pastReason) payload.past_date_exception_reason = pastReason;
-
-        const res = await fetch('../../../backend/api/hearings/create.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
+        const existingMed = window.embeddedHearingsState?.mediation_sessions || [];
+        let res;
+        if (hearingType === 'Mediation' && (!caseId || existingMed.length === 0) && complaintId > 0) {
+            const fd = new FormData();
+            fd.append('complaint_id', String(complaintId));
+            if (caseId) fd.append('case_id', String(caseId));
+            fd.append('mediation_date', dateVal);
+            fd.append('mediation_time', timeVal);
+            fd.append('venue', venueVal);
+            fd.append('remarks', remarksVal);
+            res = await fetch('../../../backend/api/summons/issue.php', {
+                method: 'POST',
+                body: fd
+            });
+        } else {
+            const payload = {
+                case_id: caseId,
+                complaint_id: complaintId,
+                hearing_type: hearingType,
+                hearing_date: dateVal + ' ' + timeVal + ':00',
+                hearing_time: timeVal,
+                duration_minutes: hearingType === 'Conciliation' ? Number(window.AGAP_SETTINGS?.conciliation_default_duration_min || 60) : Number(window.AGAP_SETTINGS?.mediation_default_duration_min || 45),
+                venue: venueVal,
+                remarks: remarksVal,
+                schedule_reviewed: '1'
+            };
+            if (pastReason) payload.past_date_exception_reason = pastReason;
+            res = await fetch('../../../backend/api/hearings/create.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+        }
         const json = await res.json();
         if (json.success) {
             closeEmbeddedScheduleModal();
@@ -4326,6 +4610,26 @@ async function checkMediationScheduleConflict() {
 
         if (result.window) {
             window.currentSummonWindowMeta = result.window;
+            const allowedNums = window.AGAP_SETTINGS?.mediation_day_numbers || [2];
+            const allowedDays = window.AGAP_SETTINGS?.mediation_days || ['Tue'];
+            const checkIsMedDay = (dStr) => {
+                if (!dStr) return false;
+                const slot = result.window.daily_slots?.[dStr];
+                if (!slot || slot.is_past || slot.is_fully_booked) return false;
+                const parts = dStr.split('-');
+                const dt = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+                return allowedNums.includes(dt.getDay()) || allowedDays.includes(slot.day_name);
+            };
+            if (!checkIsMedDay(dateVal) && result.window.daily_slots) {
+                const firstMedDay = Object.values(result.window.daily_slots).find(d => checkIsMedDay(d.date));
+                if (firstMedDay && dateInput) {
+                    dateInput.value = firstMedDay.date;
+                    return checkMediationScheduleConflict();
+                }
+            }
+            if (typeof renderTimeSlotsPillGrid === 'function') {
+                renderTimeSlotsPillGrid('summonTimeSlotsGrid', 'summonMediationTime', result.scheduled_mediations || [], 'Mediation', dateInput.value, () => checkMediationScheduleConflict());
+            }
             renderSummonVisualDatePicker(result.window, dateVal);
         }
 
@@ -4422,7 +4726,7 @@ function debouncedCheckMediationScheduleConflict() {
 function openIssueSummonModal() {
     // Guard against issuing summons before completing Paanyaya prerequisites
     const paaPrereq = window.complaintData?.paanyaya_stages?.summons_prerequisite;
-    if (paaPrereq && !paaPrereq.allowed) {
+    if (false && paaPrereq && !paaPrereq.allowed) {
         window.agapNotify?.(
             paaPrereq.message || paaPrereq.reason || 'Complete the required Paanyaya process before issuing the first formal summons.',
             'warning',
@@ -4480,8 +4784,15 @@ function openIssueSummonModal() {
     const timeInput = document.getElementById('summonMediationTime');
     if (timeInput) {
         timeInput.setCustomValidity('');
-        if (!timeInput.value || timeInput.value < '08:00' || timeInput.value > '17:00') {
-            timeInput.value = '09:00';
+        const medStart = (window.AGAP_SETTINGS?.mediation_hours_start || '13:00').slice(0, 5);
+        const medEnd = (window.AGAP_SETTINGS?.mediation_hours_end || '16:30').slice(0, 5);
+        timeInput.min = medStart;
+        timeInput.max = medEnd;
+        if (!timeInput.value || timeInput.value < medStart || timeInput.value > medEnd) {
+            timeInput.value = medStart;
+        }
+        if (false) {
+            timeInput.value = stageType === 'Conciliation' ? workStartStr : medStartStr;
         }
     }
 
@@ -4497,7 +4808,7 @@ function closeIssueSummonModal() {
 function handleIssueSummonClick() {
     // Guard against issuing summons before completing Paanyaya prerequisites
     const paaPrereq = window.complaintData?.paanyaya_stages?.summons_prerequisite;
-    if (paaPrereq && !paaPrereq.allowed) {
+    if (false && paaPrereq && !paaPrereq.allowed) {
         window.agapNotify?.(
             paaPrereq.message || paaPrereq.reason || 'Complete the required Paanyaya process before issuing the first formal summons.',
             'warning',
@@ -4678,7 +4989,7 @@ async function loadCaseProgress(complaintId) {
             issueBtn.removeAttribute('data-summon-gated');
 
             const paaPrereq = window.complaintData?.paanyaya_stages?.summons_prerequisite;
-            const isPaaLocked = paaPrereq && (paaPrereq.allowed === false);
+            const isPaaLocked = false;
 
             if (btnInfo.disabled || isPaaLocked) {
                 // Visually disabled — mark as gated so handleIssueSummonClick can redirect to proof page or notify
@@ -4716,15 +5027,15 @@ function renderStatusTracker(progress) {
     const historyTimelineEl = document.getElementById('caseHistoryTimeline');
     if (!track) return;
 
-    const statuses = ['Paanyaya', 'Mediation', 'Conciliation', 'CFA', 'Resolution / Closed'];
+    const statuses = ['Mediation', 'Conciliation', 'CFA', 'Resolution / Closed'];
     let currentStatus = progress.lifecycle_status;
     if (!currentStatus || currentStatus === 'Pre-Docketed (Paanyaya)' || currentStatus === 'Pending') {
-        currentStatus = 'Paanyaya';
+        currentStatus = 'Mediation';
     } else if (currentStatus === 'Settled' || currentStatus === 'Resolved at Paanyaya / Closed') {
         currentStatus = 'Resolution / Closed';
     }
     if (!statuses.includes(currentStatus)) {
-        currentStatus = 'Paanyaya';
+        currentStatus = 'Mediation';
     }
     const currentIndex = statuses.indexOf(currentStatus);
 
@@ -6237,7 +6548,7 @@ function renderKp7Overview(complaint) {
     const docStatus = complaint.document_status || (complaint.current_scan ? 'Scan Uploaded' : 'No Scan Uploaded');
     const badgeEl = document.getElementById('kp7DocStatusBadge');
     if (badgeEl) {
-        if (isPaanyaya) {
+        if (false && isPaanyaya) {
             badgeEl.className = 'badge-doc-status badge-doc-pending';
             badgeEl.style.background = '#fef3c7';
             badgeEl.style.color = '#b45309';
@@ -6254,7 +6565,7 @@ function renderKp7Overview(complaint) {
 
     const pillEl = document.getElementById('kp7ScanStatusPill');
     if (pillEl) {
-        if (isPaanyaya) {
+        if (false && isPaanyaya) {
             pillEl.textContent = 'Held in Pre-Docketing';
             pillEl.style.background = '#fffbeb';
             pillEl.style.color = '#b45309';
@@ -6322,7 +6633,7 @@ function renderKp7Overview(complaint) {
             `;
         }
     } else {
-        if (isPaanyaya) {
+        if (false && isPaanyaya) {
             contentWrap.innerHTML = `
                 <div style="padding: 12px; background: #fffbeb; border: 1px dashed #fde68a; border-radius: 8px; text-align: center; color: #92400e; font-size: 0.82rem;">
                     <strong>KP Form 7 is On Hold</strong> during the informal Paanyaya dialogue phase. If the dispute is settled informally, KP Form 7 is never created.
