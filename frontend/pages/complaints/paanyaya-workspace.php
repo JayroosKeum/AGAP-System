@@ -503,7 +503,7 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
                                     </div>
                                     <?php if (!empty($sess['outcome_notes'])): ?>
                                         <div style="margin-top: 6px; color: #475569;">
-                                            <strong>Notes / Minutes:</strong> <?php echo nl2br(htmlspecialchars($sess['outcome_notes'])); ?>
+                                            <strong>Resolution Notes:</strong> <?php echo nl2br(htmlspecialchars($sess['outcome_notes'])); ?>
                                         </div>
                                     <?php endif; ?>
                                 </div>
@@ -718,9 +718,9 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
                 <div id="wsOutcomeConflictAlert" class="alert alert-danger" style="display: none; margin-top: 10px; padding: 8px 12px; font-size: 0.82rem; border-radius: 6px; background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5;"></div>
             </div>
 
-            <!-- Notes & Minutes -->
+            <!-- Resolution & Outcome Notes -->
             <div class="form-group" style="margin-top: 14px;">
-                <label for="outcomeNotes" style="font-size: 0.84rem; font-weight: 700; color: #334155;">Minutes &amp; Outcome Notes</label>
+                <label for="outcomeNotes" style="font-size: 0.84rem; font-weight: 700; color: #334155;">Resolution &amp; Outcome Notes</label>
                 <textarea id="outcomeNotes" name="outcome_notes" rows="3" placeholder="Enter session notes, agreed stipulations, or reasons for failure..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.88rem;"></textarea>
             </div>
 

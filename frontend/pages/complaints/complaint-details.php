@@ -393,104 +393,10 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
 
         </div>
 <!-- ===================================================================
-             TAB PANE: PAANYAYA (STAGE 0: PRE-DOCKETING)
+             TAB PANE: PAANYAYA (STAGE 0: PRE-DOCKETING WORKSPACE)
              =================================================================== -->
         <div id="tab-paanyaya" class="case-tab-pane <?php echo $activeTab === 'tab-paanyaya' ? 'active' : ''; ?>">
-
-            <!-- TWO PAANYAYA STAGES: SIDE BY SIDE SUMMARY CARDS -->
-            <div class="paanyaya-stages-grid" style="margin-top: 6px;">
-                <!-- CARD 1: PAANYAYA 1 (First Preliminary Invitation) -->
-                <div class="paanyaya-card" id="paanyaya1Card">
-                    <div>
-                        <div class="paanyaya-card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                            <div class="paanyaya-stage-title-wrap">
-                                <h3 class="paanyaya-card-title">Paanyaya 1 &ndash; Preliminary Invitation</h3>
-                            </div>
-                            <span id="p1StatusBadge" class="paanyaya-stage-tag" style="display: none;"></span>
-                        </div>
-
-                        <!-- Schedule & Officer Meta -->
-                        <div id="p1ScheduleMeta" style="display: none;"></div>
-
-                        <!-- Inline Dialogue Minutes & Settlement Result (Paanyaya 1) -->
-                        <div id="p1DialogueMinutesInline" class="paanyaya-minutes-inline-container" style="margin-top: 10px;">
-                            <div style="background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 10px; padding: 18px; text-align: center;">
-                                <p style="margin: 0 0 6px 0; font-size: 0.88rem; color: #475569; font-weight: 600;">
-                                    Dialogue Minutes not yet recorded.
-                                </p>
-                                <span style="font-size: 0.8rem; color: #64748b;">
-                                    Click "Record Dialogue Minutes" below to proceed.
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Action Buttons -->
-                    <div class="paanyaya-card-actions">
-                        <button type="button" class="btn-create" id="btnIssueP1" onclick="openIssuePaanyayaModal('Paanyaya 1')">
-                            Issue Paanyaya 1
-                        </button>
-                        <a href="record-dialogue-minutes.php?id=<?= $complaintId ?>&stage=Paanyaya+1" class="btn-create" id="btnRecordMinutesP1" style="background: #2563eb; border-color: #2563eb; text-decoration: none; display: none;">
-                            Record Dialogue Minutes
-                        </a>
-                        <a href="record-dialogue-minutes.php?id=<?= $complaintId ?>&stage=Paanyaya+1" class="btn-secondary" id="btnViewMinutesP1" style="display: none; text-decoration: none;">
-                            View Minutes
-                        </a>
-                        <button type="button" class="btn-sess-indigo" id="btnPreviewP1" onclick="previewPaanyayaStageLetter('Paanyaya 1')" style="display: none;">
-                            Preview Letter
-                        </button>
-                    </div>
-                </div>
-
-                <!-- CARD 2: PAANYAYA 2 (Second Preliminary Invitation) -->
-                <div class="paanyaya-card" id="paanyaya2Card">
-                    <div>
-                        <div class="paanyaya-card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                            <div class="paanyaya-stage-title-wrap">
-                                <h3 class="paanyaya-card-title">Paanyaya 2 &ndash; Second Preliminary Invitation</h3>
-                            </div>
-                            <span id="p2StatusBadge" class="paanyaya-stage-tag" style="display: none;"></span>
-                        </div>
-
-                        <!-- Schedule & Officer Meta -->
-                        <div id="p2ScheduleMeta" style="display: none;"></div>
-
-                        <!-- Locked State Alert Banner (when Paanyaya 1 is still incomplete) -->
-                        <div id="p2LockedNotice" style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 14px; margin-bottom: 16px; font-size: 0.85rem; color: #64748b; display: flex; align-items: center; gap: 10px;">
-                            <span>Paanyaya 2 is locked. It unlocks ONLY if Paanyaya 1 concludes with 'No Agreement' and the complainant requests a second invitation.</span>
-                        </div>
-
-                        <!-- Inline Dialogue Minutes & Settlement Result (Paanyaya 2) -->
-                        <div id="p2DialogueMinutesInline" class="paanyaya-minutes-inline-container" style="margin-top: 10px; display: none;">
-                            <div style="background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 10px; padding: 18px; text-align: center;">
-                                <p style="margin: 0 0 6px 0; font-size: 0.88rem; color: #475569; font-weight: 600;">
-                                    Dialogue Minutes not yet recorded.
-                                </p>
-                                <span style="font-size: 0.8rem; color: #64748b;">
-                                    Click "Record Dialogue Minutes" below to proceed.
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Action Buttons -->
-                    <div class="paanyaya-card-actions">
-                        <button type="button" class="btn-create" id="btnIssueP2" onclick="openIssuePaanyayaModal('Paanyaya 2')" disabled style="opacity: 0.55; cursor: not-allowed; display: none;">
-                            Issue Paanyaya 2
-                        </button>
-                        <a href="record-dialogue-minutes.php?id=<?= $complaintId ?>&stage=Paanyaya+2" class="btn-create" id="btnRecordMinutesP2" style="background: #2563eb; border-color: #2563eb; text-decoration: none; display: none;">
-                            Record Dialogue Minutes
-                        </a>
-                        <a href="record-dialogue-minutes.php?id=<?= $complaintId ?>&stage=Paanyaya+2" class="btn-secondary" id="btnViewMinutesP2" style="display: none; text-decoration: none;">
-                            View Minutes
-                        </a>
-                        <button type="button" class="btn-sess-indigo" id="btnPreviewP2" onclick="previewPaanyayaStageLetter('Paanyaya 2')" style="display: none;">
-                            Preview Letter
-                        </button>
-                    </div>
-                </div>
-            </div>
-
+            <?php include __DIR__ . '/tabs/paanyaya-tab.php'; ?>
         </div>
 
         <!-- ===================================================================
@@ -1256,27 +1162,7 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
 
 
 
-<!-- Modal: View Paanyaya Dialogue Minutes -->
-<div id="paanyayaMinutesViewModal" class="modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="viewMinutesModalHeading">
-    <div class="modal-content" style="max-width: 600px; padding: 24px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15); max-height: 90vh; overflow-y: auto;">
-        <div class="modal-header" style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 0;">
-            <div style="display: flex; align-items: center; gap: 10px;">
-                
-                <div>
-                    <h2 id="viewMinutesModalHeading" style="font-size: 1.18rem; font-weight: 800; color: #0f172a; margin: 0;">Recorded Dialogue Minutes</h2>
-                    <span id="viewMinutesModalSub" style="font-size: 0.8rem; color: #64748b;">Katitikan ng Impormal na Pag-uusap</span>
-                </div>
-            </div>
-            <button type="button" class="close-btn" onclick="closePaanyayaMinutesViewModal()">&times;</button>
-        </div>
-        <div id="viewMinutesBody" style="font-size: 0.88rem; line-height: 1.5; color: #334155;">
-            <!-- Injected by JavaScript -->
-        </div>
-        <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;">
-            <button type="button" class="btn-secondary" onclick="closePaanyayaMinutesViewModal()">Close</button>
-        </div>
-    </div>
-</div>
+
 
 <!-- ===================================================================
      MODALS FOR PAANYAYA 1 & 2 WORKFLOW & OFFICER'S RETURN TRACKING
