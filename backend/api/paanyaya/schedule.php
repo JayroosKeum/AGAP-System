@@ -20,8 +20,10 @@ if (!is_array($input)) {
 
 $complaintId = filter_var($input['complaint_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
 $inviteeName = trim((string)($input['invitee_name'] ?? ($input['name'] ?? '')));
+$inviteeFirst = trim((string)($input['invitee_first_name'] ?? ''));
+$inviteeLast = trim((string)($input['invitee_last_name'] ?? ''));
 
-if (!$complaintId && $inviteeName === '') {
+if (!$complaintId && $inviteeName === '' && ($inviteeFirst === '' && $inviteeLast === '')) {
     http_response_code(400);
     echo json_encode(['success' => false, 'message' => 'Either a valid Complaint ID or Invitee Name is required.']);
     exit;

@@ -383,6 +383,25 @@ include '../../layouts/header.php';
     grid-template-columns: 1fr 1fr;
     gap: 14px;
 }
+.form-row-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+}
+@media (max-width: 640px) {
+    .form-row, .form-row-3 {
+        grid-template-columns: 1fr;
+    }
+}
+.modal-section-title {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
 .modal-foot {
     padding: 14px 22px;
     background: #f8fafc;
@@ -572,20 +591,48 @@ include '../../layouts/header.php';
         </div>
         <form id="schedulePaanyayaForm">
             <div class="modal-body">
-                <div class="form-group">
-                    <label for="schedComplainantName">Name of Complainant (Nagpaanyaya) <span style="color: #dc2626;">*</span></label>
-                    <input type="text" id="schedComplainantName" name="complainant_name" class="form-control" placeholder="Full name of complainant / nagpaanyaya" required>
+                <!-- Name of Complainant -->
+                <div class="modal-section-title">
+                    Name of Complainant (Nagpaanyaya) <span style="color: #dc2626;">*</span>
+                </div>
+                <div class="form-row-3" style="margin-bottom: 14px;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="schedComplainantFirstName">First Name <span style="color: #dc2626;">*</span></label>
+                        <input type="text" id="schedComplainantFirstName" name="complainant_first_name" class="form-control" placeholder="First name" required>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="schedComplainantMiddleName">Middle Name</label>
+                        <input type="text" id="schedComplainantMiddleName" name="complainant_middle_name" class="form-control" placeholder="Middle name (optional)">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="schedComplainantLastName">Last Name <span style="color: #dc2626;">*</span></label>
+                        <input type="text" id="schedComplainantLastName" name="complainant_last_name" class="form-control" placeholder="Last name" required>
+                    </div>
                 </div>
 
-                <div class="form-group">
-                    <label for="schedInviteeName">Name of Person Being Invited (Inanyayahan) <span style="color: #dc2626;">*</span></label>
-                    <input type="text" id="schedInviteeName" name="invitee_name" class="form-control" placeholder="Full name of respondent / inanyayahan" required>
+                <!-- Name of Person Being Invited -->
+                <div class="modal-section-title">
+                    Name of Person Being Invited (Inanyayahan) <span style="color: #dc2626;">*</span>
+                </div>
+                <div class="form-row-3" style="margin-bottom: 14px;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="schedInviteeFirstName">First Name <span style="color: #dc2626;">*</span></label>
+                        <input type="text" id="schedInviteeFirstName" name="invitee_first_name" class="form-control" placeholder="First name" required>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="schedInviteeMiddleName">Middle Name</label>
+                        <input type="text" id="schedInviteeMiddleName" name="invitee_middle_name" class="form-control" placeholder="Middle name (optional)">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="schedInviteeLastName">Last Name <span style="color: #dc2626;">*</span></label>
+                        <input type="text" id="schedInviteeLastName" name="invitee_last_name" class="form-control" placeholder="Last name" required>
+                    </div>
                 </div>
 
                 <div class="form-row">
                     <div class="form-group">
                         <label for="schedDate">Scheduled Date <span style="color: #dc2626;">*</span></label>
-                        <input type="date" id="schedDate" name="scheduled_date" class="form-control" value="<?php echo date('Y-m-d', strtotime('+3 weekdays')); ?>" required>
+                        <input type="date" id="schedDate" name="scheduled_date" class="form-control" min="<?php echo date('Y-m-d'); ?>" value="<?php echo date('Y-m-d', strtotime('+3 weekdays')); ?>" required>
                     </div>
                     <div class="form-group">
                         <label for="schedTime">Scheduled Time <span style="color: #dc2626;">*</span></label>
@@ -596,26 +643,6 @@ include '../../layouts/header.php';
                 <div class="form-group">
                     <label for="schedVenue">Venue</label>
                     <input type="text" id="schedVenue" name="venue" class="form-control" value="Tanggapan ng Barangay Tumana" required>
-                </div>
-
-                <div class="form-group">
-                    <label for="schedComplaintSelect">Optional: Link to Existing Complaint</label>
-                    <select id="schedComplaintSelect" name="complaint_id" class="form-control">
-                        <option value="">-- None (Standalone Pre-Docketed Paanyaya) --</option>
-                        <?php
-                            try {
-                                $recentComplaints = (new Database())->connect()->query("
-                                    SELECT complaint_id, complaint_number, complaint_title 
-                                    FROM complaints 
-                                    WHERE status IN ('Pre-Docketed (Paanyaya)', 'Under Review', 'Paanyaya In Progress') 
-                                    ORDER BY complaint_id DESC LIMIT 30
-                                ")->fetchAll(PDO::FETCH_ASSOC);
-                                foreach ($recentComplaints as $rc) {
-                                    echo '<option value="' . (int)$rc['complaint_id'] . '">' . htmlspecialchars(($rc['complaint_number'] ?: 'Complaint #' . $rc['complaint_id']) . ' - ' . $rc['complaint_title']) . '</option>';
-                                }
-                            } catch (Throwable $e) {}
-                        ?>
-                    </select>
                 </div>
             </div>
             <div class="modal-foot">
@@ -634,8 +661,26 @@ document.addEventListener('DOMContentLoaded', function() {
     const cancelBtn = document.getElementById('modalCancelBtn');
     const form = document.getElementById('schedulePaanyayaForm');
     const submitBtn = document.getElementById('btnSubmitPaanyaya');
+    const schedDateInput = document.getElementById('schedDate');
+    const schedTimeInput = document.getElementById('schedTime');
 
-    const openModal = () => { if (modal) modal.style.display = 'flex'; };
+    // Dynamically set min date to today's date in local time
+    const updateMinDate = () => {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const todayStr = `${year}-${month}-${day}`;
+        if (schedDateInput) {
+            schedDateInput.min = todayStr;
+        }
+    };
+    updateMinDate();
+
+    const openModal = () => {
+        updateMinDate();
+        if (modal) modal.style.display = 'flex';
+    };
     const closeModal = () => { if (modal) modal.style.display = 'none'; };
 
     if (openBtn) openBtn.addEventListener('click', openModal);
@@ -651,29 +696,102 @@ document.addEventListener('DOMContentLoaded', function() {
     if (form) {
         form.addEventListener('submit', async function(e) {
             e.preventDefault();
-            const complainant = document.getElementById('schedComplainantName').value.trim();
-            const invitee = document.getElementById('schedInviteeName').value.trim();
-            const date = document.getElementById('schedDate').value;
-            const time = document.getElementById('schedTime').value;
-            const venue = document.getElementById('schedVenue').value.trim();
-            const complaintId = document.getElementById('schedComplaintSelect').value;
+            const compFirst = document.getElementById('schedComplainantFirstName').value.trim();
+            const compMiddle = document.getElementById('schedComplainantMiddleName').value.trim();
+            const compLast = document.getElementById('schedComplainantLastName').value.trim();
 
-            if (!complainant || !invitee || !date || !time) {
-                alert('Paki-puno ang pangalan ng nagpaanyaya, inanyayahan, petsa, at oras.');
+            const invFirst = document.getElementById('schedInviteeFirstName').value.trim();
+            const invMiddle = document.getElementById('schedInviteeMiddleName').value.trim();
+            const invLast = document.getElementById('schedInviteeLastName').value.trim();
+
+            const date = schedDateInput.value;
+            const time = schedTimeInput.value;
+            const venue = document.getElementById('schedVenue').value.trim();
+
+            if (!compFirst || !compLast) {
+                const msg = 'Please enter both First Name and Last Name of the complainant (nagpaanyaya).';
+                if (typeof window.showPopupModal === 'function') {
+                    window.showPopupModal(msg, 'warning', 'Pansin');
+                } else {
+                    alert(msg);
+                }
                 return;
             }
 
+            if (!invFirst || !invLast) {
+                const msg = 'Please enter both First Name and Last Name of the person being invited (inanyayahan).';
+                if (typeof window.showPopupModal === 'function') {
+                    window.showPopupModal(msg, 'warning', 'Pansin');
+                } else {
+                    alert(msg);
+                }
+                return;
+            }
+
+            if (!date || !time) {
+                const msg = 'Please provide both scheduled date and time.';
+                if (typeof window.showPopupModal === 'function') {
+                    window.showPopupModal(msg, 'warning', 'Pansin');
+                } else {
+                    alert(msg);
+                }
+                return;
+            }
+
+            // Client-side date and time validation:
+            // 1. You cannot pick a date before today.
+            // 2. Both date and time must be in the future.
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const todayStr = `${year}-${month}-${day}`;
+
+            if (date < todayStr) {
+                const msg = 'You cannot pick a date before today. The date must be today or in the future.';
+                if (typeof window.showPopupModal === 'function') {
+                    window.showPopupModal(msg, 'warning', 'Pansin');
+                } else {
+                    alert(msg);
+                }
+                return;
+            }
+
+            const timeParts = time.split(':');
+            const schedHours = parseInt(timeParts[0], 10);
+            const schedMinutes = parseInt(timeParts[1] || '0', 10);
+
+            const scheduledDateTime = new Date(date + 'T' + (time.length === 5 ? time + ':00' : time));
+            if (isNaN(scheduledDateTime.getTime()) || scheduledDateTime <= now) {
+                const msg = 'The scheduled date and time must be in the future.';
+                if (typeof window.showPopupModal === 'function') {
+                    window.showPopupModal(msg, 'warning', 'Pansin');
+                } else {
+                    alert(msg);
+                }
+                return;
+            }
+
+            const complainantFullName = [compFirst, compMiddle, compLast].filter(Boolean).join(' ');
+            const inviteeFullName = [invFirst, invMiddle, invLast].filter(Boolean).join(' ');
+
             submitBtn.disabled = true;
-            submitBtn.textContent = 'Isinesave...';
+            submitBtn.textContent = 'Saving...';
 
             try {
                 const payload = {
-                    complainant_name: complainant,
-                    invitee_name: invitee,
+                    complainant_first_name: compFirst,
+                    complainant_middle_name: compMiddle,
+                    complainant_last_name: compLast,
+                    complainant_name: complainantFullName,
+                    invitee_first_name: invFirst,
+                    invitee_middle_name: invMiddle,
+                    invitee_last_name: invLast,
+                    invitee_name: inviteeFullName,
                     scheduled_date: date,
                     scheduled_time: time,
                     venue: venue,
-                    complaint_id: complaintId ? parseInt(complaintId, 10) : 0,
+                    complaint_id: 0,
                     has_e_signature: 1
                 };
 
@@ -700,9 +818,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 closeModal();
                 if (typeof window.showSuccessPopup === 'function') {
-                    await window.showSuccessPopup('Matagumpay na nai-iskedyul ang Paanyaya para kay ' + invitee + '!', 'Tagumpay!');
+                    await window.showSuccessPopup('Matagumpay na nai-iskedyul ang Paanyaya para kay ' + inviteeFullName + '!', 'Tagumpay!');
                 } else {
-                    alert('Matagumpay na nai-iskedyul ang Paanyaya para kay ' + invitee + '!');
+                    alert('Matagumpay na nai-iskedyul ang Paanyaya para kay ' + inviteeFullName + '!');
                 }
                 window.location.reload();
             } catch (err) {
