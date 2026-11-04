@@ -736,6 +736,11 @@ async function loadComplaintDetails() {
         // Update stage tab lock state based on active complaint lifecycle
         updateStageTabsLockState();
 
+        // Render Cross-Link Alert Banner for Concurrent Disputes (Module 5)
+        if (typeof renderCrossLinkAlertBanner === 'function') {
+            renderCrossLinkAlertBanner(data.concurrent_disputes || data.case_workspace?.concurrent_disputes);
+        }
+
         // Hero Case Type Badge
         const heroTypeEl = document.getElementById('heroCaseTypeBadge');
         if (heroTypeEl) heroTypeEl.textContent = (data.case_type || 'Civil').toUpperCase() + ' COMPLAINT';
@@ -952,6 +957,31 @@ function loadResidents() {
         });
         select.innerHTML = options;
     });
+}
+
+// Render Cross-Link Alert Banner (Module 5: Multi-Complaint Handling & Resident Linkage)
+function renderCrossLinkAlertBanner(concurrentDisputes) {
+    const banner = document.getElementById('crossLinkAlertBanner');
+    const content = document.getElementById('crossLinkBannerContent');
+    if (!banner || !content) return;
+
+    if (!concurrentDisputes || !concurrentDisputes.has_concurrent || !concurrentDisputes.alerts || !concurrentDisputes.alerts.length) {
+        banner.style.display = 'none';
+        return;
+    }
+
+    const alerts = concurrentDisputes.alerts;
+    let html = '';
+    if (alerts.length === 1) {
+        const a = alerts[0];
+        html = `<span><strong>Active Dispute Notice:</strong> <strong>${escapeHtml(a.resident_name)}</strong> (${escapeHtml(a.current_role)}) is currently an active party in <a href="${escapeHtml(a.view_url)}" style="color: #92400e; font-weight: 700; text-decoration: underline;">Case #${escapeHtml(a.concurrent_display_number)}</a> (${escapeHtml(a.concurrent_status)}).</span>`;
+    } else {
+        const partyNames = [...new Set(alerts.map(a => a.resident_name))].join(', ');
+        html = `<span><strong>Concurrent Disputes Notice:</strong> Active parties (<strong>${escapeHtml(partyNames)}</strong>) are involved in <strong>${alerts.length} other active case(s)</strong>.</span>`;
+    }
+
+    content.innerHTML = html;
+    banner.style.display = 'flex';
 }
 
 function renderParties(parties) {

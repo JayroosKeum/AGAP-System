@@ -35,6 +35,9 @@ unset($_SESSION['complaint_flash']);
 include '../../layouts/header.php';
 require_once __DIR__ . '/../../../backend/models/Setting.php';
 require_once __DIR__ . '/../../../backend/models/Paanyaya.php';
+require_once __DIR__ . '/../../../backend/models/PartyModel.php';
+$partyModel = new PartyModel();
+$concurrentDisputes = $partyModel->checkConcurrentDisputesForComplaint($complaintId);
 $paanyayaModel = new Paanyaya();
 $servingOfficers = $paanyayaModel->getServingOfficers();
 $eligiblePresiders = $paanyayaModel->getEligiblePresiders();
@@ -144,6 +147,33 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
                 });
             </script>
         <?php endif; ?>
+
+        <!-- Cross-Link Alert Banner (Module 5: Multi-Complaint Handling & Resident Linkage) -->
+        <?php $hasConcurrent = !empty($concurrentDisputes['has_concurrent']); ?>
+        <div id="crossLinkAlertBanner" class="cross-link-alert-banner" style="<?php echo $hasConcurrent ? 'display: flex;' : 'display: none;'; ?> align-items: center; justify-content: space-between; background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 10px 16px; margin-bottom: 14px; gap: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="color: #b45309; display: flex; align-items: center;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                </span>
+                <div id="crossLinkBannerContent" style="font-size: 0.88rem; color: #92400e; line-height: 1.4;">
+                    <?php if ($hasConcurrent): ?>
+                        <?php 
+                            $alerts = $concurrentDisputes['alerts'] ?? [];
+                            if (count($alerts) === 1):
+                                $a = $alerts[0];
+                        ?>
+                            <span><strong>Active Dispute Notice:</strong> <strong><?php echo htmlspecialchars($a['resident_name']); ?></strong> (<?php echo htmlspecialchars($a['current_role']); ?>) is currently an active party in <a href="<?php echo htmlspecialchars($a['view_url']); ?>" style="color: #92400e; font-weight: 700; text-decoration: underline;">Case #<?php echo htmlspecialchars($a['concurrent_display_number']); ?></a> (<?php echo htmlspecialchars($a['concurrent_status']); ?>).</span>
+                        <?php else: ?>
+                            <?php $pNames = implode(', ', array_unique(array_column($alerts, 'resident_name'))); ?>
+                            <span><strong>Concurrent Disputes Notice:</strong> Active parties (<strong><?php echo htmlspecialchars($pNames); ?></strong>) are involved in <strong><?php echo count($alerts); ?> other active case(s)</strong>.</span>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <a href="case-timeline.php?id=<?php echo $complaintId; ?>" class="cross-link-action-link" style="font-size: 0.84rem; font-weight: 700; color: #b45309; text-decoration: none; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; padding: 5px 12px; background: #fef3c7; border-radius: 6px; border: 1px solid #fde68a;">
+                <span>Cross-Case Timeline &rarr;</span>
+            </a>
+        </div>
 
         <!-- Horizontal Tabs Navigation Bar -->
         <nav class="case-tabs-nav" aria-label="Case Sections">

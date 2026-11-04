@@ -52,6 +52,9 @@ class ComplaintController
         $complaint['paanyaya'] = $paaModel->getByComplaintId($id);
         $complaint['paanyaya_workspace'] = $paaModel->getWorkspaceData($id);
         $complaint['paanyaya_stages'] = $paaModel->getTwoStagesData($id);
+        require_once __DIR__ . '/../models/PartyModel.php';
+        $partyModel = new PartyModel();
+        $complaint['concurrent_disputes'] = $partyModel->checkConcurrentDisputesForComplaint($id);
         if (!empty($complaint['case_id'])) {
             // The case workspace is supplementary to the complaint record.  A
             // workspace/schema problem must never prevent the complaint itself,

@@ -547,8 +547,14 @@ class CaseModel
         $arbitrationModel = new Arbitration();
         $arbitration = $arbitrationModel->getByCase($id);
 
+        require_once __DIR__ . '/PartyModel.php';
+        $partyModel = new PartyModel($this->conn);
+        $concurrentDisputes = $partyModel->checkConcurrentDisputesForComplaint((int)$case['complaint_id']);
+        $case['concurrent_disputes'] = $concurrentDisputes;
+
         return [
             'case' => $case,
+            'concurrent_disputes' => $concurrentDisputes,
             'assignments' => $assignments->fetchAll(PDO::FETCH_ASSOC),
             'hearings' => $hearingsList,
             'documents' => $documents->fetchAll(PDO::FETCH_ASSOC),
@@ -754,5 +760,59 @@ class CaseModel
 
         $series = $maxSeries + 1;
         return sprintf('%02d-%02d-%04d', $month, $series, $year);
+    }
+
+    /**
+     * Retrieves concurrent active disputes for all parties involved in this case.
+     */
+    public function getConcurrentDisputes(int $caseId): array
+    {
+        $stmt = $this->conn->prepare('SELECT complaint_id FROM cases WHERE case_id = ?');
+        $stmt->execute([$caseId]);
+        $complaintId = (int)$stmt->fetchColumn();
+        if (!$complaintId) {
+            return ['has_concurrent' => false, 'alert_count' => 0, 'alerts' => []];
+        }
+
+        require_once __DIR__ . '/PartyModel.php';
+        return (new PartyModel($this->conn))->checkConcurrentDisputesForComplaint($complaintId);
+    }
+
+    /**
+     * Assembles a cross-case chronological timeline across all related cases for parties in this case.
+     */
+    public function getCrossCaseTimeline(int $caseId): array
+    {
+        $stmt = $this->conn->prepare('
+            SELECT DISTINCT cp.resident_id 
+            FROM cases cs
+            INNER JOIN complaint_parties cp ON cp.complaint_id = cs.complaint_id
+            WHERE cs.case_id = ?
+        ');
+        $stmt->execute([$caseId]);
+        $residentIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        require_once __DIR__ . '/PartyModel.php';
+        $partyModel = new PartyModel($this->conn);
+
+        $allEvents = [];
+        $seenEventKeys = [];
+
+        foreach ($residentIds as $rid) {
+            $events = $partyModel->getCrossCaseTimelineForResident((int)$rid);
+            foreach ($events as $ev) {
+                $key = ($ev['type'] ?? '') . '_' . ($ev['complaint_id'] ?? '') . '_' . ($ev['date'] ?? '');
+                if (!isset($seenEventKeys[$key])) {
+                    $seenEventKeys[$key] = true;
+                    $allEvents[] = $ev;
+                }
+            }
+        }
+
+        usort($allEvents, function ($a, $b) {
+            return strtotime($b['date']) <=> strtotime($a['date']);
+        });
+
+        return $allEvents;
     }
 }
