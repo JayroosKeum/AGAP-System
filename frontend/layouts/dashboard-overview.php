@@ -144,7 +144,7 @@
             <div class="dash-section-card" id="dashboardHearingsPanel">
                 <div class="aside-card-header">
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="font-size: 1.15rem;">⚖️</span>
+                        <span style="display:inline-flex;color:#1e293b;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="M7 21h10"></path><path d="M12 3v18"></path><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"></path></svg></span>
                         <div>
                             <h3 class="aside-card-title" id="hearingsPanelHeading">Today's Hearings</h3>
                             <p class="aside-card-sub" id="hearingsPanelSub">Scheduled formal sessions</p>
@@ -171,7 +171,7 @@
                 <div class="dash-analytics-card">
                     <div class="card-head">
                         <div>
-                            <h3 class="card-title">⚖️ Most Complained Issues</h3>
+                            <h3 class="card-title">Most Complained Issues</h3>
                             <p class="card-sub">Top recurring dispute categories in the barangay</p>
                         </div>
                     </div>
@@ -184,7 +184,7 @@
                 <div class="dash-analytics-card">
                     <div class="card-head">
                         <div>
-                            <h3 class="card-title">📍 Purok Dispute Hotspots</h3>
+                            <h3 class="card-title">Purok Dispute Hotspots</h3>
                             <p class="card-sub">Areas with highest grievance volume</p>
                         </div>
                     </div>
@@ -200,7 +200,7 @@
                 <div class="dash-analytics-card">
                     <div class="card-head">
                         <div>
-                            <h3 class="card-title">👥 Gender Distribution</h3>
+                            <h3 class="card-title">Gender Distribution</h3>
                             <p class="card-sub">Complainants and Respondents by gender</p>
                         </div>
                     </div>
@@ -213,7 +213,7 @@
                 <div class="dash-analytics-card">
                     <div class="card-head">
                         <div>
-                            <h3 class="card-title">🎂 Age Group Demographics</h3>
+                            <h3 class="card-title">Age Group Demographics</h3>
                             <p class="card-sub">Dispute participants by age bracket</p>
                         </div>
                     </div>
@@ -227,7 +227,7 @@
             <div class="dash-section-card" id="dashboardPaanyayaPanel" style="margin-top: 20px;">
                 <div class="aside-card-header">
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="font-size: 1.15rem;">✉️</span>
+                        <span style="display:inline-flex;color:#1e293b;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg></span>
                         <div>
                             <h3 class="aside-card-title">Paanyaya Invitations</h3>
                             <p class="aside-card-sub">Pre-docketed informal invitations</p>
@@ -249,7 +249,7 @@
             <div class="mini-calendar-card" id="miniCalendarCard">
                 <div class="mini-cal-header">
                     <span class="mini-cal-title-wrap">
-                        <span class="mini-cal-icon">📅</span>
+                        <span class="mini-cal-icon" style="display:inline-flex;color:#1e293b;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg></span>
                         <strong class="mini-cal-title">Calendar</strong>
                     </span>
                     <div class="mini-cal-nav">
@@ -277,7 +277,7 @@
             <div class="dash-aside-card">
                 <div class="aside-card-header">
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="font-size: 1.1rem;">📌</span>
+                        <span style="display:inline-flex;color:#1e293b;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg></span>
                         <div>
                             <h3 class="aside-card-title">Announcements</h3>
                             <p class="aside-card-sub">Barangay Tumana bulletin</p>
@@ -404,11 +404,11 @@
                 <input type="hidden" id="quickAttHearingId" value="">
                 <div style="background: #f1f5f9; border-radius: 8px; padding: 10px 14px; margin-bottom: 18px; font-size: 0.83rem; color: #334155; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                     <div><strong id="quickAttHearingType">Mediation Hearing</strong> · <span id="quickAttHearingTime">1:00 PM</span></div>
-                    <div style="color: #64748b; font-size: 0.8rem;">📍 <span id="quickAttHearingVenue">Lupon Court Room</span></div>
+                    <div style="color: #64748b; font-size: 0.8rem;"><span id="quickAttHearingVenue">Lupon Court Room</span></div>
                 </div>
                 <div id="quickAttPartiesContainer" style="display: flex; flex-direction: column; gap: 12px;"></div>
                 <div id="quickCompAbsentNotice" style="display: none; background: #fef2f2; border: 1px solid #fca5a5; border-radius: 6px; padding: 8px 12px; margin-top: 10px; font-size: 0.82rem; color: #991b1b;">
-                    ⚠️ <strong>May Complainant na Hindi Dumalo:</strong> Maaaring maging batayan ito para sa pag-dismiss ng reklamo alinsunod sa KP rules sa katitikan ng pagdinig.
+                    <strong>Paalala: May Complainant na Hindi Dumalo</strong> &bull; Maaaring maging batayan ito para sa pag-dismiss ng reklamo alinsunod sa KP rules sa katitikan ng pagdinig.
                 </div>
                 <div style="margin-top: 12px;">
                     <label for="quickAttRemarks" style="display: block; font-size: 0.82rem; font-weight: 700; color: #0f172a; margin-bottom: 6px;">
@@ -421,7 +421,7 @@
             <footer class="report-modal-footer" style="padding: 14px 20px; display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #e2e8f0; background: #f8fafc;">
                 <button type="button" class="btn-modal-close-footer" id="quickAttCancelBtn" style="padding: 7px 16px; font-size: 0.85rem; font-weight: 600; border: 1px solid #cbd5e1; background: #fff; border-radius: 6px; cursor: pointer; color: #475569;">Kanselahin</button>
                 <button type="button" id="quickAttSaveBtn" style="padding: 7px 18px; font-size: 0.85rem; font-weight: 600; border: none; background: #0f172a; color: #fff; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
-                    💾 I-save ang Attendance
+                    I-save ang Attendance
                 </button>
             </footer>
         </div>

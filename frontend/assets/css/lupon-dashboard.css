@@ -103,87 +103,96 @@ body.high-contrast-mode .lupon-case-card {
     box-shadow: none !important;
 }
 
-/* ── Senior-Friendly KPI Summary Grid ── */
+/* ── Standardized KPI Summary Grid (Lupon Member) ── */
 .lupon-kpis-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 16px;
     margin-bottom: 24px;
 }
 
 .lupon-kpi-card {
     background: #ffffff;
-    border: 1px solid #e2e8f0;
+    border: 1px solid #dfe8e3;
     border-radius: 12px;
     padding: 18px 20px;
+    min-height: 115px;
     display: flex;
-    align-items: center;
-    gap: 16px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    flex-direction: column;
+    justify-content: space-between;
+    box-shadow: 0 8px 24px rgba(32, 76, 62, .035);
     cursor: pointer;
     user-select: none;
     position: relative;
-    transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
-}
-.lupon-kpi-card:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 3px rgba(37,99,235,0.35);
-}
-.lupon-kpi-card.is-active {
-    border-color: #2563eb;
-    background: #f8faff;
-    box-shadow: 0 0 0 2px rgba(37,99,235,0.25);
+    transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .lupon-kpi-card:hover {
     transform: translateY(-2px);
     border-color: #cbd5e1;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.06);
 }
 
-.lupon-kpi-icon {
-    width: 54px;
-    height: 54px;
-    border-radius: 12px;
+.lupon-kpi-card:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.3);
+}
+
+.lupon-kpi-card.is-active {
+    border-color: #2563eb;
+    background: #f8faff;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
+}
+
+.lupon-kpi-card .kpi-card-header {
     display: flex;
+    justify-content: space-between;
     align-items: center;
-    justify-content: center;
-    font-size: 1.8rem;
-    flex-shrink: 0;
-}
-
-.lupon-kpi-card.kpi-duty .lupon-kpi-icon { background: #dbeafe; color: #1e40af; }
-.lupon-kpi-card.kpi-assigned .lupon-kpi-icon { background: #e0e7ff; color: #3730a3; }
-.lupon-kpi-card.kpi-chair .lupon-kpi-icon { background: #fef3c7; color: #92400e; }
-.lupon-kpi-card.kpi-today .lupon-kpi-icon { background: #dcfce7; color: #15803d; }
-
-.lupon-kpi-content {
-    display: flex;
-    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 4px;
 }
 
 .lupon-kpi-label {
-    font-size: 0.92rem;
+    color: #64748b;
+    font-size: 11.5px;
     font-weight: 700;
-    color: #475569;
-    margin-bottom: 2px;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.05em;
+    margin: 0;
+    line-height: 1.3;
 }
 
 .lupon-kpi-value {
-    font-size: 2.1rem;
-    font-weight: 900;
-    color: #0f172a;
+    color: #173638;
+    font-size: 30px;
+    font-weight: 800;
+    letter-spacing: -0.03em;
     line-height: 1.1;
+    margin: 4px 0 6px;
 }
 
 .lupon-kpi-sub {
-    font-size: 0.84rem;
     color: #64748b;
-    margin-top: 3px;
-    font-weight: 600;
+    font-size: 12px;
+    line-height: 1.35;
+    margin: 0;
+    display: block;
 }
+
+.lupon-kpi-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.lupon-kpi-card.kpi-duty .lupon-kpi-icon { background: #eff6ff; color: #2563eb; }
+.lupon-kpi-card.kpi-assigned .lupon-kpi-icon { background: #eef2ff; color: #4f46e5; }
+.lupon-kpi-card.kpi-chair .lupon-kpi-icon { background: #fefce8; color: #ca8a04; }
+.lupon-kpi-card.kpi-today .lupon-kpi-icon { background: #f0fdf4; color: #16a34a; }
 
 /* ── Main Two-Column Layout ── */
 .lupon-main-layout {

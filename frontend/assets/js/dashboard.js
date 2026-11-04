@@ -172,7 +172,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const detailsRow = document.createElement('p');
         detailsRow.style.cssText = 'font-size: 0.78rem; color: #64748b; margin: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;';
-        detailsRow.innerHTML = `<span>📍 ${escapeHtml(item.venue || 'Tanggapan ng Barangay Tumana')}</span>${item.complaint_title ? `<span style="color:#cbd5e1;">•</span><span>${escapeHtml(item.complaint_title)}</span>` : ''}`;
+        detailsRow.innerHTML = `<span>${escapeHtml(item.venue || 'Tanggapan ng Barangay Tumana')}</span>${item.complaint_title ? `<span style="color:#cbd5e1;">•</span><span>${escapeHtml(item.complaint_title)}</span>` : ''}`;
 
         content.append(headerRow, inviteeRow, detailsRow);
         art.appendChild(content);
@@ -188,7 +188,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const viewLink = document.createElement('a');
         viewLink.className = 'btn-open-case';
         viewLink.style.cssText = 'padding: 6px 12px; font-size: 11.5px; font-weight: 600;';
-        viewLink.textContent = '✉️ Paanyaya';
+        viewLink.textContent = 'Paanyaya';
         viewLink.href = item.complaint_id ? `../complaints/paanyaya-workspace.php?complaint_id=${encodeURIComponent(item.complaint_id)}` : `../paanyaya/index.php`;
         actions.appendChild(viewLink);
 
@@ -247,7 +247,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Venue & Title Row
         const venueRow = document.createElement('p');
         venueRow.style.cssText = 'font-size: 0.78rem; color: #64748b; margin: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;';
-        venueRow.innerHTML = `<span>📍 ${escapeHtml(hearing.venue || 'Lupon Court Room')}</span>${hearing.complaint_title ? `<span style="color:#cbd5e1;">•</span><span>${escapeHtml(hearing.complaint_title)}</span>` : ''}`;
+        venueRow.innerHTML = `<span>${escapeHtml(hearing.venue || 'Lupon Court Room')}</span>${hearing.complaint_title ? `<span style="color:#cbd5e1;">•</span><span>${escapeHtml(hearing.complaint_title)}</span>` : ''}`;
 
         content.append(headerRow, partiesRow, venueRow);
         item.appendChild(content);
@@ -338,22 +338,22 @@ document.addEventListener('DOMContentLoaded', () => {
             actions.appendChild(standbyBtn);
         }
 
-        // Button 3: 📝 Quick Attendance / Check-In
+        // Button 3: Quick Attendance / Check-In
         if (!isConcluded) {
             const attBtn = document.createElement('button');
             attBtn.type = 'button';
             attBtn.className = 'btn-action-quick-att';
             attBtn.style.cssText = 'background: #ffffff; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 11px; font-size: 11.5px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; transition: all .15s ease;';
-            attBtn.innerHTML = '📝 Quick Attendance';
+            attBtn.innerHTML = 'Quick Attendance';
             attBtn.title = 'Quick Attendance / Check-In for Complainant & Respondent';
             attBtn.addEventListener('click', () => openQuickAttendanceModal(hearing));
             actions.appendChild(attBtn);
         }
 
-        // Button 4: 📂 Open Case
+        // Button 4: Open Case
         const openCaseBtn = document.createElement('a');
         openCaseBtn.className = 'btn-open-case';
-        openCaseBtn.innerHTML = '📂 Open Case';
+        openCaseBtn.innerHTML = 'Open Case';
         if (hearing.complaint_id) {
             openCaseBtn.href = `../complaints/complaint-details.php?id=${encodeURIComponent(hearing.complaint_id)}`;
         } else if (hearing.case_id) {
@@ -467,9 +467,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 10px; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px;">
                         <div style="min-width: 0;">
                             <div style="font-size: 0.94rem; font-weight: 700; color: #0f172a; line-height: 1.35;">
-                                👤 ${escapeHtml(partyName)}
+                                ${escapeHtml(partyName)}
                             </div>
-                            ${p.address ? `<div style="font-size: 0.75rem; color: #64748b; margin-top: 2px;">📍 ${escapeHtml(p.address)}</div>` : ''}
+                            ${p.address ? `<div style="font-size: 0.75rem; color: #64748b; margin-top: 2px;">${escapeHtml(p.address)}</div>` : ''}
                         </div>
                         <span style="font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 9999px; white-space: nowrap; ${roleBadgeStyle}">
                             ${roleLabel}
@@ -478,15 +478,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div style="display: flex; flex-direction: column; gap: 7px; font-size: 0.84rem;">
                         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; border-radius: 6px; background: #f0fdf4; border: 1px solid #bbf7d0;">
                             <input type="radio" name="quick_att_party_${p.resident_id}" data-party-type="${escapeHtml(p.party_type)}" value="Present" ${st === 'Present' ? 'checked' : ''} style="accent-color: #16a34a; width: 15px; height: 15px; margin: 0;">
-                            <span style="color: #15803d; font-weight: 600;">🟢 Dumalo sa Oras (Present)</span>
+                            <span style="color: #15803d; font-weight: 600;">Dumalo sa Oras (Present)</span>
                         </label>
                         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; border-radius: 6px; background: #fffbeb; border: 1px solid #fde68a;">
                             <input type="radio" name="quick_att_party_${p.resident_id}" data-party-type="${escapeHtml(p.party_type)}" value="Late" ${st === 'Late' ? 'checked' : ''} style="accent-color: #d97706; width: 15px; height: 15px; margin: 0;">
-                            <span style="color: #b45309; font-weight: 600;">🟡 Nahuli / Late (Pasok sa 1-hour grace period)</span>
+                            <span style="color: #b45309; font-weight: 600;">Nahuli / Late (Pasok sa 1-hour grace period)</span>
                         </label>
                         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; border-radius: 6px; background: #fef2f2; border: 1px solid #fecaca;">
                             <input type="radio" name="quick_att_party_${p.resident_id}" data-party-type="${escapeHtml(p.party_type)}" value="Absent" ${st === 'Absent' ? 'checked' : ''} style="accent-color: #dc2626; width: 15px; height: 15px; margin: 0;">
-                            <span style="color: #991b1b; font-weight: 600;">🔴 Hindi Dumalo (Absent - Lampas 1 oras)</span>
+                            <span style="color: #991b1b; font-weight: 600;">Hindi Dumalo (Absent - Lampas 1 oras)</span>
                         </label>
                     </div>
                 </div>
@@ -650,7 +650,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
             if (saveBtn) {
                 saveBtn.disabled = false;
-                saveBtn.textContent = '💾 I-save ang Attendance';
+                saveBtn.textContent = 'I-save ang Attendance';
             }
         }
     };
@@ -1230,11 +1230,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             genderContainer.innerHTML = `
                 <div class="demographic-stat-pill">
-                    <span class="demo-label">👩 Female Parties</span>
+                    <span class="demo-label">Female Parties</span>
                     <span class="demo-value" style="color: #db2777;">${genders.Female || 0} <small style="font-size: 0.75rem; color: #64748b; font-weight: 500;">(${femalePct}%)</small></span>
                 </div>
                 <div class="demographic-stat-pill">
-                    <span class="demo-label">👨 Male Parties</span>
+                    <span class="demo-label">Male Parties</span>
                     <span class="demo-value" style="color: #2563eb;">${genders.Male || 0} <small style="font-size: 0.75rem; color: #64748b; font-weight: 500;">(${malePct}%)</small></span>
                 </div>
                 <div class="demographic-stat-pill">

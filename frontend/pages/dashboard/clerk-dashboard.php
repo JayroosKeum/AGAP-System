@@ -129,50 +129,56 @@ include '../../layouts/header.php';
             </article>
         </section>
 
-        <!-- ── 3. System Metrics Grid (Small Widgets) ────────────────────────── -->
+        <!-- ── 3. System Metrics Grid (Standardized Stat Cards) ────────────── -->
         <section class="clerk-system-metrics-grid" aria-label="System Metrics Grid">
-            <div class="system-metric-pill" data-clerk-metric="total" role="button" tabindex="0" title="Click to show all agenda sessions">
-                <div class="metric-icon icon-total"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg></div>
-                <div class="metric-info">
-                    <div class="metric-val" id="sysMetricTotalCases">—</div>
-                    <div class="metric-name">Total Cases</div>
+            <article class="system-metric-pill" data-clerk-metric="total" role="button" tabindex="0" title="Click to show all agenda sessions">
+                <div class="kpi-card-header">
+                    <span class="metric-name">Total Cases</span>
+                    <span class="metric-icon icon-total"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg></span>
                 </div>
-            </div>
-            <div class="system-metric-pill" data-clerk-metric="mediation" role="button" tabindex="0" title="Click to filter mediation hearings in Agenda Stream">
-                <div class="metric-icon icon-mediation"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="M7 21h10"></path><path d="M12 3v18"></path><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"></path></svg></div>
-                <div class="metric-info">
-                    <div class="metric-val" id="sysMetricMediation">—</div>
-                    <div class="metric-name">Active Mediation</div>
+                <div class="metric-val" id="sysMetricTotalCases">—</div>
+                <span class="metric-sub">All recorded cases</span>
+            </article>
+            <article class="system-metric-pill" data-clerk-metric="mediation" role="button" tabindex="0" title="Click to filter mediation hearings in Agenda Stream">
+                <div class="kpi-card-header">
+                    <span class="metric-name">Active Mediation</span>
+                    <span class="metric-icon icon-mediation"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="M7 21h10"></path><path d="M12 3v18"></path><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"></path></svg></span>
                 </div>
-            </div>
-            <div class="system-metric-pill" data-clerk-metric="conciliation" role="button" tabindex="0" title="Click to filter conciliation hearings in Agenda Stream">
-                <div class="metric-icon icon-conciliation"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg></div>
-                <div class="metric-info">
-                    <div class="metric-val" id="sysMetricConciliation">—</div>
-                    <div class="metric-name">Pangkat Conciliation</div>
+                <div class="metric-val" id="sysMetricMediation">—</div>
+                <span class="metric-sub">Mediation cases</span>
+            </article>
+            <article class="system-metric-pill" data-clerk-metric="conciliation" role="button" tabindex="0" title="Click to filter conciliation hearings in Agenda Stream">
+                <div class="kpi-card-header">
+                    <span class="metric-name">Pangkat Conciliation</span>
+                    <span class="metric-icon icon-conciliation"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg></span>
                 </div>
-            </div>
-            <div class="system-metric-pill" data-clerk-metric="settled" role="button" tabindex="0" title="Click to view settled cases">
-                <div class="metric-icon icon-settled"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg></div>
-                <div class="metric-info">
-                    <div class="metric-val" id="sysMetricSettled">—</div>
-                    <div class="metric-name">Settled Cases</div>
+                <div class="metric-val" id="sysMetricConciliation">—</div>
+                <span class="metric-sub">Active panel cases</span>
+            </article>
+            <article class="system-metric-pill" data-clerk-metric="settled" role="button" tabindex="0" title="Click to view settled cases">
+                <div class="kpi-card-header">
+                    <span class="metric-name">Settled Cases</span>
+                    <span class="metric-icon icon-settled"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg></span>
                 </div>
-            </div>
-            <div class="system-metric-pill" data-clerk-metric="archived" role="button" tabindex="0" title="Click to view archived cases">
-                <div class="metric-icon icon-archived"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg></div>
-                <div class="metric-info">
-                    <div class="metric-val" id="sysMetricArchived">—</div>
-                    <div class="metric-name">Archived Cases</div>
+                <div class="metric-val" id="sysMetricSettled">—</div>
+                <span class="metric-sub">Resolved through settlement</span>
+            </article>
+            <article class="system-metric-pill" data-clerk-metric="archived" role="button" tabindex="0" title="Click to view archived cases">
+                <div class="kpi-card-header">
+                    <span class="metric-name">Archived Cases</span>
+                    <span class="metric-icon icon-archived"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg></span>
                 </div>
-            </div>
-            <div class="system-metric-pill" data-clerk-metric="users" role="button" tabindex="0" title="Click to view active users">
-                <div class="metric-icon icon-users"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg></div>
-                <div class="metric-info">
-                    <div class="metric-val" id="sysMetricActiveUsers">—</div>
-                    <div class="metric-name">Active Users</div>
+                <div class="metric-val" id="sysMetricArchived">—</div>
+                <span class="metric-sub">Closed and archived records</span>
+            </article>
+            <article class="system-metric-pill" data-clerk-metric="users" role="button" tabindex="0" title="Click to view active users">
+                <div class="kpi-card-header">
+                    <span class="metric-name">Active Users</span>
+                    <span class="metric-icon icon-users"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg></span>
                 </div>
-            </div>
+                <div class="metric-val" id="sysMetricActiveUsers">—</div>
+                <span class="metric-sub">Barangay staff &amp; lupon</span>
+            </article>
         </section>
 
         <!-- ── 4. Main Two-Column Layout ────────────────────────────────────── -->
