@@ -377,7 +377,7 @@ include '../../layouts/header.php';
 
                         <div class="fast-intake-badge">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-                            <span>Dispute Intake &amp; Paanyaya Scheduling</span>
+                            <span>Formal Complaint Intake &amp; Docketing</span>
                         </div>
 
                         <!-- SECTION 1: FILING METHOD & CASE CLASSIFICATION -->
@@ -475,45 +475,7 @@ include '../../layouts/header.php';
                                 </div>
                             </div>
 
-                            <!-- Pre-Docketing Phase (Paanyaya Invitation) -->
-                            <div class="paanyaya-intake-card" style="margin-bottom: 24px; background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 10px; padding: 18px 20px;">
-                                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
-                                    <div style="display: flex; align-items: center; gap: 10px;">
-                                        <div>
-                                            <h4 style="margin: 0; font-size: 1.02rem; color: #166534; font-weight: 800; letter-spacing: -0.01em;">
-                                                Pre-Docketing Phase: Paanyaya (Informal Invitation)
-                                            </h4>
-                                            <span style="font-size: 0.82rem; color: #15803d; line-height: 1.4; display: block; margin-top: 2px;">
-                                                Under LTIA &amp; Barangay Tumana KP rules, disputes may start with an informal dialogue. Paanyaya tracks only the invitee name, date, and time.
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <span class="badge" style="background: #bbf7d0; color: #14532d; font-weight: 700; padding: 5px 10px; border-radius: 6px; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em;">
-                                        Stage 0: Pre-Docketing
-                                    </span>
-                                </div>
 
-                                <div class="form-group" style="margin-bottom: 12px;">
-                                    <label for="paanyayaInvitee" style="color: #166534; font-weight: 700; font-size: 0.85rem;">Invitee Name (Person Being Invited)</label>
-                                    <input type="text" id="paanyayaInvitee" name="paanyaya_invitee_name" placeholder="Leave blank to use respondent's name" style="border-color: #86efac; width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid #86efac; background: #ffffff; font-size: 0.88rem;">
-                                </div>
-
-                                <div class="form-row-2">
-                                    <div class="form-group">
-                                        <label for="paanyayaDate" style="color: #166534; font-weight: 700; font-size: 0.85rem;">Invitation Date</label>
-                                        <input type="date" id="paanyayaDate" name="paanyaya_date" value="<?php echo date('Y-m-d', strtotime('+3 weekdays')); ?>" style="border-color: #86efac;">
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="paanyayaTime" style="color: #166534; font-weight: 700; font-size: 0.85rem;">Invitation Time</label>
-                                        <input type="time" id="paanyayaTime" name="paanyaya_time" value="14:00" style="border-color: #86efac;">
-                                    </div>
-                                </div>
-
-                                <div class="form-group" style="margin-top: 10px;">
-                                    <label for="paanyayaVenue" style="color: #166534; font-weight: 700; font-size: 0.85rem;">Dialogue Venue</label>
-                                    <input type="text" id="paanyayaVenue" name="paanyaya_venue" value="Tanggapan ng Barangay Tumana" style="border-color: #86efac;">
-                                </div>
-                            </div>
 
                             <!-- Dispute Classification Grid -->
                             <div class="form-row-2" style="margin-top: 10px;">
@@ -1039,7 +1001,7 @@ include '../../layouts/header.php';
                         <div class="intake-bottom-actions" style="display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 24px; padding: 20px 24px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
                             <a href="complaint-list.php" class="btn-secondary" style="text-decoration: none; padding: 10px 20px;">Cancel</a>
                             <button type="submit" form="createComplaintForm" class="btn-create" id="btnSubmitComplaint" style="display: inline-flex; align-items: center; gap: 8px; font-size: 0.95rem; font-weight: 700; padding: 11px 26px;">
-                                Save Complaint &amp; Issue 1st Paanyaya →
+                                <?php echo !empty($escalatePaanyaya) ? 'File Complaint &amp; Proceed to Mediation →' : 'Save &amp; File Formal Complaint →'; ?>
                             </button>
                         </div>
 
@@ -2080,7 +2042,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const submitBtn = document.getElementById('btnSubmitComplaint');
             if (submitBtn) {
                 submitBtn.disabled = true;
-                submitBtn.textContent = 'Saving & Scheduling Paanyaya...';
+                submitBtn.textContent = 'Saving Complaint...';
             }
         });
     }
