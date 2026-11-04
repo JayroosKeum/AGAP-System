@@ -2335,9 +2335,9 @@ class Paanyaya
             return ['success' => false, 'message' => 'Hindi natagpuan ang tala ng Paanyaya.'];
         }
 
-        $compAttended = in_array($data['complainant_attended'] ?? '', ['Present', 'Late', 'Absent'], true)
+        $compAttended = in_array($data['complainant_attended'] ?? '', ['Present', 'Absent'], true)
             ? $data['complainant_attended'] : 'Present';
-        $invAttended = in_array($data['invitee_attended'] ?? '', ['Present', 'Late', 'Absent'], true)
+        $invAttended = in_array($data['invitee_attended'] ?? '', ['Present', 'Absent'], true)
             ? $data['invitee_attended'] : 'Present';
         $salaysay = trim((string)($data['salaysay'] ?? ($paanyaya['salaysay'] ?? '')));
         $dialogueNotes = trim((string)($data['dialogue_notes'] ?? ($paanyaya['dialogue_notes'] ?? '')));

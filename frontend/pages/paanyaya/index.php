@@ -481,12 +481,6 @@ include '../../layouts/header.php';
     border-color: #86efac;
     box-shadow: 0 0 0 1px #16a34a;
 }
-.attendance-radio-pill input[value="Late"]:checked + .attendance-pill-label {
-    background: #fef3c7;
-    color: #b45309;
-    border-color: #fcd34d;
-    box-shadow: 0 0 0 1px #d97706;
-}
 .attendance-radio-pill input[value="Absent"]:checked + .attendance-pill-label {
     background: #fee2e2;
     color: #b91c1c;
@@ -852,10 +846,6 @@ include '../../layouts/header.php';
                             <span class="attendance-pill-label">✓ Present</span>
                         </label>
                         <label class="attendance-radio-pill">
-                            <input type="radio" name="complainant_attended" value="Late">
-                            <span class="attendance-pill-label">⏱ Late</span>
-                        </label>
-                        <label class="attendance-radio-pill">
                             <input type="radio" name="complainant_attended" value="Absent">
                             <span class="attendance-pill-label">✕ Absent</span>
                         </label>
@@ -872,10 +862,6 @@ include '../../layouts/header.php';
                         <label class="attendance-radio-pill">
                             <input type="radio" name="invitee_attended" value="Present">
                             <span class="attendance-pill-label">✓ Present</span>
-                        </label>
-                        <label class="attendance-radio-pill">
-                            <input type="radio" name="invitee_attended" value="Late">
-                            <span class="attendance-pill-label">⏱ Late</span>
                         </label>
                         <label class="attendance-radio-pill">
                             <input type="radio" name="invitee_attended" value="Absent" checked>
