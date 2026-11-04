@@ -29,8 +29,18 @@ class SettingsController
         if (!empty($maskedSettings['gemini_api_key'])) {
             $len = strlen($maskedSettings['gemini_api_key']);
             $maskedSettings['gemini_api_key_masked'] = substr($maskedSettings['gemini_api_key'], 0, 4) . str_repeat('•', max(0, $len - 8)) . substr($maskedSettings['gemini_api_key'], -4);
+            $maskedSettings['gemini_api_key_source'] = 'database';
         } else {
-            $maskedSettings['gemini_api_key_masked'] = '';
+            require_once __DIR__ . '/../services/GeminiService.php';
+            $resolved = (new GeminiService())->resolveApiKey();
+            if ($resolved !== '') {
+                $len = strlen($resolved);
+                $maskedSettings['gemini_api_key_masked'] = substr($resolved, 0, 4) . str_repeat('•', max(0, $len - 8)) . substr($resolved, -4);
+                $maskedSettings['gemini_api_key_source'] = 'env';
+            } else {
+                $maskedSettings['gemini_api_key_masked'] = '';
+                $maskedSettings['gemini_api_key_source'] = 'none';
+            }
         }
 
         if (!empty($maskedSettings['sms_api_key'])) {
@@ -268,10 +278,14 @@ class SettingsController
         $key = trim((string)$apiKey);
         if ($key === '' || str_contains($key, '••••')) {
             $key = (string)$this->model->get('gemini_api_key', '');
+            if ($key === '') {
+                require_once __DIR__ . '/../services/GeminiService.php';
+                $key = (new GeminiService())->resolveApiKey();
+            }
         }
 
         if ($key === '') {
-            return ['success' => false, 'message' => 'Gemini API Key is empty. Please enter an API key first.'];
+            return ['success' => false, 'message' => 'Gemini API Key is empty. Please enter an API key first or configure GEMINI_API_KEY in your .env file.'];
         }
 
         $configuredModel = (string)$this->model->get('gemini_model', 'gemini-2.5-flash');

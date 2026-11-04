@@ -67,11 +67,31 @@ document.addEventListener('DOMContentLoaded', () => {
     // Handle initial query param or hash in URL
     const urlParams = new URLSearchParams(window.location.search);
     const queryTab = urlParams.get('tab');
-    const targetTabName = queryTab || window.location.hash.replace('#', '');
+    let targetTabName = queryTab || window.location.hash.replace('#', '');
+    if (targetTabName === 'ai' || targetTabName === 'gemini') {
+        targetTabName = 'external';
+    }
     if (targetTabName) {
         const fullTabId = targetTabName.startsWith('tab-') ? targetTabName : 'tab-' + targetTabName;
         if (document.getElementById(fullTabId)) {
             switchSettingsTab(fullTabId);
+        }
+    }
+
+    const focusTarget = urlParams.get('focus');
+    if (focusTarget || targetTabName === 'external') {
+        const targetInput = document.getElementById(focusTarget === 'gemini_api_key' ? 'inputGeminiApiKey' : (focusTarget || 'inputGeminiApiKey'));
+        if (targetInput) {
+            setTimeout(() => {
+                targetInput.focus();
+                targetInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                targetInput.style.outline = '3px solid #f59e0b';
+                targetInput.style.boxShadow = '0 0 12px rgba(245, 158, 11, 0.4)';
+                setTimeout(() => {
+                    targetInput.style.outline = '';
+                    targetInput.style.boxShadow = '';
+                }, 3500);
+            }, 300);
         }
     }
 

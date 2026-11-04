@@ -592,7 +592,13 @@ include '../../layouts/header.php';
                                             <div class="form-group">
                                                 <label class="form-label">Gemini API Key</label>
                                                 <input type="password" id="inputGeminiApiKey" name="gemini_api_key" class="form-control" value="<?php echo htmlspecialchars($settings['gemini_api_key_masked'] ?? ''); ?>" placeholder="Enter API Key to update">
-                                                <div class="form-help">Google Cloud Console / AI Studio Gemini API Key.</div>
+                                                <div class="form-help">
+                                                    <?php if (!empty($settings['gemini_api_key_masked'])): ?>
+                                                        <span style="color:#16a34a; font-weight:600;">✓ Active</span> (<?php echo ($settings['gemini_api_key_source'] ?? '') === 'env' ? 'Configured via .env' : 'Configured in System Settings'; ?>). Google Cloud Console / AI Studio Gemini API Key.
+                                                    <?php else: ?>
+                                                        Google Cloud Console / AI Studio Gemini API Key. Get a free API key at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" style="color:#2563eb; text-decoration:underline; font-weight:600;">Google AI Studio</a>.
+                                                    <?php endif; ?>
+                                                </div>
                                             </div>
                                             <div class="form-group">
                                                 <label class="form-label">Gemini Model Identifier</label>

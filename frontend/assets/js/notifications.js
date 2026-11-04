@@ -199,6 +199,23 @@
         const toastTitle = title || defaultTitles[toastType];
         const toastIcon = defaultIcons[toastType];
 
+        let actionHtml = '';
+        const msgStr = String(message || '');
+        if (msgStr.includes('Gemini API key is not configured')) {
+            const loc = window.location.pathname;
+            const idx = loc.indexOf('/frontend/');
+            const base = (idx !== -1) ? loc.substring(0, idx) : (loc.includes('/AGAP/') ? '/AGAP' : '');
+            const settingsUrl = base + '/frontend/pages/settings/index.php?tab=external&focus=gemini_api_key';
+            actionHtml = `
+                <div style="margin-top: 8px;">
+                    <a href="${settingsUrl}" style="display:inline-flex; align-items:center; gap:5px; padding:5px 12px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; font-size:0.78rem; font-weight:700; color:#0f172a; text-decoration:none; cursor:pointer;" onmouseover="this.style.background='#0f172a';this.style.color='#ffffff';" onmouseout="this.style.background='#f8fafc';this.style.color='#0f172a';">
+                        ⚙️ Configure Gemini API Key &rarr;
+                    </a>
+                </div>
+            `;
+            if (duration < 9000) duration = 9000;
+        }
+
         const toast = document.createElement('div');
         toast.className = `agap-toast toast-${toastType}`;
         toast.setAttribute('role', 'alert');
@@ -207,7 +224,7 @@
             <div class="agap-toast-icon">${toastIcon}</div>
             <div class="agap-toast-content">
                 <div class="agap-toast-title">${escapeToastText(toastTitle)}</div>
-                <div class="agap-toast-message">${escapeToastText(message).replace(/\n/g, '<br>')}</div>
+                <div class="agap-toast-message">${escapeToastText(message).replace(/\n/g, '<br>')}${actionHtml}</div>
             </div>
             <button type="button" class="agap-toast-close" aria-label="Close">&times;</button>
             <div class="agap-toast-progress"></div>
