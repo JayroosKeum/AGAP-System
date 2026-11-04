@@ -1573,7 +1573,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 setText('deadlinesDue', data.deadlines_due);
                 setText('activeMediations', data.active_mediations);
                 setText('hearingsThisWeek', data.hearings_this_week);
-                setText('paanyayaComplaints', data.paanyaya_complaints ?? data.draft_complaints ?? 0);
+                setText('paanyayaComplaints', (data.paanyaya_complaints != null && data.paanyaya_complaints > 0) ? data.paanyaya_complaints : (data.active_paanyaya ?? data.paanyaya_complaints ?? 0));
                 setText('settledCases', data.settled_cases);
 
                 updateCardSubtitles(state.period, periodLabel);

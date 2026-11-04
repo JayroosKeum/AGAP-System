@@ -152,7 +152,13 @@ class Report
             $calendarHearings = $calendarHearingsStmt->fetchAll(PDO::FETCH_ASSOC);
 
             $walkinsToday = (int) $this->conn->query("SELECT COUNT(*) FROM complaints WHERE DATE(created_at) = '$today'")->fetchColumn();
-            $activePaanyaya = (int) $this->conn->query("SELECT COUNT(*) FROM paanyayas WHERE status = 'Scheduled'")->fetchColumn();
+            $activePaanyaya = (int) $this->conn->query('
+                SELECT (
+                    (SELECT COUNT(*) FROM paanyayas WHERE status IN ("Scheduled", "Pending"))
+                    +
+                    (SELECT COUNT(*) FROM complaints WHERE (status LIKE "Pre-Docketed%" OR status LIKE "Paanyaya%") AND complaint_id NOT IN (SELECT complaint_id FROM paanyayas WHERE complaint_id IS NOT NULL))
+                )
+            ')->fetchColumn();
             $pendingForms = (int) $this->conn->query("SELECT COUNT(DISTINCT c.case_id) FROM cases c LEFT JOIN summon_deliveries sd ON sd.case_id = c.case_id WHERE c.case_status = 'Mediation' AND (sd.delivery_id IS NULL OR sd.delivery_status = 'Pending')")->fetchColumn();
             $pangkatConciliations = (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status = 'Conciliation'")->fetchColumn();
             $activeUsers = (int) $this->conn->query("SELECT COUNT(*) FROM users WHERE status = 'Active'")->fetchColumn();
@@ -175,7 +181,7 @@ class Report
                 'cfa_cases' => (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status = 'CFA Issued'")->fetchColumn(),
                 'archived_cases' => (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status = 'Archived'")->fetchColumn(),
                 'pending_review' => (int) $this->conn->query("SELECT COUNT(*) FROM complaints WHERE status IN ('Under Review', 'Needs Information')")->fetchColumn(),
-                'paanyaya_complaints' => (int) $this->conn->query("SELECT COUNT(*) FROM complaints WHERE status = 'Pre-Docketed (Paanyaya)'")->fetchColumn(),
+                'paanyaya_complaints' => $activePaanyaya,
                 'draft_complaints' => 0,
                 'hearings_today' => (int) $hearingCountToday->fetchColumn(),
                 'hearings_this_week' => (int) $hearingCountWeek->fetchColumn(),
@@ -302,12 +308,14 @@ class Report
         );
         $pendingReviewStmt->execute($params);
 
-        $paanyayaStmt = $this->conn->prepare(
-            "SELECT COUNT(*) FROM complaints
-             WHERE status = 'Pre-Docketed (Paanyaya)'
-               AND DATE(created_at) BETWEEN ? AND ?"
-        );
-        $paanyayaStmt->execute($params);
+        $paanyayaStmt = $this->conn->prepare('
+            SELECT (
+                (SELECT COUNT(*) FROM paanyayas WHERE status IN ("Scheduled", "Pending") AND (scheduled_date BETWEEN ? AND ? OR DATE(created_at) BETWEEN ? AND ?))
+                +
+                (SELECT COUNT(*) FROM complaints WHERE (status LIKE "Pre-Docketed%" OR status LIKE "Paanyaya%") AND DATE(created_at) BETWEEN ? AND ? AND complaint_id NOT IN (SELECT complaint_id FROM paanyayas WHERE complaint_id IS NOT NULL))
+            )
+        ');
+        $paanyayaStmt->execute([$startDate, $endDate, $startDate, $endDate, $startDate, $endDate]);
 
         $hearingCountStmt = $this->conn->prepare(
             "SELECT COUNT(*) FROM hearings
@@ -385,9 +393,7 @@ class Report
         $walkinsStmt->execute($params);
         $walkinsToday = (int) $walkinsStmt->fetchColumn();
 
-        $activePaanyayaStmt = $this->conn->prepare("SELECT COUNT(*) FROM paanyayas WHERE status = 'Scheduled' AND scheduled_date BETWEEN ? AND ?");
-        $activePaanyayaStmt->execute($params);
-        $activePaanyaya = (int) $activePaanyayaStmt->fetchColumn();
+        $activePaanyaya = (int) $paanyayaStmt->fetchColumn();
 
         $pangkatConciliationStmt = $this->conn->prepare("SELECT COUNT(*) FROM cases WHERE case_status = 'Conciliation' AND docket_date BETWEEN ? AND ?");
         $pangkatConciliationStmt->execute($params);
@@ -417,7 +423,7 @@ class Report
             'cfa_cases' => (int) $cfaStmt->fetchColumn(),
             'archived_cases' => (int) $archivedStmt->fetchColumn(),
             'pending_review' => (int) $pendingReviewStmt->fetchColumn(),
-            'paanyaya_complaints' => (int) $paanyayaStmt->fetchColumn(),
+            'paanyaya_complaints' => $activePaanyaya,
             'draft_complaints' => 0,
             'hearings_today' => count($periodHearings),
             'hearings_this_week' => (int) $hearingCountStmt->fetchColumn(),

@@ -123,7 +123,7 @@
     // Render Daily Intake & Docket Queue
     const renderIntakeQueue = (data) => {
         setText('clerkWalkinsToday', data.walkins_today ?? 0);
-        setText('clerkActivePaanyaya', data.active_paanyaya ?? 0);
+        setText('clerkActivePaanyaya', (data.active_paanyaya != null && data.active_paanyaya > 0) ? data.active_paanyaya : (data.paanyaya_complaints ?? data.active_paanyaya ?? 0));
         setText('clerkPendingForms', data.pending_forms ?? 0);
     };
 
