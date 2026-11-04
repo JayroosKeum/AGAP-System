@@ -1403,7 +1403,44 @@ document.addEventListener('DOMContentLoaded', function() {
         btnResolveDiag.addEventListener('click', () => submitAttendanceAction('resolve', 'Sigurado ka bang naayos na ang sigalot at mamarkahang "Resolved" ang Paanyaya na ito?'));
     }
     if (btnEscalateMed) {
-        btnEscalateMed.addEventListener('click', () => submitAttendanceAction('escalate', 'Sigurado ka bang nais nang i-akyat ang usaping ito sa Pormal na Mediation (Stage 1)?\n\nAwtomatikong ililipat ang Salaysay ng Nagpaanyaya at ang tala ng Pagdalo ng bawat panig.'));
+        btnEscalateMed.addEventListener('click', async function() {
+            const paanyayaId = parseInt(attIdInput.value, 10);
+            if (!paanyayaId) {
+                agapAlert('Invalid Paanyaya record.', 'error');
+                return;
+            }
+
+            if (!confirm('Sigurado ka bang nais nang i-akyat ang usaping ito sa Pormal na Mediation (Stage 1)?\n\nDadalhin ka sa paggawa ng Reklamo (Add Complaint) kung saan awtomatikong ililipat ang mga panig at Salaysay.')) {
+                return;
+            }
+
+            btnEscalateMed.disabled = true;
+            btnEscalateMed.innerHTML = 'Inililipat...';
+
+            try {
+                // Save current attendance and salaysay state first
+                await fetch('../../../backend/api/paanyaya/attendance.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-Token': csrfToken
+                    },
+                    body: JSON.stringify({
+                        paanyaya_id: paanyayaId,
+                        complainant_attended: getRadio('complainant_attended'),
+                        invitee_attended: getRadio('invitee_attended'),
+                        salaysay: attSalaysayInput?.value.trim() || '',
+                        action: 'save_attendance'
+                    })
+                });
+            } catch (err) {
+                console.warn('Could not save before redirect:', err);
+            }
+
+            // Direct to Add Complaint with the Paanyaya ID
+            window.location.href = `../complaints/add-complaint.php?escalate_paanyaya_id=${paanyayaId}`;
+        });
     }
     if (btnOpenSecondPaanyaya) {
         btnOpenSecondPaanyaya.addEventListener('click', () => {

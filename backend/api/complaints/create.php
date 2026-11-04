@@ -52,6 +52,17 @@ if (!$result['success']) {
 }
 
 if (!empty($result['complaint_id'])) {
+    $escPId = filter_input(INPUT_POST, 'escalated_from_paanyaya_id', FILTER_VALIDATE_INT);
+    if ($escPId > 0) {
+        try {
+            require_once __DIR__ . '/../../config/database.php';
+            $dbConn = (new Database())->connect();
+            $updPaanyaya = $dbConn->prepare("UPDATE paanyayas SET status = 'Escalated', complaint_id = ?, escalated_to_complaint_id = ?, updated_at = NOW() WHERE paanyaya_id = ?");
+            $updPaanyaya->execute([(int)$result['complaint_id'], (int)$result['complaint_id'], $escPId]);
+        } catch (Throwable $pe) {
+            error_log('Failed to update paanyaya status on escalation: ' . $pe->getMessage());
+        }
+    }
     header('Location: ../../../frontend/pages/complaints/complaint-details.php?id=' . (int)$result['complaint_id'] . '&tab=paanyaya&preview=1');
     exit;
 }

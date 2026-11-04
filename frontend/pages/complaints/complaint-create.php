@@ -129,6 +129,59 @@ $complaintFlash = $_SESSION['complaint_flash'] ?? null;
 $old = $complaintFlash['old'] ?? [];
 unset($_SESSION['complaint_flash']);
 
+$escalatePaanyayaId = (int)($_GET['escalate_paanyaya_id'] ?? ($_GET['paanyaya_id'] ?? (filter_input(INPUT_GET, 'escalate_paanyaya_id', FILTER_VALIDATE_INT) ?: 0)));
+$escalatePaanyaya = null;
+if ($escalatePaanyayaId > 0) {
+    $epStmt = $db->prepare('SELECT * FROM paanyayas WHERE paanyaya_id = ? LIMIT 1');
+    $epStmt->execute([$escalatePaanyayaId]);
+    $escalatePaanyaya = $epStmt->fetch(PDO::FETCH_ASSOC);
+    if ($escalatePaanyaya && empty($old)) {
+        $old['narrative'] = $escalatePaanyaya['salaysay'] ?? '';
+        $old['escalated_from_paanyaya_id'] = $escalatePaanyaya['paanyaya_id'];
+
+        $cName = trim((string)($escalatePaanyaya['complainant_name'] ?? ''));
+        if ($cName !== '') {
+            $parts = explode(' ', $cName);
+            $old['complainant_first_name'] = $parts[0] ?? '';
+            $old['complainant_last_name'] = count($parts) > 1 ? end($parts) : '';
+            $old['complainant_middle_name'] = count($parts) > 2 ? implode(' ', array_slice($parts, 1, -1)) : '';
+            $old['complainant_name'] = $cName;
+        }
+
+        $rName = trim((string)($escalatePaanyaya['invitee_name'] ?? ''));
+        if ($rName !== '') {
+            $parts = explode(' ', $rName);
+            $old['respondent_first_name'] = $parts[0] ?? '';
+            $old['respondent_last_name'] = count($parts) > 1 ? end($parts) : '';
+            $old['respondent_middle_name'] = count($parts) > 2 ? implode(' ', array_slice($parts, 1, -1)) : '';
+            $old['respondent_name'] = $rName;
+        }
+
+        if (!empty($old['complainant_first_name']) && !empty($old['complainant_last_name'])) {
+            foreach ($residents as $r) {
+                if (strcasecmp($r['first_name'], $old['complainant_first_name']) === 0 && strcasecmp($r['last_name'], $old['complainant_last_name']) === 0) {
+                    $old['complainant_resident_id'] = $r['resident_id'];
+                    $old['complainant_address'] = $r['address'];
+                    $old['complainant_contact_no'] = $r['contact_no'];
+                    $old['complainant_purok'] = $r['purok'];
+                    break;
+                }
+            }
+        }
+        if (!empty($old['respondent_first_name']) && !empty($old['respondent_last_name'])) {
+            foreach ($residents as $r) {
+                if (strcasecmp($r['first_name'], $old['respondent_first_name']) === 0 && strcasecmp($r['last_name'], $old['respondent_last_name']) === 0) {
+                    $old['respondent_resident_id'] = $r['resident_id'];
+                    $old['respondent_address'] = $r['address'];
+                    $old['respondent_contact_no'] = $r['contact_no'];
+                    $old['respondent_purok'] = $r['purok'];
+                    break;
+                }
+            }
+        }
+    }
+}
+
 include '../../layouts/header.php';
 ?>
 
@@ -163,8 +216,28 @@ include '../../layouts/header.php';
                 </script>
             <?php endif; ?>
 
+            <?php if (!empty($escalatePaanyaya)): ?>
+                <div class="escalation-banner" style="background: #eff6ff; border: 1.5px solid #93c5fd; border-radius: 10px; padding: 14px 18px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 14px; box-shadow: 0 2px 6px rgba(37,99,235,0.08);">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="font-size: 1.6rem; line-height: 1;">⚖️</span>
+                        <div>
+                            <div style="font-weight: 800; font-size: 0.96rem; color: #1e40af;">
+                                Inilipat mula sa Paanyaya #<?php echo (int)$escalatePaanyaya['paanyaya_id']; ?> (Stage 0 Informal Dialogue)
+                            </div>
+                            <div style="font-size: 0.82rem; color: #1e3a8a; margin-top: 3px;">
+                                Awtomatikong nailipat ang mga panig (<strong><?php echo htmlspecialchars($escalatePaanyaya['complainant_name'] ?? 'Nagpaanyaya'); ?></strong> vs <strong><?php echo htmlspecialchars($escalatePaanyaya['invitee_name'] ?? 'Inanyayahan'); ?></strong>) at ang <strong>Salaysay</strong>. Kumpletuhin ang mga detalye ng reklamo upang mai-akyat sa Pormal na Mediation.
+                            </div>
+                        </div>
+                    </div>
+                    <span style="font-size: 0.74rem; font-weight: 700; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; border-radius: 6px; padding: 4px 10px; white-space: nowrap;">
+                        Mediation Escalation
+                    </span>
+                </div>
+            <?php endif; ?>
+
             <form id="createComplaintForm" action="../../../backend/api/complaints/create.php" method="POST" enctype="multipart/form-data" class="complaint-intake-form">
                 <input type="hidden" name="bypass_office_hours" value="1">
+                <input type="hidden" name="escalated_from_paanyaya_id" value="<?php echo htmlspecialchars((string)($old['escalated_from_paanyaya_id'] ?? ($escalatePaanyaya['paanyaya_id'] ?? ''))); ?>">
 
                 <div class="intake-layout-container" id="intakeLayoutContainer">
 
