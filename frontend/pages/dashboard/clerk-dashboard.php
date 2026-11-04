@@ -163,14 +163,6 @@ include '../../layouts/header.php';
                 <div class="metric-val" id="sysMetricSettled">—</div>
                 <span class="metric-sub">Resolved through settlement</span>
             </article>
-            <article class="system-metric-pill" data-clerk-metric="archived" role="button" tabindex="0" title="Click to view archived cases">
-                <div class="kpi-card-header">
-                    <span class="metric-name">Archived Cases</span>
-                    <span class="metric-icon icon-archived"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg></span>
-                </div>
-                <div class="metric-val" id="sysMetricArchived">—</div>
-                <span class="metric-sub">Closed and archived records</span>
-            </article>
             <article class="system-metric-pill" data-clerk-metric="users" role="button" tabindex="0" title="Click to view active users">
                 <div class="kpi-card-header">
                     <span class="metric-name">Active Users</span>

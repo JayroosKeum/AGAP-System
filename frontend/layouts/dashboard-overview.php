@@ -107,11 +107,6 @@
             <h2 id="hearingsToday">—</h2>
             <span id="hearingsTodaySub">Scheduled sessions</span>
         </article>
-        <article class="stat-card" data-target-stat="archived-cases" role="button" tabindex="0" title="Click to filter closed and archived cases">
-            <p id="archivedCasesLabel">Archived cases</p>
-            <h2 id="archivedCases">—</h2>
-            <span id="archivedCasesSub">Closed and archived records</span>
-        </article>
         <article class="stat-card" data-target-stat="active-mediation" role="button" tabindex="0" title="Click to filter active mediation and conciliation cases">
             <p id="activeMediationsLabel">Active mediation</p>
             <h2 id="activeMediations">—</h2>
