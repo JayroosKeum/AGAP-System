@@ -4611,7 +4611,7 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
         $pbStmt->execute();
         $captainName = $pbStmt->fetchColumn() ?: 'HON. AKIKO LYNNE CENTENO';
 
-        $attemptNumber = (int) ($options['attempt_number'] ?? ($paanyaya['attempt_number'] ?? ($complaint['paanyaya_attempt_count'] ?? 1)));
+        $attemptNumber = (int) ($options['attempt_number'] ?? ($paaRecord['attempt_number'] ?? ($paanyaya['attempt_number'] ?? ($complaint['paanyaya_attempt_count'] ?? 1))));
 
         return [
             'complaint' => $complaint,

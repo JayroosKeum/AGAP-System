@@ -509,6 +509,25 @@ include '../../layouts/header.php';
     transform: translateY(-1px);
     box-shadow: 0 4px 8px rgba(124, 58, 237, 0.3);
 }
+.btn-second-paanyaya {
+    background: #0284c7;
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 0.84rem;
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all .15s ease;
+}
+.btn-second-paanyaya:hover {
+    background: #0369a1;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(2, 132, 199, 0.3);
+}
 .btn-resolve-dialogue {
     background: #16a34a;
     color: #ffffff;
@@ -636,7 +655,12 @@ include '../../layouts/header.php';
                                     ?>
                                     <tr>
                                         <td>
-                                            <strong style="color: #0f172a; font-size: 0.92rem;"><?php echo htmlspecialchars($p['invitee_name'] ?: 'Inanyayahan'); ?></strong>
+                                            <div style="display: flex; align-items: center; gap: 6px;">
+                                                <strong style="color: #0f172a; font-size: 0.92rem;"><?php echo htmlspecialchars($p['invitee_name'] ?: 'Inanyayahan'); ?></strong>
+                                                <?php if ((int)($p['attempt_number'] ?? 1) === 2): ?>
+                                                    <span style="font-size: 0.68rem; font-weight: 700; color: #1d4ed8; background: #eff6ff; border: 1px solid #bfdbfe; padding: 1px 6px; border-radius: 4px;" title="Ikalawang Paanyaya">2nd</span>
+                                                <?php endif; ?>
+                                            </div>
                                             <?php if (!empty($p['scheduled_by_name'])): ?>
                                                 <div style="font-size: 0.74rem; color: #64748b; margin-top: 2px;">Issued by <?php echo htmlspecialchars($p['scheduled_by_name']); ?></div>
                                             <?php endif; ?>
@@ -676,7 +700,8 @@ include '../../layouts/header.php';
                                                         data-date="<?php echo htmlspecialchars($d); ?>"
                                                         data-time="<?php echo htmlspecialchars($t); ?>"
                                                         data-status="<?php echo htmlspecialchars($st); ?>"
-                                                        title="Track Attendance and Resolve or Escalate">
+                                                        data-attempt="<?php echo (int)($p['attempt_number'] ?? 1); ?>"
+                                                        title="Track Attendance, Schedule 2nd Paanyaya, Resolve, or Escalate">
                                                     📋 Attendance
                                                 </button>
                                             </div>
@@ -879,24 +904,67 @@ include '../../layouts/header.php';
                     <textarea id="attSalaysay" name="salaysay" class="form-control" rows="3" placeholder="Salaysay ng nagpaanyaya ukol sa reklamo..."></textarea>
                 </div>
 
-                <!-- 4. Dialogue Minutes / Notes -->
-                <div class="form-group" style="margin-bottom: 0;">
-                    <label for="attDialogueNotes">Tala ng Pag-uusap (Dialogue Summary / Session Notes)</label>
-                    <textarea id="attDialogueNotes" name="dialogue_notes" class="form-control" rows="2" placeholder="Mga napag-usapan, napagkasunduan, o dahilan ng hindi pagkakasundo..."></textarea>
+                <!-- 4. Action Control Section (In Place of Tala ng Pag-uusap) -->
+                <div class="attendance-action-panel" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-top: 6px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <span style="font-size: 0.8rem; font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.03em;">
+                            Aksyon / Hakbang sa Usapin
+                        </span>
+                        <span id="attAttemptBadge" class="status-pill-scheduled" style="font-size: 0.72rem; padding: 2px 8px;">Unang Paanyaya</span>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                        <button type="button" class="btn-action-view" id="btnSaveAttendanceOnly" style="padding: 9px 12px; background: #ffffff; border: 1px solid #cbd5e1; font-weight: 600; border-radius: 6px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                            💾 Save Attendance
+                        </button>
+                        <button type="button" class="btn-resolve-dialogue" id="btnResolveDialogue" style="padding: 9px 12px; font-weight: 600; border-radius: 6px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                            🤝 Kasunduan (Settle)
+                        </button>
+                        <button type="button" class="btn-second-paanyaya" id="btnOpenSecondPaanyaya" style="padding: 9px 12px; font-weight: 600; border-radius: 6px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                            📩 2nd Paanyaya
+                        </button>
+                        <button type="button" class="btn-escalate-mediation" id="btnEscalateMediation" style="padding: 9px 12px; font-weight: 600; border-radius: 6px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                            ⚖️ Escalate to Mediation
+                        </button>
+                    </div>
+
+                    <!-- Inline 2nd Paanyaya Scheduling Form -->
+                    <div id="secondPaanyayaPanel" style="display: none; margin-top: 12px; padding: 12px; background: #eff6ff; border: 1px solid #93c5fd; border-radius: 8px;">
+                        <div style="font-size: 0.84rem; font-weight: 700; color: #1e40af; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
+                            <span>📅 Mag-iskedyul ng Ikalawang Paanyaya (2nd Paanyaya)</span>
+                            <span style="font-size: 0.72rem; color: #2563eb; background: #dbeafe; padding: 2px 6px; border-radius: 4px; font-weight: 600;">Attempt 2</span>
+                        </div>
+                        <p style="font-size: 0.78rem; color: #1e3a8a; margin: 0 0 10px 0;">
+                            Awtomatikong itatala ang pagdalo sa Unang Paanyaya at lilikha ng opisyal na liham para sa <strong>Ikalawang Paanyaya</strong>.
+                        </p>
+                        <div class="form-row" style="margin-bottom: 10px;">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="p2Date" style="font-size: 0.78rem; font-weight: 600; color: #1e40af;">Petsa ng 2nd Paanyaya</label>
+                                <input type="date" id="p2Date" class="form-control" style="font-size: 0.85rem; padding: 6px 10px; background: #ffffff;">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="p2Time" style="font-size: 0.78rem; font-weight: 600; color: #1e40af;">Oras ng 2nd Paanyaya</label>
+                                <input type="time" id="p2Time" value="14:00" class="form-control" style="font-size: 0.85rem; padding: 6px 10px; background: #ffffff;">
+                            </div>
+                        </div>
+                        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                            <button type="button" class="btn-action-view" id="btnCancelP2" style="padding: 5px 12px; font-size: 0.8rem;">Bawiin</button>
+                            <button type="button" class="btn-action-print" id="btnConfirmP2" style="background: #2563eb; color: #ffffff; border-color: #1d4ed8; padding: 5px 14px; font-size: 0.82rem; font-weight: 700; cursor: pointer;">
+                                ✓ Ilabas ang 2nd Paanyaya
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Notice if already in 2nd Paanyaya -->
+                    <div id="alreadySecondPaanyayaNotice" style="display: none; margin-top: 10px; padding: 8px 12px; background: #fef3c7; border: 1px solid #fde047; border-radius: 6px; font-size: 0.78rem; color: #854d0e;">
+                        ℹ️ Ang usaping ito ay nasa <strong>Ikalawang Paanyaya (Attempt 2)</strong> na. Alinsunod sa proseso ng Katarungang Pambarangay, dalawang paanyaya lamang ang pinahihintulutan bago ang pormal na Mediation. Kung walang kasunduan o hindi sumipot ang inanyayahan, mangyaring i-click ang <strong>Escalate to Mediation</strong>.
+                    </div>
                 </div>
             </div>
 
             <div class="modal-foot">
-                <button type="button" class="btn-action-view" id="attendanceCancelBtn">Cancel</button>
-                <button type="button" class="btn-action-view" id="btnSaveAttendanceOnly" style="background:#f1f5f9; border-color:#cbd5e1;">
-                    💾 Save Attendance
-                </button>
-                <button type="button" class="btn-resolve-dialogue" id="btnResolveDialogue">
-                    🤝 Kasunduan (Settle)
-                </button>
-                <button type="button" class="btn-escalate-mediation" id="btnEscalateMediation">
-                    ⚖️ Escalate to Mediation
-                </button>
+                <button type="button" class="btn-action-view" id="attendanceCancelBtn">Isara (Close)</button>
             </div>
         </form>
     </div>
@@ -1118,11 +1186,18 @@ document.addEventListener('DOMContentLoaded', function() {
     const attCompNameDisplay = document.getElementById('attCompNameDisplay');
     const attInvNameDisplay = document.getElementById('attInvNameDisplay');
     const attSalaysayInput = document.getElementById('attSalaysay');
-    const attNotesInput = document.getElementById('attDialogueNotes');
+    const attAttemptBadge = document.getElementById('attAttemptBadge');
 
     const btnSaveAttOnly = document.getElementById('btnSaveAttendanceOnly');
     const btnResolveDiag = document.getElementById('btnResolveDialogue');
     const btnEscalateMed = document.getElementById('btnEscalateMediation');
+    const btnOpenSecondPaanyaya = document.getElementById('btnOpenSecondPaanyaya');
+    const secondPaanyayaPanel = document.getElementById('secondPaanyayaPanel');
+    const alreadySecondPaanyayaNotice = document.getElementById('alreadySecondPaanyayaNotice');
+    const p2DateInput = document.getElementById('p2Date');
+    const p2TimeInput = document.getElementById('p2Time');
+    const btnCancelP2 = document.getElementById('btnCancelP2');
+    const btnConfirmP2 = document.getElementById('btnConfirmP2');
 
     const closeAttModal = () => { if (attModal) attModal.style.display = 'none'; };
     if (attCloseBtn) attCloseBtn.addEventListener('click', closeAttModal);
@@ -1131,6 +1206,21 @@ document.addEventListener('DOMContentLoaded', function() {
         attModal.addEventListener('click', (e) => {
             if (e.target === attModal) closeAttModal();
         });
+    }
+
+    function getSuggestedNextDate() {
+        const d = new Date();
+        let added = 0;
+        while (added < 3) {
+            d.setDate(d.getDate() + 1);
+            if (d.getDay() !== 0 && d.getDay() !== 6) {
+                added++;
+            }
+        }
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
     }
 
     document.querySelectorAll('.btn-open-attendance').forEach(btn => {
@@ -1143,6 +1233,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const date = this.dataset.date || '';
             const time = this.dataset.time || '';
             const status = this.dataset.status || 'Scheduled';
+            const attempt = parseInt(this.dataset.attempt || 1, 10);
 
             if (attIdInput) attIdInput.value = paanyayaId;
             if (attComplaintIdInput) attComplaintIdInput.value = complaintId;
@@ -1156,9 +1247,29 @@ document.addEventListener('DOMContentLoaded', function() {
             if (attCompNameDisplay) attCompNameDisplay.textContent = complainant;
             if (attInvNameDisplay) attInvNameDisplay.textContent = invitee;
 
+            // Update Attempt UI
+            if (attAttemptBadge) {
+                if (attempt >= 2) {
+                    attAttemptBadge.textContent = 'Ikalawang Paanyaya (Attempt 2)';
+                    attAttemptBadge.className = 'status-pill-escalated';
+                } else {
+                    attAttemptBadge.textContent = 'Unang Paanyaya (Attempt 1)';
+                    attAttemptBadge.className = 'status-pill-scheduled';
+                }
+            }
+
+            if (secondPaanyayaPanel) secondPaanyayaPanel.style.display = 'none';
+
+            if (attempt >= 2) {
+                if (btnOpenSecondPaanyaya) btnOpenSecondPaanyaya.style.display = 'none';
+                if (alreadySecondPaanyayaNotice) alreadySecondPaanyayaNotice.style.display = 'block';
+            } else {
+                if (btnOpenSecondPaanyaya) btnOpenSecondPaanyaya.style.display = 'flex';
+                if (alreadySecondPaanyayaNotice) alreadySecondPaanyayaNotice.style.display = 'none';
+            }
+
             // Reset inputs to clean state
             if (attSalaysayInput) attSalaysayInput.value = '';
-            if (attNotesInput) attNotesInput.value = '';
             setRadio('complainant_attended', 'Present');
             setRadio('invitee_attended', 'Absent');
 
@@ -1172,7 +1283,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (json.success && json.data) {
                     const row = json.data;
                     if (row.salaysay && attSalaysayInput) attSalaysayInput.value = row.salaysay;
-                    if (row.dialogue_notes && attNotesInput) attNotesInput.value = row.dialogue_notes;
                     if (row.complainant_attended) setRadio('complainant_attended', row.complainant_attended);
                     if (row.invitee_attended) setRadio('invitee_attended', row.invitee_attended);
                     if (row.status && attStatusBadge) {
@@ -1212,11 +1322,14 @@ document.addEventListener('DOMContentLoaded', function() {
             complainant_attended: getRadio('complainant_attended'),
             invitee_attended: getRadio('invitee_attended'),
             salaysay: attSalaysayInput?.value.trim() || '',
-            dialogue_notes: attNotesInput?.value.trim() || '',
-            action: actionType
+            action: actionType,
+            p2_date: p2DateInput?.value || '',
+            p2_time: p2TimeInput?.value || '14:00'
         };
 
-        const activeBtn = (actionType === 'escalate') ? btnEscalateMed : ((actionType === 'resolve') ? btnResolveDiag : btnSaveAttOnly);
+        const activeBtn = (actionType === 'escalate') ? btnEscalateMed : 
+                          ((actionType === 'resolve') ? btnResolveDiag : 
+                          ((actionType === 'schedule_second_paanyaya') ? btnConfirmP2 : btnSaveAttOnly));
         const originalText = activeBtn ? activeBtn.innerHTML : '';
         if (activeBtn) {
             activeBtn.disabled = true;
@@ -1257,6 +1370,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     window.location.href = `../complaints/complaint-details.php?id=${data.complaint_id}`;
                     return;
                 }
+            } else if (actionType === 'schedule_second_paanyaya') {
+                const msg = data.message || 'Matagumpay na nai-iskedyul ang Ikalawang Paanyaya (2nd Paanyaya)!';
+                if (typeof window.showSuccessPopup === 'function') {
+                    await window.showSuccessPopup(msg, 'Nai-iskedyul ang 2nd Paanyaya');
+                } else {
+                    alert(msg);
+                }
             } else {
                 if (typeof window.showSuccessPopup === 'function') {
                     await window.showSuccessPopup(data.message || 'Matagumpay na naitala ang aksyon.', 'Tagumpay!');
@@ -1284,6 +1404,33 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     if (btnEscalateMed) {
         btnEscalateMed.addEventListener('click', () => submitAttendanceAction('escalate', 'Sigurado ka bang nais nang i-akyat ang usaping ito sa Pormal na Mediation (Stage 1)?\n\nAwtomatikong ililipat ang Salaysay ng Nagpaanyaya at ang tala ng Pagdalo ng bawat panig.'));
+    }
+    if (btnOpenSecondPaanyaya) {
+        btnOpenSecondPaanyaya.addEventListener('click', () => {
+            if (!secondPaanyayaPanel) return;
+            const isHidden = (secondPaanyayaPanel.style.display === 'none' || secondPaanyayaPanel.style.display === '');
+            secondPaanyayaPanel.style.display = isHidden ? 'block' : 'none';
+            if (isHidden && p2DateInput) {
+                p2DateInput.value = getSuggestedNextDate();
+                const today = new Date().toISOString().split('T')[0];
+                p2DateInput.min = today;
+            }
+        });
+    }
+    if (btnCancelP2) {
+        btnCancelP2.addEventListener('click', () => {
+            if (secondPaanyayaPanel) secondPaanyayaPanel.style.display = 'none';
+        });
+    }
+    if (btnConfirmP2) {
+        btnConfirmP2.addEventListener('click', () => {
+            const p2Date = p2DateInput?.value || '';
+            if (!p2Date) {
+                agapAlert('Mangyaring pumili ng petsa para sa 2nd Paanyaya.', 'warning');
+                return;
+            }
+            submitAttendanceAction('schedule_second_paanyaya', `Sigurado ka bang nais nang ilabas ang Ikalawang Paanyaya (2nd Paanyaya) sa darating na ${p2Date}?`);
+        });
     }
 
     function agapAlert(msg, type = 'info') {

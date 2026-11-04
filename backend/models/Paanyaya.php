@@ -2343,6 +2343,11 @@ class Paanyaya
         $dialogueNotes = trim((string)($data['dialogue_notes'] ?? ($paanyaya['dialogue_notes'] ?? '')));
         $action = trim((string)($data['action'] ?? 'save_attendance'));
 
+        // Handle Schedule 2nd Paanyaya
+        if ($action === 'schedule_second_paanyaya') {
+            return $this->scheduleSecondPaanyaya($paanyayaId, $userId, $data);
+        }
+
         // Handle Escalation to Formal Mediation
         if ($action === 'escalate') {
             $complaintId = (int)($paanyaya['complaint_id'] ?? 0);
@@ -2606,6 +2611,129 @@ class Paanyaya
             return [
                 'success' => false,
                 'message' => 'Failed to escalate Paanyaya to formal Mediation: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Schedules a 2nd Paanyaya (Attempt #2) for a dispute dialogue.
+     * Completes Attempt #1 with recorded attendance/salaysay, and schedules Attempt #2.
+     */
+    public function scheduleSecondPaanyaya(int $paanyayaId, ?int $userId, array $data): array
+    {
+        $paanyaya = $this->getPaanyayaById($paanyayaId);
+        if (!$paanyaya) {
+            return ['success' => false, 'message' => 'Hindi natagpuan ang tala ng Paanyaya.'];
+        }
+
+        if ((int)($paanyaya['attempt_number'] ?? 1) >= 2) {
+            return [
+                'success' => false,
+                'message' => 'Ang usaping ito ay nasa Ikalawang Paanyaya (Attempt 2) na. Alinsunod sa proseso ng Katarungang Pambarangay, dalawang beses lamang ang Paanyaya bago umakyat sa Mediation.'
+            ];
+        }
+
+        $p2Date = trim((string)($data['p2_date'] ?? ($data['scheduled_date'] ?? '')));
+        $p2Time = trim((string)($data['p2_time'] ?? ($data['scheduled_time'] ?? '14:00')));
+        if ($p2Date === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $p2Date)) {
+            return ['success' => false, 'message' => 'Mangyaring maglagay ng wastong petsa para sa 2nd Paanyaya (YYYY-MM-DD).'];
+        }
+        if ($p2Time === '' || !preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', $p2Time)) {
+            $p2Time = '14:00:00';
+        }
+
+        $compAttended = in_array($data['complainant_attended'] ?? '', ['Present', 'Absent'], true)
+            ? $data['complainant_attended'] : 'Present';
+        $invAttended = in_array($data['invitee_attended'] ?? '', ['Present', 'Absent'], true)
+            ? $data['invitee_attended'] : 'Absent';
+        $salaysay = trim((string)($data['salaysay'] ?? ($paanyaya['salaysay'] ?? '')));
+
+        try {
+            $this->conn->beginTransaction();
+
+            // 1. Mark 1st Paanyaya as Completed
+            $updFirst = $this->conn->prepare("
+                UPDATE paanyayas
+                SET complainant_attended = ?,
+                    invitee_attended = ?,
+                    salaysay = ?,
+                    status = 'Completed',
+                    attendance_recorded_at = NOW(),
+                    updated_at = NOW()
+                WHERE paanyaya_id = ?
+            ");
+            $updFirst->execute([$compAttended, $invAttended, $salaysay, $paanyayaId]);
+
+            // 2. Insert 2nd Paanyaya with attempt_number = 2
+            $venue = !empty($paanyaya['venue']) ? $paanyaya['venue'] : 'Tanggapan ng Barangay Tumana';
+            $complaintId = !empty($paanyaya['complaint_id']) ? (int)$paanyaya['complaint_id'] : null;
+
+            $insSecond = $this->conn->prepare("
+                INSERT INTO paanyayas (
+                    complaint_id, complainant_name, invitee_name, scheduled_date, scheduled_time,
+                    status, attempt_number, venue, salaysay, scheduled_by, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, 'Scheduled', 2, ?, ?, ?, NOW(), NOW())
+            ");
+            $insSecond->execute([
+                $complaintId,
+                $paanyaya['complainant_name'],
+                $paanyaya['invitee_name'],
+                $p2Date,
+                $p2Time,
+                $venue,
+                $salaysay !== '' ? $salaysay : null,
+                $userId
+            ]);
+            $newPaanyayaId = (int)$this->conn->lastInsertId();
+
+            // 3. Pre-generate 2nd Paanyaya PDF letter
+            $pdfRelPath = null;
+            try {
+                $pdfDir = __DIR__ . '/../../storage/paanyaya';
+                if (!is_dir($pdfDir)) {
+                    @mkdir($pdfDir, 0777, true);
+                }
+                $pdfFilename = "paanyaya_{$newPaanyayaId}_" . date('Ymd_His') . ".pdf";
+                $pdfAbsPath = $pdfDir . '/' . $pdfFilename;
+                $pdfRelPath = 'storage/paanyaya/' . $pdfFilename;
+
+                $pdfOptions = [
+                    'save_path' => $pdfAbsPath,
+                    'paanyaya_id' => $newPaanyayaId,
+                    'invitee_name' => $paanyaya['invitee_name'],
+                    'complainant_name' => $paanyaya['complainant_name'],
+                    'invitation_date' => $p2Date,
+                    'invitation_time' => $p2Time,
+                    'venue' => $venue,
+                    'salaysay' => $salaysay,
+                    'attempt_number' => 2,
+                ];
+                $this->pdf->generatePaanyaya($complaintId > 0 ? $complaintId : 0, $pdfOptions);
+
+                $this->conn->prepare("UPDATE paanyayas SET pdf_path = ? WHERE paanyaya_id = ?")
+                    ->execute([$pdfRelPath, $newPaanyayaId]);
+            } catch (Throwable $pe) {
+                error_log("Failed to pre-generate 2nd Paanyaya PDF: " . $pe->getMessage());
+            }
+
+            // 4. Audit Log
+            $this->audit->log($userId, "Scheduled 2nd Paanyaya #{$newPaanyayaId} for invitee '{$paanyaya['invitee_name']}' on {$p2Date} {$p2Time}.", 'Paanyaya', $complaintId);
+
+            $this->conn->commit();
+
+            return [
+                'success' => true,
+                'new_paanyaya_id' => $newPaanyayaId,
+                'message' => 'Matagumpay na nai-iskedyul ang Ikalawang Paanyaya (2nd Paanyaya)!'
+            ];
+        } catch (Throwable $e) {
+            if ($this->conn->inTransaction()) {
+                $this->conn->rollBack();
+            }
+            error_log("Error in scheduleSecondPaanyaya: " . $e->getMessage());
+            return [
+                'success' => false,
+                'message' => 'Nabigo sa pag-iskedyul ng Ikalawang Paanyaya: ' . $e->getMessage()
             ];
         }
     }

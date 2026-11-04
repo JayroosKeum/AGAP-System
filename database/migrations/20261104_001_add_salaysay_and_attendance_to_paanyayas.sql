@@ -4,6 +4,7 @@
 
 ALTER TABLE `paanyayas`
   MODIFY COLUMN `status` ENUM('Scheduled','Completed','Cancelled','Resolved','Unresolved','Escalated') NOT NULL DEFAULT 'Scheduled',
+  ADD COLUMN `attempt_number` INT UNSIGNED NOT NULL DEFAULT 1 AFTER `status`,
   ADD COLUMN `salaysay` TEXT NULL AFTER `venue`,
   ADD COLUMN `complainant_attended` ENUM('Present', 'Absent') NULL AFTER `salaysay`,
   ADD COLUMN `invitee_attended` ENUM('Present', 'Absent') NULL AFTER `complainant_attended`,
