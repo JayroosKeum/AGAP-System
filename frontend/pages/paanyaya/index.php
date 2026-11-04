@@ -593,11 +593,11 @@ include '../../layouts/header.php';
             <div class="modal-body">
                 <!-- Name of Complainant -->
                 <div class="modal-section-title">
-                    Name of Complainant (Nagpaanyaya) <span style="color: #dc2626;">*</span>
+                    Name of Complainant (Nagpaanyaya) 
                 </div>
                 <div class="form-row-3" style="margin-bottom: 14px;">
                     <div class="form-group" style="margin-bottom: 0;">
-                        <label for="schedComplainantFirstName">First Name <span style="color: #dc2626;">*</span></label>
+                        <label for="schedComplainantFirstName">First Name </label>
                         <input type="text" id="schedComplainantFirstName" name="complainant_first_name" class="form-control" placeholder="First name" required>
                     </div>
                     <div class="form-group" style="margin-bottom: 0;">
@@ -605,18 +605,18 @@ include '../../layouts/header.php';
                         <input type="text" id="schedComplainantMiddleName" name="complainant_middle_name" class="form-control" placeholder="Middle name (optional)">
                     </div>
                     <div class="form-group" style="margin-bottom: 0;">
-                        <label for="schedComplainantLastName">Last Name <span style="color: #dc2626;">*</span></label>
+                        <label for="schedComplainantLastName">Last Name </label>
                         <input type="text" id="schedComplainantLastName" name="complainant_last_name" class="form-control" placeholder="Last name" required>
                     </div>
                 </div>
 
                 <!-- Name of Person Being Invited -->
                 <div class="modal-section-title">
-                    Name of Person Being Invited (Inanyayahan) <span style="color: #dc2626;">*</span>
+                    Name of Person Being Invited (Inanyayahan) 
                 </div>
                 <div class="form-row-3" style="margin-bottom: 14px;">
                     <div class="form-group" style="margin-bottom: 0;">
-                        <label for="schedInviteeFirstName">First Name <span style="color: #dc2626;">*</span></label>
+                        <label for="schedInviteeFirstName">First Name </label>
                         <input type="text" id="schedInviteeFirstName" name="invitee_first_name" class="form-control" placeholder="First name" required>
                     </div>
                     <div class="form-group" style="margin-bottom: 0;">
@@ -624,18 +624,18 @@ include '../../layouts/header.php';
                         <input type="text" id="schedInviteeMiddleName" name="invitee_middle_name" class="form-control" placeholder="Middle name (optional)">
                     </div>
                     <div class="form-group" style="margin-bottom: 0;">
-                        <label for="schedInviteeLastName">Last Name <span style="color: #dc2626;">*</span></label>
+                        <label for="schedInviteeLastName">Last Name </label>
                         <input type="text" id="schedInviteeLastName" name="invitee_last_name" class="form-control" placeholder="Last name" required>
                     </div>
                 </div>
 
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="schedDate">Scheduled Date <span style="color: #dc2626;">*</span></label>
+                        <label for="schedDate">Scheduled Date </label>
                         <input type="date" id="schedDate" name="scheduled_date" class="form-control" min="<?php echo date('Y-m-d'); ?>" value="<?php echo date('Y-m-d', strtotime('+3 weekdays')); ?>" required>
                     </div>
                     <div class="form-group">
-                        <label for="schedTime">Scheduled Time <span style="color: #dc2626;">*</span></label>
+                        <label for="schedTime">Scheduled Time </label>
                         <input type="time" id="schedTime" name="scheduled_time" class="form-control" value="14:00" required>
                     </div>
                 </div>
