@@ -4648,7 +4648,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 notesTa.dispatchEvent(new Event('input'));
                 window.agapNotify?.('Proof text extracted and added to Proof Notes.', 'success', 'Proof OCR');
             } else {
-                window.agapNotify?.(data.error || 'OCR did not extract any text from the image.', 'error', 'Proof OCR');
+                window.agapNotify?.(data.message || data.error || 'OCR did not extract any text from the image.', 'error', 'Proof OCR');
             }
         } catch (err) {
             console.error('Proof OCR error:', err);
@@ -4747,10 +4747,46 @@ document.addEventListener('DOMContentLoaded', () => {
             document.body.appendChild(modalEl);
         }
 
-        const comp = data.complainants?.[0] || {};
-        const resp = data.respondents?.[0] || {};
-        const compName = [comp.first_name, comp.middle_name, comp.last_name, comp.suffix].filter(Boolean).join(' ') || 'Complainant detected';
-        const respName = [resp.first_name, resp.middle_name, resp.last_name, resp.suffix].filter(Boolean).join(' ') || 'Respondent detected';
+        const complainants = Array.isArray(data.complainants) && data.complainants.length > 0 ? data.complainants : [{}];
+        const respondents = Array.isArray(data.respondents) && data.respondents.length > 0 ? data.respondents : [{}];
+
+        const compCards = complainants.map((comp, idx) => {
+            const compName = [comp.first_name, comp.middle_name, comp.last_name, comp.suffix].filter(Boolean).join(' ') || (complainants.length > 1 ? `Complainant #${idx + 1}` : 'Complainant detected');
+            return `
+                <div class="scan-review-party-card is-comp">
+                    <div style="font-size:0.72rem; font-weight:800; color:#0369a1; text-transform:uppercase;">Complainant ${complainants.length > 1 ? '#' + (idx + 1) : ''}</div>
+                    <div style="font-weight:700; color:#0f172a; font-size:0.95rem; margin-top:2px;">${escapeHtml(compName)}</div>
+                    <div style="font-size:0.78rem; color:#475569; margin-top:4px;">
+                        ${comp.contact_no ? '<div>📞 ' + escapeHtml(comp.contact_no) + '</div>' : ''}
+                        ${(comp.address || comp.purok) ? '<div>📍 ' + escapeHtml([comp.address, comp.purok].filter(Boolean).join(', ')) + '</div>' : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        const respCards = respondents.map((resp, idx) => {
+            const respName = [resp.first_name, resp.middle_name, resp.last_name, resp.suffix].filter(Boolean).join(' ') || (respondents.length > 1 ? `Respondent #${idx + 1}` : 'Respondent detected');
+            return `
+                <div class="scan-review-party-card is-resp">
+                    <div style="font-size:0.72rem; font-weight:800; color:#be123c; text-transform:uppercase;">Respondent ${respondents.length > 1 ? '#' + (idx + 1) : ''}</div>
+                    <div style="font-weight:700; color:#0f172a; font-size:0.95rem; margin-top:2px;">${escapeHtml(respName)}</div>
+                    <div style="font-size:0.78rem; color:#475569; margin-top:4px;">
+                        ${resp.contact_no ? '<div>📞 ' + escapeHtml(resp.contact_no) + '</div>' : ''}
+                        ${(resp.address || resp.purok) ? '<div>📍 ' + escapeHtml([resp.address, resp.purok].filter(Boolean).join(', ')) + '</div>' : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        const statusBanner = data.extraction_source === 'gemini_ai'
+            ? `<div style="background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; padding:6px 12px; border-radius:6px; font-size:0.78rem; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                <span>Document processed with <strong>Google Gemini AI</strong> (${escapeHtml(data.model_used || 'gemini-2.5-flash')}).</span>
+               </div>`
+            : `<div style="background:#fef3c7; border:1px solid #fde68a; color:#92400e; padding:6px 12px; border-radius:6px; font-size:0.78rem; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <span>${escapeHtml(data._fallback_note || 'Offline smart intake template. Review and edit fields as needed before saving.')}</span>
+               </div>`;
 
         modalEl.innerHTML = `
             <div class="scan-review-modal">
@@ -4762,7 +4798,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     <button type="button" id="btnCloseScanReview" style="background:none; border:none; color:#ffffff; font-size:1.5rem; cursor:pointer; line-height:1;">&times;</button>
                 </div>
                 <div class="scan-review-body">
-                    <div style="font-size:0.83rem; color:#64748b; margin-bottom:2px;">
+                    ${statusBanner}
+                    <div style="font-size:0.83rem; color:#64748b; margin-bottom:6px;">
                         Extracted from <strong>${escapeHtml(fileName)}</strong>. Review the detected details below before applying to the complaint form:
                     </div>
 
@@ -4783,22 +4820,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     <div class="scan-review-label" style="margin-top:6px;">Involved Parties</div>
                     <div class="scan-review-parties">
-                        <div class="scan-review-party-card is-comp">
-                            <div style="font-size:0.72rem; font-weight:800; color:#0369a1; text-transform:uppercase;">Complainant</div>
-                            <div style="font-weight:700; color:#0f172a; font-size:0.95rem; margin-top:2px;">${escapeHtml(compName)}</div>
-                            <div style="font-size:0.78rem; color:#475569; margin-top:4px;">
-                                ${comp.contact_no ? '<div>📞 ' + escapeHtml(comp.contact_no) + '</div>' : ''}
-                                ${(comp.address || comp.purok) ? '<div>📍 ' + escapeHtml([comp.address, comp.purok].filter(Boolean).join(', ')) + '</div>' : ''}
-                            </div>
-                        </div>
-                        <div class="scan-review-party-card is-resp">
-                            <div style="font-size:0.72rem; font-weight:800; color:#be123c; text-transform:uppercase;">Respondent</div>
-                            <div style="font-weight:700; color:#0f172a; font-size:0.95rem; margin-top:2px;">${escapeHtml(respName)}</div>
-                            <div style="font-size:0.78rem; color:#475569; margin-top:4px;">
-                                ${resp.contact_no ? '<div>📞 ' + escapeHtml(resp.contact_no) + '</div>' : ''}
-                                ${(resp.address || resp.purok) ? '<div>📍 ' + escapeHtml([resp.address, resp.purok].filter(Boolean).join(', ')) + '</div>' : ''}
-                            </div>
-                        </div>
+                        ${compCards}
+                        ${respCards}
                     </div>
 
                     <div class="scan-review-item full-width">
@@ -4818,6 +4841,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     ` : ''}
                 </div>
                 <div class="scan-review-footer">
+                    <button type="button" class="btn-secondary btn-sm" id="btnCancelScanReview">Discard</button>
+                    <button type="button" class="btn-create btn-sm" id="btnApplyScanReview" style="display:inline-flex; align-items:center; gap:6px; font-weight:700;">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        Apply to Form Fields
+                    </button>
+                </div>
+            </div>
+        `;
                     <button type="button" class="btn-secondary btn-sm" id="btnCancelScanReview">Discard</button>
                     <button type="button" class="btn-create btn-sm" id="btnApplyScanReview" style="display:inline-flex; align-items:center; gap:6px; font-weight:700;">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -4851,11 +4882,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const catSelect = document.getElementById('categoryId');
         if (catSelect && data.category_id) {
             catSelect.value = String(data.category_id);
+            catSelect.dispatchEvent(new Event('change', { bubbles: true }));
             highlightEl(catSelect);
         } else if (catSelect && data.category_name) {
             for (let i = 0; i < catSelect.options.length; i++) {
                 if (catSelect.options[i].text.toLowerCase().includes(data.category_name.toLowerCase())) {
                     catSelect.selectedIndex = i;
+                    catSelect.dispatchEvent(new Event('change', { bubbles: true }));
                     highlightEl(catSelect);
                     break;
                 }
@@ -4865,6 +4898,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const caseTypeSelect = document.getElementById('caseType');
         if (caseTypeSelect && data.case_type) {
             caseTypeSelect.value = data.case_type;
+            caseTypeSelect.dispatchEvent(new Event('change', { bubbles: true }));
             highlightEl(caseTypeSelect);
         }
 
@@ -4872,7 +4906,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const titleInput = document.getElementById('complaintTitle');
         if (titleInput && data.dispute_nature) {
             titleInput.value = data.dispute_nature;
-            titleInput.dispatchEvent(new Event('input'));
+            titleInput.dispatchEvent(new Event('input', { bubbles: true }));
             highlightEl(titleInput);
         }
 
@@ -4881,7 +4915,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (dtField && data.incident_date) {
             const timePart = data.incident_time || '14:00';
             dtField.value = dtField.type === 'date' ? data.incident_date : `${data.incident_date}T${timePart}`;
-            dtField.dispatchEvent(new Event('change'));
+            dtField.dispatchEvent(new Event('change', { bubbles: true }));
+            dtField.dispatchEvent(new Event('input', { bubbles: true }));
             highlightEl(dtField);
         }
 
@@ -4889,6 +4924,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const streetInput = document.getElementById('incidentStreet');
         if (streetInput && data.incident_street) {
             streetInput.value = data.incident_street;
+            streetInput.dispatchEvent(new Event('input', { bubbles: true }));
             highlightEl(streetInput);
         }
 
@@ -4898,6 +4934,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (purokSelect.options[i].value.toLowerCase() === data.incident_purok.toLowerCase() ||
                     purokSelect.options[i].text.toLowerCase().includes(data.incident_purok.toLowerCase())) {
                     purokSelect.selectedIndex = i;
+                    purokSelect.dispatchEvent(new Event('change', { bubbles: true }));
                     highlightEl(purokSelect);
                     break;
                 }
@@ -4908,6 +4945,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const blotterInput = document.getElementById('blotterRefNo');
         if (blotterInput && data.blotter_ref_no) {
             blotterInput.value = data.blotter_ref_no;
+            blotterInput.dispatchEvent(new Event('input', { bubbles: true }));
             highlightEl(blotterInput);
         }
 
@@ -4915,13 +4953,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const narrativeTa = document.getElementById('narrative');
         if (narrativeTa && data.narrative) {
             narrativeTa.value = data.narrative;
-            narrativeTa.dispatchEvent(new Event('input'));
+            narrativeTa.dispatchEvent(new Event('input', { bubbles: true }));
             highlightEl(narrativeTa);
         }
 
         const reliefTa = document.getElementById('requestedResolution');
         if (reliefTa && data.requested_resolution) {
             reliefTa.value = data.requested_resolution;
+            reliefTa.dispatchEvent(new Event('input', { bubbles: true }));
             highlightEl(reliefTa);
         }
 
@@ -4930,7 +4969,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const fineInput = document.getElementById('offenseFineMax');
             if (fineInput) {
                 fineInput.value = data.offense_fine_max || data.damages_amount;
-                fineInput.dispatchEvent(new Event('input'));
+                fineInput.dispatchEvent(new Event('input', { bubbles: true }));
                 highlightEl(fineInput);
             }
         }
@@ -4945,8 +4984,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 suffix: c.suffix || '',
                 birthdate: c.birthdate || '',
                 age: c.age || '',
-                gender: c.gender || '',
-                civil_status: c.civil_status || '',
+                gender: c.gender || 'Male',
+                civil_status: c.civil_status || 'Single',
                 occupation: c.occupation || '',
                 contact_no: c.contact_no || '',
                 email: c.email || '',
@@ -4961,7 +5000,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 guardian_address: ''
             }));
             const chkMultComp = document.getElementById('chkMultipleComplainants');
-            if (chkMultComp) chkMultComp.checked = complainantsList.length > 1;
+            if (chkMultComp) {
+                chkMultComp.checked = complainantsList.length > 1;
+                chkMultComp.dispatchEvent(new Event('change', { bubbles: true }));
+            }
         }
 
         // 8. Respondents List
@@ -4974,8 +5016,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 suffix: r.suffix || '',
                 birthdate: r.birthdate || '',
                 age: r.age || '',
-                gender: r.gender || '',
-                civil_status: r.civil_status || '',
+                gender: r.gender || 'Male',
+                civil_status: r.civil_status || 'Single',
                 occupation: r.occupation || '',
                 contact_no: r.contact_no || '',
                 email: r.email || '',
@@ -4994,7 +5036,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 kp_jurisdiction_exception: false
             }));
             const chkMultResp = document.getElementById('chkMultipleRespondents');
-            if (chkMultResp) chkMultResp.checked = respondentsList.length > 1;
+            if (chkMultResp) {
+                chkMultResp.checked = respondentsList.length > 1;
+                chkMultResp.dispatchEvent(new Event('change', { bubbles: true }));
+            }
         }
 
         // Sync & re-render

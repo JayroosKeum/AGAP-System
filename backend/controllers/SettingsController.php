@@ -274,8 +274,8 @@ class SettingsController
             return ['success' => false, 'message' => 'Gemini API Key is empty. Please enter an API key first.'];
         }
 
-        $model = (string)$this->model->get('gemini_model', 'gemini-1.5-flash');
-        $endpoint = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key=" . urlencode($key);
+        $configuredModel = (string)$this->model->get('gemini_model', 'gemini-2.5-flash');
+        $modelsToTry = array_values(array_unique(array_filter([$configuredModel, 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'])));
 
         $payload = json_encode([
             'contents' => [
@@ -287,48 +287,64 @@ class SettingsController
             ]
         ]);
 
-        $startTime = microtime(true);
-        $ch = curl_init($endpoint);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 12);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+        $lastError = 'Connection failed';
+        $lastLatency = 0;
 
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $error = curl_error($ch);
-        curl_close($ch);
+        foreach ($modelsToTry as $candidateModel) {
+            $endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" . urlencode($candidateModel) . ":generateContent";
 
-        $latency = round((microtime(true) - $startTime) * 1000);
+            $startTime = microtime(true);
+            $ch = curl_init($endpoint);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Content-Type: application/json',
+                'x-goog-api-key: ' . $key
+            ]);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 12);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
 
-        if ($error) {
-            return [
-                'success' => false,
-                'message' => "Connection failed: {$error}",
-                'latency_ms' => $latency
-            ];
-        }
+            $response = curl_exec($ch);
+            $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $error = curl_error($ch);
+            curl_close($ch);
 
-        if ($httpCode === 200) {
+            $lastLatency = round((microtime(true) - $startTime) * 1000);
+
+            if ($error) {
+                return [
+                    'success' => false,
+                    'message' => "Connection failed: {$error}",
+                    'latency_ms' => $lastLatency
+                ];
+            }
+
+            if ($httpCode === 200 && $response) {
+                $resData = json_decode($response, true);
+                $reply = $resData['candidates'][0]['content']['parts'][0]['text'] ?? 'Ready';
+                return [
+                    'success' => true,
+                    'message' => "Successfully connected to Google Gemini ({$candidateModel}). Ping latency: {$lastLatency} ms.",
+                    'model' => $candidateModel,
+                    'latency_ms' => $lastLatency,
+                    'response_sample' => trim($reply)
+                ];
+            }
+
             $resData = json_decode($response, true);
-            $reply = $resData['candidates'][0]['content']['parts'][0]['text'] ?? 'Ready';
-            return [
-                'success' => true,
-                'message' => "Successfully connected to Google Gemini ({$model}). Ping latency: {$latency} ms.",
-                'model' => $model,
-                'latency_ms' => $latency,
-                'response_sample' => trim($reply)
-            ];
+            $errDetail = $resData['error']['message'] ?? "HTTP Error {$httpCode}";
+            $lastError = "API rejected request (HTTP {$httpCode}): {$errDetail}";
+
+            if (!in_array($httpCode, [400, 404], true)) {
+                break;
+            }
         }
 
-        $resData = json_decode($response, true);
-        $errDetail = $resData['error']['message'] ?? "HTTP Error {$httpCode}";
         return [
             'success' => false,
-            'message' => "API rejected request (HTTP {$httpCode}): {$errDetail}",
-            'latency_ms' => $latency
+            'message' => $lastError,
+            'latency_ms' => $lastLatency
         ];
     }
 

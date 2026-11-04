@@ -51,7 +51,7 @@ if (!$file || !isset($file['tmp_name']) || empty($file['tmp_name'])) {
             echo json_encode(['success' => false, 'message' => !is_string($mime) ? 'Invalid image MIME type.' : 'Please wait a few minutes before making another AI request.']);
             exit;
         }
-        $result = (new AiServiceController('gemini-1.5-flash'))->ocrImage($json['image_base64'], $mime);
+        $result = (new AiServiceController())->ocrImage($json['image_base64'], $mime);
         http_response_code($result['success'] ? 200 : 422);
         echo json_encode($result);
         exit;
@@ -74,7 +74,7 @@ if (!AiRequestRateLimit::consume()) {
     exit;
 }
 
-$controller = new AiServiceController('gemini-1.5-flash');
+$controller = new AiServiceController();
 $result = $controller->ocrImage($file);
 
 http_response_code($result['success'] ? 200 : 422);

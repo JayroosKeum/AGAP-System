@@ -1,21 +1,21 @@
 <?php
 
 require_once __DIR__ . '/../config/gemini.php';
+require_once __DIR__ . '/../services/GeminiService.php';
 
 class AiServiceController
 {
-    private string $apiKey;
+    private GeminiService $gemini;
     private string $model;
 
-    public function __construct(string $model = 'gemini-1.5-flash')
+    public function __construct(?string $model = null)
     {
-        $this->apiKey = defined('GEMINI_API_KEY') ? GEMINI_API_KEY : (string) (getenv('GEMINI_API_KEY') ?: '');
-        if ($this->apiKey === '' && file_exists(__DIR__ . '/../models/Setting.php')) { require_once __DIR__ . '/../models/Setting.php'; try { $this->apiKey = (string)Setting::getSetting('gemini_api_key', ''); } catch (Throwable $t) {} }
-        $this->model = $model;
+        $this->gemini = new GeminiService($model);
+        $this->model = $this->gemini->getModel();
     }
 
     /**
-     * Transcribes spoken audio (.webm, .wav, .mp3, .m4a, .ogg) using Gemini 1.5 Flash.
+     * Transcribes spoken audio (.webm, .wav, .mp3, .m4a, .ogg, .aac) using Gemini.
      *
      * @param array|string $audioInput $_FILES array or file path / base64 string
      * @param string $mimeType Optional MIME type if passing binary/base64
@@ -23,10 +23,10 @@ class AiServiceController
      */
     public function transcribeAudio($audioInput, string $mimeType = ''): array
     {
-        if (empty($this->apiKey)) {
+        if (empty($this->gemini->getApiKey())) {
             return [
                 'success' => false,
-                'message' => 'Gemini API key is not configured. Please set the GEMINI_API_KEY environment variable.'
+                'message' => 'Gemini API key is not configured. Please set the API key in System Settings or .env file.'
             ];
         }
 
@@ -50,33 +50,46 @@ class AiServiceController
         $audioData = $media['data'];
         $detectedMime = $media['mime_type'];
 
-        $prompt = "You are an accurate transcription assistant for a barangay dispute resolution session (Katarungang Pambarangay). Transcribe all spoken dialogue from this audio verbatim into clear text. Support Tagalog, English, Taglish, or local Philippine dialects. Preserve names, amounts, dates, commitments, and statements accurately. Output ONLY the clean transcribed text without preamble, commentary, markdown headings, or timestamps.";
+        $prompt = "You are an accurate, objective transcription assistant for Katarungang Pambarangay (Philippine Barangay Justice System). Transcribe all spoken dialogue from this audio verbatim into clear, legible text. Support Tagalog, English, Taglish, or Philippine regional dialects. Preserve names, amounts, dates, commitments, and statements accurately. Output ONLY the clean transcribed text without conversational commentary, markdown wrappers, or timestamps.";
 
-        $payload = [
-            'contents' => [
+        $contents = [
+            'parts' => [
+                ['text' => $prompt],
                 [
-                    'parts' => [
-                        ['text' => $prompt],
-                        [
-                            'inlineData' => [
-                                'mimeType' => $detectedMime,
-                                'data' => $audioData
-                            ]
-                        ]
+                    'inlineData' => [
+                        'mimeType' => $detectedMime,
+                        'data' => $audioData
                     ]
                 ]
-            ],
-            'generationConfig' => [
-                'temperature' => 0.1,
-                'maxOutputTokens' => 8192
             ]
         ];
 
-        return $this->sendGeminiRequest($payload);
+        $response = $this->gemini->generate($contents, [
+            'temperature' => 0.1,
+            'maxOutputTokens' => 8192
+        ], $this->model);
+
+        if (!$response['success']) {
+            return $response;
+        }
+
+        $text = trim((string) ($response['data']['candidates'][0]['content']['parts'][0]['text'] ?? ''));
+        if ($text === '') {
+            return [
+                'success' => false,
+                'message' => 'Gemini AI returned an empty transcription. Please verify the audio recording quality.'
+            ];
+        }
+
+        return [
+            'success' => true,
+            'text' => $text,
+            'model' => $response['model_used'] ?? $this->model
+        ];
     }
 
     /**
-     * Extracts text from handwritten or printed photo notes (.jpg, .png, .webp) using Gemini 1.5 Flash.
+     * Extracts text from handwritten or printed photo notes (.jpg, .png, .webp, .pdf) using Gemini.
      *
      * @param array|string $imageInput $_FILES array or file path / base64 string
      * @param string $mimeType Optional MIME type if passing binary/base64
@@ -84,10 +97,10 @@ class AiServiceController
      */
     public function ocrImage($imageInput, string $mimeType = ''): array
     {
-        if (empty($this->apiKey)) {
+        if (empty($this->gemini->getApiKey())) {
             return [
                 'success' => false,
-                'message' => 'Gemini API key is not configured. Please set the GEMINI_API_KEY environment variable.'
+                'message' => 'Gemini API key is not configured. Please set the API key in System Settings or .env file.'
             ];
         }
 
@@ -101,9 +114,9 @@ class AiServiceController
         $media = $this->prepareMediaInput(
             $imageInput,
             $mimeType,
-            15 * 1024 * 1024,
-            ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'],
-            'Image'
+            25 * 1024 * 1024,
+            ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'],
+            'Document/Image'
         );
         if (!$media['success']) {
             return $media;
@@ -111,87 +124,41 @@ class AiServiceController
         $imageData = $media['data'];
         $detectedMime = $media['mime_type'];
 
-        $prompt = "You are an expert OCR and transcription assistant for barangay dispute resolution and session minutes. Transcribe all handwritten or printed notes from this image accurately. Preserve bullet points, names, dates, amounts, agreed terms, and key statements. If handwriting is partially obscured, transcribe what is clearly visible and indicate illegible words with [illegible]. Output ONLY the transcribed text without conversational commentary.";
+        $prompt = "You are an expert OCR and legal document transcription assistant for Philippine Barangay dispute resolution and session minutes. Transcribe all handwritten or printed text from this document accurately. Preserve bullet points, party names, dates, amounts, agreed terms, and key statements. If handwriting is partially obscured, transcribe what is clearly visible and mark illegible words as [illegible]. Output ONLY the transcribed text without conversational commentary.";
 
-        $payload = [
-            'contents' => [
+        $contents = [
+            'parts' => [
+                ['text' => $prompt],
                 [
-                    'parts' => [
-                        ['text' => $prompt],
-                        [
-                            'inlineData' => [
-                                'mimeType' => $detectedMime,
-                                'data' => $imageData
-                            ]
-                        ]
+                    'inlineData' => [
+                        'mimeType' => $detectedMime,
+                        'data' => $imageData
                     ]
                 ]
-            ],
-            'generationConfig' => [
-                'temperature' => 0.1,
-                'maxOutputTokens' => 8192
             ]
         ];
 
-        return $this->sendGeminiRequest($payload);
-    }
+        $response = $this->gemini->generate($contents, [
+            'temperature' => 0.1,
+            'maxOutputTokens' => 8192
+        ], $this->model);
 
-    /**
-     * Dispatches request to Gemini REST API via PHP cURL.
-     */
-    private function sendGeminiRequest(array $payload): array
-    {
-        $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . urlencode($this->model) . ':generateContent';
-
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST => true,
-            CURLOPT_HTTPHEADER => [
-                'Content-Type: application/json',
-                'x-goog-api-key: ' . $this->apiKey
-            ],
-            CURLOPT_POSTFIELDS => json_encode($payload),
-            CURLOPT_CONNECTTIMEOUT => 10,
-            CURLOPT_TIMEOUT => 60,
-            CURLOPT_SSL_VERIFYPEER => true
-        ]);
-
-        $response = curl_exec($ch);
-        $curlError = curl_error($ch);
-        $statusCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        if ($response === false) {
-            error_log('Gemini API cURL error: ' . $curlError);
-            return [
-                'success' => false,
-                'message' => 'Failed to connect to Gemini AI service: ' . ($curlError ?: 'Connection timed out.')
-            ];
+        if (!$response['success']) {
+            return $response;
         }
 
-        $decoded = json_decode($response, true);
-        if ($statusCode < 200 || $statusCode >= 300 || !is_array($decoded)) {
-            $apiErrorMsg = $decoded['error']['message'] ?? ('HTTP status ' . $statusCode);
-            error_log('Gemini API error (' . $statusCode . '): ' . $apiErrorMsg);
-            return [
-                'success' => false,
-                'message' => 'Gemini AI service returned an error: ' . $apiErrorMsg
-            ];
-        }
-
-        $text = trim((string) ($decoded['candidates'][0]['content']['parts'][0]['text'] ?? ''));
+        $text = trim((string) ($response['data']['candidates'][0]['content']['parts'][0]['text'] ?? ''));
         if ($text === '') {
             return [
                 'success' => false,
-                'message' => 'Gemini AI returned an empty response. Please verify the input clarity.'
+                'message' => 'Gemini AI returned an empty response. Please verify document clarity.'
             ];
         }
 
         return [
             'success' => true,
             'text' => $text,
-            'model' => $this->model
+            'model' => $response['model_used'] ?? $this->model
         ];
     }
 
@@ -217,7 +184,7 @@ class AiServiceController
 
             $path = (string) ($input['tmp_name'] ?? '');
             $size = is_file($path) ? filesize($path) : false;
-            if ($path === '' || !is_uploaded_file($path) || $size === false) {
+            if ($path === '' || (!is_uploaded_file($path) && (!defined('PHP_SAPI') || PHP_SAPI !== 'cli')) || $size === false) {
                 return ['success' => false, 'message' => 'Invalid uploaded ' . strtolower($label) . ' file.'];
             }
             if ($size > $maxBytes || (int) ($input['size'] ?? 0) > $maxBytes) {

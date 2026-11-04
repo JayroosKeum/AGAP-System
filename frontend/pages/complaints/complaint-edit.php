@@ -4049,7 +4049,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 notesTa.dispatchEvent(new Event('input'));
                 window.agapNotify?.('Proof text extracted and added to Proof Notes.', 'success', 'Proof OCR');
             } else {
-                window.agapNotify?.(data.error || 'OCR did not extract any text from the image.', 'error', 'Proof OCR');
+                window.agapNotify?.(data.message || data.error || 'OCR did not extract any text from the image.', 'error', 'Proof OCR');
             }
         } catch (err) {
             console.error('Proof OCR error:', err);
