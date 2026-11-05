@@ -959,7 +959,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                         <option value="evidence_attachment">Evidence</option>
                     </select>
                     <input type="file" id="sessionDocumentsFileInput" accept="image/*,.pdf,.doc,.docx" multiple style="display: none;" onchange="uploadSessionDocuments(this)">
-                    <button type="button" class="btn-create" onclick="document.getElementById('sessionDocumentsFileInput').click()">Upload</button>
+                    <button type="button" id="sessionDocumentsUploadBtn" class="btn-create" onclick="document.getElementById('sessionDocumentsFileInput').click()">Upload</button>
                 </div>
             </div>
             <div id="sessionDocumentsList" class="session-documents-list"></div>

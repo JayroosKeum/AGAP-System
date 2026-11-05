@@ -253,7 +253,7 @@ class HearingAttendance
     public function recordAttendance(int $hearingId, array $records, int $userId): array
     {
         $hearingStmt = $this->conn->prepare(
-            "SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.venue,
+            "SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.venue, h.status, h.queue_status,
                     c.case_number, c.case_status, c.complaint_id
              FROM hearings h
              INNER JOIN cases c ON c.case_id = h.case_id
@@ -264,6 +264,12 @@ class HearingAttendance
 
         if (!$hearing) {
             return ['success' => false, 'message' => 'Hearing not found.'];
+        }
+
+        if (in_array((string) $hearing['case_status'], ['Settled', 'Resolved', 'Completed', 'Dismissed', 'Archived', 'CFA Issued', 'Repudiated'], true)
+            || in_array((string) ($hearing['status'] ?? ''), ['Completed', 'Concluded'], true)
+            || in_array((string) ($hearing['queue_status'] ?? ''), ['Concluded', 'Completed'], true)) {
+            return ['success' => false, 'message' => 'This concluded case or hearing session is read-only; attendance cannot be changed.'];
         }
 
         try {

@@ -955,6 +955,9 @@ CREATE TABLE settlements (
     compliance_due_date DATE NULL,
     compliance_date DATE NULL,
     repudiation_deadline DATE NULL,
+    award_type ENUM('Amicable Settlement', 'Arbitration Award') NOT NULL DEFAULT 'Amicable Settlement',
+    obligation_type ENUM('Monetary', 'Property Return', 'Specific Performance', 'Hybrid') NOT NULL DEFAULT 'Monetary',
+    six_month_deadline DATE NULL,
     repudiation_status ENUM('Within Repudiation Period', 'Repudiation Expired', 'Repudiated', 'Enforceable') NOT NULL DEFAULT 'Within Repudiation Period',
     repudiated_by INT UNSIGNED NULL,
     repudiation_reason TEXT NULL,
@@ -971,6 +974,28 @@ CREATE TABLE settlements (
     CONSTRAINT fk_settlements_repudiated_by
         FOREIGN KEY (repudiated_by) REFERENCES residents (resident_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
+
+CREATE TABLE execution_proceedings (
+    execution_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    case_id INT UNSIGNED NOT NULL,
+    settlement_id INT UNSIGNED NOT NULL,
+    motion_date DATE NOT NULL,
+    motion_narrative TEXT NOT NULL,
+    hearing_date DATETIME NOT NULL,
+    complainant_attended ENUM('Present', 'Absent', 'Excused') NOT NULL DEFAULT 'Absent',
+    respondent_attended ENUM('Present', 'Absent', 'Excused') NOT NULL DEFAULT 'Absent',
+    non_appearance_reason VARCHAR(255) NULL,
+    hearing_minutes TEXT NULL,
+    grace_period_end_date DATE NULL,
+    notice_of_execution_date DATE NULL,
+    execution_status ENUM('Motion Filed', 'Hearing Scheduled', 'Grace Period Active', 'Notice of Execution Issued', 'Enforced / Complied', 'Lapsed to MTC') NOT NULL DEFAULT 'Motion Filed',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY fk_exec_cases (case_id),
+    KEY fk_exec_settlements (settlement_id),
+    CONSTRAINT fk_exec_cases FOREIGN KEY (case_id) REFERENCES cases (case_id) ON DELETE CASCADE,
+    CONSTRAINT fk_exec_settlements FOREIGN KEY (settlement_id) REFERENCES settlements (settlement_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE settlement_installments (
     installment_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

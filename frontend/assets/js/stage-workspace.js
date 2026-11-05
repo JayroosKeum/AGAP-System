@@ -28,6 +28,8 @@ window.getMinutesField = getMinutesField;
 
 function insertAgreedClause(text, hearingId = null) {
 
+    if (guardWorkspaceMutation()) return;
+
     const ta = getMinutesField('minAgreements', hearingId);
 
     if (!ta) return;
@@ -55,6 +57,8 @@ window.insertAgreedClause = insertAgreedClause;
 
 
 function setNowHearingEndTime(hearingId = null) {
+
+    if (guardWorkspaceMutation()) return;
 
     const input = getMinutesField('minActualEndTime', hearingId);
 
@@ -182,6 +186,11 @@ window.loadHearingMinutesDocuments = loadHearingMinutesDocuments;
 
 async function handleMinutesEvidenceUpload(input, documentType, targetHearingId = null) {
 
+    if (guardWorkspaceMutation() || input.dataset.agapUploading === '1') {
+        input.value = '';
+        return;
+    }
+
     if (!input.files || !input.files.length) return;
 
     const hearingId = targetHearingId || input.getAttribute('data-hearing-id') || document.getElementById('minHearingId')?.value || stageWorkspaceState.activeSessionHearingId;
@@ -213,6 +222,10 @@ async function handleMinutesEvidenceUpload(input, documentType, targetHearingId 
     }
 
 
+
+    const triggerButton = input.closest('.minutes-dropzone')?.querySelector('button');
+    input.dataset.agapUploading = '1';
+    setAsyncButtonState(triggerButton, true, 'Uploading…');
 
     try {
 
@@ -253,6 +266,8 @@ async function handleMinutesEvidenceUpload(input, documentType, targetHearingId 
     } finally {
 
         input.value = '';
+        delete input.dataset.agapUploading;
+        setAsyncButtonState(triggerButton, false);
 
     }
 
@@ -263,6 +278,8 @@ window.handleMinutesEvidenceUpload = handleMinutesEvidenceUpload;
 
 
 async function deleteHearingMinutesDocument(docId, hearingId) {
+
+    if (guardWorkspaceMutation()) return;
 
     if (!confirm('Sigurado ka bang nais mong tanggalin ang nakalakip na dokumentong ito?')) return;
 
@@ -352,9 +369,70 @@ let stageWorkspaceState = {
 
     currentHearingId: null,
 
-    currentMinutesRecord: null
+    currentMinutesRecord: null,
+
+    readOnly: false
 
 };
+
+const WORKSPACE_FINAL_CASE_STATUSES = new Set(['Settled', 'Resolved', 'Completed', 'Dismissed', 'Archived', 'CFA Issued', 'Repudiated']);
+const WORKSPACE_FINAL_STAGE_STATUSES = new Set(['Completed', 'Settled', 'Resolved', 'Dismissed', 'Archived', 'CFA Issued', 'Repudiated']);
+
+function isWorkspaceReadOnly(stage = null) {
+    const caseStatus = String(stageWorkspaceState.stageData?.case?.case_status || stageWorkspaceState.stageData?.case?.status || '').trim();
+    const stageStatus = String(stage?.stage_status || '').trim();
+    return WORKSPACE_FINAL_CASE_STATUSES.has(caseStatus) || WORKSPACE_FINAL_STAGE_STATUSES.has(stageStatus);
+}
+
+function guardWorkspaceMutation() {
+    if (!stageWorkspaceState.readOnly) return false;
+    notifyUser('This concluded case is read-only. Its session record remains available for viewing and printing.', 'warning', 'Read-only case');
+    return true;
+}
+
+function setAsyncButtonState(button, busy, busyLabel = 'Saving…') {
+    if (!button) return;
+    if (busy) {
+        if (button.dataset.agapBusy === '1') return;
+        button.dataset.agapBusy = '1';
+        button.dataset.agapOriginalHtml = button.innerHTML;
+        button.disabled = true;
+        button.setAttribute('aria-busy', 'true');
+        button.innerHTML = `<span aria-hidden="true" style="display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:agap-button-spin .65s linear infinite;"></span> ${escapeHtml(busyLabel)}`;
+        button._agapBusyRestoreTimer = window.setInterval(() => {
+            if (button.dataset.agapBusy === '1' && !button.disabled) setAsyncButtonState(button, false);
+        }, 100);
+    } else {
+        if (button._agapBusyRestoreTimer) window.clearInterval(button._agapBusyRestoreTimer);
+        delete button._agapBusyRestoreTimer;
+        button.disabled = false;
+        button.removeAttribute('aria-busy');
+        if (button.dataset.agapOriginalHtml) button.innerHTML = button.dataset.agapOriginalHtml;
+        delete button.dataset.agapBusy;
+        delete button.dataset.agapOriginalHtml;
+    }
+}
+
+function applyWorkspaceReadOnlyState(stage) {
+    stageWorkspaceState.readOnly = isWorkspaceReadOnly(stage);
+    const content = document.getElementById('stageWorkspaceContent');
+    const bannerId = 'wsReadOnlyBanner';
+    document.getElementById(bannerId)?.remove();
+    if (!stageWorkspaceState.readOnly || !content) return;
+
+    const banner = document.createElement('div');
+    banner.id = bannerId;
+    banner.setAttribute('role', 'status');
+    banner.style.cssText = 'margin:0 0 16px;padding:12px 14px;border:1px solid #bfdbfe;border-radius:10px;background:#eff6ff;color:#1e3a8a;font-size:.86rem;font-weight:600;';
+    banner.textContent = 'Read-only record: this case has concluded. Session details and documents remain available for review and printing.';
+    content.prepend(banner);
+    content.querySelectorAll('input, select, textarea, button').forEach((el) => {
+        if (el.matches('.ws-session-page-tab') || el.dataset.readonlyExempt === 'true' || /print|preview|download|close|cancel/i.test(`${el.id} ${el.textContent}`)) return;
+        el.disabled = true;
+        el.setAttribute('aria-disabled', 'true');
+        el.title = 'Read-only: this case has concluded.';
+    });
+}
 
 
 
@@ -1202,6 +1280,8 @@ function populateLuponDropdowns() {
 
 function checkUrlHashAction() {
 
+    if (stageWorkspaceState.readOnly) return;
+
     const urlParams = new URLSearchParams(window.location.search);
 
     const action = urlParams.get('action') || window.location.hash.replace('#', '');
@@ -1278,6 +1358,8 @@ function renderWorkspaceUI() {
 
     if (!stage) stage = {};
 
+    stageWorkspaceState.readOnly = isWorkspaceReadOnly(stage);
+
 
 
     // Gate check for locked stages
@@ -1325,6 +1407,7 @@ function renderWorkspaceUI() {
     renderMinutesSection(data, stage);
 
     renderOutcomeAndReferralSection(data, stage);
+    applyWorkspaceReadOnlyState(stage);
 
 }
 
@@ -1707,6 +1790,11 @@ function renderWorkspaceActions(stage) {
     const more = document.getElementById('wsMoreActionsMenu');
 
     if (!primary) return;
+    if (stageWorkspaceState.readOnly) {
+        primary.innerHTML = '<span class="btn-secondary" style="font-size:.82rem; padding:7px 14px; display:inline-flex; align-items:center; opacity:.8; cursor:default;">Read-only concluded case</span>';
+        if (more) more.innerHTML = '';
+        return;
+    }
 
 
 
@@ -1793,6 +1881,8 @@ function renderWorkspaceActions(stage) {
 
 
 function openSessionCloseout(hearingId) {
+
+    if (guardWorkspaceMutation()) return;
 
     selectInlineMinutesSession(hearingId);
 
@@ -2618,6 +2708,7 @@ async function reloadWorkspace() {
 
 
 async function handleDocketCheckIn(hearingId, partyType, status, residentId = null) {
+    if (guardWorkspaceMutation()) return;
 
     try {
 
@@ -2672,6 +2763,7 @@ async function handleDocketCheckIn(hearingId, partyType, status, residentId = nu
 
 
 async function handleDocketStandby(hearingId, standby) {
+    if (guardWorkspaceMutation()) return;
 
     try {
 
@@ -2720,6 +2812,7 @@ async function handleDocketStandby(hearingId, standby) {
 
 
 async function handleDocketStartSession(hearingId) {
+    if (guardWorkspaceMutation()) return;
 
     if (!confirm('Call this hearing to session? Actual start time will be recorded now.')) {
 
@@ -2772,6 +2865,7 @@ async function handleDocketStartSession(hearingId) {
 
 
 async function handleDocketConcludeSession(hearingId) {
+    if (guardWorkspaceMutation()) return;
 
     if (!confirm('Conclude this session? Actual end time and duration will be recorded.')) {
 
@@ -2996,8 +3090,11 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
     const sessionLabel = getStageSessionOrdinalLabel(mode || stageWorkspaceState.mode || stageWorkspaceState.stageType, sessionIndex);
 
     const isFinalized = (session.minutes_status === 'Finalized');
-
-    const readonlyAttr = ''; // Lupon clerk can continuously edit the contents of the minutes
+    const isConcludedSession = ['Concluded', 'Completed'].includes(String(session.queue_status || session.status || ''))
+        || ['Settled', 'Resolved', 'Dismissed', 'Pending CFA', 'Arbitration Award', 'Repudiated'].includes(String(session.session_outcome || ''));
+    const readonlyAttr = (stageWorkspaceState.readOnly || isFinalized || isConcludedSession)
+        ? 'disabled aria-disabled="true" title="Read-only concluded session"'
+        : '';
 
     let curOutcome = session.session_outcome || 'Pending';
 
@@ -4262,6 +4359,8 @@ window.closeMinutesModal = function() {};
 
 async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skipConfirm = false) {
 
+    if (guardWorkspaceMutation()) return;
+
     const hearingId = targetHearingId || document.getElementById('minHearingId')?.value || stageWorkspaceState.activeSessionHearingId;
 
     if (!hearingId) {
@@ -4308,9 +4407,9 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skip
 
     const finalizeBtn = document.getElementById(`btnSaveMinutesFinalize_${hearingId}`) || document.getElementById('btnSaveMinutesFinalize');
 
-    if (draftBtn) draftBtn.disabled = true;
-
-    if (finalizeBtn) finalizeBtn.disabled = true;
+    if ((draftBtn?.dataset.agapBusy === '1') || (finalizeBtn?.dataset.agapBusy === '1')) return;
+    setAsyncButtonState(draftBtn, true, 'Saving…');
+    setAsyncButtonState(finalizeBtn, true, 'Saving…');
 
 
 
@@ -4428,8 +4527,8 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skip
             dInput?.scrollIntoView({ behavior: 'smooth', block: 'center' });
             dInput?.focus();
             if (draftBtn) {
-                draftBtn.disabled = false;
-                draftBtn.innerHTML = 'Save';
+                setAsyncButtonState(draftBtn, false);
+                setAsyncButtonState(finalizeBtn, false);
             }
             return;
         }
@@ -4439,8 +4538,8 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skip
             tInput?.scrollIntoView({ behavior: 'smooth', block: 'center' });
             tInput?.focus();
             if (draftBtn) {
-                draftBtn.disabled = false;
-                draftBtn.innerHTML = 'Save';
+                setAsyncButtonState(draftBtn, false);
+                setAsyncButtonState(finalizeBtn, false);
             }
             return;
         }
@@ -4598,9 +4697,8 @@ ${json.next_hearing_error}`, 'warning', 'Next Session Scheduling Notice', 8000);
 
     } finally {
 
-        if (draftBtn) draftBtn.disabled = false;
-
-        if (finalizeBtn) finalizeBtn.disabled = false;
+        setAsyncButtonState(draftBtn, false);
+        setAsyncButtonState(finalizeBtn, false);
 
     }
 
@@ -4999,6 +5097,8 @@ let wsConflictCheckDebounceTimer = null;
 
 
 async function openScheduleModal(hearingId = null, targetStageType = null) {
+
+    if (guardWorkspaceMutation()) return;
 
     const modal = document.getElementById('wsScheduleModal');
 
@@ -6007,11 +6107,14 @@ window.debouncedCheckWorkspaceScheduleConflict = debouncedCheckWorkspaceSchedule
 
 async function submitSchedule(e) {
 
+    if (guardWorkspaceMutation()) { e.preventDefault(); return; }
+
     e.preventDefault();
 
     const btn = document.getElementById('submitSchedBtn');
 
-    if (btn) btn.disabled = true;
+    if (btn?.dataset.agapBusy === '1') return;
+    setAsyncButtonState(btn, true, 'Scheduling…');
 
 
 
@@ -6034,7 +6137,7 @@ async function submitSchedule(e) {
 
         notifyUser('Please specify the hearing date and select an available time slot.', 'warning');
 
-        if (btn) btn.disabled = false;
+        setAsyncButtonState(btn, false);
 
         return;
 
@@ -6056,7 +6159,7 @@ async function submitSchedule(e) {
             const activeMediations = (stageWorkspaceState.sessions || []).filter((session) => !['Cancelled', 'Office Cancelled'].includes(session.status) && !session.rescheduled_to_id);
             if (activeMediations.length >= 2) {
                 notifyUser('Mediation is limited to two sessions. Refer the unresolved dispute to Pangkat Conciliation.', 'error');
-                if (btn) btn.disabled = false;
+                setAsyncButtonState(btn, false);
                 return;
             }
             if (activeMediations.length === 1) {
@@ -6065,7 +6168,7 @@ async function submitSchedule(e) {
                 const firstConcluded = first.status === 'Completed' || first.queue_status === 'Concluded';
                 if (!firstConcluded || firstOutcome.includes('settle')) {
                     notifyUser('A 2nd Mediation may be booked only after the 1st Mediation concludes without settlement.', 'warning');
-                    if (btn) btn.disabled = false;
+                    setAsyncButtonState(btn, false);
                     return;
                 }
             }
@@ -6075,7 +6178,7 @@ async function submitSchedule(e) {
 
             notifyUser('Mediation hearings can only be scheduled on working days (Monday to Friday).', 'warning');
 
-            if (btn) btn.disabled = false;
+            setAsyncButtonState(btn, false);
 
             return;
 
@@ -6481,6 +6584,14 @@ async function openAttendanceModal(hearingId, shouldScroll = true) {
 
 
         renderAttendanceModalForm(json.data);
+        if (stageWorkspaceState.readOnly) {
+            const target = cardBody || document.getElementById('wsAttModalBody');
+            target?.querySelectorAll('input, select, textarea, button').forEach((el) => {
+                if (/close|cancel/i.test(`${el.id} ${el.textContent}`)) return;
+                el.disabled = true;
+                el.setAttribute('aria-disabled', 'true');
+            });
+        }
 
     } catch (err) {
 
@@ -6562,6 +6673,8 @@ function formatForTimeInput(timeString) {
 
 function setAttendanceActualStartTimeNow() {
 
+    if (guardWorkspaceMutation()) return;
+
     const input = document.getElementById('attActualStartTime');
 
     if (!input) return;
@@ -6579,6 +6692,8 @@ window.setAttendanceActualStartTimeNow = setAttendanceActualStartTimeNow;
 
 
 function appendDelayRemark(remark) {
+
+    if (guardWorkspaceMutation()) return;
 
     const textarea = document.getElementById('attDelayRemarks');
 
@@ -6605,6 +6720,8 @@ window.appendDelayRemark = appendDelayRemark;
 
 
 async function saveStreamlinedAttendance(silent = false) {
+
+    if (guardWorkspaceMutation()) return;
 
     const hearingId = stageWorkspaceState.currentHearingId || stageWorkspaceState.activeSessionHearingId;
 
@@ -6702,6 +6819,9 @@ async function saveStreamlinedAttendance(silent = false) {
 
 
 
+    const attendanceButton = document.getElementById('btnSaveAttendance') || document.querySelector('#wsAttCardBody button[type="submit"]');
+    if (!silent && attendanceButton?.dataset.agapBusy === '1') return;
+    if (!silent) setAsyncButtonState(attendanceButton, true, 'Saving…');
     try {
 
         const res = await fetch(getStageApiUrl('hearings/attendance.php'), {
@@ -6753,6 +6873,8 @@ async function saveStreamlinedAttendance(silent = false) {
 
         }
 
+    } finally {
+        if (!silent) setAsyncButtonState(attendanceButton, false);
     }
 
 }
@@ -7935,6 +8057,8 @@ async function sendStageAudioToGemini(audioBlob) {
 
 function triggerStageNotesUpload(hearingId = null) {
 
+    if (guardWorkspaceMutation()) return;
+
     const fileInput = getMinutesField('stageNotesFileInput', hearingId);
 
     if (fileInput) fileInput.click();
@@ -7946,6 +8070,11 @@ window.triggerStageNotesUpload = triggerStageNotesUpload;
 
 
 async function handleStageNotesFileSelected(input, hearingId = null) {
+
+    if (guardWorkspaceMutation() || input.dataset.agapUploading === '1') {
+        input.value = '';
+        return;
+    }
 
     if (!input.files || !input.files[0]) return;
 
@@ -7987,7 +8116,8 @@ async function handleStageNotesFileSelected(input, hearingId = null) {
 
 
 
-    if (uploadBtn) uploadBtn.disabled = true;
+    input.dataset.agapUploading = '1';
+    setAsyncButtonState(uploadBtn, true, 'Uploading…');
 
     if (statusBanner) {
 
@@ -8063,7 +8193,8 @@ async function handleStageNotesFileSelected(input, hearingId = null) {
 
     } finally {
 
-        if (uploadBtn) uploadBtn.disabled = false;
+        delete input.dataset.agapUploading;
+        setAsyncButtonState(uploadBtn, false);
 
         input.value = '';
 
@@ -8763,6 +8894,8 @@ function printHearingMinutes(hearingId) {
 
 function openRecordOutcomeModal() {
 
+    if (guardWorkspaceMutation()) return;
+
     const modal = document.getElementById('wsRecordOutcomeModal');
 
     if (modal) modal.style.display = 'flex';
@@ -8812,6 +8945,8 @@ window.handleEmbeddedStageOutcomeChange = handleEmbeddedStageOutcomeChange;
  */
 
 async function issueArbitrationOutcome(hearingId = null) {
+
+    if (guardWorkspaceMutation()) return;
 
     const hId = hearingId || stageWorkspaceState.activeSessionHearingId;
 
@@ -8939,6 +9074,8 @@ window.issueArbitrationOutcome = issueArbitrationOutcome;
 
 async function issueSettledOutcome(hearingId = null) {
 
+    if (guardWorkspaceMutation()) return;
+
     const hId = hearingId || stageWorkspaceState.activeSessionHearingId;
 
     const caseId = stageWorkspaceState.caseId;
@@ -9060,12 +9197,14 @@ window.issueSettledOutcome = issueSettledOutcome;
 
 
 async function submitRecordOutcome(e) {
+    if (guardWorkspaceMutation()) { e?.preventDefault(); return; }
 
     e.preventDefault();
 
     const btn = document.getElementById('submitOutcomeBtn');
 
-    if (btn) btn.disabled = true;
+    if (btn?.dataset.agapBusy === '1') return;
+    setAsyncButtonState(btn, true, 'Recording…');
 
 
 
@@ -9962,12 +10101,14 @@ window.goReferralStep = goReferralStep;
 
 
 async function submitReferPangkat(e) {
+    if (guardWorkspaceMutation()) { e?.preventDefault(); return; }
 
     e.preventDefault();
 
     const btn = document.getElementById('submitReferBtn');
 
-    if (btn) btn.disabled = true;
+    if (btn?.dataset.agapBusy === '1') return;
+    setAsyncButtonState(btn, true, 'Submitting…');
 
 
 
@@ -10618,12 +10759,14 @@ function updateProjectedDeadline() {
 
 
 async function submitPangkatExtension(e) {
+    if (guardWorkspaceMutation()) { e?.preventDefault(); return; }
 
     e.preventDefault();
 
     const btn = document.getElementById('submitExtBtn');
 
-    if (btn) btn.disabled = true;
+    if (btn?.dataset.agapBusy === '1') return;
+    setAsyncButtonState(btn, true, 'Saving…');
 
 
 
@@ -10764,12 +10907,14 @@ function closeChallengeMemberModal() {
 
 
 async function submitChallengeMember(e) {
+    if (guardWorkspaceMutation()) { e?.preventDefault(); return; }
 
     e.preventDefault();
 
     const btn = document.getElementById('submitChalBtn');
 
-    if (btn) btn.disabled = true;
+    if (btn?.dataset.agapBusy === '1') return;
+    setAsyncButtonState(btn, true, 'Submitting…');
 
 
 
@@ -10968,12 +11113,14 @@ function toggleDecisionReplacement(decision) {
 
 
 async function submitResolveChallenge(e) {
+    if (guardWorkspaceMutation()) { e?.preventDefault(); return; }
 
     e.preventDefault();
 
     const btn = document.getElementById('submitResBtn');
 
-    if (btn) btn.disabled = true;
+    if (btn?.dataset.agapBusy === '1') return;
+    setAsyncButtonState(btn, true, 'Resolving…');
 
 
 
@@ -11196,12 +11343,14 @@ function populateSelectionDropdowns() {
 
 
 async function submitPangkatSelection(e) {
+    if (guardWorkspaceMutation()) { e?.preventDefault(); return; }
 
     e.preventDefault();
 
     const btn = document.getElementById('submitSelBtn');
 
-    if (btn) btn.disabled = true;
+    if (btn?.dataset.agapBusy === '1') return;
+    setAsyncButtonState(btn, true, 'Saving…');
 
 
 

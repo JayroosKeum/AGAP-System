@@ -85,6 +85,13 @@ class HearingMinutes
             return ['success' => false, 'message' => 'Specified hearing session record was not found.'];
         }
 
+        $finalCaseStatuses = ['Settled', 'Resolved', 'Completed', 'Dismissed', 'Archived', 'CFA Issued', 'Repudiated'];
+        if (in_array((string) $hearing['case_status'], $finalCaseStatuses, true)
+            || in_array((string) ($hearing['queue_status'] ?? ''), ['Concluded', 'Completed'], true)
+            || in_array((string) ($hearing['status'] ?? ''), ['Completed', 'Concluded'], true)) {
+            return ['success' => false, 'message' => 'This concluded case or hearing session is read-only and its minutes cannot be changed.'];
+        }
+
         $caseId = (int) $hearing['case_id'];
 
         // 2. Normalize and validate session_type

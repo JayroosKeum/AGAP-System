@@ -156,6 +156,29 @@ if (!$isPreview) {
             http_response_code(403);
             exit('KP Form 19 is locked: The Respondent has not been recorded absent in this session.');
         }
+    } elseif (in_array($formCode, ['KP Form 23', 'KP Form 24', 'KP Form 25'], true)) {
+        $settlementStmt = $conn->prepare('SELECT settlement_id, repudiation_status, repudiation_deadline, six_month_deadline FROM settlements WHERE case_id = ? LIMIT 1');
+        $settlementStmt->execute([$caseId]);
+        $settlement = $settlementStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$settlement || $settlement['repudiation_status'] === 'Repudiated') {
+            http_response_code(403);
+            exit($formCode . ' is unavailable for a repudiated or missing settlement.');
+        }
+        if ($formCode === 'KP Form 23' && (date('Y-m-d') <= $settlement['repudiation_deadline'] || date('Y-m-d') > $settlement['six_month_deadline'])) {
+            http_response_code(403);
+            exit('KP Form 23 is locked until finality and is unavailable after barangay execution jurisdiction lapses.');
+        }
+        $executionStmt = $conn->prepare('SELECT * FROM execution_proceedings WHERE settlement_id = ? ORDER BY execution_id DESC LIMIT 1');
+        $executionStmt->execute([(int) $settlement['settlement_id']]);
+        $execution = $executionStmt->fetch(PDO::FETCH_ASSOC);
+        if ($formCode === 'KP Form 24' && (!$execution || !in_array($execution['execution_status'], ['Hearing Scheduled', 'Grace Period Active', 'Notice of Execution Issued', 'Enforced / Complied'], true))) {
+            http_response_code(403);
+            exit('KP Form 24 requires a filed Motion for Execution with a scheduled hearing.');
+        }
+        if ($formCode === 'KP Form 25' && (!$execution || $execution['execution_status'] !== 'Notice of Execution Issued')) {
+            http_response_code(403);
+            exit('KP Form 25 is locked until hearing minutes, an expired grace period, and notice issuance are recorded.');
+        }
     }
 }
 
@@ -183,6 +206,8 @@ $formKeyMap = [
     'KP Form 20-B' => 'kp_20_b',
     'KP Form 20' => 'kp_20',
     'KP Form 23' => 'kp_23',
+    'KP Form 24' => 'kp_24',
+    'KP Form 25' => 'kp_25',
     'KP Form 22' => 'kp_22',
     'KP Form 21' => 'kp_21',
     'KP Form 16' => 'kp_16',

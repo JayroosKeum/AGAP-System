@@ -3307,6 +3307,10 @@ async function loadSessionDocuments(hearingId) {
 }
 
 async function uploadSessionDocuments(input) {
+    if (input.dataset.agapUploading === '1') {
+        input.value = '';
+        return;
+    }
     const hearingId = Number(document.getElementById('sessionDocumentsHearingId')?.value || 0);
     const caseId = Number(document.getElementById('sessionDocumentsCaseId')?.value || 0);
     const type = document.getElementById('sessionDocumentsType')?.value || 'evidence_attachment';
@@ -3317,6 +3321,14 @@ async function uploadSessionDocuments(input) {
     formData.append('case_id', caseId);
     formData.append('document_type', type);
     Array.from(input.files).forEach(file => formData.append('file[]', file));
+    const button = document.getElementById('sessionDocumentsUploadBtn');
+    const originalLabel = button?.innerHTML || 'Upload';
+    input.dataset.agapUploading = '1';
+    if (button) {
+        button.disabled = true;
+        button.setAttribute('aria-busy', 'true');
+        button.textContent = 'Uploading…';
+    }
     try {
         const response = await fetch('../../../backend/api/hearings/upload-minutes-evidence.php', { method: 'POST', body: formData });
         const json = await response.json();
@@ -3327,6 +3339,12 @@ async function uploadSessionDocuments(input) {
         window.agapNotify?.(error.message || 'Upload failed.', 'error', 'Session documents');
     } finally {
         input.value = '';
+        delete input.dataset.agapUploading;
+        if (button) {
+            button.disabled = false;
+            button.removeAttribute('aria-busy');
+            button.innerHTML = originalLabel;
+        }
     }
 }
 window.uploadSessionDocuments = uploadSessionDocuments;
@@ -7391,6 +7409,7 @@ async function submitScanUpload(event) {
     const errBox = document.getElementById('scanUploadError');
     const fileInput = document.getElementById('scanFileInput');
 
+    if (btn?.dataset.agapSubmitting === '1') return;
     if (!fileInput || !fileInput.files || !fileInput.files.length) {
         if (errBox) {
             errBox.textContent = 'Please choose a scan file to upload.';
@@ -7419,6 +7438,7 @@ async function submitScanUpload(event) {
 
     const formData = new FormData(form);
     if (btn) {
+        btn.dataset.agapSubmitting = '1';
         btn.disabled = true;
         btn.textContent = 'Uploading...';
     }
@@ -7445,6 +7465,7 @@ async function submitScanUpload(event) {
         if (btn) {
             btn.disabled = false;
             btn.textContent = 'Upload Document';
+            delete btn.dataset.agapSubmitting;
         }
     }
 }

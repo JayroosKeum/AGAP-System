@@ -130,13 +130,15 @@ function updateKPIs(items) {
 function renderSettlementRow(item) {
     const id = Number(item.settlement_id);
     const daysLeft = Number(item.repudiation_days_left);
+    const executionDaysLeft = Number(item.execution_days_left);
 
     // Repudiation badge
     let repBadge = '';
     if (item.repudiation_status === 'Repudiated') {
         repBadge = `<span class="badge" style="background:#fee2e2; color:#b91c1c; font-weight:700;">Repudiated</span>`;
     } else if (item.repudiation_status === 'Within Repudiation Period' && daysLeft >= 0) {
-        repBadge = `<span class="badge" style="background:#dbeafe; color:#1e40af; font-weight:700;" title="Sec. 418 window closes in ${daysLeft} days">${daysLeft}d left (10-Day Window)</span>`;
+        const day = Math.max(0, 10 - daysLeft);
+        repBadge = `<span class="badge" style="background:#dbeafe; color:#1e40af; font-weight:700;" title="Sec. 418 window closes in ${daysLeft} days">Repudiation Open: Day ${day} of 10</span>`;
     } else {
         repBadge = `<span class="badge" style="background:#f1f5f9; color:#475569; font-weight:600;">Enforceable / Expired</span>`;
     }
@@ -189,7 +191,7 @@ function renderSettlementRow(item) {
                     ${item.repudiation_status === 'Within Repudiation Period' ? `
                     <button type="button" class="btn-secondary" style="padding:4px 8px; font-size:0.78rem; color:#dc2626;" onclick="openRepudiationModal(${id})" title="File Sworn Repudiation (within 10 days)">Repudiate</button>
                     ` : ''}
-                    ${['Overdue', 'Breached'].includes(item.compliance_status) || (daysLeft < 0 && item.compliance_status !== 'Fully Paid') ? `
+                    ${(['Overdue', 'Breached'].includes(item.compliance_status) || (daysLeft < 0 && item.compliance_status !== 'Fully Paid')) && executionDaysLeft >= 0 ? `
                     <button type="button" class="btn-secondary" style="padding:4px 8px; font-size:0.78rem; color:#b91c1c;" onclick="openExecutionModal(${id})" title="File Motion for Execution">Execute</button>
                     ` : ''}
                 </div>
@@ -352,6 +354,8 @@ function openNewSettlementModal() {
     updateRepudiationHelpDate(new Date().toISOString().slice(0, 10));
     document.getElementById('formAgreementDetails').value = '';
     document.getElementById('formTotalAmount').value = '0.00';
+    document.getElementById('formAwardType').value = 'Amicable Settlement';
+    document.getElementById('formObligationType').value = 'Monetary';
     document.getElementById('formHasInstallment').checked = false;
     toggleInstallmentSchedule(false);
 
@@ -398,6 +402,8 @@ async function handleSaveSettlement(event) {
         total_amount: totalAmount,
         responsible_party: responsibleParty,
         compliance_due_date: complianceDueDate,
+        award_type: document.getElementById('formAwardType').value,
+        obligation_type: document.getElementById('formObligationType').value,
         has_installment: hasInstallment,
         installments: installments,
         terms_read_to_parties: document.getElementById('m_terms_read').checked ? 1 : 0,
@@ -454,21 +460,23 @@ async function viewSettlementDetails(id) {
             ? item.executions.map(ex => `
                 <div style="padding:10px 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; margin-bottom:8px;">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <strong style="color:#b91c1c;">Motion for Execution (Sec. 417)</strong>
+                        <strong style="color:#b91c1c;">Execution Proceeding #${escapeHtml(ex.execution_id)}</strong>
                         <span class="badge badge-danger">${escapeHtml(ex.execution_status)}</span>
                     </div>
                     <div style="font-size:0.84rem; color:#1e293b; margin-top:4px;">
-                        <strong>Violated Obligation:</strong> ${escapeHtml(ex.obligation_violated)}
+                        <strong>Motion Narrative:</strong> ${escapeHtml(ex.motion_narrative || '—')}
                     </div>
                     <div style="font-size:0.8rem; color:#64748b; margin-top:2px;">
-                        Remedy: ${escapeHtml(ex.amount_or_requirement)} · Filed: ${formatDate(ex.motion_date)} by ${escapeHtml(ex.motion_filed_by_name || 'Party')}
+                        KP Form 24 Hearing: ${formatDate(ex.hearing_date)}${ex.grace_period_end_date ? ` · Grace Ends: ${formatDate(ex.grace_period_end_date)}` : ''}
                     </div>
+                    ${ex.execution_status === 'Hearing Scheduled' ? `<button type="button" class="btn-secondary" style="margin-top:8px; padding:4px 8px; font-size:0.78rem;" onclick="openExecutionHearingModal(${Number(ex.execution_id)})">Record KP Form 24 Hearing</button>` : ''}
+                    ${ex.execution_status === 'Grace Period Active' ? `<button type="button" class="btn-secondary" style="margin-top:8px; padding:4px 8px; font-size:0.78rem;" onclick="issueExecutionNotice(${Number(ex.execution_id)})">Issue KP Form 25</button>` : ''}
                 </div>
             `).join('')
             : '<div style="color:#64748b; font-size:0.85rem;">No execution motions filed.</div>';
 
         body.innerHTML = `
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px;">
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; margin-bottom:16px;">
                 <div style="background:#f8fafc; padding:12px 16px; border-radius:8px; border:1px solid #e2e8f0;">
                     <div style="font-size:0.78rem; font-weight:700; color:#64748b; text-transform:uppercase;">Case Docket</div>
                     <div style="font-size:1.1rem; font-weight:700; color:#1e293b; margin-top:2px;">${escapeHtml(item.case_number)}</div>
@@ -484,9 +492,18 @@ async function viewSettlementDetails(id) {
                     <div style="font-size:0.84rem; color:#1d4ed8; margin-top:4px;">
                         Settlement Date: ${formatDate(item.settlement_date)}<br>
                         Repudiation Deadline: ${formatDate(item.repudiation_deadline)}
-                        ${Number(item.repudiation_days_left) >= 0 ? `<br><strong>${Number(item.repudiation_days_left)} calendar days remaining to repudiate</strong>` : '<br><strong>Repudiation window has elapsed. Enforceable by execution.</strong>'}
+                        ${item.repudiation_window_open ? `<br><strong>Repudiation Open: Day ${Math.max(0, 10 - Number(item.repudiation_days_left))} of 10</strong>` : '<br><strong>Final & Executory</strong>'}
                     </div>
                 </div>
+                <div style="background:${item.jurisdiction_lapsed ? '#fff7ed' : '#f0fdf4'}; padding:12px 16px; border-radius:8px; border:1px solid ${item.jurisdiction_lapsed ? '#fed7aa' : '#bbf7d0'};">
+                    <div style="font-size:0.78rem; font-weight:700; color:${item.jurisdiction_lapsed ? '#9a3412' : '#166534'}; text-transform:uppercase;">Execution Jurisdiction</div>
+                    <div style="font-size:1rem; font-weight:700; color:${item.jurisdiction_lapsed ? '#9a3412' : '#166534'}; margin-top:2px;">${item.jurisdiction_lapsed ? 'Lapsed to MTC Court Execution' : `Barangay Execution: ${Math.max(0, Number(item.execution_days_left))} Days Left`}</div>
+                    <div style="font-size:0.84rem; color:#475569; margin-top:4px;">Deadline: ${formatDate(item.six_month_deadline)}</div>
+                </div>
+            </div>
+
+            <div style="display:flex; gap:4px; flex-wrap:wrap; margin:-4px 0 16px; font-size:.78rem; font-weight:700;">
+                ${['Settled (KP 16/15)', '10-Day Repudiation Window', 'Final & Executory', 'Execution Motion (KP 23)', 'Hearing (KP 24)', 'Notice of Execution (KP 25)'].map((stage, index) => `<span style="padding:5px 8px; border-radius:999px; background:${(index === 0 || (index === 1 && item.repudiation_window_open) || (index === 2 && item.is_final_executory) || (index >= 3 && (item.executions || []).length)) ? '#dbeafe' : '#f1f5f9'}; color:#1e3a8a;">${stage}</span>`).join('')}
             </div>
 
             <div style="margin-bottom:16px;">
@@ -590,6 +607,7 @@ async function openRepudiationModal(settlementId) {
     clearModalAlert('repudiationFormAlert');
     document.getElementById('repSettlementId').value = settlementId;
     document.getElementById('repReason').value = '';
+    document.getElementById('repGround').value = '';
     document.getElementById('repDocPath').value = '';
     showModal('repudiationModal');
 
@@ -620,6 +638,7 @@ async function handleFileRepudiation(event) {
     const settlementId = form.settlement_id.value;
     const repudiatedBy = form.repudiated_by.value;
     const repudiationReason = form.repudiation_reason.value;
+    const repudiationGround = form.repudiation_ground.value;
     const supportingDoc = form.supporting_document_path.value;
 
     if (!confirm('Are you sure you want to file a sworn statement of repudiation? This will invalidate the settlement and reopen proceedings.')) {
@@ -633,6 +652,7 @@ async function handleFileRepudiation(event) {
             body: JSON.stringify({
                 settlement_id: settlementId,
                 repudiated_by: repudiatedBy,
+                repudiation_ground: repudiationGround,
                 repudiation_reason: repudiationReason,
                 supporting_document_path: supportingDoc
             })
@@ -652,6 +672,7 @@ async function openExecutionModal(settlementId) {
     document.getElementById('execObligation').value = '';
     document.getElementById('execAmount').value = '';
     document.getElementById('execNotes').value = '';
+    document.getElementById('execHearingDate').value = '';
     showModal('executionModal');
 
     const sel = document.getElementById('execParty');
@@ -678,6 +699,7 @@ async function handleFileExecution(event) {
     const obligation = form.obligation_violated.value;
     const amountOrReq = form.amount_or_requirement.value;
     const notes = form.evidence_notes.value;
+    const hearingDate = form.hearing_date.value;
 
     try {
         const res = await api('../../../backend/api/settlements/execute.php', {
@@ -688,7 +710,8 @@ async function handleFileExecution(event) {
                 motion_filed_by: motionFiledBy,
                 obligation_violated: obligation,
                 amount_or_requirement: amountOrReq,
-                evidence_notes: notes
+                evidence_notes: notes,
+                hearing_date: hearingDate
             })
         });
 
@@ -698,4 +721,37 @@ async function handleFileExecution(event) {
     } catch (err) {
         showModalAlert('executionFormAlert', err.message);
     }
+}
+
+function openExecutionHearingModal(executionId) {
+    clearModalAlert('executionHearingAlert');
+    document.getElementById('executionHearingId').value = executionId;
+    document.getElementById('execComplainantAttendance').value = 'Present';
+    document.getElementById('execRespondentAttendance').value = 'Present';
+    document.getElementById('execAbsenceReason').value = '';
+    document.getElementById('execHearingMinutes').value = '';
+    document.getElementById('execGraceEnd').value = '';
+    showModal('executionHearingModal');
+}
+
+async function handleRecordExecutionHearing(event) {
+    event.preventDefault();
+    const form = document.getElementById('executionHearingForm');
+    clearModalAlert('executionHearingAlert');
+    try {
+        const res = await api('../../../backend/api/settlements/execute.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+            action: 'record_hearing', execution_id: form.execution_id.value, complainant_attended: form.complainant_attended.value,
+            respondent_attended: form.respondent_attended.value, non_appearance_reason: form.non_appearance_reason.value,
+            hearing_minutes: form.hearing_minutes.value, grace_period_end_date: form.grace_period_end_date.value
+        }) });
+        showAlert(res.message, true); closeModal('executionHearingModal'); await loadSettlements(currentPage);
+    } catch (err) { showModalAlert('executionHearingAlert', err.message); }
+}
+
+async function issueExecutionNotice(executionId) {
+    if (!confirm('Issue KP Form 25 only after confirming that the recorded grace period has expired without compliance. Continue?')) return;
+    try {
+        const res = await api('../../../backend/api/settlements/execute.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'issue_notice', execution_id: executionId }) });
+        showAlert(res.message, true); await loadSettlements(currentPage);
+    } catch (err) { showAlert(err.message); }
 }

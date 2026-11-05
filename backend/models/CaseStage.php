@@ -1282,6 +1282,10 @@ class CaseStage
             return ['success' => false, 'message' => 'Case not found.'];
         }
 
+        if (in_array((string) ($overview['case']['case_status'] ?? ''), ['Settled', 'Resolved', 'Completed', 'Dismissed', 'Archived', 'CFA Issued', 'Repudiated'], true)) {
+            return ['success' => false, 'message' => 'This concluded case is read-only; stage outcomes cannot be changed.'];
+        }
+
         $currentStage = ($stageType === 'Mediation')
             ? $overview['mediation']
             : (($stageType === 'Conciliation') ? $overview['conciliation'] : ($overview['arbitration'] ?? []));
@@ -1416,6 +1420,10 @@ class CaseStage
         $overview = $this->getStageOverview($caseId);
         if (!$overview) {
             return ['success' => false, 'message' => 'Case not found.'];
+        }
+
+        if (in_array((string) ($overview['case']['case_status'] ?? ''), ['Settled', 'Resolved', 'Completed', 'Dismissed', 'Archived', 'CFA Issued', 'Repudiated'], true)) {
+            return ['success' => false, 'message' => 'This concluded case is read-only; it cannot be referred to Pangkat.'];
         }
 
         $med = $overview['mediation'];

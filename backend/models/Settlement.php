@@ -11,6 +11,30 @@ class Settlement
         $this->conn = $conn ?? (new Database())->connect();
     }
 
+    /** Keeps the calendar-based repudiation and jurisdiction clocks authoritative. */
+    private function refreshStatutoryStates(): void
+    {
+        $this->conn->exec("UPDATE settlements
+            SET repudiation_status = 'Enforceable', updated_at = NOW()
+            WHERE repudiation_status = 'Within Repudiation Period'
+              AND repudiation_deadline IS NOT NULL
+              AND repudiation_deadline < CURDATE()");
+
+        $this->conn->exec("UPDATE execution_proceedings ep
+            INNER JOIN settlements s ON s.settlement_id = ep.settlement_id
+            SET ep.execution_status = 'Lapsed to MTC', ep.updated_at = NOW()
+            WHERE ep.execution_status IN ('Motion Filed', 'Hearing Scheduled', 'Grace Period Active')
+              AND s.six_month_deadline IS NOT NULL
+              AND s.six_month_deadline < CURDATE()");
+    }
+
+    private function isPartyToCase(int $caseId, int $residentId): bool
+    {
+        $stmt = $this->conn->prepare('SELECT 1 FROM cases c INNER JOIN complaint_parties cp ON cp.complaint_id = c.complaint_id WHERE c.case_id = ? AND cp.resident_id = ? LIMIT 1');
+        $stmt->execute([$caseId, $residentId]);
+        return (bool) $stmt->fetchColumn();
+    }
+
     /**
      * Retrieves paginated settlements with case details, milestone counts, and repudiation tracking.
      */
@@ -39,14 +63,7 @@ class Settlement
 
         $whereClause = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
-        // Auto-update repudiation_status to 'Enforceable' / 'Repudiation Expired' if deadline has passed
-        $this->conn->exec("
-            UPDATE settlements 
-            SET repudiation_status = 'Enforceable' 
-            WHERE repudiation_status = 'Within Repudiation Period' 
-              AND repudiation_deadline IS NOT NULL 
-              AND repudiation_deadline < CURDATE()
-        ");
+        $this->refreshStatutoryStates();
 
         $countSql = "
             SELECT COUNT(*) 
@@ -81,10 +98,11 @@ class Settlement
                    TRIM(CONCAT_WS(' ', pb.first_name, pb.middle_name, pb.last_name)) AS attested_by_name,
                    TRIM(CONCAT_WS(' ', rep.first_name, rep.middle_name, rep.last_name)) AS repudiated_by_name,
                    DATEDIFF(s.repudiation_deadline, CURDATE()) AS repudiation_days_left,
+                   DATEDIFF(s.six_month_deadline, CURDATE()) AS execution_days_left,
                    (SELECT COUNT(*) FROM settlement_installments si WHERE si.settlement_id = s.settlement_id) AS total_installments,
                    (SELECT COUNT(*) FROM settlement_installments si WHERE si.settlement_id = s.settlement_id AND si.payment_status = 'Paid') AS paid_installments,
                    (SELECT COUNT(*) FROM settlement_installments si WHERE si.settlement_id = s.settlement_id AND si.payment_status = 'Overdue') AS overdue_installments,
-                   (SELECT COUNT(*) FROM settlement_executions se WHERE se.settlement_id = s.settlement_id) AS execution_count
+                   (SELECT COUNT(*) FROM execution_proceedings ep WHERE ep.settlement_id = s.settlement_id) AS execution_count
             FROM settlements s
             INNER JOIN cases c ON c.case_id = s.case_id
             INNER JOIN complaints co ON co.complaint_id = c.complaint_id
@@ -120,6 +138,7 @@ class Settlement
      */
     public function getById(int $settlementId): array|false
     {
+        $this->refreshStatutoryStates();
         $stmt = $this->conn->prepare("
             SELECT s.*, 
                    c.case_number, c.case_status,
@@ -134,7 +153,8 @@ class Settlement
                     WHERE cp2.complaint_id = co.complaint_id AND cp2.party_type = 'Respondent') AS respondent_name,
                    TRIM(CONCAT_WS(' ', pb.first_name, pb.middle_name, pb.last_name)) AS attested_by_name,
                    TRIM(CONCAT_WS(' ', rep.first_name, rep.middle_name, rep.last_name)) AS repudiated_by_name,
-                   DATEDIFF(s.repudiation_deadline, CURDATE()) AS repudiation_days_left
+                   DATEDIFF(s.repudiation_deadline, CURDATE()) AS repudiation_days_left,
+                   DATEDIFF(s.six_month_deadline, CURDATE()) AS execution_days_left
             FROM settlements s
             INNER JOIN cases c ON c.case_id = s.case_id
             INNER JOIN complaints co ON co.complaint_id = c.complaint_id
@@ -159,19 +179,22 @@ class Settlement
         $instStmt->execute([$settlementId]);
         $record['installments'] = $instStmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Executions
+        // New proceedings carry the statutory KP 23 → KP 24 → grace → KP 25 lifecycle.
         $execStmt = $this->conn->prepare("
-            SELECT se.*, 
-                   TRIM(CONCAT_WS(' ', res.first_name, res.middle_name, res.last_name)) AS motion_filed_by_name, 
-                   TRIM(CONCAT_WS(' ', off.first_name, off.middle_name, off.last_name)) AS officer_assigned_name
-            FROM settlement_executions se
-            LEFT JOIN residents res ON res.resident_id = se.motion_filed_by
-            LEFT JOIN users off ON off.user_id = se.officer_assigned
-            WHERE se.settlement_id = ?
-            ORDER BY se.created_at DESC
+            SELECT ep.*
+            FROM execution_proceedings ep
+            WHERE ep.settlement_id = ?
+            ORDER BY ep.created_at DESC
         ");
         $execStmt->execute([$settlementId]);
         $record['executions'] = $execStmt->fetchAll(PDO::FETCH_ASSOC);
+        $record['execution_proceedings'] = $record['executions'];
+        $record['repudiation_window_open'] = $record['repudiation_status'] !== 'Repudiated'
+            && !empty($record['repudiation_deadline'])
+            && date('Y-m-d') <= $record['repudiation_deadline'];
+        $record['is_final_executory'] = $record['repudiation_status'] === 'Enforceable';
+        $record['jurisdiction_lapsed'] = !empty($record['six_month_deadline'])
+            && date('Y-m-d') > $record['six_month_deadline'];
 
         return $record;
     }
@@ -206,9 +229,13 @@ class Settlement
             return ['success' => false, 'message' => 'Detailed settlement agreement terms are required.'];
         }
 
-        // 10-business-day statutory repudiation deadline (Sec. 416 Local Government Code)
-        require_once __DIR__ . '/../services/MediationDeadlineService.php';
-        $repudiationDeadline = MediationDeadlineService::calculateBusinessDays($settlementDate, 10);
+        // RA 7160 Sec. 418 uses ten calendar days, counted from settlement Day 0.
+        $repudiationDeadline = (new DateTimeImmutable($settlementDate))->modify('+10 days')->format('Y-m-d');
+        $sixMonthDeadline = (new DateTimeImmutable($settlementDate))->modify('+6 months')->format('Y-m-d');
+        $awardType = in_array($data['award_type'] ?? '', ['Amicable Settlement', 'Arbitration Award'], true)
+            ? $data['award_type'] : 'Amicable Settlement';
+        $obligationType = in_array($data['obligation_type'] ?? '', ['Monetary', 'Property Return', 'Specific Performance', 'Hybrid'], true)
+            ? $data['obligation_type'] : 'Monetary';
 
         $termsRead = !empty($data['terms_read_to_parties']) ? 1 : 0;
         $compSigned = !empty($data['complainant_signed']) ? 1 : 0;
@@ -239,7 +266,7 @@ class Settlement
                     pb_attested, pb_attested_by, pb_attested_at,
                     barangay_sealed, original_in_case_folder, certified_copies_issued,
                     total_amount, responsible_party, has_installment,
-                    compliance_due_date, repudiation_deadline, repudiation_status,
+                    compliance_due_date, repudiation_deadline, award_type, obligation_type, six_month_deadline, repudiation_status,
                     compliance_status
                 ) VALUES (
                     ?, ?, ?,
@@ -247,7 +274,7 @@ class Settlement
                     ?, ?, ?,
                     ?, ?, ?,
                     ?, ?, ?,
-                    ?, ?, 'Within Repudiation Period',
+                    ?, ?, ?, ?, ?, 'Within Repudiation Period',
                     ?
                 )
                 ON DUPLICATE KEY UPDATE
@@ -267,6 +294,9 @@ class Settlement
                     has_installment = VALUES(has_installment),
                     compliance_due_date = VALUES(compliance_due_date),
                     repudiation_deadline = VALUES(repudiation_deadline),
+                    award_type = VALUES(award_type),
+                    obligation_type = VALUES(obligation_type),
+                    six_month_deadline = VALUES(six_month_deadline),
                     compliance_status = VALUES(compliance_status),
                     updated_at = NOW()
             ");
@@ -277,7 +307,7 @@ class Settlement
                 $pbAttested, $pbAttestedBy, $pbAttestedAt,
                 $sealed, $caseFolder, $copiesIssued,
                 $totalAmount, $responsibleParty, $hasInstallment,
-                $complianceDueDate, $repudiationDeadline,
+                $complianceDueDate, $repudiationDeadline, $awardType, $obligationType, $sixMonthDeadline,
                 $complianceStatus
             ]);
 
@@ -344,6 +374,7 @@ class Settlement
                 'message' => 'Amicable settlement recorded successfully.',
                 'settlement_id' => $settlementId,
                 'repudiation_deadline' => $repudiationDeadline,
+                'six_month_deadline' => $sixMonthDeadline,
             ];
         } catch (Throwable $e) {
             if (!$isNested && $this->conn->inTransaction()) {
@@ -453,20 +484,34 @@ class Settlement
 
         $reason = trim((string) ($data['repudiation_reason'] ?? ''));
         if ($reason === '') {
-            return ['success' => false, 'message' => 'Sworn grounds for repudiation (e.g., vitiated consent, fraud, violence, intimidation) are required.'];
+            return ['success' => false, 'message' => 'A sworn narrative alleging fraud, violence, or intimidation is required.'];
+        }
+
+        $ground = trim((string) ($data['repudiation_ground'] ?? ''));
+        if ($ground === '' && preg_match('/\b(fraud|violence|intimidation)\b/i', $reason, $match)) {
+            $ground = ucfirst(strtolower($match[1]));
+        }
+        if (!in_array($ground, ['Fraud', 'Violence', 'Intimidation'], true)) {
+            return ['success' => false, 'message' => 'Repudiation is limited to vitiated consent through Fraud, Violence, or Intimidation.'];
         }
 
         $residentId = filter_var($data['repudiated_by'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         if (!$residentId) {
             return ['success' => false, 'message' => 'A valid party must be specified as repudiating the settlement.'];
         }
+        if (!$this->isPartyToCase((int) $settlement['case_id'], (int) $residentId)) {
+            return ['success' => false, 'message' => 'Only a recorded party to this case may repudiate the settlement.'];
+        }
 
         // Check 10-day limit
         $today = date('Y-m-d');
-        if ($settlement['repudiation_deadline'] && $today > $settlement['repudiation_deadline'] && empty($data['force_repudiation'])) {
+        if ($settlement['repudiation_status'] === 'Repudiated') {
+            return ['success' => false, 'message' => 'This settlement has already been repudiated.'];
+        }
+        if ($settlement['repudiation_deadline'] && $today > $settlement['repudiation_deadline']) {
             return [
                 'success' => false,
-                'message' => "The 10-day statutory repudiation period expired on {$settlement['repudiation_deadline']}. Under Section 418 of the Local Government Code, the settlement is now final and legally enforceable."
+                'message' => 'The 10-day statutory repudiation period has lapsed.'
             ];
         }
 
@@ -489,10 +534,10 @@ class Settlement
                     updated_at = NOW()
                 WHERE settlement_id = ?
             ");
-            $stmt->execute([$reason, $residentId, $docPath ?: null, $settlementId]);
+            $stmt->execute(["{$ground}: {$reason}", $residentId, $docPath ?: null, $settlementId]);
 
             // Update case status and history
-            $updCase = $this->conn->prepare("UPDATE cases SET case_status = 'Mediation', updated_at = NOW() WHERE case_id = ?");
+            $updCase = $this->conn->prepare("UPDATE cases SET case_status = 'Repudiated', updated_at = NOW() WHERE case_id = ?");
             $updCase->execute([$settlement['case_id']]);
 
             // Invalidate amicable settlement & update stage status to Repudiated
@@ -506,7 +551,7 @@ class Settlement
                     completed_at = NOW(),
                     updated_at = CURRENT_TIMESTAMP
             ");
-            $updStage->execute([$settlement['case_id'], "Settlement repudiated under RA 7160 Sec. 416. Ground: {$reason}"]);
+            $updStage->execute([$settlement['case_id'], "Settlement repudiated under RA 7160 Sec. 418. Ground: {$ground}. {$reason}"]);
 
             // Automatically route case to generate KP Form 20 (Certificate to File Action - CFA)
             $cfaCheck = $this->conn->prepare("SELECT cfa_id FROM cfa_records WHERE case_id = ?");
@@ -523,8 +568,8 @@ class Settlement
             $cancelTrans = $this->conn->prepare("UPDATE case_transmittals SET status = 'Pending', transmittal_notified = 2, updated_at = NOW() WHERE case_id = ?");
             $cancelTrans->execute([$settlement['case_id']]);
 
-            $hist = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, 'Mediation', ?, ?)");
-            $hist->execute([$settlement['case_id'], "Settlement repudiated within 10-day statutory window. Ground: {$reason}. Unlocked KP Form 20 (CFA).", $actorUserId]);
+            $hist = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, 'Repudiated', ?, ?)");
+            $hist->execute([$settlement['case_id'], "Settlement repudiated within the 10-day statutory window. Ground: {$ground}. Unlocked KP Form 20 (CFA).", $actorUserId]);
 
             try {
                 require_once __DIR__ . '/../services/NotificationService.php';
@@ -542,152 +587,150 @@ class Settlement
                 error_log('Failed to dispatch settlement repudiated notification: ' . $ne->getMessage());
             }
 
-            $this->conn->commit();
+            if (!$isNested) {
+                $this->conn->commit();
+            }
             return [
                 'success' => true,
-                'message' => 'Sworn repudiation statement filed successfully. Case marked as Repudiated.'
+                'message' => 'Sworn repudiation statement filed successfully. Case marked as Repudiated.',
+                'kp_form' => 'KP Form 17',
+                'cfa_unlocked' => true,
             ];
         } catch (Throwable $e) {
-            if ($this->conn->inTransaction()) {
+            if (!$isNested && $this->conn->inTransaction()) {
                 $this->conn->rollBack();
             }
             return ['success' => false, 'message' => 'Repudiation filing failed: ' . $e->getMessage()];
         }
     }
 
-    /**
-     * Files a Motion for Execution upon non-compliance after the repudiation period.
-     */
+    /** Files KP Form 23 and schedules the mandatory KP Form 24 hearing. */
     public function fileExecutionMotion(int $settlementId, array $data, int $actorUserId): array
     {
         $settlement = $this->getById($settlementId);
-        if (!$settlement) {
-            return ['success' => false, 'message' => 'Settlement record not found.'];
-        }
-
-        // Must be past repudiation period or already enforceable
+        if (!$settlement) return ['success' => false, 'message' => 'Settlement record not found.'];
         $today = date('Y-m-d');
-        if ($settlement['repudiation_deadline'] && $today <= $settlement['repudiation_deadline'] && empty($data['force_execution'])) {
-            return [
-                'success' => false,
-                'message' => "Cannot file Motion for Execution while the 10-day repudiation period is still active (ends {$settlement['repudiation_deadline']})."
-            ];
-        }
+        if ($settlement['repudiation_status'] === 'Repudiated') return ['success' => false, 'message' => 'A repudiated settlement must proceed through CFA, not barangay execution.'];
+        if (!empty($settlement['repudiation_deadline']) && $today <= $settlement['repudiation_deadline']) return ['success' => false, 'message' => "Cannot file Motion for Execution while the 10-day repudiation period is active (ends {$settlement['repudiation_deadline']})."];
+        if (!empty($settlement['six_month_deadline']) && $today > $settlement['six_month_deadline']) return $this->mtcLapseResult();
 
         $obligation = trim((string) ($data['obligation_violated'] ?? ''));
-        $amountOrReq = trim((string) ($data['amount_or_requirement'] ?? ''));
-        $motionFiledBy = filter_var($data['motion_filed_by'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $amountOrRequirement = trim((string) ($data['amount_or_requirement'] ?? ''));
+        $movingParty = filter_var($data['motion_filed_by'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $hearingDate = !empty($data['hearing_date']) ? date('Y-m-d H:i:s', strtotime((string) $data['hearing_date'])) : '';
+        $narrative = trim((string) ($data['motion_narrative'] ?? ''));
+        if ($narrative === '') $narrative = trim("Obligation alleged as unfulfilled: {$obligation}\nRelief requested: {$amountOrRequirement}\n" . trim((string) ($data['evidence_notes'] ?? '')));
+        if ($obligation === '' || $amountOrRequirement === '' || !$movingParty || $hearingDate === '') return ['success' => false, 'message' => 'Provide the moving party, violated obligation, relief sought, and KP Form 24 hearing date.'];
+        if (substr($hearingDate, 0, 10) < $today) return ['success' => false, 'message' => 'The execution hearing cannot be scheduled in the past.'];
+        if (!$this->isPartyToCase((int) $settlement['case_id'], (int) $movingParty)) return ['success' => false, 'message' => 'Only a recorded party to this case may file the Motion for Execution.'];
 
-        if ($obligation === '' || $amountOrReq === '' || !$motionFiledBy) {
-            return ['success' => false, 'message' => 'Please provide the violated obligation, required remedy/amount, and filing party.'];
-        }
-
-        $isNested = $this->conn->inTransaction();
+        $nested = $this->conn->inTransaction();
         try {
-            if (!$isNested) {
-                $this->conn->beginTransaction();
-            }
+            if (!$nested) $this->conn->beginTransaction();
+            $lock = $this->conn->prepare('SELECT * FROM settlements WHERE settlement_id = ? FOR UPDATE');
+            $lock->execute([$settlementId]);
+            $locked = $lock->fetch(PDO::FETCH_ASSOC);
+            if (!$locked) throw new RuntimeException('Settlement record not found.');
+            if ($locked['repudiation_status'] === 'Repudiated') throw new RuntimeException('A repudiated settlement must proceed through CFA, not barangay execution.');
+            if ($today <= $locked['repudiation_deadline']) throw new RuntimeException('Cannot file Motion for Execution while the 10-day repudiation period is active.');
+            if ($today > $locked['six_month_deadline']) { if (!$nested) $this->conn->rollBack(); return $this->mtcLapseResult(); }
 
-            $ins = $this->conn->prepare("
-                INSERT INTO settlement_executions (
-                    settlement_id, case_id, obligation_violated, due_date,
-                    amount_or_requirement, evidence_notes, evidence_file_path,
-                    motion_date, motion_filed_by, execution_status
-                ) VALUES (?, ?, ?, CURDATE(), ?, ?, ?, CURDATE(), ?, 'Motion Filed')
-            ");
-            $ins->execute([
-                $settlementId,
-                $settlement['case_id'],
-                $obligation,
-                $amountOrReq,
-                trim((string) ($data['evidence_notes'] ?? '')) ?: null,
-                trim((string) ($data['evidence_file_path'] ?? '')) ?: null,
-                $motionFiledBy
-            ]);
+            $exists = $this->conn->prepare("SELECT execution_id FROM execution_proceedings WHERE settlement_id = ? AND execution_status NOT IN ('Enforced / Complied', 'Lapsed to MTC') FOR UPDATE");
+            $exists->execute([$settlementId]);
+            if ($exists->fetchColumn()) throw new RuntimeException('An active execution proceeding already exists for this settlement.');
+
+            $ins = $this->conn->prepare("INSERT INTO execution_proceedings (case_id, settlement_id, motion_date, motion_narrative, hearing_date, execution_status) VALUES (?, ?, CURDATE(), ?, ?, 'Hearing Scheduled')");
+            $ins->execute([(int) $locked['case_id'], $settlementId, $narrative, $hearingDate]);
             $executionId = (int) $this->conn->lastInsertId();
-
-            // Mark settlement as Breached
             $this->conn->prepare("UPDATE settlements SET compliance_status = 'Breached', updated_at = NOW() WHERE settlement_id = ?")->execute([$settlementId]);
-
-            $hist = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, 'Settled', ?, ?)");
-            $hist->execute([$settlement['case_id'], "Motion for Execution filed (Execution #{$executionId}). Violated: {$obligation}", $actorUserId]);
-
-            try {
-                require_once __DIR__ . '/../services/NotificationService.php';
-                $notif = new NotificationService();
-                $cNumStmt = $this->conn->prepare("SELECT case_number FROM cases WHERE case_id = ?");
-                $cNumStmt->execute([(int)$settlement['case_id']]);
-                $cNum = $cNumStmt->fetchColumn() ?: ('Case #' . $settlement['case_id']);
-                $notif->notifySettlementBreached((int)$settlement['case_id'], (string)$cNum, $obligation, $actorUserId);
-            } catch (Throwable $ne) {
-                error_log('Failed to dispatch settlement breached notification: ' . $ne->getMessage());
-            }
-
-            $this->conn->commit();
-            return [
-                'success' => true,
-                'message' => 'Motion for Execution filed successfully.',
-                'execution_id' => $executionId
-            ];
+            $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, 'Settled', ?, ?)")->execute([(int) $locked['case_id'], "KP Form 23 motion filed (Execution #{$executionId}); KP Form 24 hearing set for {$hearingDate}.", $actorUserId]);
+            if (!$nested) $this->conn->commit();
+            return ['success' => true, 'message' => 'KP Form 23 filed and KP Form 24 hearing scheduled.', 'execution_id' => $executionId, 'kp_forms' => ['KP Form 23', 'KP Form 24']];
         } catch (Throwable $e) {
-            if ($this->conn->inTransaction()) {
-                $this->conn->rollBack();
-            }
+            if (!$nested && $this->conn->inTransaction()) $this->conn->rollBack();
             return ['success' => false, 'message' => 'Execution filing failed: ' . $e->getMessage()];
         }
     }
 
-    /**
-     * Updates execution process status (e.g. Notice Issued, Complied Under Execution, Endorsed to Court).
-     */
+    /** Records the due-process hearing and sets a voluntary-compliance grace period. */
+    public function recordExecutionHearing(int $executionId, array $data, int $actorUserId): array
+    {
+        $minutes = trim((string) ($data['hearing_minutes'] ?? ''));
+        $graceEnd = !empty($data['grace_period_end_date']) ? date('Y-m-d', strtotime((string) $data['grace_period_end_date'])) : '';
+        $allowedAttendance = ['Present', 'Absent', 'Excused'];
+        $complainant = $data['complainant_attended'] ?? 'Absent';
+        $respondent = $data['respondent_attended'] ?? 'Absent';
+        $absenceReason = trim((string) ($data['non_appearance_reason'] ?? ''));
+        if ($minutes === '' || $graceEnd === '' || !in_array($complainant, $allowedAttendance, true) || !in_array($respondent, $allowedAttendance, true)) return ['success' => false, 'message' => 'KP Form 24 minutes, both attendance entries, and a grace-period end date are required.'];
+        if (($complainant !== 'Present' || $respondent !== 'Present') && $absenceReason === '') return ['success' => false, 'message' => 'Record the reason for any party non-appearance in the hearing minutes.'];
+
+        $nested = $this->conn->inTransaction();
+        try {
+            if (!$nested) $this->conn->beginTransaction();
+            $stmt = $this->conn->prepare("SELECT ep.*, s.six_month_deadline FROM execution_proceedings ep INNER JOIN settlements s ON s.settlement_id = ep.settlement_id WHERE ep.execution_id = ? FOR UPDATE");
+            $stmt->execute([$executionId]); $exec = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$exec) throw new RuntimeException('Execution proceeding not found.');
+            if ($exec['execution_status'] !== 'Hearing Scheduled') throw new RuntimeException('Only a scheduled KP Form 24 hearing may be recorded.');
+            if (date('Y-m-d') > $exec['six_month_deadline']) { if (!$nested) $this->conn->rollBack(); return $this->mtcLapseResult(); }
+            if (date('Y-m-d H:i:s') < $exec['hearing_date']) throw new RuntimeException('KP Form 24 minutes cannot be recorded before the scheduled execution hearing.');
+            if ($graceEnd < substr($exec['hearing_date'], 0, 10)) throw new RuntimeException('The grace period cannot end before the execution hearing.');
+            $upd = $this->conn->prepare("UPDATE execution_proceedings SET complainant_attended = ?, respondent_attended = ?, non_appearance_reason = ?, hearing_minutes = ?, grace_period_end_date = ?, execution_status = 'Grace Period Active', updated_at = NOW() WHERE execution_id = ?");
+            $upd->execute([$complainant, $respondent, $absenceReason ?: null, $minutes, $graceEnd, $executionId]);
+            $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, 'Settled', ?, ?)")->execute([(int) $exec['case_id'], "KP Form 24 execution hearing minutes recorded; voluntary compliance grace period ends {$graceEnd}.", $actorUserId]);
+            if (!$nested) $this->conn->commit();
+            return ['success' => true, 'message' => 'KP Form 24 minutes recorded and grace period activated.', 'kp_form' => 'KP Form 24'];
+        } catch (Throwable $e) {
+            if (!$nested && $this->conn->inTransaction()) $this->conn->rollBack();
+            return ['success' => false, 'message' => 'Execution hearing update failed: ' . $e->getMessage()];
+        }
+    }
+
+    /** Issues KP Form 25 only after due process and expiry of the granted grace period. */
+    public function issueNoticeOfExecution(int $executionId, array $data, int $actorUserId): array
+    {
+        $nested = $this->conn->inTransaction();
+        try {
+            if (!$nested) $this->conn->beginTransaction();
+            $stmt = $this->conn->prepare("SELECT ep.*, s.compliance_status, s.six_month_deadline FROM execution_proceedings ep INNER JOIN settlements s ON s.settlement_id = ep.settlement_id WHERE ep.execution_id = ? FOR UPDATE");
+            $stmt->execute([$executionId]); $exec = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$exec) throw new RuntimeException('Execution proceeding not found.');
+            if (date('Y-m-d') > $exec['six_month_deadline']) { if (!$nested) $this->conn->rollBack(); return $this->mtcLapseResult(); }
+            if ($exec['execution_status'] !== 'Grace Period Active' || empty($exec['hearing_minutes']) || empty($exec['grace_period_end_date'])) throw new RuntimeException('KP Form 25 is locked until KP Form 24 minutes and a grace period are recorded.');
+            if (date('Y-m-d') <= $exec['grace_period_end_date']) throw new RuntimeException('KP Form 25 is locked until the voluntary compliance grace period has expired.');
+            if (in_array($exec['compliance_status'], ['Fully Paid', 'Complied'], true)) throw new RuntimeException('The settlement is already recorded as complied with.');
+            $noticeDate = !empty($data['notice_of_execution_date']) ? date('Y-m-d', strtotime((string) $data['notice_of_execution_date'])) : date('Y-m-d');
+            $this->conn->prepare("UPDATE execution_proceedings SET notice_of_execution_date = ?, execution_status = 'Notice of Execution Issued', updated_at = NOW() WHERE execution_id = ?")->execute([$noticeDate, $executionId]);
+            $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, 'Settled', ?, ?)")->execute([(int) $exec['case_id'], "KP Form 25 Notice of Execution issued on {$noticeDate} after unfulfilled grace period.", $actorUserId]);
+            if (!$nested) $this->conn->commit();
+            return ['success' => true, 'message' => 'KP Form 25 Notice of Execution issued.', 'kp_form' => 'KP Form 25'];
+        } catch (Throwable $e) {
+            if (!$nested && $this->conn->inTransaction()) $this->conn->rollBack();
+            return ['success' => false, 'message' => 'Notice of Execution could not be issued: ' . $e->getMessage()];
+        }
+    }
+
+    /** Only completion is allowed through the legacy update action; stage skips are rejected. */
     public function updateExecutionStatus(int $executionId, array $data, int $actorUserId): array
     {
-        $status = trim((string) ($data['execution_status'] ?? ''));
-        $allowed = ['Motion Filed', 'Notice Issued', 'Execution In Progress', 'Complied Under Execution', 'Execution Failed', 'Endorsed to Court'];
-        if (!in_array($status, $allowed, true)) {
-            return ['success' => false, 'message' => 'Invalid execution status.'];
-        }
-
-        $isNested = $this->conn->inTransaction();
+        if (($data['execution_status'] ?? '') !== 'Enforced / Complied') return ['success' => false, 'message' => 'Use the KP Form 24 hearing and KP Form 25 actions for execution transitions.'];
+        $nested = $this->conn->inTransaction();
         try {
-            if (!$isNested) {
-                $this->conn->beginTransaction();
-            }
-
-            $stmt = $this->conn->prepare('SELECT * FROM settlement_executions WHERE execution_id = ?');
-            $stmt->execute([$executionId]);
-            $exec = $stmt->fetch(PDO::FETCH_ASSOC);
-            if (!$exec) {
-                $this->conn->rollBack();
-                return ['success' => false, 'message' => 'Execution record not found.'];
-            }
-
-            $actionTaken = trim((string) ($data['action_taken'] ?? ''));
-            $officerId = !empty($data['officer_assigned']) ? (int) $data['officer_assigned'] : null;
-            $noticeDate = !empty($data['notice_of_execution_date']) ? date('Y-m-d', strtotime($data['notice_of_execution_date'])) : null;
-
-            $upd = $this->conn->prepare("
-                UPDATE settlement_executions
-                SET execution_status = ?,
-                    action_taken = ?,
-                    officer_assigned = ?,
-                    notice_of_execution_date = COALESCE(?, notice_of_execution_date),
-                    updated_at = NOW()
-                WHERE execution_id = ?
-            ");
-            $upd->execute([$status, $actionTaken ?: null, $officerId, $noticeDate, $executionId]);
-
-            if ($status === 'Complied Under Execution') {
-                $this->conn->prepare("UPDATE settlements SET compliance_status = 'Complied', updated_at = NOW() WHERE settlement_id = ?")->execute([$exec['settlement_id']]);
-            }
-
-            $this->conn->commit();
-            return ['success' => true, 'message' => "Execution status updated to '{$status}'."];
+            if (!$nested) $this->conn->beginTransaction();
+            $stmt = $this->conn->prepare('SELECT * FROM execution_proceedings WHERE execution_id = ? FOR UPDATE');
+            $stmt->execute([$executionId]); $exec = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$exec) throw new RuntimeException('Execution proceeding not found.');
+            $this->conn->prepare("UPDATE execution_proceedings SET execution_status = 'Enforced / Complied', updated_at = NOW() WHERE execution_id = ?")->execute([$executionId]);
+            $this->conn->prepare("UPDATE settlements SET compliance_status = 'Complied', compliance_date = CURDATE(), updated_at = NOW() WHERE settlement_id = ?")->execute([$exec['settlement_id']]);
+            if (!$nested) $this->conn->commit();
+            return ['success' => true, 'message' => 'Execution marked Enforced / Complied.'];
         } catch (Throwable $e) {
-            if ($this->conn->inTransaction()) {
-                $this->conn->rollBack();
-            }
-            return ['success' => false, 'message' => 'Execution update failed: ' . $e->getMessage()];
+            if (!$nested && $this->conn->inTransaction()) $this->conn->rollBack();
+            return ['success' => false, 'message' => 'Execution completion failed: ' . $e->getMessage()];
         }
+    }
+
+    private function mtcLapseResult(): array
+    {
+        return ['success' => false, 'lapsed_to_mtc' => true, 'message' => 'Barangay execution jurisdiction has lapsed. Refer the aggrieved party to the MTC/MeTC for judicial enforcement.', 'mtc_referral' => 'Prepare a certified settlement or award, proof of finality, execution record, and case transmittal for the appropriate MTC/MeTC.'];
     }
 }

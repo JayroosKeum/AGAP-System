@@ -15,6 +15,12 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
+if (!isset($_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2], true)) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Only authorized barangay officers may manage execution proceedings.']);
+    exit;
+}
+
 $input = $_POST;
 if (empty($input)) {
     $raw = file_get_contents('php://input');
@@ -27,14 +33,18 @@ if (empty($input)) {
 $action = $input['action'] ?? 'file_motion';
 $controller = new SettlementController();
 
-if ($action === 'update_status') {
+if (in_array($action, ['update_status', 'record_hearing', 'issue_notice'], true)) {
     $executionId = filter_var($input['execution_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
     if (!$executionId) {
         http_response_code(400);
         echo json_encode(['success' => false, 'message' => 'Valid execution_id is required.']);
         exit;
     }
-    $result = $controller->updateExecution((int) $executionId, $input, (int) $_SESSION['user_id']);
+    $result = match ($action) {
+        'record_hearing' => $controller->recordExecutionHearing((int) $executionId, $input, (int) $_SESSION['user_id']),
+        'issue_notice' => $controller->issueNoticeOfExecution((int) $executionId, $input, (int) $_SESSION['user_id']),
+        default => $controller->updateExecution((int) $executionId, $input, (int) $_SESSION['user_id']),
+    };
 } else {
     $settlementId = filter_var($input['settlement_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
     if (!$settlementId) {

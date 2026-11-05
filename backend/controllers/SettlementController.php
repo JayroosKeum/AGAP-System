@@ -134,4 +134,20 @@ class SettlementController
         }
         return $result;
     }
+
+    public function recordExecutionHearing(int $executionId, array $data, int $actorUserId): array
+    {
+        if ($executionId < 1) return ['success' => false, 'message' => 'Invalid execution ID.'];
+        $result = $this->settlement->recordExecutionHearing($executionId, $data, $actorUserId);
+        if ($result['success']) $this->audit->log($actorUserId, 'Recorded KP Form 24 Execution Hearing', 'Execution Proceedings', $executionId);
+        return $result;
+    }
+
+    public function issueNoticeOfExecution(int $executionId, array $data, int $actorUserId): array
+    {
+        if ($executionId < 1) return ['success' => false, 'message' => 'Invalid execution ID.'];
+        $result = $this->settlement->issueNoticeOfExecution($executionId, $data, $actorUserId);
+        if ($result['success']) $this->audit->log($actorUserId, 'Issued KP Form 25 Notice of Execution', 'Execution Proceedings', $executionId);
+        return $result;
+    }
 }

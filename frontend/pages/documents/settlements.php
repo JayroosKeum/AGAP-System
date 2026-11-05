@@ -163,6 +163,25 @@ include '../../layouts/header.php';
                 </div>
             </div>
 
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <div class="form-group">
+                    <label for="formAwardType">Resolution Instrument</label>
+                    <select id="formAwardType" name="award_type">
+                        <option value="Amicable Settlement">KP Form 16 — Amicable Settlement</option>
+                        <option value="Arbitration Award">KP Form 15 — Arbitration Award</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="formObligationType">Primary Obligation</label>
+                    <select id="formObligationType" name="obligation_type">
+                        <option value="Monetary">Monetary Payment</option>
+                        <option value="Property Return">Property Turnover / Return</option>
+                        <option value="Specific Performance">Specific Performance</option>
+                        <option value="Hybrid">Hybrid Obligations</option>
+                    </select>
+                </div>
+            </div>
+
             <div class="form-group">
                 <label for="formAgreementDetails">Settlement Terms &amp; Mutual Obligations <span class="required-mark">*</span></label>
                 <textarea id="formAgreementDetails" name="agreement_details" rows="4" required placeholder="State complete agreed terms, commitments, concessions, payment amounts, and timelines verbatim as agreed upon by the parties."></textarea>
@@ -331,6 +350,12 @@ include '../../layouts/header.php';
             </div>
             <div class="form-group">
                 <label for="repReason">Sworn Grounds for Repudiation <span class="required-mark">*</span></label>
+                <select id="repGround" name="repudiation_ground" required style="margin-bottom: 8px;">
+                    <option value="">Select statutory ground</option>
+                    <option value="Fraud">Fraud</option>
+                    <option value="Violence">Violence</option>
+                    <option value="Intimidation">Intimidation</option>
+                </select>
                 <textarea id="repReason" name="repudiation_reason" rows="3" required placeholder="Specify why consent was vitiated (e.g. fraud, deceit, duress, or intimidation) under sworn oath."></textarea>
             </div>
             <div class="form-group">
@@ -378,10 +403,35 @@ include '../../layouts/header.php';
                 <label for="execNotes">Evidence Notes / Non-Compliance Summary</label>
                 <textarea id="execNotes" name="evidence_notes" rows="2" placeholder="Summary of unheeded demand letters, text notices, or failure to pay"></textarea>
             </div>
+            <div class="form-group">
+                <label for="execHearingDate">KP Form 24 Hearing Date &amp; Time <span class="required-mark">*</span></label>
+                <input type="datetime-local" id="execHearingDate" name="hearing_date" required>
+            </div>
             <div class="modal-actions">
                 <button type="button" class="btn-secondary" onclick="closeModal('executionModal')">Cancel</button>
                 <button type="submit" class="btn-create">Submit Motion for Execution</button>
             </div>
+        </form>
+    </div>
+</div>
+
+<div id="executionHearingModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>KP Form 24 — Execution Hearing Record</h2>
+            <button type="button" class="close-btn" onclick="closeModal('executionHearingModal')">&times;</button>
+        </div>
+        <div id="executionHearingAlert" class="alert" style="display:none; margin-bottom:14px;"></div>
+        <form id="executionHearingForm" onsubmit="handleRecordExecutionHearing(event)">
+            <input type="hidden" id="executionHearingId" name="execution_id">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                <div class="form-group"><label for="execComplainantAttendance">Complainant Attendance</label><select id="execComplainantAttendance" name="complainant_attended"><option>Present</option><option>Absent</option><option>Excused</option></select></div>
+                <div class="form-group"><label for="execRespondentAttendance">Respondent Attendance</label><select id="execRespondentAttendance" name="respondent_attended"><option>Present</option><option>Absent</option><option>Excused</option></select></div>
+            </div>
+            <div class="form-group"><label for="execAbsenceReason">Non-Appearance Reason</label><input id="execAbsenceReason" name="non_appearance_reason" type="text" placeholder="Required if either party is absent or excused"></div>
+            <div class="form-group"><label for="execHearingMinutes">Hearing Minutes / Due-Process Inquiry <span class="required-mark">*</span></label><textarea id="execHearingMinutes" name="hearing_minutes" rows="5" required placeholder="Record appearances, inquiry into default, party statements, and the PB's voluntary-compliance directive."></textarea></div>
+            <div class="form-group"><label for="execGraceEnd">Voluntary Compliance Grace Period End <span class="required-mark">*</span></label><input id="execGraceEnd" name="grace_period_end_date" type="date" required></div>
+            <div class="modal-actions"><button type="button" class="btn-secondary" onclick="closeModal('executionHearingModal')">Cancel</button><button type="submit" class="btn-create">Record Hearing &amp; Grace Period</button></div>
         </form>
     </div>
 </div>

@@ -722,13 +722,13 @@ class KpFormService
 
         } elseif (str_contains($formCode, '23')) {
             // KP Form 23: Mosyon sa Pagpapatupad (Motion for Execution)
-            $execStmt = $this->conn->prepare("SELECT * FROM settlement_executions WHERE case_id = ? ORDER BY execution_id DESC LIMIT 1");
+            $execStmt = $this->conn->prepare("SELECT * FROM execution_proceedings WHERE case_id = ? ORDER BY execution_id DESC LIMIT 1");
             $execStmt->execute([$caseId]);
             $exec = $execStmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
             $formData['motion_date'] = !empty($exec['motion_date']) ? $exec['motion_date'] : date('Y-m-d');
-            $formData['obligation_violated'] = $exec['obligation_violated'] ?? ($settlement['agreement_details'] ?? 'Hindi pagtupad sa mga napagkasunduang obligasyon sa takdang panahon.');
-            $formData['amount_or_requirement'] = $exec['amount_or_requirement'] ?? (!empty($settlement['total_amount']) ? ('Halagang PHP ' . number_format((float)$settlement['total_amount'], 2)) : 'Pagtupad sa napagkasunduang obligasyon');
+            $formData['obligation_violated'] = $exec['motion_narrative'] ?? ($settlement['agreement_details'] ?? 'Hindi pagtupad sa mga napagkasunduang obligasyon sa takdang panahon.');
+            $formData['amount_or_requirement'] = !empty($settlement['total_amount']) ? ('Halagang PHP ' . number_format((float)$settlement['total_amount'], 2)) : 'Pagtupad sa napagkasunduang obligasyon';
             $formData['moving_party_name'] = !empty($formData['complainants'][0]['full_name']) ? $formData['complainants'][0]['full_name'] : 'May-Sumbong';
             $formData['opposing_party_name'] = !empty($formData['respondents'][0]['full_name']) ? $formData['respondents'][0]['full_name'] : 'Ipinagsusumbong';
             $formData['target_party_name'] = $formData['opposing_party_name'];
@@ -736,6 +736,19 @@ class KpFormService
             $formData['execution_amount_words'] = $formData['amount_or_requirement'];
             $formData['execution_amount_numbers'] = !empty($settlement['total_amount']) ? number_format((float)$settlement['total_amount'], 2) : '0.00';
             $formData['agreement_details'] = $formData['obligation_violated'];
+        } elseif (str_contains($formCode, '24') || str_contains($formCode, '25')) {
+            $execStmt = $this->conn->prepare("SELECT * FROM execution_proceedings WHERE case_id = ? ORDER BY execution_id DESC LIMIT 1");
+            $execStmt->execute([$caseId]);
+            $exec = $execStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+            $formData['motion_date'] = $exec['motion_date'] ?? date('Y-m-d');
+            $formData['hearing_date'] = $exec['hearing_date'] ?? date('Y-m-d H:i:s');
+            $formData['notice_of_execution_date'] = $exec['notice_of_execution_date'] ?? date('Y-m-d');
+            $formData['grace_period_end_date'] = $exec['grace_period_end_date'] ?? '';
+            $formData['hearing_minutes'] = $exec['hearing_minutes'] ?? '';
+            $formData['agreement_details'] = $settlement['agreement_details'] ?? '';
+            $formData['moving_party_name'] = !empty($formData['complainants'][0]['full_name']) ? $formData['complainants'][0]['full_name'] : 'May-Sumbong';
+            $formData['opposing_party_name'] = !empty($formData['respondents'][0]['full_name']) ? $formData['respondents'][0]['full_name'] : 'Ipinagsusumbong';
+            $formData['target_party_name'] = $formData['opposing_party_name'];
         } elseif (str_contains($formCode, '20-A') || str_contains($formCode, '20A')) {
 
             // KP Form 20-A: Certificate to Bar Action (Complainant absence/failure)

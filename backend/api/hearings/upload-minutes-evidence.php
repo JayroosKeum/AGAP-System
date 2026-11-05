@@ -14,6 +14,16 @@ if (!isset($_SESSION['user_id'], $_SESSION['role_id'])) {
 $db = (new Database())->connect();
 $userId = (int) $_SESSION['user_id'];
 
+function isConcludedWorkspaceRecord(PDO $db, int $caseId, ?int $hearingId = null): bool {
+    $stmt = $db->prepare('SELECT c.case_status, h.status, h.queue_status FROM cases c LEFT JOIN hearings h ON h.hearing_id = ? AND h.case_id = c.case_id WHERE c.case_id = ? LIMIT 1');
+    $stmt->execute([$hearingId, $caseId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) return true;
+    return in_array((string) $row['case_status'], ['Settled', 'Resolved', 'Completed', 'Dismissed', 'Archived', 'CFA Issued', 'Repudiated'], true)
+        || in_array((string) ($row['status'] ?? ''), ['Completed', 'Concluded'], true)
+        || in_array((string) ($row['queue_status'] ?? ''), ['Concluded', 'Completed'], true);
+}
+
 // GET: Retrieve uploaded documents for a hearing
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $hearingId = filter_input(INPUT_GET, 'hearing_id', FILTER_VALIDATE_INT);
@@ -53,6 +63,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $doc = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($doc) {
+            if (isConcludedWorkspaceRecord($db, (int) $doc['case_id'], (int) $doc['hearing_id'])) {
+                http_response_code(409);
+                echo json_encode(['success' => false, 'message' => 'This concluded case or session is read-only; attachments cannot be removed.']);
+                exit;
+            }
             $absPath = dirname(__DIR__, 2) . '/' . ltrim($doc['file_path'], '/');
             if (file_exists($absPath)) {
                 @unlink($absPath);
@@ -76,6 +91,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$hearingId || !$caseId) {
         http_response_code(422);
         echo json_encode(['success' => false, 'message' => 'Valid hearing ID and case ID are required.']);
+        exit;
+    }
+
+    $hearingStmt = $db->prepare('SELECT hearing_id FROM hearings WHERE hearing_id = ? AND case_id = ? LIMIT 1');
+    $hearingStmt->execute([$hearingId, $caseId]);
+    if (!$hearingStmt->fetchColumn()) {
+        http_response_code(422);
+        echo json_encode(['success' => false, 'message' => 'The hearing does not belong to the specified case.']);
+        exit;
+    }
+    if (isConcludedWorkspaceRecord($db, $caseId, $hearingId)) {
+        http_response_code(409);
+        echo json_encode(['success' => false, 'message' => 'This concluded case or session is read-only; attachments cannot be uploaded.']);
         exit;
     }
 
