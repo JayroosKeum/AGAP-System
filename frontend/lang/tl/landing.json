@@ -6,7 +6,6 @@
     "services": "Mga Serbisyo",
     "process": "Hakbang sa Pagdulog",
     "features": "Sistema ng Lupon",
-    "faq": "Mga Karaniwang Tanong (FAQ)",
     "staff_login": "Mag-sign in (Kawani)",
     "toggle_tl": "Tagalog",
     "toggle_en": "English"
@@ -63,20 +62,6 @@
     "card4_num": "04 / TRANSPARENCY AT ULAT",
     "card4_title": "Ulat at Pananagutan",
     "card4_desc": "Malinaw na pagsubaybay sa kalagayan ng bawat kaso upang matiyak na bawat mamamayan ay nabibigyan ng patas at agarang aksyon."
-  },
-  "faq": {
-    "kicker": "Katanungan ng Mamamayan",
-    "title": "Mga Karaniwang Tanong ukol sa Barangay Justice",
-    "q1": "Ano ang saklaw ng Katarungang Pambarangay sa Barangay Tumana?",
-    "a1": "Saklaw nito ang mga alitan, hindi pagkakaunawaan, utang, pagkasira ng ari-arian, at mga minor na paglabag sa pagitan ng mga residenteng naninirahan sa iisang lungsod o magkatabing barangay kung saan ang parusa ay hindi lalampas sa isang taong pagkabilanggo o multang hindi hihigit sa ₱5,000.",
-    "q2": "Ano ang pagkakaiba ng Paanyaya sa Pormal na Summons?",
-    "a2": "Ang Paanyaya (Stage 0) ay isang magalang at impormal na imbitasyon upang mag-usap nang pribado bago pormal na magbukas ng docketed case record. Samantala, ang Pormal na Summons (KP Form 9) ay may legal na kapangyarihan sa ilalim ng batas na nag-aatas sa inirereklamo na humarap sa pagdinig.",
-    "q3": "May bayad ba ang pagdulog o paghingi ng tulong sa Lupon?",
-    "a3": "Wala pong bayad. Ang lahat ng serbisyo ng Katarungang Pambarangay at pamamagitan ng Lupon Tagapamayapa ay libre para sa lahat ng mamamayan ng Barangay Tumana.",
-    "q4": "Ano ang mangyayari kung hindi sumipot ang inirereklamo sa pagdinig?",
-    "a4": "Kung ang inirereklamo ay sadyang hindi sumipot matapos tumanggap ng summons nang walang makatwirang dahilan, mawawalan siya ng karapatang magharap ng counterclaim at maaaring mag-isyu ang Lupon ng Certificate to File Action o iendorso ang kaso sa hukuman.",
-    "q5": "Paano kapag ang nagrereklamo (complainant) ang hindi sumipot?",
-    "a5": "Kung ang nagsumbong ang hindi sumipot nang walang balidong dahilan, ang reklamo ay ididismis at hindi siya mabibigyan ng Certificate to File Action."
   },
   "footer": {
     "platform_name": "AGAP · Automated Grievance Assistance Platform",

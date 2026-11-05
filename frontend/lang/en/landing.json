@@ -6,7 +6,6 @@
     "services": "Services",
     "process": "Grievance Process",
     "features": "Lupon System",
-    "faq": "Frequently Asked Questions",
     "staff_login": "Staff Sign In",
     "toggle_tl": "Tagalog",
     "toggle_en": "English"
@@ -63,20 +62,6 @@
     "card4_num": "04 / TRANSPARENCY & OVERSIGHT",
     "card4_title": "Accountability & Reports",
     "card4_desc": "Clear case tracking to ensure every citizen grievance receives fair, timely, and documented action."
-  },
-  "faq": {
-    "kicker": "Citizen Inquiries",
-    "title": "Frequently Asked Questions About Barangay Justice",
-    "q1": "What disputes are covered under Katarungang Pambarangay?",
-    "a1": "Disputes between individuals residing in the same city or adjoining barangays involving offenses punishable by imprisonment not exceeding one year or a fine not exceeding ₱5,000, including neighborhood disagreements, boundary issues, small debts, and property damage.",
-    "q2": "What is the difference between a Paanyaya and a formal Summons?",
-    "a2": "A Paanyaya (Stage 0) is a polite, preliminary invitation for private dialogue before formal case docketing. A formal Summons (KP Form 9) carries legal statutory authority under RA 7160 commanding appearance before the Lupon.",
-    "q3": "Is there any fee or payment required to file with the Lupon?",
-    "a3": "No. All Katarungang Pambarangay mediation and dispute resolution services are completely free of charge for all residents of Barangay Tumana.",
-    "q4": "What happens if the respondent fails to attend the hearing?",
-    "a4": "If the respondent willfully fails to appear without justifiable cause after receiving summons, they forfeit the right to file counterclaims, and a Certificate to File Action may be issued or endorsed to the court.",
-    "q5": "What if the complainant does not show up?",
-    "a5": "If the complainant fails to appear without valid excuse, the complaint will be dismissed and no Certificate to File Action will be granted."
   },
   "footer": {
     "platform_name": "AGAP · Automated Grievance Assistance Platform",

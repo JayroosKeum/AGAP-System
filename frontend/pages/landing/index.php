@@ -13,6 +13,7 @@ declare(strict_types=1);
     <title>AGAP - Barangay Tumana | Katarungang Pambarangay</title>
     <meta name="description" content="Automated Grievance Assistance Platform (AGAP) para sa Katarungang Pambarangay ng Barangay Tumana, Lungsod ng Marikina.">
     <link rel="icon" type="image/jpeg" href="../../assets/images/tumana_logo.jpg">
+    <link rel="stylesheet" href="../../assets/css/app.css?v=<?= file_exists(__DIR__ . '/../../assets/css/app.css') ? filemtime(__DIR__ . '/../../assets/css/app.css') : '1' ?>">
     <link rel="stylesheet" href="../../assets/css/landing.css?v=<?= file_exists(__DIR__ . '/../../assets/css/landing.css') ? filemtime(__DIR__ . '/../../assets/css/landing.css') : '1' ?>">
     <style>
         /* Accessible Header & Language Switcher Styles */
@@ -141,71 +142,6 @@ declare(strict_types=1);
             line-height: 1.55;
         }
 
-        /* FAQ Accordion Section */
-        .faq-section {
-            max-width: 1240px;
-            margin: 40px auto 60px;
-            padding: 0 32px;
-        }
-
-        .faq-accordion {
-            margin-top: 24px;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-
-        .faq-item {
-            background: #ffffff;
-            border: 1px solid #dfe8e3;
-            border-radius: 10px;
-            overflow: hidden;
-            transition: border-color 0.2s ease;
-        }
-
-        .faq-item:focus-within {
-            border-color: #2b6b5e;
-        }
-
-        .faq-trigger {
-            width: 100%;
-            text-align: left;
-            background: transparent;
-            border: none;
-            padding: 18px 24px;
-            font-size: 1rem;
-            font-weight: 700;
-            color: #102b2d;
-            cursor: pointer;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 12px;
-            font-family: inherit;
-        }
-
-        .faq-trigger svg {
-            transition: transform 0.25s ease;
-            flex-shrink: 0;
-            color: #2b6b5e;
-        }
-
-        .faq-trigger[aria-expanded="true"] svg {
-            transform: rotate(180deg);
-        }
-
-        .faq-panel {
-            padding: 0 24px 18px;
-            font-size: 0.92rem;
-            color: #617475;
-            line-height: 1.6;
-            display: none;
-        }
-
-        .faq-panel.is-open {
-            display: block;
-        }
-
         .hero-actions .landing-cta-guide {
             display: inline-flex;
             align-items: center;
@@ -245,7 +181,6 @@ declare(strict_types=1);
             <div class="landing-nav-links">
                 <a href="#process" class="landing-nav-link" data-i18n="nav.process">Hakbang sa Pagdulog</a>
                 <a href="#services" class="landing-nav-link" data-i18n="nav.services">Mga Serbisyo</a>
-                <a href="#faq" class="landing-nav-link" data-i18n="nav.faq">Mga Tanong (FAQ)</a>
             </div>
 
             <!-- Header Actions: Language Switcher & Staff Sign-in -->
@@ -441,85 +376,6 @@ declare(strict_types=1);
             </div>
         </section>
 
-        <!-- ========================================================================= -->
-        <!-- FREQUENTLY ASKED QUESTIONS (FAQ) -->
-        <!-- ========================================================================= -->
-        <section id="faq" class="faq-section" aria-labelledby="faq-title">
-            <div class="section-heading">
-                <div>
-                    <p class="landing-kicker" data-i18n="faq.kicker">Katanungan ng Mamamayan</p>
-                    <h2 id="faq-title" data-i18n="faq.title">Mga Karaniwang Tanong ukol sa Barangay Justice</h2>
-                </div>
-            </div>
-
-            <div class="faq-accordion">
-                <!-- Q1 -->
-                <div class="faq-item">
-                    <button type="button" class="faq-trigger" aria-expanded="false" onclick="toggleFaq(this)">
-                        <span data-i18n="faq.q1">Ano ang saklaw ng Katarungang Pambarangay sa Barangay Tumana?</span>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                    </button>
-                    <div class="faq-panel">
-                        <p data-i18n="faq.a1">
-                            Saklaw nito ang mga alitan, hindi pagkakaunawaan, utang, pagkasira ng ari-arian, at mga minor na paglabag sa pagitan ng mga residenteng naninirahan sa iisang lungsod o magkatabing barangay kung saan ang parusa ay hindi lalampas sa isang taong pagkabilanggo o multang hindi hihigit sa ₱5,000.
-                        </p>
-                    </div>
-                </div>
-
-                <!-- Q2 -->
-                <div class="faq-item">
-                    <button type="button" class="faq-trigger" aria-expanded="false" onclick="toggleFaq(this)">
-                        <span data-i18n="faq.q2">Ano ang pagkakaiba ng Paanyaya sa Pormal na Summons?</span>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                    </button>
-                    <div class="faq-panel">
-                        <p data-i18n="faq.a2">
-                            Ang Paanyaya (Stage 0) ay isang magalang at impormal na imbitasyon upang mag-usap nang pribado bago pormal na magbukas ng docketed case record. Samantala, ang Pormal na Summons (KP Form 9) ay may legal na kapangyarihan sa ilalim ng batas na nag-aatas sa inirereklamo na humarap sa pagdinig.
-                        </p>
-                    </div>
-                </div>
-
-                <!-- Q3 -->
-                <div class="faq-item">
-                    <button type="button" class="faq-trigger" aria-expanded="false" onclick="toggleFaq(this)">
-                        <span data-i18n="faq.q3">May bayad ba ang pagdulog o paghingi ng tulong sa Lupon?</span>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                    </button>
-                    <div class="faq-panel">
-                        <p data-i18n="faq.a3">
-                            Wala pong bayad. Ang lahat ng serbisyo ng Katarungang Pambarangay at pamamagitan ng Lupon Tagapamayapa ay libre para sa lahat ng mamamayan ng Barangay Tumana.
-                        </p>
-                    </div>
-                </div>
-
-                <!-- Q4 -->
-                <div class="faq-item">
-                    <button type="button" class="faq-trigger" aria-expanded="false" onclick="toggleFaq(this)">
-                        <span data-i18n="faq.q4">Ano ang mangyayari kung hindi sumipot ang inirereklamo sa pagdinig?</span>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                    </button>
-                    <div class="faq-panel">
-                        <p data-i18n="faq.a4">
-                            Kung ang inirereklamo ay sadyang hindi sumipot matapos tumanggap ng summons nang walang makatwirang dahilan, mawawalan siya ng karapatang magharap ng counterclaim at maaaring mag-isyu ang Lupon ng Certificate to File Action o iendorso ang kaso sa hukuman.
-                        </p>
-                    </div>
-                </div>
-
-                <!-- Q5 -->
-                <div class="faq-item">
-                    <button type="button" class="faq-trigger" aria-expanded="false" onclick="toggleFaq(this)">
-                        <span data-i18n="faq.q5">Paano kapag ang nagrereklamo (complainant) ang hindi sumipot?</span>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                    </button>
-                    <div class="faq-panel">
-                        <p data-i18n="faq.a5">
-                            Kung ang nagsumbong ang hindi sumipot nang walang balidong dahilan, ang reklamo ay ididismis at hindi siya mabibigyan ng Certificate to File Action.
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </section>
-
         <!-- Bottom City of Marikina Seal Strip -->
         <section class="landing-bottom">
             <div class="bottom-mark">
@@ -540,27 +396,6 @@ declare(strict_types=1);
         <span data-i18n="footer.address">Tanggapan ng Punong Barangay · Barangay Tumana, Marikina City</span>
         <span data-i18n="footer.rights">© <?= date('Y') ?> Barangay Tumana. Lahat ng karapatan ay nakalaan.</span>
     </footer>
-
-    <!-- Interactive FAQ Script -->
-    <script>
-        function toggleFaq(btn) {
-            const isExpanded = btn.getAttribute('aria-expanded') === 'true';
-            const panel = btn.nextElementSibling;
-
-            // Close other panels
-            document.querySelectorAll('.faq-trigger').forEach(trigger => {
-                trigger.setAttribute('aria-expanded', 'false');
-                if (trigger.nextElementSibling) {
-                    trigger.nextElementSibling.classList.remove('is-open');
-                }
-            });
-
-            if (!isExpanded) {
-                btn.setAttribute('aria-expanded', 'true');
-                panel.classList.add('is-open');
-            }
-        }
-    </script>
 
     <!-- Load isolated I18n manager -->
     <script src="../../assets/js/modules/i18n.js?v=<?= file_exists(__DIR__ . '/../../assets/js/modules/i18n.js') ? filemtime(__DIR__ . '/../../assets/js/modules/i18n.js') : '1' ?>"></script>
