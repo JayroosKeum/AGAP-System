@@ -354,7 +354,7 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
 
                     </span>
 
-                    <span id="wsDraftIndicator" class="agap-draft-indicator state-idle">✓ Saved</span>
+                    <span id="wsDraftIndicator" class="agap-draft-indicator state-idle">Loading...</span>
 
                     <span style="color: #cbd5e1; margin: 0 2px;">•</span>
 
@@ -574,7 +574,7 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
             </div>
             <div class="modal-actions" style="padding: 12px 22px; border-top: 1px solid #e2e8f0; background: #ffffff; margin-top: 0; flex-shrink: 0; display: flex; justify-content: flex-end; gap: 10px;">
                 <button type="button" class="btn-secondary" onclick="closeScheduleModal()" style="padding: 8px 16px; font-size: 0.86rem; border-radius: 6px;">Cancel</button>
-                <button type="submit" class="btn-create" id="submitSchedBtn" style="padding: 8px 20px; font-size: 0.86rem; border-radius: 6px; font-weight: 700; background: #16a34a; border-color: #16a34a;">Schedule 2nd Mediation</button>
+                <button type="submit" class="btn-create" id="submitSchedBtn" style="padding: 8px 20px; font-size: 0.86rem; border-radius: 6px; font-weight: 700; background: #16a34a; border-color: #16a34a;">Save Schedule</button>
             </div>
             <p id="schedMessage" role="status" style="margin: 0; padding: 0 22px 8px; font-size: 0.84rem;"></p>
         </form>

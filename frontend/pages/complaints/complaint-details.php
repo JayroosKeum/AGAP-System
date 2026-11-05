@@ -785,7 +785,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
         <span id="tab2LocationCoords" style="display:none;"></span>
         <div id="tab2DetailMap" style="display:none;"></div>
         <div id="tab2ComplaintNarrative" style="display:none;"></div>
-        <div id="tab2AdditionalDetailsWrap" style="display:none;"><div id="tab2AdditionalDetails"></div></div>
+        <div hidden style="display:none !important;"><div id="tab2AdditionalDetailsWrap" style="display:none;"><div id="tab2AdditionalDetails"></div></div></div>
         <span id="attachmentsCount" style="display:none;">0</span>
         <div id="attachmentsListContainer" style="display:none;"></div>
         <div id="evidenceDropzone" style="display:none;"><input type="file" id="evidenceFileInput" style="display:none;"><div id="dropzoneUploadProgress" style="display:none;"></div></div>
@@ -1436,7 +1436,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             </div>
             <div class="modal-actions" style="padding: 12px 24px; border-top: 1px solid #e2e8f0; background: #f8fafc; margin-top: 0; flex-shrink: 0; display: flex; justify-content: flex-end; gap: 10px;">
                 <button type="button" class="btn-secondary" onclick="closeEmbeddedScheduleModal()">Cancel</button>
-                <button type="submit" class="btn-create" id="submitSchedBtn">Schedule Session</button>
+                <button type="submit" class="btn-create" id="submitSchedBtn">Save Schedule</button>
             </div>
             <p id="schedMessage" role="status" style="margin: 0; padding: 0 24px 8px; font-size: 0.84rem;"></p>
         </form>

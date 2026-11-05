@@ -248,7 +248,7 @@ if ($needsKp8Regen) {
             // Initial insert: KP Form 8 (Notice of Hearing to Complainant) is ALWAYS Served upon filing fee payment
             $insDoc8 = $db->prepare("
                 INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
-                VALUES (?, ?, ?, ?, 'Served', 'Synchronized with current saved hearing schedule')
+                VALUES (?, ?, ?, ?, 'For Service', 'Synchronized with current saved hearing schedule')
             ");
             $insDoc8->execute([$caseId, $templateId8, $userId, $kp8FilePath]);
             $newDocId8 = (int) $db->lastInsertId();
@@ -256,7 +256,7 @@ if ($needsKp8Regen) {
 
         $updDeliv8 = $db->prepare("
             UPDATE summon_deliveries
-            SET document_id = ?, delivery_status = 'Served'
+            SET document_id = ?
             WHERE case_id = ? AND party_type = 'Complainant'
         ");
         $updDeliv8->execute([$newDocId8, $caseId]);

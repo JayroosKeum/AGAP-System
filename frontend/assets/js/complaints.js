@@ -231,7 +231,8 @@ function canAccessTab(tabId, caseStatus, stageProgress) {
         Boolean(progress.summons && progress.summons.length > 0)
     );
 
-    if (tabId === 'tab-mediation') {
+    const hasLoadedData = Boolean(window.complaintData && (window.complaintData.case_id || window.complaintData.complaint_id));
+    if (tabId === 'tab-mediation' && hasLoadedData) {
         if (!isPaanyayaCompletedOrEscalated || isSummonsLocked || isP2Pending) {
             return {
                 allowed: false,
@@ -436,9 +437,10 @@ function switchCaseTab(tabId) {
         setTimeout(() => window.complaintDetailMapInstance.invalidateSize(), 150);
     }
 
-    if (tabId === 'tab-mediation') {
+    const hasLoadedData = Boolean(window.complaintData && (window.complaintData.case_id || window.complaintData.complaint_id));
+    if (tabId === 'tab-mediation' && hasLoadedData) {
         loadHearingSessions('Mediation');
-    } else if (tabId === 'tab-conciliation') {
+    } else if (tabId === 'tab-conciliation' && hasLoadedData) {
         loadHearingSessions('Conciliation');
     }
 
@@ -819,7 +821,7 @@ async function loadComplaintDetails() {
                 addEl.textContent = data.additional_details;
             }
             if (tab2AddWrap && tab2AddEl) {
-                tab2AddWrap.style.display = 'block';
+                tab2AddWrap.style.display = 'none'; // legacy hidden holder — never render visibly
                 tab2AddEl.textContent = data.additional_details;
             }
         } else {
@@ -1293,13 +1295,24 @@ function renderCaseWorkspace(workspace, complaint) {
         }
     }
 
-    // 3. Case Team Assignment
+    // 3. Case Team Assignment (Pangkat 3-member team is only for Conciliation — Stage 2)
     const teamContainer = document.getElementById('cwTeamContainer');
     const manageTeamLink = document.getElementById('cwManageTeamLink');
+    const isMediationStageOnly = !stageCaseId || Boolean(con.is_locked);
+    if (manageTeamLink) {
+        manageTeamLink.style.display = isMediationStageOnly ? 'none' : '';
+    }
     if (manageTeamLink && stageCaseId) {
         manageTeamLink.href = `../cases/case-list.php?assign_case_id=${encodeURIComponent(stageCaseId)}#caseAssignments`;
     }
-    if (teamContainer) {
+    if (teamContainer && isMediationStageOnly) {
+        teamContainer.innerHTML = `
+            <div class="empty-detail-state" style="text-align: center; padding: 20px; color: #64748b;">
+                <p style="margin: 0 0 6px; font-size: 0.88rem; font-weight: 600; color: #334155;">Mediation is handled by the Punong Barangay.</p>
+                <p style="margin: 0; font-size: 0.82rem;">The 3-member Pangkat team is assigned only when the case moves to Conciliation (Stage 2).</p>
+            </div>
+        `;
+    } else if (teamContainer) {
         if (!assignments.length) {
             teamContainer.innerHTML = `
                 <div class="empty-detail-state" style="text-align: center; padding: 20px; color: #64748b;">
@@ -2888,6 +2901,11 @@ window.embeddedHearingsState = {
 };
 
 async function loadHearingSessions(stageType = 'Mediation') {
+    window._hearingSessionsInFlight = window._hearingSessionsInFlight || {};
+    if (window._hearingSessionsInFlight[stageType]) {
+        return window._hearingSessionsInFlight[stageType];
+    }
+    const runPromise = (async () => {
     const data = window.complaintData || {};
     const comp = data.complaint || data;
     const caseId = data.case_id || comp.case_id || (new URLSearchParams(window.location.search)).get('case_id');
@@ -2951,9 +2969,28 @@ async function loadHearingSessions(stageType = 'Mediation') {
                 </div>
             </div>
         `;
+    } finally {
+        delete window._hearingSessionsInFlight[stageType];
     }
+    })();
+    window._hearingSessionsInFlight[stageType] = runPromise;
+    return runPromise;
 }
 window.loadHearingSessions = loadHearingSessions;
+if (false) {
+    if (false) {
+        const unused = `
+                <div>
+                    <button>Retry</button>
+                </div>
+            </div>
+        `;
+    }
+}
+// end unused block
+window.loadHearingSessions = loadHearingSessions;
+window.loadHearingSessions = loadHearingSessions;
+// end loadHearingSessions
 
 function renderHearingSessionCards(sessions, containerId, badgeId, stageType, caseId) {
     const container = document.getElementById(containerId);
@@ -2966,7 +3003,18 @@ function renderHearingSessionCards(sessions, containerId, badgeId, stageType, ca
         container.innerHTML = `
             <div class="empty-detail-state" style="text-align: center; padding: 32px 20px; background: #fff; border: 1px dashed #cbd5e1; border-radius: 8px;">
                 <p style="margin: 0 0 12px; font-size: 0.9rem; color: #64748b;">
-                    No ${escapeHtml(stageType.toLowerCase())} hearing sessions scheduled yet.
+                    <p style="margin: 0; font-size: 0.9rem; color: #64748b;">
+                        No ${escapeHtml(stageType.toLowerCase())} hearing sessions scheduled yet. Click <strong>+ Schedule Session</strong> above to create a schedule.
+                    </p>
+                </div>
+            `;
+            return;
+        }
+        if (false) {
+            container.innerHTML = `
+                <div>
+                    <p>
+                        No ${escapeHtml(stageType.toLowerCase())} hearing sessions scheduled yet.
                 </p>
                 <button type="button" class="btn-create" onclick="openEmbeddedScheduleModal('${stageType}')" style="font-size: 0.84rem; padding: 7px 16px; display: inline-flex; align-items: center; gap: 6px;">
                     + Schedule ${escapeHtml(stageType)} Session &rarr;
@@ -2994,6 +3042,8 @@ function renderHearingSessionCards(sessions, containerId, badgeId, stageType, ca
         const isInSession = (qStatus === 'In_Session');
         const isStandby = (qStatus === 'Standby');
         const isConcluded = (qStatus === 'Concluded' || isCompleted);
+        const isServiceConfirmed = (s.proof_of_service_status === 'Served') || Boolean(s.attendance_gate && s.attendance_gate.allowed) || (stageType !== 'Mediation') || (Number(s.session_index || 1) >= 2);
+        const serviceLockTitle = (s.attendance_gate && s.attendance_gate.message) ? s.attendance_gate.message : 'Locked: Officer must log an appropriate Summons Return (Served) before attendance check-in is enabled.';
 
         let queueBadgeHtml = '';
         if (isInSession) {
@@ -3071,7 +3121,7 @@ function renderHearingSessionCards(sessions, containerId, badgeId, stageType, ca
                                 ▶️ Call to Session
                             </button>
                             ` : ''}
-                            <button type="button" class="btn-secondary" onclick="handleHearingStandby(${s.hearing_id}, ${isStandby ? 'false' : 'true'})" style="font-size: 0.78rem; padding: 5px 9px; display: inline-flex; align-items: center; gap: 4px; ${isStandby ? 'background: #fef3c7; color: #b45309; border-color: #fde68a; font-weight: 700;' : ''}">
+                            <button type="button" class="btn-secondary" ${isServiceConfirmed ? `onclick="handleHearingStandby(${s.hearing_id}, ${isStandby ? 'false' : 'true'})"` : 'disabled'} title="${escapeHtml(isServiceConfirmed ? (isStandby ? 'Resume session' : 'Put session on standby') : serviceLockTitle)}" style="font-size: 0.78rem; padding: 5px 9px; display: inline-flex; align-items: center; gap: 4px; ${!isServiceConfirmed ? 'opacity: 0.55; cursor: not-allowed; background: #f1f5f9; color: #94a3b8; border-color: #cbd5e1;' : (isStandby ? 'background: #fef3c7; color: #b45309; border-color: #fde68a; font-weight: 700;' : '')}">
                                 ${isStandby ? '▶️ Resume' : 'Put on Standby'}
                             </button>
                         ` : ''}
@@ -3088,8 +3138,8 @@ function renderHearingSessionCards(sessions, containerId, badgeId, stageType, ca
                                 📋 Record Summons Return
                             </a>
                         ` : ''}
-                        <button type="button" class="btn-secondary" onclick="openEmbeddedAttendanceModal(${s.hearing_id})" style="font-size: 0.78rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 4px;" title="Quick Attendance / Check-In for Complainant &amp; Respondent">
-                            📝 Quick Attendance
+                        <button type="button" class="btn-secondary" ${isServiceConfirmed ? `onclick="openEmbeddedAttendanceModal(${s.hearing_id})"` : 'disabled'} style="font-size: 0.78rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 4px; ${!isServiceConfirmed ? 'opacity: 0.55; cursor: not-allowed; background: #f1f5f9; color: #94a3b8; border-color: #cbd5e1;' : ''}" title="${escapeHtml(isServiceConfirmed ? 'Quick Attendance / Check-In for Complainant & Respondent' : serviceLockTitle)}">
+                            ${isServiceConfirmed ? '📝 Quick Attendance' : '🔒 Quick Attendance'}
                         </button>
                         <a href="${openWorkspaceUrl}" class="btn-create" style="font-size: 0.78rem; padding: 5px 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; background: #2563eb; border-color: #2563eb; color: #fff; font-weight: 700;" title="Open ${escapeHtml(sessionLabel)} workspace">
                             Open ${escapeHtml(sessionLabel)} &rarr;
@@ -3112,7 +3162,7 @@ function renderHearingSessionCards(sessions, containerId, badgeId, stageType, ca
                                 </div>
                                 <div style="display: flex; gap: 6px;">
                                     <button type="button" class="btn-secondary" onclick="handleHearingStandby(${s.hearing_id}, true)" style="font-size: 0.74rem; padding: 4px 8px; background: #fff;">Move to Standby</button>
-                                    <button type="button" class="btn-secondary" onclick="openEmbeddedAttendanceModal(${s.hearing_id})" style="font-size: 0.74rem; padding: 4px 8px; background: #fee2e2; border-color: #fca5a5; color: #991b1b;">Record Non-Appearance</button>
+                                    <button type="button" class="btn-secondary" ${isServiceConfirmed ? `onclick="openEmbeddedAttendanceModal(${s.hearing_id})"` : 'disabled'} title="${escapeHtml(isServiceConfirmed ? 'Record Non-Appearance' : serviceLockTitle)}" style="font-size: 0.74rem; padding: 4px 8px; ${!isServiceConfirmed ? 'opacity: 0.55; cursor: not-allowed; background: #f1f5f9; color: #94a3b8; border-color: #cbd5e1;' : 'background: #fee2e2; border-color: #fca5a5; color: #991b1b;'}">Record Non-Appearance</button>
                                 </div>
                             </div>
                         `;
@@ -3330,7 +3380,7 @@ function openEmbeddedScheduleModal(stageType = 'Mediation') {
             : 'Enter date and time for Pangkat Conciliation session within the 15-day statutory conciliation window (RA 7160 Sec. 410c).';
     }
     if (dateLabel) dateLabel.textContent = `${stageType} Date`;
-    if (btnSubmit) btnSubmit.textContent = `Schedule ${stageType} Session`;
+    if (btnSubmit) btnSubmit.textContent = 'Save Schedule';
 
     if (stageType === 'Arbitration') {
         if (titleEl) titleEl.textContent = 'Schedule Arbitration Session';
@@ -3338,7 +3388,7 @@ function openEmbeddedScheduleModal(stageType = 'Mediation') {
             subTitleEl.textContent = 'Enter date and time for voluntary binding arbitration session under RA 7160 Sec. 413.';
         }
         if (dateLabel) dateLabel.textContent = 'Arbitration Date';
-        if (btnSubmit) btnSubmit.textContent = 'Schedule Arbitration Session';
+        if (btnSubmit) btnSubmit.textContent = 'Save Schedule';
         const venueInput = document.getElementById('schedVenue');
         if (venueInput && !venueInput.value) venueInput.value = 'Lupon Court Room';
     }
@@ -4026,6 +4076,9 @@ async function openEmbeddedAttendanceModal(hearingId) {
         window._lastEmbeddedAttendanceData = json.data;
         const hearing = json.data.hearing || json.data || {};
         const parties = json.data.parties || [];
+        const serviceGate = json.data.service_gate || { allowed: true };
+        const isLockedByService = !serviceGate.allowed;
+        const gateDisabledAttr = isLockedByService ? 'disabled' : '';
 
         const titleEl = document.getElementById('wsAttModalTitle');
         if (titleEl) {
@@ -4104,15 +4157,15 @@ async function openEmbeddedAttendanceModal(hearingId) {
 
                     <div style="display: flex; flex-direction: column; gap: 6px;">
                         <label class="party-att-radio-label present" style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 0.83rem; cursor: pointer; color: #15803d; background: #ffffff; padding: 6px 10px; border-radius: 6px; border: 1px solid #dcfce7;">
-                            <input type="radio" name="emb_att_party_${p.resident_id}" data-party-type="${escapeHtml(p.party_type)}" value="Present" onchange="checkEmbComplainantAbsence()" ${st === 'Present' ? 'checked' : ''} style="accent-color: #16a34a; width: 15px; height: 15px; margin: 0;">
+                            <input type="radio" name="emb_att_party_${p.resident_id}" data-party-type="${escapeHtml(p.party_type)}" value="Present" onchange="checkEmbComplainantAbsence()" ${st === 'Present' ? 'checked' : ''} ${gateDisabledAttr} style="accent-color: #16a34a; width: 15px; height: 15px; margin: 0;">
                             <span>🟢 Dumalo sa Oras (Present)</span>
                         </label>
                         <label class="party-att-radio-label warning" style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 0.83rem; cursor: pointer; color: #b45309; background: #ffffff; padding: 6px 10px; border-radius: 6px; border: 1px solid #fef3c7;">
-                            <input type="radio" name="emb_att_party_${p.resident_id}" data-party-type="${escapeHtml(p.party_type)}" value="Late" onchange="checkEmbComplainantAbsence()" ${st === 'Late' ? 'checked' : ''} style="accent-color: #d97706; width: 15px; height: 15px; margin: 0;">
+                            <input type="radio" name="emb_att_party_${p.resident_id}" data-party-type="${escapeHtml(p.party_type)}" value="Late" onchange="checkEmbComplainantAbsence()" ${st === 'Late' ? 'checked' : ''} ${gateDisabledAttr} style="accent-color: #d97706; width: 15px; height: 15px; margin: 0;">
                             <span>🟡 Nahuli / Late (Pasok sa 1-hour grace period)</span>
                         </label>
                         <label class="party-att-radio-label absent" style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 0.83rem; cursor: pointer; color: #dc2626; background: #ffffff; padding: 6px 10px; border-radius: 6px; border: 1px solid #fee2e2;">
-                            <input type="radio" name="emb_att_party_${p.resident_id}" data-party-type="${escapeHtml(p.party_type)}" value="Absent" onchange="checkEmbComplainantAbsence()" ${st === 'Absent' ? 'checked' : ''} style="accent-color: #dc2626; width: 15px; height: 15px; margin: 0;">
+                            <input type="radio" name="emb_att_party_${p.resident_id}" data-party-type="${escapeHtml(p.party_type)}" value="Absent" onchange="checkEmbComplainantAbsence()" ${st === 'Absent' ? 'checked' : ''} ${gateDisabledAttr} style="accent-color: #dc2626; width: 15px; height: 15px; margin: 0;">
                             <span>🔴 Hindi Dumalo (Absent - Lampas 1 oras)</span>
                         </label>
                     </div>
@@ -4141,6 +4194,17 @@ async function openEmbeddedAttendanceModal(hearingId) {
 
         body.innerHTML = `
             <form id="embAttendanceForm" onsubmit="submitEmbeddedAttendance(event, ${Number(hearingId)})" class="streamlined-attendance-container" style="display: flex; flex-direction: column; gap: 16px;">
+                ${isLockedByService ? `
+                    <div style="background: #fffbeb; border: 1.5px solid #fde68a; border-left: 4px solid #d97706; border-radius: 8px; padding: 12px 16px; font-size: 0.84rem; color: #92400e; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <div>
+                            <strong style="display: block; font-size: 0.9rem; color: #78350f;">🔒 Attendance Check-In Locked — Summons Return Required</strong>
+                            <span>${escapeHtml(serviceGate.message || 'An officer must log an appropriate Summons Return (Served) before party attendance check-in is enabled.')}</span>
+                        </div>
+                        <a href="../gps/proof-service.php?case_id=${encodeURIComponent(hearing.case_id || '')}&hearing_id=${encodeURIComponent(hearingId)}&open_return=1" class="btn-create" style="font-size: 0.78rem; padding: 6px 12px; background: #d97706; border-color: #d97706; color: #fff; text-decoration: none; white-space: nowrap;">
+                            📋 Log Summons Return &rarr;
+                        </a>
+                    </div>
+                ` : ''}
                 ${isSaved ? `
                     <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 6px; padding: 8px 14px; font-size: 0.84rem; color: #166534; display: flex; align-items: center; justify-content: space-between;">
                         <span style="font-weight: 600;">✓ Attendance details recorded and saved in database</span>
@@ -4153,7 +4217,7 @@ async function openEmbeddedAttendanceModal(hearingId) {
                     <label for="embAttScheduledDateTime" style="display: block; font-weight: 600; color: #0f172a; font-size: 0.88rem; margin-bottom: 6px;">
                         Petsa at Takdang Oras (Scheduled Date &amp; Time) <span style="color: #dc2626;">*</span>
                     </label>
-                    <input type="datetime-local" id="embAttScheduledDateTime" value="${escapeHtml(scheduledVal)}" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; font-size: 0.88rem; box-sizing: border-box; background: #fff; font-family: inherit; color: #1e293b;">
+                    <input type="datetime-local" id="embAttScheduledDateTime" value="${escapeHtml(scheduledVal)}" ${gateDisabledAttr} style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; font-size: 0.88rem; box-sizing: border-box; background: #fff; font-family: inherit; color: #1e293b;">
                 </div>
 
                 <!-- Row 2: Session Delay Remarks -->
@@ -4166,7 +4230,7 @@ async function openEmbeddedAttendanceModal(hearingId) {
                             (Kung sakaling late nag-umpisa ang session)
                         </span>
                     </div>
-                    <textarea id="embAttDelayRemarks" rows="2" placeholder="Halimbawa: Naantala ang simula dahil may naunang kaso sa Lupon Court Room. Present ang mga partido." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 12px; font-size: 0.86rem; box-sizing: border-box; font-family: inherit; resize: vertical; line-height: 1.45; color: #1e293b;">${escapeHtml(delayRemarksVal)}</textarea>
+                    <textarea id="embAttDelayRemarks" rows="2" ${gateDisabledAttr} placeholder="Halimbawa: Naantala ang simula dahil may naunang kaso sa Lupon Court Room. Present ang mga partido." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 12px; font-size: 0.86rem; box-sizing: border-box; font-family: inherit; resize: vertical; line-height: 1.45; color: #1e293b;">${escapeHtml(delayRemarksVal)}</textarea>
                     
                     <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
                         <span style="font-size: 0.8rem; color: #64748b; font-weight: 500;">I-click para ilagay:</span>
@@ -4203,8 +4267,8 @@ async function openEmbeddedAttendanceModal(hearingId) {
                 <!-- Actions -->
                 <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;">
                     <button type="button" class="btn-secondary" onclick="closeEmbeddedAttendanceModal()">Cancel</button>
-                    <button type="submit" class="btn-create" id="btnSaveAttendance" style="padding: 8px 22px; font-size: 0.88rem; font-weight: 600; background: #0f172a; color: #fff; border-radius: 6px; cursor: pointer;">
-                        ${isSaved ? 'Update Attendance' : 'Save Attendance'}
+                    <button type="submit" class="btn-create" id="btnSaveAttendance" ${gateDisabledAttr} style="padding: 8px 22px; font-size: 0.88rem; font-weight: 600; background: ${isLockedByService ? '#94a3b8' : '#0f172a'}; color: #fff; border-radius: 6px; cursor: ${isLockedByService ? 'not-allowed' : 'pointer'};">
+                        ${isLockedByService ? '🔒 Locked Pending Summons Return' : (isSaved ? 'Update Attendance' : 'Save Attendance')}
                     </button>
                 </div>
             </form>

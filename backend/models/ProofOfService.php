@@ -133,7 +133,7 @@ class ProofOfService
                     (
                         SELECT CASE
                             WHEN sd.delivery_status IN ('Served', 'Served Personal', 'Served Substituted', 'Served Refused') THEN 'Served'
-                            WHEN (SELECT h_sub.hearing_type FROM hearings h_sub WHERE h_sub.case_id = c.case_id ORDER BY h_sub.hearing_date ASC, h_sub.hearing_id ASC LIMIT 1) = 'Mediation' THEN 'Served'
+                            WHEN sd.delivery_status = 'Unserved' THEN 'Unserved'
                             ELSE sd.delivery_status
                         END
                         FROM summon_deliveries sd

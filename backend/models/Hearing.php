@@ -1658,7 +1658,7 @@ class Hearing
 
             $doc8Stmt = $this->conn->prepare("
                 INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
-                VALUES (?, ?, ?, ?, 'Served', ?)
+                VALUES (?, ?, ?, ?, 'For Service', ?)
             ");
             $doc8Stmt->execute([
                 $caseId,
@@ -1673,10 +1673,10 @@ class Hearing
             $deliv8 = $this->conn->prepare("
                 INSERT INTO summon_deliveries (
                     hearing_id, case_id, party_type, resident_id, form_type, delivery_status,
-                    document_id, recipient_name, served_at, served_by_user_id, service_method, remarks
+                    document_id, recipient_name, created_by, service_method, remarks
                 ) VALUES (
-                    ?, ?, 'Complainant', ?, 'Notice of Hearing', 'Served',
-                    ?, ?, NOW(), ?, 'Personal Notice', ?
+                    ?, ?, 'Complainant', ?, 'Notice of Hearing', 'Pending',
+                    ?, ?, ?, 'Personal', ?
                 )
             ");
             $deliv8->execute([
@@ -1944,7 +1944,7 @@ class Hearing
 
             $doc8Stmt = $this->conn->prepare("
                 INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
-                VALUES (?, ?, ?, ?, 'Served', ?)
+                VALUES (?, ?, ?, ?, 'For Service', ?)
             ");
             $doc8Stmt->execute([
                 $caseId,
@@ -1959,10 +1959,10 @@ class Hearing
             $deliv8 = $this->conn->prepare("
                 INSERT INTO summon_deliveries (
                     hearing_id, case_id, party_type, resident_id, form_type, delivery_status,
-                    document_id, recipient_name, served_at, served_by_user_id, service_method, remarks
+                    document_id, recipient_name, created_by, service_method, remarks
                 ) VALUES (
-                    ?, ?, 'Complainant', ?, 'Notice of Hearing', 'Served',
-                    ?, ?, NOW(), ?, 'Personal Notice', ?
+                    ?, ?, 'Complainant', ?, 'Notice of Hearing', 'Pending',
+                    ?, ?, ?, 'Personal', ?
                 )
             ");
             $deliv8->execute([

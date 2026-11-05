@@ -660,7 +660,10 @@ async function renderExpandedCaseView(caseId) {
 
     try {
         const currentCaseItem = allLoadedSummonCases.find(c => Number(c.case_id) === Number(caseId)) || {};
-        const targetHearingParam = currentCaseItem.hearing_id ? `&hearing_id=${encodeURIComponent(currentCaseItem.hearing_id)}` : '';
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlHearingId = urlParams.get('hearing_id');
+        const hearingIdToUse = (urlHearingId && Number(urlHearingId) > 0) ? urlHearingId : currentCaseItem.hearing_id;
+        const targetHearingParam = hearingIdToUse ? `&hearing_id=${encodeURIComponent(hearingIdToUse)}` : '';
         const targetStageParam = (currentCaseItem.hearing_type || currentCaseItem.case_status) ? `&stage=${encodeURIComponent(currentCaseItem.hearing_type || currentCaseItem.case_status)}` : '';
         const result = await gpsApi(`${proofApiUrl}?case_id=${encodeURIComponent(caseId)}&mode=deliveries${targetHearingParam}${targetStageParam}`);
         const data = result.data || {};
@@ -675,7 +678,9 @@ async function renderExpandedCaseView(caseId) {
             return;
         }
 
-        const activeHearing = data.hearings[0];
+        const activeHearing = (urlHearingId && Number(urlHearingId) > 0)
+            ? (data.hearings.find(h => Number(h.hearing_id) === Number(urlHearingId)) || data.hearings[0])
+            : data.hearings[0];
         window.activeExpandedHearingData = activeHearing;
         const isPaanyayaCase = Boolean(currentCaseItem.is_paanyaya || activeHearing.is_paanyaya);
         const isConciliation = (activeHearing.hearing_type === 'Conciliation' || currentCaseItem.case_status === 'Conciliation');
@@ -709,7 +714,7 @@ async function renderExpandedCaseView(caseId) {
         const compResidentId = compDeliv?.resident_id || compProfile.resident_id || (compAttempts[0]?.resident_id) || 0;
 
         const isMediation = (activeHearing.hearing_type === 'Mediation');
-        const anyCompServed = compAttempts.some(a => a.is_served) || (!isConciliation && Boolean(compDeliv?.delivery_status?.startsWith('Served')));
+        const anyCompServed = compAttempts.some(a => a.is_served) || Boolean(compDeliv?.delivery_status && compDeliv.delivery_status !== 'Pending' && compDeliv.delivery_status.startsWith('Served'));
         const compFailedCount = compAttempts.filter(a => a.is_failed).length;
         const canNextComp = Boolean(activeHearing.can_initiate_next_comp_attempt) && !anyCompServed;
         const nextCompNum = activeHearing.next_comp_attempt_number || (compAttempts.length + 1);
@@ -1013,7 +1018,7 @@ async function renderExpandedCaseView(caseId) {
                                 Hearing: <strong>${escapeGpsHtml(activeHearing.hearing_type)}</strong> (${escapeGpsHtml(hearingDateFormatted)})
                             </div>
 
-                            ${isConciliation || compAttempts.length > 0 ? `
+                            ${true ? `
                                 <!-- Horizontal Stepper Tracker for Complainant -->
                                 <div class="summon-stepper-wrap">
                                     <div class="summon-stepper">
@@ -1866,6 +1871,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const urlParams = new URLSearchParams(window.location.search);
     const requestedCaseId = urlParams.get('case_id') || '';
     const requestedComplaintId = urlParams.get('complaint_id') || '';
+    const requestedPartyType = (urlParams.get('party_type') || urlParams.get('party') || '').trim();
     const shouldOpenReturn = urlParams.get('open_return') === '1';
 
     try {
@@ -1898,32 +1904,58 @@ document.addEventListener('DOMContentLoaded', async () => {
                 await toggleExpandCase(targetCase.case_id);
             }
 
-                        if (shouldOpenReturn) {
+            if (shouldOpenReturn) {
                 setTimeout(() => {
                     const activeHearing = window.activeExpandedHearingData || {};
                     const respAttempts = activeHearing.respondent_attempts || [];
-                    const anyRespServed = respAttempts.some(a => a.is_served);
-                    if (anyRespServed) {
-                        return; // Prevent opening return modal if already served
+                    const compAttempts = activeHearing.complainant_attempts || [];
+                    const compDeliv = activeHearing.complainant_delivery || activeHearing.deliveries?.find(d => d.party_type === 'Complainant');
+                    const respDeliv = activeHearing.deliveries?.find(d => d.party_type === 'Respondent');
+
+                    // Determine target party based on URL param or pending status
+                    let targetParty = 'Respondent';
+                    if (requestedPartyType.toLowerCase() === 'complainant') {
+                        targetParty = 'Complainant';
+                    } else if (requestedPartyType.toLowerCase() === 'respondent') {
+                        targetParty = 'Respondent';
+                    } else {
+                        const anyRespServed = respAttempts.some(a => a.is_served) || Boolean(respDeliv?.delivery_status && respDeliv.delivery_status !== 'Pending' && respDeliv.delivery_status.startsWith('Served'));
+                        const anyCompServed = compAttempts.some(a => a.is_served) || Boolean(compDeliv?.delivery_status && compDeliv.delivery_status !== 'Pending' && compDeliv.delivery_status.startsWith('Served'));
+                        if (!anyRespServed) {
+                            targetParty = 'Respondent';
+                        } else if (!anyCompServed) {
+                            targetParty = 'Complainant';
+                        } else {
+                            targetParty = 'Respondent';
+                        }
                     }
-                    const pendingAttempt = respAttempts.find(a => a.is_pending) || null;
-                    const nextAttemptNum = pendingAttempt ? pendingAttempt.attempt_number : (respAttempts.length + 1);
-                    const respResidentId = Number(activeHearing.deliveries?.find(d => d.party_type === 'Respondent')?.resident_id || 0);
-                    const respName = activeHearing.deliveries?.find(d => d.party_type === 'Respondent')?.recipient_name || targetCase.respondent_names || 'Respondent';
+
+                    const targetAttempts = (targetParty === 'Complainant') ? compAttempts : respAttempts;
+                    const targetDeliv = (targetParty === 'Complainant') ? compDeliv : respDeliv;
+                    const pendingAttempt = targetAttempts.find(a => a.is_pending) || targetAttempts[targetAttempts.length - 1] || null;
+                    const nextAttemptNum = pendingAttempt ? (pendingAttempt.attempt_number || 1) : (targetAttempts.length > 0 ? targetAttempts.length : 1);
+                    const partyResidentId = Number(pendingAttempt?.resident_id || targetDeliv?.resident_id || 0);
+                    const partyName = pendingAttempt?.recipient_name || targetDeliv?.recipient_name || (targetParty === 'Complainant' ? targetCase.complainant_names : targetCase.respondent_names) || targetParty;
+                    const deliveryId = pendingAttempt?.delivery_id || targetDeliv?.delivery_id || null;
+                    const curStatus = pendingAttempt?.delivery_status || targetDeliv?.delivery_status || 'Pending';
+                    const curRel = pendingAttempt?.relationship || targetDeliv?.relationship || '';
+                    const curRemarks = pendingAttempt?.remarks || targetDeliv?.remarks || '';
+                    const curUnserved = pendingAttempt?.unserved_reason || targetDeliv?.unserved_reason || '';
+
                     openOfficerReturnModal(
-                        'Respondent',
-                        respResidentId,
+                        targetParty,
+                        partyResidentId,
                         activeHearing.hearing_id,
                         targetCase.case_id,
-                        'Pending',
-                        respName,
-                        '',
-                        '',
-                        '',
+                        curStatus,
+                        partyName,
+                        curRel,
+                        curRemarks,
+                        curUnserved,
                         nextAttemptNum,
-                        null
+                        deliveryId
                     );
-                }, 350);
+                }, 400);
             }
         }
     } catch (error) {

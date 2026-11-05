@@ -1496,6 +1496,8 @@ function switchActiveSession(hearingId) {
 
 
 
+    renderHeaderAndBreadcrumbs(data, stage || {});
+    renderStageOverview(data, stage || {});
     renderSessionNavigation(data, stage || {});
 
     openAttendanceModal(hId, false);
@@ -1562,7 +1564,9 @@ function renderHeaderAndBreadcrumbs(data, stage) {
 
         if (stageWorkspaceState.mode === 'Mediation') {
 
-            titleEl.textContent = 'Mediation';
+            const activeSession = (stageWorkspaceState.sessions || []).find(s => Number(s.hearing_id) === Number(stageWorkspaceState.activeSessionHearingId)) || (stageWorkspaceState.sessions || [])[0] || null;
+            const ordLabel = activeSession ? ` — ${getStageSessionOrdinalLabel('Mediation', activeSession.session_index || 1)}` : '';
+            titleEl.textContent = `Mediation${ordLabel}`;
 
             document.title = 'Mediation - AGAP';
 
@@ -1594,8 +1598,54 @@ function renderHeaderAndBreadcrumbs(data, stage) {
 
     if (badgeEl) {
 
-        badgeEl.textContent = stage.stage_status;
+        const sessions = stageWorkspaceState.sessions || [];
+        const activeSession = sessions.find(s => Number(s.hearing_id) === Number(stageWorkspaceState.activeSessionHearingId)) || sessions[0] || null;
+        let badgeLabel = stage.stage_status || 'In Progress';
+        let bg = '#f1f5f9', color = '#475569';
+        const st = stage.stage_status;
+        if (st === 'Completed' || st === 'Settled' || activeSession?.session_outcome === 'Settled') {
+            badgeLabel = 'Completed · Settled'; bg = '#dcfce7'; color = '#15803d';
+        } else if (st === 'Referred to Pangkat' || activeSession?.session_outcome === 'Referred to Pangkat') {
+            badgeLabel = 'Referred to Pangkat'; bg = '#e0f2fe'; color = '#0369a1';
+        } else if (activeSession) {
+            const isServed = (activeSession.proof_of_service_status === 'Served') || Boolean(activeSession.attendance_gate && activeSession.attendance_gate.allowed);
+            if (activeSession.minutes_id || activeSession.minutes_status === 'Finalized' || activeSession.minutes_status === 'Draft') {
+                badgeLabel = activeSession.session_outcome && activeSession.session_outcome !== 'Pending' ? `Minutes Recorded · ${activeSession.session_outcome}` : 'Minutes Recorded';
+                bg = '#dcfce7'; color = '#15803d';
+            } else if (activeSession.attendance_recorded_at) {
+                badgeLabel = 'Attendance Recorded · Awaiting Minutes';
+                bg = '#dbeafe'; color = '#1d4ed8';
+            } else if (!isServed) {
+                badgeLabel = 'Scheduled · Awaiting Summons Return';
+                bg = '#fef3c7'; color = '#b45309';
+            } else {
+                badgeLabel = 'Scheduled · Ready for Check-In';
+                bg = '#dbeafe'; color = '#1d4ed8';
+            }
+        } else if (st === 'In Progress') {
+            bg = '#dbeafe'; color = '#1d4ed8';
+        } else if (st === 'Awaiting Outcome' || st === 'Ready for Referral') {
+            bg = '#fef3c7'; color = '#b45309';
+        }
+        badgeEl.textContent = badgeLabel;
+        const draftInd = document.getElementById('wsDraftIndicator');
+        if (draftInd) {
+            if (activeSession?.minutes_id) {
+                draftInd.textContent = '✓ Minutes Saved';
+                draftInd.className = 'agap-draft-indicator state-synced';
+            } else if (activeSession?.attendance_recorded_at) {
+                draftInd.textContent = '✓ Attendance Recorded';
+                draftInd.className = 'agap-draft-indicator state-idle';
+            } else {
+                draftInd.textContent = '⏳ Pending Session Entry';
+                draftInd.className = 'agap-draft-indicator state-idle';
+            }
+        }
 
+        badgeEl.style.background = bg;
+        badgeEl.style.color = color;
+    }
+    if (false) {
         let bg = '#f1f5f9', color = '#475569';
 
         const st = stage.stage_status;
@@ -1652,7 +1702,7 @@ function renderWorkspaceActions(stage) {
 
     const more = document.getElementById('wsMoreActionsMenu');
 
-    if (!primary || !more) return;
+    if (!primary) return;
 
 
 
@@ -1720,7 +1770,13 @@ function renderWorkspaceActions(stage) {
 
     const outcomeAction = (mode === 'Mediation') ? '' : `<button type="button" class="btn-secondary" onclick="openRecordOutcomeModal()">Record stage outcome</button>`;
 
-    more.innerHTML = `<button type="button" class="btn-secondary" onclick="openScheduleModal()">${scheduleLabel}</button>${outcomeAction}${panelAction}${cfaAction}`;
+    if (more) {
+        more.innerHTML = `<button type="button" class="btn-secondary" onclick="openScheduleModal()">${scheduleLabel}</button>${outcomeAction}${panelAction}${cfaAction}`;
+        more.querySelectorAll('.btn-secondary').forEach((button) => {
+            button.style.cssText = 'display:block; width:100%; margin:2px 0; text-align:left; border:0; background:transparent; padding:8px 10px; cursor:pointer; text-decoration:none; color:#334155; font-size:.82rem;';
+        });
+    }
+    if (!more) return;
 
     more.querySelectorAll('.btn-secondary').forEach((button) => {
 
@@ -1775,6 +1831,21 @@ function renderStageOverview(data, stage) {
 
 
     let mediatorInfoHtml = '';
+    const sessions = stageWorkspaceState.sessions || [];
+    const activeSession = sessions.find(s => Number(s.hearing_id) === Number(stageWorkspaceState.activeSessionHearingId)) || sessions[0] || null;
+    const activeOrdinal = activeSession ? getStageSessionOrdinalLabel(mode, activeSession.session_index || 1) : '';
+    const activeCompAtt = activeSession?.attendance_recorded_at ? (activeSession.complainant_attendance || 'Present') : 'Pending Check-In';
+    const activeRespAtt = activeSession?.attendance_recorded_at ? (activeSession.respondent_attendance || 'Present') : 'Pending Check-In';
+    const activePresider = (activeSession?.presider_attendance === 'Substitute' && activeSession?.substitute_presider_name)
+        ? `${activeSession.substitute_presider_name} (Substitute)`
+        : (activeSession?.presiding_officer_name || stage.presiding_officer || 'Punong Barangay');
+    const activeServiceOk = activeSession ? ((activeSession.proof_of_service_status === 'Served') || Boolean(activeSession.attendance_gate && activeSession.attendance_gate.allowed)) : false;
+    const activeOutcome = (activeSession?.session_outcome && activeSession.session_outcome !== 'Pending')
+        ? activeSession.session_outcome
+        : (stage.outcome || 'Pending');
+    const activeOutcomeRemarks = (activeSession?.outcome_remarks)
+        ? activeSession.outcome_remarks
+        : (activeSession?.minutes_id ? 'Minutes recorded for active session' : (stage.outcome_remarks || 'Awaiting formal hearing outcome'));
 
     if (mode === 'Mediation') {
 
@@ -1784,7 +1855,7 @@ function renderStageOverview(data, stage) {
 
                 <span class="stat-label">Presiding Mediator</span>
 
-                <strong class="stat-value" style="font-size: 0.92rem;">${escapeHtml(stage.presiding_officer || 'Punong Barangay')}</strong>
+                <strong class="stat-value" style="font-size: 0.92rem;">${escapeHtml(activePresider)}</strong>
 
                 <span class="stat-sub">Barangay Captain / Mediator</span>
 
@@ -1818,7 +1889,7 @@ function renderStageOverview(data, stage) {
 
                 <span class="stat-label">Presiding Arbitrator</span>
 
-                <strong class="stat-value" style="font-size: 0.92rem;">${escapeHtml(stage.presiding_officer || 'Punong Barangay')}</strong>
+                <strong class="stat-value" style="font-size: 0.92rem;">${escapeHtml(activePresider)}</strong>
 
                 <span class="stat-sub">Hearing Officer / Arbitrator</span>
 
@@ -1836,7 +1907,13 @@ function renderStageOverview(data, stage) {
 
         // 15-Day Mediation Limit badge removed
 
-        deadlineBadgeHtml = '';
+        deadlineBadgeHtml = activeSession ? `
+            <div class="overview-stat-card" style="border-left: 4px solid ${activeServiceOk ? '#16a34a' : '#d97706'};">
+                <span class="stat-label">Active Session (${escapeHtml(activeOrdinal)})</span>
+                <strong class="stat-value" style="font-size: 0.88rem; color: #0f172a;">${formatDateTimeReadable(activeSession.hearing_date)}</strong>
+                <span class="stat-sub" style="color: ${activeServiceOk ? '#15803d' : '#b45309'}; font-weight: 600;">${activeServiceOk ? '✓ Summons Return Served' : '⏳ Pending Summons Return'} · ${escapeHtml(activeSession.venue || 'Lupon Court Room')}</span>
+            </div>
+        ` : '';
 
     } else if (mode === 'Conciliation' && stage.deadline) {
 
@@ -1938,7 +2015,7 @@ function renderStageOverview(data, stage) {
 
             <strong class="stat-value" style="font-size: 0.92rem;">${escapeHtml(caseData.complainant_names || '—')}</strong>
 
-            <span class="stat-sub">Filing Date: ${formatDateReadable(caseData.filing_date)}</span>
+            <span class="stat-sub">Filing: ${formatDateReadable(caseData.filing_date)}${activeSession ? ` · ${escapeHtml(activeOrdinal)}: <strong>${escapeHtml(activeCompAtt)}</strong>` : ''}</span>
 
         </div>
 
@@ -1948,7 +2025,7 @@ function renderStageOverview(data, stage) {
 
             <strong class="stat-value" style="font-size: 0.92rem;">${escapeHtml(caseData.respondent_names || '—')}</strong>
 
-            <span class="stat-sub">Barangay Tumana</span>
+            <span class="stat-sub">Barangay Tumana${activeSession ? ` · ${escapeHtml(activeOrdinal)}: <strong>${escapeHtml(activeRespAtt)}</strong>` : ''}</span>
 
         </div>
 
@@ -1960,7 +2037,7 @@ function renderStageOverview(data, stage) {
 
             <span class="stat-label">Total Sessions</span>
 
-            <strong class="stat-value" style="font-size: 1.25rem; color: #0f172a;">${Number(stage.sessions_count || 0)}</strong>
+            <strong class="stat-value" style="font-size: 1.15rem; color: #0f172a;">${Number(sessions.length || stage.sessions_count || 0)}${mode === 'Mediation' ? ' / 2' : ''}</strong>
 
             <span class="stat-sub">Latest: ${stage.latest_hearing_date ? formatDateReadable(stage.latest_hearing_date) : 'None'}</span>
 
@@ -1970,9 +2047,9 @@ function renderStageOverview(data, stage) {
 
             <span class="stat-label">Current Stage Outcome</span>
 
-            <strong class="stat-value" style="font-size: 0.92rem; color: ${stage.outcome === 'Settled' ? '#15803d' : '#b45309'};">${escapeHtml(stage.outcome || 'Pending')}</strong>
+            <strong class="stat-value" style="font-size: 0.92rem; color: ${activeOutcome === 'Settled' ? '#15803d' : '#b45309'};">${escapeHtml(activeOutcome)}</strong>
 
-            <span class="stat-sub">${escapeHtml(stage.outcome_remarks || 'Awaiting formal hearing outcome')}</span>
+            <span class="stat-sub">${escapeHtml(activeOutcomeRemarks)}</span>
 
         </div>
 
@@ -3242,7 +3319,7 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                         </label>
 
-                        <input type="text" id="minDisputeSummary_${hId}" name="minDisputeSummary" maxlength="1000" placeholder="Halimbawa: Paniningil ng utang, alitan sa boundary o bakod, panggugulo sa oras ng pahinga..." value="${escapeHtml(session.main_dispute_identified || '')}" ${readonlyAttr} style="width: 100%; padding: 8px 12px; font-size: 0.85rem; border: 1px solid #cbd5e1; border-radius: 6px;">
+                        <input type="text" id="minDisputeSummary_${hId}" name="minDisputeSummary" maxlength="1000" placeholder="Halimbawa: Paniningil ng utang, alitan sa boundary o bakod, panggugulo sa oras ng pahinga..." value="${escapeHtml(session.main_dispute_identified || stageWorkspaceState.stageData?.case?.complaint_title || '')}" ${readonlyAttr} style="width: 100%; padding: 8px 12px; font-size: 0.85rem; border: 1px solid #cbd5e1; border-radius: 6px;">
 
                     </div>
 
@@ -3704,7 +3781,7 @@ function renderMinutesSection(data, stage) {
 
                 window.AgapDraftManager.init(minutesForm, draftKey, {
 
-                    indicatorId: `wsDraftIndicator_${s.hearing_id}`,
+                    indicatorId: 'wsDraftIndicator',
 
                     bannerMount: `#minutesCard_${s.hearing_id}`,
 
@@ -5204,7 +5281,7 @@ async function openScheduleModal(hearingId = null, targetStageType = null) {
 
         }
 
-        if (submitBtn) submitBtn.textContent = 'Schedule Arbitration Session';
+        if (submitBtn) submitBtn.textContent = 'Save Schedule';
 
     } else if (stageWorkspaceState.mode === 'Mediation') {
         if (presiderGroupEl) presiderGroupEl.style.display = 'none';
@@ -5240,7 +5317,7 @@ async function openScheduleModal(hearingId = null, targetStageType = null) {
         if (deckTitle) deckTitle.textContent = `AVAILABLE MEDIATION SLOTS (MAX ${maxCap} HEARINGS/DAY):`;
         const schedDayTitle = document.getElementById('schedDaySchedulesTitle');
         if (schedDayTitle) schedDayTitle.textContent = `📋 Mediation Docket Call (${medVenue}):`;
-        if (submitBtn) submitBtn.textContent = `Schedule ${nextSeqOrdinal} Mediation`;
+        if (submitBtn) submitBtn.textContent = 'Save Schedule';
     } else if (isConciliation) {
 
         if (presiderGroupEl) presiderGroupEl.style.display = 'none';
@@ -5293,7 +5370,7 @@ async function openScheduleModal(hearingId = null, targetStageType = null) {
 
         }
 
-        if (submitBtn) submitBtn.textContent = `Schedule ${nextSeqOrdinal} Conciliation`;
+        if (submitBtn) submitBtn.textContent = 'Save Schedule';
 
     }
 
@@ -6519,6 +6596,12 @@ async function saveStreamlinedAttendance(silent = false) {
 
 
     const currentData = stageWorkspaceState.lastAttendanceData || {};
+    if (currentData.service_gate && currentData.service_gate.allowed === false) {
+        if (!silent) {
+            notifyUser(currentData.service_gate.message || 'An officer must log an appropriate Summons Return before attendance check-in is enabled.', 'warning');
+        }
+        return;
+    }
 
     const parties = currentData.parties || [];
 
@@ -6613,6 +6696,9 @@ async function saveStreamlinedAttendance(silent = false) {
         if (json.success) {
 
             if (!silent) {
+                await loadStageData();
+            }
+            if (!silent) {
 
                 notifyUser('Attendance records saved successfully.', 'success');
 
@@ -6691,6 +6777,12 @@ function renderAttendanceModalForm(data) {
     const delayRemarksVal = hearing.attendance_notes || '';
 
     const isSaved = Boolean(hearing.attendance_recorded_at);
+    const serviceGate = data.service_gate || { allowed: true };
+    const isLockedByService = !serviceGate.allowed;
+    const gateDisabledAttr = isLockedByService ? 'disabled' : '';
+    const activeOrdLabel = getStageSessionOrdinalLabel(stageWorkspaceState.mode || 'Mediation', hearing.session_index || 1);
+    const cardTitleEl = document.getElementById('wsAttCardTitle');
+    if (cardTitleEl) cardTitleEl.textContent = `Hearing Session Attendance — ${activeOrdLabel}`;
 
 
 
@@ -6746,7 +6838,7 @@ function renderAttendanceModalForm(data) {
 
                     <label class="party-att-radio-pill ${pAtt === 'Present' ? 'selected' : ''}" style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border: 1.5px solid ${pAtt === 'Present' ? '#86efac' : '#e2e8f0'}; border-radius: 8px; background: ${pAtt === 'Present' ? '#f0fdf4' : '#fff'}; transition: all 0.15s ease;">
 
-                        <input type="radio" name="att_party_${partyId}" value="Present" ${pAtt === 'Present' ? 'checked' : ''} onchange="handlePartyAttendanceChange(${partyId}, 'Present', '${p.party_type}')" style="accent-color: #16a34a; width: 15px; height: 15px; cursor: pointer;">
+                        <input type="radio" name="att_party_${partyId}" value="Present" ${pAtt === 'Present' ? 'checked' : ''} ${gateDisabledAttr} onchange="handlePartyAttendanceChange(${partyId}, 'Present', '${p.party_type}')" style="accent-color: #16a34a; width: 15px; height: 15px; cursor: pointer;">
 
                         <span style="font-size: 0.84rem; font-weight: 600; color: ${pAtt === 'Present' ? '#15803d' : '#334155'};">🟢 Dumalo sa Oras (Present)</span>
 
@@ -6754,7 +6846,7 @@ function renderAttendanceModalForm(data) {
 
                     <label class="party-att-radio-pill ${pAtt === 'Late' ? 'selected' : ''}" style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border: 1.5px solid ${pAtt === 'Late' ? '#fde68a' : '#e2e8f0'}; border-radius: 8px; background: ${pAtt === 'Late' ? '#fefce8' : '#fff'}; transition: all 0.15s ease;">
 
-                        <input type="radio" name="att_party_${partyId}" value="Late" ${pAtt === 'Late' ? 'checked' : ''} onchange="handlePartyAttendanceChange(${partyId}, 'Late', '${p.party_type}')" style="accent-color: #d97706; width: 15px; height: 15px; cursor: pointer;">
+                        <input type="radio" name="att_party_${partyId}" value="Late" ${pAtt === 'Late' ? 'checked' : ''} ${gateDisabledAttr} onchange="handlePartyAttendanceChange(${partyId}, 'Late', '${p.party_type}')" style="accent-color: #d97706; width: 15px; height: 15px; cursor: pointer;">
 
                         <span style="font-size: 0.84rem; font-weight: 600; color: ${pAtt === 'Late' ? '#b45309' : '#334155'};">🟡 Nahuli / Late (Pasok sa 1-hour grace period)</span>
 
@@ -6762,7 +6854,7 @@ function renderAttendanceModalForm(data) {
 
                     <label class="party-att-radio-pill ${pAtt === 'Absent' ? 'selected' : ''}" style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border: 1.5px solid ${pAtt === 'Absent' ? '#fca5a5' : '#e2e8f0'}; border-radius: 8px; background: ${pAtt === 'Absent' ? '#fef2f2' : '#fff'}; transition: all 0.15s ease;">
 
-                        <input type="radio" name="att_party_${partyId}" value="Absent" ${pAtt === 'Absent' ? 'checked' : ''} onchange="handlePartyAttendanceChange(${partyId}, 'Absent', '${p.party_type}')" style="accent-color: #dc2626; width: 15px; height: 15px; cursor: pointer;">
+                        <input type="radio" name="att_party_${partyId}" value="Absent" ${pAtt === 'Absent' ? 'checked' : ''} ${gateDisabledAttr} onchange="handlePartyAttendanceChange(${partyId}, 'Absent', '${p.party_type}')" style="accent-color: #dc2626; width: 15px; height: 15px; cursor: pointer;">
 
                         <span style="font-size: 0.84rem; font-weight: 600; color: ${pAtt === 'Absent' ? '#991b1b' : '#334155'};">🔴 Hindi Dumalo (Absent - Lampas 1 oras)</span>
 
@@ -6781,6 +6873,22 @@ function renderAttendanceModalForm(data) {
     bodyEl.innerHTML = `
 
         <div class="streamlined-attendance-container" style="display: flex; flex-direction: column; gap: 16px;">
+            ${isLockedByService ? `
+                <div style="background: #fffbeb; border: 1.5px solid #fde68a; border-left: 4px solid #d97706; border-radius: 8px; padding: 12px 16px; font-size: 0.84rem; color: #92400e; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div>
+                        <strong style="display: block; font-size: 0.9rem; color: #78350f;">🔒 Attendance Check-In Locked — Summons Return Required</strong>
+                        <span>${escapeHtml(serviceGate.message || 'An officer must log an appropriate Summons Return (Served) before party attendance check-in is enabled.')}</span>
+                    </div>
+                    <a href="../gps/proof-service.php?case_id=${encodeURIComponent(stageWorkspaceState.caseId || '')}&hearing_id=${encodeURIComponent(hearingId)}&open_return=1" class="btn-create" style="font-size: 0.78rem; padding: 6px 12px; background: #d97706; border-color: #d97706; color: #fff; text-decoration: none; white-space: nowrap;">
+                        📋 Log Summons Return &rarr;
+                    </a>
+                </div>
+            ` : (!isSaved ? `
+                <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 10px 14px; font-size: 0.84rem; color: #1e40af; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                    <span style="font-weight: 600;">⏳ Attendance has not been recorded yet for ${escapeHtml(activeOrdLabel)}. Confirm party appearances and click Save Attendance Check-In below.</span>
+                    <span style="font-size: 0.78rem; background: #dbeafe; padding: 2px 8px; border-radius: 9999px; font-weight: 700;">PENDING CHECK-IN</span>
+                </div>
+            ` : '')}
 
             ${isSaved ? `
 
@@ -6804,7 +6912,7 @@ function renderAttendanceModalForm(data) {
 
                 </label>
 
-                <input type="datetime-local" id="attScheduledDateTime" value="${escapeHtml(scheduledVal)}" onchange="saveStreamlinedAttendance(true)" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; font-size: 0.88rem; box-sizing: border-box; background: #fff; font-family: inherit; color: #1e293b;">
+                <input type="datetime-local" id="attScheduledDateTime" value="${escapeHtml(scheduledVal)}" ${gateDisabledAttr} onchange="saveStreamlinedAttendance(true)" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; font-size: 0.88rem; box-sizing: border-box; background: #fff; font-family: inherit; color: #1e293b;">
 
             </div>
 
@@ -6830,7 +6938,7 @@ function renderAttendanceModalForm(data) {
 
                 </div>
 
-                <textarea id="attDelayRemarks" rows="2" oninput="saveStreamlinedAttendance(true)" placeholder="Halimbawa: Naantala ang simula dahil may naunang kaso sa Lupon Court Room. Present ang mga partido." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 12px; font-size: 0.86rem; box-sizing: border-box; font-family: inherit; resize: vertical; line-height: 1.45; color: #1e293b;">${escapeHtml(delayRemarksVal)}</textarea>
+                <textarea id="attDelayRemarks" rows="2" ${gateDisabledAttr} oninput="saveStreamlinedAttendance(true)" placeholder="Halimbawa: Naantala ang simula dahil may naunang kaso sa Lupon Court Room. Present ang mga partido." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 12px; font-size: 0.86rem; box-sizing: border-box; font-family: inherit; resize: vertical; line-height: 1.45; color: #1e293b;">${escapeHtml(delayRemarksVal)}</textarea>
 
                 
 
@@ -6869,6 +6977,7 @@ function renderAttendanceModalForm(data) {
 
 
             <!-- Row 3: Per-Person Attendance -->
+            <div style="display: flex; flex-direction: column;">
 
             <div>
 
@@ -6886,9 +6995,15 @@ function renderAttendanceModalForm(data) {
 
 
 
-                <div id="wsAttPartiesContainer" style="display: flex; flex-direction: column; gap: 10px;">
+                <div style="display: flex; justify-content: flex-end; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e2e8f0; order: 2;">
+                    <button type="button" class="btn-create" onclick="saveStreamlinedAttendance(false)" ${gateDisabledAttr} style="font-size: 0.85rem; padding: 8px 18px; background: ${isLockedByService ? '#94a3b8' : '#16a34a'}; border-color: ${isLockedByService ? '#94a3b8' : '#16a34a'}; cursor: ${isLockedByService ? 'not-allowed' : 'pointer'};">
+                        ${isLockedByService ? '🔒 Check-In Locked (Await Summons Return)' : (isSaved ? '💾 Update Attendance Check-In' : '💾 Save Attendance Check-In')}
+                    </button>
+                </div>
+                <div id="wsAttPartiesContainer" style="display: flex; flex-direction: column; gap: 10px; order: 1;">
 
                     ${partiesHtml}
+                </div></div>
 
                 </div>
 
@@ -6949,6 +7064,12 @@ function syncOutcomeWithAttendance() {
     let foundResp = false;
 
     const currentData = stageWorkspaceState.lastAttendanceData || {};
+    if (currentData.service_gate && currentData.service_gate.allowed === false) {
+        if (!silent) {
+            notifyUser(currentData.service_gate.message || 'An officer must log an appropriate Summons Return before attendance check-in is enabled.', 'warning');
+        }
+        return;
+    }
     const parties = currentData.parties || [];
 
     parties.forEach(p => {

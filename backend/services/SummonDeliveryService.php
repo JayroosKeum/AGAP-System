@@ -200,7 +200,7 @@ class SummonDeliveryService
      * Supports multiple attempts for Respondent, linked notices for Complainant,
      * Subpoenas for Witnesses, and CFA unlocking evaluation.
      */
-    public function getHearingDeliveries(int $hearingId): array
+    public function getHearingDeliveries(int $hearingId, ?int $actorUserId = null): array
     {
         // First ensure deliveries are initialized for all parties on this hearing
         $this->initializeHearingDeliveries($hearingId);

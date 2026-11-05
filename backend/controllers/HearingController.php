@@ -1198,6 +1198,20 @@ class HearingController
             return ['success' => false, 'message' => 'Party check-in cannot be changed after a hearing has started, concluded, or become unavailable.'];
         }
 
+        // Enforce Summons Return gate before allowing Mediation check-in
+        require_once __DIR__ . '/../services/SummonServiceGate.php';
+        $serviceGate = (new SummonServiceGate($db))->forHearing((int) $hearingId);
+        if (empty($serviceGate['allowed'])) {
+            return [
+                'success' => false,
+                'code' => $serviceGate['code'] ?? 'SERVICE_NOT_CONFIRMED',
+                'message' => $serviceGate['message'] ?? 'Attendance check-in is locked until an officer logs an appropriate Summons Return.',
+                'service_gate' => $serviceGate
+            ];
+        }
+        if (false) {
+        }
+
         $residentId = filter_var($data['resident_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         $attVal = ($status === 'Checked In') ? 'Present' : 'Pending Verification';
 

@@ -200,7 +200,7 @@ class CaseStage
         $outcome = $stageRecord['outcome'] ?? 'Pending';
         $outcomeRemarks = $stageRecord['outcome_remarks'] ?? null;
 
-        if ($stageRecord && !empty($stageRecord['stage_status'])) {
+        if ($stageRecord && !empty($stageRecord['stage_status']) && !in_array($stageRecord['stage_status'], ['Not Started', 'Pending', 'In Progress'], true) && !$hasSettledSession && $case['case_status'] !== 'Conciliation') {
             $stageStatus = $stageRecord['stage_status'];
         } else {
             if ($case['case_status'] === 'Settled' || $outcome === 'Settled' || $hasSettledSession) {
@@ -969,6 +969,28 @@ class CaseStage
                 $proofStatus = 'Served';
             }
 
+            // Summons-return gate: attendance check-in unlocks only after an
+            // appropriate Officer's Return (successful service) is logged.
+            $attendanceGate = ['allowed' => true, 'code' => 'NOT_MEDIATION', 'message' => ''];
+            if ($stageType === 'Mediation') {
+                try {
+                    require_once __DIR__ . '/../services/SummonServiceGate.php';
+                    $gateRes = (new SummonServiceGate($this->conn))->forHearing($hId);
+                    $attendanceGate = [
+                        'allowed' => (bool) ($gateRes['allowed'] ?? false),
+                        'code' => (string) ($gateRes['code'] ?? ''),
+                        'message' => (string) ($gateRes['message'] ?? ''),
+                    ];
+                } catch (Throwable $gateErr) {
+                    error_log('CaseStage attendance gate notice: ' . $gateErr->getMessage());
+                    $attendanceGate = [
+                        'allowed' => $proofStatus === 'Served',
+                        'code' => $proofStatus === 'Served' ? 'SERVICE_CONFIRMED' : 'SERVICE_NOT_CONFIRMED',
+                        'message' => $proofStatus === 'Served' ? '' : 'Record the Summons Return before checking in parties.',
+                    ];
+                }
+            }
+
             $attemptNum = !empty($h['mediation_attempt']) ? (int) $h['mediation_attempt'] : $index;
             $sessionNumber = $stageType === 'Mediation'
                 ? sprintf('Mediation %d', $attemptNum)
@@ -1003,6 +1025,7 @@ class CaseStage
                 'attendance_notes' => $h['attendance_notes'],
                 'remarks' => $h['remarks'],
                 'proof_of_service_status' => $proofStatus,
+                'attendance_gate' => $attendanceGate,
                 'minutes_id' => $h['minute_id'] ? (int) $h['minute_id'] : null,
                 'minutes_status' => $h['minutes_status'] ?: 'Not Recorded',
                 'session_outcome' => $h['session_outcome'] ?: 'Pending',
