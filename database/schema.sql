@@ -13,21 +13,21 @@ SET FOREIGN_KEY_CHECKS = 0;
 -- ACCESS CONTROL
 -- =====================================================
 
-CREATE TABLE roles (
+CREATE TABLE IF NOT EXISTS roles (
     role_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     role_name VARCHAR(100) NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_roles_role_name (role_name)
 ) ENGINE=InnoDB;
 
-CREATE TABLE permissions (
+CREATE TABLE IF NOT EXISTS permissions (
     permission_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     permission_name VARCHAR(150) NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_permissions_permission_name (permission_name)
 ) ENGINE=InnoDB;
 
-CREATE TABLE role_permissions (
+CREATE TABLE IF NOT EXISTS role_permissions (
     role_id INT UNSIGNED NOT NULL,
     permission_id INT UNSIGNED NOT NULL,
     PRIMARY KEY (role_id, permission_id),
@@ -37,7 +37,7 @@ CREATE TABLE role_permissions (
         FOREIGN KEY (permission_id) REFERENCES permissions (permission_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     user_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     first_name VARCHAR(100) NOT NULL,
     middle_name VARCHAR(100) NULL,
@@ -69,7 +69,7 @@ CREATE TABLE users (
         FOREIGN KEY (role_id) REFERENCES roles (role_id) ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 
-CREATE TABLE password_reset_tokens (
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
     reset_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id INT UNSIGNED NOT NULL,
     token_hash CHAR(64) NOT NULL,
@@ -82,7 +82,7 @@ CREATE TABLE password_reset_tokens (
         FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
-CREATE TABLE login_logs (
+CREATE TABLE IF NOT EXISTS login_logs (
     log_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id INT UNSIGNED NULL,
     login_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -93,7 +93,7 @@ CREATE TABLE login_logs (
         FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
-CREATE TABLE audit_trails (
+CREATE TABLE IF NOT EXISTS audit_trails (
     audit_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id INT UNSIGNED NULL,
     action VARCHAR(255) NOT NULL,
@@ -106,7 +106,7 @@ CREATE TABLE audit_trails (
         FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
-CREATE TABLE system_settings (
+CREATE TABLE IF NOT EXISTS system_settings (
     setting_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     setting_key VARCHAR(64) NOT NULL UNIQUE,
     setting_value TEXT NOT NULL,
@@ -119,7 +119,7 @@ CREATE TABLE system_settings (
 -- =====================================================
 
 -- Resident profiles / directory (stores first name, middle name, last name, and address to avoid misreporting persons in complaints; not user login accounts)
-CREATE TABLE residents (
+CREATE TABLE IF NOT EXISTS residents (
     resident_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     first_name VARCHAR(100) NOT NULL,
     middle_name VARCHAR(100) NULL,
@@ -147,7 +147,7 @@ CREATE TABLE residents (
     KEY idx_residents_jurisdiction (barangay, is_tenant)
 ) ENGINE=InnoDB;
 
-CREATE TABLE complaint_categories (
+CREATE TABLE IF NOT EXISTS complaint_categories (
     category_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     category_name VARCHAR(255) NOT NULL,
     tagalog_name VARCHAR(150) NULL,
@@ -159,7 +159,7 @@ CREATE TABLE complaint_categories (
     UNIQUE KEY uq_complaint_categories_name (category_name)
 ) ENGINE=InnoDB;
 
-CREATE TABLE complaints (
+CREATE TABLE IF NOT EXISTS complaints (
     complaint_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     -- Assigned immediately after insert by the model so database-generated IDs remain race-safe.
     complaint_number VARCHAR(50) NULL,
@@ -208,7 +208,7 @@ CREATE TABLE complaints (
         FOREIGN KEY (encoded_by) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
-CREATE TABLE complaint_parties (
+CREATE TABLE IF NOT EXISTS complaint_parties (
     party_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     complaint_id INT UNSIGNED NOT NULL,
     resident_id INT UNSIGNED NOT NULL,
@@ -243,7 +243,7 @@ CREATE TABLE complaint_parties (
 
 -- Preliminary intake eligibility assessment. It records screening facts and is
 -- not a substitute for the authorized legal review of a complaint.
-CREATE TABLE complaint_intake_screenings (
+CREATE TABLE IF NOT EXISTS complaint_intake_screenings (
     screening_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     complaint_id INT UNSIGNED NOT NULL,
     party_is_government TINYINT(1) NOT NULL DEFAULT 0,
@@ -267,7 +267,7 @@ CREATE TABLE complaint_intake_screenings (
     CONSTRAINT fk_cis_user FOREIGN KEY (screened_by) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
-CREATE TABLE paanyaya_sessions (
+CREATE TABLE IF NOT EXISTS paanyaya_sessions (
     session_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     complaint_id INT UNSIGNED NOT NULL,
     invitee_name VARCHAR(255) NULL,
@@ -290,6 +290,7 @@ CREATE TABLE paanyaya_sessions (
     actual_start_time DATETIME NULL,
     actual_end_time DATETIME NULL,
     queue_status ENUM('Waiting', 'Ready', 'In_Session', 'Standby', 'Concluded') NOT NULL DEFAULT 'Waiting',
+    queue_order INT UNSIGNED NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     KEY idx_paanyaya_sessions_complaint (complaint_id),
@@ -316,11 +317,28 @@ CREATE TABLE IF NOT EXISTS paanyayas (
     salaysay TEXT NULL,
     complainant_attended ENUM('Present', 'Absent') NULL,
     invitee_attended ENUM('Present', 'Absent') NULL,
+    complainant_resident_id INT UNSIGNED NULL,
+    complainant_address VARCHAR(255) NULL,
+    complainant_purok VARCHAR(100) NULL,
+    complainant_contact_no VARCHAR(50) NULL,
+    complainant_email VARCHAR(150) NULL,
+    invitee_resident_id INT UNSIGNED NULL,
+    invitee_address VARCHAR(255) NULL,
+    invitee_purok VARCHAR(100) NULL,
+    invitee_contact_no VARCHAR(50) NULL,
+    invitee_email VARCHAR(150) NULL,
+    complainant_latitude DECIMAL(10,7) NULL,
+    complainant_longitude DECIMAL(10,7) NULL,
+    invitee_latitude DECIMAL(10,7) NULL,
+    invitee_longitude DECIMAL(10,7) NULL,
+    location_latitude DECIMAL(10,7) NULL,
+    location_longitude DECIMAL(10,7) NULL,
     dialogue_notes TEXT NULL,
     attendance_recorded_at DATETIME NULL,
     escalated_to_complaint_id INT UNSIGNED NULL,
     pdf_path VARCHAR(255) NULL,
     scheduled_by INT UNSIGNED NULL,
+    queue_order INT UNSIGNED NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     KEY idx_paanyayas_complaint (complaint_id),
@@ -331,7 +349,7 @@ CREATE TABLE IF NOT EXISTS paanyayas (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Legacy compatibility record used alongside the newer paanyayas flow.
-CREATE TABLE complaint_paanyaya (
+CREATE TABLE IF NOT EXISTS complaint_paanyaya (
     paanyaya_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     complaint_id INT UNSIGNED NOT NULL,
     invitee_name VARCHAR(255) NULL,
@@ -399,8 +417,44 @@ CREATE TABLE IF NOT EXISTS paanyaya_minutes (
     CONSTRAINT fk_pm_complaint FOREIGN KEY (complaint_id) REFERENCES complaints (complaint_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Recurring Pangkat duty rosters. These are provisioned with the database,
+-- not lazily from a user request, so deployments remain deterministic.
+CREATE TABLE IF NOT EXISTS lupon_duty_schedules (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    duty_day ENUM('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday') NOT NULL DEFAULT 'Wednesday',
+    start_time TIME NOT NULL DEFAULT '08:00:00',
+    end_time TIME NOT NULL DEFAULT '17:00:00',
+    notes VARCHAR(255) NULL,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_lupon_duty_user (user_id),
+    KEY idx_lupon_duty_day (duty_day),
+    CONSTRAINT fk_lupon_duty_user FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE complaint_scanned_documents (
+CREATE TABLE IF NOT EXISTS pangkat_roster_groups (
+    group_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    group_name VARCHAR(100) NOT NULL,
+    duty_day ENUM('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday') NOT NULL,
+    chairman_id INT UNSIGNED NOT NULL,
+    secretary_id INT UNSIGNED NOT NULL,
+    member_id INT UNSIGNED NOT NULL,
+    station VARCHAR(150) NOT NULL DEFAULT 'Barangay Hall - Lupon Court Room',
+    notes VARCHAR(255) NULL,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_pangkat_roster_duty_day (duty_day),
+    KEY idx_pangkat_roster_active (is_active),
+    CONSTRAINT fk_pangkat_roster_chair FOREIGN KEY (chairman_id) REFERENCES users (user_id) ON DELETE RESTRICT,
+    CONSTRAINT fk_pangkat_roster_secretary FOREIGN KEY (secretary_id) REFERENCES users (user_id) ON DELETE RESTRICT,
+    CONSTRAINT fk_pangkat_roster_member FOREIGN KEY (member_id) REFERENCES users (user_id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+CREATE TABLE IF NOT EXISTS complaint_scanned_documents (
     doc_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     complaint_id INT UNSIGNED NOT NULL,
     case_id INT UNSIGNED NULL,
@@ -420,7 +474,7 @@ CREATE TABLE complaint_scanned_documents (
     CONSTRAINT fk_csd_user FOREIGN KEY (uploaded_by) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
-CREATE TABLE complaint_attachments (
+CREATE TABLE IF NOT EXISTS complaint_attachments (
     attachment_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     complaint_id INT UNSIGNED NOT NULL,
     file_name VARCHAR(255) NOT NULL,
@@ -432,7 +486,7 @@ CREATE TABLE complaint_attachments (
         FOREIGN KEY (complaint_id) REFERENCES complaints (complaint_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
-CREATE TABLE incident_locations (
+CREATE TABLE IF NOT EXISTS incident_locations (
     location_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     complaint_id INT UNSIGNED NOT NULL,
     latitude DECIMAL(10, 8) NULL,
@@ -453,7 +507,7 @@ CREATE TABLE incident_locations (
 -- CASE LIFECYCLE
 -- =====================================================
 
-CREATE TABLE cases (
+CREATE TABLE IF NOT EXISTS cases (
     case_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     complaint_id INT UNSIGNED NOT NULL,
     -- Assigned immediately after insert by the model so database-generated IDs remain race-safe.
@@ -479,7 +533,7 @@ CREATE TABLE cases (
         FOREIGN KEY (complaint_id) REFERENCES complaints (complaint_id) ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 
-CREATE TABLE case_transmittals (
+CREATE TABLE IF NOT EXISTS case_transmittals (
     transmittal_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     case_id INT UNSIGNED NOT NULL,
     transmittal_number VARCHAR(50) NOT NULL UNIQUE,
@@ -503,7 +557,7 @@ CREATE TABLE case_transmittals (
     CONSTRAINT fk_case_transmittals_case FOREIGN KEY (case_id) REFERENCES cases(case_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
-CREATE TABLE case_history (
+CREATE TABLE IF NOT EXISTS case_history (
     history_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     case_id INT UNSIGNED NOT NULL,
     status ENUM('Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Dismissed', 'CFA Issued', 'Archived', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated', 'Breached') NOT NULL,
@@ -517,7 +571,7 @@ CREATE TABLE case_history (
         FOREIGN KEY (updated_by) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
-CREATE TABLE case_stages (
+CREATE TABLE IF NOT EXISTS case_stages (
     stage_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     case_id INT UNSIGNED NOT NULL,
     stage_type ENUM('Mediation', 'Conciliation', 'Arbitration') NOT NULL,
@@ -539,7 +593,7 @@ CREATE TABLE case_stages (
     CONSTRAINT fk_cs_officer FOREIGN KEY (referring_officer_id) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
-CREATE TABLE stage_transitions (
+CREATE TABLE IF NOT EXISTS stage_transitions (
     transition_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     case_id INT UNSIGNED NOT NULL,
     stage_type ENUM('Mediation', 'Conciliation', 'Arbitration') NOT NULL,
@@ -554,7 +608,7 @@ CREATE TABLE stage_transitions (
     CONSTRAINT fk_st_user FOREIGN KEY (performed_by) REFERENCES users (user_id) ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 
-CREATE TABLE case_deadlines (
+CREATE TABLE IF NOT EXISTS case_deadlines (
     deadline_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     case_id INT UNSIGNED NOT NULL,
     deadline_type VARCHAR(100) NOT NULL,
@@ -574,7 +628,7 @@ CREATE TABLE case_deadlines (
 -- An active user with the "Lupon Member" role is eligible for assignment.
 -- =====================================================
 
-CREATE TABLE case_assignments (
+CREATE TABLE IF NOT EXISTS case_assignments (
     assignment_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     case_id INT UNSIGNED NOT NULL,
     -- References the user account of an active Lupon Member.
@@ -591,7 +645,7 @@ CREATE TABLE case_assignments (
         FOREIGN KEY (member_id) REFERENCES users (user_id) ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 
-CREATE TABLE pangkat_groups (
+CREATE TABLE IF NOT EXISTS pangkat_groups (
     pangkat_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     case_id INT UNSIGNED NOT NULL,
     formation_date DATE NOT NULL,
@@ -615,7 +669,7 @@ CREATE TABLE pangkat_groups (
         FOREIGN KEY (case_id) REFERENCES cases (case_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
-CREATE TABLE pangkat_members (
+CREATE TABLE IF NOT EXISTS pangkat_members (
     pangkat_member_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     pangkat_id INT UNSIGNED NOT NULL,
     member_id INT UNSIGNED NOT NULL,
@@ -633,7 +687,7 @@ CREATE TABLE pangkat_members (
         FOREIGN KEY (member_id) REFERENCES users (user_id) ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 
-CREATE TABLE pangkat_extensions (
+CREATE TABLE IF NOT EXISTS pangkat_extensions (
     extension_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     pangkat_id INT UNSIGNED NOT NULL,
     case_id INT UNSIGNED NOT NULL,
@@ -650,7 +704,7 @@ CREATE TABLE pangkat_extensions (
     KEY idx_pe_case (case_id)
 ) ENGINE=InnoDB;
 
-CREATE TABLE pangkat_challenges (
+CREATE TABLE IF NOT EXISTS pangkat_challenges (
     challenge_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     pangkat_id INT UNSIGNED NOT NULL,
     case_id INT UNSIGNED NOT NULL,
@@ -675,7 +729,7 @@ CREATE TABLE pangkat_challenges (
     KEY idx_pc_case (case_id)
 ) ENGINE=InnoDB;
 
-CREATE TABLE hearings (
+CREATE TABLE IF NOT EXISTS hearings (
     hearing_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     case_id INT UNSIGNED NOT NULL,
     hearing_type ENUM('Initial Hearing', 'Mediation', 'Conciliation', 'Arbitration', 'Show Cause (Complainant)', 'Show Cause (Respondent)') NOT NULL,
@@ -712,6 +766,7 @@ CREATE TABLE hearings (
     respondent_attendance ENUM('Present', 'Absent', 'Excused', 'Pending', 'Late') NULL DEFAULT 'Pending',
     attendance_recorded_at DATETIME NULL,
     attendance_notes TEXT NULL,
+    queue_order INT UNSIGNED NOT NULL DEFAULT 0,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     KEY idx_hearings_case_id_date (case_id, hearing_date),
@@ -727,7 +782,7 @@ CREATE TABLE hearings (
     CONSTRAINT fk_hearings_reschedule_approved_by FOREIGN KEY (reschedule_approved_by) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
-CREATE TABLE mediation_commencements (
+CREATE TABLE IF NOT EXISTS mediation_commencements (
     commencement_id INT NOT NULL AUTO_INCREMENT,
     case_id INT NOT NULL,
     hearing_id INT NOT NULL,
@@ -743,7 +798,7 @@ CREATE TABLE mediation_commencements (
     KEY idx_mediation_commencement_created_by (created_by)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE hearing_minutes (
+CREATE TABLE IF NOT EXISTS hearing_minutes (
     minute_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     hearing_id INT UNSIGNED NOT NULL UNIQUE,
     case_id INT UNSIGNED NOT NULL,
@@ -795,7 +850,7 @@ CREATE TABLE IF NOT EXISTS hearing_minutes_documents (
     INDEX (case_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE summon_deliveries (
+CREATE TABLE IF NOT EXISTS summon_deliveries (
     delivery_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     hearing_id INT UNSIGNED NULL,
     case_id INT UNSIGNED NULL,
@@ -835,7 +890,7 @@ CREATE TABLE summon_deliveries (
     CONSTRAINT fk_summon_deliveries_case FOREIGN KEY (case_id) REFERENCES cases (case_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
-CREATE TABLE show_cause_evaluations (
+CREATE TABLE IF NOT EXISTS show_cause_evaluations (
     evaluation_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     hearing_id INT UNSIGNED NOT NULL,
     case_id INT UNSIGNED NOT NULL,
@@ -856,7 +911,7 @@ CREATE TABLE show_cause_evaluations (
     CONSTRAINT fk_show_cause_evaluated_by FOREIGN KEY (evaluated_by) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
-CREATE TABLE hearing_attendance (
+CREATE TABLE IF NOT EXISTS hearing_attendance (
     attendance_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     hearing_id INT UNSIGNED NOT NULL,
     resident_id INT UNSIGNED NOT NULL,
@@ -881,7 +936,7 @@ CREATE TABLE hearing_attendance (
 ) ENGINE=InnoDB;
 
 
-CREATE TABLE hearing_nonappearances (
+CREATE TABLE IF NOT EXISTS hearing_nonappearances (
     nonappearance_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     hearing_id INT UNSIGNED NOT NULL,
     resident_id INT UNSIGNED NOT NULL,
@@ -901,7 +956,7 @@ CREATE TABLE hearing_nonappearances (
     CONSTRAINT fk_hearing_nonappearances_resolved_by FOREIGN KEY (resolved_by) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
-CREATE TABLE deadline_alert_log (
+CREATE TABLE IF NOT EXISTS deadline_alert_log (
     deadline_alert_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     deadline_id INT UNSIGNED NOT NULL,
     alert_type ENUM('Due Soon', 'Overdue') NOT NULL,
@@ -910,7 +965,7 @@ CREATE TABLE deadline_alert_log (
     CONSTRAINT fk_deadline_alert_log_deadline FOREIGN KEY (deadline_id) REFERENCES case_deadlines (deadline_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
-CREATE TABLE scheduling_holidays (
+CREATE TABLE IF NOT EXISTS scheduling_holidays (
     holiday_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     holiday_date DATE NOT NULL UNIQUE,
     holiday_name VARCHAR(150) NOT NULL,
@@ -919,7 +974,7 @@ CREATE TABLE scheduling_holidays (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
-CREATE TABLE venue_unavailabilities (
+CREATE TABLE IF NOT EXISTS venue_unavailabilities (
     unavailability_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     venue VARCHAR(255) NOT NULL,
     start_time DATETIME NOT NULL,
@@ -935,7 +990,7 @@ CREATE TABLE venue_unavailabilities (
 -- RESOLUTION, DOCUMENTS, AND DELIVERY
 -- =====================================================
 
-CREATE TABLE settlements (
+CREATE TABLE IF NOT EXISTS settlements (
     settlement_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     case_id INT UNSIGNED NOT NULL,
     settlement_date DATE NOT NULL,
@@ -975,7 +1030,7 @@ CREATE TABLE settlements (
         FOREIGN KEY (repudiated_by) REFERENCES residents (resident_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
-CREATE TABLE execution_proceedings (
+CREATE TABLE IF NOT EXISTS execution_proceedings (
     execution_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     case_id INT UNSIGNED NOT NULL,
     settlement_id INT UNSIGNED NOT NULL,
@@ -997,7 +1052,7 @@ CREATE TABLE execution_proceedings (
     CONSTRAINT fk_exec_settlements FOREIGN KEY (settlement_id) REFERENCES settlements (settlement_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE settlement_installments (
+CREATE TABLE IF NOT EXISTS settlement_installments (
     installment_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     settlement_id INT UNSIGNED NOT NULL,
     installment_number INT UNSIGNED NOT NULL,
@@ -1018,7 +1073,7 @@ CREATE TABLE settlement_installments (
     CONSTRAINT fk_si_recorded_by FOREIGN KEY (recorded_by) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
-CREATE TABLE settlement_executions (
+CREATE TABLE IF NOT EXISTS settlement_executions (
     execution_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     settlement_id INT UNSIGNED NOT NULL,
     case_id INT UNSIGNED NOT NULL,
@@ -1043,7 +1098,7 @@ CREATE TABLE settlement_executions (
     CONSTRAINT fk_se_officer FOREIGN KEY (officer_assigned) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
-CREATE TABLE arbitration_records (
+CREATE TABLE IF NOT EXISTS arbitration_records (
     arbitration_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     case_id INT UNSIGNED NOT NULL,
     agreement_date DATE NULL,
@@ -1056,7 +1111,7 @@ CREATE TABLE arbitration_records (
         FOREIGN KEY (case_id) REFERENCES cases (case_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
-CREATE TABLE cfa_records (
+CREATE TABLE IF NOT EXISTS cfa_records (
     cfa_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     case_id INT UNSIGNED NOT NULL,
     cfa_type ENUM('KP Form 20', 'KP Form 20-A', 'KP Form 20-B') NOT NULL DEFAULT 'KP Form 20',
@@ -1069,7 +1124,7 @@ CREATE TABLE cfa_records (
         FOREIGN KEY (case_id) REFERENCES cases (case_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
-CREATE TABLE document_templates (
+CREATE TABLE IF NOT EXISTS document_templates (
     template_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     template_name VARCHAR(150) NOT NULL,
     description TEXT NULL,
@@ -1078,7 +1133,7 @@ CREATE TABLE document_templates (
     UNIQUE KEY uq_document_templates_name (template_name)
 ) ENGINE=InnoDB;
 
-CREATE TABLE generated_documents (
+CREATE TABLE IF NOT EXISTS generated_documents (
     document_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     case_id INT UNSIGNED NOT NULL,
     template_id INT UNSIGNED NOT NULL,
@@ -1097,7 +1152,7 @@ CREATE TABLE generated_documents (
         FOREIGN KEY (generated_by) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
-CREATE TABLE proof_of_service (
+CREATE TABLE IF NOT EXISTS proof_of_service (
     proof_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     case_id INT UNSIGNED NOT NULL,
     document_id INT UNSIGNED NULL,
@@ -1121,7 +1176,7 @@ CREATE TABLE proof_of_service (
 -- NOTIFICATIONS, AI, AND REPORTS
 -- =====================================================
 
-CREATE TABLE hearing_party_services (
+CREATE TABLE IF NOT EXISTS hearing_party_services (
     service_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     hearing_id INT UNSIGNED NOT NULL,
     resident_id INT UNSIGNED NOT NULL,
@@ -1144,7 +1199,7 @@ CREATE TABLE hearing_party_services (
     CONSTRAINT fk_hps_assigned FOREIGN KEY (assigned_to) REFERENCES users(user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
-CREATE TABLE hearing_explanations (
+CREATE TABLE IF NOT EXISTS hearing_explanations (
     explanation_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     hearing_id INT UNSIGNED NOT NULL,
     resident_id INT UNSIGNED NOT NULL,
@@ -1162,7 +1217,7 @@ CREATE TABLE hearing_explanations (
     CONSTRAINT fk_hex_creator FOREIGN KEY (created_by) REFERENCES users(user_id) ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 
-CREATE TABLE hearing_legal_actions (
+CREATE TABLE IF NOT EXISTS hearing_legal_actions (
     legal_action_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     hearing_id INT UNSIGNED NOT NULL,
     resident_id INT UNSIGNED NOT NULL,
@@ -1180,7 +1235,7 @@ CREATE TABLE hearing_legal_actions (
     CONSTRAINT fk_hla_creator FOREIGN KEY (created_by) REFERENCES users(user_id) ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 
-CREATE TABLE notifications (
+CREATE TABLE IF NOT EXISTS notifications (
     notification_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id INT UNSIGNED NOT NULL,
     title VARCHAR(255) NOT NULL,
@@ -1196,7 +1251,7 @@ CREATE TABLE notifications (
         FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
-CREATE TABLE ai_logs (
+CREATE TABLE IF NOT EXISTS ai_logs (
     ai_log_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id INT UNSIGNED NULL,
     feature ENUM('Chatbot', 'Narrative Generator') NOT NULL,
@@ -1208,7 +1263,7 @@ CREATE TABLE ai_logs (
         FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
-CREATE TABLE generated_reports (
+CREATE TABLE IF NOT EXISTS generated_reports (
     report_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     report_type VARCHAR(50) NOT NULL,
     generated_by INT UNSIGNED NULL,
@@ -1230,9 +1285,10 @@ INSERT INTO roles (role_name) VALUES
     ('Summons Server')
 ON DUPLICATE KEY UPDATE role_name = VALUES(role_name);
 
--- Initial local accounts. Each account uses the default password: password.
--- This creates one account for every role, except Lupon Member, which needs
--- three members for Pangkat assignment (Head, Secretary, and Member).
+-- Initial local accounts. Default strong seed password: PassTumana2026!
+-- Enforces AGAP security policy (min 12 chars, uppercase, lowercase, number, special char).
+-- Note: Punong Barangay (Administrator) is the Lupon Head (RA 7160 Sec. 399).
+-- Lupon Members form the Pangkat panel: Pangkat Chairman, Secretary, and Member (Sec. 404).
 -- Change or disable these accounts before deploying to production.
 INSERT INTO users (
     first_name,
@@ -1255,26 +1311,60 @@ SELECT
     seed.username,
     seed.email,
     seed.contact_no,
-    '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi',
+    '$2y$12$poLM7m4KluD/WLCixCJi8.TSKxaEIthqba6uIhZHiib62Bbu1bZnC',
     roles.role_id,
     'Active',
     1,
     1,
     'fil'
 FROM (
-    SELECT 'Barangay' AS first_name, 'Tumana' AS middle_name, 'Captain' AS last_name,
+    SELECT 'Akiko Lynne' AS first_name, 'M.' AS middle_name, 'Centeno' AS last_name,
            'admin' AS username, 'admin@agap.test' AS email, '09763198285' AS contact_no,
            'Administrator' AS role_name
-    UNION ALL SELECT 'Clerk', NULL, 'User', 'clerk', 'clerk@agap.test', NULL, 'Lupon Clerk'
-    UNION ALL SELECT 'Lupon', NULL, 'Head', 'luponhead', 'luponhead@agap.test', NULL, 'Lupon Member'
-    UNION ALL SELECT 'Lupon', NULL, 'Secretary', 'luponsecretary', 'luponsecretary@agap.test', NULL, 'Lupon Member'
-    UNION ALL SELECT 'Lupon', NULL, 'Member', 'luponmember', 'luponmember@agap.test', NULL, 'Lupon Member'
-    UNION ALL SELECT 'Summons', NULL, 'Server', 'summonsserver', 'summonsserver@agap.test', NULL, 'Summons Server'
+    UNION ALL SELECT 'Maria Clara', 'S.', 'Santos', 'clerk', 'clerk@agap.test', '09171234567', 'Lupon Clerk'
+    UNION ALL SELECT 'Juan', 'D.', 'Dela Cruz', 'pangkatchair', 'pangkatchair@agap.test', '09181234561', 'Lupon Member'
+    UNION ALL SELECT 'Lupon', 'D.', 'Head', 'luponhead', 'luponhead@agap.test', '09181234564', 'Lupon Member'
+    UNION ALL SELECT 'Elena', 'S.', 'Bautista', 'luponsecretary', 'luponsecretary@agap.test', '09181234562', 'Lupon Member'
+    UNION ALL SELECT 'Roberto', 'T.', 'Mercado', 'luponmember', 'luponmember@agap.test', '09181234563', 'Lupon Member'
+    UNION ALL SELECT 'Ricardo', 'G.', 'Dalisay', 'summonsserver', 'summonsserver@agap.test', '09191234567', 'Summons Server'
 ) AS seed
 INNER JOIN roles ON roles.role_name = seed.role_name
 WHERE NOT EXISTS (
     SELECT 1 FROM users WHERE users.username = seed.username
 );
+
+-- Default Pangkat duty panel and lupon schedule for fresh installations.
+INSERT INTO pangkat_roster_groups (
+    group_name, duty_day, chairman_id, secretary_id, member_id, station, notes, is_active
+)
+SELECT
+    'Team Alpha (Wednesday)', 'Wednesday', u_chair.user_id, u_sec.user_id, u_mem.user_id,
+    'Barangay Hall - Lupon Court Room', 'Primary Wednesday Conciliation Panel', 1
+FROM users u_chair
+CROSS JOIN users u_sec
+CROSS JOIN users u_mem
+WHERE u_chair.username = 'pangkatchair'
+  AND u_sec.username = 'luponsecretary'
+  AND u_mem.username = 'luponmember'
+  AND NOT EXISTS (
+      SELECT 1 FROM pangkat_roster_groups WHERE group_name = 'Team Alpha (Wednesday)'
+  );
+
+INSERT INTO lupon_duty_schedules (user_id, duty_day, start_time, end_time, is_active)
+SELECT u.user_id, 'Wednesday', '08:00:00', '17:00:00', 1
+FROM users u
+WHERE u.username IN ('pangkatchair', 'luponsecretary', 'luponmember')
+ON DUPLICATE KEY UPDATE duty_day = VALUES(duty_day), is_active = 1;
+
+-- Initial resident profiles for Barangay Tumana directory & immediate dispute intake.
+INSERT INTO residents (
+    resident_id, first_name, middle_name, last_name, gender, civil_status, occupation,
+    contact_no, email, address, house_street, barangay, city_municipality, residency_verified
+) VALUES
+    (1, 'Jose', 'P.', 'Rizal', 'Male', 'Married', 'Property Owner', '09170000001', 'jose.rizal@tumana.test', '123 J.P. Rizal St., Purok 1, Tumana, Marikina City', '123 J.P. Rizal St.', 'Tumana', 'Marikina City', 1),
+    (2, 'Andres', 'C.', 'Bonifacio', 'Male', 'Married', 'Building Contractor', '09170000002', 'andres.bonifacio@tumana.test', '456 Katipunan Ave., Purok 2, Tumana, Marikina City', '456 Katipunan Ave.', 'Tumana', 'Marikina City', 1),
+    (3, 'Gabriela', 'S.', 'Silang', 'Female', 'Single', 'Public School Teacher', '09170000003', 'gabriela.silang@tumana.test', '789 Silang St., Purok 3, Tumana, Marikina City', '789 Silang St.', 'Tumana', 'Marikina City', 1)
+ON DUPLICATE KEY UPDATE first_name = VALUES(first_name), last_name = VALUES(last_name);
 
 INSERT INTO complaint_categories (category_name, tagalog_name) VALUES
     ('Abandonment of a Minor (Arts. 276, 277) / Pagpapabaya sa Bata o Menor de Edad', 'Pagpapabaya sa Bata o Menor de Edad'),
@@ -1355,9 +1445,9 @@ INSERT INTO document_templates (template_name, description) VALUES
 ON DUPLICATE KEY UPDATE description = VALUES(description);
 
 INSERT INTO system_settings (setting_key, setting_value, description) VALUES
+    ('gemini_api_key', '', 'Google Gemini API Key for AI Narrative Refinement, OCR Scans, and Audio Transcription'),
+    ('gemini_model', 'gemini-3.8-flash', 'Active Gemini AI Model'),
     ('captain_name', 'HON. AKIKO LYNNE CENTENO', 'Official Name of Punong Barangay'),
-    ('daily_hearing_capacity', '8', 'Maximum total hearings allowed per day across the barangay (max 8)'),
-    ('officer_daily_hearing_capacity', '6', 'Maximum hearings per presiding officer per day (5-8)'),
     ('mediation_default_duration_min', '45', 'Default duration for mediation session in minutes (30-60)'),
     ('mediation_max_duration_min', '60', 'Maximum duration before logged justification is required for mediation'),
     ('conciliation_default_duration_min', '60', 'Default duration for conciliation session in minutes (45-90)'),
@@ -1366,7 +1456,11 @@ INSERT INTO system_settings (setting_key, setting_value, description) VALUES
     ('party_reschedule_limit', '2', 'Maximum allowed reschedules per party before authorized review is required (1-2)'),
     ('summons_max_attempts', '6', 'Standard cap for summons and officer return delivery attempts before CFA eligibility (1-6)'),
     ('summons_attempt_interval_days', '1', 'Minimum days between summons service attempts (1-3)'),
-    ('mediation_day_of_week', 'Tue', 'Dedicated day of week for Punong Barangay mediation hearings (Tuesday Only rule)')
+    ('mediation_day_of_week', 'Tue', 'Dedicated day of week for Punong Barangay mediation hearings (Tuesday Only rule)'),
+    ('working_hours_start', '08:00', 'Fixed regular hearing-hours opening time'),
+    ('working_hours_end', '17:00', 'Fixed regular hearing-hours closing time'),
+    ('mediation_hours_start', '08:00', 'Fixed formal mediation opening time'),
+    ('mediation_hours_end', '17:00', 'Fixed formal mediation closing time')
 ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value);
 
 
