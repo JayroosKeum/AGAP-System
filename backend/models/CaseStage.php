@@ -956,21 +956,8 @@ class CaseStage
             $partyStmt->execute([$hId, $hId, $hId, $caseId]);
             $parties = $partyStmt->fetchAll(PDO::FETCH_ASSOC);
 
-            // Compute proof of service indicator
-            $proofStatus = 'Pending Delivery';
-            $servedAny = false;
-            foreach ($parties as $p) {
-                if ((int) $p['service_confirmed_count'] > 0) {
-                    $servedAny = true;
-                    break;
-                }
-            }
-            if ($servedAny || ($stageType === 'Mediation' && $index >= 2)) {
-                $proofStatus = 'Served';
-            }
-
             // Summons-return gate: attendance check-in unlocks only after an
-            // appropriate Officer's Return (successful service) is logged.
+            // appropriate Officer's Return (successful service) is logged for all required parties.
             $attendanceGate = ['allowed' => true, 'code' => 'NOT_MEDIATION', 'message' => ''];
             if ($stageType === 'Mediation') {
                 try {
@@ -984,12 +971,13 @@ class CaseStage
                 } catch (Throwable $gateErr) {
                     error_log('CaseStage attendance gate notice: ' . $gateErr->getMessage());
                     $attendanceGate = [
-                        'allowed' => $proofStatus === 'Served',
-                        'code' => $proofStatus === 'Served' ? 'SERVICE_CONFIRMED' : 'SERVICE_NOT_CONFIRMED',
-                        'message' => $proofStatus === 'Served' ? '' : 'Record the Summons Return before checking in parties.',
+                        'allowed' => false,
+                        'code' => 'SERVICE_NOT_CONFIRMED',
+                        'message' => 'Record the Summons Return before checking in parties.',
                     ];
                 }
             }
+            $proofStatus = (!empty($attendanceGate['allowed']) || ($stageType !== 'Mediation')) ? 'Served' : 'Pending Delivery';
 
             $attemptNum = !empty($h['mediation_attempt']) ? (int) $h['mediation_attempt'] : $index;
             $sessionNumber = $stageType === 'Mediation'

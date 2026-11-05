@@ -1830,8 +1830,12 @@ async function submitOfficerReturn(event) {
 
         const caseId = document.getElementById('returnCaseId')?.value;
         await loadCases();
-        if (caseId && activeExpandedCaseId === String(caseId)) {
-            await renderExpandedCaseView(caseId);
+        const targetCaseId = caseId || activeExpandedCaseId;
+        if (targetCaseId) {
+            await renderExpandedCaseView(targetCaseId);
+            if (typeof renderCaseServiceTimeline === 'function') {
+                await renderCaseServiceTimeline(targetCaseId);
+            }
         }
     } catch (err) {
         window.agapNotify?.(err.message, 'error');

@@ -134,6 +134,18 @@ final class SummonServiceGate
             }
         }
 
+        require_once __DIR__ . '/SummonDeliveryService.php';
+        $serviceCheck = (new SummonDeliveryService($this->db))->checkServiceStatus($hearingId);
+        if (!$serviceCheck['allowed']) {
+            return $this->result(
+                false,
+                $serviceCheck['status'] ?? 'SERVICE_NOT_CONFIRMED',
+                $serviceCheck['message'] ?? 'Mediation attendance locked until summons returns are recorded.',
+                $hearing,
+                [],
+                false
+            );
+        }
         $attempts = $this->deliveryAttempts((int) $hearing['case_id'], $hearingId);
         if ($attempts === []) {
             return $this->result(

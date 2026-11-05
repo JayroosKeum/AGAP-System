@@ -471,10 +471,7 @@ class Summons
                     $caseId,
                     (int) $primaryComplainant['resident_id'],
                     $kp8DocumentId,
-                    $primaryComplainant['full_name'] ?? null,
-                    $userId,
-                    $userId
-                ]);
+                    $primaryComplainant['full_name'] ?? null]);
             }
 
             if ($primaryRespondent) {

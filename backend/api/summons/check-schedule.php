@@ -115,6 +115,31 @@ if ($complaintId || $getWindow) {
 
     $dailyCounts = $summons->getDailyHearingCountsInRange($rangeStart, $rangeEnd, $caseId, $hearingType);
 
+    // Dynamically calculate slot capacity from operating hours & session duration in Settings
+    $medStartMin = (int)date('H', strtotime($medHoursStart)) * 60 + (int)date('i', strtotime($medHoursStart));
+    $medEndMin = (int)date('H', strtotime($medHoursEnd)) * 60 + (int)date('i', strtotime($medHoursEnd));
+    $medDur = max(15, $medDefaultDuration);
+    $dynamicMedSlots = 0;
+    for ($m = $medStartMin; $m <= $medEndMin; $m += $medDur) {
+        $dynamicMedSlots++;
+    }
+    $medMaxSlots = ($dynamicMedSlots > 0) ? min($dailyCap, $dynamicMedSlots) : $dailyCap;
+
+    $workStartMin = (int)date('H', strtotime($workStart)) * 60 + (int)date('i', strtotime($workStart));
+    $workEndMin = (int)date('H', strtotime($workEnd)) * 60 + (int)date('i', strtotime($workEnd));
+    $concilDur = max(15, $concilDefaultDuration);
+    $fullDayConcilSlots = 0;
+    for ($m = $workStartMin; $m <= $workEndMin - $concilDur; $m += $concilDur) {
+        if ($m >= 720 && $m < 780) continue;
+        $fullDayConcilSlots++;
+    }
+    $tueMorningConcilSlots = 0;
+    for ($m = $workStartMin; $m <= 720 - $concilDur; $m += $concilDur) {
+        $tueMorningConcilSlots++;
+    }
+    $concilMaxFull = min($dailyCap, $fullDayConcilSlots);
+    $concilMaxTue = min((int)floor($dailyCap / 2), $tueMorningConcilSlots);
+
     $days = [];
     $cur = new DateTimeImmutable($rangeStart);
     $endDt = new DateTimeImmutable($rangeEnd);
@@ -140,12 +165,12 @@ $isTuesday = ($dayOfWeek === 2);
                 $isFull = false;
                 $canSchedule = false;
             } elseif ($curDayCode === 'Tue') {
-                $maxSlots = max(1, (int) floor($dailyCap / 2));
+                $maxSlots = $concilMaxTue;
                 $avail = max(0, $maxSlots - $booked);
                 $isFull = ($booked >= $maxSlots);
                 $canSchedule = ($dStr >= $todayStr) && !$isFull;
             } else {
-                $maxSlots = $dailyCap;
+                $maxSlots = $concilMaxFull;
                 $avail = max(0, $maxSlots - $booked);
                 $isFull = ($booked >= $maxSlots);
                 $canSchedule = ($dStr >= $todayStr) && !$isFull;
@@ -155,7 +180,7 @@ $isTuesday = ($dayOfWeek === 2);
             $isSatBlocked = ($dayOfWeek === 6 && !$isMedDay);
             $isSunBlocked = ($dayOfWeek === 7);
             $canMediate = ($isMedDay && !$isSatBlocked && !$isSunBlocked && !$isHoliday);
-            $maxSlots = $canMediate ? $dailyCap : 0;
+            $maxSlots = $canMediate ? $medMaxSlots : 0;
             $avail = max(0, $maxSlots - $booked);
             $isFull = ($maxSlots > 0 && $booked >= $maxSlots);
             $isPast = ($dStr < $todayStr);
@@ -250,7 +275,9 @@ if ($hearingType === 'Mediation') {
         exit;
     }
     if ($time !== '') {
-        $timePart = substr($time, 0, 5);
+        $tsTime = strtotime($time);
+        $timePart = ($tsTime !== false) ? date('H:i', $tsTime) : substr($time, 0, 5);
+        $time = $timePart;
         if ($timePart < $medHoursStart || $timePart > $medHoursEnd) {
             $startFmt = date('g:i A', strtotime($medHoursStart));
             $endFmt = date('g:i A', strtotime($medHoursEnd));
@@ -300,14 +327,14 @@ if ($hearingType === 'Conciliation') {
     if ($isWeekend || $isNonWorkingDay) {
         $maxSlots = 0;
     } elseif ($curDayCode === 'Tue') {
-        $maxSlots = max(1, (int) floor($dailyCap / 2));
+        $maxSlots = $concilMaxTue;
     } else {
-        $maxSlots = $dailyCap;
+        $maxSlots = $concilMaxFull;
     }
 } else {
     $isSatBlocked = ($dayOfWeek === 6 && !$isCurMedDay);
     $isSunBlocked = ($dayOfWeek === 7);
-    $maxSlots = ($isCurMedDay && !$isSatBlocked && !$isSunBlocked && !$isNonWorkingDay) ? $dailyCap : 0;
+    $maxSlots = ($isCurMedDay && !$isSatBlocked && !$isSunBlocked && !$isNonWorkingDay) ? $medMaxSlots : 0;
 }
 
 $scheduledMediations = $summons->getScheduledHearingsForDate($date, $hearingType, $caseId);

@@ -266,26 +266,45 @@ class HearingController
         $defaultSlots = [];
 
         if ($hearingType === 'Mediation') {
-            $ruleHint = 'Mediation sessions are held on working days (Monday to Friday, 8:00 AM – 12:00 PM & 1:00 PM – 5:00 PM) before the Punong Barangay.';
-            $defaultSlots = [
-                ['time' => '08:00', 'label' => '8:00 AM (Target Call Time)'],
-                ['time' => '08:30', 'label' => '8:30 AM (Target Call Time)'],
-                ['time' => '09:00', 'label' => '9:00 AM (Target Call Time)'],
-                ['time' => '09:30', 'label' => '9:30 AM (Target Call Time)'],
-                ['time' => '10:00', 'label' => '10:00 AM (Target Call Time)'],
-                ['time' => '10:30', 'label' => '10:30 AM (Target Call Time)'],
-                ['time' => '11:00', 'label' => '11:00 AM (Target Call Time)'],
-                ['time' => '11:30', 'label' => '11:30 AM (Target Call Time)'],
-                ['time' => '13:00', 'label' => '1:00 PM (Target Call Time)'],
-                ['time' => '13:30', 'label' => '1:30 PM (Target Call Time)'],
-                ['time' => '14:00', 'label' => '2:00 PM (Target Call Time)'],
-                ['time' => '14:30', 'label' => '2:30 PM (Target Call Time)'],
-                ['time' => '15:00', 'label' => '3:00 PM (Target Call Time)'],
-                ['time' => '15:30', 'label' => '3:30 PM (Target Call Time)'],
-                ['time' => '16:00', 'label' => '4:00 PM (Target Call Time)'],
-                ['time' => '16:30', 'label' => '4:30 PM (Target Call Time)'],
+            require_once __DIR__ . '/../models/Setting.php';
+            $rawMedDays = Setting::getSetting('mediation_day_of_week', 'Tue');
+            $allowedMedDays = [];
+            if (is_string($rawMedDays)) {
+                $dec = json_decode($rawMedDays, true);
+                $allowedMedDays = is_array($dec) ? $dec : array_filter(array_map('trim', explode(',', $rawMedDays)));
+            } elseif (is_array($rawMedDays)) {
+                $allowedMedDays = $rawMedDays;
+            }
+            if (empty($allowedMedDays)) {
+                $allowedMedDays = ['Tue'];
+            }
+            $pluralNames = [
+                'Mon' => 'Mondays', 'Tue' => 'Tuesdays', 'Wed' => 'Wednesdays',
+                'Thu' => 'Thursdays', 'Fri' => 'Fridays', 'Sat' => 'Saturdays', 'Sun' => 'Sundays'
             ];
-            if ($dayOfWeek === 0 || $dayOfWeek === 6) {
+            $medDaysPlural = array_map(fn($c) => $pluralNames[$c] ?? $c, $allowedMedDays);
+            $medDaysLabel = implode(', ', $medDaysPlural);
+            $curDayCode = date('D', strtotime($targetDate));
+            $isMedDay = in_array($curDayCode, $allowedMedDays, true);
+
+            $isValidDay = $isMedDay;
+
+            $medHoursStart = Setting::getSetting('mediation_hours_start', '13:00');
+            $medHoursEnd = Setting::getSetting('mediation_hours_end', '16:30');
+            $startFmt = date('g:i A', strtotime($medHoursStart));
+            $endFmt = date('g:i A', strtotime($medHoursEnd));
+            $ruleHint = "Formal Mediation sessions before the Punong Barangay are held on designated mediation days ({$medDaysLabel}, {$startFmt} – {$endFmt}).";
+
+            $defaultSlots = [];
+            $curTime = strtotime($medHoursStart);
+            $endTime = strtotime($medHoursEnd);
+            while ($curTime <= $endTime) {
+                $tStr = date('H:i', $curTime);
+                $lbl = date('g:i A', $curTime) . ' (Target Call Time)';
+                $defaultSlots[] = ['time' => $tStr, 'label' => $lbl];
+                $curTime = strtotime('+30 minutes', $curTime);
+            }
+            if ($dayOfWeek === 0 || ($dayOfWeek === 6 && !$isMedDay)) {
                 $isValidDay = false;
             }
         } else {

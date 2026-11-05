@@ -824,7 +824,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                     <!-- Visual 15-Working-Day Calendar & Capacity Strip -->
                     <div id="summonVisualDatePickerContainer" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-top: 6px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.78rem; flex-wrap: wrap; gap: 6px;">
-                            <span style="font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.03em; font-size: 0.74rem;">
+                            <span id="schedVisualDeckTitle" style="font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.03em; font-size: 0.74rem;">
                                 Available Mediation Days (Max 8 Hearings/Day):
                             </span>
                             <div style="display: flex; gap: 10px; font-size: 0.72rem; flex-wrap: wrap;">
@@ -1370,8 +1370,8 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                     <!-- Visual 15-Working-Day Calendar & Capacity Strip -->
                     <div id="schedVisualDatePickerContainer" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-top: 6px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.78rem; flex-wrap: wrap; gap: 6px;">
-                            <span style="font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.03em; font-size: 0.74rem;">
-                                AVAILABLE MEDIATION DAYS (<?= htmlspecialchars(strtoupper($medDaysLabel ?? 'TUESDAYS')) ?> · MAX 8/DAY):
+                            <span id="schedVisualDeckTitle" style="font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.03em; font-size: 0.74rem;">
+                                AVAILABLE MEDIATION DAYS (<?= htmlspecialchars(strtoupper($medDaysLabel ?? 'TUESDAYS')) ?> ONLY):
                             </span>
                             <div style="display: flex; gap: 10px; font-size: 0.72rem; flex-wrap: wrap;">
                                 <span style="display: inline-flex; align-items: center; gap: 4px; color: #166534;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e;"></span> Available</span>
