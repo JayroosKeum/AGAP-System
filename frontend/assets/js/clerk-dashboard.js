@@ -130,7 +130,7 @@
     // Render System Metrics Grid
     const renderSystemMetrics = (data) => {
         setText('sysMetricTotalCases', data.total_cases ?? 0);
-        setText('sysMetricMediation', data.active_mediations ?? 0);
+        setText('sysMetricMediation', data.mediation_cases ?? data.active_mediations ?? 0);
         setText('sysMetricConciliation', data.pangkat_conciliations ?? 0);
         setText('sysMetricSettled', data.settled_cases ?? 0);
         setText('sysMetricArchived', data.archived_cases ?? 0);

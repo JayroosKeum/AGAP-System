@@ -125,7 +125,7 @@
             return;
         }
 
-        const todayDateStr = new Date().toISOString().split('T')[0];
+        const todayDateStr = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
 
         items.forEach(h => {
             const hDateOnly = (h.hearing_date || '').split(' ')[0] || (h.hearing_date || '').split('T')[0];
@@ -509,7 +509,7 @@
                     document.getElementById('luponAssignedCasesContainer')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 } else if (type === 'today') {
                     const allHearings = state.data?.duty_hearings || [];
-                    const todayDateStr = new Date().toISOString().split('T')[0];
+                    const todayDateStr = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
                     if (wasActive) {
                         renderDutyHearings(allHearings, state.data?.duty_day);
                     } else {

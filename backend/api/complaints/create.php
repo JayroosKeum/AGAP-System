@@ -52,7 +52,12 @@ $_SESSION['complaint_flash'] = [
 
 if (!$result['success']) {
     $_SESSION['complaint_flash']['old'] = $_POST;
-    header('Location: ../../../frontend/pages/complaints/complaint-create.php');
+    $sourcePaanyayaId = (int)($_POST['escalated_from_paanyaya_id'] ?? 0);
+    $retryUrl = '../../../frontend/pages/complaints/complaint-create.php';
+    if ($sourcePaanyayaId > 0) {
+        $retryUrl .= '?escalate_paanyaya_id=' . $sourcePaanyayaId;
+    }
+    header('Location: ' . $retryUrl);
     exit;
 }
 

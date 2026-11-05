@@ -1233,7 +1233,7 @@ include '../../layouts/header.php';
                             📩 2nd Paanyaya
                         </button>
                         <button type="button" class="btn-escalate-mediation" id="btnEscalateMediation" style="padding: 9px 12px; font-weight: 600; border-radius: 6px; display: flex; align-items: center; justify-content: center; gap: 6px;">
-                            ⚖️ Escalate to Mediation
+                            ⚖️ Continue to Formal Complaint Details
                         </button>
                     </div>
 
@@ -2190,7 +2190,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 btnEscalateMed.style.background = '#e2e8f0';
                 btnEscalateMed.style.color = '#64748b';
                 btnEscalateMed.style.borderColor = '#cbd5e1';
-                btnEscalateMed.innerHTML = '🔒 Escalate to Mediation';
+                btnEscalateMed.innerHTML = '🔒 Formal Complaint Details';
                 btnEscalateMed.title = 'Naka-lock dahil naresolba na ang Paanyaya sa Kasunduan.';
             }
 
@@ -2383,7 +2383,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 btnEscalateMed.style.background = '#7c3aed';
                 btnEscalateMed.style.color = '#ffffff';
                 btnEscalateMed.style.borderColor = '';
-                btnEscalateMed.innerHTML = '⚖️ Escalate to Mediation';
+                btnEscalateMed.innerHTML = '⚖️ Continue to Formal Complaint Details';
                 btnEscalateMed.title = '';
             }
 
@@ -2586,10 +2586,53 @@ document.addEventListener('DOMContentLoaded', function() {
         btnResolveDiag.addEventListener('click', () => submitAttendanceAction('resolve', 'Sigurado ka bang naayos na ang sigalot at mamarkahang "Resolved" ang Paanyaya na ito?'));
     }
     if (btnEscalateMed) {
-        btnEscalateMed.addEventListener('click', () => submitAttendanceAction(
-            'escalate',
-            'Sigurado ka bang nais nang i-akyat ang usaping ito sa Pormal na Mediation (Stage 1)?\n\nAwtomatikong gagawa ng opisyal na reklamo at formal case docket sa Mediation (Stage 1). Itatala ito bilang No Agreement sa Paanyaya.'
-        ));
+        btnEscalateMed.addEventListener('click', async () => {
+            const paanyayaId = parseInt(attIdInput?.value, 10);
+            if (!paanyayaId) {
+                agapAlert('Invalid Paanyaya record.', 'error');
+                return;
+            }
+
+            const confirmed = confirm(
+                'Magpatuloy sa Formal Complaint Details?\n\n' +
+                'Isi-save muna ang attendance at Salaysay ng Paanyaya. Pagkatapos, ilagay ang mga kinakailangang detalye para sa pormal na reklamo tulad ng category, case type, incident details, at relief na hinihingi. Hindi pa ito mai-dodocket hangga\'t hindi naisusumite ang form.'
+            );
+            if (!confirmed) return;
+
+            const originalText = btnEscalateMed.innerHTML;
+            btnEscalateMed.disabled = true;
+            btnEscalateMed.innerHTML = 'Saving Paanyaya...';
+
+            try {
+                const response = await fetch('../../../backend/api/paanyaya/attendance.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-Token': csrfToken
+                    },
+                    body: JSON.stringify({
+                        paanyaya_id: paanyayaId,
+                        complaint_id: parseInt(attComplaintIdInput?.value || 0, 10),
+                        complainant_attended: getRadio('complainant_attended'),
+                        invitee_attended: getRadio('invitee_attended'),
+                        salaysay: attSalaysayInput?.value.trim() || '',
+                        action: 'save_attendance'
+                    })
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok || !data.success) {
+                    throw new Error(data.message || 'Unable to save the Paanyaya attendance.');
+                }
+
+                window.location.href = `../complaints/complaint-create.php?escalate_paanyaya_id=${encodeURIComponent(paanyayaId)}`;
+            } catch (error) {
+                console.error(error);
+                agapAlert(error.message || 'Hindi naisave ang Paanyaya attendance.', 'error');
+                btnEscalateMed.disabled = false;
+                btnEscalateMed.innerHTML = originalText;
+            }
+        });
     }
     if (btnOpenSecondPaanyaya) {
         btnOpenSecondPaanyaya.addEventListener('click', () => {

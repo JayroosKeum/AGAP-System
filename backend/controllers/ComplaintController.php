@@ -13,6 +13,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 class ComplaintController
 {
+    private PDO $conn;
     private Complaint $complaint;
     private ComplaintParty $complaintParty;
     private Attachment $attachment;
@@ -22,6 +23,7 @@ class ComplaintController
 
     public function __construct()
     {
+        $this->conn = (new Database())->connect();
         $this->complaint = new Complaint();
         $this->complaintParty = new ComplaintParty();
         $this->attachment = new Attachment();

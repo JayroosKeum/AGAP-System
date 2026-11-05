@@ -2582,13 +2582,28 @@ class Paanyaya
         if ($action === 'escalate') {
             $complaintId = (int)($paanyaya['complaint_id'] ?? 0);
             if ($complaintId <= 0) {
-                // Pre-docketed Paanyaya: create complaint, transfer salaysay and attendance, then docket into mediation
-                return $this->escalatePreDocketedPaanyaya($paanyayaId, $userId, [
-                    'complainant_attended' => $compAttended,
-                    'invitee_attended' => $invAttended,
-                    'salaysay' => $salaysay,
-                    'dialogue_notes' => $dialogueNotes
-                ]);
+                // A Stage 0-only record does not carry the formal complaint
+                // classification and incident fields. Save its attendance, then
+                // require the clerk to complete the formal intake before docketing.
+                $upd = $this->conn->prepare("
+                    UPDATE paanyayas
+                    SET complainant_attended = ?,
+                        invitee_attended = ?,
+                        salaysay = ?,
+                        dialogue_notes = ?,
+                        attendance_recorded_at = NOW(),
+                        updated_at = NOW()
+                    WHERE paanyaya_id = ?
+                ");
+                $upd->execute([$compAttended, $invAttended, $salaysay, $dialogueNotes, $paanyayaId]);
+
+                return [
+                    'success' => true,
+                    'requires_formal_complaint_details' => true,
+                    'paanyaya_id' => $paanyayaId,
+                    'formal_complaint_url' => '../complaints/complaint-create.php?escalate_paanyaya_id=' . $paanyayaId,
+                    'message' => 'Paanyaya attendance was saved. Complete the required formal complaint details before this dispute can be docketed.'
+                ];
             } else {
                 // Complaint already exists: update attendance on Paanyaya and execute escalation docketing
                 $upd = $this->conn->prepare("

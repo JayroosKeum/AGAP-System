@@ -135,9 +135,29 @@ if ($escalatePaanyayaId > 0) {
     $epStmt = $db->prepare('SELECT * FROM paanyayas WHERE paanyaya_id = ? LIMIT 1');
     $epStmt->execute([$escalatePaanyayaId]);
     $escalatePaanyaya = $epStmt->fetch(PDO::FETCH_ASSOC);
+    $existingFormalComplaintId = $escalatePaanyaya
+        ? (int)(($escalatePaanyaya['complaint_id'] ?? 0) ?: ($escalatePaanyaya['escalated_to_complaint_id'] ?? 0))
+        : 0;
+    if ($existingFormalComplaintId > 0) {
+        // Do not allow a refreshed or bookmarked transition link to create a
+        // second formal complaint from a Paanyaya that is already linked.
+        header('Location: complaint-details.php?id=' . $existingFormalComplaintId . '&tab=mediation');
+        exit;
+    }
     if ($escalatePaanyaya && empty($old)) {
         $old['narrative'] = $escalatePaanyaya['salaysay'] ?? '';
         $old['escalated_from_paanyaya_id'] = $escalatePaanyaya['paanyaya_id'];
+
+        // Preserve the party profiles already captured at Stage 0. The clerk
+        // only needs to complete the formal complaint details on this page.
+        $old['complainant_resident_id'] = $escalatePaanyaya['complainant_resident_id'] ?? '';
+        $old['complainant_address'] = $escalatePaanyaya['complainant_address'] ?? '';
+        $old['complainant_contact_no'] = $escalatePaanyaya['complainant_contact_no'] ?? '';
+        $old['complainant_purok'] = $escalatePaanyaya['complainant_purok'] ?? '';
+        $old['respondent_resident_id'] = $escalatePaanyaya['invitee_resident_id'] ?? '';
+        $old['respondent_address'] = $escalatePaanyaya['invitee_address'] ?? '';
+        $old['respondent_contact_no'] = $escalatePaanyaya['invitee_contact_no'] ?? '';
+        $old['respondent_purok'] = $escalatePaanyaya['invitee_purok'] ?? '';
 
         $cName = trim((string)($escalatePaanyaya['complainant_name'] ?? ''));
         if ($cName !== '') {
@@ -182,6 +202,8 @@ if ($escalatePaanyayaId > 0) {
     }
 }
 
+$isFromPaanyaya = !empty($escalatePaanyaya);
+
 include '../../layouts/header.php';
 ?>
 
@@ -204,7 +226,7 @@ include '../../layouts/header.php';
                         <svg class="back-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
                         <span>Back to Complaints</span>
                     </a>
-                    <h1 class="intake-title">File Official Complaint (Direct to Mediation — Stage 1)</h1>
+                    <h1 class="intake-title"><?php echo $isFromPaanyaya ? 'Complete Formal Complaint Details (from Paanyaya)' : 'File Official Complaint (Direct to Mediation — Stage 1)'; ?></h1>
                 </div>
                 <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                     <a href="../paanyaya/index.php" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 8px; background: #f0fdf4; border: 1.5px solid #86efac; color: #166534; font-size: 0.84rem; font-weight: 700;">
@@ -230,7 +252,7 @@ include '../../layouts/header.php';
                                 Inilipat mula sa Paanyaya #<?php echo (int)$escalatePaanyaya['paanyaya_id']; ?> (Stage 0 Informal Dialogue)
                             </div>
                             <div style="font-size: 0.82rem; color: #1e3a8a; margin-top: 3px;">
-                                Awtomatikong nailipat ang mga panig (<strong><?php echo htmlspecialchars($escalatePaanyaya['complainant_name'] ?? 'Nagpaanyaya'); ?></strong> vs <strong><?php echo htmlspecialchars($escalatePaanyaya['invitee_name'] ?? 'Inanyayahan'); ?></strong>) at ang <strong>Salaysay</strong>. Kumpletuhin ang mga detalye ng reklamo upang mai-akyat sa Pormal na Mediation.
+                                Awtomatikong nailipat ang mga panig (<strong><?php echo htmlspecialchars($escalatePaanyaya['complainant_name'] ?? 'Nagpaanyaya'); ?></strong> vs <strong><?php echo htmlspecialchars($escalatePaanyaya['invitee_name'] ?? 'Inanyayahan'); ?></strong>) at ang <strong>Salaysay</strong>. Kumpletuhin ang required na formal details sa ibaba—<strong>complaint category, case type, specific nature, incident date/location</strong>, at iba pang kinakailangan—bago ito ma-docket sa Pormal na Mediation.
                             </div>
                         </div>
                     </div>
@@ -987,22 +1009,6 @@ include '../../layouts/header.php';
                                 <ul id="evidenceQueueList" class="evidence-queue-list"></ul>
                             </div>
 
-                            <!-- Proof OCR Notes -->
-                            <div class="form-group" style="margin-top: 18px; margin-bottom: 0;">
-                                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
-                                    <label for="proofOcrNotes" style="margin:0;">
-                                        Proof Notes <span class="optional-label">Optional</span>
-                                    </label>
-                                    <div style="display:flex;align-items:center;gap:8px;">
-                                        <button type="button" class="btn-outline-sm" id="btnProofOcr" title="Scan a handwritten or printed image and extract text into Proof Notes">Scan Proof (OCR)</button>
-                                        <input type="file" id="proofOcrFileInput" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none;">
-                                    </div>
-                                </div>
-                                <textarea id="proofOcrNotes" name="proof_ocr_notes" rows="4" maxlength="10000"
-                                    placeholder="Extracted text from scanned proofs will appear here. You may also type or paste additional context about the attached evidence..."
-                                    style="resize:vertical;"><?php echo htmlspecialchars($old['proof_ocr_notes'] ?? ''); ?></textarea>
-                                <small class="field-hint">Use OCR on any uploaded image above, or click “Scan Proof” to pick a file directly. Extracted text is appended here.</small>
-                            </div>
                         </section>
 
                         <!-- Action Row directly under Section 5 Evidence & Attachments -->
@@ -1656,7 +1662,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const narrativeVal = document.getElementById('narrative')?.value?.trim() || '';
-        const additionalVal = document.getElementById('proofOcrNotes')?.value?.trim() || '';
+        const additionalVal = '';
         const reliefVal = document.getElementById('prayerForRelief')?.value?.trim() || '';
 
         const now = new Date();
@@ -4628,20 +4634,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             actionsDiv.appendChild(tagSelect);
 
-            if (fileInfo.type === 'image') {
-                const ocrBtn = document.createElement('button');
-                ocrBtn.type = 'button';
-                ocrBtn.className = 'btn-outline-sm btn-ocr-queue';
-                ocrBtn.title = 'Extract text from this image and append to narrative';
-                ocrBtn.style.cssText = 'font-size:0.75rem;padding:3px 8px;white-space:nowrap;';
-                ocrBtn.textContent = 'OCR';
-                ocrBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    runProofOcrOnQueuedFile(file, ocrBtn);
-                });
-                actionsDiv.appendChild(ocrBtn);
-            }
-
             const removeBtn = document.createElement('button');
             removeBtn.type = 'button';
             removeBtn.className = 'btn-remove-evidence-item';
@@ -4754,60 +4746,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 addFilesToQueue(e.dataTransfer.files);
             }
         });
-    }
-
-    // ── Proof OCR: Card-5 button ─────────────────────────────────────────────
-    (function initProofOcr() {
-        const ocrBtn   = document.getElementById('btnProofOcr');
-        const ocrInput = document.getElementById('proofOcrFileInput');
-        if (!ocrBtn || !ocrInput) return;
-
-        ocrBtn.addEventListener('click', () => ocrInput.click());
-
-        ocrInput.addEventListener('change', () => {
-            const file = ocrInput.files[0];
-            if (!file) return;
-            runProofOcrOnQueuedFile(file, ocrBtn);
-            ocrInput.value = '';
-        });
-    })();
-
-    // Shared OCR helper — appends extracted text to #proofOcrNotes
-    async function runProofOcrOnQueuedFile(file, triggerBtn) {
-        const notesTa = document.getElementById('proofOcrNotes');
-        if (!notesTa) return;
-
-        const originalLabel = triggerBtn.textContent;
-        triggerBtn.disabled = true;
-        triggerBtn.textContent = 'Scanning…';
-
-        try {
-            const formData = new FormData();
-            formData.append('image', file, file.name);
-            formData.append('external_ai_consent', '1');
-
-            const resp = await fetch('../../../backend/api/ai/ocr-notes.php', {
-                method: 'POST',
-                body: formData
-            });
-            const data = await resp.json();
-
-            if (data.success && data.text && data.text.trim()) {
-                const label = `[Scanned Proof – ${file.name}]:\n${data.text.trim()}`;
-                const current = notesTa.value.trim();
-                notesTa.value = current ? current + '\n\n' + label : label;
-                notesTa.dispatchEvent(new Event('input'));
-                window.agapNotify?.('Proof text extracted and added to Proof Notes.', 'success', 'Proof OCR');
-            } else {
-                window.agapNotify?.(data.message || data.error || 'OCR did not extract any text from the image.', 'error', 'Proof OCR');
-            }
-        } catch (err) {
-            console.error('Proof OCR error:', err);
-            window.agapNotify?.('Failed to connect to the OCR service. Please try again.', 'error', 'Proof OCR');
-        } finally {
-            triggerBtn.disabled = false;
-            triggerBtn.textContent = originalLabel;
-        }
     }
 
         // ═════════════════════════════════════════════════════════════════════════

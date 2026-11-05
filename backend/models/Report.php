@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/Paanyaya.php';
 
 class Report
 {
@@ -9,6 +10,32 @@ class Report
     public function __construct()
     {
         $this->conn = (new Database())->connect();
+    }
+
+    private function enrichPaanyayaRows(array $rows): array
+    {
+        if (empty($rows)) {
+            return [];
+        }
+        $paanyayaModel = new Paanyaya();
+        $allWithWorkflow = $paanyayaModel->getAllPaanyayas();
+        $workflowById = [];
+        foreach ($allWithWorkflow as $w) {
+            if (isset($w['paanyaya_id'])) {
+                $workflowById[(int) $w['paanyaya_id']] = $w;
+            }
+        }
+        foreach ($rows as &$row) {
+            $pid = (int) ($row['paanyaya_id'] ?? 0);
+            $row['raw_status'] = $row['status'] ?? 'Scheduled';
+            if ($pid > 0 && isset($workflowById[$pid])) {
+                $wf = $workflowById[$pid];
+                $row['current_workflow_status'] = $wf['current_workflow_status'] ?? $row['status'];
+                $row['status'] = $row['current_workflow_status'];
+            }
+        }
+        unset($row);
+        return $rows;
     }
 
     public function dashboardStats(string $period = 'all', ?string $startDate = null, ?string $endDate = null): array
@@ -50,24 +77,32 @@ class Report
             );
             $todayHearings->execute([$today]);
 
-            // Today's Paanyaya sessions (Stage 0 Informal Dialogues)
+            // Paanyaya sessions (Stage 0 Informal Dialogues - prioritize today & scheduled, include all in All Time mode)
             $todayPaanyayas = $this->conn->prepare(
-                "SELECT p.paanyaya_id, p.complaint_id, p.complainant_name, p.invitee_name, p.scheduled_date, p.scheduled_time,
-                        p.status, p.venue, co.complaint_number, co.complaint_title,
+                "SELECT p.paanyaya_id, p.complaint_id, p.escalated_to_complaint_id, p.complainant_name, p.invitee_name,
+                        p.scheduled_date, p.scheduled_time, p.status, p.venue, p.salaysay AS reason,
+                        co.complaint_number, co.complaint_title,
                         COALESCE(ps.session_id, 0) AS session_id,
-                        COALESCE(ps.attempt_number, 1) AS attempt_number,
-                        COALESCE(ps.complainant_attended, 'Absent') AS complainant_attended,
-                        COALESCE(ps.respondent_attended, 'Absent') AS respondent_attended,
+                        COALESCE(ps.attempt_number, p.attempt_number, 1) AS attempt_number,
+                        COALESCE(ps.complainant_attended, p.complainant_attended, 'Absent') AS complainant_attended,
+                        COALESCE(ps.respondent_attended, p.invitee_attended, 'Absent') AS respondent_attended,
                         ps.session_outcome
                  FROM paanyayas p
-                 LEFT JOIN complaints co ON co.complaint_id = p.complaint_id
+                 LEFT JOIN complaints co ON co.complaint_id = COALESCE(NULLIF(p.complaint_id, 0), p.escalated_to_complaint_id)
                  LEFT JOIN paanyaya_sessions ps ON ps.complaint_id = p.complaint_id AND ps.scheduled_date = p.scheduled_date
-                 WHERE p.scheduled_date = ?
-                   AND p.status = 'Scheduled'
-                 ORDER BY p.scheduled_time ASC, p.paanyaya_id ASC
+                 ORDER BY
+                     CASE
+                         WHEN p.scheduled_date = ? THEN 0
+                         WHEN p.status IN ('Scheduled', 'Pending') THEN 1
+                         ELSE 2
+                     END,
+                     p.scheduled_date DESC,
+                     p.scheduled_time ASC,
+                     p.paanyaya_id DESC
                  LIMIT 25"
             );
             $todayPaanyayas->execute([$today]);
+            $paanyayaItems = $this->enrichPaanyayaRows($todayPaanyayas->fetchAll(PDO::FETCH_ASSOC));
 
             $deadlineCases = $this->conn->prepare(
                 "SELECT case_id, case_number, case_status, mediation_deadline_date
@@ -151,17 +186,63 @@ class Report
             );
             $calendarHearings = $calendarHearingsStmt->fetchAll(PDO::FETCH_ASSOC);
 
-            $walkinsToday = (int) $this->conn->query("SELECT COUNT(*) FROM complaints WHERE DATE(created_at) = '$today'")->fetchColumn();
-            $activePaanyaya = (int) $this->conn->query('
+            $walkinsTodayStmt = $this->conn->prepare(
+                "SELECT (
+                    (SELECT COUNT(*) FROM complaints WHERE DATE(created_at) = ?)
+                    +
+                    (SELECT COUNT(*) FROM paanyayas WHERE DATE(created_at) = ? AND (complaint_id IS NULL OR complaint_id = 0) AND (escalated_to_complaint_id IS NULL OR escalated_to_complaint_id = 0))
+                )"
+            );
+            $walkinsTodayStmt->execute([$today, $today]);
+            $walkinsToday = (int) $walkinsTodayStmt->fetchColumn();
+
+            $totalPaanyaya = (int) $this->conn->query('
+                SELECT (
+                    (SELECT COUNT(*) FROM paanyayas)
+                    +
+                    (SELECT COUNT(*) FROM complaints WHERE (status LIKE "Pre-Docketed%" OR status LIKE "Paanyaya%") AND complaint_id NOT IN (
+                        SELECT complaint_id FROM paanyayas WHERE complaint_id IS NOT NULL
+                        UNION
+                        SELECT escalated_to_complaint_id FROM paanyayas WHERE escalated_to_complaint_id IS NOT NULL
+                    ))
+                )
+            ')->fetchColumn();
+
+            $activePaanyayaOnly = (int) $this->conn->query('
                 SELECT (
                     (SELECT COUNT(*) FROM paanyayas WHERE status IN ("Scheduled", "Pending"))
                     +
-                    (SELECT COUNT(*) FROM complaints WHERE (status LIKE "Pre-Docketed%" OR status LIKE "Paanyaya%") AND complaint_id NOT IN (SELECT complaint_id FROM paanyayas WHERE complaint_id IS NOT NULL))
+                    (SELECT COUNT(*) FROM complaints WHERE (status LIKE "Pre-Docketed%" OR status LIKE "Paanyaya%") AND complaint_id NOT IN (
+                        SELECT complaint_id FROM paanyayas WHERE complaint_id IS NOT NULL
+                        UNION
+                        SELECT escalated_to_complaint_id FROM paanyayas WHERE escalated_to_complaint_id IS NOT NULL
+                    ))
                 )
             ')->fetchColumn();
-            $pendingForms = (int) $this->conn->query("SELECT COUNT(DISTINCT c.case_id) FROM cases c LEFT JOIN summon_deliveries sd ON sd.case_id = c.case_id WHERE c.case_status = 'Mediation' AND (sd.delivery_id IS NULL OR sd.delivery_status = 'Pending')")->fetchColumn();
+            $activePaanyaya = $activePaanyayaOnly > 0 ? $activePaanyayaOnly : $totalPaanyaya;
+
+            $pendingForms = (int) $this->conn->query("SELECT COUNT(DISTINCT c.case_id) FROM cases c LEFT JOIN summon_deliveries sd ON sd.case_id = c.case_id WHERE c.case_status IN ('Mediation', 'Conciliation') AND (sd.delivery_id IS NULL OR sd.delivery_status = 'Pending')")->fetchColumn();
+            $mediationOnlyCases = (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status = 'Mediation'")->fetchColumn();
             $pangkatConciliations = (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status = 'Conciliation'")->fetchColumn();
+            $activeMediationsTotal = (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status IN ('Mediation', 'Conciliation')")->fetchColumn();
             $activeUsers = (int) $this->conn->query("SELECT COUNT(*) FROM users WHERE status = 'Active'")->fetchColumn();
+
+            $settledCasesTotal = (int) $this->conn->query(
+                "SELECT COUNT(DISTINCT c.case_id) FROM cases c
+                 LEFT JOIN settlements s ON s.case_id = c.case_id
+                 WHERE c.case_status = 'Settled' OR s.settlement_date IS NOT NULL"
+            )->fetchColumn();
+
+            $cfaCasesTotal = (int) $this->conn->query(
+                "SELECT COUNT(DISTINCT c.case_id) FROM cases c
+                 LEFT JOIN cfa_records cf ON cf.case_id = c.case_id
+                 WHERE c.case_status = 'CFA Issued' OR cf.issuance_date IS NOT NULL"
+            )->fetchColumn();
+
+            $archivedCasesTotal = (int) $this->conn->query(
+                "SELECT COUNT(*) FROM cases
+                 WHERE case_status = 'Archived' OR archived_date IS NOT NULL"
+            )->fetchColumn();
 
             $auditStmt = $this->conn->query(
                 "SELECT a.audit_id, a.action, a.module_name, a.audit_date,
@@ -177,15 +258,16 @@ class Report
 
             return [
                 'total_cases' => (int) $this->conn->query('SELECT COUNT(*) FROM cases')->fetchColumn(),
-                'settled_cases' => (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status = 'Settled'")->fetchColumn(),
-                'cfa_cases' => (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status = 'CFA Issued'")->fetchColumn(),
-                'archived_cases' => (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status = 'Archived'")->fetchColumn(),
+                'settled_cases' => $settledCasesTotal,
+                'cfa_cases' => $cfaCasesTotal,
+                'archived_cases' => $archivedCasesTotal,
                 'pending_review' => (int) $this->conn->query("SELECT COUNT(*) FROM complaints WHERE status IN ('Under Review', 'Needs Information')")->fetchColumn(),
-                'paanyaya_complaints' => $activePaanyaya,
+                'paanyaya_complaints' => $totalPaanyaya,
                 'draft_complaints' => 0,
                 'hearings_today' => (int) $hearingCountToday->fetchColumn(),
                 'hearings_this_week' => (int) $hearingCountWeek->fetchColumn(),
-                'active_mediations' => (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status = 'Mediation'")->fetchColumn(),
+                'active_mediations' => $activeMediationsTotal,
+                'mediation_cases' => $mediationOnlyCases,
                 'pangkat_conciliations' => $pangkatConciliations,
                 'active_users' => $activeUsers,
                 'walkins_today' => $walkinsToday,
@@ -194,7 +276,7 @@ class Report
                 'audit_feed' => $auditFeed,
                 'deadlines_due' => (int) $deadlineCount->fetchColumn(),
                 'today_hearings' => $todayHearings->fetchAll(PDO::FETCH_ASSOC),
-                'today_paanyayas' => $todayPaanyayas->fetchAll(PDO::FETCH_ASSOC),
+                'today_paanyayas' => $paanyayaItems,
                 'calendar_hearings' => $calendarHearings,
                 'mediation_deadlines' => $deadlineRows,
                 'status_totals' => $statusRows,
@@ -245,23 +327,23 @@ class Report
 
         // Period Paanyayas
         $paanyayasStmt = $this->conn->prepare(
-            "SELECT p.paanyaya_id, p.complaint_id, p.complainant_name, p.invitee_name, p.scheduled_date, p.scheduled_time,
-                    p.status, p.venue, co.complaint_number, co.complaint_title,
+            "SELECT p.paanyaya_id, p.complaint_id, p.escalated_to_complaint_id, p.complainant_name, p.invitee_name,
+                    p.scheduled_date, p.scheduled_time, p.status, p.venue, p.salaysay AS reason,
+                    co.complaint_number, co.complaint_title,
                     COALESCE(ps.session_id, 0) AS session_id,
-                    COALESCE(ps.attempt_number, 1) AS attempt_number,
-                    COALESCE(ps.complainant_attended, 'Absent') AS complainant_attended,
-                    COALESCE(ps.respondent_attended, 'Absent') AS respondent_attended,
+                    COALESCE(ps.attempt_number, p.attempt_number, 1) AS attempt_number,
+                    COALESCE(ps.complainant_attended, p.complainant_attended, 'Absent') AS complainant_attended,
+                    COALESCE(ps.respondent_attended, p.invitee_attended, 'Absent') AS respondent_attended,
                     ps.session_outcome
              FROM paanyayas p
-             LEFT JOIN complaints co ON co.complaint_id = p.complaint_id
+             LEFT JOIN complaints co ON co.complaint_id = COALESCE(NULLIF(p.complaint_id, 0), p.escalated_to_complaint_id)
              LEFT JOIN paanyaya_sessions ps ON ps.complaint_id = p.complaint_id AND ps.scheduled_date = p.scheduled_date
-             WHERE p.scheduled_date BETWEEN ? AND ?
-               AND p.status = 'Scheduled'
-             ORDER BY p.scheduled_date ASC, p.scheduled_time ASC
+             WHERE (p.scheduled_date BETWEEN ? AND ? OR DATE(p.created_at) BETWEEN ? AND ?)
+             ORDER BY p.scheduled_date DESC, p.scheduled_time ASC, p.paanyaya_id DESC
              LIMIT 25"
         );
-        $paanyayasStmt->execute($params);
-        $periodPaanyayas = $paanyayasStmt->fetchAll(PDO::FETCH_ASSOC);
+        $paanyayasStmt->execute([$startDate, $endDate, $startDate, $endDate]);
+        $periodPaanyayas = $this->enrichPaanyayaRows($paanyayasStmt->fetchAll(PDO::FETCH_ASSOC));
 
         $deadlineStmt = $this->conn->prepare(
             "SELECT case_id, case_number, case_status, mediation_deadline_date
@@ -310,12 +392,32 @@ class Report
 
         $paanyayaStmt = $this->conn->prepare('
             SELECT (
-                (SELECT COUNT(*) FROM paanyayas WHERE status IN ("Scheduled", "Pending") AND (scheduled_date BETWEEN ? AND ? OR DATE(created_at) BETWEEN ? AND ?))
+                (SELECT COUNT(*) FROM paanyayas WHERE (scheduled_date BETWEEN ? AND ? OR DATE(created_at) BETWEEN ? AND ?))
                 +
-                (SELECT COUNT(*) FROM complaints WHERE (status LIKE "Pre-Docketed%" OR status LIKE "Paanyaya%") AND DATE(created_at) BETWEEN ? AND ? AND complaint_id NOT IN (SELECT complaint_id FROM paanyayas WHERE complaint_id IS NOT NULL))
+                (SELECT COUNT(*) FROM complaints WHERE (status LIKE "Pre-Docketed%" OR status LIKE "Paanyaya%") AND DATE(created_at) BETWEEN ? AND ? AND complaint_id NOT IN (
+                    SELECT complaint_id FROM paanyayas WHERE complaint_id IS NOT NULL
+                    UNION
+                    SELECT escalated_to_complaint_id FROM paanyayas WHERE escalated_to_complaint_id IS NOT NULL
+                ))
             )
         ');
         $paanyayaStmt->execute([$startDate, $endDate, $startDate, $endDate, $startDate, $endDate]);
+        $totalPeriodPaanyaya = (int) $paanyayaStmt->fetchColumn();
+
+        $activePaanyayaStmt = $this->conn->prepare('
+            SELECT (
+                (SELECT COUNT(*) FROM paanyayas WHERE status IN ("Scheduled", "Pending") AND (scheduled_date BETWEEN ? AND ? OR DATE(created_at) BETWEEN ? AND ?))
+                +
+                (SELECT COUNT(*) FROM complaints WHERE (status LIKE "Pre-Docketed%" OR status LIKE "Paanyaya%") AND DATE(created_at) BETWEEN ? AND ? AND complaint_id NOT IN (
+                    SELECT complaint_id FROM paanyayas WHERE complaint_id IS NOT NULL
+                    UNION
+                    SELECT escalated_to_complaint_id FROM paanyayas WHERE escalated_to_complaint_id IS NOT NULL
+                ))
+            )
+        ');
+        $activePaanyayaStmt->execute([$startDate, $endDate, $startDate, $endDate, $startDate, $endDate]);
+        $activePaanyayaOnly = (int) $activePaanyayaStmt->fetchColumn();
+        $activePaanyaya = $activePaanyayaOnly > 0 ? $activePaanyayaOnly : $totalPeriodPaanyaya;
 
         $hearingCountStmt = $this->conn->prepare(
             "SELECT COUNT(*) FROM hearings
@@ -323,6 +425,7 @@ class Report
                AND status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')"
         );
         $hearingCountStmt->execute($params);
+        $periodHearingCount = (int) $hearingCountStmt->fetchColumn();
 
         $activeMediationStmt = $this->conn->prepare(
             "SELECT COUNT(*) FROM cases
@@ -330,6 +433,13 @@ class Report
                AND (docket_date BETWEEN ? AND ? OR (mediation_start_date IS NOT NULL AND mediation_start_date BETWEEN ? AND ?))"
         );
         $activeMediationStmt->execute([$startDate, $endDate, $startDate, $endDate]);
+
+        $mediationOnlyStmt = $this->conn->prepare(
+            "SELECT COUNT(*) FROM cases
+             WHERE case_status = 'Mediation'
+               AND (docket_date BETWEEN ? AND ? OR (mediation_start_date IS NOT NULL AND mediation_start_date BETWEEN ? AND ?))"
+        );
+        $mediationOnlyStmt->execute([$startDate, $endDate, $startDate, $endDate]);
 
         $deadlineCountStmt = $this->conn->prepare(
             "SELECT COUNT(*) FROM cases
@@ -389,21 +499,22 @@ class Report
         );
         $calendarHearings = $calendarHearingsStmt->fetchAll(PDO::FETCH_ASSOC);
 
-        $walkinsStmt = $this->conn->prepare("SELECT COUNT(*) FROM complaints WHERE DATE(created_at) BETWEEN ? AND ?");
-        $walkinsStmt->execute($params);
+        $walkinsStmt = $this->conn->prepare(
+            "SELECT (
+                (SELECT COUNT(*) FROM complaints WHERE DATE(created_at) BETWEEN ? AND ?)
+                +
+                (SELECT COUNT(*) FROM paanyayas WHERE DATE(created_at) BETWEEN ? AND ? AND (complaint_id IS NULL OR complaint_id = 0) AND (escalated_to_complaint_id IS NULL OR escalated_to_complaint_id = 0))
+            )"
+        );
+        $walkinsStmt->execute([$startDate, $endDate, $startDate, $endDate]);
         $walkinsToday = (int) $walkinsStmt->fetchColumn();
-
-        $activePaanyaya = (int) $paanyayaStmt->fetchColumn();
 
         $pangkatConciliationStmt = $this->conn->prepare("SELECT COUNT(*) FROM cases WHERE case_status = 'Conciliation' AND docket_date BETWEEN ? AND ?");
         $pangkatConciliationStmt->execute($params);
         $pangkatConciliations = (int) $pangkatConciliationStmt->fetchColumn();
-        if ($pangkatConciliations === 0) {
-            $pangkatConciliations = (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status = 'Conciliation'")->fetchColumn();
-        }
 
         $activeUsers = (int) $this->conn->query("SELECT COUNT(*) FROM users WHERE status = 'Active'")->fetchColumn();
-        $pendingForms = (int) $this->conn->query("SELECT COUNT(DISTINCT c.case_id) FROM cases c LEFT JOIN summon_deliveries sd ON sd.case_id = c.case_id WHERE c.case_status = 'Mediation' AND (sd.delivery_id IS NULL OR sd.delivery_status = 'Pending')")->fetchColumn();
+        $pendingForms = (int) $this->conn->query("SELECT COUNT(DISTINCT c.case_id) FROM cases c LEFT JOIN summon_deliveries sd ON sd.case_id = c.case_id WHERE c.case_status IN ('Mediation', 'Conciliation') AND (sd.delivery_id IS NULL OR sd.delivery_status = 'Pending')")->fetchColumn();
 
         $auditStmt = $this->conn->query(
             "SELECT a.audit_id, a.action, a.module_name, a.audit_date,
@@ -423,11 +534,12 @@ class Report
             'cfa_cases' => (int) $cfaStmt->fetchColumn(),
             'archived_cases' => (int) $archivedStmt->fetchColumn(),
             'pending_review' => (int) $pendingReviewStmt->fetchColumn(),
-            'paanyaya_complaints' => $activePaanyaya,
+            'paanyaya_complaints' => $totalPeriodPaanyaya,
             'draft_complaints' => 0,
-            'hearings_today' => count($periodHearings),
-            'hearings_this_week' => (int) $hearingCountStmt->fetchColumn(),
+            'hearings_today' => $periodHearingCount,
+            'hearings_this_week' => $periodHearingCount,
             'active_mediations' => (int) $activeMediationStmt->fetchColumn(),
+            'mediation_cases' => (int) $mediationOnlyStmt->fetchColumn(),
             'pangkat_conciliations' => $pangkatConciliations,
             'active_users' => $activeUsers,
             'walkins_today' => $walkinsToday,
@@ -445,7 +557,7 @@ class Report
         ];
     }
 
-        /**
+    /**
      * Compute grievance categories, purok dispute hotspots, and demographic breakdowns
      */
     public function getAnalyticsSummary(?string $startDate = null, ?string $endDate = null): array

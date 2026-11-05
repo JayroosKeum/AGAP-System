@@ -4552,3 +4552,140 @@ input[data-ai-external-consent]:focus {
     font-size: 0.84rem;
     line-height: 1.45;
 }
+/* Completed cases remain visible outside Outcome, but their workflow record is read-only. */
+.case-outcome-readonly {
+    position: relative;
+}
+
+.case-outcome-readonly > :not(.case-outcome-readonly-banner) {
+    filter: grayscale(0.35);
+    opacity: 0.68;
+}
+
+.case-outcome-readonly-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 30px 18px;
+    padding: 10px 14px;
+    border: 1px solid #cbd5e1;
+    border-left: 4px solid #64748b;
+    border-radius: 8px;
+    background: #f8fafc;
+    color: #334155;
+    font-size: 0.84rem;
+}
+
+.case-outcome-readonly-banner span {
+    color: #64748b;
+}
+
+.case-header-readonly-action {
+    pointer-events: none;
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.session-documents-upload-box {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 13px;
+    border: 1px dashed #93c5fd;
+    border-radius: 9px;
+    background: #eff6ff;
+}
+
+.session-documents-upload-box strong,
+.session-documents-upload-box span {
+    display: block;
+}
+
+.session-documents-upload-box strong {
+    color: #1e3a8a;
+    font-size: 0.86rem;
+}
+
+.session-documents-upload-box span {
+    margin-top: 2px;
+    color: #475569;
+    font-size: 0.76rem;
+}
+
+.session-documents-upload-actions,
+.session-document-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 7px;
+}
+
+.session-documents-upload-actions select {
+    min-height: 33px;
+    padding: 5px 8px;
+    border: 1px solid #bfdbfe;
+    border-radius: 6px;
+    color: #1e3a8a;
+    background: #fff;
+    font: inherit;
+    font-size: 0.8rem;
+}
+
+.session-documents-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.session-document-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.session-document-row strong,
+.session-document-row span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.session-document-row strong {
+    color: #1e293b;
+    font-size: 0.84rem;
+}
+
+.session-document-row span {
+    margin-top: 2px;
+    color: #64748b;
+    font-size: 0.75rem;
+}
+
+.session-document-actions a,
+.session-document-actions button {
+    padding: 4px 8px;
+    border: 1px solid #bfdbfe;
+    border-radius: 5px;
+    color: #1d4ed8;
+    background: #eff6ff;
+    font: inherit;
+    font-size: 0.76rem;
+    font-weight: 700;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.session-document-actions button {
+    border-color: #fecaca;
+    color: #b91c1c;
+    background: #fff;
+}

@@ -913,6 +913,41 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
     </div>
 </div>
 
+<!-- Hearing session document drawer (minutes and supporting evidence) -->
+<div id="sessionDocumentsDrawer" class="modal" style="display: none; z-index: 1100; align-items: center; justify-content: center; padding: 18px;" role="dialog" aria-modal="true" aria-labelledby="sessionDocumentsTitle">
+    <div class="modal-content" style="width: min(680px, 100%); max-height: calc(100vh - 36px); display: flex; flex-direction: column; padding: 0; overflow: hidden; border-radius: 12px;">
+        <div class="modal-header" style="padding: 18px 22px; margin: 0; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between;">
+            <div>
+                <h2 id="sessionDocumentsTitle" style="margin: 0; font-size: 1.1rem; color: #0f172a;">Session Documents</h2>
+                <p style="margin: 4px 0 0; color: #64748b; font-size: .82rem;">Minutes and supporting evidence for this hearing session.</p>
+            </div>
+            <button type="button" class="close-btn" onclick="closeSessionDocumentsDrawer()" aria-label="Close documents drawer">&times;</button>
+        </div>
+        <div style="padding: 18px 22px; overflow-y: auto;">
+            <input type="hidden" id="sessionDocumentsHearingId">
+            <input type="hidden" id="sessionDocumentsCaseId">
+            <div class="session-documents-upload-box">
+                <div>
+                    <strong>Add document</strong>
+                    <span>PDF, image, DOC, or DOCX — up to 10 MB each.</span>
+                </div>
+                <div class="session-documents-upload-actions">
+                    <select id="sessionDocumentsType" aria-label="Document type">
+                        <option value="handwritten_minutes">Minutes</option>
+                        <option value="evidence_attachment">Evidence</option>
+                    </select>
+                    <input type="file" id="sessionDocumentsFileInput" accept="image/*,.pdf,.doc,.docx" multiple style="display: none;" onchange="uploadSessionDocuments(this)">
+                    <button type="button" class="btn-create" onclick="document.getElementById('sessionDocumentsFileInput').click()">Upload</button>
+                </div>
+            </div>
+            <div id="sessionDocumentsList" class="session-documents-list"></div>
+        </div>
+        <div class="modal-actions" style="padding: 12px 22px; margin: 0; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end;">
+            <button type="button" class="btn-secondary" onclick="closeSessionDocumentsDrawer()">Close</button>
+        </div>
+    </div>
+</div>
+
 <!-- Modal: Digital KP Form 7 Preview & Print -->
 <div id="kp7DigitalPreviewModal" class="modal" style="display:none; padding: 12px; box-sizing: border-box; align-items: center; justify-content: center; z-index: 9999;" role="dialog" aria-modal="true" aria-labelledby="kp7ModalHeading">
     <div class="modal-content" style="max-width: 1350px; width: 96vw; height: calc(100vh - 24px); max-height: calc(100vh - 24px); display: flex; flex-direction: column; padding: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 25px 35px -5px rgba(0, 0, 0, 0.35); background: #ffffff;">

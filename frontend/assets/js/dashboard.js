@@ -148,7 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
         content.className = 'dashboard-list-content';
         content.style.flex = '1';
 
-        const timeStr = formatTimeOnly(item.scheduled_time || item.scheduled_date) || 'Scheduled';
+        const timeStr = item.scheduled_date ? `${formatDateClean(item.scheduled_date)}${item.scheduled_time ? ' · ' + formatTimeOnly(item.scheduled_time) : ''}` : (formatTimeOnly(item.scheduled_time) || 'Scheduled');
         const invitee = item.invitee_name || 'Inanyayahan';
         const complainant = item.complainant_name || 'Nagpaanyaya';
         const complaintRef = item.complaint_number ? `Complaint #${item.complaint_number}` : 'Pre-Docketed';

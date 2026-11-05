@@ -11,6 +11,18 @@ class LuponDashboardController
     public function __construct()
     {
         $this->conn = (new Database())->connect();
+        $this->conn->exec("CREATE TABLE IF NOT EXISTS lupon_duty_schedules (id INT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL UNIQUE, duty_day VARCHAR(20) NOT NULL DEFAULT 'Wednesday', start_time TIME DEFAULT '08:00:00', end_time TIME DEFAULT '17:00:00', notes VARCHAR(255) DEFAULT NULL, is_active TINYINT(1) NOT NULL DEFAULT 1, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)");
+    }
+
+    /**
+     * Check if a user is an Admin (1) or Clerk (2) overseeing the Lupon dashboard.
+     */
+    private function isOversightRole(int $userId): bool
+    {
+        $stmt = $this->conn->prepare("SELECT role_id FROM users WHERE user_id = ? LIMIT 1");
+        $stmt->execute([$userId]);
+        $roleId = (int) $stmt->fetchColumn();
+        return in_array($roleId, [1, 2], true);
     }
 
     /**
@@ -77,7 +89,7 @@ class LuponDashboardController
                 return $row;
             }
         } catch (PDOException $e) {
-            error_log("Failed to query lupon_duty_schedules: " . $e->getMessage());
+            // Table lupon_duty_schedules may not exist yet; use default schedule below
         }
 
         // Provide sensible defaults: Wednesday Team
@@ -94,6 +106,7 @@ class LuponDashboardController
 
     /**
      * Retrieve all active cases where member is Chairman, Secretary, or Member.
+     * For Admin/Clerk oversight accounts without direct member rows, returns all active Pangkat cases.
      */
     public function getAssignedPangkatCases(int $userId): array
     {
@@ -140,7 +153,64 @@ class LuponDashboardController
             ORDER BY c.case_id DESC
         ");
         $stmt->execute([$userId]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if (empty($rows) && $this->isOversightRole($userId)) {
+            $oversightStmt = $this->conn->query("
+                SELECT c.case_id, c.case_number, c.case_type, c.case_status, c.docket_date,
+                       co.complaint_id, co.complaint_number, co.complaint_title, co.incident_date, co.incident_location,
+                       cat.category_name,
+                       pg.pangkat_id, pg.formation_date, pg.conciliation_deadline,
+                       COALESCE((
+                           SELECT pm_role.position
+                           FROM pangkat_members pm_role
+                           WHERE pm_role.pangkat_id = pg.pangkat_id AND pm_role.status = 'Active'
+                           ORDER BY FIELD(pm_role.position, 'Chairman', 'Secretary', 'Member')
+                           LIMIT 1
+                       ), 'Chairman') AS my_role,
+                       'Active' AS member_status,
+                       COALESCE((
+                           SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')
+                           FROM complaint_parties cp
+                           JOIN residents r ON r.resident_id = cp.resident_id
+                           WHERE cp.complaint_id = co.complaint_id AND cp.party_type = 'Complainant'
+                       ), '') AS complainant_names,
+                       COALESCE((
+                           SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')
+                           FROM complaint_parties cp
+                           JOIN residents r ON r.resident_id = cp.resident_id
+                           WHERE cp.complaint_id = co.complaint_id AND cp.party_type = 'Respondent'
+                       ), '') AS respondent_names,
+                       (
+                           SELECT COUNT(*)
+                           FROM hearings h
+                           WHERE h.case_id = c.case_id AND h.status NOT IN ('Cancelled', 'Office Cancelled')
+                       ) AS hearing_count,
+                       (
+                           SELECT MAX(h.hearing_date)
+                           FROM hearings h
+                           WHERE h.case_id = c.case_id AND h.status = 'Completed'
+                       ) AS last_hearing_date,
+                       (
+                           SELECT s.compliance_status
+                           FROM settlements s
+                           WHERE s.case_id = c.case_id
+                           LIMIT 1
+                       ) AS settlement_status
+                FROM pangkat_groups pg
+                JOIN cases c ON c.case_id = pg.case_id
+                JOIN complaints co ON co.complaint_id = c.complaint_id
+                LEFT JOIN complaint_categories cat ON cat.category_id = co.category_id
+                WHERE EXISTS (
+                    SELECT 1 FROM pangkat_members pm_chk
+                    WHERE pm_chk.pangkat_id = pg.pangkat_id AND pm_chk.status = 'Active'
+                )
+                ORDER BY c.case_id DESC
+            ");
+            $rows = $oversightStmt ? $oversightStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+        }
+
+        return $rows;
     }
 
     /**
@@ -148,6 +218,49 @@ class LuponDashboardController
      */
     public function getDutyHearings(int $userId, string $dutyDay): array
     {
+        $isOversight = $this->isOversightRole($userId);
+
+        if ($isOversight) {
+            $stmt = $this->conn->prepare("
+                SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.end_time, h.venue, h.status, h.mediation_attempt,
+                       h.complainant_attendance, h.respondent_attendance, h.attendance_notes,
+                       DAYNAME(h.hearing_date) AS day_of_week,
+                       c.case_id, c.case_number, c.case_status,
+                       co.complaint_id, co.complaint_title,
+                       pg.pangkat_id,
+                       COALESCE(pm.position, (
+                           SELECT pm_role.position
+                           FROM pangkat_members pm_role
+                           WHERE pm_role.pangkat_id = pg.pangkat_id AND pm_role.status = 'Active'
+                           ORDER BY FIELD(pm_role.position, 'Chairman', 'Secretary', 'Member')
+                           LIMIT 1
+                       )) AS my_role,
+                       COALESCE((
+                           SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')
+                           FROM complaint_parties cp
+                           JOIN residents r ON r.resident_id = cp.resident_id
+                           WHERE cp.complaint_id = co.complaint_id AND cp.party_type = 'Complainant'
+                       ), '') AS complainant_names,
+                       COALESCE((
+                           SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')
+                           FROM complaint_parties cp
+                           JOIN residents r ON r.resident_id = cp.resident_id
+                           WHERE cp.complaint_id = co.complaint_id AND cp.party_type = 'Respondent'
+                       ), '') AS respondent_names
+                FROM hearings h
+                JOIN cases c ON c.case_id = h.case_id
+                JOIN complaints co ON co.complaint_id = c.complaint_id
+                LEFT JOIN pangkat_groups pg ON pg.case_id = c.case_id
+                LEFT JOIN pangkat_members pm ON pm.pangkat_id = pg.pangkat_id AND pm.member_id = ?
+                WHERE (DAYNAME(h.hearing_date) = ? OR pg.pangkat_id IS NOT NULL)
+                  AND h.status NOT IN ('Cancelled', 'Office Cancelled')
+                ORDER BY h.hearing_date ASC
+                LIMIT 40
+            ");
+            $stmt->execute([$userId, $dutyDay]);
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+
         $stmt = $this->conn->prepare("
             SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.end_time, h.venue, h.status, h.mediation_attempt,
                    h.complainant_attendance, h.respondent_attendance, h.attendance_notes,

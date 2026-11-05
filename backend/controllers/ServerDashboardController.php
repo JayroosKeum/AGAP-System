@@ -22,38 +22,51 @@ class ServerDashboardController
     public function getDashboardData(array $params = []): array
     {
         $today = date('Y-m-d');
-        $tomorrow = date('Y-m-d', strtotime('+1 day'));
         $purokFilter = trim((string) ($params['purok'] ?? 'all'));
         $statusFilter = trim((string) ($params['status'] ?? 'pending'));
 
+        $baseActiveWhere = "(h.hearing_id IS NULL OR h.status NOT IN ('Cancelled', 'Office Cancelled'))";
+
         // 1. Dispatch Summary KPIs
-        // a. Pending Delivery (Target service date is today/tomorrow or active pending delivery)
-        $pendingStmt = $this->conn->prepare("
+        // a. Pending Delivery (All active pending deliveries)
+        $pendingStmt = $this->conn->query("
             SELECT COUNT(*) 
             FROM summon_deliveries sd
-            JOIN hearings h ON h.hearing_id = sd.hearing_id
-            WHERE sd.delivery_status = 'Pending'
-              AND (DATE(h.hearing_date) IN (?, ?) OR DATE(sd.created_at) >= DATE_SUB(?, INTERVAL 7 DAY))
+            LEFT JOIN hearings h ON h.hearing_id = sd.hearing_id
+            WHERE $baseActiveWhere
+              AND sd.delivery_status = 'Pending'
         ");
-        $pendingStmt->execute([$today, $tomorrow, $today]);
         $pendingDelivery = (int) $pendingStmt->fetchColumn();
 
-        // b. Served Today
+        // b. Served Today (falls back to total served if 0 today so the card reflects served records)
         $servedStmt = $this->conn->prepare("
             SELECT COUNT(*)
             FROM summon_deliveries sd
-            WHERE sd.delivery_status LIKE 'Served%'
+            LEFT JOIN hearings h ON h.hearing_id = sd.hearing_id
+            WHERE $baseActiveWhere
+              AND sd.delivery_status LIKE 'Served%'
               AND (DATE(sd.served_at) = ? OR DATE(sd.updated_at) = ?)
         ");
         $servedStmt->execute([$today, $today]);
         $servedToday = (int) $servedStmt->fetchColumn();
+        if ($servedToday === 0) {
+            $servedToday = (int) $this->conn->query("
+                SELECT COUNT(*)
+                FROM summon_deliveries sd
+                LEFT JOIN hearings h ON h.hearing_id = sd.hearing_id
+                WHERE $baseActiveWhere
+                  AND sd.delivery_status LIKE 'Served%'
+            ")->fetchColumn();
+        }
 
         // c. Unserved / Need Follow-up (Party moved, address not found, refused, etc.)
         $unservedStmt = $this->conn->query("
             SELECT COUNT(*)
             FROM summon_deliveries sd
-            WHERE sd.delivery_status IN ('Unserved', 'Attempted', 'Refused')
-               OR (sd.unserved_reason IS NOT NULL AND TRIM(sd.unserved_reason) != '')
+            LEFT JOIN hearings h ON h.hearing_id = sd.hearing_id
+            WHERE $baseActiveWhere
+              AND (sd.delivery_status IN ('Unserved', 'Attempted', 'Refused')
+                   OR (sd.unserved_reason IS NOT NULL AND TRIM(sd.unserved_reason) != ''))
         ");
         $unservedFollowup = (int) $unservedStmt->fetchColumn();
 
@@ -67,7 +80,7 @@ class ServerDashboardController
         $puroks = $purokStmt->fetchAll(PDO::FETCH_COLUMN);
 
         // 3. Dispatch Tasks Query with Purok & Status filters
-        $where = ["h.status NOT IN ('Cancelled', 'Office Cancelled')"];
+        $where = [$baseActiveWhere];
         $queryParams = [];
 
         if ($statusFilter === 'served') {
@@ -93,20 +106,35 @@ class ServerDashboardController
                    sd.attempt_number, sd.service_method, sd.served_at, sd.unserved_reason,
                    sd.failure_notes, sd.remarks, sd.proof_file_path, sd.form_type,
                    c.case_number, c.case_status,
-                   h.hearing_type, h.hearing_date, h.venue,
+                   COALESCE(h.hearing_type, sd.form_type, 'Notice') AS hearing_type,
+                   COALESCE(h.hearing_date, sd.created_at) AS hearing_date,
+                   COALESCE(h.venue, 'Tanggapan ng Lupon') AS venue,
                    r.resident_id,
-                   TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name, r.suffix)) AS full_name,
-                   r.contact_no, r.purok, r.house_street, r.address, r.gender,
-                   DATE(h.hearing_date) AS target_date,
-                   DATEDIFF(DATE(h.hearing_date), CURDATE()) AS days_until_hearing
+                   COALESCE(
+                       NULLIF(TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name, r.suffix)), ''),
+                       NULLIF(TRIM(sd.recipient_name), ''),
+                       'Recipient'
+                   ) AS full_name,
+                   r.contact_no,
+                   COALESCE(NULLIF(TRIM(r.purok), ''), 'Tumana') AS purok,
+                   r.house_street,
+                   COALESCE(
+                       NULLIF(TRIM(r.address), ''),
+                       NULLIF(TRIM(sd.service_address), ''),
+                       NULLIF(TRIM(r.purok), ''),
+                       'Barangay Tumana'
+                   ) AS address,
+                   r.gender,
+                   DATE(COALESCE(h.hearing_date, sd.created_at)) AS target_date,
+                   DATEDIFF(DATE(COALESCE(h.hearing_date, sd.created_at)), CURDATE()) AS days_until_hearing
             FROM summon_deliveries sd
-            JOIN residents r ON r.resident_id = sd.resident_id
             JOIN cases c ON c.case_id = sd.case_id
-            JOIN hearings h ON h.hearing_id = sd.hearing_id
+            LEFT JOIN residents r ON r.resident_id = sd.resident_id
+            LEFT JOIN hearings h ON h.hearing_id = sd.hearing_id
             WHERE $whereClause
             ORDER BY 
                 CASE WHEN sd.delivery_status = 'Pending' THEN 0 ELSE 1 END,
-                h.hearing_date ASC,
+                COALESCE(h.hearing_date, sd.created_at) ASC,
                 r.purok ASC,
                 sd.delivery_id DESC
             LIMIT 100
@@ -147,8 +175,8 @@ class ServerDashboardController
             SELECT sd.*, c.case_number, h.hearing_date, r.first_name, r.last_name
             FROM summon_deliveries sd
             JOIN cases c ON c.case_id = sd.case_id
-            JOIN hearings h ON h.hearing_id = sd.hearing_id
-            JOIN residents r ON r.resident_id = sd.resident_id
+            LEFT JOIN hearings h ON h.hearing_id = sd.hearing_id
+            LEFT JOIN residents r ON r.resident_id = sd.resident_id
             WHERE sd.delivery_id = ?
         ");
         $stmt->execute([$deliveryId]);
@@ -171,7 +199,10 @@ class ServerDashboardController
 
         $recipientName = trim((string) ($data['recipient_name'] ?? ''));
         if ($recipientName === '') {
-            $recipientName = trim($delivery['first_name'] . ' ' . $delivery['last_name']);
+            $recipientName = trim(($delivery['first_name'] ?? '') . ' ' . ($delivery['last_name'] ?? ''));
+        }
+        if ($recipientName === '') {
+            $recipientName = trim((string) ($delivery['recipient_name'] ?? 'Recipient'));
         }
 
         if ($action === 'served') {

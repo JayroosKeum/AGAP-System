@@ -1470,6 +1470,12 @@ function renderCaseWorkspace(workspace, complaint) {
         hasSettledSession
     );
 
+    // A completed disposition closes the workflow record.  Keep its history
+    // visible, but prevent changes outside the Outcome tab where the final
+    // record is managed.
+    const outcomeLocked = Boolean(isSettledCase || isCfa || isArbitration);
+    applyOutcomeReadOnlyLock(outcomeLocked);
+
     const tabLabel = document.getElementById('tabOutcomesLabel');
     const amicWs = document.getElementById('amicableSettlementWorkspace');
     const arbWs = document.getElementById('arbitrationCfaWorkspace');
@@ -3025,6 +3031,7 @@ function renderHearingSessionCards(sessions, containerId, badgeId, stageType, ca
     sessions.forEach((s, idx) => {
         const sessionIndex = Number(s.session_index || (idx + 1));
         const sessionLabel = getSessionOrdinalLabel(stageType, sessionIndex);
+        const sessionLabelJs = JSON.stringify(sessionLabel).replace(/"/g, '&quot;');
         const targetWorkspace = stageType === 'Conciliation' ? '../cases/pangkat-workspace.php' : '../cases/mediation-workspace.php';
         const complaintIdParam = new URLSearchParams(window.location.search).get('id') || (window.currentComplaintData ? window.currentComplaintData.complaint_id : '') || (window.complaintData ? window.complaintData.complaint_id : '') || '';
         const openWorkspaceUrl = `${targetWorkspace}?case_id=${encodeURIComponent(caseId || '')}&complaint_id=${encodeURIComponent(complaintIdParam)}&hearing_id=${encodeURIComponent(s.hearing_id)}`;
@@ -3040,7 +3047,6 @@ function renderHearingSessionCards(sessions, containerId, badgeId, stageType, ca
         const isStandby = (qStatus === 'Standby');
         const isConcluded = (qStatus === 'Concluded' || isCompleted);
         const isServiceConfirmed = Boolean(s.attendance_gate ? s.attendance_gate.allowed : (s.proof_of_service_status === 'Served'));
-        const kpFormName = (stageType === 'Conciliation') ? 'KP Form 12' : (Number(s.session_index || 1) === 1 ? 'KP Form 9' : 'KP Form 8');
         const serviceLockTitle = (s.attendance_gate && s.attendance_gate.message) ? s.attendance_gate.message : 'Locked: Officer must log an appropriate Summons Return (Served) before attendance check-in is enabled.';
 
         let queueBadgeHtml = '';
@@ -3113,9 +3119,9 @@ function renderHearingSessionCards(sessions, containerId, badgeId, stageType, ca
                         </div>
                     </div>
                     <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-                        <button type="button" class="btn-secondary" onclick="openSummonsPreviewModal(${Number(caseId)}, null, ${Number(s.hearing_id)})" style="font-size: 0.78rem; padding: 5px 12px; display: inline-flex; align-items: center; gap: 4px; border-color: #0284c7; color: #0284c7; background: #f0f9ff; font-weight: 600;" title="Preview, print, or download ${escapeHtml(kpFormName)}">
+                        <button type="button" class="btn-secondary" onclick="openSummonsPreviewModal(${Number(caseId)}, null, ${Number(s.hearing_id)})" style="font-size: 0.78rem; padding: 5px 12px; display: inline-flex; align-items: center; gap: 4px; border-color: #0284c7; color: #0284c7; background: #f0f9ff; font-weight: 600;" title="View official forms for this session">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                            ${escapeHtml(kpFormName)}
+                            FORM(S)
                         </button>
                         <a href="${openWorkspaceUrl}" class="btn-create" style="font-size: 0.78rem; padding: 5px 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; background: #2563eb; border-color: #2563eb; color: #fff; font-weight: 700;" title="Open ${escapeHtml(sessionLabel)} workspace containing session details, summons server logs, and attendance records">
                             Open ${escapeHtml(sessionLabel)} &rarr;
@@ -3177,12 +3183,13 @@ function renderHearingSessionCards(sessions, containerId, badgeId, stageType, ca
                         ${partyAttHtml}
                     </div>
                     <div>
-                        <span style="color: #64748b; font-size: 0.74rem; display: block; font-weight: 600;">MINUTES OF THE MEETING</span>
-                        <div style="margin-top: 3px;">
+                        <span style="color: #64748b; font-size: 0.74rem; display: block; font-weight: 600;">SESSION DOCUMENTS</span>
+                        <div style="margin-top: 3px; display: flex; align-items: center; gap: 7px; flex-wrap: wrap;">
                             <span style="font-size: 0.76rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; ${isFinalized ? 'background: #dcfce7; color: #15803d;' : (hasMinutes ? 'background: #dbeafe; color: #1e40af;' : 'background: #f1f5f9; color: #64748b;')}">
                                 ${escapeHtml(s.minutes_status || 'Not Recorded')}
                             </span>
                             ${s.session_outcome && s.session_outcome !== 'Pending' ? `<span style="font-size: 0.74rem; color: #475569; margin-left: 4px;">(${escapeHtml(s.session_outcome)})</span>` : ''}
+                            <button type="button" class="btn-secondary" onclick="openSessionDocumentsDrawer(${Number(s.hearing_id)}, ${Number(caseId)}, ${sessionLabelJs})" style="font-size: 0.74rem; padding: 3px 8px; border-color: #93c5fd; color: #1d4ed8; background: #eff6ff; font-weight: 700;">DRAWER</button>
                         </div>
                     </div>
                 </div>
@@ -3192,6 +3199,138 @@ function renderHearingSessionCards(sessions, containerId, badgeId, stageType, ca
 
     container.innerHTML = cardsHtml;
 }
+
+function applyOutcomeReadOnlyLock(isLocked) {
+    window.__agapCaseOutcomeLocked = Boolean(isLocked);
+    const readOnlyTabs = ['tab-overview', 'tab-mediation', 'tab-conciliation'];
+    ['statusTrackerButton', 'editComplaintBtn'].forEach(id => {
+        const control = document.getElementById(id);
+        if (!control) return;
+        control.classList.toggle('case-header-readonly-action', Boolean(isLocked));
+        control.setAttribute('aria-disabled', isLocked ? 'true' : 'false');
+    });
+
+    readOnlyTabs.forEach(tabId => {
+        const pane = document.getElementById(tabId);
+        if (!pane) return;
+        pane.classList.toggle('case-outcome-readonly', Boolean(isLocked));
+        const existingBanner = pane.querySelector('.case-outcome-readonly-banner');
+        if (isLocked && !existingBanner) {
+            const banner = document.createElement('div');
+            banner.className = 'case-outcome-readonly-banner';
+            banner.setAttribute('role', 'note');
+            banner.innerHTML = '<strong>Case finalized — view only.</strong><span>This workflow has reached its outcome. Records remain available here; use the Outcome tab for any permitted action.</span>';
+            pane.prepend(banner);
+        } else if (!isLocked && existingBanner) {
+            existingBanner.remove();
+        }
+    });
+}
+
+document.addEventListener('click', (event) => {
+    if (!window.__agapCaseOutcomeLocked) return;
+    if (event.target.closest('#statusTrackerButton, #editComplaintBtn')) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+    }
+    const readOnlyPane = event.target.closest('.case-outcome-readonly');
+    if (!readOnlyPane) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+}, true);
+
+async function openSessionDocumentsDrawer(hearingId, caseId, sessionLabel) {
+    const modal = document.getElementById('sessionDocumentsDrawer');
+    if (!modal || !hearingId || !caseId) return;
+
+    document.getElementById('sessionDocumentsHearingId').value = hearingId;
+    document.getElementById('sessionDocumentsCaseId').value = caseId;
+    document.getElementById('sessionDocumentsTitle').textContent = `${sessionLabel || 'Hearing Session'} Documents`;
+    document.getElementById('sessionDocumentsList').innerHTML = '<p style="margin:0; color:#64748b; font-size:.86rem;">Loading documents…</p>';
+    modal.style.display = 'flex';
+    await loadSessionDocuments(hearingId);
+}
+window.openSessionDocumentsDrawer = openSessionDocumentsDrawer;
+
+function closeSessionDocumentsDrawer() {
+    const modal = document.getElementById('sessionDocumentsDrawer');
+    if (modal) modal.style.display = 'none';
+}
+window.closeSessionDocumentsDrawer = closeSessionDocumentsDrawer;
+
+async function loadSessionDocuments(hearingId) {
+    const list = document.getElementById('sessionDocumentsList');
+    if (!list || !hearingId) return;
+    try {
+        const response = await fetch(`../../../backend/api/hearings/upload-minutes-evidence.php?hearing_id=${encodeURIComponent(hearingId)}&_t=${Date.now()}`);
+        const json = await response.json();
+        if (!json.success) throw new Error(json.message || 'Unable to load documents.');
+        const documents = json.data || [];
+        if (!documents.length) {
+            list.innerHTML = '<p style="margin:0; color:#64748b; font-size:.86rem;">No session documents have been uploaded.</p>';
+            return;
+        }
+        list.innerHTML = documents.map(document => {
+            const isMinutes = document.document_type === 'handwritten_minutes';
+            const type = isMinutes ? 'Minutes' : 'Evidence';
+            const size = document.file_size ? `${Math.ceil(Number(document.file_size) / 1024)} KB` : '';
+            return `<div class="session-document-row">
+                <div style="min-width:0;">
+                    <strong>${escapeHtml(document.file_name || 'Untitled document')}</strong>
+                    <span>${type}${size ? ` · ${size}` : ''}</span>
+                </div>
+                <div class="session-document-actions">
+                    <a href="../../../${escapeHtml(document.file_path || '')}" target="_blank" rel="noopener">View</a>
+                    <button type="button" onclick="deleteSessionDocument(${Number(document.id)}, ${Number(hearingId)})">Remove</button>
+                </div>
+            </div>`;
+        }).join('');
+    } catch (error) {
+        list.innerHTML = `<p style="margin:0; color:#b91c1c; font-size:.86rem;">${escapeHtml(error.message || 'Unable to load documents.')}</p>`;
+    }
+}
+
+async function uploadSessionDocuments(input) {
+    const hearingId = Number(document.getElementById('sessionDocumentsHearingId')?.value || 0);
+    const caseId = Number(document.getElementById('sessionDocumentsCaseId')?.value || 0);
+    const type = document.getElementById('sessionDocumentsType')?.value || 'evidence_attachment';
+    if (!input.files?.length || !hearingId || !caseId) return;
+
+    const formData = new FormData();
+    formData.append('hearing_id', hearingId);
+    formData.append('case_id', caseId);
+    formData.append('document_type', type);
+    Array.from(input.files).forEach(file => formData.append('file[]', file));
+    try {
+        const response = await fetch('../../../backend/api/hearings/upload-minutes-evidence.php', { method: 'POST', body: formData });
+        const json = await response.json();
+        if (!json.success) throw new Error(json.message || 'Upload failed.');
+        window.agapNotify?.(json.message || 'Document uploaded.', 'success', 'Session documents');
+        await loadSessionDocuments(hearingId);
+    } catch (error) {
+        window.agapNotify?.(error.message || 'Upload failed.', 'error', 'Session documents');
+    } finally {
+        input.value = '';
+    }
+}
+window.uploadSessionDocuments = uploadSessionDocuments;
+
+async function deleteSessionDocument(documentId, hearingId) {
+    if (!confirm('Remove this session document?')) return;
+    const formData = new FormData();
+    formData.append('action', 'delete');
+    formData.append('document_id', documentId);
+    try {
+        const response = await fetch('../../../backend/api/hearings/upload-minutes-evidence.php', { method: 'POST', body: formData });
+        const json = await response.json();
+        if (!json.success) throw new Error(json.message || 'Unable to remove document.');
+        await loadSessionDocuments(hearingId);
+    } catch (error) {
+        window.agapNotify?.(error.message || 'Unable to remove document.', 'error', 'Session documents');
+    }
+}
+window.deleteSessionDocument = deleteSessionDocument;
 
 async function handleHearingCheckIn(hearingId, partyType, status, residentId = null) {
     try {
