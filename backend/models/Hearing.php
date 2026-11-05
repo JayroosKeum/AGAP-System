@@ -1623,39 +1623,8 @@ class Hearing
             $t9Stmt->execute();
             $kp9TemplateId = (int) ($t9Stmt->fetchColumn() ?: 3);
 
-            // Directory for storing generated notices
-            $safeCaseNum = preg_replace('/[^a-zA-Z0-9_-]/', '_', (string) $caseRow['case_number']);
-            $relativeDir = 'storage/generated-documents/' . date('Y') . '/' . $safeCaseNum;
-            $fullDir = dirname(__DIR__, 2) . '/' . $relativeDir;
-            if (!is_dir($fullDir)) {
-                @mkdir($fullDir, 0750, true);
-            }
-
-            $timestamp = date('Ymd-His');
-            require_once __DIR__ . '/../services/PDFService.php';
-            $pdfService = new PDFService();
-
-            // 4. Generate KP Form 8 (Notice of Hearing for Complainant)
-            $kp8FileName = sprintf('KP-Form-8-Notice-Rescheduled-%d-%s.pdf', $newHearingId, $timestamp);
-            $kp8FilePath = $relativeDir . '/' . $kp8FileName;
-            $kp8FullPath = $fullDir . '/' . $kp8FileName;
-            $kp8Data = [
-                'case_number' => $caseRow['case_number'],
-                'complaint_title' => $caseRow['complaint_title'],
-                'complainants' => $compList,
-                'respondents' => $respList,
-                'target_party_name' => $primaryComp['full_name'],
-                'venue' => $hearing['venue'] ?: 'Lupon Court Room',
-                'hearing_date' => $startTime,
-                'notice_date' => date('Y-m-d'),
-                'official_name' => $officialName,
-            ];
-            try {
-                $pdfService->generateNotice('KP Form 8', $kp8Data, $kp8FullPath);
-            } catch (Throwable $e) {
-                @file_put_contents($kp8FullPath, '%PDF-1.4 KP Form 8 Rescheduled Notice for ' . $caseRow['case_number']);
-            }
-
+            // KP Form records (generated on-demand for preview/download without saving physical PDF to disk)
+            $kp8FilePath = null;
             $doc8Stmt = $this->conn->prepare("
                 INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
                 VALUES (?, ?, ?, ?, 'For Service', ?)
@@ -1689,27 +1658,8 @@ class Hearing
                 "Notice of Rescheduled Hearing (KP Form 8) issued due to presider unavailability: {$reason}."
             ]);
 
-            // 5. Generate KP Form 9 (Summons for Respondent)
-            $kp9FileName = sprintf('KP-Form-9-Summons-Rescheduled-%d-%s.pdf', $newHearingId, $timestamp);
-            $kp9FilePath = $relativeDir . '/' . $kp9FileName;
-            $kp9FullPath = $fullDir . '/' . $kp9FileName;
-            $kp9Data = [
-                'case_number' => $caseRow['case_number'],
-                'complaint_title' => $caseRow['complaint_title'],
-                'complainants' => $compList,
-                'respondents' => $respList,
-                'target_party_name' => $primaryResp['full_name'],
-                'venue' => $hearing['venue'] ?: 'Lupon Court Room',
-                'hearing_date' => $startTime,
-                'notice_date' => date('Y-m-d'),
-                'official_name' => $officialName,
-            ];
-            try {
-                $pdfService->generateNotice('KP Form 9', $kp9Data, $kp9FullPath);
-            } catch (Throwable $e) {
-                @file_put_contents($kp9FullPath, '%PDF-1.4 KP Form 9 Rescheduled Summons for ' . $caseRow['case_number']);
-            }
-
+            // KP Form 9 record (on-demand streaming/preview)
+            $kp9FilePath = null;
             $doc9Stmt = $this->conn->prepare("
                 INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
                 VALUES (?, ?, ?, ?, 'For Service', ?)
@@ -1909,39 +1859,8 @@ class Hearing
             $t9Stmt->execute();
             $kp9TemplateId = (int) ($t9Stmt->fetchColumn() ?: 3);
 
-            // Directory for storing generated notices
-            $safeCaseNum = preg_replace('/[^a-zA-Z0-9_-]/', '_', (string) ($caseRow['case_number'] ?? $caseId));
-            $relativeDir = 'storage/generated-documents/' . date('Y') . '/' . $safeCaseNum;
-            $fullDir = dirname(__DIR__, 2) . '/' . $relativeDir;
-            if (!is_dir($fullDir)) {
-                @mkdir($fullDir, 0750, true);
-            }
-
-            $timestamp = date('Ymd-His');
-            require_once __DIR__ . '/../services/PDFService.php';
-            $pdfService = new PDFService();
-
-            // 4. Generate KP Form 8 (Notice of Hearing for Complainant)
-            $kp8FileName = sprintf('KP-Form-8-Notice-Rescheduled-%d-%s.pdf', $newHearingId, $timestamp);
-            $kp8FilePath = $relativeDir . '/' . $kp8FileName;
-            $kp8FullPath = $fullDir . '/' . $kp8FileName;
-            $kp8Data = [
-                'case_number' => $caseRow['case_number'] ?? '',
-                'complaint_title' => $caseRow['complaint_title'] ?? '',
-                'complainants' => $compList,
-                'respondents' => $respList,
-                'target_party_name' => $primaryComp['full_name'],
-                'venue' => $targetVenue,
-                'hearing_date' => $startTime,
-                'notice_date' => date('Y-m-d'),
-                'official_name' => $officialName,
-            ];
-            try {
-                $pdfService->generateNotice('KP Form 8', $kp8Data, $kp8FullPath);
-            } catch (Throwable $e) {
-                @file_put_contents($kp8FullPath, '%PDF-1.4 KP Form 8 Rescheduled Notice for ' . ($caseRow['case_number'] ?? ''));
-            }
-
+            // KP Form records (generated on-demand for preview/download without saving physical PDF to disk)
+            $kp8FilePath = null;
             $doc8Stmt = $this->conn->prepare("
                 INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
                 VALUES (?, ?, ?, ?, 'For Service', ?)
@@ -1975,27 +1894,8 @@ class Hearing
                 "Notice of Rescheduled Hearing (KP Form 8): {$reason}."
             ]);
 
-            // 5. Generate KP Form 9 (Summons for Respondent)
-            $kp9FileName = sprintf('KP-Form-9-Summons-Rescheduled-%d-%s.pdf', $newHearingId, $timestamp);
-            $kp9FilePath = $relativeDir . '/' . $kp9FileName;
-            $kp9FullPath = $fullDir . '/' . $kp9FileName;
-            $kp9Data = [
-                'case_number' => $caseRow['case_number'] ?? '',
-                'complaint_title' => $caseRow['complaint_title'] ?? '',
-                'complainants' => $compList,
-                'respondents' => $respList,
-                'target_party_name' => $primaryResp['full_name'],
-                'venue' => $targetVenue,
-                'hearing_date' => $startTime,
-                'notice_date' => date('Y-m-d'),
-                'official_name' => $officialName,
-            ];
-            try {
-                $pdfService->generateNotice('KP Form 9', $kp9Data, $kp9FullPath);
-            } catch (Throwable $e) {
-                @file_put_contents($kp9FullPath, '%PDF-1.4 KP Form 9 Rescheduled Summons for ' . ($caseRow['case_number'] ?? ''));
-            }
-
+            // KP Form 9 record (on-demand streaming/preview)
+            $kp9FilePath = null;
             $doc9Stmt = $this->conn->prepare("
                 INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
                 VALUES (?, ?, ?, ?, 'For Service', ?)

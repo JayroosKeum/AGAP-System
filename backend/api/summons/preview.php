@@ -207,52 +207,19 @@ $kp8Data = [
     'official_name' => $officialName,
 ];
 
-$needsKp8Regen = false;
-if (!$docKp8 || empty($docKp8['file_path'])) {
-    $needsKp8Regen = true;
-} else {
-    $fullKp8Path = $root . '/' . $docKp8['file_path'];
-    if (!is_file($fullKp8Path)) {
-        $needsKp8Regen = true;
-    }
-}
-
-if ($needsKp8Regen) {
-    if (!is_dir($fullDir)) {
-        @mkdir($fullDir, 0750, true);
-    }
-    $timestamp = date('Ymd-His');
-    $kp8FileName = sprintf('KP-Form-8-Notice-%s.pdf', $timestamp);
-    $kp8FilePath = $relativeDir . '/' . $kp8FileName;
-    $kp8FullPath = $fullDir . '/' . $kp8FileName;
-
+if (!$docKp8 || empty($docKp8['document_id'])) {
     try {
-        $pdfService->generateNotice('KP Form 8', $kp8Data, $kp8FullPath);
-
         $tStmt8 = $db->prepare("SELECT template_id FROM document_templates WHERE template_name = 'KP Form 8' LIMIT 1");
         $tStmt8->execute();
         $templateId8 = (int) $tStmt8->fetchColumn() ?: 2;
-
         $userId = (int) ($_SESSION['user_id'] ?? 1);
 
-        if ($docKp8 && !empty($docKp8['document_id'])) {
-            // Update existing record, NEVER insert a duplicate
-            $updDoc8 = $db->prepare("
-                UPDATE generated_documents
-                SET file_path = ?, service_status = 'Served', regeneration_reason = 'Synchronized with current saved hearing schedule'
-                WHERE document_id = ?
-            ");
-            $updDoc8->execute([$kp8FilePath, $docKp8['document_id']]);
-            $newDocId8 = (int) $docKp8['document_id'];
-        } else {
-            // Initial insert: KP Form 8 (Notice of Hearing to Complainant) is ALWAYS Served upon filing fee payment
-            $insDoc8 = $db->prepare("
-                INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
-                VALUES (?, ?, ?, ?, 'For Service', 'Synchronized with current saved hearing schedule')
-            ");
-            $insDoc8->execute([$caseId, $templateId8, $userId, $kp8FilePath]);
-            $newDocId8 = (int) $db->lastInsertId();
-        }
+        $insDoc8 = $db->prepare("
+            INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
+            VALUES (?, ?, ?, NULL, 'For Service', 'Synchronized with current saved hearing schedule')
+        ");
+        $insDoc8->execute([$caseId, $templateId8, $userId]);
+        $newDocId8 = (int) $db->lastInsertId();
 
         $updDeliv8 = $db->prepare("
             UPDATE summon_deliveries
@@ -264,12 +231,12 @@ if ($needsKp8Regen) {
         $docKp8 = [
             'document_id' => $newDocId8,
             'case_id' => $caseId,
-            'file_path' => $kp8FilePath,
+            'file_path' => null,
             'service_status' => 'Served',
             'template_name' => 'KP Form 8'
         ];
     } catch (Throwable $e) {
-        error_log('Error regenerating KP Form 8 preview PDF: ' . $e->getMessage());
+        error_log('Error initializing KP Form 8 record: ' . $e->getMessage());
     }
 }
 
@@ -279,28 +246,8 @@ $docIdKp8 = !empty($docKp8['document_id']) ? (int) $docKp8['document_id'] : 0;
 // -------------------------------------------------------------------------
 // 2. Fetch & Verify KP Form 9 (Summons for Respondent)
 // -------------------------------------------------------------------------
-$needsRegeneration = false;
-if (!$doc || empty($doc['file_path'])) {
-    $needsRegeneration = true;
-} else {
-    $fullPath = $root . '/' . $doc['file_path'];
-    if (!is_file($fullPath)) {
-        $needsRegeneration = true;
-    }
-}
-
-if ($needsRegeneration) {
-    if (!is_dir($fullDir)) {
-        @mkdir($fullDir, 0750, true);
-    }
-    $timestamp = date('Ymd-His');
-    $kp9FileName = sprintf('KP-Form-9-Summons-1-%s.pdf', $timestamp);
-    $kp9FilePath = $relativeDir . '/' . $kp9FileName;
-    $kp9FullPath = $fullDir . '/' . $kp9FileName;
-
+if (!$doc || empty($doc['document_id'])) {
     try {
-        $pdfService->generateNotice('KP Form 9', $kp9Data, $kp9FullPath);
-
         // Fetch or create template
         $tStmt = $db->prepare("SELECT template_id FROM document_templates WHERE template_name = 'KP Form 9' LIMIT 1");
         $tStmt->execute();
@@ -313,23 +260,12 @@ if ($needsRegeneration) {
 
         $userId = (int) ($_SESSION['user_id'] ?? 1);
 
-        if ($doc && !empty($doc['document_id'])) {
-            // Update existing record, NEVER insert a duplicate
-            $updDoc = $db->prepare("
-                UPDATE generated_documents
-                SET file_path = ?, regeneration_reason = 'Synchronized with current saved hearing schedule'
-                WHERE document_id = ?
-            ");
-            $updDoc->execute([$kp9FilePath, $doc['document_id']]);
-            $newDocId = (int) $doc['document_id'];
-        } else {
-            $insDoc = $db->prepare("
-                INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
-                VALUES (?, ?, ?, ?, 'For Service', 'Synchronized with current saved hearing schedule')
-            ");
-            $insDoc->execute([$caseId, $templateId, $userId, $kp9FilePath]);
-            $newDocId = (int) $db->lastInsertId();
-        }
+        $insDoc = $db->prepare("
+            INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
+            VALUES (?, ?, ?, NULL, 'For Service', 'Synchronized with current saved hearing schedule')
+        ");
+        $insDoc->execute([$caseId, $templateId, $userId]);
+        $newDocId = (int) $db->lastInsertId();
 
         // Update summon_deliveries for Respondent
         $updDeliv = $db->prepare("
@@ -339,17 +275,15 @@ if ($needsRegeneration) {
         ");
         $updDeliv->execute([$newDocId, $caseId]);
 
-        (new AuditService())->log($userId, "Regenerated KP Form 9 summons to match saved hearing schedule", 'Summons', $newDocId);
-
         $doc = [
             'document_id' => $newDocId,
             'case_id' => $caseId,
-            'file_path' => $kp9FilePath,
-            'service_status' => $doc['service_status'] ?? 'For Service',
+            'file_path' => null,
+            'service_status' => 'For Service',
             'template_name' => 'KP Form 9'
         ];
     } catch (Throwable $e) {
-        error_log('Error regenerating summons preview PDF: ' . $e->getMessage());
+        error_log('Error initializing summons preview record: ' . $e->getMessage());
     }
 }
 

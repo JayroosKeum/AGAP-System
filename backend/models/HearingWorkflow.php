@@ -172,41 +172,8 @@ class HearingWorkflow
                     $tplId = (int) $getTpl->fetchColumn();
                 }
 
-                // File path
-                $relativeDir = 'storage/generated-documents/' . date('Y') . '/' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $p['case_number']);
-                $absDir = dirname(__DIR__, 2) . '/' . $relativeDir;
-                if (!is_dir($absDir)) {
-                    mkdir($absDir, 0750, true);
-                }
-                $fileName = sprintf('%s-%s-%s.pdf', str_replace(' ', '-', $formCode), preg_replace('/[^a-zA-Z0-9_-]/', '_', $p['target_party_name']), date('Ymd-His'));
-                $relativePath = $relativeDir . '/' . $fileName;
-                $absolutePath = dirname(__DIR__, 2) . '/' . $relativePath;
-
-                // Determine explanation hearing date
-                $explanationDate = trim((string) ($d['explanation_date'] ?? ''));
-                if (!$explanationDate || !strtotime($explanationDate)) {
-                    $explanationDate = date('Y-m-d 09:00:00', strtotime('+3 days'));
-                }
-
-                // Render PDF
-                try {
-                    $pdfData = [
-                        'case_number' => $p['case_number'],
-                        'complaint_title' => $p['complaint_title'],
-                        'target_party_name' => $p['target_party_name'],
-                        'hearing_date' => $p['hearing_date'],
-                        'explanation_date' => $explanationDate,
-                        'venue' => $p['venue'] ?: 'Barangay Tumana Hearing Room',
-                        'notice_date' => date('Y-m-d'),
-                        'complainants' => $complainants,
-                        'respondents' => $respondents,
-                    ];
-                    (new PDFService())->generateNotice($formCode, $pdfData, $absolutePath);
-                } catch (Throwable $pe) {
-                    error_log('PDF Generation Notice error: ' . $pe->getMessage());
-                    // Fallback create dummy file if Dompdf fails so process completes
-                    file_put_contents($absolutePath, '%PDF-1.4 Notice of Hearing ' . $formCode);
-                }
+                // On-demand generation: no physical disk file created ahead of time
+                $relativePath = null;
 
                 // Save generated document
                 $docStmt = $this->db->prepare("INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status) VALUES (?, ?, ?, ?, 'For Service')");
@@ -391,36 +358,8 @@ class HearingWorkflow
                         $tplId = (int) $getTpl->fetchColumn();
                     }
 
-                    $relativeDir = 'storage/generated-documents/' . date('Y') . '/' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $p['case_number']);
-                    $absDir = dirname(__DIR__, 2) . '/' . $relativeDir;
-                    if (!is_dir($absDir)) {
-                        mkdir($absDir, 0750, true);
-                    }
-                    $fileName = sprintf('%s-%s-%s.pdf', str_replace(' ', '-', $formCode), preg_replace('/[^a-zA-Z0-9_-]/', '_', $p['resident_name']), date('Ymd-His'));
-                    $relativePath = $relativeDir . '/' . $fileName;
-                    $absolutePath = dirname(__DIR__, 2) . '/' . $relativePath;
-
-                    // Fetch party lists
-                    $compStmt = $this->db->prepare("SELECT TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS full_name FROM complaint_parties cp JOIN residents r ON r.resident_id = cp.resident_id WHERE cp.complaint_id = (SELECT complaint_id FROM cases WHERE case_id = ?) AND cp.party_type = 'Complainant'");
-                    $compStmt->execute([$p['case_id']]);
-                    $complainants = $compStmt->fetchAll(PDO::FETCH_ASSOC);
-
-                    $respStmt = $this->db->prepare("SELECT TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS full_name FROM complaint_parties cp JOIN residents r ON r.resident_id = cp.resident_id WHERE cp.complaint_id = (SELECT complaint_id FROM cases WHERE case_id = ?) AND cp.party_type = 'Respondent'");
-                    $respStmt->execute([$p['case_id']]);
-                    $respondents = $respStmt->fetchAll(PDO::FETCH_ASSOC);
-
-                    try {
-                        (new PDFService())->generateNotice($formCode, [
-                            'case_number' => $p['case_number'],
-                            'complaint_title' => $p['complaint_title'],
-                            'target_party_name' => $p['resident_name'],
-                            'hearing_date' => date('Y-m-d'),
-                            'complainants' => $complainants,
-                            'respondents' => $respondents,
-                        ], $absolutePath);
-                    } catch (Throwable $e) {
-                        file_put_contents($absolutePath, '%PDF-1.4 ' . $formCode);
-                    }
+                    // On-demand generation: no physical disk file created ahead of time
+                    $relativePath = null;
 
                     $insDoc = $this->db->prepare("INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status) VALUES (?, ?, ?, ?, 'Generated')");
                     $insDoc->execute([$p['case_id'], $tplId, $userId, $relativePath]);

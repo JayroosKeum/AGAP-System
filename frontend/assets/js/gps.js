@@ -716,15 +716,17 @@ async function renderExpandedCaseView(caseId) {
         const isMediation = (activeHearing.hearing_type === 'Mediation');
         const anyCompServed = compAttempts.some(a => a.is_served) || Boolean(compDeliv?.delivery_status && compDeliv.delivery_status !== 'Pending' && compDeliv.delivery_status.startsWith('Served'));
         const compFailedCount = compAttempts.filter(a => a.is_failed).length;
-        const canNextComp = Boolean(activeHearing.can_initiate_next_comp_attempt) && !anyCompServed;
+        const canNextComp = Boolean(activeHearing.can_initiate_next_comp_attempt);
         const nextCompNum = activeHearing.next_comp_attempt_number || (compAttempts.length + 1);
         const nextCompOrd = ordinals[nextCompNum] || nextCompNum + 'th';
         const activePendingComp = compAttempts.find(a => a.is_pending) || null;
-        const targetCompAttemptForReturn = anyCompServed ? null : (activePendingComp || (!anyCompServed && compDeliv ? compDeliv : null));
+        const targetCompAttemptForReturn = activePendingComp || (!anyCompServed && compDeliv ? compDeliv : null);
 
         let compBadgeHtml = '';
-        if (anyCompServed) {
+        if (anyCompServed && !activePendingComp) {
             compBadgeHtml = `<span class="service-result-badge badge-served">Served</span>`;
+        } else if (activePendingComp) {
+            compBadgeHtml = `<span class="service-result-badge badge-warning">Attempt #${activePendingComp.attempt_number || (compAttempts.length)} Pending</span>`;
         } else if (compAttempts.length >= maxAllowedAttempts && compFailedCount >= maxAllowedAttempts) {
             compBadgeHtml = `<span class="service-result-badge badge-not-served">${maxAllowedAttempts} Attempts Failed - Max Reached (Unserved)</span>`;
         } else if (compFailedCount > 0) {
@@ -744,15 +746,17 @@ async function renderExpandedCaseView(caseId) {
         const respResidentId = respDeliv?.resident_id || respProfile.resident_id || (respAttempts[0]?.resident_id) || 0;
 
         const anyRespServed = respAttempts.some(a => a.is_served);
-        const canNextResp = Boolean(activeHearing.can_initiate_next_attempt) && !anyRespServed;
+        const canNextResp = Boolean(activeHearing.can_initiate_next_attempt);
         const nextRespNum = activeHearing.next_attempt_number || (respAttempts.length + 1);
         const nextRespOrd = ordinals[nextRespNum] || nextRespNum + 'th';
         const activePendingResp = respAttempts.find(a => a.is_pending) || null;
-        const targetRespAttemptForReturn = anyRespServed ? null : activePendingResp;
+        const targetRespAttemptForReturn = activePendingResp || (!anyRespServed ? respDeliv : null);
 
         let respBadgeHtml = '';
-        if (anyRespServed) {
+        if (anyRespServed && !activePendingResp) {
             respBadgeHtml = `<span class="service-result-badge badge-served">Served</span>`;
+        } else if (activePendingResp) {
+            respBadgeHtml = `<span class="service-result-badge badge-warning">Attempt #${activePendingResp.attempt_number || (respAttempts.length)} Pending</span>`;
         } else if (respAttempts.length >= maxAllowedAttempts && failedCount >= maxAllowedAttempts) {
             respBadgeHtml = `<span class="service-result-badge badge-not-served">${maxAllowedAttempts} Attempts Failed - Max Reached (Unserved)</span>`;
         } else if (failedCount > 0) {
@@ -822,16 +826,6 @@ async function renderExpandedCaseView(caseId) {
             let extraStepClass = '';
 
             if (att) {
-                if (att.is_pending && anyServed) {
-                    return `
-                        <div class="stepper-step" style="cursor: default;" title="${ord} Attempt: Cancelled (Notice already served)">
-                            <div class="step-circle pending">✓</div>
-                            <span class="step-label">${ord}</span>
-                            <span class="step-subtext">Served</span>
-                        </div>
-                    `;
-                }
-
                 if (att.is_served) {
                     circleClass = 'served';
                     iconText = '✓';
@@ -955,14 +949,14 @@ async function renderExpandedCaseView(caseId) {
 
         // Complainant Action Buttons
         let compActionBtnHtml = '';
-        if (canNextComp && nextCompNum <= 6) {
+        if (canNextComp && nextCompNum <= maxAllowedAttempts && !activePendingComp) {
             compActionBtnHtml = `
-                <button type="button" class="btn-create" onclick="initiateNextSummonAttempt(${caseId}, ${activeHearing.hearing_id}, 'Complainant')" style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; padding: 6px 14px;">
+                <button type="button" class="btn-create" onclick="initiateNextSummonAttempt(${caseId}, ${activeHearing.hearing_id}, 'Complainant', this)" style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; padding: 6px 14px;">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                     Issue Notice ${nextCompOrd} Attempt
                 </button>
             `;
-        } else if (anyCompServed) {
+        } else if (anyCompServed && !activePendingComp) {
             compActionBtnHtml = `<span style="background: #dcfce7; color: #166534; font-weight: 700; font-size: 0.8rem; padding: 6px 12px; border-radius: 6px; border: 1px solid #bbf7d0; display: inline-flex; align-items: center; gap: 4px;">✓ Successfully Served</span>`;
         } else if (compAttempts.length >= maxAllowedAttempts && compFailedCount >= maxAllowedAttempts) {
             compActionBtnHtml = `<span style="background: #fee2e2; color: #991b1b; font-weight: 700; font-size: 0.8rem; padding: 6px 12px; border-radius: 6px; border: 1px solid #fecaca; display: inline-flex; align-items: center; gap: 4px;">${maxAllowedAttempts} Attempts Failed - Max Reached (Unserved)</span>`;
@@ -970,14 +964,14 @@ async function renderExpandedCaseView(caseId) {
 
         // Respondent Action Buttons
         let respActionBtnHtml = '';
-        if (canNextResp && nextRespNum <= 6) {
+        if (canNextResp && nextRespNum <= maxAllowedAttempts && !activePendingResp) {
             respActionBtnHtml = `
-                <button type="button" class="btn-create" onclick="initiateNextSummonAttempt(${caseId}, ${activeHearing.hearing_id}, 'Respondent')" style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; padding: 6px 14px;">
+                <button type="button" class="btn-create" onclick="initiateNextSummonAttempt(${caseId}, ${activeHearing.hearing_id}, 'Respondent', this)" style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; padding: 6px 14px;">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                     ${isConciliation ? 'Issue Notice' : 'Issue Summon'} ${nextRespOrd} Attempt
                 </button>
             `;
-        } else if (anyRespServed) {
+        } else if (anyRespServed && !activePendingResp) {
             respActionBtnHtml = `<span style="background: #dcfce7; color: #166534; font-weight: 700; font-size: 0.8rem; padding: 6px 12px; border-radius: 6px; border: 1px solid #bbf7d0; display: inline-flex; align-items: center; gap: 4px;">✓ Successfully Served</span>`;
         } else if (respAttempts.length >= maxAllowedAttempts && failedCount >= maxAllowedAttempts) {
             respActionBtnHtml = `<span style="background: #fee2e2; color: #991b1b; font-weight: 700; font-size: 0.8rem; padding: 6px 12px; border-radius: 6px; border: 1px solid #fecaca; display: inline-flex; align-items: center; gap: 4px;">${maxAllowedAttempts} Attempts Failed - Max Reached (Unserved)</span>`;
@@ -1234,12 +1228,19 @@ window.loadCases = loadCases;
    Summon Actions & Document Integration (Task 7)
    ========================================================================== */
 
-async function initiateNextSummonAttempt(caseId, hearingId, partyType = 'Respondent') {
+async function initiateNextSummonAttempt(caseId, hearingId, partyType = 'Respondent', btn = null) {
     if (!caseId) return;
     const partyLabel = partyType === 'Complainant' ? 'complainant' : 'respondent';
     const noticeLabel = partyType === 'Complainant' ? 'notice' : 'summons/notice';
     if (!window.confirm(`Do you want to initiate the next ${noticeLabel} delivery attempt for the ${partyLabel}?`)) {
         return;
+    }
+
+    const targetBtn = btn || (window.event?.target?.closest('button'));
+    const origHtml = targetBtn ? targetBtn.innerHTML : '';
+    if (targetBtn) {
+        targetBtn.disabled = true;
+        targetBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="display:inline-block;width:0.85rem;height:0.85rem;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:text-bottom;animation:spinner-border .75s linear infinite;margin-right:5px;"></span> Issuing...';
     }
 
     try {
@@ -1266,6 +1267,11 @@ async function initiateNextSummonAttempt(caseId, hearingId, partyType = 'Respond
         }
     } catch (err) {
         window.agapNotify?.(err.message, 'error', 'Delivery Attempt Failed');
+    } finally {
+        if (targetBtn) {
+            targetBtn.disabled = false;
+            targetBtn.innerHTML = origHtml;
+        }
     }
 }
 window.initiateNextSummonAttempt = initiateNextSummonAttempt;
@@ -1796,10 +1802,12 @@ async function submitOfficerReturn(event) {
     }
 
     const isEditMode = Boolean(document.getElementById('returnDeliveryId')?.value);
+    const cancelReturnBtn = document.getElementById('cancelReturnBtn') || form.querySelector('button[type="button"][onclick*="close"]') || document.querySelector('.proof-drawer-close');
     if (submitBtn) {
         submitBtn.disabled = true;
-        submitBtn.textContent = isEditMode ? 'Updating Officer\'s Return...' : 'Saving Officer\'s Return...';
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="display:inline-block;width:0.9rem;height:0.9rem;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:text-bottom;animation:spinner-border .75s linear infinite;margin-right:6px;"></span> ' + (isEditMode ? 'Updating Officer\'s Return...' : 'Saving Officer\'s Return...');
     }
+    if (cancelReturnBtn) cancelReturnBtn.disabled = true;
 
     try {
         const formData = new FormData(form);
@@ -1844,6 +1852,7 @@ async function submitOfficerReturn(event) {
             submitBtn.disabled = false;
             submitBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg> ${document.getElementById('returnDeliveryId')?.value ? 'Update Officer\'s Return' : 'Save Officer\'s Return'}`;
         }
+        if (cancelReturnBtn) cancelReturnBtn.disabled = false;
     }
 }
 window.submitOfficerReturn = submitOfficerReturn;

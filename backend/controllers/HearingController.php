@@ -824,13 +824,15 @@ class HearingController
                 if ($isSettled) {
                     return [
                         'success' => false,
-                        'message' => 'Cannot schedule 2nd Mediation: The previous mediation concluded with an Amicable Settlement.'
+                        'message' => 'Cannot schedule next Mediation: The previous mediation concluded with an Amicable Settlement.'
                     ];
                 }
-                if (count($prevHearings) >= 2) {
+                require_once __DIR__ . '/../models/Setting.php';
+                $maxMediationSessions = (int) Setting::getSetting('mediation_max_sessions', 3, $db);
+                if (count($prevHearings) >= $maxMediationSessions) {
                     return [
                         'success' => false,
-                        'message' => 'Two mediation sessions (Mediation 1 and 2) have already been conducted or scheduled for this case. Under Barangay Tumana policy (RA 7160), refer the dispute to the Pangkat Tagapagkasundo.'
+                        'message' => "Maximum of {$maxMediationSessions} mediation sessions have already been conducted or scheduled for this case. Under Katarungang Pambarangay guidelines, refer the dispute to the Pangkat Tagapagkasundo."
                     ];
                 }
             }

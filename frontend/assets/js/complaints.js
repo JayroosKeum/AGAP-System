@@ -3169,9 +3169,10 @@ function renderHearingSessionCards(sessions, containerId, badgeId, stageType, ca
                             <span style="font-size: 0.76rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; ${s.proof_of_service_status === 'Served' ? 'background: #dcfce7; color: #15803d;' : 'background: #fef3c7; color: #b45309;'}">
                                 ${s.proof_of_service_status === 'Served' ? 'Notice Served' : 'Pending / Unserved'}
                             </span>
+                            ${s.proof_of_service_status !== 'Served' ? `
                             <a href="../gps/proof-service.php?case_id=${encodeURIComponent(caseId || '')}&hearing_id=${encodeURIComponent(s.hearing_id)}&open_return=1" style="font-size: 0.74rem; color: #0284c7; font-weight: 600; text-decoration: underline;" title="Record attempt to deliver summons">
-                                ${s.proof_of_service_status === 'Served' ? 'View/Update Return &rarr;' : 'Record Attempt &rarr;'}
-                            </a>
+                                Record Attempt &rarr;
+                            </a>` : ''}
                         </div>
                     </div>
                     <div>
@@ -3246,7 +3247,13 @@ async function handleHearingStandby(hearingId, standby) {
 }
 window.handleHearingStandby = handleHearingStandby;
 
-async function handleHearingStartSession(hearingId) {
+async function handleHearingStartSession(hearingId, triggerBtn = null) {
+    const btn = triggerBtn || window.event?.target?.closest('button');
+    const origHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="display:inline-block;width:0.8rem;height:0.8rem;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:text-bottom;animation:spinner-border .75s linear infinite;margin-right:4px;"></span> Starting...';
+    }
     try {
         const res = await fetch('../../../backend/api/hearings/queue.php', {
             method: 'POST',
@@ -3263,11 +3270,22 @@ async function handleHearingStartSession(hearingId) {
         }
     } catch (e) {
         console.error(e);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+        }
     }
 }
 window.handleHearingStartSession = handleHearingStartSession;
 
-async function handleHearingConcludeSession(hearingId) {
+async function handleHearingConcludeSession(hearingId, triggerBtn = null) {
+    const btn = triggerBtn || window.event?.target?.closest('button');
+    const origHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="display:inline-block;width:0.8rem;height:0.8rem;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:text-bottom;animation:spinner-border .75s linear infinite;margin-right:4px;"></span> Concluding...';
+    }
     try {
         const res = await fetch('../../../backend/api/hearings/queue.php', {
             method: 'POST',
@@ -3284,6 +3302,11 @@ async function handleHearingConcludeSession(hearingId) {
         }
     } catch (e) {
         console.error(e);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+        }
     }
 }
 window.handleHearingConcludeSession = handleHearingConcludeSession;
@@ -3295,39 +3318,37 @@ function openEmbeddedScheduleModal(stageType = 'Mediation') {
 
     if (stageType === 'Mediation') {
         const existing = window.embeddedHearingsState?.mediation_sessions || [];
+        const maxMediationLimit = Number(window.AGAP_SETTINGS?.mediation_max_sessions || 3);
+        if (existing.length >= maxMediationLimit) {
+            const msg = `Mediation is limited to a maximum of ${maxMediationLimit} sessions under system settings. Please refer the case to Pangkat Conciliation.`;
+            if (typeof showToast === 'function') showToast(msg, 'error');
+            else if (window.agapNotify) window.agapNotify(msg, 'warning', 'Limit Reached');
+            else alert(msg);
+            return;
+        }
+
         if (existing.length >= 1) {
-            const s1 = existing[0];
-            const s1Status = s1.status || '';
-            const s1Queue = s1.queue_status || '';
-            const s1Outcome = (s1.session_outcome || s1.outcome || '').toLowerCase();
-            const isActive = ['Scheduled', 'Waiting Room', 'Waiting', 'In_Session', 'Standby'].includes(s1Queue) ||
-                             (['Scheduled', 'In_Session', 'Standby', 'Pending'].includes(s1Status) && s1Status !== 'Completed');
-            const isSettled = s1Outcome.includes('settle') || s1Outcome === 'amicable settlement';
-            const isConcluded = s1Status === 'Completed' || s1Queue === 'Concluded' || (s1.minutes_status === 'Finalized');
-            const isUnresolved = s1Outcome.includes('unresolved') || s1Outcome.includes('reset') || s1Outcome.includes('reschedule') || s1Outcome.includes('non-settlement');
+            const lastSession = existing[existing.length - 1];
+            const sStatus = lastSession.status || '';
+            const sQueue = lastSession.queue_status || '';
+            const sOutcome = (lastSession.session_outcome || lastSession.outcome || '').toLowerCase();
+            const isActive = ['Scheduled', 'Waiting Room', 'Waiting', 'In_Session', 'Standby'].includes(sQueue) ||
+                             (['Scheduled', 'In_Session', 'Standby', 'Pending'].includes(sStatus) && sStatus !== 'Completed');
+            const isSettled = sOutcome.includes('settle') || sOutcome === 'amicable settlement';
+            const isConcluded = sStatus === 'Completed' || sQueue === 'Concluded' || (lastSession.minutes_status === 'Finalized');
 
             if (isSettled) {
-                if (typeof showToast === 'function') {
-                    showToast('Cannot schedule 2nd Mediation: 1st Mediation concluded with an Amicable Settlement.', 'error');
-                } else {
-                    alert('Cannot schedule 2nd Mediation: 1st Mediation concluded with an Amicable Settlement.');
-                }
+                const msg = 'Cannot schedule next Mediation: Previous mediation concluded with an Amicable Settlement.';
+                if (typeof showToast === 'function') showToast(msg, 'error');
+                else if (window.agapNotify) window.agapNotify(msg, 'warning', 'Case Settled');
+                else alert(msg);
                 return;
             }
-            if (isActive || !isConcluded || !isUnresolved) {
-                if (typeof showToast === 'function') {
-                    showToast('Cannot schedule 2nd Mediation until 1st Mediation has concluded with an unresolved outcome.', 'error');
-                } else {
-                    alert('Cannot schedule 2nd Mediation until 1st Mediation has concluded with an unresolved outcome.');
-                }
-                return;
-            }
-            if (existing.length >= 3) {
-                if (typeof showToast === 'function') {
-                    showToast('Mediation is limited to a maximum of 3 sessions under Katarungang Pambarangay guidelines.', 'error');
-                } else {
-                    alert('Mediation is limited to a maximum of 3 sessions under Katarungang Pambarangay guidelines.');
-                }
+            if (isActive && !isConcluded) {
+                const msg = 'Cannot schedule next Mediation session until the active mediation session has concluded.';
+                if (typeof showToast === 'function') showToast(msg, 'error');
+                else if (window.agapNotify) window.agapNotify(msg, 'warning', 'Session Active');
+                else alert(msg);
                 return;
             }
         }
@@ -4207,7 +4228,15 @@ async function submitEmbeddedSchedule(e) {
     }
 
     const submitBtn = document.getElementById('submitSchedBtn');
-    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Scheduling...'; }
+    const cancelBtn = form.querySelector('button[type="button"][onclick*="close"]') || form.querySelector('.btn-secondary');
+    const existingMedCheck = window.embeddedHearingsState?.mediation_sessions || [];
+    const isFirstMedCheck = (hearingType === 'Mediation' && existingMedCheck.length === 0);
+    const origSchedBtnText = isFirstMedCheck ? 'Schedule Session & Issue Summons' : 'Save Schedule';
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="display:inline-block;width:0.9rem;height:0.9rem;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:text-bottom;animation:spinner-border .75s linear infinite;margin-right:6px;"></span> Scheduling...';
+    }
+    if (cancelBtn) cancelBtn.disabled = true;
 
     try {
         const existingMed = window.embeddedHearingsState?.mediation_sessions || [];
@@ -4256,7 +4285,11 @@ async function submitEmbeddedSchedule(e) {
         console.error('submitEmbeddedSchedule error:', err);
         window.agapNotify?.('Network error while scheduling hearing.', 'error', 'Error');
     } finally {
-        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = `Schedule ${hearingType} Session`; }
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = origSchedBtnText;
+        }
+        if (cancelBtn) cancelBtn.disabled = false;
     }
 }
 window.submitEmbeddedSchedule = submitEmbeddedSchedule;
@@ -4530,7 +4563,12 @@ async function submitEmbeddedAttendance(e, hearingId) {
     if (e && e.preventDefault) e.preventDefault();
 
     const saveBtn = document.getElementById('btnSaveAttendance');
-    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
+    const cancelAttBtn = document.getElementById('btnCancelAttendance') || document.querySelector('#wsAttendanceModal button[onclick*="close"]');
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="display:inline-block;width:0.9rem;height:0.9rem;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:text-bottom;animation:spinner-border .75s linear infinite;margin-right:6px;"></span> Saving Attendance...';
+    }
+    if (cancelAttBtn) cancelAttBtn.disabled = true;
 
     try {
         const schedDate = document.getElementById('embAttScheduledDateTime')?.value;
@@ -4615,7 +4653,11 @@ async function submitEmbeddedAttendance(e, hearingId) {
         console.error('submitEmbeddedAttendance error:', err);
         window.agapNotify?.('Network error saving attendance.', 'error', 'Error');
     } finally {
-        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Attendance'; }
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = 'Save Attendance';
+        }
+        if (cancelAttBtn) cancelAttBtn.disabled = false;
     }
 }
 window.submitEmbeddedAttendance = submitEmbeddedAttendance;

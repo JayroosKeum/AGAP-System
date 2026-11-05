@@ -512,6 +512,13 @@ class ShowCauseService
 
             $this->audit->log($actorUserId, "Complainant marked Absent. Triggered KP Form 18 and scheduled Show-Cause hearing for Case #{$hearing['case_number']}", 'Hearings', $caseId);
 
+            // Auto-trigger re-issuance for Complainant subsequent notice attempt
+            try {
+                $this->deliveryService->initiateNextAttempt($caseId, $actorUserId, $hearingId, 'Complainant');
+            } catch (Throwable $reCompEx) {
+                error_log("Notice re-issuance attempt error: " . $reCompEx->getMessage());
+            }
+
 
 
             $results['actions_triggered'][] = [
@@ -617,6 +624,13 @@ class ShowCauseService
             $this->logCaseHistory($caseId, $stage, $histMsg, $actorUserId);
 
             $this->audit->log($actorUserId, "Respondent marked Absent. Triggered KP Form 19 and scheduled Show-Cause hearing for Case #{$hearing['case_number']}", 'Hearings', $caseId);
+
+            // Auto-trigger re-issuance for Respondent subsequent summons attempt
+            try {
+                $this->deliveryService->initiateNextAttempt($caseId, $actorUserId, $hearingId, 'Respondent');
+            } catch (Throwable $reRespEx) {
+                error_log("Summons re-issuance attempt error: " . $reRespEx->getMessage());
+            }
 
 
 
@@ -1213,63 +1227,8 @@ class ShowCauseService
 
 
 
-        $safeCaseNum = preg_replace('/[^a-zA-Z0-9_-]/', '_', (string) ($hearing['case_number'] ?? ('case_' . $caseId)));
-
-        $fileName = 'kp_form_' . strtolower(str_replace(' ', '_', $formCode)) . '_' . $caseId . '_' . time() . '.pdf';
-
-        $relativeDir = 'storage/generated-documents/' . date('Y') . '/' . $safeCaseNum;
-
-        $fullDir = dirname(__DIR__, 2) . '/' . $relativeDir;
-
-        if (!is_dir($fullDir)) {
-
-            @mkdir($fullDir, 0777, true);
-
-        }
-
-        $relativePath = $relativeDir . '/' . $fileName;
-
-        $absolutePath = $fullDir . '/' . $fileName;
-
-
-
-        // Try generating PDF
-
-        if ($this->pdfService) {
-
-            try {
-
-                $pdfData = [
-
-                    'case_number' => $hearing['case_number'] ?? '',
-
-                    'complaint_title' => $hearing['complaint_title'] ?? '',
-
-                    'complainants' => isset($parties['complainant']) ? [$parties['complainant']] : [],
-
-                    'respondents' => isset($parties['respondent']) ? [$parties['respondent']] : [],
-
-                    'target_party_name' => $targetPartyName,
-
-                    'venue' => $venue ?: ($hearing['venue'] ?? 'Lupon Court Room'),
-
-                    'hearing_date' => $hearing['hearing_date'] ?? null,
-
-                    'explanation_date' => $explanationDate,
-
-                    'notice_date' => date('Y-m-d'),
-
-                ];
-
-                $this->pdfService->generateNotice($formCode, $pdfData, $absolutePath);
-
-            } catch (Throwable $e) {
-
-                error_log("Failed to render PDF for {$formCode}: " . $e->getMessage());
-
-            }
-
-        }
+        // On-demand generation: no physical disk file created ahead of time
+        $relativePath = null;
 
 
 

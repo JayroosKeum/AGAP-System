@@ -289,11 +289,14 @@ class SummonDeliveryService
                 $compFailedCount++;
             }
         }
+        $compWasAbsent = in_array($hearing['complainant_attendance'] ?? '', ['Absent', 'Excused'], true);
         $canInitiateNextCompAttempt = false;
         $nextCompAttemptNumber = null;
-        if (!$anyCompServed && !$compHasPending && $compFailedCount < $this->getMaxSummonAttempts() && $compFailedCount > 0) {
-            $canInitiateNextCompAttempt = true;
-            $nextCompAttemptNumber = $compFailedCount + 1;
+        if (!$compHasPending && $compAttemptsCount < $this->getMaxSummonAttempts()) {
+            if (!$anyCompServed || $compWasAbsent || $compFailedCount > 0) {
+                $canInitiateNextCompAttempt = true;
+                $nextCompAttemptNumber = $compAttemptsCount + 1;
+            }
         }
 
         // 2. Fetch all Respondent attempts
@@ -323,11 +326,14 @@ class SummonDeliveryService
             }
         }
 
+        $respWasAbsent = in_array($hearing['respondent_attendance'] ?? '', ['Absent', 'Excused'], true);
         $canInitiateNextAttempt = false;
         $nextAttemptNumber = null;
-        if (!$anyServed && !$hasPending && $failedCount < $this->getMaxSummonAttempts()) {
-            $canInitiateNextAttempt = true;
-            $nextAttemptNumber = $failedCount + 1;
+        if (!$hasPending && $attemptsCount < $this->getMaxSummonAttempts()) {
+            if (!$anyServed || $respWasAbsent || $failedCount > 0) {
+                $canInitiateNextAttempt = true;
+                $nextAttemptNumber = $attemptsCount + 1;
+            }
         }
 
         // 3. Fetch Witness deliveries
@@ -1081,15 +1087,20 @@ class SummonDeliveryService
             $existingAttempts = $attemptsStmt->fetchAll(PDO::FETCH_ASSOC);
             $count = count($existingAttempts);
 
-            // 4. Check if any attempt is already successfully served
-            foreach ($existingAttempts as $att) {
-                if (in_array($att['delivery_status'], ['Served', 'Served Personal', 'Served Substituted', 'Served Refused'], true)) {
-                    if ($startedTrans && $this->conn->inTransaction()) $this->conn->rollBack();
-                    return ['success' => false, 'message' => "{$partyType} has already been successfully served. No further attempts are permitted."];
+            // Check if party was absent at this hearing or any hearing session
+            $isPartyAbsentAtHearing = false;
+            $hAttStmt = $this->conn->prepare("SELECT complainant_attendance, respondent_attendance FROM hearings WHERE hearing_id = ?");
+            $hAttStmt->execute([$hearingId]);
+            $hAttRow = $hAttStmt->fetch(PDO::FETCH_ASSOC);
+            if ($hAttRow) {
+                if ($partyType === 'Respondent' && in_array($hAttRow['respondent_attendance'] ?? '', ['Absent', 'Excused'], true)) {
+                    $isPartyAbsentAtHearing = true;
+                } elseif ($partyType === 'Complainant' && in_array($hAttRow['complainant_attendance'] ?? '', ['Absent', 'Excused'], true)) {
+                    $isPartyAbsentAtHearing = true;
                 }
             }
 
-            // 5. Evaluate current attempts progression
+            // 4. Evaluate current attempts progression
             $ordinals = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th'];
             $maxSummonAttempts = $this->getMaxSummonAttempts();
             if ($count >= $maxSummonAttempts) {
@@ -1108,15 +1119,11 @@ class SummonDeliveryService
                     $nextOrd = $ordinals[$lastNum + 1] ?? ($lastNum + 1) . 'th';
                     return ['success' => false, 'message' => "Attempt {$lastNum} ({$currOrd}) is still pending. Record the Officer's Return for Attempt {$lastNum} before initiating the {$nextOrd} attempt."];
                 }
-                if ($lastAttempt['delivery_status'] !== 'Unserved') {
+
+                $isLastServed = in_array($lastAttempt['delivery_status'], ['Served', 'Served Personal', 'Served Substituted', 'Served Refused'], true);
+                if ($isLastServed && !$isPartyAbsentAtHearing) {
                     if ($startedTrans && $this->conn->inTransaction()) $this->conn->rollBack();
-                    return ['success' => false, 'message' => "Attempt {$lastNum} was not recorded as a qualifying delivery failure."];
-                }
-                foreach ($existingAttempts as $prevAtt) {
-                    if ($prevAtt['delivery_status'] !== 'Unserved') {
-                        if ($startedTrans && $this->conn->inTransaction()) $this->conn->rollBack();
-                        return ['success' => false, 'message' => 'All previous attempts must be recorded as qualifying delivery failures before initiating Attempt ' . ($count + 1) . '.'];
-                    }
+                    return ['success' => false, 'message' => "{$partyType} has already been successfully served for this session. A subsequent attempt requires an unserved delivery failure or non-appearance at hearing."];
                 }
                 $targetAttempt = $count + 1;
             }
@@ -1134,53 +1141,15 @@ class SummonDeliveryService
 
             // 7. Generate or find document for this attempt (KP Form 12 for Conciliation, KP Form 9 for Mediation)
             $docId = null;
-            $formCodeName = $isConciliationStage ? 'KP Form 12' : 'KP Form 9';
-            $formDeliverType = $isConciliationStage ? 'KP Form 12' : 'Summon';
+            $formCodeName = $isConciliationStage ? 'KP Form 12' : ($partyType === 'Respondent' ? 'KP Form 9' : 'KP Form 8');
+            $formDeliverType = $isConciliationStage ? 'KP Form 12' : ($partyType === 'Respondent' ? 'Summon' : 'Notice of Hearing');
 
             $tStmt = $this->conn->prepare("SELECT template_id FROM document_templates WHERE template_name = ? LIMIT 1");
             $tStmt->execute([$formCodeName]);
             $tplId = (int) $tStmt->fetchColumn() ?: ($isConciliationStage ? 12 : 3);
 
-            require_once __DIR__ . '/PDFService.php';
-            $pdfService = new PDFService();
-            $root = dirname(__DIR__, 2);
-            $relativeDir = 'storage/generated-documents/' . date('Y') . '/' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $case['case_number']);
-            $fullDir = $root . '/' . $relativeDir;
-            if (!is_dir($fullDir)) {
-                @mkdir($fullDir, 0750, true);
-            }
-            $fileName = sprintf('%s-%d-%s.pdf', str_replace(' ', '-', $formCodeName), $targetAttempt, date('Ymd-His'));
-            $filePath = $relativeDir . '/' . $fileName;
-            $fullPath = $fullDir . '/' . $fileName;
-
-            // Fetch parties for PDF
-            $partiesStmt = $this->conn->prepare("
-                SELECT cp.party_type, TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS full_name
-                FROM complaint_parties cp
-                INNER JOIN residents r ON r.resident_id = cp.resident_id
-                WHERE cp.complaint_id = ? AND cp.party_type IN ('Complainant', 'Respondent')
-            ");
-            $partiesStmt->execute([(int) $case['complaint_id']]);
-            $allParties = $partiesStmt->fetchAll(PDO::FETCH_ASSOC);
-            $complainants = array_values(array_filter($allParties, fn($p) => $p['party_type'] === 'Complainant'));
-            $respondents = array_values(array_filter($allParties, fn($p) => $p['party_type'] === 'Respondent'));
-
-            $pdfData = [
-                'case_number' => $case['case_number'],
-                'complaint_title' => $case['case_number'],
-                'complainants' => $complainants,
-                'respondents' => $respondents,
-                'target_party_name' => $targetParty['resident_name'] ?? $partyType,
-                'venue' => $hearing['venue'] ?? 'Lupon Court Room',
-                'hearing_date' => $hearing['hearing_date'] ?? date('Y-m-d 09:00:00'),
-                'notice_date' => date('Y-m-d'),
-            ];
-
-            try {
-                $pdfService->generateNotice($formCodeName, $pdfData, $fullPath);
-            } catch (Throwable $pe) {
-                @file_put_contents($fullPath, "%PDF-1.4 {$formCodeName} Attempt " . $targetAttempt);
-            }
+            // On-demand generation: no physical disk file created ahead of time
+            $filePath = null;
 
             $insDoc = $this->conn->prepare("
                 INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
