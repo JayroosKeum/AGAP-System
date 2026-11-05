@@ -285,7 +285,7 @@ include '../../layouts/header.php';
                                         <div class="form-grid-3">
                                             <div class="form-group">
                                                 <label class="form-label">Max Mediation Hearings <span class="required">*</span></label>
-                                                <input type="number" name="mediation_max_sessions" class="form-control" value="<?php echo htmlspecialchars($settings['mediation_max_sessions'] ?? '2'); ?>" min="1" max="3" required>
+                                                <input type="number" name="mediation_max_sessions" class="form-control" value="<?php echo htmlspecialchars(min(2, max(1, (int) ($settings['mediation_max_sessions'] ?? 2)))); ?>" min="1" max="2" required>
                                                 <div class="form-help">Barangay Tumana Policy Cap: strictly 2 sessions.</div>
                                             </div>
                                             <div class="form-group">

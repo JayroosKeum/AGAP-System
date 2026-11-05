@@ -92,7 +92,7 @@ class SettingsController
             'mediation_max_duration_min' => [30, 180],
             'conciliation_default_duration_min' => [15, 120],
             'conciliation_max_duration_min' => [30, 180],
-            'mediation_max_sessions' => [1, 3], // 2 Tumana rule
+            'mediation_max_sessions' => [1, 2], // Barangay Tumana rule: strict two-session cap
             'conciliation_max_sessions' => [1, 5], // 3 RA 7160
             'paanyaya_max_attempts' => [1, 10], // 6 Tumana cap
             'mediation_session_interval_days' => [1, 14],

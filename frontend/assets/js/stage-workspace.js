@@ -1738,7 +1738,7 @@ function renderWorkspaceActions(stage) {
 
     } else if (mode === 'Mediation' && actions.can_book_next_mediation) {
 
-        label = `Book ${Number(actions.next_mediation_session_number || 2) === 2 ? '2nd' : '3rd'} Mediation`;
+        label = 'Book 2nd Mediation';
 
         handler = 'openScheduleModal()';
 
@@ -4798,7 +4798,7 @@ function renderOutcomeAndReferralSection(data, stage) {
 
             const canBookNext = Boolean(stage.documents_and_actions?.can_book_next_mediation);
 
-            const nextSessionIndex = Math.min(3, completedCount + 1);
+            const nextSessionIndex = Math.min(2, completedCount + 1);
 
             const pangkatLockReason = stage.documents_and_actions?.pangkat_lock_reason || 'Barangay Tumana policy requires 2 mediation sessions before elevation.';
 
@@ -5079,9 +5079,9 @@ async function openScheduleModal(hearingId = null, targetStageType = null) {
 
 
 
-            if (existing.length >= 3) {
+            if (existing.length >= 2) {
 
-                const msg = 'Mediation is limited to a maximum of 3 sessions under Katarungang Pambarangay guidelines.';
+                const msg = 'Mediation is limited to a maximum of 2 sessions under Barangay Tumana policy. Refer the unresolved dispute to Pangkat Conciliation.';
 
                 if (typeof notifyUser === 'function') notifyUser(msg, 'error');
 
@@ -5240,6 +5240,20 @@ async function openScheduleModal(hearingId = null, targetStageType = null) {
     const dateInput = document.getElementById('schedDate');
 
     const timeInput = document.getElementById('schedTime');
+    const existingHearingInput = document.getElementById('schedExistingHearingId');
+    const sessionToUpdate = hearingId
+        ? (stageWorkspaceState.sessions || []).find((session) => Number(session.hearing_id) === Number(hearingId))
+        : null;
+
+    if (existingHearingInput) existingHearingInput.value = hearingId ? String(hearingId) : '';
+    if (sessionToUpdate) {
+        if (dateInput) dateInput.value = String(sessionToUpdate.hearing_date || '').slice(0, 10);
+        if (timeInput && sessionToUpdate.hearing_date) timeInput.value = String(sessionToUpdate.hearing_date).slice(11, 16);
+        const venueInput = document.getElementById('schedVenue');
+        const remarksInput = document.getElementById('schedRemarks');
+        if (venueInput && sessionToUpdate.venue) venueInput.value = sessionToUpdate.venue;
+        if (remarksInput) remarksInput.value = sessionToUpdate.remarks || '';
+    }
 
 
 
@@ -5311,7 +5325,9 @@ async function openScheduleModal(hearingId = null, targetStageType = null) {
         const nextSeq = curSeq + 1;
         const nextSeqOrdinal = nextSeq === 2 ? '2nd' : (nextSeq === 3 ? '3rd' : `${nextSeq}th`);
 
-        if (titleEl) titleEl.innerHTML = `<span>⚖️</span> ${nextSeqOrdinal} Formal Mediation Hearing Schedule`;
+        if (titleEl) titleEl.innerHTML = sessionToUpdate
+            ? '<span>⚖️</span> Update Mediation Hearing Schedule'
+            : `<span>⚖️</span> ${nextSeqOrdinal} Formal Mediation Hearing Schedule`;
         const medLabel = window.AGAP_SETTINGS?.mediation_days_label || 'Tuesdays ONLY';
         const medVenue = window.AGAP_SETTINGS?.mediation_venue || 'Lupon Court Room';
         const maxCap = window.AGAP_SETTINGS?.daily_capacity || 8;
@@ -6010,6 +6026,7 @@ async function submitSchedule(e) {
     const pastDateExceptionReason = document.getElementById('schedPastDateExceptionReason')?.value.trim() || '';
 
     const typeVal = document.getElementById('schedHearingType').value || (stageWorkspaceState.mode === 'Mediation' ? 'Mediation' : 'Conciliation');
+    const existingHearingId = Number(document.getElementById('schedExistingHearingId')?.value || 0);
 
 
 
@@ -6034,6 +6051,25 @@ async function submitSchedule(e) {
 
 
     if (typeVal === 'Mediation') {
+
+        if (!existingHearingId) {
+            const activeMediations = (stageWorkspaceState.sessions || []).filter((session) => !['Cancelled', 'Office Cancelled'].includes(session.status) && !session.rescheduled_to_id);
+            if (activeMediations.length >= 2) {
+                notifyUser('Mediation is limited to two sessions. Refer the unresolved dispute to Pangkat Conciliation.', 'error');
+                if (btn) btn.disabled = false;
+                return;
+            }
+            if (activeMediations.length === 1) {
+                const first = activeMediations[0];
+                const firstOutcome = String(first.session_outcome || first.outcome || '').toLowerCase();
+                const firstConcluded = first.status === 'Completed' || first.queue_status === 'Concluded';
+                if (!firstConcluded || firstOutcome.includes('settle')) {
+                    notifyUser('A 2nd Mediation may be booked only after the 1st Mediation concludes without settlement.', 'warning');
+                    if (btn) btn.disabled = false;
+                    return;
+                }
+            }
+        }
 
         if (day === 0 || day === 6) {
 
@@ -6199,6 +6235,10 @@ async function submitSchedule(e) {
     payload.append('remarks', remarksVal);
 
     payload.append('schedule_reviewed', '1');
+    if (existingHearingId) {
+        payload.append('hearing_id', String(existingHearingId));
+        payload.append('reschedule_reason', 'Schedule updated from the mediation workspace.');
+    }
 
     if (pastDateExceptionReason) {
 
@@ -6210,7 +6250,7 @@ async function submitSchedule(e) {
 
     try {
 
-        const res = await fetch(getStageApiUrl('hearings/create.php'), {
+        const res = await fetch(getStageApiUrl(existingHearingId ? 'hearings/update.php' : 'hearings/create.php'), {
 
             method: 'POST',
 
@@ -6230,7 +6270,7 @@ async function submitSchedule(e) {
 
             const schedSeq = Number(json.sequence || 0);
 
-            if (typeof openSummonsPreviewModal === 'function' && stageWorkspaceState.mode === 'Mediation' && schedSeq <= 1) {
+            if (!existingHearingId && typeof openSummonsPreviewModal === 'function' && stageWorkspaceState.mode === 'Mediation' && schedSeq <= 1) {
 
                 openSummonsPreviewModal(stageWorkspaceState.caseId, null, json.hearing_id, true);
 
@@ -6254,7 +6294,7 @@ async function submitSchedule(e) {
 
                 payload.append('force_schedule', '1');
 
-                const retryRes = await fetch(getStageApiUrl('hearings/create.php'), {
+                const retryRes = await fetch(getStageApiUrl(existingHearingId ? 'hearings/update.php' : 'hearings/create.php'), {
 
                     method: 'POST',
 
@@ -6317,44 +6357,6 @@ async function submitSchedule(e) {
                 submitSchedule(e);
 
                 return;
-
-            }
-
-        } else if (json.message && (json.message.includes('Maximum 2 mediation attempts') || json.message.includes('Two mediation attempts') || json.message.includes('more than 2 mediation') || json.message.includes('Maximum 3 mediation attempts') || json.message.includes('more than 3 mediation'))) {
-
-            const excReason = prompt(`${json.message}\n\nIf an authorized rule or exception explicitly permits an additional mediation session, please enter the exception justification:`);
-
-            if (excReason && excReason.trim()) {
-
-                payload.append('authorized_exception', '1');
-
-                payload.append('attempt_exception_reason', excReason.trim());
-
-                const retryRes = await fetch(getStageApiUrl('hearings/create.php'), {
-
-                    method: 'POST',
-
-                    body: payload
-
-                });
-
-                const retryJson = await retryRes.json();
-
-                if (retryJson.success) {
-
-                    closeScheduleModal();
-
-                    await loadStageData();
-
-                    notifyUser(retryJson.message || 'Hearing scheduled successfully with recorded exception.', 'success');
-
-                    return;
-
-                } else {
-
-                    notifyUser(retryJson.message || 'Unable to schedule hearing.', 'error');
-
-                }
 
             }
 

@@ -168,6 +168,10 @@ class HearingController
                 'message' => 'This hearing was superseded by a newer schedule and is permanently locked.'
             ];
         }
+        if (!in_array($existing['status'], ['Scheduled', 'Pending'], true)
+            || in_array($existing['queue_status'] ?? '', ['In_Session', 'Concluded'], true)) {
+            return ['success' => false, 'message' => 'Only an active, not-yet-started hearing may be rescheduled in place.'];
+        }
 
         $data['case_id'] = $existing['case_id'];
         // A schedule may be rescheduled, but its workflow stage cannot be changed by editing it.
@@ -218,13 +222,13 @@ class HearingController
             if (!$this->hearing->update($id, $values, $deadline)) {
                 return ['success' => false, 'message' => 'Unable to update the hearing. Please try again.'];
             }
-            $auditAction = 'Created rescheduled hearing event from #' . $id;
+            $auditAction = 'Updated hearing schedule for #' . $id;
             if (!empty($values['past_date_exception_reason'])) {
                 $auditAction .= ' with Administrator-approved past-date exception';
             }
             $this->audit->log($userId, $auditAction, 'Hearings', $id);
             $this->notifyHearingMembers($values, 'Hearing rescheduled', $userId);
-            return ['success' => true, 'message' => 'Hearing rescheduled successfully.'];
+            return ['success' => true, 'message' => 'Hearing schedule updated successfully.', 'hearing_id' => $id];
         } catch (Throwable $exception) {
             error_log($exception->getMessage());
             return ['success' => false, 'message' => 'Unable to update the hearing. Please try again or contact an administrator with the time of the request.'];
@@ -360,7 +364,8 @@ class HearingController
             FROM hearings h
             LEFT JOIN cases c ON c.case_id = h.case_id
             WHERE DATE(h.hearing_date) = ?
-              AND h.status NOT IN ('Cancelled', 'Office Cancelled')
+              AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Completed', 'Rescheduled')
+              AND COALESCE(h.queue_status, 'Waiting') <> 'Concluded'
               " . ($excludeHearingId ? " AND h.hearing_id != {$excludeHearingId}" : "") . "
         ");
         $hStmt->execute([$targetDate]);
@@ -846,7 +851,7 @@ class HearingController
                     ];
                 }
                 require_once __DIR__ . '/../models/Setting.php';
-                $maxMediationSessions = (int) Setting::getSetting('mediation_max_sessions', 3, $db);
+                $maxMediationSessions = min(2, max(1, (int) Setting::getSetting('mediation_max_sessions', 2, $db)));
                 if (count($prevHearings) >= $maxMediationSessions) {
                     return [
                         'success' => false,
@@ -995,7 +1000,8 @@ class HearingController
             LEFT JOIN complaints comp ON comp.complaint_id = c.complaint_id
             LEFT JOIN users u ON u.user_id = h.presiding_officer_id
             WHERE DATE(h.hearing_date) = ?
-              AND h.status NOT IN ('Cancelled', 'Office Cancelled')
+              AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Completed', 'Rescheduled')
+              AND COALESCE(h.queue_status, 'Waiting') <> 'Concluded'
         ";
         $queryParams = [$date];
         if ($hearingTypeFilter !== '') {
@@ -1054,6 +1060,7 @@ class HearingController
                     FROM paanyaya_sessions ps
                     LEFT JOIN complaints co ON co.complaint_id = ps.complaint_id
                     WHERE ps.scheduled_date = ?
+                      AND COALESCE(ps.queue_status, 'Waiting') <> 'Concluded'
                     ORDER BY CASE WHEN COALESCE(ps.queue_order, 0) > 0 THEN ps.queue_order ELSE 9999 END ASC, ps.scheduled_time ASC
                 ");
                 $pStmt->execute([$date]);

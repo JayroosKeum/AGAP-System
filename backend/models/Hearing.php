@@ -498,12 +498,13 @@ class Hearing
 
             // Active mediation attempt count for this case (excluding cancelled/superseded)
             $medQuery = $this->conn->prepare("
-                SELECT hearing_id, mediation_attempt, status
-                FROM hearings
-                WHERE case_id = ? AND hearing_type IN ('Initial Hearing', 'Mediation')
-                  AND status NOT IN ('Cancelled', 'Office Cancelled')
-                  AND NOT EXISTS (SELECT 1 FROM hearings nh WHERE nh.rescheduled_from_id = hearings.hearing_id)
-                ORDER BY hearing_date ASC, hearing_id ASC
+                SELECT h.hearing_id, h.mediation_attempt, h.status, h.queue_status, hm.session_outcome
+                FROM hearings h
+                LEFT JOIN hearing_minutes hm ON hm.hearing_id = h.hearing_id
+                WHERE h.case_id = ? AND h.hearing_type IN ('Initial Hearing', 'Mediation')
+                  AND h.status NOT IN ('Cancelled', 'Office Cancelled')
+                  AND NOT EXISTS (SELECT 1 FROM hearings nh WHERE nh.rescheduled_from_id = h.hearing_id)
+                ORDER BY h.hearing_date ASC, h.hearing_id ASC
             ");
             $medQuery->execute([$data['case_id']]);
             $existingMedHearings = $medQuery->fetchAll(PDO::FETCH_ASSOC);
@@ -514,9 +515,7 @@ class Hearing
 
             if ($expectedType === 'Mediation') {
                 $nextAttempt = $activeMediationCount + 1;
-                $isAuthorizedException = !empty($data['authorized_exception']) || !empty($data['attempt_exception_reason']);
-
-                if ($activeMediationCount >= 2 && !$isAuthorizedException) {
+                if ($activeMediationCount >= 2) {
                     $this->conn->rollBack();
                     return [
                         'success' => false,
@@ -524,10 +523,21 @@ class Hearing
                     ];
                 }
 
-                $mediationAttempt = $nextAttempt;
-                if ($isAuthorizedException) {
-                    $attemptExceptionReason = trim((string) ($data['attempt_exception_reason'] ?? 'Authorized exception recorded by officer'));
+                if ($activeMediationCount === 1) {
+                    $firstMediation = $existingMedHearings[0];
+                    $firstOutcome = strtolower(trim((string) ($firstMediation['session_outcome'] ?? '')));
+                    $firstConcluded = in_array($firstMediation['status'] ?? '', ['Completed', 'Attendance Recorded'], true)
+                        || ($firstMediation['queue_status'] ?? '') === 'Concluded';
+                    if (!$firstConcluded || str_contains($firstOutcome, 'settle')) {
+                        $this->conn->rollBack();
+                        return [
+                            'success' => false,
+                            'message' => 'A 2nd Mediation may be scheduled only after the 1st Mediation has concluded without an amicable settlement.'
+                        ];
+                    }
                 }
+
+                $mediationAttempt = $nextAttempt;
 
                 // 15-working-day limit for 1st mediation removed
             }
@@ -977,34 +987,29 @@ class Hearing
             $userId = $_SESSION['user_id'] ?? null;
 
             $stmt = $this->conn->prepare(
-                'INSERT INTO hearings (case_id, hearing_type, mediation_attempt, attempt_exception_reason, hearing_date, end_time, duration_minutes, duration_exceed_reason, venue, remarks, rescheduled_from_id, reschedule_reason, rescheduled_by_party, reschedule_justification_category, reschedule_document_path, reschedule_approved_by, reschedule_approved_at, presiding_officer_id)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)'
+                'UPDATE hearings
+                 SET hearing_date = ?, end_time = ?, duration_minutes = ?, duration_exceed_reason = ?,
+                     venue = ?, remarks = ?, reschedule_reason = ?, rescheduled_by_party = ?,
+                     reschedule_justification_category = ?, reschedule_document_path = ?,
+                     reschedule_approved_by = ?, reschedule_approved_at = NOW(),
+                     presiding_officer_id = ?, updated_at = NOW()
+                 WHERE hearing_id = ?'
             );
             $stmt->execute([
-                $data['case_id'],
-                $data['hearing_type'],
-                $medAttempt,
-                $attemptExceptionReason,
                 $startTime,
                 $endTime,
                 $durationMin,
                 !empty($data['duration_exceed_reason']) ? $data['duration_exceed_reason'] : null,
                 $venue,
                 $data['remarks'] ?? null,
-                $id,
                 $reason,
                 $partyType ?: null,
                 !empty($data['reschedule_justification_category']) ? $data['reschedule_justification_category'] : null,
                 !empty($data['reschedule_document_path']) ? $data['reschedule_document_path'] : null,
                 $userId,
                 $presidingOfficerId,
+                $id,
             ]);
-
-            $newId = (int) $this->conn->lastInsertId();
-
-            // Mark old hearing as Rescheduled
-            $this->conn->prepare("UPDATE hearings SET status = 'Rescheduled', updated_at = NOW() WHERE hearing_id = ? AND status IN ('Scheduled', 'Pending')")
-                ->execute([$id]);
 
             if ($deadline !== null && ($data['hearing_type'] ?? '') !== 'Conciliation') {
                 $this->upsertDeadline(
@@ -1025,23 +1030,11 @@ class Hearing
             }
 
             $history = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) SELECT case_id, (SELECT case_status FROM cases WHERE case_id=?), ?, ? FROM hearings WHERE hearing_id=?");
-            $history->execute([$data['case_id'], $histRemarks, $userId, $newId]);
+            $history->execute([$data['case_id'], $histRemarks, $userId, $id]);
 
             $this->conn->commit();
 
-            // Automatically dispatch notification to affected officers and parties
-            require_once __DIR__ . '/../services/NotificationService.php';
-            (new NotificationService())->notifyHearingRescheduled($newId, $id, $reason, (int) ($userId ?? 0));
-
-            // Automatically initialize hearing deliveries for all parties and witnesses for rescheduled hearing
-            require_once __DIR__ . '/../services/SummonDeliveryService.php';
-            try {
-                (new SummonDeliveryService($this->conn))->initializeHearingDeliveries($newId, $userId);
-            } catch (Throwable $delivEx) {
-                error_log("Failed to initialize deliveries for rescheduled hearing {$newId}: " . $delivEx->getMessage());
-            }
-
-            return $newId > 0;
+            return true;
         } catch (Throwable $exception) {
             if ($this->conn->inTransaction()) {
                 $this->conn->rollBack();
@@ -2118,9 +2111,9 @@ class Hearing
 
             // Lock every submitted record before deriving the slot sequence.
             // This keeps two concurrent reorders from interleaving their times.
-            $hLookup = $this->conn->prepare("SELECT hearing_id, case_id, hearing_type, hearing_date, duration_minutes FROM hearings WHERE hearing_id = ? FOR UPDATE");
-            $pLookup = $this->conn->prepare("SELECT paanyaya_id, scheduled_date, scheduled_time FROM paanyayas WHERE paanyaya_id = ? FOR UPDATE");
-            $psLookup = $this->conn->prepare("SELECT session_id, scheduled_date, scheduled_time FROM paanyaya_sessions WHERE session_id = ? FOR UPDATE");
+            $hLookup = $this->conn->prepare("SELECT hearing_id, case_id, hearing_type, hearing_date, duration_minutes, status, queue_status FROM hearings WHERE hearing_id = ? FOR UPDATE");
+            $pLookup = $this->conn->prepare("SELECT paanyaya_id, scheduled_date, scheduled_time, status FROM paanyayas WHERE paanyaya_id = ? FOR UPDATE");
+            $psLookup = $this->conn->prepare("SELECT session_id, scheduled_date, scheduled_time, queue_status FROM paanyaya_sessions WHERE session_id = ? FOR UPDATE");
 
             $earliestTime = null;
             $hasMorning = false;
@@ -2146,6 +2139,10 @@ class Hearing
                     if (!$r || substr((string) $r['hearing_date'], 0, 10) !== $targetDate) {
                         throw new InvalidArgumentException('Ang hearing ay wala sa piniling araw ng docket.');
                     }
+                    if (in_array($r['status'], ['Cancelled', 'Office Cancelled', 'Completed', 'Rescheduled'], true)
+                        || ($r['queue_status'] ?? '') === 'Concluded') {
+                        throw new InvalidArgumentException('Ang concluded o unavailable hearing ay hindi maaaring ayusin sa aktibong docket queue.');
+                    }
                     if (!empty($r['hearing_date'])) {
                         $t = date('H:i', strtotime($r['hearing_date']));
                         if ($earliestTime === null || $t < $earliestTime) $earliestTime = $t;
@@ -2158,11 +2155,17 @@ class Hearing
                     if (!$r || (string) $r['scheduled_date'] !== $targetDate) {
                         throw new InvalidArgumentException('Ang Paanyaya ay wala sa piniling araw ng docket.');
                     }
+                    if (in_array($r['status'], ['Cancelled', 'Completed', 'Resolved', 'Unresolved', 'Escalated'], true)) {
+                        throw new InvalidArgumentException('Ang unavailable Paanyaya ay hindi maaaring ayusin sa aktibong docket queue.');
+                    }
                     if ($sessionId > 0) {
                         $psLookup->execute([$sessionId]);
                         $session = $psLookup->fetch(PDO::FETCH_ASSOC);
                         if (!$session || (string) $session['scheduled_date'] !== $targetDate) {
                             throw new InvalidArgumentException('Ang Paanyaya session ay wala sa piniling araw ng docket.');
+                        }
+                        if (($session['queue_status'] ?? '') === 'Concluded') {
+                            throw new InvalidArgumentException('Ang concluded Paanyaya session ay hindi maaaring ayusin sa aktibong docket queue.');
                         }
                     }
                     if (!empty($r['scheduled_time'])) {
@@ -2217,7 +2220,9 @@ class Hearing
             $occupiedHearings = $this->conn->prepare("
                 SELECT hearing_id, hearing_date, end_time, duration_minutes
                 FROM hearings
-                WHERE DATE(hearing_date) = ? AND status NOT IN ('Cancelled', 'Office Cancelled')
+                WHERE DATE(hearing_date) = ?
+                  AND status NOT IN ('Cancelled', 'Office Cancelled', 'Completed', 'Rescheduled')
+                  AND COALESCE(queue_status, 'Waiting') <> 'Concluded'
                 FOR UPDATE
             ");
             $occupiedHearings->execute([$targetDate]);
@@ -2240,7 +2245,8 @@ class Hearing
             $occupiedPaanyayas = $this->conn->prepare("
                 SELECT paanyaya_id, scheduled_time
                 FROM paanyayas
-                WHERE scheduled_date = ? AND status <> 'Cancelled'
+                WHERE scheduled_date = ?
+                  AND status NOT IN ('Cancelled', 'Completed', 'Resolved', 'Unresolved', 'Escalated')
                 FOR UPDATE
             ");
             $occupiedPaanyayas->execute([$targetDate]);

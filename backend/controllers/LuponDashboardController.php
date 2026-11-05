@@ -253,7 +253,8 @@ class LuponDashboardController
                 LEFT JOIN pangkat_groups pg ON pg.case_id = c.case_id
                 LEFT JOIN pangkat_members pm ON pm.pangkat_id = pg.pangkat_id AND pm.member_id = ?
                 WHERE (DAYNAME(h.hearing_date) = ? OR pg.pangkat_id IS NOT NULL)
-                  AND h.status NOT IN ('Cancelled', 'Office Cancelled')
+                  AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Completed', 'Rescheduled')
+                  AND COALESCE(h.queue_status, 'Waiting') <> 'Concluded'
                 ORDER BY h.hearing_date ASC
                 LIMIT 40
             ");
@@ -287,7 +288,8 @@ class LuponDashboardController
             LEFT JOIN pangkat_groups pg ON pg.case_id = c.case_id
             LEFT JOIN pangkat_members pm ON pm.pangkat_id = pg.pangkat_id AND pm.member_id = ?
             WHERE (DAYNAME(h.hearing_date) = ? OR pm.member_id IS NOT NULL)
-              AND h.status NOT IN ('Cancelled', 'Office Cancelled')
+              AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Completed', 'Rescheduled')
+              AND COALESCE(h.queue_status, 'Waiting') <> 'Concluded'
             ORDER BY h.hearing_date ASC
             LIMIT 40
         ");

@@ -108,7 +108,8 @@ class CaseStage
             FROM hearings h
             LEFT JOIN hearing_minutes hm ON hm.hearing_id = h.hearing_id
             WHERE h.case_id = ? AND h.hearing_type IN ('Initial Hearing', 'Mediation')
-              AND h.status != 'Cancelled'
+              AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')
+              AND NOT EXISTS (SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id)
             ORDER BY h.hearing_date ASC
         ");
         $hStmt->execute([$caseId]);
@@ -930,6 +931,8 @@ class CaseStage
             LEFT JOIN users rec_u ON rec_u.user_id = hm.recorded_by
             LEFT JOIN users fin_u ON fin_u.user_id = hm.finalized_by
             WHERE h.case_id = ? AND h.hearing_type IN ('$inClause')
+              AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')
+              AND NOT EXISTS (SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id)
             ORDER BY h.hearing_date ASC
         ");
         $stmt->execute([$caseId]);

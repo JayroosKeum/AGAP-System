@@ -512,6 +512,7 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
             <input type="hidden" id="schedHearingType" value="Mediation">
             <input type="hidden" id="schedComplaintId" value="<?php echo (int) $complaintId; ?>">
             <input type="hidden" id="schedCaseId" value="<?php echo (int) $caseId; ?>">
+            <input type="hidden" id="schedExistingHearingId" value="">
             <div class="modal-body" style="padding: 18px 22px; overflow-y: auto; flex: 1; background: #f8fafc;">
                 <!-- Mediation Date (Tuesdays ONLY) Row -->
                 <div class="form-group" style="margin-bottom: 14px;">

@@ -3001,7 +3001,19 @@ function renderHearingSessionCards(sessions, containerId, badgeId, stageType, ca
     if (!container) return;
 
     const rawSessions = Array.isArray(sessions) ? sessions : [];
-    const activeSessions = rawSessions.filter(s => !['Cancelled', 'Office Cancelled'].includes(s.status) && !s.rescheduled_to_id);
+    const sessionByAttempt = new Map();
+    rawSessions
+        .filter(s => !['Cancelled', 'Office Cancelled', 'Rescheduled'].includes(s.status) && !s.rescheduled_to_id)
+        .forEach((session) => {
+            const attempt = Number(session.mediation_attempt || session.session_index || 1);
+            const key = `${stageType}:${attempt}`;
+            const current = sessionByAttempt.get(key);
+            if (!current || Number(session.hearing_id || 0) > Number(current.hearing_id || 0)) {
+                sessionByAttempt.set(key, session);
+            }
+        });
+    const activeSessions = Array.from(sessionByAttempt.values())
+        .sort((a, b) => Number(a.mediation_attempt || a.session_index || 1) - Number(b.mediation_attempt || b.session_index || 1));
 
     if (badge) badge.textContent = `${activeSessions.length} session${activeSessions.length === 1 ? '' : 's'}`;
 
@@ -3451,16 +3463,17 @@ async function handleHearingConcludeSession(hearingId, triggerBtn = null) {
 window.handleHearingConcludeSession = handleHearingConcludeSession;
 
 // Schedule Hearing Modal
-function openEmbeddedScheduleModal(stageType = 'Mediation') {
+function openEmbeddedScheduleModal(stageType = 'Mediation', hearingId = null) {
     const modal = document.getElementById('wsScheduleModal');
     if (!modal) return;
+    const existingHearingId = Number(hearingId || 0);
 
-    if (stageType === 'Mediation') {
+    if (stageType === 'Mediation' && !existingHearingId) {
         const rawExisting = window.embeddedHearingsState?.mediation_sessions || [];
         const existing = rawExisting.filter(s => !['Cancelled', 'Office Cancelled'].includes(s.status) && !s.rescheduled_to_id);
-        const maxMediationLimit = Number(window.AGAP_SETTINGS?.mediation_max_sessions || 3);
+        const maxMediationLimit = Math.min(2, Math.max(1, Number(window.AGAP_SETTINGS?.mediation_max_sessions || 2)));
         if (existing.length >= maxMediationLimit) {
-            const msg = `Mediation is limited to a maximum of ${maxMediationLimit} sessions under system settings. Please refer the case to Pangkat Conciliation.`;
+            const msg = 'Mediation is limited to a maximum of 2 sessions. Please refer the unresolved case to Pangkat Conciliation.';
             if (typeof showToast === 'function') showToast(msg, 'error');
             else if (window.agapNotify) window.agapNotify(msg, 'warning', 'Limit Reached');
             else alert(msg);
@@ -3504,6 +3517,7 @@ function openEmbeddedScheduleModal(stageType = 'Mediation') {
     const typeInput = document.getElementById('schedHearingType');
     const compIdInput = document.getElementById('schedComplaintId');
     const caseIdInput = document.getElementById('schedCaseId');
+    const existingHearingInput = document.getElementById('schedExistingHearingId');
     const titleEl = document.getElementById('wsSchedModalTitle');
     const subTitleEl = document.getElementById('wsSchedModalSubtitle');
     const dateLabel = document.getElementById('schedDateLabel');
@@ -3512,21 +3526,43 @@ function openEmbeddedScheduleModal(stageType = 'Mediation') {
     if (typeInput) typeInput.value = stageType;
     if (compIdInput) compIdInput.value = complaintId || '';
     if (caseIdInput) caseIdInput.value = caseId || '';
+    if (existingHearingInput) existingHearingInput.value = existingHearingId ? String(existingHearingId) : '';
 
     const rawMed = window.embeddedHearingsState?.mediation_sessions || [];
     const existingMed = rawMed.filter(s => !['Cancelled', 'Office Cancelled'].includes(s.status) && !s.rescheduled_to_id);
-    const isFirstMed = (stageType === 'Mediation' && existingMed.length === 0);
+    const isFirstMed = (stageType === 'Mediation' && !existingHearingId && existingMed.length === 0);
     if (isFirstMed) {
         if (titleEl) titleEl.textContent = 'Schedule 1st Mediation Session & Issue Summons';
         if (subTitleEl) subTitleEl.textContent = 'Scheduling the 1st Mediation session automatically issues KP Form 8 (Notice of Hearing for Complainant) and KP Form 9 (Summons for Respondent) for service.';
         if (dateLabel) dateLabel.textContent = '1st Mediation Date';
         if (btnSubmit) btnSubmit.textContent = 'Schedule Session & Issue Summons';
-    } else {
+    } else if (!existingHearingId) {
         const nextOrdinal = existingMed.length === 1 ? '2nd' : (existingMed.length === 2 ? '3rd' : `${existingMed.length + 1}th`);
         if (titleEl) titleEl.textContent = stageType === 'Mediation' ? `Schedule ${nextOrdinal} Mediation Session` : `Schedule ${stageType} Session`;
         if (subTitleEl) subTitleEl.textContent = stageType === 'Mediation' ? 'Enter date and time for Punong Barangay mediation session.' : 'Enter date and time for hearing session.';
         if (dateLabel) dateLabel.textContent = `${stageType} Date`;
         if (btnSubmit) btnSubmit.textContent = 'Save Schedule';
+    }
+
+    if (existingHearingId) {
+        const sessionList = stageType === 'Conciliation'
+            ? (window.embeddedHearingsState?.conciliation_sessions || [])
+            : rawMed;
+        const session = sessionList.find((item) => Number(item.hearing_id) === existingHearingId);
+        if (titleEl) titleEl.textContent = `Update ${stageType} Hearing Schedule`;
+        if (subTitleEl) subTitleEl.textContent = 'Update the existing hearing schedule. No new mediation session will be created.';
+        if (dateLabel) dateLabel.textContent = `${stageType} Date`;
+        if (btnSubmit) btnSubmit.textContent = 'Update Schedule';
+        if (session) {
+            const dateInput = document.getElementById('schedDate');
+            const timeInput = document.getElementById('schedTime');
+            const venueInput = document.getElementById('schedVenue');
+            const remarksInput = document.getElementById('schedRemarks');
+            if (dateInput) dateInput.value = String(session.hearing_date || '').slice(0, 10);
+            if (timeInput) timeInput.value = String(session.hearing_date || '').slice(11, 16);
+            if (venueInput && session.venue) venueInput.value = session.venue;
+            if (remarksInput) remarksInput.value = session.remarks || '';
+        }
     }
 
     if (stageType === 'Arbitration') {
@@ -4357,6 +4393,7 @@ async function submitEmbeddedSchedule(e) {
     const caseId = Number(document.getElementById('schedCaseId')?.value || data.case_id || comp.case_id);
     const complaintId = Number(document.getElementById('schedComplaintId')?.value || data.complaint_id || comp.complaint_id);
     const hearingType = document.getElementById('schedHearingType')?.value || 'Mediation';
+    const existingHearingId = Number(document.getElementById('schedExistingHearingId')?.value || 0);
     const dateVal = document.getElementById('schedDate')?.value;
     const timeVal = document.getElementById('schedTime')?.value;
     const venueVal = document.getElementById('schedVenue')?.value || 'Lupon Court Room';
@@ -4373,7 +4410,7 @@ async function submitEmbeddedSchedule(e) {
     const rawMedCheck = window.embeddedHearingsState?.mediation_sessions || [];
     const existingMedCheck = rawMedCheck.filter(s => !['Cancelled', 'Office Cancelled'].includes(s.status) && !s.rescheduled_to_id);
     const isFirstMedCheck = (hearingType === 'Mediation' && existingMedCheck.length === 0);
-    const origSchedBtnText = isFirstMedCheck ? 'Schedule Session & Issue Summons' : 'Save Schedule';
+    const origSchedBtnText = existingHearingId ? 'Update Schedule' : (isFirstMedCheck ? 'Schedule Session & Issue Summons' : 'Save Schedule');
     if (submitBtn) {
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="display:inline-block;width:0.9rem;height:0.9rem;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:text-bottom;animation:spinner-border .75s linear infinite;margin-right:6px;"></span> Scheduling...';
@@ -4384,7 +4421,16 @@ async function submitEmbeddedSchedule(e) {
         const rawMed = window.embeddedHearingsState?.mediation_sessions || [];
     const existingMed = rawMed.filter(s => !['Cancelled', 'Office Cancelled'].includes(s.status) && !s.rescheduled_to_id);
         let res;
-        if (hearingType === 'Mediation' && (!caseId || existingMed.length === 0) && complaintId > 0) {
+        if (existingHearingId) {
+            const fd = new FormData();
+            fd.append('hearing_id', String(existingHearingId));
+            fd.append('hearing_date', `${dateVal} ${timeVal}:00`);
+            fd.append('duration_minutes', String(hearingType === 'Conciliation' ? Number(window.AGAP_SETTINGS?.conciliation_default_duration_min || 60) : Number(window.AGAP_SETTINGS?.mediation_default_duration_min || 45)));
+            fd.append('venue', venueVal);
+            fd.append('remarks', remarksVal);
+            fd.append('reschedule_reason', 'Schedule updated from complaint details.');
+            res = await fetch('../../../backend/api/hearings/update.php', { method: 'POST', body: fd });
+        } else if (hearingType === 'Mediation' && (!caseId || existingMed.length === 0) && complaintId > 0) {
             const fd = new FormData();
             fd.append('complaint_id', String(complaintId));
             if (caseId) fd.append('case_id', String(caseId));
@@ -4427,7 +4473,7 @@ async function submitEmbeddedSchedule(e) {
                 return;
             }
             closeEmbeddedScheduleModal();
-            window.agapNotify?.(`${hearingType} session scheduled successfully.`, 'success', 'Session Scheduled');
+            window.agapNotify?.(existingHearingId ? `${hearingType} hearing schedule updated successfully.` : `${hearingType} session scheduled successfully.`, 'success', existingHearingId ? 'Schedule Updated' : 'Session Scheduled');
             await loadComplaintDetails();
             loadHearingSessions(hearingType);
         } else {

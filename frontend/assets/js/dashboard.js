@@ -146,6 +146,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return raw;
     };
 
+    const isActiveQueueSession = (session) => {
+        const status = String(session?.status || '');
+        const queueStatus = String(session?.queue_status || session?.session_queue_status || '').replace(/[\s-]+/g, '_');
+        return !['Cancelled', 'Office Cancelled', 'Completed', 'Rescheduled', 'Resolved', 'Unresolved', 'Escalated'].includes(status)
+            && queueStatus !== 'Concluded';
+    };
+
     const addPaanyayaItem = (container, item, displayIndex = 0) => {
         const art = document.createElement('article');
         art.className = 'dashboard-list-item';
@@ -222,7 +229,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!container) return;
         container.replaceChildren();
 
-        const items = paanyayas || [];
+        const items = (paanyayas || []).filter(isActiveQueueSession);
         if (!items.length) {
             return container.appendChild(emptyState('No informal Paanyaya invitations scheduled for today.'));
         }
@@ -285,6 +292,11 @@ document.addEventListener('DOMContentLoaded', () => {
                                 matchH.hearing_date = up.hearing_date;
                                 matchH.queue_order = up.order;
                             }
+                            const calendarHearing = state.calendarHearings.find(h => h.hearing_id == up.id);
+                            if (calendarHearing) {
+                                calendarHearing.hearing_date = up.hearing_date;
+                                calendarHearing.queue_order = up.order;
+                            }
                         }
                     });
                 }
@@ -300,7 +312,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.triggerPbUnavailableBatch = async () => {
-        const activeHearings = (state.hearings || []).filter(h => !['Cancelled', 'Office Cancelled', 'Completed'].includes(h.status));
+        const activeHearings = (state.hearings || []).filter(isActiveQueueSession);
         const count = activeHearings.length;
         const confirmMsg = count > 0
             ? `PUNONG BARANGAY UNAVAILABLE BATCH ACTION:\n\nMayroong ${count} aktibong nakatakdang hearing ngayong araw.\n\nNais mo bang awtomatikong i-reschedule ang lahat ng hearing na ito patungo sa susunod na Martes?\n\n• Awtomatikong mag-iisyu ng bagong Notice (KP Form 8) at Summon (KP Form 9).\n• Itatala sa dispatch para sa Summons Server nang walang multa sa mga partido.`
@@ -872,6 +884,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Filter hearings from state.calendarHearings for this date
         const matchingHearings = (state.calendarHearings || []).filter(h => {
+            if (!isActiveQueueSession(h)) return false;
             if (!h.hearing_date) return false;
             const d = h.hearing_date.split(' ')[0] || h.hearing_date.split('T')[0];
             return d === dateStr;
@@ -916,7 +929,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const renderHearings = (hearings, periodLabel) => {
-        const sortedHearings = [...(hearings || [])].sort((a, b) => {
+        const sortedHearings = [...(hearings || []).filter(isActiveQueueSession)].sort((a, b) => {
             return new Date(a.hearing_date || 0) - new Date(b.hearing_date || 0);
         });
         state.hearings = sortedHearings;

@@ -1403,6 +1403,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             <input type="hidden" id="schedHearingType" value="Mediation">
             <input type="hidden" id="schedComplaintId" value="<?php echo (int) $complaintId; ?>">
             <input type="hidden" id="schedCaseId" value="">
+            <input type="hidden" id="schedExistingHearingId" value="">
             <div class="modal-body" style="padding: 18px 24px; overflow-y: auto; flex: 1;">
                 <p id="wsSchedModalSubtitle" style="color: #64748b; font-size: 0.85rem; margin-top: 0; margin-bottom: 14px; line-height: 1.45;">
                     Enter the date and time to schedule the hearing session. Regular Lupon hearing hours are 8:00 AM to 5:00 PM (Monday to Friday).

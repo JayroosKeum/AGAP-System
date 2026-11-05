@@ -72,6 +72,8 @@ class Report
                  INNER JOIN complaints co ON co.complaint_id = c.complaint_id
                  WHERE DATE(h.hearing_date) = ?
                    AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')
+                   AND h.status <> 'Completed'
+                   AND COALESCE(h.queue_status, 'Waiting') <> 'Concluded'
                  ORDER BY CASE WHEN COALESCE(h.queue_order, 0) > 0 THEN h.queue_order ELSE 9999 END ASC, h.hearing_date ASC
                  LIMIT 8"
             );
@@ -86,10 +88,13 @@ class Report
                         COALESCE(ps.attempt_number, p.attempt_number, 1) AS attempt_number,
                         COALESCE(ps.complainant_attended, p.complainant_attended, 'Absent') AS complainant_attended,
                         COALESCE(ps.respondent_attended, p.invitee_attended, 'Absent') AS respondent_attended,
-                        ps.session_outcome
+                        ps.session_outcome,
+                        ps.queue_status AS session_queue_status
                  FROM paanyayas p
                  LEFT JOIN complaints co ON co.complaint_id = COALESCE(NULLIF(p.complaint_id, 0), p.escalated_to_complaint_id)
                  LEFT JOIN paanyaya_sessions ps ON ps.complaint_id = p.complaint_id AND ps.scheduled_date = p.scheduled_date
+                 WHERE p.status NOT IN ('Completed', 'Cancelled', 'Resolved', 'Unresolved', 'Escalated')
+                   AND (ps.session_id IS NULL OR COALESCE(ps.queue_status, 'Waiting') <> 'Concluded')
                  ORDER BY
                      CASE
                          WHEN p.scheduled_date = ? THEN 0
@@ -128,14 +133,16 @@ class Report
             $hearingCountToday = $this->conn->prepare(
                 "SELECT COUNT(*) FROM hearings
                  WHERE DATE(hearing_date) = ?
-                   AND status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')"
+                   AND status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled', 'Completed')
+                   AND COALESCE(queue_status, 'Waiting') <> 'Concluded'"
             );
             $hearingCountToday->execute([$today]);
 
             $hearingCountWeek = $this->conn->prepare(
                 "SELECT COUNT(*) FROM hearings
                  WHERE DATE(hearing_date) BETWEEN ? AND ?
-                   AND status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')"
+                   AND status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled', 'Completed')
+                   AND COALESCE(queue_status, 'Waiting') <> 'Concluded'"
             );
             $hearingCountWeek->execute([$today, $nextSevenDays]);
 
@@ -182,7 +189,8 @@ class Report
                  FROM hearings h
                  INNER JOIN cases c ON c.case_id = h.case_id
                  INNER JOIN complaints co ON co.complaint_id = c.complaint_id
-                 WHERE h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')
+                 WHERE h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled', 'Completed')
+                   AND COALESCE(h.queue_status, 'Waiting') <> 'Concluded'
                  ORDER BY h.hearing_date ASC"
             );
             $calendarHearings = $calendarHearingsStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -320,6 +328,8 @@ class Report
              INNER JOIN complaints co ON co.complaint_id = c.complaint_id
              WHERE DATE(h.hearing_date) BETWEEN ? AND ?
                AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')
+               AND h.status <> 'Completed'
+               AND COALESCE(h.queue_status, 'Waiting') <> 'Concluded'
              ORDER BY h.hearing_date ASC
              LIMIT 15"
         );
@@ -335,11 +345,14 @@ class Report
                     COALESCE(ps.attempt_number, p.attempt_number, 1) AS attempt_number,
                     COALESCE(ps.complainant_attended, p.complainant_attended, 'Absent') AS complainant_attended,
                     COALESCE(ps.respondent_attended, p.invitee_attended, 'Absent') AS respondent_attended,
-                    ps.session_outcome
+                    ps.session_outcome,
+                    ps.queue_status AS session_queue_status
              FROM paanyayas p
              LEFT JOIN complaints co ON co.complaint_id = COALESCE(NULLIF(p.complaint_id, 0), p.escalated_to_complaint_id)
              LEFT JOIN paanyaya_sessions ps ON ps.complaint_id = p.complaint_id AND ps.scheduled_date = p.scheduled_date
              WHERE (p.scheduled_date BETWEEN ? AND ? OR DATE(p.created_at) BETWEEN ? AND ?)
+               AND p.status NOT IN ('Completed', 'Cancelled', 'Resolved', 'Unresolved', 'Escalated')
+               AND (ps.session_id IS NULL OR COALESCE(ps.queue_status, 'Waiting') <> 'Concluded')
              ORDER BY p.scheduled_date DESC, p.scheduled_time ASC, p.paanyaya_id DESC
              LIMIT 25"
         );
@@ -423,7 +436,8 @@ class Report
         $hearingCountStmt = $this->conn->prepare(
             "SELECT COUNT(*) FROM hearings
              WHERE DATE(hearing_date) BETWEEN ? AND ?
-               AND status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')"
+               AND status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled', 'Completed')
+               AND COALESCE(queue_status, 'Waiting') <> 'Concluded'"
         );
         $hearingCountStmt->execute($params);
         $periodHearingCount = (int) $hearingCountStmt->fetchColumn();
@@ -495,7 +509,8 @@ class Report
              FROM hearings h
              INNER JOIN cases c ON c.case_id = h.case_id
              INNER JOIN complaints co ON co.complaint_id = c.complaint_id
-             WHERE h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')
+             WHERE h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled', 'Completed')
+               AND COALESCE(h.queue_status, 'Waiting') <> 'Concluded'
              ORDER BY h.hearing_date ASC"
         );
         $calendarHearings = $calendarHearingsStmt->fetchAll(PDO::FETCH_ASSOC);

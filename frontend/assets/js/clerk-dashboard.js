@@ -57,6 +57,13 @@
         return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
     };
 
+    const isActiveQueueSession = (session) => {
+        const status = String(session?.status || '');
+        const queueStatus = String(session?.queue_status || session?.session_queue_status || '').replace(/[\s-]+/g, '_');
+        return !['Cancelled', 'Office Cancelled', 'Completed', 'Rescheduled', 'Resolved', 'Unresolved', 'Escalated'].includes(status)
+            && queueStatus !== 'Concluded';
+    };
+
     const timeAgo = (dateStr) => {
         if (!dateStr) return '';
         const date = new Date(dateStr.replace(' ', 'T'));
@@ -196,6 +203,21 @@
                     );
                     const timePill = card?.querySelector('.agenda-time-pill');
                     if (timePill && updated.formatted_time) timePill.textContent = updated.formatted_time;
+
+                    if (updated.type === 'hearing') {
+                        const hearing = state.stats?.today_hearings?.find((item) => Number(item.hearing_id) === Number(updated.id));
+                        if (hearing) {
+                            hearing.hearing_date = updated.hearing_date;
+                            hearing.queue_order = updated.order;
+                        }
+                    } else if (updated.type === 'paanyaya') {
+                        const paanyaya = state.stats?.today_paanyayas?.find((item) => Number(item.paanyaya_id) === Number(updated.id)
+                            && (!updated.session_id || Number(item.session_id || 0) === Number(updated.session_id)));
+                        if (paanyaya) {
+                            paanyaya.scheduled_time = updated.scheduled_time || updated.formatted_time;
+                            paanyaya.queue_order = updated.order;
+                        }
+                    }
                 });
                 window.dispatchEvent(new CustomEvent('agap:queue-reordered', { detail: data }));
                 showToast(`Nai-save ang bagong docket sequence (#1 - #${itemsPayload.length})!`);
@@ -212,7 +234,7 @@
 
     // Global Punong Barangay Unavailable Batch Rescheduler
     window.triggerPbUnavailableBatch = async () => {
-        const hearings = (state.stats?.today_hearings || []).filter(h => !['Cancelled', 'Office Cancelled', 'Completed'].includes(h.status));
+        const hearings = (state.stats?.today_hearings || []).filter(isActiveQueueSession);
         const count = hearings.length;
         const confirmMsg = count > 0
             ? `PUNONG BARANGAY UNAVAILABLE BATCH ACTION:\n\nMayroong ${count} aktibong nakatakdang hearing ngayong araw.\n\nNais mo bang awtomatikong i-reschedule ang lahat ng hearing na ito patungo sa susunod na Martes?\n\n• Awtomatikong mag-iisyu ng bagong Notice (KP Form 8) at Summon (KP Form 9).\n• Itatala sa dispatch para sa Summons Server nang walang multa sa mga partido.`
@@ -239,8 +261,8 @@
         const container = document.getElementById('clerkAgendaStream');
         if (!container) return;
 
-        const hearings = state.stats?.today_hearings || [];
-        const paanyayas = state.stats?.today_paanyayas || [];
+        const hearings = (state.stats?.today_hearings || []).filter(isActiveQueueSession);
+        const paanyayas = (state.stats?.today_paanyayas || []).filter(isActiveQueueSession);
 
         // Normalize items
         const agendaItems = [];
