@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 session_start();
 
@@ -1587,6 +1587,23 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             </div>
 
             <div class="embedded-referral-step" id="refStep2" style="display:none;">
+                <!-- BULK PANGKAT GROUP SELECTION (1-Click Assignment) -->
+                <div style="background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label for="referBulkPangkatSelect" style="font-size: 0.84rem; font-weight: 800; color: #166534; margin: 0; display: inline-flex; align-items: center; gap: 6px;">
+                            <span>⚡ One-Click Pangkat Group Selection</span>
+                            <span style="font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 9999px; background: #dcfce7; color: #15803d;">Recommended</span>
+                        </label>
+                        <a href="../settings/index.php?tab=duty-groups" target="_blank" style="font-size: 0.76rem; color: #0284c7; text-decoration: none; font-weight: 600;">
+                            ⚙️ Manage Duty Groups &rarr;
+                        </a>
+                    </div>
+                    <select id="referBulkPangkatSelect" onchange="applyEmbeddedBulkPangkatGroup(this.value)" style="padding: 8px 12px; width: 100%; border: 1.5px solid #86efac; border-radius: 6px; font-size: 0.86rem; font-weight: 600; background: #ffffff; color: #0f172a;">
+                        <option value="">-- Choose Standing Pangkat Group (e.g. Wednesday Team) --</option>
+                    </select>
+                    <div id="referBulkGroupInfo" style="display: none; margin-top: 8px; font-size: 0.78rem; color: #166534; background: #dcfce7; padding: 6px 10px; border-radius: 6px; line-height: 1.45;"></div>
+                </div>
+
                 <div class="form-group" style="margin-bottom: 14px;">
                     <label for="referSelectionMethod" style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Pangkat Selection Method</label>
                     <select id="referSelectionMethod" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem;">

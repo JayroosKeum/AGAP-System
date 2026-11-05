@@ -1,4 +1,4 @@
-/**
+﻿/**
  * AGAP System — Settings Module Frontend Controller
  */
 
@@ -51,6 +51,9 @@ document.addEventListener('DOMContentLoaded', () => {
             pane.classList.toggle('active', isActive);
             if (isActive && tabId === 'tab-categories') {
                 setTimeout(initLeafletMiniMap, 150);
+            }
+            if (isActive && tabId === 'tab-duty-groups') {
+                loadDutyGroups();
             }
         });
 
@@ -630,6 +633,289 @@ document.addEventListener('DOMContentLoaded', () => {
             if (btn) btn.disabled = false;
         }
     };
+
+    // =========================================================================
+    // PANGKAT DUTY GROUPS & ROSTER MANAGEMENT
+    // =========================================================================
+    let pangkatDutyGroupsList = [];
+    let cachedLuponMembers = [];
+
+    async function fetchLuponMembersForDuty() {
+        if (cachedLuponMembers.length > 0) return cachedLuponMembers;
+        try {
+            const res = await fetch('../../../backend/api/assignments/lupon-members.php');
+            const data = await res.json();
+            cachedLuponMembers = Array.isArray(data) ? data : (data.data || []);
+        } catch (e) {
+            console.error('Failed to load Lupon members:', e);
+            cachedLuponMembers = [];
+        }
+        return cachedLuponMembers;
+    }
+
+    window.loadDutyGroups = async function() {
+        const tbody = document.getElementById('dutyGroupsTableTbody');
+        if (!tbody) return;
+        try {
+            const res = await fetch('../../../backend/api/pangkat/duty-groups.php');
+            const data = await res.json();
+            pangkatDutyGroupsList = data.data || [];
+            renderDutyGroupsTable();
+        } catch (e) {
+            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#dc2626; padding:20px;">Failed to load duty groups: ${escapeHtml(e.message)}</td></tr>`;
+        }
+    };
+
+    function renderDutyGroupsTable() {
+        const tbody = document.getElementById('dutyGroupsTableTbody');
+        if (!tbody) return;
+        if (!pangkatDutyGroupsList || pangkatDutyGroupsList.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" style="text-align: center; color: #64748b; padding: 32px 16px;">
+                        <div style="font-size: 1.5rem; margin-bottom: 6px;">👥</div>
+                        <strong>No Pangkat duty groups created yet.</strong>
+                        <p style="margin: 4px 0 12px 0; font-size: 0.82rem; color: #94a3b8;">
+                            Create named groups (e.g., Wednesday Team) with official scheduled duty days to enable 1-click bulk conciliation panel selection.
+                        </p>
+                        <button type="button" class="btn-primary btn-sm" onclick="openDutyGroupModal()">+ Create First Duty Group</button>
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        const dayColors = {
+            'Monday': '#0284c7',
+            'Tuesday': '#d97706',
+            'Wednesday': '#16a34a',
+            'Thursday': '#7c3aed',
+            'Friday': '#059669',
+            'Saturday': '#475569'
+        };
+
+        tbody.innerHTML = pangkatDutyGroupsList.map(g => {
+            const dayColor = dayColors[g.duty_day] || '#0284c7';
+            const chair = g.members?.find(m => m.position === 'Chairman');
+            const sec = g.members?.find(m => m.position === 'Secretary');
+            const mem = g.members?.find(m => m.position === 'Member');
+
+            const chairLabel = chair ? `<strong>${escapeHtml(chair.member_name)}</strong> <small style="color:#0369a1; font-weight:600;">(Chair)</small>` : '<em style="color:#dc2626;">Missing Chair</em>';
+            const secLabel = sec ? `<strong>${escapeHtml(sec.member_name)}</strong> <small style="color:#047857; font-weight:600;">(Sec)</small>` : '<em style="color:#dc2626;">Missing Sec</em>';
+            const memLabel = mem ? `<strong>${escapeHtml(mem.member_name)}</strong> <small style="color:#64748b; font-weight:600;">(Member)</small>` : '<em style="color:#dc2626;">Missing Member</em>';
+
+            const statusBadge = g.is_active === 1
+                ? (g.is_complete ? '<span class="badge-active">Active</span>' : '<span class="badge-inactive" style="background:#fef3c7; color:#92400e;">Incomplete</span>')
+                : '<span class="badge-inactive">Inactive</span>';
+
+            const payloadAttr = JSON.stringify(g).replace(/"/g, '&quot;');
+
+            return `
+                <tr>
+                    <td>
+                        <strong style="color: #0f172a; font-size: 0.92rem;">${escapeHtml(g.group_name)}</strong>
+                        ${g.notes ? `<div style="font-size: 0.78rem; color: #64748b; margin-top: 2px;">${escapeHtml(g.notes)}</div>` : ''}
+                    </td>
+                    <td>
+                        <span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 9999px; font-size: 0.78rem; font-weight: 700; background: ${dayColor}15; color: ${dayColor}; border: 1px solid ${dayColor}40;">
+                            📅 ${escapeHtml(g.duty_day)}
+                        </span>
+                    </td>
+                    <td>
+                        <div style="font-weight: 600; color: #1e293b; font-size: 0.84rem;">⏰ ${escapeHtml(g.start_time)} – ${escapeHtml(g.end_time)}</div>
+                        <div style="font-size: 0.78rem; color: #64748b;">📍 ${escapeHtml(g.station || 'Lupon Court Room')}</div>
+                    </td>
+                    <td style="font-size: 0.82rem; line-height: 1.55;">
+                        <div>${chairLabel}</div>
+                        <div>${secLabel}</div>
+                        <div>${memLabel}</div>
+                    </td>
+                    <td>
+                        <span style="font-weight: 700; color: #0f172a; font-size: 0.88rem;">${g.cases_assigned}</span>
+                        <div style="font-size: 0.74rem; color: #64748b;">case panels</div>
+                    </td>
+                    <td>${statusBadge}</td>
+                    <td style="text-align: right; white-space: nowrap;">
+                        <button type="button" class="btn-secondary btn-sm" onclick="editDutyGroup(${payloadAttr})">✏️ Edit</button>
+                        <button type="button" class="btn-danger btn-sm" onclick="deleteDutyGroup(${g.duty_group_id}, '${escapeHtml(g.group_name).replace(/'/g, "\\'")}')">🗑️</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    window.openDutyGroupModal = async function(data = null) {
+        const modal = document.getElementById('modalDutyGroupForm');
+        if (!modal) return;
+
+        const members = await fetchLuponMembersForDuty();
+        const populateSelect = (id, selectedVal) => {
+            const sel = document.getElementById(id);
+            if (!sel) return;
+            let opts = '<option value="">-- Select Active Lupon Member --</option>';
+            members.forEach(m => {
+                const name = `${m.last_name}, ${m.first_name} ${m.middle_name || ''}`.trim();
+                opts += `<option value="${m.member_id}">${escapeHtml(name)}</option>`;
+            });
+            sel.innerHTML = opts;
+            if (selectedVal) sel.value = String(selectedVal);
+        };
+
+        const title = document.getElementById('dutyGroupModalTitle');
+        const idInput = document.getElementById('dutyGroupId');
+        const nameInput = document.getElementById('dutyGroupName');
+        const daySelect = document.getElementById('dutyGroupDay');
+        const startInput = document.getElementById('dutyGroupStart');
+        const endInput = document.getElementById('dutyGroupEnd');
+        const stationInput = document.getElementById('dutyGroupStation');
+        const notesInput = document.getElementById('dutyGroupNotes');
+        const activeInput = document.getElementById('dutyGroupActive');
+        const conflictNotice = document.getElementById('dutyGroupConflictNotice');
+        if (conflictNotice) conflictNotice.style.display = 'none';
+
+        if (data) {
+            title.textContent = 'Edit Pangkat Duty Group';
+            idInput.value = data.duty_group_id || '';
+            nameInput.value = data.group_name || '';
+            daySelect.value = data.duty_day || 'Wednesday';
+            startInput.value = data.start_time || '08:00';
+            endInput.value = data.end_time || '17:00';
+            stationInput.value = data.station || 'Lupon Court Room';
+            notesInput.value = data.notes || '';
+            activeInput.checked = (data.is_active === 1);
+
+            const chair = data.members?.find(m => m.position === 'Chairman');
+            const sec = data.members?.find(m => m.position === 'Secretary');
+            const mem = data.members?.find(m => m.position === 'Member');
+
+            populateSelect('dutyGroupChairman', chair?.member_id);
+            populateSelect('dutyGroupSecretary', sec?.member_id);
+            populateSelect('dutyGroupMember', mem?.member_id);
+        } else {
+            title.textContent = 'Create Pangkat Duty Group';
+            idInput.value = '';
+            nameInput.value = '';
+            daySelect.value = 'Wednesday';
+            startInput.value = '08:00';
+            endInput.value = '17:00';
+            stationInput.value = 'Lupon Court Room';
+            notesInput.value = '';
+            activeInput.checked = true;
+
+            populateSelect('dutyGroupChairman', null);
+            populateSelect('dutyGroupSecretary', null);
+            populateSelect('dutyGroupMember', null);
+        }
+
+        modal.classList.add('active');
+    };
+
+    window.closeDutyGroupModal = function() {
+        document.getElementById('modalDutyGroupForm')?.classList.remove('active');
+    };
+
+    window.editDutyGroup = function(group) {
+        openDutyGroupModal(group);
+    };
+
+    window.submitDutyGroupForm = async function() {
+        const id = document.getElementById('dutyGroupId')?.value;
+        const name = document.getElementById('dutyGroupName')?.value.trim();
+        const day = document.getElementById('dutyGroupDay')?.value;
+        const start = document.getElementById('dutyGroupStart')?.value;
+        const end = document.getElementById('dutyGroupEnd')?.value;
+        const station = document.getElementById('dutyGroupStation')?.value.trim();
+        const notes = document.getElementById('dutyGroupNotes')?.value.trim();
+        const isActive = document.getElementById('dutyGroupActive')?.checked ? 1 : 0;
+
+        const chairId = Number(document.getElementById('dutyGroupChairman')?.value);
+        const secId = Number(document.getElementById('dutyGroupSecretary')?.value);
+        const memId = Number(document.getElementById('dutyGroupMember')?.value);
+
+        if (!name) {
+            showToast('Please provide a name for the Pangkat duty group.', 'error');
+            return;
+        }
+        if (!chairId || !secId || !memId) {
+            showToast('Please assign all three positions: Chairman, Secretary, and regular Member.', 'error');
+            return;
+        }
+        if (new Set([chairId, secId, memId]).size !== 3) {
+            showToast('Chairman, Secretary, and Member must be three different Lupon Members.', 'error');
+            return;
+        }
+
+        const btn = document.getElementById('btnSaveDutyGroup');
+        if (btn) btn.disabled = true;
+
+        const payload = {
+            action: 'save',
+            duty_group_id: id ? Number(id) : null,
+            group_name: name,
+            duty_day: day,
+            start_time: start,
+            end_time: end,
+            station: station || 'Lupon Court Room',
+            notes: notes,
+            is_active: isActive,
+            chairman_id: chairId,
+            secretary_id: secId,
+            member_id: memId
+        };
+
+        try {
+            const res = await fetch('../../../backend/api/pangkat/duty-groups.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken
+                },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast(data.message, 'success');
+                closeDutyGroupModal();
+                loadDutyGroups();
+            } else {
+                showToast(data.message || 'Unable to save duty group.', 'error');
+            }
+        } catch (e) {
+            showToast('Failed to save duty group: ' + e.message, 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    };
+
+    window.deleteDutyGroup = async function(groupId, groupName) {
+        if (!confirm(`Are you sure you want to delete "${groupName}"?\n\nMembers will no longer have this group stationed on their official duty calendar.`)) {
+            return;
+        }
+        try {
+            const res = await fetch('../../../backend/api/pangkat/duty-groups.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken
+                },
+                body: JSON.stringify({ action: 'delete', duty_group_id: groupId })
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast(data.message, 'success');
+                loadDutyGroups();
+            } else {
+                showToast(data.message || 'Unable to delete duty group.', 'error');
+            }
+        } catch (e) {
+            showToast('Failed to delete duty group: ' + e.message, 'error');
+        }
+    };
+
+    // If initial tab is duty-groups
+    if (targetTabName === 'duty-groups' || targetTabName === 'tab-duty-groups') {
+        loadDutyGroups();
+    }
 
     // Initialize Holidays Table on initial load
     renderHolidaysTable();

@@ -1436,6 +1436,23 @@ class CaseStage
             ];
         }
 
+        // Bulk Pangkat Group Selection: when a standing duty group is chosen, its
+        // seated members (resolved server-side) replace any individually submitted IDs.
+        $dutyGroupId = filter_var($data['duty_group_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
+        if ($dutyGroupId) {
+            require_once __DIR__ . '/../services/PangkatDutyGroupService.php';
+            $resolved = (new PangkatDutyGroupService($this->conn))->resolvePanel((int) $dutyGroupId);
+            if (!$resolved['success']) {
+                return ['success' => false, 'message' => $resolved['message']];
+            }
+            $data['chairman_id'] = $resolved['chairman_id'];
+            $data['secretary_id'] = $resolved['secretary_id'];
+            $data['member_id'] = $resolved['member_id'];
+            $data['quorum_size'] = 3;
+            $groupNote = "Panel drawn from standing duty group \"{$resolved['group']['group_name']}\" ({$resolved['group']['duty_day']} duty).";
+            $data['selection_notes'] = trim($groupNote . ' ' . trim((string) ($data['selection_notes'] ?? '')));
+        }
+
         $panelValidation = $this->validatePangkatPanel($data);
         if (!$panelValidation['valid']) {
             return ['success' => false, 'message' => $panelValidation['message']];
@@ -1592,6 +1609,12 @@ class CaseStage
                 $pangkatId = (int) $this->conn->lastInsertId();
 
                 if ($pangkatId > 0) {
+                    // Link (or unlink) the standing duty group this panel was drawn from.
+                    try {
+                        $this->conn->prepare("UPDATE pangkat_groups SET duty_group_id = ? WHERE pangkat_id = ?")->execute([$dutyGroupId, $pangkatId]);
+                    } catch (PDOException $e) {
+                        // Column is created lazily by PangkatDutyGroupService; ignore if not yet present.
+                    }
                     $this->conn->prepare("DELETE FROM pangkat_members WHERE pangkat_id = ?")->execute([$pangkatId]);
                     $insMem = $this->conn->prepare("INSERT INTO pangkat_members (pangkat_id, member_id, position, status) VALUES (?, ?, ?, 'Active')");
                     $insMem->execute([$pangkatId, $chairmanId, 'Chairman']);

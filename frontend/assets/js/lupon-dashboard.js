@@ -1,4 +1,4 @@
-/**
+﻿/**
  * AGAP - Lupon Member / Conciliator Dashboard Client Logic
  * Senior-Friendly, High-Contrast UI, Duty Day Calendar & Digital Case Dossier Preview
  */
@@ -98,7 +98,18 @@
         setText('kpiMemberCount', kpis.as_member ?? 0);
         setText('kpiTodayHearings', kpis.today_hearings ?? 0);
         setText('dutyDayDisplay', dutyDay || 'Wednesday');
-        setText('dutyDayDisplaySub', `${dutyDay || 'Wednesday'} Team · Regular Pangkat Duty`);
+        const gName = state.data?.duty_schedule?.group_name;
+        const gStation = state.data?.duty_schedule?.station || 'Lupon Court Room';
+        const gPos = state.data?.duty_schedule?.group_position ? ` (${state.data.duty_schedule.group_position})` : '';
+        if (gName) {
+            setText('dutyDayDisplaySub', `${gName}${gPos} · ${gStation}`);
+            const bannerHeader = document.querySelector('.duty-day-info h3');
+            if (bannerHeader) bannerHeader.textContent = `${gName} · ${gStation}`;
+            const headerTag = document.getElementById('dutyDayHeaderTag');
+            if (headerTag) headerTag.textContent = `${gName} (${dutyDay})`;
+        } else {
+            setText('dutyDayDisplaySub', `${dutyDay || 'Wednesday'} Team · Regular Pangkat Duty`);
+        }
     };
 
     // Render Duty Day Hearing Calendar & Schedule

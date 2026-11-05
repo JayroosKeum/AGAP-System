@@ -1,4 +1,4 @@
-function getOrdinal(n) {
+﻿function getOrdinal(n) {
     const s = ["th", "st", "nd", "rd"];
     const v = n % 100;
     return n + (s[(v - 20) % 10] || s[v] || s[0]);
@@ -4093,7 +4093,65 @@ async function openEmbeddedReferPangkatModal() {
     }
 
     // Populate Lupon dropdowns if empty
+    loadEmbeddedBulkPangkatDutyGroups();
     const chSelect = document.getElementById('referChairmanId');
+
+let cachedEmbeddedPangkatGroups = [];
+
+async function loadEmbeddedBulkPangkatDutyGroups() {
+    const sel = document.getElementById('referBulkPangkatSelect');
+    if (!sel) return;
+    try {
+        const res = await fetch('../../../backend/api/pangkat/duty-groups.php?active=1');
+        const json = await res.json();
+        cachedEmbeddedPangkatGroups = (json.success && Array.isArray(json.data)) ? json.data : [];
+
+        let opts = '<option value="">-- Choose Standing Pangkat Group (e.g. Wednesday Team) --</option>';
+        cachedEmbeddedPangkatGroups.forEach(g => {
+            const chair = g.members?.find(m => m.position === 'Chairman')?.member_name || 'No Chair';
+            const sec = g.members?.find(m => m.position === 'Secretary')?.member_name || 'No Sec';
+            const mem = g.members?.find(m => m.position === 'Member')?.member_name || 'No Member';
+            opts += `<option value="${g.duty_group_id}">${escapeHtml(g.group_name)} (${escapeHtml(g.duty_day)} Duty: ${escapeHtml(chair)}, ${escapeHtml(sec)}, ${escapeHtml(mem)})</option>`;
+        });
+        sel.innerHTML = opts;
+    } catch (e) {
+        console.warn('Could not load Pangkat duty groups in complaints:', e);
+    }
+}
+window.loadEmbeddedBulkPangkatDutyGroups = loadEmbeddedBulkPangkatDutyGroups;
+
+function applyEmbeddedBulkPangkatGroup(groupId) {
+    const info = document.getElementById('referBulkGroupInfo');
+    const chSelect = document.getElementById('referChairmanId');
+    const secSelect = document.getElementById('referSecretaryId');
+    const memSelect = document.getElementById('referMemberId');
+
+    if (!groupId) {
+        if (info) info.style.display = 'none';
+        return;
+    }
+
+    const group = cachedEmbeddedPangkatGroups.find(g => Number(g.duty_group_id) === Number(groupId));
+    if (!group) return;
+
+    const chair = group.members?.find(m => m.position === 'Chairman');
+    const sec = group.members?.find(m => m.position === 'Secretary');
+    const mem = group.members?.find(m => m.position === 'Member');
+
+    if (chair && chSelect) chSelect.value = String(chair.member_id);
+    if (sec && secSelect) secSelect.value = String(sec.member_id);
+    if (mem && memSelect) memSelect.value = String(mem.member_id);
+
+    if (info) {
+        info.style.display = 'block';
+        info.innerHTML = `
+            <strong>✅ Standing Group Selected:</strong> ${escapeHtml(group.group_name)} (${escapeHtml(group.duty_day)} Duty)<br>
+            <strong>Panel:</strong> Chair: ${escapeHtml(chair?.member_name || 'N/A')} | Sec: ${escapeHtml(sec?.member_name || 'N/A')} | Member: ${escapeHtml(mem?.member_name || 'N/A')}
+        `;
+    }
+}
+window.applyEmbeddedBulkPangkatGroup = applyEmbeddedBulkPangkatGroup;
+
     if (chSelect && (!chSelect.options || chSelect.options.length <= 1)) {
         try {
             const res = await fetch('../../../backend/api/assignments/lupon-members.php');
@@ -4198,7 +4256,8 @@ async function submitEmbeddedReferPangkat(e) {
         quorum_size: 3,
         chairman_id: Number(chairmanId),
         secretary_id: Number(secretaryId),
-        member_id: Number(memberId)
+        member_id: Number(memberId),
+        duty_group_id: document.getElementById('referBulkPangkatSelect')?.value ? Number(document.getElementById('referBulkPangkatSelect').value) : null
     };
 
     try {

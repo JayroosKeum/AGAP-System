@@ -75,6 +75,36 @@ class LuponDashboardController
      */
     public function getMemberDutySchedule(int $userId): array
     {
+        $schedule = $this->getMemberDutyScheduleRow($userId);
+        return array_merge($schedule, $this->getMemberDutyGroup($userId));
+    }
+
+    /**
+     * Standing Pangkat duty group the member is stationed in (Settings → Pangkat Duty Groups).
+     */
+    private function getMemberDutyGroup(int $userId): array
+    {
+        try {
+            $stmt = $this->conn->prepare("
+                SELECT g.duty_group_id, g.group_name, g.station, gm.position AS group_position
+                FROM pangkat_duty_group_members gm
+                INNER JOIN pangkat_duty_groups g ON g.duty_group_id = gm.duty_group_id
+                WHERE gm.member_id = ? AND g.is_active = 1
+                LIMIT 1
+            ");
+            $stmt->execute([$userId]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($row) {
+                return $row;
+            }
+        } catch (PDOException $e) {
+            // Duty group tables are created on first use of the Settings panel.
+        }
+        return ['duty_group_id' => null, 'group_name' => null, 'station' => null, 'group_position' => null];
+    }
+
+    private function getMemberDutyScheduleRow(int $userId): array
+    {
         try {
             $stmt = $this->conn->prepare("
                 SELECT id, user_id, duty_day, start_time, end_time, notes, is_active

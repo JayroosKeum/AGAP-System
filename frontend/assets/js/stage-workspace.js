@@ -1,4 +1,4 @@
-
+﻿
 
 function getMinutesField(baseId, hearingId = null) {
 
@@ -1284,6 +1284,111 @@ async function loadLuponMembers() {
 
 
 function populateLuponDropdowns() {
+    loadBulkPangkatDutyGroups();
+
+let cachedPangkatDutyGroups = [];
+
+async function loadBulkPangkatDutyGroups() {
+    const sel = document.getElementById('referBulkPangkatSelect');
+    if (!sel) return;
+    try {
+        const res = await fetch('../../../backend/api/pangkat/duty-groups.php?active=1');
+        const json = await res.json();
+        cachedPangkatDutyGroups = (json.success && Array.isArray(json.data)) ? json.data : [];
+
+        let opts = '<option value="">-- Choose Standing Pangkat Group (e.g. Wednesday Team) --</option>';
+        cachedPangkatDutyGroups.forEach(g => {
+            const chair = g.members?.find(m => m.position === 'Chairman')?.member_name || 'No Chair';
+            const sec = g.members?.find(m => m.position === 'Secretary')?.member_name || 'No Sec';
+            const mem = g.members?.find(m => m.position === 'Member')?.member_name || 'No Member';
+            const completeLabel = g.is_complete ? '' : ' [Incomplete]';
+            opts += `<option value="${g.duty_group_id}">${escapeHtml(g.group_name)} (${escapeHtml(g.duty_day)} Duty: ${escapeHtml(chair)}, ${escapeHtml(sec)}, ${escapeHtml(mem)})${completeLabel}</option>`;
+        });
+        sel.innerHTML = opts;
+    } catch (e) {
+        console.warn('Could not load Pangkat duty groups for bulk selection:', e);
+    }
+}
+window.loadBulkPangkatDutyGroups = loadBulkPangkatDutyGroups;
+
+function applyBulkPangkatGroup(groupId) {
+    const info = document.getElementById('referBulkGroupInfo');
+    const chSelect = document.getElementById('referChairmanId');
+    const secSelect = document.getElementById('referSecretaryId');
+    const memSelect = document.getElementById('referMemberId');
+    const qSelect = document.getElementById('referQuorumSize');
+    const notesInput = document.getElementById('referSelectionNotes');
+    const venueInput = document.getElementById('referConciliationVenue');
+
+    if (!groupId) {
+        if (info) info.style.display = 'none';
+        return;
+    }
+
+    const group = cachedPangkatDutyGroups.find(g => Number(g.duty_group_id) === Number(groupId));
+    if (!group) return;
+
+    const chair = group.members?.find(m => m.position === 'Chairman');
+    const sec = group.members?.find(m => m.position === 'Secretary');
+    const mem = group.members?.find(m => m.position === 'Member');
+
+    if (qSelect) {
+        qSelect.value = '3';
+        const qGroup = document.getElementById('referQuorumReasonGroup');
+        if (qGroup) qGroup.style.display = 'none';
+    }
+
+    if (chair && chSelect) chSelect.value = String(chair.member_id);
+    if (sec && secSelect) secSelect.value = String(sec.member_id);
+    if (mem && memSelect) memSelect.value = String(mem.member_id);
+
+    if (group.station && venueInput && (!venueInput.value || venueInput.value === 'Lupon Court Room')) {
+        venueInput.value = group.station;
+    }
+
+    if (notesInput && !notesInput.value) {
+        notesInput.value = `Bulk assigned from standing duty group "${group.group_name}" (${group.duty_day} duty).`;
+    }
+
+    if (info) {
+        info.style.display = 'block';
+        info.innerHTML = `
+            <strong>✅ Standing Group Selected:</strong> ${escapeHtml(group.group_name)} (${escapeHtml(group.duty_day)} Duty)<br>
+            <strong>Panel:</strong> Chair: ${escapeHtml(chair?.member_name || 'N/A')} | Sec: ${escapeHtml(sec?.member_name || 'N/A')} | Member: ${escapeHtml(mem?.member_name || 'N/A')}<br>
+            <span style="font-size: 0.74rem; color: #15803d;">Stationed at: ${escapeHtml(group.station || 'Lupon Court Room')} (${escapeHtml(group.start_time)} – ${escapeHtml(group.end_time)})</span>
+        `;
+    }
+
+    alignDateToGroupDutyDay(group.duty_day);
+}
+window.applyBulkPangkatGroup = applyBulkPangkatGroup;
+
+function alignDateToGroupDutyDay(dutyDayName) {
+    const daysMap = { 'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6 };
+    const targetDow = daysMap[dutyDayName];
+    if (targetDow === undefined || targetDow === 2) return;
+
+    const dateInput = document.getElementById('referConciliationDate');
+    if (!dateInput) return;
+
+    let base = new Date();
+    base.setDate(base.getDate() + 1);
+    for (let i = 0; i < 14; i++) {
+        if (base.getDay() === targetDow) {
+            const yr = base.getFullYear();
+            const mo = String(base.getMonth() + 1).padStart(2, '0');
+            const da = String(base.getDate()).padStart(2, '0');
+            dateInput.value = `${yr}-${mo}-${da}`;
+            if (typeof handleReferDateInputChange === 'function') {
+                handleReferDateInputChange();
+            }
+            break;
+        }
+        base.setDate(base.getDate() + 1);
+    }
+}
+window.alignDateToGroupDutyDay = alignDateToGroupDutyDay;
+
 
     const members = stageWorkspaceState.luponMembers || [];
 
@@ -10296,6 +10401,7 @@ async function submitReferPangkat(e) {
         secretary_id: Number(secretaryId),
 
         member_id: memberId ? Number(memberId) : null,
+        duty_group_id: document.getElementById('referBulkPangkatSelect')?.value ? Number(document.getElementById('referBulkPangkatSelect').value) : null,
 
         conciliation_date: concDate || null,
 
