@@ -139,9 +139,24 @@
     flex-shrink: 0;
 }
 
-.server-kpi-card.kpi-pending .server-kpi-icon { background: #fefce8; color: #ca8a04; }
-.server-kpi-card.kpi-served .server-kpi-icon { background: #f0fdf4; color: #16a34a; }
-.server-kpi-card.kpi-unserved .server-kpi-icon { background: #fef2f2; color: #dc2626; }
+.server-kpi-card.kpi-pending .server-kpi-icon { background: #fffbeb; color: #b45309; }
+.server-kpi-card.kpi-served .server-kpi-icon { background: #f0fdf4; color: #15803d; }
+.server-kpi-card.kpi-unserved .server-kpi-icon { background: #fef2f2; color: #b91c1c; }
+
+.server-kpi-card,
+.server-route-toolbar,
+.dispatch-task-card { border-color: #e2e8f0; box-shadow: 0 6px 18px rgba(15, 23, 42, .04); }
+
+.server-dispatch-view button,
+.server-dispatch-view .btn-status-filter {
+    align-items: center;
+    display: inline-flex;
+    justify-content: center;
+    min-height: 36px;
+}
+
+.server-dispatch-view button svg,
+.server-dispatch-view a svg { flex: 0 0 16px; height: 16px; width: 16px; }
 
 /* ── Purok Route & Batch Filter Toolbar ── */
 .server-route-toolbar {

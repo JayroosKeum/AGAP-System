@@ -225,6 +225,66 @@
 .status-badge.status-dismissed { background:#fee2e2; color:#991b1b; }
 .status-badge.status-default { background:#f4f4f5; color:#3f3f46; }
 
+/* Shared role-dashboard visual tokens: information, verified, and pending. */
+:root {
+    --agap-ui-info-bg: #eff6ff;
+    --agap-ui-info-fg: #1d4ed8;
+    --agap-ui-success-bg: #f0fdf4;
+    --agap-ui-success-fg: #15803d;
+    --agap-ui-pending-bg: #fffbeb;
+    --agap-ui-pending-fg: #b45309;
+    --agap-ui-surface: #ffffff;
+    --agap-ui-border: #e2e8f0;
+    --agap-ui-muted: #64748b;
+}
+
+.status-badge.status-mediation,
+.status-badge.status-conciliation,
+.status-badge.status-arbitration { background: var(--agap-ui-info-bg); color: var(--agap-ui-info-fg); }
+.status-badge.status-settled { background: var(--agap-ui-success-bg); color: var(--agap-ui-success-fg); }
+.status-badge.status-docketed { background: var(--agap-ui-pending-bg); color: var(--agap-ui-pending-fg); }
+
+.dashboard-overview .stat-card,
+.dashboard-overview .dashboard-panel,
+.dashboard-overview .docket-queue-card,
+.dashboard-overview .system-metric-pill,
+.dashboard-overview .clerk-agenda-item {
+    background: var(--agap-ui-surface);
+    border-color: var(--agap-ui-border);
+    box-shadow: 0 6px 18px rgba(15, 23, 42, .04);
+}
+
+.dashboard-overview .stat-card.is-active,
+.dashboard-overview .system-metric-pill.is-active {
+    background: var(--agap-ui-info-bg);
+    border-color: #93c5fd;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, .14);
+}
+
+.dashboard-overview .btn-period-nav,
+.dashboard-overview .btn-clerk-primary,
+.dashboard-overview .btn-clerk-secondary,
+.dashboard-overview .btn-clerk-outline,
+.dashboard-overview .btn-open-case,
+.dashboard-overview .btn-agenda-filter {
+    align-items: center;
+    display: inline-flex;
+    gap: 7px;
+    justify-content: center;
+    min-height: 36px;
+}
+
+.dashboard-overview button svg,
+.dashboard-overview .btn-open-case svg,
+.dashboard-overview .card-action-link svg { flex: 0 0 16px; height: 16px; width: 16px; }
+
+.dashboard-overview .btn-clerk-primary { background: var(--agap-ui-info-fg); box-shadow: none; }
+.dashboard-overview .btn-clerk-primary:hover { background: #1e40af; box-shadow: 0 4px 10px rgba(29, 78, 216, .18); }
+.dashboard-overview .btn-clerk-secondary { background: var(--agap-ui-success-fg); box-shadow: none; }
+.dashboard-overview .btn-clerk-secondary:hover { background: #166534; box-shadow: 0 4px 10px rgba(21, 128, 61, .18); }
+.dashboard-overview .btn-clerk-outline { background: #fff; color: #334155 !important; }
+.dashboard-overview .btn-clerk-outline:hover { background: #f8fafc; border-color: #94a3b8; color: #0f172a !important; }
+
 /* Case type pill */
 .type-pill { border-radius:999px; display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; text-transform:capitalize; }
 .type-civil { background:#f0fdf4; border:1px solid #bbf7d0; color:#15803d; }
@@ -2506,4 +2566,29 @@
     color: #2563eb;
     transform: translateX(3px);
 }
+
+/* Final role-dashboard cascade: shared surface, status, and control treatment. */
+.dashboard-overview .stat-card,
+.dashboard-overview .dashboard-panel,
+.dashboard-overview .docket-queue-card,
+.dashboard-overview .system-metric-pill,
+.dashboard-overview .clerk-agenda-item {
+    background: #fff;
+    border-color: #e2e8f0;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, .04);
+}
+
+.dashboard-overview .stat-card.is-active,
+.dashboard-overview .system-metric-pill.is-active {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, .14);
+}
+
+.dashboard-overview .btn-clerk-primary { background: #1d4ed8; box-shadow: none; }
+.dashboard-overview .btn-clerk-primary:hover { background: #1e40af; box-shadow: 0 4px 10px rgba(29, 78, 216, .18); }
+.dashboard-overview .btn-clerk-secondary { background: #15803d; box-shadow: none; }
+.dashboard-overview .btn-clerk-secondary:hover { background: #166534; box-shadow: 0 4px 10px rgba(21, 128, 61, .18); }
+.dashboard-overview .btn-clerk-outline { background: #fff; border-color: #cbd5e1; color: #334155 !important; }
+.dashboard-overview .btn-clerk-outline:hover { background: #f8fafc; border-color: #94a3b8; color: #0f172a !important; }
 

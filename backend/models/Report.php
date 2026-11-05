@@ -53,7 +53,7 @@ class Report
 
             $todayHearings = $this->conn->prepare(
                 "SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.venue, h.status, h.queue_status,
-                        h.actual_start_time, h.complainant_attendance, h.respondent_attendance, h.attendance_notes, h.mediation_attempt,
+                        h.actual_start_time, h.complainant_attendance, h.respondent_attendance, h.attendance_notes, h.mediation_attempt, COALESCE(h.queue_order, 0) AS queue_order,
                         c.case_id, c.case_number, co.complaint_id, co.complaint_title,
                         COALESCE((
                             SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')
@@ -72,7 +72,7 @@ class Report
                  INNER JOIN complaints co ON co.complaint_id = c.complaint_id
                  WHERE DATE(h.hearing_date) = ?
                    AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')
-                 ORDER BY h.hearing_date ASC
+                 ORDER BY CASE WHEN COALESCE(h.queue_order, 0) > 0 THEN h.queue_order ELSE 9999 END ASC, h.hearing_date ASC
                  LIMIT 8"
             );
             $todayHearings->execute([$today]);
@@ -80,7 +80,7 @@ class Report
             // Paanyaya sessions (Stage 0 Informal Dialogues - prioritize today & scheduled, include all in All Time mode)
             $todayPaanyayas = $this->conn->prepare(
                 "SELECT p.paanyaya_id, p.complaint_id, p.escalated_to_complaint_id, p.complainant_name, p.invitee_name,
-                        p.scheduled_date, p.scheduled_time, p.status, p.venue, p.salaysay AS reason,
+                        p.scheduled_date, p.scheduled_time, p.status, p.venue, p.salaysay AS reason, COALESCE(p.queue_order, ps.queue_order, 0) AS queue_order,
                         co.complaint_number, co.complaint_title,
                         COALESCE(ps.session_id, 0) AS session_id,
                         COALESCE(ps.attempt_number, p.attempt_number, 1) AS attempt_number,
@@ -96,6 +96,7 @@ class Report
                          WHEN p.status IN ('Scheduled', 'Pending') THEN 1
                          ELSE 2
                      END,
+                     CASE WHEN COALESCE(p.queue_order, 0) > 0 THEN p.queue_order ELSE 9999 END ASC,
                      p.scheduled_date DESC,
                      p.scheduled_time ASC,
                      p.paanyaya_id DESC
@@ -164,7 +165,7 @@ class Report
 
             $calendarHearingsStmt = $this->conn->query(
                 "SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.venue, h.status, h.queue_status,
-                        h.actual_start_time, h.complainant_attendance, h.respondent_attendance, h.attendance_notes, h.mediation_attempt,
+                        h.actual_start_time, h.complainant_attendance, h.respondent_attendance, h.attendance_notes, h.mediation_attempt, COALESCE(h.queue_order, 0) AS queue_order,
                         c.case_id, c.case_number, co.complaint_id, co.complaint_title,
                         COALESCE((
                             SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')
@@ -300,7 +301,7 @@ class Report
 
         $hearingsStmt = $this->conn->prepare(
             "SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.venue, h.status, h.queue_status,
-                        h.actual_start_time, h.complainant_attendance, h.respondent_attendance, h.attendance_notes, h.mediation_attempt,
+                        h.actual_start_time, h.complainant_attendance, h.respondent_attendance, h.attendance_notes, h.mediation_attempt, COALESCE(h.queue_order, 0) AS queue_order,
                         c.case_id, c.case_number, co.complaint_id, co.complaint_title,
                         COALESCE((
                             SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')
@@ -328,7 +329,7 @@ class Report
         // Period Paanyayas
         $paanyayasStmt = $this->conn->prepare(
             "SELECT p.paanyaya_id, p.complaint_id, p.escalated_to_complaint_id, p.complainant_name, p.invitee_name,
-                    p.scheduled_date, p.scheduled_time, p.status, p.venue, p.salaysay AS reason,
+                    p.scheduled_date, p.scheduled_time, p.status, p.venue, p.salaysay AS reason, COALESCE(p.queue_order, ps.queue_order, 0) AS queue_order,
                     co.complaint_number, co.complaint_title,
                     COALESCE(ps.session_id, 0) AS session_id,
                     COALESCE(ps.attempt_number, p.attempt_number, 1) AS attempt_number,
@@ -477,7 +478,7 @@ class Report
 
         $calendarHearingsStmt = $this->conn->query(
             "SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.venue, h.status, h.queue_status,
-                        h.actual_start_time, h.complainant_attendance, h.respondent_attendance, h.attendance_notes, h.mediation_attempt,
+                        h.actual_start_time, h.complainant_attendance, h.respondent_attendance, h.attendance_notes, h.mediation_attempt, COALESCE(h.queue_order, 0) AS queue_order,
                         c.case_id, c.case_number, co.complaint_id, co.complaint_title,
                         COALESCE((
                             SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')

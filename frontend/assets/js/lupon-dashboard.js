@@ -169,7 +169,7 @@
                     <button type="button" class="btn-lupon-touch btn-dossier" data-case-id="${h.case_id}">
                         Buksan ang Digital Case Dossier
                     </button>
-                    <a href="../hearings/index.php?hearing_id=${h.hearing_id}" class="btn-lupon-touch btn-secondary">
+                    <a href="${(h.hearing_type === 'Conciliation' || h.pangkat_id) ? '../cases/pangkat-workspace.php' : '../cases/mediation-workspace.php'}?case_id=${encodeURIComponent(h.case_id)}&hearing_id=${encodeURIComponent(h.hearing_id)}" class="btn-lupon-touch btn-secondary">
                         Tingnan ang Attendance &amp; Minutes
                     </a>
                 </div>

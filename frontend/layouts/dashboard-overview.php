@@ -137,7 +137,7 @@
         <div class="dash-portal-main">
             <!-- 1. Today's Hearings Card (Wide layout in main column per A.png) -->
             <div class="dash-section-card" id="dashboardHearingsPanel">
-                <div class="aside-card-header">
+                <div class="aside-card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <span style="display:inline-flex;color:#1e293b;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="M7 21h10"></path><path d="M12 3v18"></path><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"></path></svg></span>
                         <div>
@@ -145,7 +145,17 @@
                             <p class="aside-card-sub" id="hearingsPanelSub">Scheduled formal sessions</p>
                         </div>
                     </div>
-                    <span id="periodHearingCountBadge" class="panel-count-badge" style="display:none;">0</span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <button type="button" class="btn-pb-unavailable-batch" id="btnPbUnavailableBatchAdmin" onclick="triggerPbUnavailableBatch()" title="Punong Barangay Unavailable: Batch reschedule all hearings for today to next Tuesday">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="12" y1="8" x2="12" y2="12"></line>
+                                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                            </svg>
+                            Punong Barangay Unavailable
+                        </button>
+                        <span id="periodHearingCountBadge" class="panel-count-badge" style="display:none;">0</span>
+                    </div>
                 </div>
                 <div id="todayHearings" class="dash-hearings-stream" aria-live="polite">
                     <div style="text-align: center; color: #64748b; padding: 18px; font-size: 0.85rem;">No hearings scheduled for this date.</div>

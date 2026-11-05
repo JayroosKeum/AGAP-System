@@ -8,6 +8,7 @@ require_once __DIR__ . '/../../controllers/ComplaintController.php';
 require_once __DIR__ . '/../../controllers/AIController.php';
 require_once __DIR__ . '/../../services/CsrfService.php';
 require_once __DIR__ . '/../../services/AiRequestRateLimit.php';
+require_once __DIR__ . '/../../services/AuditService.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -106,6 +107,7 @@ try {
     $aiResponse = $aiController->caseSummary($caseSummaryPayload);
 
     if ($aiResponse['success']) {
+        (new AuditService())->log((int) $_SESSION['user_id'], 'Generated AI case brief (view only)', 'Cases', (int) ($caseItem['case_id'] ?? 0));
         echo json_encode([
             'success' => true,
             'summary' => $aiResponse['summary'],
@@ -126,10 +128,11 @@ try {
         . "3. PROCEEDINGS & MEDIATION STATUS\n"
         . "• Sessions Conducted: " . count($hearings) . " session(s) on record.\n"
         . "• Hearing Details: {$hearingsSummary}\n\n"
-        . "4. PROCEDURAL ASSESSMENT & RECOMMENDED NEXT STEPS\n"
-        . "• Continue proceedings according to Katarungang Pambarangay rules (RA 7160).\n"
-        . "• Enforce mediation appearance and explore amicable settlement terms between parties.";
+        . "4. CURRENT RECORD STATUS\n"
+        . "• Current recorded status: {$caseSummaryPayload['case_status']}.\n"
+        . "• Any official outcome or next action must be determined and recorded by an authorized officer.";
 
+    (new AuditService())->log((int) $_SESSION['user_id'], 'Generated structured case brief fallback (view only)', 'Cases', (int) ($caseItem['case_id'] ?? 0));
     echo json_encode([
         'success' => true,
         'summary' => $fallbackBrief,

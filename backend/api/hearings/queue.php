@@ -68,6 +68,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             echo json_encode($res);
             exit;
 
+        case 'reorder_queue':
+            $res = $controller->reorderQueue($input, $userId);
+            http_response_code($res['success'] ? 200 : 422);
+            echo json_encode($res);
+            exit;
+
         default:
             http_response_code(400);
             echo json_encode(['success' => false, 'message' => 'Invalid or missing action.']);

@@ -16,7 +16,8 @@ document.addEventListener('DOMContentLoaded', () => {
         currentPeriodLabel: 'All Time',
         calendarCursor: new Date(),
         calendarHearings: [],
-        selectedDate: null
+        selectedDate: null,
+        isSavingQueue: false
     };
 
     // Check URL search params for initial tab selection
@@ -81,6 +82,12 @@ document.addEventListener('DOMContentLoaded', () => {
         return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
     };
 
+    const formatDateClean = (value) => {
+        if (!value) return '';
+        const d = new Date(String(value).includes(' ') ? String(value).replace(' ', 'T') : (String(value).length === 10 ? String(value) + 'T00:00:00' : String(value)));
+        return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+    };
+
     const addListItem = (container, title, details, badge, linkUrl = null) => {
         const item = document.createElement('article');
         item.className = 'dashboard-list-item';
@@ -139,9 +146,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return raw;
     };
 
-    const addPaanyayaItem = (container, item) => {
+    const addPaanyayaItem = (container, item, displayIndex = 0) => {
         const art = document.createElement('article');
         art.className = 'dashboard-list-item';
+        art.dataset.id = item.paanyaya_id || item.id || '';
+        art.dataset.type = 'paanyaya';
+        art.dataset.sessionId = item.session_id || '';
+        art.dataset.queueDate = String(item.scheduled_date || getTodayDateStr()).slice(0, 10);
         art.style.cssText = 'padding: 14px 0; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;';
 
         const content = document.createElement('div');
@@ -157,6 +168,7 @@ document.addEventListener('DOMContentLoaded', () => {
         headerRow.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 5px; flex-wrap: wrap;';
 
         const timeBadge = document.createElement('span');
+        timeBadge.className = 'agenda-time-pill';
         timeBadge.style.cssText = 'font-size: 0.78rem; font-weight: 700; color: #1e40af; background: #dbeafe; padding: 2px 8px; border-radius: 4px; white-space: nowrap;';
         timeBadge.textContent = timeStr;
 
@@ -164,7 +176,16 @@ document.addEventListener('DOMContentLoaded', () => {
         heading.style.cssText = 'margin: 0; font-size: 0.94rem; font-weight: 700; color: #0f172a;';
         heading.textContent = `${complaintRef} · Paanyaya Invitation`;
 
-        headerRow.append(timeBadge, heading);
+                const dragHandle = document.createElement('span');
+        dragHandle.className = 'drag-handle';
+        dragHandle.title = 'I-drag para baguhin ang docket sequence';
+        dragHandle.innerHTML = '&#8942;&#8942;';
+
+        const seqBadge = document.createElement('span');
+        seqBadge.className = 'queue-seq-badge';
+        seqBadge.textContent = `#${displayIndex + 1}`;
+
+        headerRow.append(dragHandle, seqBadge, timeBadge, heading);
 
         const inviteeRow = document.createElement('div');
         inviteeRow.style.cssText = 'font-size: 0.86rem; color: #1e293b; margin-bottom: 4px; line-height: 1.4;';
@@ -206,13 +227,158 @@ document.addEventListener('DOMContentLoaded', () => {
             return container.appendChild(emptyState('No informal Paanyaya invitations scheduled for today.'));
         }
 
-        items.forEach(item => addPaanyayaItem(container, item));
+        items.forEach((item, idx) => addPaanyayaItem(container, item, idx));
     };
 
-    const addHearingItem = (container, hearing) => {
+    let draggedHearingCard = null;
+
+    const saveReorderedSequence = async (container) => {
+        if (state.isSavingQueue) return;
+        const itemsPayload = [];
+        const items = container.querySelectorAll('.dashboard-list-item[data-id]');
+        items.forEach((el, newIdx) => {
+            const orderNum = newIdx + 1;
+            const seqBadge = el.querySelector('.queue-seq-badge');
+            if (seqBadge) seqBadge.textContent = `#${orderNum}`;
+            el.dataset.index = newIdx;
+
+            itemsPayload.push({
+                type: el.dataset.type || 'hearing',
+                id: parseInt(el.dataset.id, 10),
+                session_id: el.dataset.sessionId ? parseInt(el.dataset.sessionId, 10) : null,
+                order: orderNum
+            });
+        });
+
+        if (itemsPayload.length === 0) return;
+
+        const queueDate = items[0]?.dataset.queueDate || getTodayDateStr();
+        state.isSavingQueue = true;
+        items.forEach(item => { item.draggable = false; });
+        try {
+            const res = await fetch('../../../backend/api/hearings/queue.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json; charset=utf-8',
+                    'X-CSRF-Token': getCsrfToken()
+                },
+                body: JSON.stringify({
+                    action: 'reorder_queue',
+                    items: itemsPayload,
+                    queue_date: queueDate
+                })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (data.success) {
+                if (Array.isArray(data.updated_items)) {
+                    data.updated_items.forEach(up => {
+                        const card = container.querySelector(`.dashboard-list-item[data-type="${up.type}"][data-id="${up.id}"]`);
+                        if (card) {
+                            const timePill = card.querySelector('.agenda-time-pill');
+                            if (timePill && up.formatted_time) {
+                                timePill.textContent = up.formatted_time;
+                            }
+                        }
+                        if (up.type === 'hearing' && Array.isArray(state.hearings)) {
+                            const matchH = state.hearings.find(h => h.hearing_id == up.id);
+                            if (matchH) {
+                                matchH.hearing_date = up.hearing_date;
+                                matchH.queue_order = up.order;
+                            }
+                        }
+                    });
+                }
+                console.log(`Docket sequence and live times updated (#1 - #${itemsPayload.length})`);
+                window.dispatchEvent(new CustomEvent('agap:queue-reordered', { detail: data }));
+            }
+        } catch (err) {
+            console.error('Error saving hearing sequence:', err);
+        } finally {
+            state.isSavingQueue = false;
+            items.forEach(item => { item.draggable = true; });
+        }
+    };
+
+    window.triggerPbUnavailableBatch = async () => {
+        const activeHearings = (state.hearings || []).filter(h => !['Cancelled', 'Office Cancelled', 'Completed'].includes(h.status));
+        const count = activeHearings.length;
+        const confirmMsg = count > 0
+            ? `PUNONG BARANGAY UNAVAILABLE BATCH ACTION:\n\nMayroong ${count} aktibong nakatakdang hearing ngayong araw.\n\nNais mo bang awtomatikong i-reschedule ang lahat ng hearing na ito patungo sa susunod na Martes?\n\n• Awtomatikong mag-iisyu ng bagong Notice (KP Form 8) at Summon (KP Form 9).\n• Itatala sa dispatch para sa Summons Server nang walang multa sa mga partido.`
+            : `PUNONG BARANGAY UNAVAILABLE BATCH ACTION:\n\nNais mo bang simulan ang batch rescheduling para sa araw na ito patungo sa susunod na Martes?`;
+
+        if (!confirm(confirmMsg)) return;
+
+        try {
+            const res = await fetch('../../../backend/api/hearings/batch-reschedule.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-Token': getCsrfToken()
+                },
+                body: JSON.stringify({
+                    target_date: getTodayDateStr(),
+                    reason: 'Punong Barangay Unavailable'
+                })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (data.success) {
+                alert(data.message || 'Matagumpay na nai-reschedule ang mga hearing patungo sa susunod na Martes!');
+                fetchDashboardData();
+            } else {
+                alert(data.message || 'Nabigong i-reschedule ang mga hearing.');
+            }
+        } catch (err) {
+            console.error(err);
+            alert('May naganap na error sa pagpoproseso ng batch reschedule.');
+        }
+    };
+
+    const addHearingItem = (container, hearing, displayIndex = 0) => {
         const item = document.createElement('article');
-        item.className = 'dashboard-list-item';
-        item.style.cssText = 'padding: 14px 0; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;';
+        item.className = 'dashboard-list-item clerk-agenda-item';
+        item.draggable = true;
+        item.dataset.index = displayIndex;
+        item.dataset.id = hearing.hearing_id;
+        item.dataset.type = 'hearing';
+        item.dataset.queueDate = String(hearing.hearing_date || getTodayDateStr()).slice(0, 10);
+        item.style.cssText = 'padding: 14px 12px; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border-radius: 8px; transition: background 0.15s, transform 0.15s; margin-bottom: 4px;';
+
+        // Drag and Drop Listeners
+        item.addEventListener('dragstart', (e) => {
+            draggedHearingCard = item;
+            item.classList.add('is-dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', item.dataset.index);
+        });
+
+        item.addEventListener('dragend', () => {
+            item.classList.remove('is-dragging');
+            container.querySelectorAll('.dashboard-list-item').forEach(c => c.classList.remove('drag-over'));
+            if (draggedHearingCard) {
+                draggedHearingCard = null;
+                saveReorderedSequence(container);
+            }
+        });
+
+        item.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            if (!draggedHearingCard || draggedHearingCard === item) return;
+
+            const bounding = item.getBoundingClientRect();
+            const offset = e.clientY - bounding.top;
+            if (offset > bounding.height / 2) {
+                item.parentNode.insertBefore(draggedHearingCard, item.nextSibling);
+            } else {
+                item.parentNode.insertBefore(draggedHearingCard, item);
+            }
+            item.classList.add('drag-over');
+        });
+
+        item.addEventListener('dragleave', () => {
+            item.classList.remove('drag-over');
+        });
 
         const content = document.createElement('div');
         content.className = 'dashboard-list-content';
@@ -230,6 +396,7 @@ document.addEventListener('DOMContentLoaded', () => {
         headerRow.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;';
 
         const timeBadge = document.createElement('span');
+        timeBadge.className = 'agenda-time-pill';
         timeBadge.style.cssText = 'font-size: 0.78rem; font-weight: 700; color: #0f172a; background: #e2e8f0; padding: 2px 8px; border-radius: 4px; white-space: nowrap;';
         timeBadge.textContent = scheduledTimeStr;
 
@@ -237,7 +404,16 @@ document.addEventListener('DOMContentLoaded', () => {
         heading.style.cssText = 'margin: 0; font-size: 0.92rem; font-weight: 700; color: #0f172a;';
         heading.textContent = `${caseNumberStr} · ${hearingTypeStr}`;
 
-        headerRow.append(timeBadge, heading);
+                const dragHandle = document.createElement('span');
+        dragHandle.className = 'drag-handle';
+        dragHandle.title = 'I-drag para baguhin ang docket sequence';
+        dragHandle.innerHTML = '&#8942;&#8942;';
+
+        const seqBadge = document.createElement('span');
+        seqBadge.className = 'queue-seq-badge';
+        seqBadge.textContent = `#${displayIndex + 1}`;
+
+        headerRow.append(dragHandle, seqBadge, timeBadge, heading);
 
         // Parties Row: (C) Complainant vs (R) Respondent
         const partiesRow = document.createElement('div');
@@ -803,7 +979,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const endIndex = Math.min(startIndex + state.hearingsPerPage, totalHearings);
         const pageItems = state.hearings.slice(startIndex, endIndex);
 
-        pageItems.forEach((hearing) => addHearingItem(container, hearing));
+        pageItems.forEach((hearing, idx) => addHearingItem(container, hearing, startIndex + idx));
 
         // Pagination UI: Only show 10 at a time
         if (paginationWrap) {

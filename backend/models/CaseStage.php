@@ -904,6 +904,11 @@ class CaseStage
             SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.venue, h.status,
                    h.queue_status, h.actual_start_time, h.actual_end_time, h.actual_duration_minutes,
                    h.mediation_attempt, h.attempt_exception_reason, h.cancellation_category, h.rescheduled_from_id,
+                   (SELECT next_h.hearing_id
+                    FROM hearings next_h
+                    WHERE next_h.rescheduled_from_id = h.hearing_id
+                    ORDER BY next_h.hearing_date ASC, next_h.hearing_id ASC
+                    LIMIT 1) AS rescheduled_to_id,
                    h.complainant_attendance, h.respondent_attendance, h.remarks,
                    h.presiding_officer_id, h.substitute_presider_id, h.substitute_reason, h.parties_consent_to_substitute,
                    h.attendance_recorded_at, h.attendance_notes,
@@ -949,6 +954,59 @@ class CaseStage
             ORDER BY FIELD(cp.party_type, 'Complainant', 'Respondent', 'Witness'), r.last_name
         ");
 
+        // Build a resolved attempt map rather than relying on result-array
+        // positions. An office-cancelled hearing did not take place, so its
+        // replacement remains the same statutory mediation attempt.
+        $attemptMap = [];
+        $rescheduledMap = [];
+        foreach ($hearings as $h) {
+            if (!empty($h['rescheduled_from_id'])) {
+                $rescheduledMap[(int)$h['hearing_id']] = (int)$h['rescheduled_from_id'];
+            }
+        }
+
+        $runningAttempt = 1;
+        $resolveAttempt = function (int $hearingId, array $visited = []) use (&$resolveAttempt, &$attemptMap, $rescheduledMap, $hearings, &$runningAttempt): int {
+            if (isset($attemptMap[$hearingId])) {
+                return $attemptMap[$hearingId];
+            }
+            if (isset($visited[$hearingId])) {
+                return max(1, $runningAttempt);
+            }
+            $visited[$hearingId] = true;
+            $hearing = null;
+            foreach ($hearings as $candidate) {
+                if ((int) $candidate['hearing_id'] === $hearingId) {
+                    $hearing = $candidate;
+                    break;
+                }
+            }
+            if (!$hearing) {
+                return max(1, $runningAttempt);
+            }
+
+            $parentHId = $rescheduledMap[$hearingId] ?? null;
+            if ($parentHId) {
+                $attemptNum = $resolveAttempt($parentHId, $visited);
+            } elseif (!empty($hearing['mediation_attempt'])) {
+                $attemptNum = max(1, (int) $hearing['mediation_attempt']);
+            } else {
+                $attemptNum = max(1, $runningAttempt);
+            }
+
+            $attemptMap[$hearingId] = $attemptNum;
+            return $attemptNum;
+        };
+
+        foreach ($hearings as $h) {
+            $hId = (int) $h['hearing_id'];
+            $attemptNum = $resolveAttempt($hId);
+
+            if (!in_array($h['status'], ['Cancelled', 'Office Cancelled'], true)) {
+                $runningAttempt = max($runningAttempt, $attemptNum + 1);
+            }
+        }
+
         $sessions = [];
         $index = 1;
         foreach ($hearings as $h) {
@@ -979,19 +1037,20 @@ class CaseStage
             }
             $proofStatus = (!empty($attendanceGate['allowed']) || ($stageType !== 'Mediation')) ? 'Served' : 'Pending Delivery';
 
-            $attemptNum = !empty($h['mediation_attempt']) ? (int) $h['mediation_attempt'] : $index;
+                        $attemptNum = $attemptMap[$hId] ?? (!empty($h['mediation_attempt']) ? (int) $h['mediation_attempt'] : $index);
             $sessionNumber = $stageType === 'Mediation'
                 ? sprintf('Mediation %d', $attemptNum)
-                : sprintf('%s Session %d', $stageType, $index);
+                : sprintf('%s Session %d', $stageType, $attemptNum);
 
             $sessions[] = [
-                'session_index' => $index,
+                'session_index' => $attemptNum,
                 'session_number' => $sessionNumber,
                 'mediation_attempt' => $attemptNum,
                 'attempt_label' => $sessionNumber,
                 'attempt_exception_reason' => $h['attempt_exception_reason'] ?? null,
                 'cancellation_category' => $h['cancellation_category'] ?? null,
                 'rescheduled_from_id' => $h['rescheduled_from_id'] ? (int) $h['rescheduled_from_id'] : null,
+                'rescheduled_to_id' => $h['rescheduled_to_id'] ? (int) $h['rescheduled_to_id'] : null,
                 'hearing_id' => $hId,
                 'hearing_type' => $h['hearing_type'],
                 'hearing_date' => $h['hearing_date'],

@@ -22,7 +22,7 @@ if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESS
     exit;
 }
 
-$canManage = in_array((int) $_SESSION['role_id'], [1, 2], true);
+$canManage = in_array((int) $_SESSION['role_id'], [1, 2, 3], true);
 $hearingAttendance = new HearingAttendance();
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
@@ -85,7 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$canManage) {
         http_response_code(403);
-        echo json_encode(['success' => false, 'message' => 'Unauthorized. Only Administrators and Lupon Clerks can record attendance.']);
+        echo json_encode(['success' => false, 'message' => 'Unauthorized. Only Administrators, Lupon Clerks, and Lupon Members can record attendance.']);
         exit;
     }
 

@@ -16,7 +16,8 @@
         calendarDate: new Date(),
         activeQuickAttHearing: null,
         activeQuickAttHearingId: null,
-        activeQuickAttData: null
+        activeQuickAttData: null,
+        isSavingQueue: false
     };
 
     const getCsrfToken = () => {
@@ -27,6 +28,17 @@
         if (str === null || str === undefined) return '';
         const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
         return String(str).replace(/[&<>"']/g, (m) => map[m]);
+    };
+
+    const formatDateClean = (value) => {
+        if (!value) return '';
+        const d = new Date(String(value).includes(' ') ? String(value).replace(' ', 'T') : (String(value).length === 10 ? String(value) + 'T00:00:00' : String(value)));
+        return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+    };
+
+    const getLocalDate = () => {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     };
 
     const formatTimeOnly = (dateString) => {
@@ -137,6 +149,91 @@
         setText('sysMetricActiveUsers', data.active_users ?? 0);
     };
 
+    // Asynchronous Queue Order Persistence
+    const saveReorderedSequence = async (container) => {
+        if (state.isSavingQueue) return;
+        const itemsPayload = [];
+        const cards = container.querySelectorAll('.clerk-agenda-item');
+        cards.forEach((el, newIdx) => {
+            const orderNum = newIdx + 1;
+            const seqBadge = el.querySelector('.queue-seq-badge');
+            if (seqBadge) seqBadge.textContent = `#${orderNum}`;
+            el.dataset.index = newIdx;
+
+            itemsPayload.push({
+                type: el.dataset.type,
+                id: parseInt(el.dataset.id, 10),
+                session_id: el.dataset.sessionId ? parseInt(el.dataset.sessionId, 10) : null,
+                order: orderNum
+            });
+        });
+
+        if (itemsPayload.length === 0) return;
+
+        const queueDate = cards[0]?.dataset.queueDate || getLocalDate();
+        state.isSavingQueue = true;
+        cards.forEach(card => { card.draggable = false; });
+        try {
+            const res = await fetch('../../../backend/api/hearings/queue.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json; charset=utf-8',
+                    'X-CSRF-Token': getCsrfToken()
+                },
+                body: JSON.stringify({
+                    action: 'reorder_queue',
+                    items: itemsPayload,
+                    queue_date: queueDate
+                })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (data.success) {
+                (data.updated_items || []).forEach((updated) => {
+                    const card = Array.from(cards).find((candidate) =>
+                        candidate.dataset.type === updated.type
+                        && Number(candidate.dataset.id) === Number(updated.id)
+                        && (!updated.session_id || Number(candidate.dataset.sessionId || 0) === Number(updated.session_id))
+                    );
+                    const timePill = card?.querySelector('.agenda-time-pill');
+                    if (timePill && updated.formatted_time) timePill.textContent = updated.formatted_time;
+                });
+                window.dispatchEvent(new CustomEvent('agap:queue-reordered', { detail: data }));
+                showToast(`Nai-save ang bagong docket sequence (#1 - #${itemsPayload.length})!`);
+            } else {
+                showToast(data.message || 'Nabigong i-save ang sequence.', true);
+            }
+        } catch (err) {
+            showToast('Error sa pag-save ng sequence.', true);
+        } finally {
+            state.isSavingQueue = false;
+            cards.forEach(card => { card.draggable = true; });
+        }
+    };
+
+    // Global Punong Barangay Unavailable Batch Rescheduler
+    window.triggerPbUnavailableBatch = async () => {
+        const hearings = (state.stats?.today_hearings || []).filter(h => !['Cancelled', 'Office Cancelled', 'Completed'].includes(h.status));
+        const count = hearings.length;
+        const confirmMsg = count > 0
+            ? `PUNONG BARANGAY UNAVAILABLE BATCH ACTION:\n\nMayroong ${count} aktibong nakatakdang hearing ngayong araw.\n\nNais mo bang awtomatikong i-reschedule ang lahat ng hearing na ito patungo sa susunod na Martes?\n\n• Awtomatikong mag-iisyu ng bagong Notice (KP Form 8) at Summon (KP Form 9).\n• Itatala sa dispatch para sa Summons Server nang walang multa sa mga partido.`
+            : `PUNONG BARANGAY UNAVAILABLE BATCH ACTION:\n\nNais mo bang simulan ang batch rescheduling para sa araw na ito patungo sa susunod na Martes?`;
+
+        if (!confirm(confirmMsg)) return;
+
+        try {
+            showToast('Ipinoproseso ang batch reschedule...', false);
+            const res = await postQuickAction({
+                action: 'batch_reschedule_pb_unavailable',
+                target_date: getLocalDate(),
+                reason: 'Punong Barangay Unavailable'
+            });
+            showToast(res.message || 'Matagumpay na nai-reschedule ang mga hearing!');
+            await fetchDashboardData();
+        } catch (err) {
+            showToast(err.message || 'Nabigong i-reschedule ang mga hearing.', true);
+        }
+    };
+
     // Render Agenda Stream (Hearings + Paanyaya)
     const renderAgendaStream = () => {
         const container = document.getElementById('clerkAgendaStream');
@@ -212,9 +309,53 @@
             return;
         }
 
-        filtered.forEach(item => {
+        let draggedCard = null;
+
+        filtered.forEach((item, index) => {
             const card = document.createElement('article');
             card.className = `clerk-agenda-item item-${item.type}`;
+            card.draggable = true;
+            card.dataset.index = index;
+            card.dataset.id = item.id;
+            card.dataset.type = item.type;
+            card.dataset.sessionId = item.session_id || '';
+            card.dataset.queueDate = String(item.hearing_date || item.scheduled_date || item.date || getLocalDate()).slice(0, 10);
+
+            // Drag and Drop Event Listeners
+            card.addEventListener('dragstart', (e) => {
+                draggedCard = card;
+                card.classList.add('is-dragging');
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', card.dataset.index);
+            });
+
+            card.addEventListener('dragend', () => {
+                card.classList.remove('is-dragging');
+                container.querySelectorAll('.clerk-agenda-item').forEach(c => c.classList.remove('drag-over'));
+                if (draggedCard) {
+                    draggedCard = null;
+                    saveReorderedSequence(container);
+                }
+            });
+
+            card.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                if (!draggedCard || draggedCard === card) return;
+
+                const bounding = card.getBoundingClientRect();
+                const offset = e.clientY - bounding.top;
+                if (offset > bounding.height / 2) {
+                    card.parentNode.insertBefore(draggedCard, card.nextSibling);
+                } else {
+                    card.parentNode.insertBefore(draggedCard, card);
+                }
+                card.classList.add('drag-over');
+            });
+
+            card.addEventListener('dragleave', () => {
+                card.classList.remove('drag-over');
+            });
 
             // Header
             const header = document.createElement('div');
@@ -223,7 +364,17 @@
             const timeWrap = document.createElement('div');
             timeWrap.style.cssText = 'display: flex; align-items: center; gap: 8px; flex-wrap: wrap;';
 
+            const dragHandle = document.createElement('span');
+            dragHandle.className = 'drag-handle';
+            dragHandle.title = 'I-drag para baguhin ang docket sequence';
+            dragHandle.innerHTML = '&#8942;&#8942;';
+
+            const seqBadge = document.createElement('span');
+            seqBadge.className = 'queue-seq-badge';
+            seqBadge.textContent = `#${index + 1}`;
+
             const timePill = document.createElement('span');
+            timePill.className = 'agenda-time-pill';
             timePill.style.cssText = `
                 font-size: 0.78rem; font-weight: 800; padding: 3px 8px; border-radius: 6px;
                 background: ${item.type === 'hearing' ? '#dbeafe' : '#e0e7ff'};
@@ -235,7 +386,7 @@
             titleHeading.style.cssText = 'margin: 0; font-size: 0.94rem; font-weight: 700; color: #0f172a;';
             titleHeading.textContent = item.title;
 
-            timeWrap.append(timePill, titleHeading);
+            timeWrap.append(dragHandle, seqBadge, timePill, titleHeading);
 
             const statusBadge = document.createElement('span');
             statusBadge.style.cssText = 'font-size: 0.74rem; font-weight: 700; padding: 2px 8px; border-radius: 9999px; background: #f1f5f9; color: #475569;';
@@ -864,7 +1015,7 @@
                 } else if (metric === 'archived') {
                     window.location.href = '../cases/case-list.php?status=Archived';
                 } else if (metric === 'users') {
-                    window.location.href = '../users/user-list.php';
+                    showToast('Tanging Administrator lamang ang may pahintulot na mamahala ng user accounts.');
                 }
             };
             pill.addEventListener('click', handlePillClick);

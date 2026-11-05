@@ -12,6 +12,15 @@ $roleName = $roleNames[(int) ($_SESSION['role_id'] ?? 0)] ?? 'Staff Member';
     </button>
     <div class="navbar-context"><span class="navbar-eyebrow">Barangay Tumana</span><span class="navbar-title">Katarungang Pambarangay</span></div>
     <div class="navbar-right">
+        <!-- Global UI Language Switch Toggle (English / Tagalog) -->
+        <div class="lang-switch-wrapper" id="langSwitchWrapper">
+            <button type="button" class="lang-switch-btn" id="langSwitchToggle" onclick="toggleAppLanguage()" aria-label="Toggle language (English / Tagalog)" title="Palitan ang Wika / Switch Language">
+                <span class="lang-pill lang-en active" id="langPillEn">EN</span>
+                <span class="lang-separator">|</span>
+                <span class="lang-pill lang-tl" id="langPillTl">TL</span>
+            </button>
+        </div>
+
 
         <!-- Modern Notification Popover Trigger (Inspiration from Modern App Header) -->
         <div class="nav-notification-wrapper" id="navNotificationWrapper">

@@ -158,11 +158,12 @@ class GeminiService
             ];
 
             if (!empty($generationConfig)) {
-                // Ensure both camelCase and snake_case versions of responseMimeType are supported
+                // Accept the application's snake_case option, but send Gemini's REST field name only.
                 $cfg = $generationConfig;
                 if (isset($cfg['response_mime_type']) && !isset($cfg['responseMimeType'])) {
                     $cfg['responseMimeType'] = $cfg['response_mime_type'];
                 }
+                unset($cfg['response_mime_type']);
                 $payload['generationConfig'] = $cfg;
             }
 

@@ -52,7 +52,8 @@ if (!$caseId && $complaintId) {
 
 if (!$caseId) {
 
-    header('Location: ../cases/case-list.php');
+    $redirect = in_array($roleId, [1, 2], true) ? '../cases/case-list.php' : '../dashboard/lupon-dashboard.php';
+    header('Location: ' . $redirect);
 
     exit;
 
@@ -120,14 +121,27 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
 
 <style>
 
+    :root {
+        --agap-blue-50: #eff6ff;
+        --agap-blue-100: #dbeafe;
+        --agap-blue-600: #2563eb;
+        --agap-blue-700: #1d4ed8;
+        --agap-green-50: #f0fdf4;
+        --agap-green-700: #15803d;
+        --agap-amber-50: #fffbeb;
+        --agap-amber-700: #b45309;
+        --agap-slate-50: #f8fafc;
+        --agap-slate-100: #f1f5f9;
+        --agap-slate-200: #e2e8f0;
+        --agap-slate-500: #64748b;
+        --agap-slate-700: #334155;
+        --agap-slate-900: #0f172a;
+    }
+
     .stage-workspace-container {
-
-        padding: 24px 30px;
-
-        max-width: 1400px;
-
+        max-width: 1440px;
         margin: 0 auto;
-
+        padding: 28px 32px 40px;
     }
 
     .stage-breadcrumbs {
@@ -155,100 +169,71 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
     }
 
     .overview-grid {
-
         display: grid;
-
-        grid-auto-flow: column;
-
-        grid-auto-columns: minmax(0, 1fr);
-
-        gap: 10px;
-
-        margin-bottom: 20px;
-
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
+        margin: 0 0 24px;
         width: 100%;
-
-    }
-
-    @media (max-width: 1100px) {
-
-        .overview-grid {
-
-            overflow-x: auto;
-
-            grid-auto-columns: minmax(150px, 1fr);
-
-            padding-bottom: 6px;
-
-        }
-
     }
 
     .overview-stat-card {
-
-        background: #fff;
-
-        border: 1px solid #e2e8f0;
-
-        border-radius: 10px;
-
-        padding: 14px 16px;
-
-        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
-
+        min-width: 0;
+        min-height: 116px;
+        padding: 18px;
         display: flex;
-
         flex-direction: column;
-
-        gap: 3px;
-
+        justify-content: space-between;
+        gap: 8px;
+        background: #fff;
+        border: 1px solid var(--agap-slate-200);
+        border-radius: 12px;
+        border-top: 3px solid var(--agap-blue-600);
+        box-shadow: 0 8px 20px rgba(15, 23, 42, .045);
     }
+
+    .overview-stat-card:nth-child(2n) { border-top-color: var(--agap-amber-700); }
+    .overview-stat-card:nth-child(3n) { border-top-color: var(--agap-green-700); }
 
     .stat-label {
 
-        font-size: 0.72rem;
-
-        font-weight: 700;
-
+        display: block;
+        color: var(--agap-slate-500);
+        font-size: .69rem;
+        font-weight: 800;
+        letter-spacing: .07em;
+        line-height: 1.35;
+        overflow-wrap: anywhere;
         text-transform: uppercase;
-
-        letter-spacing: 0.04em;
-
-        color: #64748b;
 
     }
 
     .stat-value {
 
-        font-size: 1.05rem;
-
-        font-weight: 700;
-
-        color: #0f172a;
+        color: var(--agap-slate-900);
+        font-size: 1.08rem;
+        font-weight: 800;
+        line-height: 1.32;
+        overflow-wrap: anywhere;
 
     }
 
     .stat-sub {
 
-        font-size: 0.76rem;
-
-        color: #64748b;
+        color: var(--agap-slate-500);
+        font-size: .78rem;
+        line-height: 1.45;
+        overflow-wrap: anywhere;
 
     }
 
     .stage-section-card {
 
         background: #fff;
-
-        border: 1px solid #e2e8f0;
-
-        border-radius: 12px;
-
-        padding: 20px;
-
-        margin-bottom: 24px;
-
-        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+        border: 1px solid var(--agap-slate-200);
+        border-radius: 14px;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, .04);
+        margin-bottom: 22px;
+        padding: 22px;
 
     }
 
@@ -268,7 +253,7 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
 
         padding-bottom: 12px;
 
-        border-bottom: 1px solid #f1f5f9;
+        border-bottom: 1px solid var(--agap-slate-200);
 
     }
 
@@ -276,11 +261,10 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
 
         margin: 0;
 
-        font-size: 1.12rem;
-
-        color: #0f172a;
-
-        font-weight: 700;
+        color: var(--agap-slate-900);
+        font-size: 1.08rem;
+        font-weight: 800;
+        letter-spacing: -.01em;
 
     }
 
@@ -288,9 +272,60 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
 
         margin: 3px 0 0;
 
-        font-size: 0.82rem;
+        color: var(--agap-slate-500);
+        font-size: .84rem;
+        line-height: 1.5;
 
-        color: #64748b;
+    }
+
+    .stage-page-header {
+        align-items: flex-start;
+        border-bottom-color: var(--agap-slate-200) !important;
+        gap: 18px;
+        margin-bottom: 24px !important;
+        padding-bottom: 22px !important;
+    }
+
+    .stage-title-group { min-width: 0; }
+
+    .workspace-icon {
+        width: 18px;
+        height: 18px;
+        flex: 0 0 auto;
+        stroke-width: 2;
+        vertical-align: middle;
+    }
+
+    .stage-workspace-container .btn-create,
+    .stage-workspace-container .btn-secondary,
+    .stage-workspace-container .btn-slot-chip,
+    .stage-workspace-container .refer-slot-btn {
+        align-items: center;
+        border-radius: 8px;
+        display: inline-flex;
+        gap: 7px;
+        justify-content: center;
+        min-height: 38px;
+        transition: background .16s ease, border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+    }
+
+    .stage-workspace-container .btn-create { background: var(--agap-blue-700) !important; border-color: var(--agap-blue-700) !important; }
+    .stage-workspace-container .btn-create:hover { background: #1e40af !important; border-color: #1e40af !important; box-shadow: 0 5px 12px rgba(29, 78, 216, .2); transform: translateY(-1px); }
+    .stage-workspace-container .btn-secondary { background: #fff; border: 1px solid #cbd5e1; color: var(--agap-slate-700); }
+    .stage-workspace-container .btn-secondary:hover { background: var(--agap-slate-50); border-color: #94a3b8; }
+    .stage-workspace-container button:focus-visible { outline: 3px solid rgba(37, 99, 235, .25); outline-offset: 2px; }
+
+    @media (max-width: 1080px) {
+        .overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 640px) {
+        .stage-workspace-container { padding: 20px 16px 30px; }
+        .overview-grid { grid-template-columns: 1fr; gap: 10px; }
+        .overview-stat-card { min-height: 96px; padding: 15px; }
+        .stage-section-card { padding: 16px; }
+        #wsAttCardBody { padding: 14px !important; }
+        .stage-page-header { flex-direction: column; }
 
     }
 
@@ -332,9 +367,9 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
 
             <!-- Page Header -->
 
-            <div class="page-header" style="padding: 0 0 20px 0; margin-bottom: 20px; border-bottom: 1px solid #e2e8f0;">
+            <div class="page-header stage-page-header" style="padding: 0 0 20px 0; margin-bottom: 20px; border-bottom: 1px solid #e2e8f0;">
 
-                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <div class="stage-title-group" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
 
                     <span style="font-size: 0.74rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; background: #dbeafe; color: #1e40af; padding: 3px 8px; border-radius: 4px;">
 
@@ -463,7 +498,8 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
     <div class="modal-content" style="max-width: 680px; max-height: 92vh; display: flex; flex-direction: column; padding: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);">
         <div class="modal-header" style="padding: 16px 22px; border-bottom: 1px solid #e2e8f0; background: #ffffff; margin-bottom: 0; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
             <h2 id="wsSchedModalTitle" style="font-size: 1.05rem; font-weight: 700; color: #0f172a; margin: 0; display: flex; align-items: center; gap: 8px;">
-                <span>⚖️</span> 2nd Formal Mediation Hearing Schedule
+                <svg class="workspace-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M12 3v18M5 7h14M6.5 7 3 14h7L6.5 7Zm11 0L14 14h7l-3.5-7ZM4 18h6m4 0h6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                2nd Formal Mediation Hearing Schedule
             </h2>
             <div style="display: flex; align-items: center; gap: 10px;">
                 <span id="schedHeaderBadge" style="font-size: 0.72rem; background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; padding: 3px 10px; border-radius: 9999px; font-weight: 700;">
@@ -542,7 +578,7 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
                 <!-- Live Docket Call (Existing Scheduled Mediations) -->
                 <div id="schedDaySchedulesWrap" style="display: none; margin-bottom: 14px; padding: 10px 12px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.84rem;">
                     <div style="font-weight: 700; color: #334155; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
-                        <span id="schedDaySchedulesTitle">📋 Mediation Docket Call (<?= htmlspecialchars($medVenue) ?>):</span>
+                        <span id="schedDaySchedulesTitle" style="display: inline-flex; align-items: center; gap: 6px;"><svg class="workspace-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M9 5h6m-6 4h6m-6 4h4M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" stroke-linecap="round" stroke-linejoin="round"/></svg>Mediation Docket Call (<?= htmlspecialchars($medVenue) ?>):</span>
                         <span id="schedDaySlotsCount" style="font-size: 0.72rem; background: #e2e8f0; color: #475569; padding: 2px 7px; border-radius: 9999px; font-weight: 600;">0</span>
                     </div>
                     <div id="schedDaySlotsList" style="color: #64748b; font-size: 0.82rem; line-height: 1.5;">
@@ -573,8 +609,8 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
                 <?php endif; ?>
             </div>
             <div class="modal-actions" style="padding: 12px 22px; border-top: 1px solid #e2e8f0; background: #ffffff; margin-top: 0; flex-shrink: 0; display: flex; justify-content: flex-end; gap: 10px;">
-                <button type="button" class="btn-secondary" onclick="closeScheduleModal()" style="padding: 8px 16px; font-size: 0.86rem; border-radius: 6px;">Cancel</button>
-                <button type="submit" class="btn-create" id="submitSchedBtn" style="padding: 8px 20px; font-size: 0.86rem; border-radius: 6px; font-weight: 700; background: #16a34a; border-color: #16a34a;">Save Schedule</button>
+                <button type="button" class="btn-secondary" onclick="closeScheduleModal()" style="padding: 8px 16px; font-size: 0.86rem; border-radius: 6px;"><svg class="workspace-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12" stroke-linecap="round"/></svg>Cancel</button>
+                <button type="submit" class="btn-create" id="submitSchedBtn" style="padding: 8px 20px; font-size: 0.86rem; border-radius: 6px; font-weight: 700; background: #16a34a; border-color: #16a34a;"><svg class="workspace-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M5 3h11l3 3v15H5V3Zm3 0v6h7V3m-7 13h8" stroke-linecap="round" stroke-linejoin="round"/></svg>Save Schedule</button>
             </div>
             <p id="schedMessage" role="status" style="margin: 0; padding: 0 22px 8px; font-size: 0.84rem;"></p>
         </form>

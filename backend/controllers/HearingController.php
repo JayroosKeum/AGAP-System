@@ -593,6 +593,24 @@ class HearingController
         return $result;
     }
 
+    public function batchReschedulePbUnavailable(array $data, int $userId): array
+    {
+        $targetDate = !empty($data['target_date']) ? trim((string) $data['target_date']) : (!empty($data['date']) ? trim((string) $data['date']) : date('Y-m-d'));
+        $reason = trim((string) ($data['reason'] ?? $data['reschedule_reason'] ?? 'Punong Barangay Unavailable'));
+
+        return $this->hearing->batchReschedulePbUnavailable($targetDate, $reason, $userId);
+    }
+
+    public function reorderQueue(array $data, int $userId): array
+    {
+        $items = $data['items'] ?? [];
+        if (!is_array($items)) {
+            $items = json_decode((string) ($data['items'] ?? '[]'), true) ?: [];
+        }
+        $queueDate = !empty($data['queue_date']) ? trim((string) $data['queue_date']) : date('Y-m-d');
+
+        return $this->hearing->reorderDailyQueue($items, $userId, $queueDate);
+    }
     public function failMediation(array $data, int $userId): array
     {
         $hearingId = filter_var($data['hearing_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
@@ -950,7 +968,7 @@ class HearingController
         // 1. Fetch Hearings for target date
         $sql = "
             SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.venue, h.status,
-                   h.queue_status, h.actual_start_time, h.actual_end_time, h.actual_duration_minutes,
+                   h.queue_status, COALESCE(h.queue_order, 0) AS queue_order, h.actual_start_time, h.actual_end_time, h.actual_duration_minutes,
                    h.complainant_attendance, h.respondent_attendance,
                    c.case_number, c.complaint_id, c.case_status,
                    comp.complaint_title, comp.complaint_number,
@@ -986,6 +1004,7 @@ class HearingController
         }
         $sql .= "
             ORDER BY 
+              CASE WHEN COALESCE(h.queue_order, 0) > 0 THEN h.queue_order ELSE 9999 END ASC,
               CASE COALESCE(h.queue_status, 'Waiting')
                 WHEN 'In_Session' THEN 1
                 WHEN 'Ready' THEN 2
@@ -1009,7 +1028,7 @@ class HearingController
                     SELECT ps.session_id AS hearing_id, NULL AS case_id, 'Paanyaya' AS hearing_type,
                            CONCAT(ps.scheduled_date, ' ', ps.scheduled_time) AS hearing_date,
                            ps.venue, 'Scheduled' AS status,
-                           ps.queue_status, ps.actual_start_time, ps.actual_end_time, NULL AS actual_duration_minutes,
+                           ps.queue_status, COALESCE(ps.queue_order, 0) AS queue_order, ps.actual_start_time, ps.actual_end_time, NULL AS actual_duration_minutes,
                            IF(ps.complainant_attended = 'Present', 'Present', 'Pending') AS complainant_attendance,
                            IF(ps.respondent_attended = 'Present', 'Present', 'Pending') AS respondent_attendance,
                            co.complaint_number AS case_number, ps.complaint_id, 'Pre-Docketed (Paanyaya)' AS case_status,
@@ -1035,7 +1054,7 @@ class HearingController
                     FROM paanyaya_sessions ps
                     LEFT JOIN complaints co ON co.complaint_id = ps.complaint_id
                     WHERE ps.scheduled_date = ?
-                    ORDER BY ps.scheduled_time ASC
+                    ORDER BY CASE WHEN COALESCE(ps.queue_order, 0) > 0 THEN ps.queue_order ELSE 9999 END ASC, ps.scheduled_time ASC
                 ");
                 $pStmt->execute([$date]);
                 $paanyayaItems = $pStmt->fetchAll(PDO::FETCH_ASSOC);

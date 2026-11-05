@@ -3000,9 +3000,12 @@ function renderHearingSessionCards(sessions, containerId, badgeId, stageType, ca
     const badge = document.getElementById(badgeId);
     if (!container) return;
 
-    if (badge) badge.textContent = `${sessions.length} session${sessions.length === 1 ? '' : 's'}`;
+    const rawSessions = Array.isArray(sessions) ? sessions : [];
+    const activeSessions = rawSessions.filter(s => !['Cancelled', 'Office Cancelled'].includes(s.status) && !s.rescheduled_to_id);
 
-    if (!sessions.length) {
+    if (badge) badge.textContent = `${activeSessions.length} session${activeSessions.length === 1 ? '' : 's'}`;
+
+    if (!activeSessions.length) {
         container.innerHTML = `
             <div class="empty-detail-state" style="text-align: center; padding: 32px 20px; background: #fff; border: 1px dashed #cbd5e1; border-radius: 8px;">
                 <p style="margin: 0 0 12px; font-size: 0.9rem; color: #64748b;">
@@ -3028,8 +3031,8 @@ function renderHearingSessionCards(sessions, containerId, badgeId, stageType, ca
     }
 
     let cardsHtml = '';
-    sessions.forEach((s, idx) => {
-        const sessionIndex = Number(s.session_index || (idx + 1));
+    activeSessions.forEach((s, idx) => {
+        const sessionIndex = Number(s.mediation_attempt || s.session_index || (idx + 1));
         const sessionLabel = getSessionOrdinalLabel(stageType, sessionIndex);
         const sessionLabelJs = JSON.stringify(sessionLabel).replace(/"/g, '&quot;');
         const targetWorkspace = stageType === 'Conciliation' ? '../cases/pangkat-workspace.php' : '../cases/mediation-workspace.php';
@@ -3102,7 +3105,7 @@ function renderHearingSessionCards(sessions, containerId, badgeId, stageType, ca
                     <div>
                         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
                             <span style="font-size: 0.72rem; font-weight: 800; text-transform: uppercase; padding: 2px 7px; border-radius: 4px; background: #e0f2fe; color: #0369a1;">
-                                #${s.session_index || 1}
+                                #${sessionIndex}
                             </span>
                             <h4 style="margin: 0; font-size: 1.05rem; color: #0f172a; font-weight: 700;">
                                 ${escapeHtml(sessionLabel)}
@@ -3453,7 +3456,8 @@ function openEmbeddedScheduleModal(stageType = 'Mediation') {
     if (!modal) return;
 
     if (stageType === 'Mediation') {
-        const existing = window.embeddedHearingsState?.mediation_sessions || [];
+        const rawExisting = window.embeddedHearingsState?.mediation_sessions || [];
+        const existing = rawExisting.filter(s => !['Cancelled', 'Office Cancelled'].includes(s.status) && !s.rescheduled_to_id);
         const maxMediationLimit = Number(window.AGAP_SETTINGS?.mediation_max_sessions || 3);
         if (existing.length >= maxMediationLimit) {
             const msg = `Mediation is limited to a maximum of ${maxMediationLimit} sessions under system settings. Please refer the case to Pangkat Conciliation.`;
@@ -3509,7 +3513,8 @@ function openEmbeddedScheduleModal(stageType = 'Mediation') {
     if (compIdInput) compIdInput.value = complaintId || '';
     if (caseIdInput) caseIdInput.value = caseId || '';
 
-    const existingMed = window.embeddedHearingsState?.mediation_sessions || [];
+    const rawMed = window.embeddedHearingsState?.mediation_sessions || [];
+    const existingMed = rawMed.filter(s => !['Cancelled', 'Office Cancelled'].includes(s.status) && !s.rescheduled_to_id);
     const isFirstMed = (stageType === 'Mediation' && existingMed.length === 0);
     if (isFirstMed) {
         if (titleEl) titleEl.textContent = 'Schedule 1st Mediation Session & Issue Summons';
@@ -4365,7 +4370,8 @@ async function submitEmbeddedSchedule(e) {
 
     const submitBtn = document.getElementById('submitSchedBtn');
     const cancelBtn = form.querySelector('button[type="button"][onclick*="close"]') || form.querySelector('.btn-secondary');
-    const existingMedCheck = window.embeddedHearingsState?.mediation_sessions || [];
+    const rawMedCheck = window.embeddedHearingsState?.mediation_sessions || [];
+    const existingMedCheck = rawMedCheck.filter(s => !['Cancelled', 'Office Cancelled'].includes(s.status) && !s.rescheduled_to_id);
     const isFirstMedCheck = (hearingType === 'Mediation' && existingMedCheck.length === 0);
     const origSchedBtnText = isFirstMedCheck ? 'Schedule Session & Issue Summons' : 'Save Schedule';
     if (submitBtn) {
@@ -4375,7 +4381,8 @@ async function submitEmbeddedSchedule(e) {
     if (cancelBtn) cancelBtn.disabled = true;
 
     try {
-        const existingMed = window.embeddedHearingsState?.mediation_sessions || [];
+        const rawMed = window.embeddedHearingsState?.mediation_sessions || [];
+    const existingMed = rawMed.filter(s => !['Cancelled', 'Office Cancelled'].includes(s.status) && !s.rescheduled_to_id);
         let res;
         if (hearingType === 'Mediation' && (!caseId || existingMed.length === 0) && complaintId > 0) {
             const fd = new FormData();
@@ -7710,14 +7717,14 @@ async function generateAiCaseBrief() {
             outputContainer.innerHTML = `
                 <div class="ai-brief-content">
                     <div class="ai-brief-toolbar">
-                        <span class="ai-brief-tag">${result.is_fallback ? 'Structured Case Brief' : 'Gemini AI Legal Briefing'}</span>
+                        <span class="ai-brief-tag">${result.is_fallback ? 'Structured Case Brief' : 'Gemini AI Case Brief'}</span>
                         <span class="ai-brief-timestamp">Generated on ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
                     <div class="ai-brief-body">${formatAiSummaryHtml(result.summary)}</div>
                 </div>
             `;
         }
-        window.agapNotify?.('Case Brief successfully compiled.', 'success');
+        window.agapNotify?.('Case brief compiled for review. It is not an official decision or outcome.', 'success');
     } catch (err) {
         console.error('AI brief error:', err);
         window.agapNotify?.(err.message || 'Failed to generate AI brief.', 'error');

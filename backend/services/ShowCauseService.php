@@ -1227,8 +1227,35 @@ class ShowCauseService
 
 
 
-        // On-demand generation: no physical disk file created ahead of time
-        $relativePath = null;
+        $safeCaseNum = preg_replace('/[^a-zA-Z0-9_-]/', '_', (string) ($hearing['case_number'] ?? ('case_' . $caseId)));
+        $fileName = 'kp_form_' . strtolower(str_replace(' ', '_', $formCode)) . '_' . $caseId . '_' . time() . '.pdf';
+        $relativeDir = 'storage/generated-documents/' . date('Y') . '/' . $safeCaseNum;
+        $fullDir = dirname(__DIR__, 2) . '/' . $relativeDir;
+        if (!is_dir($fullDir)) {
+            @mkdir($fullDir, 0777, true);
+        }
+        $relativePath = $relativeDir . '/' . $fileName;
+        $absolutePath = $fullDir . '/' . $fileName;
+
+        // Try generating PDF
+        if ($this->pdfService) {
+            try {
+                $pdfData = [
+                    'case_number' => $hearing['case_number'] ?? '',
+                    'complaint_title' => $hearing['complaint_title'] ?? '',
+                    'complainants' => isset($parties['complainant']) ? [$parties['complainant']] : [],
+                    'respondents' => isset($parties['respondent']) ? [$parties['respondent']] : [],
+                    'target_party_name' => $targetPartyName,
+                    'venue' => $venue ?: ($hearing['venue'] ?? 'Lupon Court Room'),
+                    'hearing_date' => $hearing['hearing_date'] ?? null,
+                    'explanation_date' => $explanationDate,
+                    'notice_date' => date('Y-m-d'),
+                ];
+                $this->pdfService->generateNotice($formCode, $pdfData, $absolutePath);
+            } catch (Throwable $e) {
+                error_log("Failed to render PDF for {$formCode}: " . $e->getMessage());
+            }
+        }
 
 
 

@@ -200,7 +200,7 @@ class OfficeLogisticsService
             $medHoursStart = $this->getSetting('mediation_hours_start', '13:00');
             $medHoursEnd = $this->getSetting('mediation_hours_end', '16:30');
             $workHoursEnd = $this->getSetting('working_hours_end', '17:00');
-            $medMaxEndStr = max($workHoursEnd, date('H:i', strtotime($medHoursEnd . " +{$maxDur} minutes")));
+            $medMaxEndStr = max($workHoursEnd, date('H:i', strtotime($medHoursEnd . " +{$durationMin} minutes")));
             $timeStr = $start->format('H:i');
             $endTimeStr = $end->format('H:i');
 

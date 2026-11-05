@@ -457,8 +457,74 @@ class GPSController
             error_log('Timeline Deliveries Error: ' . $e->getMessage());
         }
 
+        $paanyayaItems = [];
+        try {
+            if ($complaintId > 0) {
+                $pStmt = $db->prepare("
+                    SELECT ps.*, co.complainant_name
+                    FROM paanyaya_sessions ps
+                    LEFT JOIN complaints co ON co.complaint_id = ps.complaint_id
+                    WHERE ps.complaint_id = ?
+                    ORDER BY ps.attempt_number ASC, ps.session_id ASC
+                ");
+                $pStmt->execute([$complaintId]);
+                $paaSessions = $pStmt->fetchAll(PDO::FETCH_ASSOC);
+
+                foreach ($paaSessions as $pSess) {
+                    $pStatus = $pSess['session_outcome'] ?: 'Scheduled';
+                    $statusPill = 'pending';
+                    $statusLabel = 'Scheduled';
+                    if (in_array($pStatus, ['Settled', 'Resolved'], true)) {
+                        $statusPill = 'served-personal';
+                        $statusLabel = 'Settled';
+                    } elseif (in_array($pStatus, ['Escalated', 'Impasse_Escalate'], true)) {
+                        $statusPill = 'refused';
+                        $statusLabel = 'Escalated';
+                    } elseif ($pStatus === 'Dismissed') {
+                        $statusPill = 'unserved';
+                        $statusLabel = 'Dismissed';
+                    }
+
+                    $previewUrl = !empty($pSess['pdf_path']) ? ('../../../' . ltrim($pSess['pdf_path'], '/')) : null;
+
+                    $paanyayaItems[] = [
+                        'delivery_id' => (int) $pSess['session_id'],
+                        'hearing_id' => null,
+                        'document_id' => null,
+                        'stage' => 'Paanyaya',
+                        'stage_index' => 0,
+                        'document_code' => 'Paanyaya',
+                        'document_title' => 'Paanyaya Invitation Letter',
+                        'party_type' => 'Invitee',
+                        'recipient_name' => $pSess['invitee_name'] ?: 'Invitee',
+                        'attempt_number' => (int) ($pSess['attempt_number'] ?: 1),
+                        'attempt_label' => 'Dialogue #' . ((int) ($pSess['attempt_number'] ?: 1)),
+                        'delivery_status' => $statusLabel,
+                        'status_pill' => $statusPill,
+                        'unserved_reason' => null,
+                        'served_by_name' => 'Barangay Office',
+                        'service_datetime' => $pSess['scheduled_date'] . ' ' . $pSess['scheduled_time'],
+                        'service_method' => 'Invitation Delivery',
+                        'proof_file_path' => null,
+                        'remarks' => $pSess['outcome_notes'] ?: ($pSess['session_remarks'] ?: 'Paanyaya Informal Dialogue Invitation'),
+                        'preview_url' => $previewUrl
+                    ];
+                }
+            }
+        } catch (Throwable $e) {
+            error_log('Timeline Paanyaya Error: ' . $e->getMessage());
+        }
+
         // Build 3 stages
         $stages = [
+            [
+                'stage_id' => 0,
+                'stage_key' => 'paanyaya',
+                'stage_name' => 'Stage 0: Paanyaya',
+                'stage_title' => 'Pre-Docketed Informal Dialogue (Paanyaya)',
+                'badge' => (!empty($paanyayaItems) || in_array($case['case_status'], ['Mediation', 'Conciliation', 'Settled', 'Arbitration', 'CFA Issued'], true)) ? 'Concluded' : 'Pending',
+                'items' => $paanyayaItems
+            ],
             [
                 'stage_id' => 1,
                 'stage_key' => 'mediation',

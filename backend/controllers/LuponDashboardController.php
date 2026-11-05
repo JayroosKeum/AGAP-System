@@ -308,7 +308,13 @@ class LuponDashboardController
                    co.incident_date, co.incident_location, co.incident_purok,
                    cat.category_name,
                    pg.pangkat_id, pg.formation_date, pg.conciliation_deadline, pg.selection_method,
-                   pm_user.position AS my_role
+                   COALESCE(pm_user.position, (
+                       SELECT pm_role.position
+                       FROM pangkat_members pm_role
+                       WHERE pm_role.pangkat_id = pg.pangkat_id AND pm_role.status = 'Active'
+                       ORDER BY FIELD(pm_role.position, 'Chairman', 'Secretary', 'Member')
+                       LIMIT 1
+                   ), 'Member') AS my_role
             FROM cases c
             JOIN complaints co ON co.complaint_id = c.complaint_id
             LEFT JOIN complaint_categories cat ON cat.category_id = co.category_id

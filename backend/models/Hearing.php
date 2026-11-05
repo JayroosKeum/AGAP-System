@@ -1538,7 +1538,7 @@ class Hearing
 
             // 1. Mark current hearing as Office Cancelled (due to presider unavailability)
             $updateCurrent = $this->conn->prepare("
-                UPDATE hearings 
+                UPDATE hearings
                 SET status = 'Office Cancelled',
                     cancelled_by = ?,
                     cancellation_reason = ?,
@@ -1732,6 +1732,657 @@ class Hearing
             }
             error_log('Error during emergency reschedule: ' . $e->getMessage());
             return ['success' => false, 'message' => 'Failed to emergency reschedule hearing: ' . $e->getMessage()];
+        }
+    }
+
+    /**
+     * Atomically batch-reschedule all active hearings on a given date (default: today)
+     * to the next available hearing day (default: next Tuesday) due to Punong Barangay Unavailability.
+     * Generates KP Form 8 and KP Form 9 document and summons records in a single database transaction.
+     */
+    public function batchReschedulePbUnavailable(?string $targetDate, string $reason, int $userId): array
+    {
+        $targetDate = !empty($targetDate) ? trim($targetDate) : date('Y-m-d');
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $targetDate)) {
+            $targetDate = date('Y-m-d');
+        }
+
+        $reason = trim($reason);
+        if ($reason === '') {
+            $reason = 'Punong Barangay Unavailable / Opisyal na Hindi Magagamit ang Punong Barangay';
+        }
+
+        // 1. Calculate next available hearing day (default: next Tuesday for Mediation)
+        require_once __DIR__ . '/../services/OfficeLogisticsService.php';
+        // Share this transaction's connection so holiday/settings reads and the
+        // reschedule write are based on one consistent view of the database.
+        $logistics = new OfficeLogisticsService($this->conn);
+
+        $targetTs = strtotime($targetDate);
+        $nextTuesdayTs = strtotime('next Tuesday', $targetTs);
+        if ($nextTuesdayTs <= $targetTs) {
+            $nextTuesdayTs = strtotime('+1 week Tuesday', $targetTs);
+        }
+        $nextHearingDay = date('Y-m-d', $nextTuesdayTs);
+
+        // Advance if holiday
+        $maxAttempts = 104; // two years of Tuesday holiday checks; protects against bad calendar data
+        while ($logistics->isPhilippineHoliday($nextHearingDay) !== null && $maxAttempts > 0) {
+            $nextHearingDay = date('Y-m-d', strtotime('+1 week', strtotime($nextHearingDay)));
+            $maxAttempts--;
+        }
+        if ($logistics->isPhilippineHoliday($nextHearingDay) !== null) {
+            return ['success' => false, 'message' => 'Hindi makahanap ng valid na susunod na hearing day dahil sa holiday calendar.'];
+        }
+
+        $rescheduledHearings = [];
+
+        try {
+            $this->conn->beginTransaction();
+
+            // Lock the source docket first. This prevents two clerks from
+            // cancelling and cloning the same hearing concurrently.
+            $stmt = $this->conn->prepare("
+                SELECT h.*, c.case_number, c.case_status, co.complaint_id, co.complaint_title
+                FROM hearings h
+                INNER JOIN cases c ON c.case_id = h.case_id
+                INNER JOIN complaints co ON co.complaint_id = c.complaint_id
+                WHERE DATE(h.hearing_date) = ?
+                  AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Completed', 'Rescheduled')
+                  AND NOT EXISTS (
+                      SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
+                  )
+                ORDER BY CASE WHEN COALESCE(h.queue_order, 0) > 0 THEN h.queue_order ELSE 9999 END ASC,
+                         h.hearing_date ASC
+                FOR UPDATE
+            ");
+            $stmt->execute([$targetDate]);
+            $activeHearings = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            if (empty($activeHearings)) {
+                $this->conn->rollBack();
+                return [
+                    'success' => false,
+                    'message' => "Walang aktibong nakatakdang hearing para sa {$targetDate} na kailangang i-reschedule."
+                ];
+            }
+
+            // Resolve template IDs under the same transaction as the records
+            // that will reference them.
+            $t8Stmt = $this->conn->prepare("SELECT template_id FROM document_templates WHERE template_name = 'KP Form 8' LIMIT 1");
+            $t8Stmt->execute();
+            $kp8TemplateId = (int) ($t8Stmt->fetchColumn() ?: 2);
+
+            $t9Stmt = $this->conn->prepare("SELECT template_id FROM document_templates WHERE template_name = 'KP Form 9' LIMIT 1");
+            $t9Stmt->execute();
+            $kp9TemplateId = (int) ($t9Stmt->fetchColumn() ?: 3);
+
+            // Retrieve session duration & window settings
+            $settingsRows = $this->conn->query("SELECT setting_key, setting_value FROM system_settings")->fetchAll(PDO::FETCH_KEY_PAIR);
+            $medDefaultDur = max(1, (int) ($settingsRows['mediation_default_duration_min'] ?? 45));
+            $medWindowStart = $settingsRows['mediation_hours_start'] ?? '13:00';
+            $medWindowEnd = $settingsRows['mediation_hours_end'] ?? '16:30';
+            $workEnd = $settingsRows['working_hours_end'] ?? '17:00';
+
+            // Lock existing active slots before assigning new ones. A PB
+            // cancellation must never create a conflicting replacement slot.
+            $existingSlotsStmt = $this->conn->prepare("
+                SELECT hearing_date, end_time FROM hearings
+                WHERE DATE(hearing_date) = ? AND status NOT IN ('Cancelled', 'Office Cancelled')
+                ORDER BY hearing_date ASC
+                FOR UPDATE
+            ");
+            $existingSlotsStmt->execute([$nextHearingDay]);
+            $existingOnNewDay = $existingSlotsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Compute sequential slots from the configured mediation window.
+            $nextSlotTs = strtotime("{$nextHearingDay} {$medWindowStart}:00");
+            $medWindowEndTs = strtotime("{$nextHearingDay} {$medWindowEnd}:00");
+            $workEndTs = strtotime("{$nextHearingDay} {$workEnd}:00");
+            if ($nextSlotTs === false || $medWindowEndTs === false || $workEndTs === false || $workEndTs <= $nextSlotTs) {
+                throw new RuntimeException('Hindi wastong mediation/office-hours settings para sa batch reschedule.');
+            }
+
+            $updateCurrent = $this->conn->prepare("
+                UPDATE hearings
+                SET status = 'Office Cancelled',
+                    cancellation_category = 'Punong Barangay Unavailable',
+                    cancelled_by = ?,
+                    cancellation_reason = ?,
+                    mediation_attempt = COALESCE(mediation_attempt, ?),
+                    complainant_attendance = 'Pending',
+                    respondent_attendance = 'Pending',
+                    updated_at = NOW()
+                WHERE hearing_id = ?
+            ");
+
+            $insertNew = $this->conn->prepare("
+                INSERT INTO hearings (
+                    case_id, hearing_type, mediation_attempt, attempt_exception_reason,
+                    hearing_date, end_time, duration_minutes,
+                    venue, remarks, rescheduled_from_id, reschedule_reason,
+                    rescheduled_by_party, reschedule_approved_by, reschedule_approved_at,
+                    presiding_officer_id, status, queue_status, queue_order
+                ) VALUES (
+                    ?, ?, ?, ?,
+                    ?, ?, ?,
+                    ?, ?, ?, ?,
+                    'Office', ?, NOW(),
+                    ?, 'Scheduled', 'Waiting', ?
+                )
+            ");
+
+            $partiesStmt = $this->conn->prepare("
+                SELECT cp.resident_id, cp.party_type,
+                       TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name, r.suffix)) AS full_name
+                FROM complaint_parties cp
+                INNER JOIN residents r ON r.resident_id = cp.resident_id
+                WHERE cp.complaint_id = ? AND cp.party_type IN ('Complainant', 'Respondent')
+            ");
+
+            $docStmt = $this->conn->prepare("
+                INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
+                VALUES (?, ?, ?, ?, 'For Service', ?)
+            ");
+
+            $delivStmt = $this->conn->prepare("
+                INSERT INTO summon_deliveries (
+                    hearing_id, case_id, party_type, resident_id, form_type, delivery_status,
+                    document_id, recipient_name, created_by, service_method, remarks
+                ) VALUES (
+                    ?, ?, ?, ?, ?, 'Pending',
+                    ?, ?, ?, 'Personal', ?
+                )
+            ");
+
+            $histStmt = $this->conn->prepare("
+                INSERT INTO case_history (case_id, status, remarks, updated_by)
+                VALUES (?, ?, ?, ?)
+            ");
+
+            foreach ($activeHearings as $idx => $hearing) {
+                $hId = (int) $hearing['hearing_id'];
+                $cId = (int) $hearing['case_id'];
+
+                // Determine and strictly PRESERVE the exact mediation_attempt count
+                $medAttempt = !empty($hearing['mediation_attempt']) ? (int) $hearing['mediation_attempt'] : null;
+                if ($medAttempt === null && in_array($hearing['hearing_type'], ['Initial Hearing', 'Mediation'], true)) {
+                    // Check previous completed mediation attempts for this case
+                    $priorAttStmt = $this->conn->prepare("
+                        SELECT COUNT(DISTINCT COALESCE(mediation_attempt, hearing_id))
+                        FROM hearings
+                        WHERE case_id = ? AND hearing_type IN ('Initial Hearing', 'Mediation')
+                          AND status = 'Completed' AND hearing_id != ?
+                    ");
+                    $priorAttStmt->execute([$cId, $hId]);
+                    $priorCompleted = (int) $priorAttStmt->fetchColumn();
+                    $medAttempt = max(1, $priorCompleted + 1);
+                }
+
+                // Calculate a sequential, non-overlapping slot on the next
+                // hearing day. Existing hearings retain their already-booked
+                // time; this batch fills the next available mediation slot.
+                $duration = !empty($hearing['duration_minutes']) ? (int) $hearing['duration_minutes'] : $medDefaultDur;
+                $duration = max(1, $duration);
+                $slotStartTs = $nextSlotTs;
+                do {
+                    $slotEndTs = strtotime("+{$duration} minutes", $slotStartTs);
+                    $overlapEnd = null;
+                    foreach ($existingOnNewDay as $existingSlot) {
+                        $existingStart = strtotime($existingSlot['hearing_date']);
+                        $existingEnd = !empty($existingSlot['end_time'])
+                            ? strtotime($existingSlot['end_time'])
+                            : $existingStart;
+                        if ($slotStartTs < $existingEnd && $slotEndTs > $existingStart) {
+                            $overlapEnd = max($overlapEnd ?? 0, $existingEnd);
+                        }
+                    }
+                    if ($overlapEnd !== null) {
+                        $slotStartTs = $overlapEnd;
+                    }
+                } while ($overlapEnd !== null);
+
+                if ($slotStartTs > $medWindowEndTs || $slotEndTs > $workEndTs) {
+                    throw new RuntimeException('Hindi kasya ang batch reschedule sa configured mediation at office hours.');
+                }
+
+                $newStartTime = date('Y-m-d H:i:s', $slotStartTs);
+                $newEndTime = date('Y-m-d H:i:s', $slotEndTs);
+                $nextSlotTs = $slotEndTs;
+                $existingOnNewDay[] = ['hearing_date' => $newStartTime, 'end_time' => $newEndTime];
+
+                // 1. Cancel existing without inflating mediation count
+                $updateCurrent->execute([
+                    $userId,
+                    "Cancelled due to Punong Barangay Unavailability: {$reason}",
+                    $medAttempt,
+                    $hId
+                ]);
+
+                // 2. Insert new with preserved mediation_attempt & rescheduled_from_id
+                $insertNew->execute([
+                    $cId,
+                    $hearing['hearing_type'],
+                    $medAttempt,
+                    $hearing['attempt_exception_reason'] ?? null,
+                    $newStartTime,
+                    $newEndTime,
+                    $duration,
+                    $hearing['venue'] ?: 'Lupon Court Room',
+                    "Batch Reschedule due to Punong Barangay Unavailability: {$reason}",
+                    $hId,
+                    "Punong Barangay Unavailable: {$reason}",
+                    $userId,
+                    $hearing['presiding_officer_id'],
+                    $idx + 1
+                ]);
+                $newHId = (int) $this->conn->lastInsertId();
+
+                // 3. Parties
+                $partiesStmt->execute([(int) $hearing['complaint_id']]);
+                $allParties = $partiesStmt->fetchAll(PDO::FETCH_ASSOC);
+                $comps = array_values(array_filter($allParties, fn($p) => $p['party_type'] === 'Complainant'));
+                $resps = array_values(array_filter($allParties, fn($p) => $p['party_type'] === 'Respondent'));
+                $primaryComp = reset($comps) ?: ['resident_id' => null, 'full_name' => 'Complainant'];
+                $primaryResp = reset($resps) ?: ['resident_id' => null, 'full_name' => 'Respondent'];
+
+                // 4. KP Form 8 & 9 Document records
+                $safeCase = preg_replace('/[^a-zA-Z0-9_-]/', '_', (string) $hearing['case_number']);
+                $ts = date('Ymd-His') . "-{$idx}";
+                $kp8Path = "storage/documents/kp-forms/{$cId}/KP_Form_8-{$safeCase}-{$ts}.pdf";
+                $kp9Path = "storage/documents/kp-forms/{$cId}/KP_Form_9-{$safeCase}-{$ts}.pdf";
+
+                $docStmt->execute([
+                    $cId,
+                    $kp8TemplateId,
+                    $userId,
+                    $kp8Path,
+                    "Batch Rescheduled due to Punong Barangay Unavailability: {$reason}"
+                ]);
+                $doc8Id = (int) $this->conn->lastInsertId();
+
+                $delivStmt->execute([
+                    $newHId,
+                    $cId,
+                    'Complainant',
+                    $primaryComp['resident_id'] ?: null,
+                    'Notice of Hearing',
+                    $doc8Id,
+                    $primaryComp['full_name'],
+                    $userId,
+                    "Notice of Rescheduled Hearing (KP Form 8) issued due to Punong Barangay Unavailability."
+                ]);
+
+                $docStmt->execute([
+                    $cId,
+                    $kp9TemplateId,
+                    $userId,
+                    $kp9Path,
+                    "Batch Rescheduled due to Punong Barangay Unavailability: {$reason}"
+                ]);
+                $doc9Id = (int) $this->conn->lastInsertId();
+
+                $delivStmt->execute([
+                    $newHId,
+                    $cId,
+                    'Respondent',
+                    $primaryResp['resident_id'] ?: null,
+                    'Summon',
+                    $doc9Id,
+                    $primaryResp['full_name'],
+                    $userId,
+                    "Summon / Notice of Rescheduled Hearing (KP Form 9) issued due to Punong Barangay Unavailability."
+                ]);
+
+                // 5. Case History
+                $formattedNewDate = date('F j, Y \a\t g:i A', strtotime($newStartTime));
+                $histStmt->execute([
+                    $cId,
+                    $hearing['case_status'] ?: 'Mediation',
+                    "Hearing #{$hId} batch-rescheduled to #{$newHId} ({$formattedNewDate}) due to Punong Barangay Unavailability. KP Form 8 and KP Form 9 auto-issued. Parties not penalized.",
+                    $userId
+                ]);
+
+                $rescheduledHearings[] = [
+                    'old_hearing_id' => $hId,
+                    'new_hearing_id' => $newHId,
+                    'case_id' => $cId,
+                    'case_number' => $hearing['case_number'],
+                    'new_date' => $newStartTime,
+                    'formatted_date' => $formattedNewDate
+                ];
+            }
+
+            // 6. Audit Trail for the entire batch operation
+            $formattedTuesday = date('F j, Y', strtotime($nextHearingDay));
+            $auditStmt = $this->conn->prepare("
+                INSERT INTO audit_trails (user_id, action, module_name, affected_record)
+                VALUES (?, ?, 'Hearings', ?)
+            ");
+            $auditStmt->execute([
+                $userId,
+                "Punong Barangay Unavailable: Batch rescheduled " . count($activeHearings) . " hearing(s) from {$targetDate} to {$nextHearingDay} ({$formattedTuesday}).",
+                $activeHearings[0]['hearing_id']
+            ]);
+
+            $this->conn->commit();
+
+            return [
+                'success' => true,
+                'message' => "Matagumpay na nai-reschedule ang " . count($activeHearings) . " hearing patungo sa susunod na Martes, {$formattedTuesday}.",
+                'rescheduled_count' => count($activeHearings),
+                'target_date' => $targetDate,
+                'next_hearing_day' => $nextHearingDay,
+                'formatted_next_hearing_day' => $formattedTuesday,
+                'rescheduled_hearings' => $rescheduledHearings
+            ];
+        } catch (Throwable $e) {
+            if ($this->conn->inTransaction()) {
+                $this->conn->rollBack();
+            }
+            error_log('Batch Reschedule Error: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'message' => 'Nabigong i-batch reschedule ang mga hearing: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Atomically updates daily queue sequences for hearings and paanyaya sessions.
+     */
+    public function reorderDailyQueue(array $items, int $userId, ?string $queueDate = null): array
+    {
+        if (empty($items)) {
+            return ['success' => false, 'message' => 'Walang ibinigay na items para sa queue reordering.'];
+        }
+
+        $targetDate = !empty($queueDate) ? trim($queueDate) : date('Y-m-d');
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $targetDate)) {
+            return ['success' => false, 'message' => 'Hindi wastong petsa para sa docket queue.'];
+        }
+
+        try {
+            $this->conn->beginTransaction();
+
+            // Load Session Durations & Office Hours Settings
+            $settingsRows = $this->conn->query("SELECT setting_key, setting_value FROM system_settings")->fetchAll(PDO::FETCH_KEY_PAIR);
+            $medDefaultDur = max(1, (int) ($settingsRows['mediation_default_duration_min'] ?? 45));
+            $medMaxDur = max(1, (int) ($settingsRows['mediation_max_duration_min'] ?? 60));
+            $medDefaultDur = min($medDefaultDur, $medMaxDur);
+            $concDefaultDur = max(1, (int) ($settingsRows['conciliation_default_duration_min'] ?? 60));
+            $medWindowStart = $settingsRows['mediation_hours_start'] ?? '13:00';
+            $medWindowEnd = $settingsRows['mediation_hours_end'] ?? '16:30';
+            $workStart = $settingsRows['working_hours_start'] ?? '08:00';
+            $workEnd = $settingsRows['working_hours_end'] ?? '17:00';
+
+            // Lock every submitted record before deriving the slot sequence.
+            // This keeps two concurrent reorders from interleaving their times.
+            $hLookup = $this->conn->prepare("SELECT hearing_id, case_id, hearing_type, hearing_date, duration_minutes FROM hearings WHERE hearing_id = ? FOR UPDATE");
+            $pLookup = $this->conn->prepare("SELECT paanyaya_id, scheduled_date, scheduled_time FROM paanyayas WHERE paanyaya_id = ? FOR UPDATE");
+            $psLookup = $this->conn->prepare("SELECT session_id, scheduled_date, scheduled_time FROM paanyaya_sessions WHERE session_id = ? FOR UPDATE");
+
+            $earliestTime = null;
+            $hasMorning = false;
+            $seenItems = [];
+            $selectedHearingIds = [];
+            $selectedPaanyayaIds = [];
+            foreach ($items as $it) {
+                $type = trim((string) ($it['type'] ?? 'hearing'));
+                $id = (int)($it['id'] ?? 0);
+                $sessionId = (int)($it['session_id'] ?? 0);
+                if (!in_array($type, ['hearing', 'paanyaya'], true) || $id < 1) {
+                    throw new InvalidArgumentException('May invalid item sa docket queue.');
+                }
+                $key = "{$type}:{$id}:{$sessionId}";
+                if (isset($seenItems[$key])) {
+                    throw new InvalidArgumentException('May duplicate item sa docket queue.');
+                }
+                $seenItems[$key] = true;
+                if ($type === 'hearing' && $id > 0) {
+                    $selectedHearingIds[$id] = true;
+                    $hLookup->execute([$id]);
+                    $r = $hLookup->fetch(PDO::FETCH_ASSOC);
+                    if (!$r || substr((string) $r['hearing_date'], 0, 10) !== $targetDate) {
+                        throw new InvalidArgumentException('Ang hearing ay wala sa piniling araw ng docket.');
+                    }
+                    if (!empty($r['hearing_date'])) {
+                        $t = date('H:i', strtotime($r['hearing_date']));
+                        if ($earliestTime === null || $t < $earliestTime) $earliestTime = $t;
+                        if ((int)substr($t, 0, 2) < 12) $hasMorning = true;
+                    }
+                } elseif ($type === 'paanyaya' && $id > 0) {
+                    $selectedPaanyayaIds[$id] = true;
+                    $pLookup->execute([$id]);
+                    $r = $pLookup->fetch(PDO::FETCH_ASSOC);
+                    if (!$r || (string) $r['scheduled_date'] !== $targetDate) {
+                        throw new InvalidArgumentException('Ang Paanyaya ay wala sa piniling araw ng docket.');
+                    }
+                    if ($sessionId > 0) {
+                        $psLookup->execute([$sessionId]);
+                        $session = $psLookup->fetch(PDO::FETCH_ASSOC);
+                        if (!$session || (string) $session['scheduled_date'] !== $targetDate) {
+                            throw new InvalidArgumentException('Ang Paanyaya session ay wala sa piniling araw ng docket.');
+                        }
+                    }
+                    if (!empty($r['scheduled_time'])) {
+                        $t = substr($r['scheduled_time'], 0, 5);
+                        if ($earliestTime === null || $t < $earliestTime) $earliestTime = $t;
+                        if ((int)substr($t, 0, 2) < 12) $hasMorning = true;
+                    }
+                }
+            }
+
+            // Determine base start time for the sequence
+            if ($hasMorning) {
+                $baseTimeStr = ($earliestTime && $earliestTime < '12:00') ? $earliestTime : $workStart;
+            } else {
+                $baseTimeStr = ($earliestTime && $earliestTime >= '12:00') ? $earliestTime : $medWindowStart;
+            }
+            if ($baseTimeStr >= '12:00' && $baseTimeStr < '13:00') {
+                $baseTimeStr = '13:00';
+            }
+
+            $currentTimeTs = strtotime("{$targetDate} {$baseTimeStr}:00");
+            $lunchStartTs = strtotime("{$targetDate} 12:00:00");
+            $lunchEndTs = strtotime("{$targetDate} 13:00:00");
+            $workStartTs = strtotime("{$targetDate} {$workStart}:00");
+            $workEndTs = strtotime("{$targetDate} {$workEnd}:00");
+            if ($currentTimeTs === false || $workStartTs === false || $workEndTs === false || $workEndTs <= $workStartTs) {
+                throw new RuntimeException('Hindi wastong office-hours settings para sa docket queue.');
+            }
+
+            $nextValidSlot = static function (int $startTs, int $duration) use ($lunchStartTs, $lunchEndTs, $workStartTs, $workEndTs): array {
+                $startTs = max($startTs, $workStartTs);
+                while (true) {
+                    if ($startTs >= $lunchStartTs && $startTs < $lunchEndTs) {
+                        $startTs = $lunchEndTs;
+                    }
+                    $endTs = strtotime("+{$duration} minutes", $startTs);
+                    if ($startTs < $lunchStartTs && $endTs > $lunchStartTs) {
+                        $startTs = $lunchEndTs;
+                        continue;
+                    }
+                    if ($endTs > $workEndTs) {
+                        throw new RuntimeException('Hindi kasya ang bagong docket order sa configured office hours.');
+                    }
+                    return [$startTs, $endTs];
+                }
+            };
+
+            // Preserve slots that are not part of this drag operation. This
+            // matters when a dashboard is filtered to one item type: moving
+            // that subset must not overlap the rest of the day's docket.
+            $occupiedSlots = [];
+            $occupiedHearings = $this->conn->prepare("
+                SELECT hearing_id, hearing_date, end_time, duration_minutes
+                FROM hearings
+                WHERE DATE(hearing_date) = ? AND status NOT IN ('Cancelled', 'Office Cancelled')
+                FOR UPDATE
+            ");
+            $occupiedHearings->execute([$targetDate]);
+            foreach ($occupiedHearings->fetchAll(PDO::FETCH_ASSOC) as $occupied) {
+                if (isset($selectedHearingIds[(int) $occupied['hearing_id']])) {
+                    continue;
+                }
+                $startTs = strtotime($occupied['hearing_date']);
+                $endTs = !empty($occupied['end_time']) ? strtotime($occupied['end_time']) : false;
+                if ($startTs !== false) {
+                    $occupiedSlots[] = [
+                        'start' => $startTs,
+                        'end' => ($endTs !== false && $endTs > $startTs)
+                            ? $endTs
+                            : strtotime('+' . max(1, (int) ($occupied['duration_minutes'] ?: $medDefaultDur)) . ' minutes', $startTs),
+                    ];
+                }
+            }
+
+            $occupiedPaanyayas = $this->conn->prepare("
+                SELECT paanyaya_id, scheduled_time
+                FROM paanyayas
+                WHERE scheduled_date = ? AND status <> 'Cancelled'
+                FOR UPDATE
+            ");
+            $occupiedPaanyayas->execute([$targetDate]);
+            foreach ($occupiedPaanyayas->fetchAll(PDO::FETCH_ASSOC) as $occupied) {
+                if (isset($selectedPaanyayaIds[(int) $occupied['paanyaya_id']])) {
+                    continue;
+                }
+                $startTs = strtotime("{$targetDate} {$occupied['scheduled_time']}");
+                if ($startTs !== false) {
+                    $occupiedSlots[] = ['start' => $startTs, 'end' => strtotime('+30 minutes', $startTs)];
+                }
+            }
+
+            $allocateSlot = static function (int $startTs, int $duration) use (&$occupiedSlots, $nextValidSlot): array {
+                while (true) {
+                    [$slotStartTs, $slotEndTs] = $nextValidSlot($startTs, $duration);
+                    $overlapEnd = null;
+                    foreach ($occupiedSlots as $occupied) {
+                        if ($slotStartTs < $occupied['end'] && $slotEndTs > $occupied['start']) {
+                            $overlapEnd = max($overlapEnd ?? 0, $occupied['end']);
+                        }
+                    }
+                    if ($overlapEnd === null) {
+                        $occupiedSlots[] = ['start' => $slotStartTs, 'end' => $slotEndTs];
+                        return [$slotStartTs, $slotEndTs];
+                    }
+                    $startTs = $overlapEnd;
+                }
+            };
+
+            $hUpdate = $this->conn->prepare("
+                UPDATE hearings
+                SET hearing_date = ?, end_time = ?, duration_minutes = ?, queue_order = ?, updated_at = NOW()
+                WHERE hearing_id = ?
+            ");
+            $psUpdate = $this->conn->prepare("
+                UPDATE paanyaya_sessions
+                SET scheduled_time = ?, queue_order = ?
+                WHERE session_id = ? AND scheduled_date = ?
+            ");
+            $pUpdate = $this->conn->prepare("
+                UPDATE paanyayas
+                SET scheduled_time = ?, queue_order = ?, updated_at = NOW()
+                WHERE paanyaya_id = ?
+            ");
+
+            $updatedCount = 0;
+            $updatedItems = [];
+
+            foreach ($items as $idx => $item) {
+                $type = trim((string)($item['type'] ?? ''));
+                $order = $idx + 1;
+                $id = (int)($item['id'] ?? 0);
+                $sessionId = (int)($item['session_id'] ?? 0);
+
+                if ($type === 'hearing' && $id > 0) {
+                    $hLookup->execute([$id]);
+                    $hData = $hLookup->fetch(PDO::FETCH_ASSOC);
+                    $hType = $hData['hearing_type'] ?? 'Mediation';
+                    $dur = ($hType === 'Conciliation') ? $concDefaultDur : $medDefaultDur;
+                    if (!empty($hData['duration_minutes']) && (int)$hData['duration_minutes'] > 0) {
+                        $dur = (int)$hData['duration_minutes'];
+                    }
+                    $dur = max(1, $dur);
+
+                    [$slotStartTs, $slotEndTs] = $allocateSlot($currentTimeTs, $dur);
+                    if (!$hasMorning && $hType !== 'Conciliation' && date('H:i', $slotStartTs) > $medWindowEnd) {
+                        throw new RuntimeException('Hindi kasya ang mediation queue sa configured mediation hours.');
+                    }
+
+                    $slotStartStr = date('Y-m-d H:i:s', $slotStartTs);
+                    $slotEndStr = date('Y-m-d H:i:s', $slotEndTs);
+
+                    $hUpdate->execute([$slotStartStr, $slotEndStr, $dur, $order, $id]);
+
+                    $updatedItems[] = [
+                        'type' => 'hearing',
+                        'id' => $id,
+                        'order' => $order,
+                        'hearing_date' => $slotStartStr,
+                        'formatted_time' => date('g:i A', $slotStartTs),
+                        'end_time' => $slotEndStr,
+                        'duration' => $dur
+                    ];
+
+                    $currentTimeTs = $slotEndTs;
+                    $updatedCount++;
+                } elseif ($type === 'paanyaya' && $id > 0) {
+                    $dur = 30; // standard informal dialogue duration
+                    [$slotStartTs, $slotEndTs] = $allocateSlot($currentTimeTs, $dur);
+                    $slotTimeStr = date('H:i:s', $slotStartTs);
+
+                    $pUpdate->execute([$slotTimeStr, $order, $id]);
+                    if ($sessionId > 0) {
+                        $psUpdate->execute([$slotTimeStr, $order, $sessionId, $targetDate]);
+                    }
+
+                    $updatedItems[] = [
+                        'type' => 'paanyaya',
+                        'id' => $id,
+                        'session_id' => $sessionId,
+                        'order' => $order,
+                        'hearing_date' => "{$targetDate} {$slotTimeStr}",
+                        'scheduled_time' => $slotTimeStr,
+                        'formatted_time' => date('g:i A', $slotStartTs),
+                        'end_time' => date('Y-m-d H:i:s', $slotEndTs),
+                        'duration' => $dur
+                    ];
+
+                    $currentTimeTs = $slotEndTs;
+                    $updatedCount++;
+                }
+            }
+
+            $dateLabel = !empty($queueDate) ? $queueDate : date('Y-m-d');
+            $auditStmt = $this->conn->prepare("
+                INSERT INTO audit_trails (user_id, action, module_name, affected_record)
+                VALUES (?, ?, 'Hearings', ?)
+            ");
+            $auditStmt->execute([
+                $userId,
+                "Reordered daily docket queue sequence and live recalculated times ({$updatedCount} sessions) for {$dateLabel}",
+                $items[0]['id'] ?? null
+            ]);
+
+            $this->conn->commit();
+
+            return [
+                'success' => true,
+                'message' => "Matagumpay na na-update ang sequence at live slot times para sa {$updatedCount} sesyon.",
+                'updated_count' => $updatedCount,
+                'updated_items' => $updatedItems
+            ];
+        } catch (Throwable $e) {
+            if ($this->conn->inTransaction()) {
+                $this->conn->rollBack();
+            }
+            error_log('Queue Reorder Error: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'message' => 'Nabigong i-save ang queue order: ' . $e->getMessage()
+            ];
         }
     }
 

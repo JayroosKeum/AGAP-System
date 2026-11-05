@@ -25,7 +25,8 @@ if (!$caseId && $complaintId) {
 }
 
 if (!$caseId) {
-    header('Location: ../cases/case-list.php');
+    $redirect = in_array($roleId, [1, 2], true) ? '../cases/case-list.php' : '../dashboard/lupon-dashboard.php';
+    header('Location: ' . $redirect);
     exit;
 }
 

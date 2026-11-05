@@ -1356,7 +1356,9 @@ function renderSessionNavigation(data, stage) {
 
 
 
-    const sessions = stageWorkspaceState.sessions || [];
+    const rawSessions = stageWorkspaceState.sessions || [];
+    const activeSessions = rawSessions.filter(s => !['Cancelled', 'Office Cancelled'].includes(s.status) && !s.rescheduled_to_id);
+    const sessions = activeSessions;
 
     const mode = stageWorkspaceState.mode || 'Mediation';
 
@@ -1370,7 +1372,7 @@ function renderSessionNavigation(data, stage) {
 
 
 
-    if (!stageWorkspaceState.activeSessionHearingId) {
+    if (!stageWorkspaceState.activeSessionHearingId || !sessions.some(s => Number(s.hearing_id) === Number(stageWorkspaceState.activeSessionHearingId))) {
 
         stageWorkspaceState.activeSessionHearingId = Number(sessions[0].hearing_id);
 
@@ -1518,7 +1520,9 @@ function renderAttendanceSection(data, stage) {
 
 
 
-    const sessions = stageWorkspaceState.sessions || [];
+    const rawSessions = stageWorkspaceState.sessions || [];
+    const activeSessions = rawSessions.filter(s => !['Cancelled', 'Office Cancelled'].includes(s.status) && !s.rescheduled_to_id);
+    const sessions = activeSessions;
 
     if (!sessions.length) {
 
@@ -2089,7 +2093,9 @@ function renderSessionsList(data, stage) {
 
 
 
-    const sessions = stageWorkspaceState.sessions || [];
+    const rawSessions = stageWorkspaceState.sessions || [];
+    const activeSessions = rawSessions.filter(s => !['Cancelled', 'Office Cancelled'].includes(s.status) && !s.rescheduled_to_id);
+    const sessions = activeSessions;
 
     if (countBadge) countBadge.textContent = `${sessions.length} session${sessions.length === 1 ? '' : 's'}`;
 
@@ -3357,7 +3363,13 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                                 </button>
 
-                                <input type="file" id="stageNotesFileInput_${hId}" accept="image/*" style="display: none;" onchange="handleStageNotesFileSelected(this, ${hId})">
+                                <button type="button" class="btn-secondary" id="btnGenerateAiMinutesDraft_${hId}" onclick="generateAiHearingMinutesDraft(${hId})" style="font-size: 0.76rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px; border-color: #8b5cf6; color: #6d28d9; background: #f5f3ff;" ${readonlyAttr}>
+
+                                    ✨ Generate Draft Minutes
+
+                                </button>
+
+                                <input type="file" id="stageNotesFileInput_${hId}" accept="image/*,.pdf" style="display: none;" onchange="handleStageNotesFileSelected(this, ${hId})">
 
                             </div>
 
@@ -3368,6 +3380,8 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
                     <!-- AI Status Banner -->
 
                     <div id="stageAiStatusBanner_${hId}" style="display: none; padding: 8px 12px; margin-bottom: 10px; border-radius: 6px; font-size: 0.82rem; background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af;"></div>
+
+                    <div id="stageAiMinutesDraft_${hId}" style="display: none; margin-bottom: 10px;"></div>
 
 
 
@@ -3938,7 +3952,9 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false, hearingId 
 
         const nextOrd = nextIdx === 2 ? '2nd' : (nextIdx === 3 ? '3rd' : `${nextIdx}th`);
 
-        const hasNext = stageWorkspaceState.sessions.some(s => Number(s.session_index) === nextIdx);
+        const hasNext = (stageWorkspaceState.sessions || [])
+            .filter(s => !['Cancelled', 'Office Cancelled'].includes(s.status) && !s.rescheduled_to_id)
+            .some(s => Number(s.session_index) === nextIdx);
 
 
 
@@ -4390,7 +4406,9 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skip
 
     const nextSessionIndex = sessionIndex + 1;
 
-    const hasNextSession = stageWorkspaceState.sessions.some(s => Number(s.session_index) === nextSessionIndex);
+    const hasNextSession = (stageWorkspaceState.sessions || [])
+        .filter(s => !['Cancelled', 'Office Cancelled'].includes(s.status) && !s.rescheduled_to_id)
+        .some(s => Number(s.session_index) === nextSessionIndex);
 
 
 
@@ -5010,7 +5028,8 @@ async function openScheduleModal(hearingId = null, targetStageType = null) {
 
     if (!hearingId && targetStageType !== 'Arbitration' && (stageWorkspaceState.mode === 'Mediation' || stageWorkspaceState.stageType === 'Mediation')) {
 
-        const existing = stageWorkspaceState.sessions || [];
+        const rawSessions = stageWorkspaceState.sessions || [];
+        const existing = rawSessions.filter(s => !['Cancelled', 'Office Cancelled'].includes(s.status) && !s.rescheduled_to_id);
 
         if (existing.length >= 1) {
 
@@ -5042,7 +5061,7 @@ async function openScheduleModal(hearingId = null, targetStageType = null) {
 
 
 
-            const alreadyHas2nd = existing.some(s => Number(s.session_index || 1) >= 2 || (s.hearing_type || '').includes('2nd') || Number(s.mediation_attempt) >= 2);
+            const alreadyHas2nd = existing.some(s => Number(s.mediation_attempt || s.session_index || 1) >= 2 || (s.hearing_type || '').includes('2nd'));
 
             if (alreadyHas2nd) {
 
@@ -5082,7 +5101,8 @@ async function openScheduleModal(hearingId = null, targetStageType = null) {
 
     if (!hearingId && targetStageType !== 'Arbitration' && (stageWorkspaceState.mode === 'Conciliation' || stageWorkspaceState.stageType === 'Conciliation')) {
 
-        const existing = stageWorkspaceState.sessions || [];
+        const rawSessions = stageWorkspaceState.sessions || [];
+        const existing = rawSessions.filter(s => !['Cancelled', 'Office Cancelled'].includes(s.status) && !s.rescheduled_to_id);
 
         if (existing.length >= 1) {
 
@@ -6037,7 +6057,8 @@ async function submitSchedule(e) {
 
     } else if (typeVal === 'Conciliation') {
 
-        const existing = stageWorkspaceState.sessions || [];
+        const rawSessions = stageWorkspaceState.sessions || [];
+        const existing = rawSessions.filter(s => !['Cancelled', 'Office Cancelled'].includes(s.status) && !s.rescheduled_to_id);
 
         if (existing.length >= 1) {
 
@@ -8087,6 +8108,124 @@ function appendGeminiTextToMinutes(newText, sourceLabel, hearingId = null) {
     textarea.scrollTop = textarea.scrollHeight;
 
 }
+
+async function generateAiHearingMinutesDraft(hearingId) {
+    const sourceInput = getMinutesField('session_minutes', hearingId);
+    const consentBox = getMinutesField('stageAiConsentCheckbox', hearingId);
+    const draftContainer = getMinutesField('stageAiMinutesDraft', hearingId);
+    const statusBanner = getMinutesField('stageAiStatusBanner', hearingId);
+    const button = getMinutesField('btnGenerateAiMinutesDraft', hearingId);
+    const sourceText = (sourceInput?.value || '').trim();
+
+    if (sourceText.length < 20) {
+        window.agapNotify?.('Add at least a few hearing notes, an OCR extraction, or an audio transcript before drafting minutes.', 'warning', 'AI Draft Minutes');
+        sourceInput?.focus();
+        return;
+    }
+    if (!consentBox?.checked) {
+        window.agapNotify?.('Confirm consent before sending hearing notes to Google Gemini.', 'warning', 'AI Draft Minutes');
+        return;
+    }
+
+    if (button) {
+        button.disabled = true;
+        button.textContent = 'Drafting…';
+    }
+    if (statusBanner) {
+        statusBanner.style.display = 'block';
+        statusBanner.innerHTML = '<strong>Gemini is preparing an editable draft from the supplied notes…</strong>';
+    }
+
+    try {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+        const response = await fetch(getStageApiUrl('ai/draft-hearing-minutes.php'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+            body: JSON.stringify({
+                hearing_id: Number(hearingId),
+                source_text: sourceText,
+                external_ai_consent: true
+            })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.success || !result.draft) {
+            throw new Error(result.message || 'Unable to create a draft.');
+        }
+
+        window.__agapAiMinutesDrafts = window.__agapAiMinutesDrafts || {};
+        window.__agapAiMinutesDrafts[hearingId] = result.draft;
+        renderAiHearingMinutesDraft(hearingId, result.draft, result.model);
+        if (statusBanner) statusBanner.style.display = 'none';
+    } catch (error) {
+        if (statusBanner) {
+            statusBanner.style.display = 'block';
+            statusBanner.innerHTML = `<span style="color:#b91c1c;">${escapeHtml(error.message || 'Unable to create a draft.')}</span>`;
+        }
+    } finally {
+        if (button) {
+            button.disabled = false;
+            button.textContent = '✨ Generate Draft Minutes';
+        }
+    }
+}
+window.generateAiHearingMinutesDraft = generateAiHearingMinutesDraft;
+
+function renderAiHearingMinutesDraft(hearingId, draft, model) {
+    const container = getMinutesField('stageAiMinutesDraft', hearingId);
+    if (!container) return;
+    const display = (value) => escapeHtml(value || '—');
+    container.style.display = 'block';
+    container.innerHTML = `
+        <div style="padding: 13px 14px; border: 1px solid #c4b5fd; border-radius: 8px; background: #faf5ff; color: #3b0764;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap; margin-bottom:8px;">
+                <div>
+                    <strong style="font-size:.85rem;">✨ AI draft — review required</strong>
+                    <span style="display:block; margin-top:2px; font-size:.76rem; color:#6b21a8;">Prepared by ${escapeHtml(model || 'Gemini')}. It has not been saved and does not set a case outcome.</span>
+                </div>
+                <div style="display:flex; gap:6px;">
+                    <button type="button" class="btn-secondary" onclick="applyAiHearingMinutesDraft(${Number(hearingId)})" style="font-size:.75rem; padding:4px 9px; border-color:#8b5cf6; color:#6d28d9; background:#fff;">Apply to fields</button>
+                    <button type="button" class="btn-secondary" onclick="dismissAiHearingMinutesDraft(${Number(hearingId)})" style="font-size:.75rem; padding:4px 9px;">Dismiss</button>
+                </div>
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:8px; font-size:.78rem; line-height:1.45;">
+                <div><strong>Main issue:</strong><br>${display(draft.main_dispute_identified)}</div>
+                <div><strong>Agreements / actions:</strong><br>${display(draft.agreements_action_items)}</div>
+                <div><strong>Unresolved issues:</strong><br>${display(draft.unresolved_issues)}</div>
+                <div><strong>Remarks:</strong><br>${display(draft.outcome_remarks)}</div>
+            </div>
+            <p style="margin:9px 0 0; font-size:.76rem; color:#6b21a8;"><strong>Officer check:</strong> ${display(draft.review_note)}</p>
+        </div>`;
+}
+
+function applyAiHearingMinutesDraft(hearingId) {
+    const draft = window.__agapAiMinutesDrafts?.[hearingId];
+    if (!draft) return;
+    const setValue = (baseId, value) => {
+        const input = getMinutesField(baseId, hearingId);
+        if (!input || !value) return;
+        input.value = value;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    setValue('minDisputeSummary', draft.main_dispute_identified);
+    setValue('session_minutes', draft.discussion_summary);
+    setValue('minAgreements', draft.agreements_action_items);
+    setValue('minUnresolved', draft.unresolved_issues);
+    setValue('minOutcomeRemarks', draft.outcome_remarks);
+    dismissAiHearingMinutesDraft(hearingId);
+    window.agapNotify?.('AI draft copied into editable fields. Review and save the minutes when ready.', 'success', 'AI Draft Minutes');
+}
+window.applyAiHearingMinutesDraft = applyAiHearingMinutesDraft;
+
+function dismissAiHearingMinutesDraft(hearingId) {
+    const container = getMinutesField('stageAiMinutesDraft', hearingId);
+    if (container) {
+        container.innerHTML = '';
+        container.style.display = 'none';
+    }
+    if (window.__agapAiMinutesDrafts) delete window.__agapAiMinutesDrafts[hearingId];
+}
+window.dismissAiHearingMinutesDraft = dismissAiHearingMinutesDraft;
 
 
 

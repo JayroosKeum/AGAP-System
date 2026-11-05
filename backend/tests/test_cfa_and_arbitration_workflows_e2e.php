@@ -85,7 +85,7 @@ $h1 = (int) $db->lastInsertId();
 
 // Record Complainant unjustified absence in show_cause_evaluations
 $db->prepare("INSERT INTO show_cause_evaluations (hearing_id, case_id, party_type, form_type, is_justified, justification_notes, action_taken)
-VALUES (?, ?, 'Complainant', 'KP Form 18', 0, 'Complainant deliberately failed to appear without justifiable cause.', 'Bar Action')")->execute([$h1, $case1]);
+VALUES (?, ?, 'Complainant', 'KP Form 18', 0, 'Complainant deliberately failed to appear without justifiable cause.', 'Barred Action')")->execute([$h1, $case1]);
 
 // 1.1 Test Backend Eligibility
 $elig1 = $cfaModel->determineCfaEligibility($case1);
@@ -146,7 +146,7 @@ $h2 = (int) $db->lastInsertId();
 
 // Record Respondent unjustified absence in show_cause_evaluations
 $db->prepare("INSERT INTO show_cause_evaluations (hearing_id, case_id, party_type, form_type, is_justified, justification_notes, action_taken)
-VALUES (?, ?, 'Respondent', 'KP Form 19', 0, 'Respondent failed to appear after summons without justifiable cause.', 'Bar Counterclaim')")->execute([$h2, $case2]);
+VALUES (?, ?, 'Respondent', 'KP Form 19', 0, 'Respondent failed to appear after summons without justifiable cause.', 'Respondent Default')")->execute([$h2, $case2]);
 
 // 2.1 Test Backend Eligibility
 $elig2 = $cfaModel->determineCfaEligibility($case2);

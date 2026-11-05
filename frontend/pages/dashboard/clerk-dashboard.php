@@ -185,16 +185,37 @@ include '../../layouts/header.php';
                             <h3 class="aside-card-title">Today's Hearings &amp; Paanyaya Agenda Stream</h3>
                             <p class="aside-card-sub">1-click attendance marking at outcome logging para sa mabilisang sesyon</p>
                         </div>
-                        <div class="agenda-filter-tabs">
-                            <button type="button" class="btn-agenda-filter active" data-filter="all">
-                                Lahat (<span id="badgeFilterAll">0</span>)
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <span class="dnd-queue-hint" title="I-drag ang card o handle para i-reorder ang sequence">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="5 9 2 12 5 15"></polyline>
+                                    <polyline points="9 5 12 2 15 5"></polyline>
+                                    <polyline points="19 9 22 12 19 15"></polyline>
+                                    <polyline points="9 19 12 22 15 19"></polyline>
+                                    <line x1="2" y1="12" x2="22" y2="12"></line>
+                                    <line x1="12" y1="2" x2="12" y2="22"></line>
+                                </svg>
+                                Drag &amp; Drop Reorder Active
+                            </span>
+                            <button type="button" class="btn-pb-unavailable-batch" id="btnPbUnavailableBatchClerk" onclick="triggerPbUnavailableBatch()" title="Punong Barangay Unavailable: Batch reschedule all hearings for today to next Tuesday">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                                </svg>
+                                Punong Barangay Unavailable
                             </button>
-                            <button type="button" class="btn-agenda-filter" data-filter="hearings">
-                                Hearings (<span id="badgeFilterHearings">0</span>)
-                            </button>
-                            <button type="button" class="btn-agenda-filter" data-filter="paanyaya">
-                                Paanyaya (<span id="badgeFilterPaanyaya">0</span>)
-                            </button>
+                            <div class="agenda-filter-tabs">
+                                <button type="button" class="btn-agenda-filter active" data-filter="all">
+                                    Lahat (<span id="badgeFilterAll">0</span>)
+                                </button>
+                                <button type="button" class="btn-agenda-filter" data-filter="hearings">
+                                    Hearings (<span id="badgeFilterHearings">0</span>)
+                                </button>
+                                <button type="button" class="btn-agenda-filter" data-filter="paanyaya">
+                                    Paanyaya (<span id="badgeFilterPaanyaya">0</span>)
+                                </button>
+                            </div>
                         </div>
                     </div>
 

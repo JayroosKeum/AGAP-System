@@ -20,6 +20,16 @@
     --lupon-accent-purple: #7e22ce;
 }
 
+:root {
+    --agap-ui-info-bg: #eff6ff;
+    --agap-ui-info-fg: #1d4ed8;
+    --agap-ui-success-bg: #f0fdf4;
+    --agap-ui-success-fg: #15803d;
+    --agap-ui-pending-bg: #fffbeb;
+    --agap-ui-pending-fg: #b45309;
+    --agap-ui-border: #e2e8f0;
+}
+
 /* ── Accessibility & Font Resizer Bar ── */
 .lupon-accessibility-bar {
     background: #ffffff;
@@ -189,10 +199,18 @@ body.high-contrast-mode .lupon-case-card {
     flex-shrink: 0;
 }
 
-.lupon-kpi-card.kpi-duty .lupon-kpi-icon { background: #eff6ff; color: #2563eb; }
-.lupon-kpi-card.kpi-assigned .lupon-kpi-icon { background: #eef2ff; color: #4f46e5; }
-.lupon-kpi-card.kpi-chair .lupon-kpi-icon { background: #fefce8; color: #ca8a04; }
-.lupon-kpi-card.kpi-today .lupon-kpi-icon { background: #f0fdf4; color: #16a34a; }
+.lupon-kpi-card.kpi-duty .lupon-kpi-icon,
+.lupon-kpi-card.kpi-assigned .lupon-kpi-icon { background: var(--agap-ui-info-bg); color: var(--agap-ui-info-fg); }
+.lupon-kpi-card.kpi-chair .lupon-kpi-icon { background: var(--agap-ui-pending-bg); color: var(--agap-ui-pending-fg); }
+.lupon-kpi-card.kpi-today .lupon-kpi-icon { background: var(--agap-ui-success-bg); color: var(--agap-ui-success-fg); }
+
+.lupon-kpi-card,
+.lupon-panel-card,
+.lupon-case-card { border-color: var(--agap-ui-border); box-shadow: 0 6px 18px rgba(15, 23, 42, .04); }
+
+.lupon-dashboard button svg,
+.lupon-main-layout button svg,
+.lupon-main-layout a svg { flex: 0 0 16px; height: 16px; width: 16px; }
 
 /* ── Main Two-Column Layout ── */
 .lupon-main-layout {

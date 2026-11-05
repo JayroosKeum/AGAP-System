@@ -2,8 +2,8 @@
 session_start();
 $roleId = (int) ($_SESSION['role_id'] ?? 0);
 if (!in_array($roleId, [1, 2, 3], true)) {
-    http_response_code(403);
-    die('Access Denied');
+    header('Location: ' . ($roleId === 4 ? '../dashboard/server-dashboard.php' : '../auth/login.php'));
+    exit;
 }
 $canManageDocuments = in_array($roleId, [1, 2], true);
 

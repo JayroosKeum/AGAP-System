@@ -2,11 +2,14 @@
 
 session_start();
 
-if (
-    !isset($_SESSION['role_id']) ||
-    !in_array((int)$_SESSION['role_id'], [1, 2], true)
-) {
-    header('Location: ../auth/login.php');
+$roleId = (int) ($_SESSION['role_id'] ?? 0);
+if (!in_array($roleId, [1, 2], true)) {
+    $redirect = match ($roleId) {
+        3 => '../dashboard/lupon-dashboard.php',
+        4 => '../dashboard/server-dashboard.php',
+        default => '../auth/login.php',
+    };
+    header('Location: ' . $redirect);
     exit;
 }
 

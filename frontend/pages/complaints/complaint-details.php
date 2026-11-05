@@ -384,6 +384,28 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                 </div>
             </div>
 
+            <!-- AI-assisted factual case brief: generated only on request and never saved as an outcome. -->
+            <div class="narrative-card-box" style="border-color: #ddd6fe; background: linear-gradient(135deg, #fcfbff 0%, #f8f7ff 100%);">
+                <div class="narrative-card-header" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; flex-wrap: wrap;">
+                    <div>
+                        <h3 style="margin: 0;">✨ AI-Assisted Case Brief</h3>
+                        <span class="card-subtitle" style="font-size: 0.8rem; color: #64748b; font-weight: 500;">A factual, view-only briefing built from the saved case record. It does not decide an outcome or legal remedy.</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <label style="font-size: .76rem; color: #475569; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+                            <input type="checkbox" id="aiBriefConsentCheck" style="accent-color: #7c3aed;"> I consent to send case details to Google Gemini
+                        </label>
+                        <button type="button" id="btnGenerateAiBrief" class="btn-secondary" onclick="generateAiCaseBrief()" style="font-size: .78rem; padding: 6px 11px; border-color: #a78bfa; color: #6d28d9; background: #faf5ff; font-weight: 700;">
+                            <span id="aiBriefBtnSpinner" style="display: none;">⏳</span>
+                            <span id="aiBriefBtnText">Generate Case Brief</span>
+                        </button>
+                    </div>
+                </div>
+                <div id="aiBriefOutputContainer" style="margin-top: 12px;">
+                    <p style="margin: 0; font-size: .84rem; color: #64748b;">Generate a briefing when preparing for a hearing or reviewing the case. An authorized officer remains responsible for all decisions and official entries.</p>
+                </div>
+            </div>
+
             <!-- Operational Modules: Case Team & Hearings Schedule Grid -->
             <div class="operational-two-col">
                 <!-- Card: Case Team Assignment -->

@@ -1,6 +1,6 @@
 <?php
 session_start();
-if (!isset($_SESSION['role_id']) || !in_array($_SESSION['role_id'], [1, 2, 3])) die('Access Denied');
+if (!isset($_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2, 3, 4], true)) die('Access Denied');
 require_once '../../../backend/controllers/CaseController.php';
 $case = (new CaseController())->show($_GET['case_id'] ?? 0);
 if (!$case) die('Case not found.');

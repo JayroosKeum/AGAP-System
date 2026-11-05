@@ -1,6 +1,16 @@
 <?php 
 session_start(); 
-if (($_SESSION['role_id'] ?? 0) != 1) die('Access Denied'); 
+$roleId = (int) ($_SESSION['role_id'] ?? 0);
+if ($roleId !== 1) {
+    $redirect = match ($roleId) {
+        2 => '../dashboard/clerk-dashboard.php',
+        3 => '../dashboard/lupon-dashboard.php',
+        4 => '../dashboard/server-dashboard.php',
+        default => '../auth/login.php',
+    };
+    header('Location: ' . $redirect);
+    exit;
+} 
 include '../../layouts/header.php'; 
 ?>
 
