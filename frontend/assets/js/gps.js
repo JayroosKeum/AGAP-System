@@ -684,6 +684,15 @@ async function renderExpandedCaseView(caseId) {
         window.activeExpandedHearingData = activeHearing;
         const isPaanyayaCase = Boolean(currentCaseItem.is_paanyaya || activeHearing.is_paanyaya);
         const isConciliation = (activeHearing.hearing_type === 'Conciliation' || currentCaseItem.case_status === 'Conciliation');
+        const canAccessCaseDetails = Number(window.AGAP_USER_ROLE_ID || window.AGAP_SETTINGS?.user_role_id || 0) !== 4;
+        const caseDetailsUrl = currentCaseItem.complaint_id
+            ? `../complaints/complaint-details.php?id=${encodeURIComponent(currentCaseItem.complaint_id)}&tab=mediation`
+            : `../cases/case-details.php?id=${encodeURIComponent(caseId)}`;
+        const viewCaseActionHtml = canAccessCaseDetails ? `
+            <a href="${caseDetailsUrl}" class="btn-secondary" style="font-size: 0.82rem; padding: 6px 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
+                View Case &rarr;
+            </a>
+        ` : '';
         const deliveries = activeHearing.deliveries || [];
         const respAttempts = activeHearing.respondent_attempts || [];
         const compAttempts = activeHearing.complainant_attempts || [];
@@ -868,7 +877,10 @@ async function renderExpandedCaseView(caseId) {
             let circleClass = isCfaEligible ? 'cfa-ready' : 'cfa-locked';
             let iconText = isCfaEligible ? 'CFA' : '—';
             let statusText = isCfaEligible ? 'CFA Ready' : 'CFA';
-            let subText = isCfaEligible ? 'Eligible' : `${failedCount}/${maxAllowedAttempts} Failed`;
+            const noShowCount = Number(cfaElig.no_show_count || 0);
+            let subText = isCfaEligible
+                ? 'Eligible'
+                : (noShowCount > 0 ? `${noShowCount}/${maxAllowedAttempts} No-shows` : `${failedCount}/${maxAllowedAttempts} Failed`);
             let clickAction = isCfaEligible
                 ? `onclick="window.location.href='../documents/cfa.php?case_id=${encodeURIComponent(caseId)}'"`
                 : `onclick="window.agapNotify ? window.agapNotify('${escapeGpsHtml(cfaElig.reason || `CFA is locked until all ${maxAllowedAttempts} summons attempts have failed.`)}', 'warning', 'CFA Locked') : alert('${escapeGpsHtml(cfaElig.reason || `CFA is locked until all ${maxAllowedAttempts} summons attempts have failed.`)}')`;
@@ -989,6 +1001,7 @@ async function renderExpandedCaseView(caseId) {
 
         // Render complete expanded panel
         container.innerHTML = `
+            ${viewCaseActionHtml ? `<div style="display: flex; justify-content: flex-end; margin-bottom: 10px;">${viewCaseActionHtml}</div>` : ''}
             <!-- Two-Column Side-by-Side Service Records Grid -->
             <div class="expanded-columns-grid" ${isPaanyayaCase ? 'style="grid-template-columns: 1fr;"' : ''}>
                 <!-- Left Column: Complainant Notice (KP Form 12 for Conciliation / KP Form 8 for Mediation) -->

@@ -944,7 +944,10 @@ class SummonDeliveryService
         $partyType = in_array($partyType, ['Complainant', 'Respondent', 'Witness'], true) ? $partyType : 'Respondent';
         $params = [$caseId, $partyType];
         $hSql = "";
-        if ($hearingId) {
+        // Mediation summons are a single statutory sequence for the case. A
+        // later show-cause/rescheduled hearing must continue the same 1–6
+        // sequence rather than restarting at attempt 1.
+        if ($hearingId && $stage !== 'Mediation') {
             $hSql = "AND sd.hearing_id = ?";
             $params[] = $hearingId;
         }
@@ -1073,17 +1076,20 @@ class SummonDeliveryService
                 return ['success' => false, 'message' => 'No active hearing found for this case to associate summons attempt with.'];
             }
 
-            // 3. Fetch existing attempts for party scoped strictly to current stage
+            // 3. Fetch the case-wide mediation sequence. A respondent may be
+            // re-summoned after every unexcused absence, including at a later
+            // show-cause or rescheduled hearing; numbering must therefore not
+            // restart for each hearing.
             $attScopeSql = $isConciliationStage
                 ? "AND (form_type LIKE '%KP%12%' OR remarks LIKE '%KP Form 12%')"
                 : ($partyType === 'Respondent' ? "AND (form_type LIKE '%Summon%' OR form_type LIKE '%KP%9%')" : "AND (form_type LIKE '%Notice%' OR form_type LIKE '%KP%8%')");
             $attemptsStmt = $this->conn->prepare("
                 SELECT * FROM summon_deliveries
-                WHERE hearing_id = ? AND party_type = ? $attScopeSql
+                WHERE case_id = ? AND party_type = ? $attScopeSql
                 ORDER BY attempt_number ASC, delivery_id ASC
                 FOR UPDATE
             ");
-            $attemptsStmt->execute([$hearingId, $partyType]);
+            $attemptsStmt->execute([$caseId, $partyType]);
             $existingAttempts = $attemptsStmt->fetchAll(PDO::FETCH_ASSOC);
             $count = count($existingAttempts);
 
@@ -1148,8 +1154,9 @@ class SummonDeliveryService
             $tStmt->execute([$formCodeName]);
             $tplId = (int) $tStmt->fetchColumn() ?: ($isConciliationStage ? 12 : 3);
 
-            // On-demand generation: no physical disk file created ahead of time
-            $filePath = null;
+            // On-demand generation: no physical disk file is created ahead of
+            // time. generated_documents.file_path is NOT NULL.
+            $filePath = '';
 
             $insDoc = $this->conn->prepare("
                 INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
@@ -1312,16 +1319,17 @@ class SummonDeliveryService
         }
 
         // ── SCENARIO 2: Served but persistently refuses to appear ─────────────────
-        // Respondent was legally served but failed to attend; CFA may be issued.
-        // Check for 2+ no-show hearings after a confirmed service record.
+        // Each served summons followed by an unexcused absence advances the
+        // same 1–6 summons sequence. CFA is available only after all six
+        // served summons have been answered by non-appearance.
         if ($anyServed) {
             $noShowCount = $this->countRespondentNoShows($caseId);
-            if ($noShowCount >= 2) {
+            if ($totalAttempts >= $maxAttempts && $noShowCount >= $maxAttempts) {
                 return [
                     'eligible'       => true,
-                    'scenario'       => 'REFUSAL_TO_APPEAR',
-                    'reason'         => "CFA Unlocked — Respondent was served but failed to appear at {$noShowCount} hearing(s) without justification.",
-                    'code'           => 'REFUSAL_TO_APPEAR',
+                    'scenario'       => 'SIX_SERVED_NO_SHOWS',
+                    'reason'         => "CFA Unlocked — Respondent was served six times and failed to appear at {$noShowCount} hearing(s) without justification.",
+                    'code'           => 'SIX_SERVED_NO_SHOWS_MET',
                     'attempts_count' => $totalAttempts,
                     'failed_count'   => $failedCount,
                     'no_show_count'  => $noShowCount,
@@ -1332,9 +1340,9 @@ class SummonDeliveryService
             // Served but not yet enough no-shows; attendance tracking must continue
             return $this->cfaLocked(
                 'SERVICE_SUCCESSFUL_AWAITING_HEARING',
-                "CFA Locked — Respondent was served. {$noShowCount} unexcused absence(s) recorded; 2 required to unlock on refusal-to-appear grounds.",
+                "CFA Locked — {$totalAttempts} of {$maxAttempts} summons attempt(s) issued and {$noShowCount} of {$maxAttempts} unexcused absence(s) recorded. Continue the summons sequence after each non-appearance.",
                 $totalAttempts, $failedCount, $attempts
-            );
+            ) + ['no_show_count' => $noShowCount];
         }
 
         // Insufficient failures, not yet served

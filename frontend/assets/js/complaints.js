@@ -1375,10 +1375,7 @@ function renderCaseWorkspace(workspace, complaint) {
         if (!hearings.length) {
             hearingsContainer.innerHTML = `
                 <div class="empty-detail-state" style="text-align: center; padding: 24px 16px; color: #64748b;">
-                    <p style="margin: 0 0 10px; font-size: 0.88rem;">No hearings have been scheduled for this case yet.</p>
-                    <button type="button" class="btn-create" onclick="handleIssueSummonClick()" style="font-size: 0.82rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 5px;">
-                        Issue Summon 1st Attempt &amp; Schedule &rarr;
-                    </button>
+                    <p style="margin: 0; font-size: 0.88rem;">No hearings have been scheduled for this case yet. Use <strong>+ Schedule Session</strong> to schedule the first mediation and issue its summons.</p>
                 </div>
             `;
         } else {
@@ -4274,6 +4271,15 @@ async function submitEmbeddedSchedule(e) {
         }
         const json = await res.json();
         if (json.success) {
+            if (isFirstMedCheck && json.case_id) {
+                const handoffUrl = new URL('../gps/proof-service.php', window.location.href);
+                handoffUrl.searchParams.set('case_id', String(json.case_id));
+                if (json.hearing_id) handoffUrl.searchParams.set('hearing_id', String(json.hearing_id));
+                handoffUrl.searchParams.set('open_return', '1');
+                handoffUrl.searchParams.set('party_type', 'Respondent');
+                window.location.assign(handoffUrl.toString());
+                return;
+            }
             closeEmbeddedScheduleModal();
             window.agapNotify?.(`${hearingType} session scheduled successfully.`, 'success', 'Session Scheduled');
             await loadComplaintDetails();

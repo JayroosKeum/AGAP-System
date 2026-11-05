@@ -427,6 +427,9 @@ class Paanyaya
             SELECT p.*,
                    c.complaint_number,
                    c.complaint_title,
+                   c.status AS complaint_workflow_status,
+                   cs.case_id AS linked_case_id,
+                   cs.case_status AS linked_case_status,
                    COALESCE(
                        NULLIF(TRIM(p.complainant_name), ''),
                        (
@@ -450,25 +453,11 @@ class Paanyaya
                    TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS scheduled_by_name
             FROM paanyayas p
             LEFT JOIN complaints c ON c.complaint_id = COALESCE(NULLIF(p.complaint_id, 0), p.escalated_to_complaint_id)
+            LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
             LEFT JOIN users u ON u.user_id = p.scheduled_by
             WHERE 1=1
         ";
         $params = [];
-
-        if ($status !== null && $status !== '' && $status !== 'all') {
-            if (in_array($status, ['Resolved', 'Completed', 'Settled'], true)) {
-                $sql .= " AND p.status IN ('Resolved', 'Completed')";
-            } elseif (in_array($status, ['Cancelled', 'Failed', 'Escalated'], true)) {
-                $sql .= " AND p.status IN ('Cancelled', 'Failed', 'Escalated')";
-            } elseif (in_array($status, ['Scheduled', 'Pending'], true)) {
-                $sql .= " AND p.status IN ('Scheduled', 'Pending')";
-            } else {
-                $sql .= " AND p.status = ?";
-                $params[] = $status;
-            }
-
-
-        }
 
         if ($search !== null && trim($search) !== '') {
             $sql .= " AND (p.invitee_name LIKE ? OR c.complaint_number LIKE ? OR c.complaint_title LIKE ?)";
@@ -482,7 +471,30 @@ class Paanyaya
 
         $stmt = $this->conn->prepare($sql);
         $stmt->execute($params);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $records = array_map(
+            fn(array $record): array => $this->withCurrentWorkflow($record),
+            $stmt->fetchAll(PDO::FETCH_ASSOC)
+        );
+
+        if ($status === null || $status === '' || $status === 'all') {
+            return $records;
+        }
+
+        return array_values(array_filter($records, function (array $record) use ($status): bool {
+            $currentStatus = $record['current_workflow_status'] ?? $record['status'] ?? '';
+
+            if (in_array($status, ['Resolved', 'Completed', 'Settled'], true)) {
+                return in_array($currentStatus, ['Resolved', 'Completed', 'Settled', 'Dismissed', 'Archived'], true);
+            }
+            if (in_array($status, ['Cancelled', 'Failed', 'Escalated'], true)) {
+                return in_array($currentStatus, ['Cancelled', 'Failed', 'Escalated', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated'], true);
+            }
+            if (in_array($status, ['Scheduled', 'Pending'], true)) {
+                return in_array($currentStatus, ['Scheduled', 'Pending', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'CFA Issued'], true);
+            }
+
+            return $currentStatus === $status;
+        }));
     }
 
     /**
@@ -494,6 +506,9 @@ class Paanyaya
             SELECT p.*,
                    c.complaint_number,
                    c.complaint_title,
+                   c.status AS complaint_workflow_status,
+                   cs.case_id AS linked_case_id,
+                   cs.case_status AS linked_case_status,
                    COALESCE(
                        NULLIF(TRIM(p.complainant_name), ''),
                        (
@@ -517,12 +532,56 @@ class Paanyaya
                    TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS scheduled_by_name
             FROM paanyayas p
             LEFT JOIN complaints c ON c.complaint_id = COALESCE(NULLIF(p.complaint_id, 0), p.escalated_to_complaint_id)
+            LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
             LEFT JOIN users u ON u.user_id = p.scheduled_by
             WHERE p.paanyaya_id = ?
             LIMIT 1
         ");
         $stmt->execute([$paanyayaId]);
-        return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        $record = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        return $record ? $this->withCurrentWorkflow($record) : null;
+    }
+
+    /**
+     * Retains the Paanyaya's own status as history while exposing the live
+     * stage/status of the formal case created from it, when one exists.
+     */
+    private function withCurrentWorkflow(array $record): array
+    {
+        $historicalStatus = trim((string)($record['status'] ?? 'Scheduled'));
+        $linkedStatus = trim((string)($record['linked_case_status'] ?? ''));
+
+        // A complaint can exist before it becomes a formal case. Only use a
+        // complaint value as a fallback when it is a recognised case workflow state.
+        if ($linkedStatus === '') {
+            $complaintStatus = trim((string)($record['complaint_workflow_status'] ?? ''));
+            $caseStates = ['Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Dismissed', 'CFA Issued', 'Archived', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated'];
+            if (in_array($complaintStatus, $caseStates, true)) {
+                $linkedStatus = $complaintStatus;
+            }
+        }
+
+        $currentStatus = $linkedStatus !== '' ? $linkedStatus : $historicalStatus;
+        $stageLabels = [
+            'Docketed' => 'Stage 1 · Ready for Mediation',
+            'Mediation' => 'Stage 1 · Punong Barangay Mediation',
+            'Conciliation' => 'Stage 2 · Pangkat Conciliation',
+            'Arbitration' => 'Stage 3 · Voluntary Arbitration',
+            'Settled' => 'Completed · Amicable Settlement',
+            'Dismissed' => 'Closed · Dismissed',
+            'CFA Issued' => 'Completed · Certificate to File Action Issued',
+            'Archived' => 'Closed · Archived',
+            'DISMISSED_BARRED' => 'Closed · Dismissed / Barred',
+            'RESPONDENT_DEFAULT' => 'Completed · Respondent Default',
+            'Repudiated' => 'Closed · Repudiated',
+            'Escalated' => 'Escalated to Formal Case Docketing',
+        ];
+
+        $record['current_workflow_status'] = $currentStatus;
+        $record['current_workflow_stage'] = $stageLabels[$currentStatus] ?? 'Stage 0 · Informal Dialogue';
+        $record['has_linked_case_workflow'] = $linkedStatus !== '';
+
+        return $record;
     }
 
     /**

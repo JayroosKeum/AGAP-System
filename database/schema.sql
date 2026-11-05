@@ -164,7 +164,9 @@ CREATE TABLE complaints (
     -- Assigned immediately after insert by the model so database-generated IDs remain race-safe.
     complaint_number VARCHAR(50) NULL,
     category_id INT UNSIGNED NOT NULL,
+    secondary_category_id INT UNSIGNED NULL,
     other_category_specification VARCHAR(255) NULL,
+    secondary_other_category_specification VARCHAR(255) NULL,
     case_type ENUM('Civil', 'Criminal') NOT NULL DEFAULT 'Civil',
     complaint_title VARCHAR(255) NOT NULL,
     incident_date DATE NULL,
@@ -196,9 +198,12 @@ CREATE TABLE complaints (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_complaints_number (complaint_number),
     KEY idx_complaints_category_id (category_id),
+    KEY idx_complaints_secondary_category_id (secondary_category_id),
     KEY idx_complaints_status_created_at (status, created_at),
     CONSTRAINT fk_complaints_category
         FOREIGN KEY (category_id) REFERENCES complaint_categories (category_id) ON DELETE RESTRICT,
+    CONSTRAINT fk_complaints_secondary_category
+        FOREIGN KEY (secondary_category_id) REFERENCES complaint_categories (category_id) ON DELETE SET NULL,
     CONSTRAINT fk_complaints_encoded_by
         FOREIGN KEY (encoded_by) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
@@ -305,8 +310,15 @@ CREATE TABLE IF NOT EXISTS paanyayas (
     invitee_name VARCHAR(255) NOT NULL,
     scheduled_date DATE NOT NULL,
     scheduled_time TIME NOT NULL,
-    status ENUM('Scheduled', 'Completed', 'Cancelled', 'Resolved', 'Unresolved') NOT NULL DEFAULT 'Scheduled',
+    status ENUM('Scheduled', 'Completed', 'Cancelled', 'Resolved', 'Unresolved', 'Escalated') NOT NULL DEFAULT 'Scheduled',
+    attempt_number INT UNSIGNED NOT NULL DEFAULT 1,
     venue VARCHAR(255) NOT NULL DEFAULT 'Tanggapan ng Barangay Tumana',
+    salaysay TEXT NULL,
+    complainant_attended ENUM('Present', 'Absent') NULL,
+    invitee_attended ENUM('Present', 'Absent') NULL,
+    dialogue_notes TEXT NULL,
+    attendance_recorded_at DATETIME NULL,
+    escalated_to_complaint_id INT UNSIGNED NULL,
     pdf_path VARCHAR(255) NULL,
     scheduled_by INT UNSIGNED NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1193,11 +1205,10 @@ INSERT INTO roles (role_name) VALUES
     ('Summons Server')
 ON DUPLICATE KEY UPDATE role_name = VALUES(role_name);
 
--- Initial system administrator account with complete profile details.
--- Default password: password (checked via standard password-hash login flow).
--- For production environments, immediately update credentials in Account Settings.
--- Additional test accounts (clerk, lupon members, summons server) can be seeded
--- on demand via database/seeds/local_test_users.sql.
+-- Initial local accounts. Each account uses the default password: password.
+-- This creates one account for every role, except Lupon Member, which needs
+-- three members for Pangkat assignment (Head, Secretary, and Member).
+-- Change or disable these accounts before deploying to production.
 INSERT INTO users (
     first_name,
     middle_name,
@@ -1213,20 +1224,32 @@ INSERT INTO users (
     preferred_language
 )
 SELECT
-    'Barangay',
-    'Tumana',
-    'Captain',
-    'admin',
-    'admin@agap.test',
-    '09763198285',
+    seed.first_name,
+    seed.middle_name,
+    seed.last_name,
+    seed.username,
+    seed.email,
+    seed.contact_no,
     '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi',
-    role_id,
+    roles.role_id,
     'Active',
     1,
     1,
     'fil'
-FROM roles WHERE role_name = 'Administrator'
-AND NOT EXISTS (SELECT 1 FROM users WHERE username = 'admin');
+FROM (
+    SELECT 'Barangay' AS first_name, 'Tumana' AS middle_name, 'Captain' AS last_name,
+           'admin' AS username, 'admin@agap.test' AS email, '09763198285' AS contact_no,
+           'Administrator' AS role_name
+    UNION ALL SELECT 'Clerk', NULL, 'User', 'clerk', 'clerk@agap.test', NULL, 'Lupon Clerk'
+    UNION ALL SELECT 'Lupon', NULL, 'Head', 'luponhead', 'luponhead@agap.test', NULL, 'Lupon Member'
+    UNION ALL SELECT 'Lupon', NULL, 'Secretary', 'luponsecretary', 'luponsecretary@agap.test', NULL, 'Lupon Member'
+    UNION ALL SELECT 'Lupon', NULL, 'Member', 'luponmember', 'luponmember@agap.test', NULL, 'Lupon Member'
+    UNION ALL SELECT 'Summons', NULL, 'Server', 'summonsserver', 'summonsserver@agap.test', NULL, 'Summons Server'
+) AS seed
+INNER JOIN roles ON roles.role_name = seed.role_name
+WHERE NOT EXISTS (
+    SELECT 1 FROM users WHERE users.username = seed.username
+);
 
 INSERT INTO complaint_categories (category_name, tagalog_name) VALUES
     ('Abandonment of a Minor (Arts. 276, 277) / Pagpapabaya sa Bata o Menor de Edad', 'Pagpapabaya sa Bata o Menor de Edad'),

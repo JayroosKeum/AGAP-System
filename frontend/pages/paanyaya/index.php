@@ -46,10 +46,10 @@ $countScheduled = 0;
 $countCompleted = 0;
 $countCancelled = 0;
 foreach ($allList as $item) {
-    $st = $item['status'] ?? '';
-    if ($st === 'Scheduled') $countScheduled++;
-    elseif ($st === 'Completed' || $st === 'Resolved' || $st === 'Settled') $countCompleted++;
-    elseif ($st === 'Cancelled' || $st === 'Failed' || $st === 'Escalated') $countCancelled++;
+    $st = $item['current_workflow_status'] ?? $item['status'] ?? '';
+    if (in_array($st, ['Scheduled', 'Pending', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'CFA Issued'], true)) $countScheduled++;
+    elseif (in_array($st, ['Completed', 'Resolved', 'Settled', 'Dismissed', 'Archived'], true)) $countCompleted++;
+    elseif (in_array($st, ['Cancelled', 'Failed', 'Escalated', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated'], true)) $countCancelled++;
 }
 
 include '../../layouts/header.php';
@@ -715,10 +715,11 @@ include '../../layouts/header.php';
                                     <?php 
                                         $d = !empty($p['scheduled_date']) ? date('M j, Y', strtotime($p['scheduled_date'])) : '—';
                                         $t = !empty($p['scheduled_time']) ? date('g:i A', strtotime($p['scheduled_time'])) : '';
-                                        $st = $p['status'] ?? 'Scheduled';
+                                        $st = $p['current_workflow_status'] ?? $p['status'] ?? 'Scheduled';
+                                        $workflowStage = $p['current_workflow_stage'] ?? 'Stage 0 · Informal Dialogue';
                                         $statusClass = 'status-pill-scheduled';
-                                        if (in_array($st, ['Resolved', 'Completed', 'Settled'])) $statusClass = 'status-pill-resolved';
-                                        elseif ($st === 'Escalated') $statusClass = 'status-pill-escalated';
+                                        if (in_array($st, ['Resolved', 'Completed', 'Settled', 'Dismissed', 'Archived', 'CFA Issued', 'RESPONDENT_DEFAULT'])) $statusClass = 'status-pill-resolved';
+                                        elseif (in_array($st, ['Escalated', 'DISMISSED_BARRED', 'Repudiated'])) $statusClass = 'status-pill-escalated';
                                         elseif (in_array($st, ['Cancelled', 'Failed'])) $statusClass = 'status-pill-cancelled';
                                     ?>
                                     <tr>
@@ -762,6 +763,11 @@ include '../../layouts/header.php';
                                         </td>
                                         <td>
                                             <span class="<?php echo $statusClass; ?>"><?php echo htmlspecialchars($st); ?></span>
+                                            <?php if (!empty($p['has_linked_case_workflow'])): ?>
+                                                <div style="font-size: 0.72rem; color: #475569; margin-top: 4px; font-weight: 600;">
+                                                    <?php echo htmlspecialchars($workflowStage); ?>
+                                                </div>
+                                            <?php endif; ?>
                                             <?php if (!empty($p['complainant_attended']) || !empty($p['invitee_attended'])): ?>
                                                 <div style="font-size: 0.72rem; color: #64748b; margin-top: 3px;">
                                                     Att: <?php echo htmlspecialchars(substr($p['complainant_attended'] ?? '?', 0, 1)); ?>/<?php echo htmlspecialchars(substr($p['invitee_attended'] ?? '?', 0, 1)); ?>

@@ -373,8 +373,10 @@ class Summons
             $captainVal = trim((string) $pbStmt->fetchColumn());
             $officialName = (!empty($captainVal) && strcasecmp($captainVal, 'Admin User') !== 0) ? $captainVal : 'HON. AKIKO LYNNE CENTENO';
 
-            // On-demand generation: no physical disk files created ahead of time
-            $kp8FilePath = null;
+            // On-demand generation: no physical disk files are created ahead of
+            // time. generated_documents.file_path is NOT NULL, so retain an
+            // empty path until a user explicitly renders/downloads the form.
+            $kp8FilePath = '';
             $docKp8Stmt = $this->conn->prepare(
                 "INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status)
                  VALUES (?, ?, ?, ?, 'Served')"
@@ -382,7 +384,7 @@ class Summons
             $docKp8Stmt->execute([$caseId, $kp8TemplateId, $userId, $kp8FilePath]);
             $kp8DocumentId = (int) $this->conn->lastInsertId();
 
-            $kp9FilePath = null;
+            $kp9FilePath = '';
             $docKp9Stmt = $this->conn->prepare(
                 "INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status)
                  VALUES (?, ?, ?, ?, 'For Service')"
@@ -529,8 +531,9 @@ class Summons
             $count = $this->conn->prepare('SELECT COUNT(*) FROM generated_documents WHERE case_id = ? AND template_id = ?');
             $count->execute([$row['case_id'], $templateId]);
             $number = (int) $count->fetchColumn() + 1;
-            // On-demand generation: no physical disk file created ahead of time
-            $filePath = null;
+            // On-demand generation: no physical disk file is created ahead of
+            // time. generated_documents.file_path is NOT NULL.
+            $filePath = '';
 
             $document = $this->conn->prepare("INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason) VALUES (?, ?, ?, ?, 'For Service', ?)");
             $document->execute([$row['case_id'], $templateId, $userId, $filePath, 'Re-issued after recorded unjustified non-appearance at hearing #' . $hearingId . '.']);
