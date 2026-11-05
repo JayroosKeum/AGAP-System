@@ -344,13 +344,26 @@ class Hearing
 
         $targetDay = $targetDateObj->format('Y-m-d');
 
+        // A sequence is scoped to its procedural stage. A later mediation or
+        // arbitration must never invalidate an earlier conciliation date.
+        // Legacy "Initial Hearing" records belong to the Mediation sequence.
+        if ($hearingType === 'Mediation' || $hearingType === 'Initial Hearing') {
+            $stagePredicate = "h.hearing_type IN ('Initial Hearing', 'Mediation')";
+        } elseif ($hearingType === 'Conciliation') {
+            $stagePredicate = "h.hearing_type = 'Conciliation'";
+        } elseif ($hearingType === 'Arbitration') {
+            $stagePredicate = "h.hearing_type = 'Arbitration'";
+        } else {
+            $stagePredicate = 'h.hearing_type = ?';
+        }
+
         if ($hearingType === 'Arbitration') {
             $sql = "SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.status,
                            DATE(h.hearing_date) AS hearing_day, c.case_number
                     FROM hearings h
                     INNER JOIN cases c ON c.case_id = h.case_id
                     WHERE h.case_id = ?
-                      AND h.hearing_type = 'Arbitration'
+                      AND {$stagePredicate}
                       AND h.status != 'Cancelled'
                       AND NOT EXISTS (
                           SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
@@ -361,12 +374,16 @@ class Hearing
                     FROM hearings h
                     INNER JOIN cases c ON c.case_id = h.case_id
                     WHERE h.case_id = ?
+                      AND {$stagePredicate}
                       AND h.status != 'Cancelled'
                       AND NOT EXISTS (
                           SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
                       )";
         }
         $params = [$caseId];
+        if (!in_array($hearingType, ['Mediation', 'Initial Hearing', 'Conciliation', 'Arbitration'], true)) {
+            $params[] = $hearingType;
+        }
 
         if ($excludeHearingId !== null) {
             $sql .= " AND h.hearing_id != ?";
@@ -397,7 +414,7 @@ class Hearing
                     'valid' => false,
                     'same_day' => true,
                     'prior_date' => false,
-                    'message' => "A hearing for this case is already booked on this day ({$matchedDate}). You cannot schedule another hearing for this case on the same day or on any prior date.",
+                    'message' => "A {$hearingType} hearing for this case is already booked on this day ({$matchedDate}). You cannot schedule another {$hearingType} hearing on the same day or on any prior date.",
                     'latest_hearing' => $hearing,
                 ];
             }
@@ -412,7 +429,7 @@ class Hearing
                 'valid' => false,
                 'same_day' => false,
                 'prior_date' => true,
-                'message' => "A hearing for this case is already booked on {$formattedDate}. You cannot schedule another hearing for this case on the same day or on any prior date.",
+                'message' => "A {$hearingType} hearing for this case is already booked on {$formattedDate}. You cannot schedule another {$hearingType} hearing on the same day or on any prior date.",
                 'latest_hearing' => $latest,
             ];
         }
@@ -498,7 +515,7 @@ class Hearing
 
             // Active mediation attempt count for this case (excluding cancelled/superseded)
             $medQuery = $this->conn->prepare("
-                SELECT h.hearing_id, h.mediation_attempt, h.status, h.queue_status, hm.session_outcome
+                SELECT h.hearing_id, h.mediation_attempt, h.status, h.queue_status, hm.minute_id, hm.status AS minutes_status, hm.session_outcome
                 FROM hearings h
                 LEFT JOIN hearing_minutes hm ON hm.hearing_id = h.hearing_id
                 WHERE h.case_id = ? AND h.hearing_type IN ('Initial Hearing', 'Mediation')
@@ -528,6 +545,13 @@ class Hearing
                     $firstOutcome = strtolower(trim((string) ($firstMediation['session_outcome'] ?? '')));
                     $firstConcluded = in_array($firstMediation['status'] ?? '', ['Completed', 'Attendance Recorded'], true)
                         || ($firstMediation['queue_status'] ?? '') === 'Concluded';
+                    if (empty($firstMediation['minute_id'])) {
+                        $this->conn->rollBack();
+                        return [
+                            'success' => false,
+                            'message' => 'Save the 1st Mediation minutes before scheduling the 2nd Mediation session.'
+                        ];
+                    }
                     if (!$firstConcluded || str_contains($firstOutcome, 'settle')) {
                         $this->conn->rollBack();
                         return [

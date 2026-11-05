@@ -68,7 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 echo json_encode(['success' => false, 'message' => 'This concluded case or session is read-only; attachments cannot be removed.']);
                 exit;
             }
-            $absPath = dirname(__DIR__, 2) . '/' . ltrim($doc['file_path'], '/');
+            $absPath = dirname(__DIR__, 3) . '/' . ltrim($doc['file_path'], '/');
             if (file_exists($absPath)) {
                 @unlink($absPath);
             }
@@ -133,7 +133,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    $uploadDir = dirname(__DIR__, 2) . '/storage/hearing-documents/' . $caseId;
+    // The web root is the project root, not backend/.  Keeping uploads in the
+    // project storage directory makes the persisted path and preview handler
+    // agree and fixes the minutes-preview 404.
+    $uploadDir = dirname(__DIR__, 3) . '/storage/hearing-documents/' . $caseId;
     if (!is_dir($uploadDir)) {
         mkdir($uploadDir, 0777, true);
     }

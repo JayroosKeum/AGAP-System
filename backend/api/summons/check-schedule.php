@@ -133,12 +133,7 @@ if ($complaintId || $getWindow) {
         if ($m >= 720 && $m < 780) continue;
         $fullDayConcilSlots++;
     }
-    $tueMorningConcilSlots = 0;
-    for ($m = $workStartMin; $m <= 720 - $concilDur; $m += $concilDur) {
-        $tueMorningConcilSlots++;
-    }
     $concilMaxFull = min($dailyCap, $fullDayConcilSlots);
-    $concilMaxTue = min((int)floor($dailyCap / 2), $tueMorningConcilSlots);
 
     $days = [];
     $cur = new DateTimeImmutable($rangeStart);
@@ -155,20 +150,14 @@ $isTuesday = ($dayOfWeek === 2);
         $booked = $dailyCounts[$dStr] ?? 0;
 
         if ($hearingType === 'Conciliation') {
-            // Conciliation rule:
-            // Mon, Wed, Thu, Fri: 8:00 AM - 12:00 PM & 1:00 PM - 5:00 PM (8 slots max)
-            // Tue: Morning only 8:00 AM - 12:00 PM (4 slots max, afternoons reserved for Formal Mediation)
-            // Weekends and holidays: closed
-            if ($isWeekend || $isHoliday) {
+            // Conciliation is restricted to Mon/Wed/Thu/Fri. Tuesdays are
+            // reserved for formal mediation; capacity always derives from
+            // settings and never from a hard-coded visual count.
+            if ($isWeekend || $isHoliday || $curDayCode === 'Tue') {
                 $maxSlots = 0;
                 $avail = 0;
-                $isFull = false;
+                $isFull = true;
                 $canSchedule = false;
-            } elseif ($curDayCode === 'Tue') {
-                $maxSlots = $concilMaxTue;
-                $avail = max(0, $maxSlots - $booked);
-                $isFull = ($booked >= $maxSlots);
-                $canSchedule = ($dStr >= $todayStr) && !$isFull;
             } else {
                 $maxSlots = $concilMaxFull;
                 $avail = max(0, $maxSlots - $booked);
@@ -198,7 +187,7 @@ $isTuesday = ($dayOfWeek === 2);
             'available' => $avail,
             'is_fully_booked' => $isFull,
             'is_weekend' => $isWeekend,
-            'is_tuesday_morning_only' => ($curDayCode === 'Tue' && $hearingType === 'Conciliation'),
+            'is_tuesday_morning_only' => false,
             'is_non_working_day' => $isHoliday,
             'is_mediation_day' => $isMedDay,
             'is_non_mediation_day' => ($hearingType === 'Mediation' && !$isMedDay),
@@ -217,7 +206,7 @@ $isTuesday = ($dayOfWeek === 2);
         'deadline_date' => $deadlineDateStr,
         'today' => $todayStr,
         'hearing_type' => $hearingType,
-        'max_slots_per_day' => $dailyCap,
+        'max_slots_per_day' => $hearingType === 'Mediation' ? $medMaxSlots : $concilMaxFull,
         'daily_slots' => $days,
         'settings' => [
             'mediation_days' => $allowedMedDays,
@@ -232,7 +221,9 @@ $isTuesday = ($dayOfWeek === 2);
             'mediation_max_duration_min' => $medMaxDuration,
             'conciliation_default_duration_min' => $concilDefaultDuration,
             'conciliation_max_duration_min' => $concilMaxDuration,
-            'daily_hearing_capacity' => $dailyCap
+            'daily_hearing_capacity' => $dailyCap,
+            'effective_mediation_slots_per_day' => $medMaxSlots,
+            'effective_conciliation_slots_per_day' => $concilMaxFull
         ]
     ];
 }
@@ -294,14 +285,18 @@ if ($hearingType === 'Mediation') {
         }
     }
 } elseif ($hearingType === 'Conciliation') {
-    if ($isWeekend || $isNonWorkingDay) {
+    if ($isWeekend || $isNonWorkingDay || $curDayCode === 'Tue') {
         echo json_encode([
             'success' => false,
             'has_conflict' => true,
             'is_invalid_day' => true,
-            'message' => "Conciliation hearings cannot be scheduled on weekends or non-working holidays.",
+            'message' => $curDayCode === 'Tue'
+                ? 'Conciliation hearings cannot be scheduled on Tuesdays; select Monday, Wednesday, Thursday, or Friday.'
+                : 'Conciliation hearings cannot be scheduled on weekends or non-working holidays.',
             'conflict' => [
-                'message' => "Selected date is a " . ($isWeekend ? "weekend" : "non-working holiday") . ". Conciliation hearings are held on Mon, Tue morning, Wed, Thu, Fri."
+                'message' => $curDayCode === 'Tue'
+                    ? 'Tuesday is reserved for formal mediation. Conciliation hearings are held on Monday, Wednesday, Thursday, and Friday.'
+                    : "Selected date is a " . ($isWeekend ? "weekend" : "non-working holiday") . "."
             ]
         ]);
         exit;
@@ -324,10 +319,8 @@ if ($hearingType === 'Mediation') {
 }
 
 if ($hearingType === 'Conciliation') {
-    if ($isWeekend || $isNonWorkingDay) {
+    if ($isWeekend || $isNonWorkingDay || $curDayCode === 'Tue') {
         $maxSlots = 0;
-    } elseif ($curDayCode === 'Tue') {
-        $maxSlots = $concilMaxTue;
     } else {
         $maxSlots = $concilMaxFull;
     }
@@ -348,20 +341,17 @@ $deadlineMessage = null;
 $hasConflict = false;
 $conflictData = null;
 
-if ($hearingType === 'Conciliation' && $isTuesday && $time !== '') {
-    $hourCheck = (int) date('H', strtotime($time));
-    if ($hourCheck >= 12) {
-        $hasConflict = true;
-        $conflictData = [
-            'case_number' => '',
-            'hearing_type' => 'Tuesday Afternoon Blocked',
-            'hearing_date' => $date,
-            'start_time' => $time,
-            'end_time' => '',
-            'venue' => $venue,
-            'message' => "Tuesday afternoons (1:00 PM – 5:00 PM) are exclusively reserved for Punong Barangay Formal Mediation. Conciliation on Tuesdays is permitted in the morning only (8:00 AM – 12:00 PM)."
-        ];
-    }
+if ($hearingType === 'Conciliation' && $isTuesday) {
+    $hasConflict = true;
+    $conflictData = [
+        'case_number' => '',
+        'hearing_type' => 'Tuesday Blocked',
+        'hearing_date' => $date,
+        'start_time' => $time,
+        'end_time' => '',
+        'venue' => $venue,
+        'message' => 'Tuesday is reserved for formal mediation. Conciliation hearings are held on Monday, Wednesday, Thursday, and Friday.'
+    ];
 } elseif ($hearingType === 'Mediation' && !$isCurMedDay) {
     $hasConflict = true;
     $conflictData = [

@@ -363,9 +363,17 @@ class HearingMinutes
                 $this->conn->commit();
             }
 
-            // Workflow transition if 2nd Mediation elevated to Pangkat
-            if ($outcome === 'Elevate to Pangkat' && $status === 'Finalized') {
-                $this->transitionToConciliationOnMediationFailure($caseId, $userId);
+            // A finalized, unresolved second mediation is the transition
+            // point. Do not require a second, unrelated UI action merely to
+            // unlock the already-scheduled/next Conciliation stage.
+            if ($status === 'Finalized'
+                && in_array($outcome, ['Elevate to Pangkat', 'Failed'], true)
+                && in_array($hearing['hearing_type'], ['Initial Hearing', 'Mediation'], true)) {
+                $medCountStmt = $this->conn->prepare("\n                    SELECT COUNT(*) FROM hearings\n                    WHERE case_id = ?\n                      AND hearing_type IN ('Initial Hearing', 'Mediation')\n                      AND status NOT IN ('Cancelled', 'Office Cancelled')\n                      AND NOT EXISTS (SELECT 1 FROM hearings nh WHERE nh.rescheduled_from_id = hearings.hearing_id)\n                ");
+                $medCountStmt->execute([$caseId]);
+                if ((int) $medCountStmt->fetchColumn() >= 2) {
+                    $this->transitionToConciliationOnMediationFailure($caseId, $userId);
+                }
             }
 
             // Post-commit triggers for Dismissed, Party Absent, Rescheduled

@@ -5,8 +5,8 @@ require_once __DIR__ . '/../config/gemini.php';
 class GeminiService
 {
     private string $apiKey = '';
-    private string $model = 'gemini-3.5-flash';
-    private array $fallbackModels = ['gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.5-flash'];
+    private string $model = 'gemini-2.5-flash';
+    private array $fallbackModels = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
 
     public function __construct(?string $model = null, ?string $apiKey = null)
     {
@@ -84,7 +84,7 @@ class GeminiService
             } catch (Throwable $t) {}
         }
 
-        return 'gemini-3.5-flash';
+        return 'gemini-2.5-flash';
     }
 
     public function getApiKey(): string

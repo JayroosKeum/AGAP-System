@@ -6,8 +6,12 @@ class Resident
 {
     private $conn;
 
-    public function __construct()
+    public function __construct(?PDO $conn = null)
     {
+        if ($conn) {
+            $this->conn = $conn;
+            return;
+        }
         $database = new Database();
         $this->conn = $database->connect();
     }

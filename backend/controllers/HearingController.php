@@ -314,18 +314,9 @@ class HearingController
         } else {
             // Conciliation (Pangkat)
             if ($dayOfWeek === 2) {
-                // Tuesday morning only: 8:00 AM – 12:00 PM
-                $ruleHint = 'Tuesday morning conciliation hearings are held from 8:00 AM to 12:00 PM. (Tuesday afternoons are reserved exclusively for Formal Mediation).';
-                $defaultSlots = [
-                    ['time' => '08:00', 'label' => '8:00 AM (Target Call Time)'],
-                    ['time' => '08:30', 'label' => '8:30 AM (Target Call Time)'],
-                    ['time' => '09:00', 'label' => '9:00 AM (Target Call Time)'],
-                    ['time' => '09:30', 'label' => '9:30 AM (Target Call Time)'],
-                    ['time' => '10:00', 'label' => '10:00 AM (Target Call Time)'],
-                    ['time' => '10:30', 'label' => '10:30 AM (Target Call Time)'],
-                    ['time' => '11:00', 'label' => '11:00 AM (Target Call Time)'],
-                    ['time' => '11:30', 'label' => '11:30 AM (Target Call Time)'],
-                ];
+                $isValidDay = false;
+                $ruleHint = 'Conciliation hearings may be held only on Mondays, Wednesdays, Thursdays, and Fridays. Tuesdays are reserved for formal mediation.';
+                $defaultSlots = [];
             } else {
                 $ruleHint = 'Conciliation hearings before the Pangkat are held on Mondays, Wednesdays, Thursdays, and Fridays (8:00 AM – 12:00 PM & 1:00 PM – 5:00 PM).';
                 $defaultSlots = [
@@ -403,13 +394,24 @@ class HearingController
                 $slotLabel .= " — {$casesAtSlot} case" . ($casesAtSlot === 1 ? '' : 's') . " queued";
             }
 
-            // Booked is false because duration is elastic and staff can schedule cases on the docket
+            // Keep the picker and the submit action on one source of truth:
+            // evaluate the actual conflict guard for every rendered time slot.
+            $slotConflict = $this->hearing->findConflict(
+                "{$targetDate} {$slotTime}:00",
+                $venue,
+                $caseId,
+                $excludeHearingId,
+                $presidingOfficerId,
+                $durationMinutes,
+                $hearingType
+            );
+            $isBooked = !empty($slotConflict['conflict']);
             $slots[] = [
                 'time' => $slotTime,
                 'label' => $slotLabel,
-                'booked' => false,
+                'booked' => $isBooked,
                 'cases_at_slot' => $casesAtSlot,
-                'conflict' => null
+                'conflict' => $isBooked ? ($slotConflict['message'] ?? 'Schedule conflict') : null
             ];
         }
 
@@ -441,10 +443,10 @@ class HearingController
                 if ($isHoliday) {
                     $response['message'] = "Scheduling is blocked on {$targetDate}: Official Philippine holiday ({$holidayName}).";
                 } elseif ($hearingType === 'Mediation') {
-                    $response['message'] = 'Mediation hearings can only be scheduled on working days (Monday to Friday, 8:00 AM – 5:00 PM).';
+                    $response['message'] = 'Mediation hearings can only be scheduled on designated mediation days.';
                 } else {
                     $response['message'] = ($dayOfWeek === 2)
-                        ? 'Conciliation hearings on Tuesdays are permitted only in the morning (8:00 AM – 12:00 PM). Tuesday afternoons are exclusively reserved for Formal Mediation.'
+                        ? 'Conciliation hearings cannot be scheduled on Tuesdays; select Monday, Wednesday, Thursday, or Friday.'
                         : 'Conciliation cannot be scheduled on weekends.';
                 }
                 return $response;
@@ -459,11 +461,11 @@ class HearingController
                 return $response;
             }
 
-            // Check Tuesday afternoon conciliation block
-            if ($hearingType === 'Conciliation' && $dayOfWeek === 2 && $reqHour >= 12) {
+            // Conciliation is never held on Tuesday.
+            if ($hearingType === 'Conciliation' && $dayOfWeek === 2) {
                 $response['valid'] = false;
                 $response['conflict'] = true;
-                $response['message'] = 'Conciliation hearings cannot be scheduled on Tuesday afternoons (1:00 PM – 5:00 PM), which are exclusively reserved for Formal Mediation in the Lupon Court Room.';
+                $response['message'] = 'Conciliation hearings cannot be scheduled on Tuesdays; select Monday, Wednesday, Thursday, or Friday.';
                 return $response;
             }
 
@@ -494,10 +496,10 @@ class HearingController
                 if ($isHoliday) {
                     $response['message'] = "Scheduling is blocked on {$targetDate}: Official Philippine holiday ({$holidayName}).";
                 } elseif ($hearingType === 'Mediation') {
-                    $response['message'] = 'Mediation hearings can only be scheduled on working days (Monday to Friday, 8:00 AM – 5:00 PM).';
+                    $response['message'] = 'Mediation hearings can only be scheduled on designated mediation days.';
                 } else {
                     $response['message'] = ($dayOfWeek === 2)
-                        ? 'Conciliation hearings on Tuesdays are permitted only in the morning (8:00 AM – 12:00 PM).'
+                        ? 'Conciliation hearings cannot be scheduled on Tuesdays; select Monday, Wednesday, Thursday, or Friday.'
                         : 'Conciliation cannot be scheduled on weekends.';
                 }
             } else {
@@ -787,8 +789,8 @@ class HearingController
             if ($dayOfWeek === 0 || $dayOfWeek === 6) {
                 return ['success' => false, 'message' => 'Conciliation hearings cannot be scheduled on weekends.'];
             }
-            if ($dayOfWeek === 2 && $hour >= 12) {
-                return ['success' => false, 'message' => 'Conciliation hearings on Tuesdays are permitted only in the morning (8:00 AM – 12:00 PM). Tuesday afternoons (1:00 PM – 5:00 PM) are exclusively reserved for Formal Mediation in the Lupon Court Room.'];
+            if ($dayOfWeek === 2) {
+                return ['success' => false, 'message' => 'Conciliation hearings cannot be scheduled on Tuesdays; select Monday, Wednesday, Thursday, or Friday.'];
             }
             if (($hour < 8 || $hour >= 17) || ($hour >= 12 && $hour < 13)) {
                 return ['success' => false, 'message' => 'Conciliation hearings must be during operating hours (8:00 AM – 12:00 PM & 1:00 PM – 5:00 PM, excluding 12:00 PM – 1:00 PM lunch break).'];
@@ -828,7 +830,7 @@ class HearingController
         if ($type === 'Mediation' && !$allowExistingTypes) {
             $db = (new Database())->connect();
             $medStmt = $db->prepare("
-                SELECT h.hearing_id, h.status, h.mediation_attempt, m.status AS minutes_status, m.session_outcome
+                SELECT h.hearing_id, h.status, h.mediation_attempt, m.minute_id, m.status AS minutes_status, m.session_outcome
                 FROM hearings h
                 LEFT JOIN hearing_minutes m ON m.hearing_id = h.hearing_id
                 WHERE h.case_id = ? AND h.hearing_type IN ('Initial Hearing', 'Mediation') AND h.status NOT IN ('Cancelled', 'Office Cancelled') AND NOT EXISTS (SELECT 1 FROM hearings nh WHERE nh.rescheduled_from_id = h.hearing_id)
@@ -848,6 +850,12 @@ class HearingController
                     return [
                         'success' => false,
                         'message' => 'Cannot schedule next Mediation: The previous mediation concluded with an Amicable Settlement.'
+                    ];
+                }
+                if (count($prevHearings) === 1 && empty($lastMed['minute_id'])) {
+                    return [
+                        'success' => false,
+                        'message' => 'Save the 1st Mediation minutes before scheduling the 2nd Mediation session.'
                     ];
                 }
                 require_once __DIR__ . '/../models/Setting.php';

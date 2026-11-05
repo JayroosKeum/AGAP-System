@@ -71,6 +71,47 @@ class Paanyaya
     }
 
     /**
+     * Creates a directory profile for a manually entered invitation party.
+     * A matching resident is reused, so saving a Paanyaya never creates a
+     * duplicate profile merely because the picker was not used.
+     */
+    private function persistManualResident(?int $residentId, string $fullName, string $firstName, string $middleName, string $lastName, string $address, string $purok, string $contact, string $email, array $data, string $prefix): ?int
+    {
+        if ($residentId) {
+            return $residentId;
+        }
+        $fullName = trim($fullName);
+        if ($fullName === '' || $fullName === 'Inanyayahang Residente') {
+            return null;
+        }
+        if ($firstName === '' || $lastName === '') {
+            $parts = preg_split('/\s+/', $fullName) ?: [];
+            $firstName = $firstName ?: (string) array_shift($parts);
+            $lastName = $lastName ?: (string) array_pop($parts);
+            $middleName = $middleName ?: trim(implode(' ', $parts));
+        }
+        if ($firstName === '' || $lastName === '') {
+            return null;
+        }
+
+        require_once __DIR__ . '/Resident.php';
+        $profile = [
+            'first_name' => $firstName,
+            'middle_name' => $middleName ?: null,
+            'last_name' => $lastName,
+            'contact_no' => $contact ?: null,
+            'email' => $email ?: null,
+            'address' => $address ?: null,
+            'purok' => $purok ?: null,
+            'home_latitude' => isset($data[$prefix . '_latitude']) && is_numeric($data[$prefix . '_latitude']) ? (float) $data[$prefix . '_latitude'] : null,
+            'home_longitude' => isset($data[$prefix . '_longitude']) && is_numeric($data[$prefix . '_longitude']) ? (float) $data[$prefix . '_longitude'] : null,
+        ];
+        $residents = new Resident($this->conn);
+        $existing = $residents->findDuplicate($profile);
+        return $existing ? (int) $existing['resident_id'] : $residents->create($profile);
+    }
+
+    /**
      * Schedules a Paanyaya dialogue session (Attempt #1 or Attempt #2).
      * Enforces the "Dalawang Beses Lang" (Max 2 Attempts) rule.
      */
@@ -220,6 +261,15 @@ class Paanyaya
 
         try {
             $this->conn->beginTransaction();
+
+            $compResidentId = $this->persistManualResident(
+                $compResidentId, $complainantName, $compFirst, $compMiddle, $compLast,
+                $compAddress, $compPurok, $compContact, $compEmail, $data, 'complainant'
+            );
+            $invResidentId = $this->persistManualResident(
+                $invResidentId, $inviteeName, $inviteeFirst, $inviteeMiddle, $inviteeLast,
+                $invAddress, $invPurok, $invContact, $invEmail, $data, 'invitee'
+            );
 
             // Salaysay (statement narrative)
             $salaysay = trim((string) ($data['salaysay'] ?? ''));

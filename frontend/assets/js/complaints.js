@@ -154,7 +154,13 @@ function initialiseNarrativeEnhancement() {
         try {
             const response = await fetch('../../../backend/api/ai/refine-narrative.php', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    // The endpoint correctly protects state-changing AI calls;
+                    // supply the page's session token instead of failing at 419.
+                    'X-CSRF-Token': window.agapCsrfToken || document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+                },
                 body: JSON.stringify({ narrative: original, external_ai_consent: consent.checked })
             });
             const result = await response.json().catch(() => ({}));
@@ -3382,7 +3388,7 @@ async function loadSessionDocuments(hearingId) {
                     <span>${type}${size ? ` · ${size}` : ''}</span>
                 </div>
                 <div class="session-document-actions">
-                    <a href="../../../${escapeHtml(document.file_path || '')}" target="_blank" rel="noopener">View</a>
+                    <a href="../../../backend/api/hearings/document-preview.php?id=${Number(document.id)}" target="_blank" rel="noopener">View</a>
                     ${!window.__agapCaseOutcomeLocked ? `<button type="button" onclick="deleteSessionDocument(${Number(document.id)}, ${Number(hearingId)})">Remove</button>` : ''}
                 </div>
             </div>`;
@@ -3617,6 +3623,13 @@ function openEmbeddedScheduleModal(stageType = 'Mediation', hearingId = null) {
                 else alert(msg);
                 return;
             }
+            if (!lastSession.minutes_id) {
+                const msg = 'Save the 1st Mediation minutes before scheduling the 2nd Mediation session.';
+                if (typeof showToast === 'function') showToast(msg, 'error');
+                else if (window.agapNotify) window.agapNotify(msg, 'warning', 'Minutes Required');
+                else alert(msg);
+                return;
+            }
         }
     }
 
@@ -3803,11 +3816,12 @@ function renderTimeSlotsPillGrid(gridElId, timeInputId, scheduledItems = [], hea
             statusTag = 'Mediation Only';
             disabledAttr = 'disabled';
         } else if (bookedItem) {
-            btnStyle = 'border: 1px solid #fecaca; background: #fef2f2; color: #991b1b; cursor: pointer;';
+            btnStyle = 'border: 1px solid #fecaca; background: #fef2f2; color: #991b1b; cursor: not-allowed; opacity: 0.72;';
             statusTag = bookedItem.case_number ? `Case ${bookedItem.case_number}` : 'Booked';
+            disabledAttr = 'disabled';
         }
 
-        if (isSelected && !isRestrictedAfternoon) {
+        if (isSelected && !isRestrictedAfternoon && !bookedItem) {
             btnStyle = 'border: 2px solid #2563eb; background: #eff6ff; color: #1e40af; font-weight: 700; box-shadow: 0 0 0 2px rgba(37,99,235,0.18); cursor: pointer;';
             statusTag = bookedItem ? 'Selected (Booked)' : '✓ Selected';
         }
@@ -3862,7 +3876,7 @@ async function initEmbeddedScheduleModalCalendar(stageType, caseId, complaintId)
     const timeHint = document.getElementById('schedTimeHint');
     const cfg = window.AGAP_SETTINGS || {};
     const medDaysLbl = (cfg.mediation_days_label || 'Tuesdays');
-    const maxCap = Number(cfg.daily_capacity || 8);
+    const maxCap = Number(cfg.daily_hearing_capacity || cfg.daily_capacity || 8);
     const fmtTime12 = (t) => { const p = String(t || '00:00').split(':'); const h = parseInt(p[0], 10) || 0; const m = parseInt(p[1], 10) || 0; return `${(h % 12) || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`; };
     const medStartStr = (cfg.mediation_hours_start || '13:00').slice(0, 5);
     const medEndStr = (cfg.mediation_hours_end || '16:30').slice(0, 5);
@@ -3881,7 +3895,7 @@ async function initEmbeddedScheduleModalCalendar(stageType, caseId, complaintId)
 
     if (deckTitle) {
         deckTitle.textContent = stageType === 'Conciliation'
-            ? 'AVAILABLE CONCILIATION DAYS (MON, TUE AM, WED, THU, FRI):'
+            ? 'AVAILABLE CONCILIATION DAYS (MON, WED, THU, FRI):'
             : `AVAILABLE MEDIATION DAYS (${medDaysLbl.toUpperCase()} ONLY · ${dynamicMedMax} SLOTS/DAY):`;
     }
     if (timeHint) {
@@ -3927,7 +3941,7 @@ async function initEmbeddedScheduleModalCalendar(stageType, caseId, complaintId)
                     const dt = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
                     return allowedNums.includes(dt.getDay()) || allowedDays.includes(slot.day_name);
                 }
-                return !slot.is_weekend && !slot.is_non_working_day;
+                return !slot.is_weekend && !slot.is_non_working_day && slot.day_name !== 'Tue';
             };
 
             if (!isDateValidForMode(targetDate)) {
@@ -4310,6 +4324,14 @@ function renderWorkspaceVisualDatePicker(windowMeta, selectedDate) {
     const allDays = Object.values(windowMeta.daily_slots);
 
     let days = allDays;
+    const stageSessions = isMediationMode
+        ? (window.embeddedHearingsState?.mediation_sessions || [])
+        : (window.embeddedHearingsState?.conciliation_sessions || []);
+    const previousStageDate = stageSessions
+        .filter(s => !['Cancelled', 'Office Cancelled'].includes(s.status) && s.hearing_date)
+        .map(s => String(s.hearing_date).slice(0, 10))
+        .sort()
+        .pop() || '';
     if (isMediationMode) {
         const allowedNums = window.AGAP_SETTINGS?.mediation_day_numbers || [2];
         const allowedDays = window.AGAP_SETTINGS?.mediation_days || ['Tue'];
@@ -4322,6 +4344,14 @@ function renderWorkspaceVisualDatePicker(windowMeta, selectedDate) {
             gridEl.innerHTML = '<div style="color: #64748b; font-size: 0.78rem; grid-column: 1 / -1; text-align: center; padding: 12px;">No upcoming mediation dates found.</div>';
             return;
         }
+    } else {
+        // Conciliation dates are Mon/Wed/Thu/Fri and must be strictly after
+        // the prior conciliation session.
+        days = allDays.filter(d => !d.is_past && d.day_name !== 'Tue' && d.day_name !== 'Sat' && d.day_name !== 'Sun');
+    }
+
+    if (previousStageDate) {
+        days = days.filter(d => d.date > previousStageDate);
     }
 
     if (!days.length) {
@@ -4340,13 +4370,16 @@ function renderWorkspaceVisualDatePicker(windowMeta, selectedDate) {
         let disabledAttr = '';
         let tooltip = `${d.date}: ${d.available} of ${d.max || 8} slots available.`;
 
-        if (d.is_past) {
+        if (d.is_past || (previousStageDate && d.date <= previousStageDate)) {
             badgeText = 'Past';
             badgeBg = '#f1f5f9';
             badgeColor = '#94a3b8';
             cardStyle = 'border: 1px solid #e2e8f0; background: #f8fafc; color: #94a3b8; cursor: not-allowed; opacity: 0.5;';
             disabledAttr = 'disabled';
-            tooltip = `${d.date}: Past date cannot be scheduled.`;
+            badgeText = previousStageDate && d.date <= previousStageDate ? 'Previous Session' : 'Past';
+            tooltip = previousStageDate && d.date <= previousStageDate
+                ? `${d.date}: must be strictly after the previous ${isMediationMode ? 'mediation' : 'conciliation'} session.`
+                : `${d.date}: Past date cannot be scheduled.`;
         } else if (d.is_fully_booked || (d.max > 0 && d.available <= 0)) {
             badgeText = `${d.max || 8}/${d.max || 8} Full`;
             badgeBg = '#fee2e2';
@@ -4391,7 +4424,7 @@ function renderWorkspaceVisualDatePicker(windowMeta, selectedDate) {
         if (selectedDate && windowMeta.daily_slots && windowMeta.daily_slots[selectedDate]) {
             const selectedDayData = windowMeta.daily_slots[selectedDate];
             if (selectedDayData.is_fully_booked || selectedDayData.available <= 0) {
-                noticeEl.innerHTML = '<span style="color: #dc2626; font-weight: 600;">Selected date is fully booked (8 of 8 daily mediation sessions).</span>';
+                noticeEl.innerHTML = `<span style="color: #dc2626; font-weight: 600;">Selected date is fully booked (${selectedDayData.max} of ${selectedDayData.max} configured sessions).</span>`;
             } else {
                 noticeEl.innerHTML = `<span style="color: #1e40af; font-weight: 600;">Date selected (${esc(selectedDate)}): ${selectedDayData.available} slot${selectedDayData.available === 1 ? '' : 's'} remaining.</span>`;
             }
@@ -4455,6 +4488,16 @@ async function checkWorkspaceScheduleConflict() {
         const response = await fetch(`../../../backend/api/summons/check-schedule.php?${params.toString()}`);
         const result = await response.json();
 
+        // The hearing availability endpoint is authoritative for conflicts and
+        // Pangkat availability. It is queried before the review/submit step so
+        // a slot that will be rejected cannot still appear selectable.
+        const availabilityParams = new URLSearchParams(params);
+        availabilityParams.set('duration_minutes', String(typeVal === 'Conciliation'
+            ? Number(window.AGAP_SETTINGS?.conciliation_default_duration_min || 60)
+            : Number(window.AGAP_SETTINGS?.mediation_default_duration_min || 45)));
+        const availabilityResponse = await fetch(`../../../backend/api/hearings/check-availability.php?${availabilityParams.toString()}`);
+        const availability = await availabilityResponse.json().catch(() => null);
+
         if (result.window) {
             window.currentWsWindowMeta = result.window;
             if (result.window.settings) {
@@ -4462,6 +4505,20 @@ async function checkWorkspaceScheduleConflict() {
             }
             if (typeof window.renderTimeSlotsPillGrid === 'function') {
                 window.renderTimeSlotsPillGrid('schedTimeSlotsGrid', 'schedTime', result.scheduled_mediations || [], typeVal, dateVal, () => checkWorkspaceScheduleConflict());
+                const grid = document.getElementById('schedTimeSlotsGrid');
+                if (grid && Array.isArray(availability?.slots)) {
+                    availability.slots.filter(slot => slot.booked).forEach(slot => {
+                        const selector = `button[onclick*="'${slot.time}'"]`;
+                        const pill = grid.querySelector(selector);
+                        if (pill) {
+                            pill.disabled = true;
+                            pill.title = slot.conflict || 'Unavailable';
+                            pill.style.cssText += ';border:1px solid #fecaca;background:#fef2f2;color:#991b1b;cursor:not-allowed;opacity:.72;';
+                            const tag = pill.lastElementChild;
+                            if (tag) tag.textContent = 'Unavailable';
+                        }
+                    });
+                }
             }
             if (typeof renderWorkspaceVisualDatePicker === 'function') {
                 renderWorkspaceVisualDatePicker(result.window, dateVal);
@@ -4507,9 +4564,9 @@ async function checkWorkspaceScheduleConflict() {
             }
         }
 
-        if (result.has_conflict) {
+        if (result.has_conflict || availability?.valid === false || availability?.conflict) {
             if (conflictAlert) {
-                conflictAlert.textContent = `Conflict Warning: ${result.conflict_reason || 'Selected time overlaps with another hearing.'}`;
+                conflictAlert.textContent = `Conflict Warning: ${availability?.message || result.conflict_reason || 'Selected time overlaps with another hearing.'}`;
                 conflictAlert.style.display = 'block';
             }
             if (submitBtn) submitBtn.disabled = true;
@@ -4635,15 +4692,6 @@ async function submitEmbeddedSchedule(e) {
         }
         const json = await res.json();
         if (json.success) {
-            if (isFirstMedCheck && json.case_id) {
-                const handoffUrl = new URL('../gps/proof-service.php', window.location.href);
-                handoffUrl.searchParams.set('case_id', String(json.case_id));
-                if (json.hearing_id) handoffUrl.searchParams.set('hearing_id', String(json.hearing_id));
-                handoffUrl.searchParams.set('open_return', '1');
-                handoffUrl.searchParams.set('party_type', 'Respondent');
-                window.location.assign(handoffUrl.toString());
-                return;
-            }
             closeEmbeddedScheduleModal();
             window.agapNotify?.(existingHearingId ? `${hearingType} hearing schedule updated successfully.` : `${hearingType} session scheduled successfully.`, 'success', existingHearingId ? 'Schedule Updated' : 'Session Scheduled');
             await loadComplaintDetails();
@@ -5265,7 +5313,7 @@ function renderSummonVisualDatePicker(windowMeta, selectedDate) {
             const selectedDayData = windowMeta.daily_slots[selectedDate];
             if (selectedDayData) {
                 if (selectedDayData.is_fully_booked) {
-                    noticeEl.innerHTML = `<span style="color: #dc2626; font-weight: 600;">Selected date is fully booked (8 of 8 daily mediation sessions).</span>`;
+                    noticeEl.innerHTML = `<span style="color: #dc2626; font-weight: 600;">Selected date is fully booked (${selectedDayData.max} of ${selectedDayData.max} configured sessions).</span>`;
                 } else {
                     noticeEl.innerHTML = `<span style="color: #15803d; font-weight: 600;">Date selected: ${selectedDayData.available} slots remaining.</span>`;
                 }
@@ -5379,7 +5427,7 @@ async function checkMediationScheduleConflict() {
 
             const scheduled = result.scheduled_mediations || [];
             if (scheduled.length === 0) {
-                slotsList.innerHTML = `<span style="color: #166534; font-weight: 500;">All 8 session slots available on this date (${dateVal}).</span>`;
+                slotsList.innerHTML = `<span style="color: #166534; font-weight: 500;">All ${maxSlots} configured session slots available on this date (${dateVal}).</span>`;
             } else {
                 slotsList.innerHTML = `
                     <div style="margin-bottom: 6px; font-weight: 600; color: #475569;">${availSlots} of ${maxSlots} slots available for this date:</div>
@@ -6502,6 +6550,18 @@ window.initPartySearchCombobox = function(comboboxEl, residentsList) {
         hideInlineWarning();
         hiddenId.value = res.resident_id;
         if (hiddenName) hiddenName.value = res.name;
+
+        // Persist the resident profile's Purok alongside the selected ID. The
+        // complaint form posts these hidden fields to the server; previously
+        // the visual profile populated but its Purok value was never mapped.
+        const purokFieldId = partyRole === 'complainant'
+            ? 'complainantPurok'
+            : (partyRole === 'respondent' ? 'respondentPurok' : '');
+        const purokField = purokFieldId ? document.getElementById(purokFieldId) : null;
+        if (purokField) {
+            purokField.value = String(res.purok || '').trim();
+            purokField.dispatchEvent(new Event('change', { bubbles: true }));
+        }
 
         const displayLabel = res.display_name || res.name;
         searchInput.value = displayLabel;
@@ -8271,7 +8331,7 @@ window.initMediationDocketScheduler = function(options) {
             if (docketEl) {
                 const sessions = data.scheduled_mediations || [];
                 if (sessions.length === 0) {
-                    docketEl.innerHTML = `<span style="color: #166534; font-weight: 500; font-size: 0.82rem;">✓ All 8 session slots available on this date (${dateVal}).</span>`;
+                    docketEl.innerHTML = `<span style="color: #166534; font-weight: 500; font-size: 0.82rem;">✓ All ${max} configured session slots available on this date (${dateVal}).</span>`;
                 } else {
                     docketEl.innerHTML = sessions.map(s => {
                         const qStatus = s.queue_status || s.status || 'Waiting';

@@ -1499,6 +1499,13 @@ class CaseStage
         $venue = !empty($data['venue']) ? trim($data['venue']) : 'Lupon Court Room';
 
         if ($conciliationDate) {
+            $conciliationDow = (int) (new DateTimeImmutable($conciliationDate))->format('N');
+            if (!in_array($conciliationDow, [1, 3, 4, 5], true)) {
+                return [
+                    'success' => false,
+                    'message' => 'Conciliation hearings may be scheduled only on Monday, Wednesday, Thursday, or Friday.'
+                ];
+            }
             $hearingTimeStr = $conciliationTime ? date('H:i', strtotime($conciliationTime)) : '09:00';
             require_once __DIR__ . '/Summons.php';
             $summonsModel = new Summons($this->conn);

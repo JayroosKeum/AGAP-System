@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../services/MediationDeadlineService.php';
 
 class Settlement
 {
@@ -229,8 +230,9 @@ class Settlement
             return ['success' => false, 'message' => 'Detailed settlement agreement terms are required.'];
         }
 
-        // RA 7160 Sec. 418 uses ten calendar days, counted from settlement Day 0.
-        $repudiationDeadline = (new DateTimeImmutable($settlementDate))->modify('+10 days')->format('Y-m-d');
+        // The workspace uses the statutory ten-working-day countdown and the
+        // same holiday-aware calculation as the transmittal workflow.
+        $repudiationDeadline = MediationDeadlineService::calculateBusinessDays($settlementDate, 10);
         $sixMonthDeadline = (new DateTimeImmutable($settlementDate))->modify('+6 months')->format('Y-m-d');
         $awardType = in_array($data['award_type'] ?? '', ['Amicable Settlement', 'Arbitration Award'], true)
             ? $data['award_type'] : 'Amicable Settlement';

@@ -194,6 +194,9 @@ class Report
                  ORDER BY h.hearing_date ASC"
             );
             $calendarHearings = $calendarHearingsStmt->fetchAll(PDO::FETCH_ASSOC);
+            $calendarPaanyayas = $this->getCalendarPaanyayaItems();
+            $calendarHearings = array_merge($calendarHearings, $calendarPaanyayas);
+            usort($calendarHearings, static fn(array $a, array $b): int => strcmp((string) $a['hearing_date'], (string) $b['hearing_date']));
 
             $walkinsTodayStmt = $this->conn->prepare(
                 "SELECT (
@@ -514,6 +517,9 @@ class Report
              ORDER BY h.hearing_date ASC"
         );
         $calendarHearings = $calendarHearingsStmt->fetchAll(PDO::FETCH_ASSOC);
+        $calendarPaanyayas = $this->getCalendarPaanyayaItems();
+        $calendarHearings = array_merge($calendarHearings, $calendarPaanyayas);
+        usort($calendarHearings, static fn(array $a, array $b): int => strcmp((string) $a['hearing_date'], (string) $b['hearing_date']));
 
         $walkinsStmt = $this->conn->prepare(
             "SELECT (
@@ -571,6 +577,52 @@ class Report
             'cases' => $casesList,
             'analytics' => $this->getAnalyticsSummary($startDate, $endDate),
         ];
+    }
+
+    /** Calendar uses one event shape for formal hearings and Paanyaya sessions. */
+    private function getCalendarPaanyayaItems(): array
+    {
+        $stmt = $this->conn->query("\n            SELECT CONCAT('paanyaya-', ps.session_id) AS hearing_id,
+                   c.case_id, 'Paanyaya' AS hearing_type,
+                   CONCAT(ps.scheduled_date, ' ', COALESCE(ps.scheduled_time, '09:00:00')) AS hearing_date,
+                   ps.venue, COALESCE(ps.status, 'Scheduled') AS status,
+                   COALESCE(ps.queue_status, 'Waiting') AS queue_status,
+                   ps.actual_start_time, NULL AS complainant_attendance, NULL AS respondent_attendance,
+                   ps.session_remarks AS attendance_notes, ps.attempt_number AS mediation_attempt,
+                   COALESCE(ps.queue_order, 0) AS queue_order,
+                   co.complaint_id, COALESCE(c.case_number, co.complaint_number) AS case_number,
+                   co.complaint_title,
+                   COALESCE(p.complainant_name, '') AS complainant_names,
+                   COALESCE(ps.invitee_name, p.invitee_name, '') AS respondent_names
+            FROM paanyaya_sessions ps
+            INNER JOIN complaints co ON co.complaint_id = ps.complaint_id
+            LEFT JOIN cases c ON c.complaint_id = co.complaint_id
+            LEFT JOIN paanyayas p ON p.complaint_id = co.complaint_id
+                AND p.paanyaya_id = (SELECT MAX(p2.paanyaya_id) FROM paanyayas p2 WHERE p2.complaint_id = co.complaint_id)
+            WHERE COALESCE(ps.status, 'Scheduled') NOT IN ('Cancelled', 'Completed')
+              AND COALESCE(ps.queue_status, 'Waiting') <> 'Concluded'
+            ORDER BY ps.scheduled_date ASC, ps.scheduled_time ASC\n        ");
+        $sessionItems = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+        // Stand-alone invitations (not yet mirrored to paanyaya_sessions)
+        // must also appear on the dashboard calendar.
+        $inviteStmt = $this->conn->query("\n            SELECT CONCAT('paanyaya-invitation-', p.paanyaya_id) AS hearing_id,
+                   c.case_id, 'Paanyaya' AS hearing_type,
+                   CONCAT(p.scheduled_date, ' ', COALESCE(p.scheduled_time, '09:00:00')) AS hearing_date,
+                   p.venue, COALESCE(p.status, 'Scheduled') AS status,
+                   'Waiting' AS queue_status, NULL AS actual_start_time,
+                   NULL AS complainant_attendance, NULL AS respondent_attendance,
+                   NULL AS attendance_notes, 1 AS mediation_attempt, 0 AS queue_order,
+                   co.complaint_id, COALESCE(c.case_number, co.complaint_number) AS case_number,
+                   co.complaint_title, COALESCE(p.complainant_name, '') AS complainant_names,
+                   COALESCE(p.invitee_name, '') AS respondent_names
+            FROM paanyayas p
+            LEFT JOIN complaints co ON co.complaint_id = p.complaint_id
+            LEFT JOIN cases c ON c.complaint_id = co.complaint_id
+            WHERE COALESCE(p.status, 'Scheduled') NOT IN ('Cancelled', 'Completed')
+              AND NOT EXISTS (SELECT 1 FROM paanyaya_sessions ps WHERE ps.complaint_id = p.complaint_id)
+            ORDER BY p.scheduled_date ASC, p.scheduled_time ASC\n        ");
+        $invitationItems = $inviteStmt ? $inviteStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+        return array_merge($sessionItems, $invitationItems);
     }
 
     /**
