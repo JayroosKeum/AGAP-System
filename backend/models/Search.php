@@ -25,35 +25,41 @@ class Search
         $statuses = ['Filed', 'Under Review', 'Needs Information', 'Accepted', 'Rejected', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Dismissed', 'CFA Issued', 'Archived', 'Pre-Docketed (Paanyaya)', 'Resolved at Paanyaya / Closed'];
         $filterStatus = $filters['status'] ?? '';
 
-        if ($filterStatus === 'Paanyaya' || $filterStatus === 'Pre-Docketed (Paanyaya)' || $filterStatus === 'Pending') {
-            $where[] = "(c.case_id IS NULL AND (co.status = 'Pre-Docketed (Paanyaya)' OR co.status = 'Resolved at Paanyaya / Closed' OR co.status LIKE '%Paanyaya%' OR co.status NOT IN ('Mediation','Conciliation','CFA Issued','Settled','Dismissed','Archived','Arbitration','Rejected')))";
-        } elseif ($filterStatus === 'Resolution / Closed') {
-            $where[] = "(EXISTS (SELECT 1 FROM settlements s_closed WHERE s_closed.case_id = c.case_id)
-                OR EXISTS (SELECT 1 FROM arbitration_records ar_closed WHERE ar_closed.case_id = c.case_id)
-                OR c.case_status IN ('Settled','Dismissed','Archived','Arbitration','DISMISSED_BARRED','RESPONDENT_DEFAULT')
-                OR co.status IN ('Settled','Dismissed','Archived','Arbitration','Rejected','DISMISSED_BARRED','RESPONDENT_DEFAULT','Resolved at Paanyaya / Closed'))";
-        } elseif ($filterStatus === 'Under Review') {
-            $where[] = "(c.case_id IS NULL AND co.status IN ('Filed', 'Under Review', 'Needs Information', 'Accepted') AND co.status NOT IN ('Dismissed', 'Rejected', 'Settled'))";
-        } elseif ($filterStatus === 'Docketed') {
-            $where[] = "(c.case_id IS NOT NULL OR c.case_status = 'Docketed' OR co.status = 'Docketed')";
-        } elseif ($filterStatus === 'Mediation') {
-            $where[] = "(EXISTS (SELECT 1 FROM hearings h_m WHERE h_m.case_id = c.case_id AND h_m.hearing_type = 'Mediation') OR c.case_status IN ('Mediation', 'Docketed') OR co.status IN ('Mediation', 'Docketed', 'Accepted', 'Filed'))";
-        } elseif ($filterStatus === 'Conciliation') {
-            $where[] = "(EXISTS (SELECT 1 FROM hearings h_c WHERE h_c.case_id = c.case_id AND h_c.hearing_type = 'Conciliation') OR c.case_status = 'Conciliation' OR co.status = 'Conciliation')";
-        } elseif ($filterStatus === 'Arbitration') {
-            $where[] = "(EXISTS (SELECT 1 FROM arbitration_records ar WHERE ar.case_id = c.case_id) OR EXISTS (SELECT 1 FROM hearings h_a WHERE h_a.case_id = c.case_id AND h_a.hearing_type = 'Arbitration') OR c.case_status = 'Arbitration' OR co.status = 'Arbitration')";
-        } elseif ($filterStatus === 'Settled') {
-            $where[] = "(EXISTS (SELECT 1 FROM settlements s WHERE s.case_id = c.case_id) OR c.case_status = 'Settled' OR co.status = 'Settled')";
-        } elseif ($filterStatus === 'Dismissed') {
-            $where[] = "(c.case_status = 'Dismissed' OR co.status IN ('Dismissed', 'Rejected'))";
-        } elseif (in_array($filterStatus, ['CFA', 'CFA Issued'], true)) {
-            $where[] = "(EXISTS (SELECT 1 FROM cfa_records cfa WHERE cfa.case_id = c.case_id) OR c.case_status = 'CFA Issued' OR co.status = 'CFA Issued')";
-        } elseif ($filterStatus === 'in_progress') {
-            $where[] = "(c.case_status IN ('Docketed', 'Mediation', 'Conciliation', 'Arbitration') OR EXISTS (SELECT 1 FROM hearings h_prog WHERE h_prog.case_id = c.case_id) OR (c.case_id IS NULL AND co.status IN ('Accepted', 'Mediation', 'Conciliation')))";
-        } elseif (in_array($filterStatus, $statuses, true)) {
-            $where[] = '(c.case_status = :case_status OR (c.case_id IS NULL AND co.status = :complaint_status))';
-            $params[':case_status'] = $filterStatus;
-            $params[':complaint_status'] = $filterStatus;
+        if ($filterStatus === 'Archived') {
+            $where[] = "(c.case_status = 'Archived' OR co.status = 'Archived')";
+        } else {
+            $where[] = "(co.status != 'Archived' AND (c.case_status IS NULL OR c.case_status != 'Archived'))";
+
+            if ($filterStatus === 'Paanyaya' || $filterStatus === 'Pre-Docketed (Paanyaya)' || $filterStatus === 'Pending') {
+                $where[] = "(c.case_id IS NULL AND (co.status = 'Pre-Docketed (Paanyaya)' OR co.status = 'Resolved at Paanyaya / Closed' OR co.status LIKE '%Paanyaya%' OR co.status NOT IN ('Mediation','Conciliation','CFA Issued','Settled','Dismissed','Archived','Arbitration','Rejected')))";
+            } elseif ($filterStatus === 'Resolution / Closed') {
+                $where[] = "(EXISTS (SELECT 1 FROM settlements s_closed WHERE s_closed.case_id = c.case_id)
+                    OR EXISTS (SELECT 1 FROM arbitration_records ar_closed WHERE ar_closed.case_id = c.case_id)
+                    OR c.case_status IN ('Settled','Dismissed','Arbitration','DISMISSED_BARRED','RESPONDENT_DEFAULT')
+                    OR co.status IN ('Settled','Dismissed','Arbitration','Rejected','DISMISSED_BARRED','RESPONDENT_DEFAULT','Resolved at Paanyaya / Closed'))";
+            } elseif ($filterStatus === 'Under Review') {
+                $where[] = "(c.case_id IS NULL AND co.status IN ('Filed', 'Under Review', 'Needs Information', 'Accepted') AND co.status NOT IN ('Dismissed', 'Rejected', 'Settled'))";
+            } elseif ($filterStatus === 'Docketed') {
+                $where[] = "(c.case_id IS NOT NULL OR c.case_status = 'Docketed' OR co.status = 'Docketed')";
+            } elseif ($filterStatus === 'Mediation') {
+                $where[] = "(EXISTS (SELECT 1 FROM hearings h_m WHERE h_m.case_id = c.case_id AND h_m.hearing_type = 'Mediation') OR c.case_status IN ('Mediation', 'Docketed') OR co.status IN ('Mediation', 'Docketed', 'Accepted', 'Filed'))";
+            } elseif ($filterStatus === 'Conciliation') {
+                $where[] = "(EXISTS (SELECT 1 FROM hearings h_c WHERE h_c.case_id = c.case_id AND h_c.hearing_type = 'Conciliation') OR c.case_status = 'Conciliation' OR co.status = 'Conciliation')";
+            } elseif ($filterStatus === 'Arbitration') {
+                $where[] = "(EXISTS (SELECT 1 FROM arbitration_records ar WHERE ar.case_id = c.case_id) OR EXISTS (SELECT 1 FROM hearings h_a WHERE h_a.case_id = c.case_id AND h_a.hearing_type = 'Arbitration') OR c.case_status = 'Arbitration' OR co.status = 'Arbitration')";
+            } elseif ($filterStatus === 'Settled') {
+                $where[] = "(EXISTS (SELECT 1 FROM settlements s WHERE s.case_id = c.case_id) OR c.case_status = 'Settled' OR co.status = 'Settled')";
+            } elseif ($filterStatus === 'Dismissed') {
+                $where[] = "(c.case_status = 'Dismissed' OR co.status IN ('Dismissed', 'Rejected'))";
+            } elseif (in_array($filterStatus, ['CFA', 'CFA Issued'], true)) {
+                $where[] = "(EXISTS (SELECT 1 FROM cfa_records cfa WHERE cfa.case_id = c.case_id) OR c.case_status = 'CFA Issued' OR co.status = 'CFA Issued')";
+            } elseif ($filterStatus === 'in_progress') {
+                $where[] = "(c.case_status IN ('Docketed', 'Mediation', 'Conciliation', 'Arbitration') OR EXISTS (SELECT 1 FROM hearings h_prog WHERE h_prog.case_id = c.case_id) OR (c.case_id IS NULL AND co.status IN ('Accepted', 'Mediation', 'Conciliation')))";
+            } elseif (in_array($filterStatus, $statuses, true)) {
+                $where[] = '(c.case_status = :case_status OR (c.case_id IS NULL AND co.status = :complaint_status))';
+                $params[':case_status'] = $filterStatus;
+                $params[':complaint_status'] = $filterStatus;
+            }
         }
 
         $intakeFilter = trim((string)($filters['intake_status'] ?? ''));
@@ -258,18 +264,22 @@ class Search
 
         // Aggregate labels for tag/pill rendering
         $labels = [];
-        if ($stage !== 'None') {
-            $labels[] = $stage;
-        }
-
-        if ($disposition === 'Amicable Settlement') {
-            $labels[] = 'Amicable Settlement';
-        } elseif ($disposition === 'Certificate to File Action (CFA)') {
-            $labels[] = 'CFA';
-        } elseif ($disposition === 'Arbitration Award') {
-            $labels[] = 'Arbitration Award';
-        } elseif ($disposition === 'Dismissed / Dropped') {
-            $labels[] = 'Dismissed';
+        if ($caseStatus === 'Archived' || $complaintStatus === 'Archived') {
+            $labels[] = 'Archived';
+        } elseif ($disposition !== 'Pending') {
+            if ($disposition === 'Amicable Settlement') {
+                $labels[] = 'Amicable Settlement';
+            } elseif ($disposition === 'Certificate to File Action (CFA)') {
+                $labels[] = 'CFA';
+            } elseif ($disposition === 'Arbitration Award') {
+                $labels[] = 'Arbitration Award';
+            } elseif ($disposition === 'Dismissed / Dropped') {
+                $labels[] = 'Dismissed';
+            }
+        } else {
+            if ($stage !== 'None') {
+                $labels[] = $stage;
+            }
         }
 
         return [

@@ -152,11 +152,13 @@ async function loadHearingMinutesDocuments(hearingId) {
 
                                     </a>
 
+                                    ${!stageWorkspaceState.readOnly ? `
                                     <button type="button" onclick="deleteHearingMinutesDocument(${d.id}, ${d.hearing_id})" style="padding: 2px 6px; background: #fff; border: 1px solid #fca5a5; border-radius: 4px; color: #dc2626; cursor: pointer; font-size: 0.72rem; font-weight: 700;" title="Alisin ang attachment">
 
                                         &times;
 
                                     </button>
+                                    ` : ''}
 
                                 </div>
 
@@ -375,13 +377,54 @@ let stageWorkspaceState = {
 
 };
 
-const WORKSPACE_FINAL_CASE_STATUSES = new Set(['Settled', 'Resolved', 'Completed', 'Dismissed', 'Archived', 'CFA Issued', 'Repudiated']);
-const WORKSPACE_FINAL_STAGE_STATUSES = new Set(['Completed', 'Settled', 'Resolved', 'Dismissed', 'Archived', 'CFA Issued', 'Repudiated']);
+const WORKSPACE_FINAL_CASE_STATUSES = new Set([
+    'Settled', 'Resolved', 'Completed', 'Dismissed', 'Archived',
+    'CFA Issued', 'For CFA', 'Repudiated', 'Arbitration', 'Arbitration Award',
+    'Closed', 'Endorsed to Court', 'Certified'
+]);
+const WORKSPACE_FINAL_STAGE_STATUSES = new Set([
+    'Completed', 'Settled', 'Resolved', 'Dismissed', 'Archived',
+    'CFA Issued', 'For CFA', 'Repudiated', 'Arbitration Award', 'Closed'
+]);
 
 function isWorkspaceReadOnly(stage = null) {
-    const caseStatus = String(stageWorkspaceState.stageData?.case?.case_status || stageWorkspaceState.stageData?.case?.status || '').trim();
+    const caseData = stageWorkspaceState.stageData?.case || {};
+    const caseStatus = String(caseData.case_status || caseData.status || '').trim();
     const stageStatus = String(stage?.stage_status || '').trim();
-    return WORKSPACE_FINAL_CASE_STATUSES.has(caseStatus) || WORKSPACE_FINAL_STAGE_STATUSES.has(stageStatus);
+    const stageOutcome = String(stage?.outcome || stage?.stage_outcome || '').trim();
+    const currentMode = String(stageWorkspaceState.mode || '').trim();
+
+    if (WORKSPACE_FINAL_CASE_STATUSES.has(caseStatus) || WORKSPACE_FINAL_STAGE_STATUSES.has(stageStatus)) {
+        return true;
+    }
+
+    if (stageWorkspaceState.stageData?.settlement || stageWorkspaceState.stageData?.cfa) {
+        return true;
+    }
+
+    if (['Settled', 'Dismissed', 'Arbitration Award', 'Repudiated'].includes(stageOutcome)) {
+        return true;
+    }
+
+    if (currentMode === 'Mediation') {
+        if (['Referred to Pangkat', 'Conciliation', 'Unsuccessful'].includes(stageStatus) ||
+            ['Elevate to Pangkat', 'Referred to Pangkat', 'Unsuccessful'].includes(stageOutcome)) {
+            return true;
+        }
+        const caseStage = String(caseData.current_stage || '').trim();
+        if (['Conciliation', 'Pangkat', 'Arbitration'].includes(caseStage)) {
+            return true;
+        }
+    }
+
+    if (currentMode === 'Conciliation') {
+        if (['Arbitration', 'Pending CFA'].includes(stageStatus) ||
+            ['Arbitration', 'Unsuccessful'].includes(stageOutcome)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 function guardWorkspaceMutation() {
@@ -427,7 +470,11 @@ function applyWorkspaceReadOnlyState(stage) {
     banner.textContent = 'Read-only record: this case has concluded. Session details and documents remain available for review and printing.';
     content.prepend(banner);
     content.querySelectorAll('input, select, textarea, button').forEach((el) => {
-        if (el.matches('.ws-session-page-tab') || el.dataset.readonlyExempt === 'true' || /print|preview|download|close|cancel/i.test(`${el.id} ${el.textContent}`)) return;
+        if (
+            el.matches('.ws-session-page-tab, .session-minutes-tab, [data-readonly-exempt="true"]') ||
+            el.dataset.readonlyExempt === 'true' ||
+            /print|preview|download|close|cancel|view/i.test(`${el.id} ${el.textContent}`)
+        ) return;
         el.disabled = true;
         el.setAttribute('aria-disabled', 'true');
         el.title = 'Read-only: this case has concluded.';
@@ -1280,8 +1327,6 @@ function populateLuponDropdowns() {
 
 function checkUrlHashAction() {
 
-    if (stageWorkspaceState.readOnly) return;
-
     const urlParams = new URLSearchParams(window.location.search);
 
     const action = urlParams.get('action') || window.location.hash.replace('#', '');
@@ -1300,7 +1345,14 @@ function checkUrlHashAction() {
 
         }
 
-
+        if (stageWorkspaceState.readOnly) {
+            if (action === 'minutes' || action === 'minutesSection') {
+                document.getElementById('minutesSection')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } else if (action === 'attendance' || action === 'attendanceSection') {
+                document.getElementById('attendanceSection')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            return;
+        }
 
         if (action === 'schedule') {
 
@@ -1588,7 +1640,7 @@ function switchActiveSession(hearingId) {
     openAttendanceModal(hId, false);
 
     renderMinutesSection(data, stage || {});
-
+    applyWorkspaceReadOnlyState(stage || {});
 }
 
 window.switchActiveSession = switchActiveSession;
@@ -2471,15 +2523,15 @@ function renderSessionsList(data, stage) {
 
                         ` : ''}
 
-                        <button type="button" class="btn-secondary" onclick="openAttendanceModal(${s.hearing_id})" style="font-size: 0.78rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 4px;">
+                        <button type="button" class="btn-secondary" data-readonly-exempt="true" onclick="openAttendanceModal(${s.hearing_id})" style="font-size: 0.78rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 4px;">
 
-                            Detailed Attendance
+                            ${stageWorkspaceState.readOnly ? 'View Attendance' : 'Detailed Attendance'}
 
                         </button>
 
-                        <button type="button" class="btn-secondary" onclick="selectInlineMinutesSession(${s.hearing_id})" style="font-size: 0.78rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 4px; ${hasMinutes ? 'border-color: #86efac; background: #f0fdf4;' : ''}">
+                        <button type="button" class="btn-secondary" data-readonly-exempt="true" onclick="selectInlineMinutesSession(${s.hearing_id})" style="font-size: 0.78rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 4px; ${hasMinutes ? 'border-color: #86efac; background: #f0fdf4;' : ''}">
 
-                            ${hasMinutes ? 'Edit Minutes' : 'Add Minutes'}
+                            ${stageWorkspaceState.readOnly ? 'View Minutes' : (hasMinutes ? 'Edit Minutes' : 'Add Minutes')}
 
                         </button>
 
@@ -2497,9 +2549,9 @@ function renderSessionsList(data, stage) {
 
                     const elapsedMins = (!isNaN(dateObj.getTime()) && nowObj > dateObj) ? Math.floor((nowObj - dateObj) / 60000) : 0;
 
-                    const isGraceExpired = (!isConcluded && !isInSession && !isReady && !isStandby && elapsedMins >= 60);
+                    const isGraceExpired = (!stageWorkspaceState.readOnly && !isConcluded && !isInSession && !isReady && !isStandby && elapsedMins >= 60);
 
-                    const isGraceActive = (!isConcluded && !isInSession && !isReady && !isStandby && elapsedMins > 0 && elapsedMins < 60);
+                    const isGraceActive = (!stageWorkspaceState.readOnly && !isConcluded && !isInSession && !isReady && !isStandby && elapsedMins > 0 && elapsedMins < 60);
 
 
 
@@ -3772,19 +3824,25 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                     </div>
 
-                    <div style="display: flex; gap: 8px;">
+                    <div style="display: flex; gap: 8px; align-items: center;">
 
-                        <button type="button" class="btn-secondary" onclick="renderMinutesSection(stageWorkspaceState.stageData, stageWorkspaceState.stageData?.mediation || {})" style="font-size: 0.84rem; padding: 7px 14px;">
+                        ${(stageWorkspaceState.readOnly || readonlyAttr) ? `
+                            <span class="badge-stage" style="background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; font-size: 0.82rem; padding: 6px 14px; border-radius: 6px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">
+                                🔒 Read-Only Session Record
+                            </span>
+                        ` : `
+                            <button type="button" class="btn-secondary" onclick="renderMinutesSection(stageWorkspaceState.stageData, stageWorkspaceState.stageData?.mediation || {})" style="font-size: 0.84rem; padding: 7px 14px;">
 
-                            Reset
+                                Reset
 
-                        </button>
+                            </button>
 
-                        <button type="button" class="btn-create" id="btnSaveMinutesDraft_${hId}" onclick="saveHearingMinutes('Draft', ${hId})" style="font-size: 0.84rem; padding: 7px 16px; background: #0284c7; border-color: #0284c7;">
+                            <button type="button" class="btn-create" id="btnSaveMinutesDraft_${hId}" onclick="saveHearingMinutes('Draft', ${hId})" style="font-size: 0.84rem; padding: 7px 16px; background: #0284c7; border-color: #0284c7;">
 
-                            Save
+                                Save
 
-                        </button>
+                            </button>
+                        `}
 
                     </div>
 
@@ -4345,6 +4403,11 @@ function selectInlineMinutesSession(hearingId) {
 
         openAttendanceModal(targetId, false);
 
+    }
+
+    if (stageWorkspaceState.readOnly) {
+        const modeKey = (stageWorkspaceState.mode || 'Mediation').toLowerCase();
+        applyWorkspaceReadOnlyState(stageWorkspaceState.stageData?.[modeKey] || {});
     }
 
 }
@@ -6591,6 +6654,10 @@ async function openAttendanceModal(hearingId, shouldScroll = true) {
                 el.disabled = true;
                 el.setAttribute('aria-disabled', 'true');
             });
+            const attSaveBtn = target?.querySelector('#btnSaveAttendance, button[type="submit"]');
+            if (attSaveBtn) {
+                attSaveBtn.style.display = 'none';
+            }
         }
 
     } catch (err) {

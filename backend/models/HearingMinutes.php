@@ -85,7 +85,7 @@ class HearingMinutes
             return ['success' => false, 'message' => 'Specified hearing session record was not found.'];
         }
 
-        $finalCaseStatuses = ['Settled', 'Resolved', 'Completed', 'Dismissed', 'Archived', 'CFA Issued', 'Repudiated'];
+        $finalCaseStatuses = ['Settled', 'Resolved', 'Completed', 'Dismissed', 'Archived', 'CFA Issued', 'For CFA', 'Repudiated', 'Arbitration', 'Arbitration Award', 'Closed', 'Endorsed to Court', 'Certified'];
         if (in_array((string) $hearing['case_status'], $finalCaseStatuses, true)
             || in_array((string) ($hearing['queue_status'] ?? ''), ['Concluded', 'Completed'], true)
             || in_array((string) ($hearing['status'] ?? ''), ['Completed', 'Concluded'], true)) {

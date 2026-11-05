@@ -266,7 +266,7 @@ class HearingAttendance
             return ['success' => false, 'message' => 'Hearing not found.'];
         }
 
-        if (in_array((string) $hearing['case_status'], ['Settled', 'Resolved', 'Completed', 'Dismissed', 'Archived', 'CFA Issued', 'Repudiated'], true)
+        if (in_array((string) $hearing['case_status'], ['Settled', 'Resolved', 'Completed', 'Dismissed', 'Archived', 'CFA Issued', 'For CFA', 'Repudiated', 'Arbitration', 'Arbitration Award', 'Closed', 'Endorsed to Court', 'Certified'], true)
             || in_array((string) ($hearing['status'] ?? ''), ['Completed', 'Concluded'], true)
             || in_array((string) ($hearing['queue_status'] ?? ''), ['Concluded', 'Completed'], true)) {
             return ['success' => false, 'message' => 'This concluded case or hearing session is read-only; attendance cannot be changed.'];

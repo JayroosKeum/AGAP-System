@@ -4558,8 +4558,22 @@ input[data-ai-external-consent]:focus {
 }
 
 .case-outcome-readonly > :not(.case-outcome-readonly-banner) {
-    filter: grayscale(0.35);
-    opacity: 0.68;
+    opacity: 0.95;
+}
+
+.case-outcome-readonly .operational-card,
+.case-outcome-readonly .hearing-session-card,
+.case-outcome-readonly .session-card,
+.case-outcome-readonly .table,
+.case-outcome-readonly a,
+.case-outcome-readonly button[onclick*="openHearingSessionDetails"],
+.case-outcome-readonly button[onclick*="openSessionDocumentsDrawer"],
+.case-outcome-readonly button[onclick*="openSummonsPreviewModal"],
+.case-outcome-readonly button[onclick*="openKp"],
+.case-outcome-readonly button[onclick*="switchCaseTab"] {
+    filter: none !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
 }
 
 .case-outcome-readonly-banner {

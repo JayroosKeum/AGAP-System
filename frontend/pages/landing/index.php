@@ -177,12 +177,6 @@ declare(strict_types=1);
                 </span>
             </a>
 
-            <!-- Quick Navigation Links -->
-            <div class="landing-nav-links">
-                <a href="#process" class="landing-nav-link" data-i18n="nav.process">Hakbang sa Pagdulog</a>
-                <a href="#services" class="landing-nav-link" data-i18n="nav.services">Mga Serbisyo</a>
-            </div>
-
             <!-- Header Actions: Language Switcher & Staff Sign-in -->
             <div class="landing-nav-actions">
                 <!-- Accessible Language Switcher Group -->
@@ -229,7 +223,6 @@ declare(strict_types=1);
                     Isang malinaw at maasahang pampublikong plataporma para sa pamamahala ng mga idinudulog na sumbong, paunang paanyaya, pagdinig ng Lupon, at mapayapang pagkakasundo sa Barangay Tumana.
                 </p>
                 <div class="hero-actions">
-                    <a href="#process" class="landing-cta-guide" data-i18n="hero.cta_guide">Gabay sa Pagdulog</a>
                     <a href="../auth/login.php" class="landing-cta" data-i18n="hero.cta_login">Pag-login ng Kawani</a>
                     <span class="hero-note" data-i18n="hero.for_residents">Para sa mga mamamayan ng Barangay Tumana</span>
                 </div>
@@ -276,104 +269,6 @@ declare(strict_types=1);
             </aside>
             <div class="hero-orb hero-orb-one" aria-hidden="true"></div>
             <div class="hero-orb hero-orb-two" aria-hidden="true"></div>
-        </section>
-
-        <!-- ========================================================================= -->
-        <!-- PUBLIC GRIEVANCE INSTRUCTIONS (HAKBANG SA PAGDULOG) -->
-        <!-- ========================================================================= -->
-        <section id="process" class="grievance-guide-section" aria-labelledby="guide-title">
-            <div class="section-heading">
-                <div>
-                    <p class="landing-kicker" data-i18n="guide.kicker">Alituntunin at Pamamaraan</p>
-                    <h2 id="guide-title" data-i18n="guide.title">Paano Magdulog ng Sumbong o Reklamo?</h2>
-                </div>
-                <p data-i18n="guide.subtitle">
-                    Sundin ang apat na mahahalagang yugto ng Katarungang Pambarangay para sa mapayapang pagkakaayos:
-                </p>
-            </div>
-
-            <div class="guide-grid">
-                <article class="guide-card">
-                    <span class="guide-badge" data-i18n="guide.step1_badge">Yugto 0 · Paunang Pag-uusap</span>
-                    <h3 data-i18n="guide.step1_title">1. Paanyaya (Informal Dialogue)</h3>
-                    <p data-i18n="guide.step1_desc">
-                        Bago pormal na mag-isyu ng summons, nagpapadala muna ang Barangay ng Paanyaya para sa magalang at pribadong pag-uusap ng magkabilang panig sa Tanggapan ng Punong Barangay.
-                    </p>
-                </article>
-
-                <article class="guide-card">
-                    <span class="guide-badge" data-i18n="guide.step2_badge">Yugto 1 · Pagpapasya ng Punong Barangay</span>
-                    <h3 data-i18n="guide.step2_title">2. Pormal na Mediation</h3>
-                    <p data-i18n="guide.step2_desc">
-                        Kung hindi naayos sa paanyaya o hindi sumipot ang inirereklamo, pormal na idodoket ang kaso at mag-iisyu ng Pormal na Patawag (Summons - KP Form 9) para sa pagdinig sa ilalim ng Punong Barangay.
-                    </p>
-                </article>
-
-                <article class="guide-card">
-                    <span class="guide-badge" data-i18n="guide.step3_badge">Yugto 2 · Pangkat Tagapagkasundo</span>
-                    <h3 data-i18n="guide.step3_title">3. Conciliation ng Pangkat</h3>
-                    <p data-i18n="guide.step3_desc">
-                        Kapag hindi nagkasundo sa Mediation sa loob ng 15 araw, bubuuin ang tatlong (3) kasapi ng Pangkat Tagapagkasundo mula sa Lupon upang ipagpatuloy ang pag-uusap.
-                    </p>
-                </article>
-
-                <article class="guide-card">
-                    <span class="guide-badge" data-i18n="guide.step4_badge">Yugto 3 · Pinal na Desisyon</span>
-                    <h3 data-i18n="guide.step4_title">4. Kasunduan o Sertipikasyon (CFA)</h3>
-                    <p data-i18n="guide.step4_desc">
-                        Kapag nagkasundo, pipirma sa Kasunduan (Amicable Settlement - KP Form 16) na may bisa ng hatol ng hukuman. Kung mabigo matapos ang lahat ng yugto, mag-iisyu ng Certificate to File Action (CFA).
-                    </p>
-                </article>
-            </div>
-        </section>
-
-        <!-- ========================================================================= -->
-        <!-- CORE SERVICES & LUPON CAPABILITIES -->
-        <!-- ========================================================================= -->
-        <section id="services" class="landing-features" aria-labelledby="features-title">
-            <div class="section-heading">
-                <div>
-                    <p class="landing-kicker" data-i18n="services.kicker">Mga Kakayahan ng Plataporma</p>
-                    <h2 id="features-title" data-i18n="services.title">Maayos na Sistema sa Bawat Hakbang</h2>
-                </div>
-                <p data-i18n="services.subtitle">
-                    Pinag-uugnay ang buong daloy ng Katarungang Pambarangay mula sa pagtanggap ng salaysay hanggang sa pinal na kasulatan.
-                </p>
-            </div>
-            <div class="feature-grid">
-                <article class="feature-card">
-                    <span class="feature-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24"><path d="M7 3.75h7l4.25 4.5v12H7a2 2 0 0 1-2-2v-12a2.5 2.5 0 0 1 2-2.5Z"/><path d="M14 4v5h4M8.5 13h7M8.5 16.5h7"/></svg>
-                    </span>
-                    <span class="feature-number" data-i18n="services.card1_num">01 / PAGTANGGAP NG SUMBONG</span>
-                    <h3 data-i18n="services.card1_title">Maagap na Case Intake</h3>
-                    <p data-i18n="services.card1_desc">Mabilis at organisadong pagtatala ng mga detalye ng reklamo, lokasyon ng insidente, at pagkakakilanlan ng mga mamamayan.</p>
-                </article>
-                <article class="feature-card">
-                    <span class="feature-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24"><path d="M12 21s7-3.5 7-9V5l-7-2-7 2v7c0 5.5 7 9 7 9Z"/><path d="m9 12 2 2 4-4"/></svg>
-                    </span>
-                    <span class="feature-number" data-i18n="services.card2_num">02 / PAANYAYA AT MEDIATION</span>
-                    <h3 data-i18n="services.card2_title">Maayos na Pagdinig</h3>
-                    <p data-i18n="services.card2_desc">Pagtatakda ng mga sesyon, pagbabantay sa mga statutory deadline, at pagpapadala ng opisyal na paanyaya at summons sa tulong ng mga kawani.</p>
-                </article>
-                <article class="feature-card">
-                    <span class="feature-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24"><path d="M6 3.75h8l4 4v12.5H6a2 2 0 0 1-2-2v-12.5a2 2 0 0 1 2-2Z"/><path d="M14 4v4h4M8 13h8M8 16.5h5"/></svg>
-                    </span>
-                    <span class="feature-number" data-i18n="services.card3_num">03 / DOKUMENTASYON NG KP</span>
-                    <h3 data-i18n="services.card3_title">Opisyal na KP Forms</h3>
-                    <p data-i18n="services.card3_desc">Awtomatikong paggawa at pag-iingat ng mga legal na dokumento alinsunod sa Local Government Code (RA 7160).</p>
-                </article>
-                <article class="feature-card">
-                    <span class="feature-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24"><path d="M4 19.5V12M10 19.5V5M16 19.5V9M22 19.5V3"/></svg>
-                    </span>
-                    <span class="feature-number" data-i18n="services.card4_num">04 / TRANSPARENCY AT ULAT</span>
-                    <h3 data-i18n="services.card4_title">Ulat at Pananagutan</h3>
-                    <p data-i18n="services.card4_desc">Malinaw na pagsubaybay sa kalagayan ng bawat kaso upang matiyak na bawat mamamayan ay nabibigyan ng patas at agarang aksyon.</p>
-                </article>
-            </div>
         </section>
 
         <!-- Bottom City of Marikina Seal Strip -->

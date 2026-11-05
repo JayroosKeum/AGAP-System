@@ -801,19 +801,37 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
         // 5. Actions
+        const isDisposedOrClosed = Boolean(
+            (row.final_disposition && row.final_disposition !== 'Pending') ||
+            ['Settled', 'Dismissed', 'Archived', 'CFA Issued', 'Arbitration Award', 'Resolved at Paanyaya / Closed'].includes(row.case_status) ||
+            ['Settled', 'Dismissed', 'Archived', 'Rejected', 'CFA Issued', 'Arbitration Award', 'Resolved at Paanyaya / Closed'].includes(row.status) ||
+            ['Settled', 'Dismissed', 'Archived', 'Rejected', 'CFA Issued', 'Arbitration Award', 'Resolved at Paanyaya / Closed'].includes(row.complaint_status) ||
+            row.lifecycle_status === 'Resolution / Closed' ||
+            row.lifecycle_status === 'CFA'
+        );
+        const isArchived = row.status === 'Archived' || row.case_status === 'Archived' || row.complaint_status === 'Archived';
+
+        const editBtnHtml = !isDisposedOrClosed
+            ? `<button type="button" class="btn-row-action" onclick="window.location.href='complaint-edit.php?id=${id}'" title="Edit complaint">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                    Edit
+                </button>`
+            : '';
+
+        const archiveBtnHtml = !isArchived
+            ? `<button type="button" class="btn-row-action btn-archive-action" onclick="archiveComplaint(${id})" title="Archive complaint">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
+                </button>`
+            : '';
+
         const actionsHtml = Number.isInteger(id) && id > 0
             ? `<div class="table-actions-group">
                 <button type="button" class="btn-row-action btn-view-action" onclick="window.location.href='complaint-details.php?id=${id}'" title="View full details">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                     View
                 </button>
-                <button type="button" class="btn-row-action" onclick="window.location.href='complaint-edit.php?id=${id}'" title="Edit complaint">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                    Edit
-                </button>
-                <button type="button" class="btn-row-action btn-archive-action" onclick="archiveComplaint(${id})" title="Archive complaint">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
-                </button>
+                ${editBtnHtml}
+                ${archiveBtnHtml}
                </div>`
             : '';
 

@@ -199,11 +199,18 @@ function canAccessTab(tabId, caseStatus, stageProgress) {
     const lifecycle = progress.lifecycle_status || complaint.lifecycle_status || '';
     const caseId = complaint.case_id || complaint.case_workspace?.case?.case_id || (new URLSearchParams(window.location.search)).get('case_id');
 
-    if (complaint.status === 'Dismissed' || cStatus === 'Dismissed') {
+    const hasCaseOrSessions = Boolean(
+        caseId ||
+        complaint.case_workspace?.hearings?.length ||
+        (stages.mediation?.sessions && stages.mediation.sessions.length) ||
+        (stages.conciliation?.sessions && stages.conciliation.sessions.length)
+    );
+
+    if ((complaint.status === 'Dismissed' || cStatus === 'Dismissed') && !hasCaseOrSessions) {
         return {
             allowed: false,
             prerequisite: 'Paanyaya',
-            message: 'Ang reklamo ay opisyal nang na-dismiss. Hindi na maaaring buksan ang mga susunod na yugto.'
+            message: 'Ang reklamo ay opisyal nang na-dismiss sa yugto ng Paanyaya. Hindi na maaaring buksan ang mga susunod na yugto.'
         };
     }
 
@@ -1470,10 +1477,25 @@ function renderCaseWorkspace(workspace, complaint) {
         hasSettledSession
     );
 
-    // A completed disposition closes the workflow record.  Keep its history
-    // visible, but prevent changes outside the Outcome tab where the final
-    // record is managed.
-    const outcomeLocked = Boolean(isSettledCase || isCfa || isArbitration);
+    const isDismissedCase = Boolean(
+        complaint?.status === 'Dismissed' ||
+        complaint?.case_status === 'Dismissed' ||
+        caseData?.case_status === 'Dismissed' ||
+        med?.stage_status === 'Dismissed' ||
+        con?.stage_status === 'Dismissed'
+    );
+    const isClosedCase = Boolean(
+        complaint?.status === 'Closed' ||
+        complaint?.status === 'Completed' ||
+        complaint?.status === 'Resolved' ||
+        caseData?.case_status === 'Closed' ||
+        caseData?.case_status === 'Completed' ||
+        caseData?.case_status === 'Resolved'
+    );
+
+    // A completed disposition closes the workflow record. Keep its session history
+    // and documents viewable and openable, but prevent mutations outside the Outcome tab.
+    const outcomeLocked = Boolean(isSettledCase || isCfa || isArbitration || isRepudiated || isDismissedCase || isClosedCase);
     applyOutcomeReadOnlyLock(outcomeLocked);
 
     const tabLabel = document.getElementById('tabOutcomesLabel');
@@ -3234,25 +3256,85 @@ function applyOutcomeReadOnlyLock(isLocked) {
             const banner = document.createElement('div');
             banner.className = 'case-outcome-readonly-banner';
             banner.setAttribute('role', 'note');
-            banner.innerHTML = '<strong>Case finalized — view only.</strong><span>This workflow has reached its outcome. Records remain available here; use the Outcome tab for any permitted action.</span>';
+            banner.innerHTML = '<strong>Case finalized — view only.</strong><span>This case has reached its final outcome. All hearing sessions, statements, minutes, and documents remain openable and viewable below.</span>';
             pane.prepend(banner);
         } else if (!isLocked && existingBanner) {
             existingBanner.remove();
+        }
+
+        // Hide mutation buttons in read-only panes while keeping session links and viewers active
+        if (isLocked) {
+            pane.querySelectorAll(
+                'button[onclick*="openEmbeddedScheduleModal"], ' +
+                'button[onclick*="openEmbeddedStageOutcomeModal"], ' +
+                'button[onclick*="openScheduleModal"], ' +
+                'button[onclick*="openRecordOutcomeModal"], ' +
+                'button[onclick*="openReferPangkatModal"], ' +
+                'button[onclick*="handleDocketStandby"], ' +
+                'button[onclick*="handleDocketCheckIn"], ' +
+                'button[onclick*="handleDocketNonAppearance"], ' +
+                'button[onclick*="openKp7UploadScanModal"]'
+            ).forEach(btn => {
+                btn.style.display = 'none';
+                btn.disabled = true;
+            });
         }
     });
 }
 
 document.addEventListener('click', (event) => {
     if (!window.__agapCaseOutcomeLocked) return;
-    if (event.target.closest('#statusTrackerButton, #editComplaintBtn')) {
+
+    // Disallow editing complaint details in header
+    if (event.target.closest('#editComplaintBtn, [data-readonly-action="block"]')) {
         event.preventDefault();
         event.stopImmediatePropagation();
+        if (typeof showToast === 'function') {
+            showToast('This case has concluded and is read-only.', 'info');
+        }
         return;
     }
+
     const readOnlyPane = event.target.closest('.case-outcome-readonly');
     if (!readOnlyPane) return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
+
+    // Explicitly allow view, navigation, modal, and drawer actions
+    const isAllowedAction = event.target.closest(
+        'a, ' + // Hyperlinks: Open 1st Mediation ->, Open Pangkat Workspace ->, PDF download, View documents
+        'button[onclick*="openHearingSessionDetails"], ' + // View Session details modal
+        'button[onclick*="openSessionDocumentsDrawer"], ' + // Session documents drawer
+        'button[onclick*="openSummonsPreviewModal"], ' + // Summons preview
+        'button[onclick*="openKp"], ' + // KP Forms preview / print
+        'button[onclick*="Preview"], ' + // Preview buttons
+        'button[onclick*="Print"], ' + // Print buttons
+        'button[onclick*="print"], ' +
+        'button[onclick*="close"], ' + // Close buttons on modals
+        'button.close-btn, ' +
+        '[data-readonly-exempt="true"], ' +
+        '.case-tab, ' + // Case tabs
+        '.tab-button, ' +
+        '#tabOverviewBtn, #tabMediationBtn, #tabConciliationBtn, #tabArbitrationBtn, #tabOutcomesBtn'
+    );
+
+    if (isAllowedAction) {
+        return;
+    }
+
+    // Intercept mutating buttons and controls inside the read-only tab pane
+    const isMutationAction = event.target.closest(
+        'button[onclick*="Schedule"], button[onclick*="Outcome"], button[onclick*="Refer"], ' +
+        'button[onclick*="Standby"], button[onclick*="CheckIn"], button[onclick*="NonAppearance"], ' +
+        'button[onclick*="Upload"], button[onclick*="delete"], button[onclick*="Edit"], ' +
+        'button.btn-create, input, select, textarea, form'
+    );
+
+    if (isMutationAction) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (typeof showToast === 'function') {
+            showToast('Case finalized: session records are view-only and cannot be modified.', 'info');
+        }
+    }
 }, true);
 
 async function openSessionDocumentsDrawer(hearingId, caseId, sessionLabel) {
@@ -3262,6 +3344,10 @@ async function openSessionDocumentsDrawer(hearingId, caseId, sessionLabel) {
     document.getElementById('sessionDocumentsHearingId').value = hearingId;
     document.getElementById('sessionDocumentsCaseId').value = caseId;
     document.getElementById('sessionDocumentsTitle').textContent = `${sessionLabel || 'Hearing Session'} Documents`;
+    const uploadBox = modal.querySelector('.session-documents-upload-box');
+    if (uploadBox) {
+        uploadBox.style.display = window.__agapCaseOutcomeLocked ? 'none' : 'flex';
+    }
     document.getElementById('sessionDocumentsList').innerHTML = '<p style="margin:0; color:#64748b; font-size:.86rem;">Loading documents…</p>';
     modal.style.display = 'flex';
     await loadSessionDocuments(hearingId);
@@ -3297,7 +3383,7 @@ async function loadSessionDocuments(hearingId) {
                 </div>
                 <div class="session-document-actions">
                     <a href="../../../${escapeHtml(document.file_path || '')}" target="_blank" rel="noopener">View</a>
-                    <button type="button" onclick="deleteSessionDocument(${Number(document.id)}, ${Number(hearingId)})">Remove</button>
+                    ${!window.__agapCaseOutcomeLocked ? `<button type="button" onclick="deleteSessionDocument(${Number(document.id)}, ${Number(hearingId)})">Remove</button>` : ''}
                 </div>
             </div>`;
         }).join('');
@@ -3313,6 +3399,11 @@ async function uploadSessionDocuments(input) {
     }
     const hearingId = Number(document.getElementById('sessionDocumentsHearingId')?.value || 0);
     const caseId = Number(document.getElementById('sessionDocumentsCaseId')?.value || 0);
+    if (window.__agapCaseOutcomeLocked) {
+        if (typeof showToast === 'function') showToast('Case finalized: uploads are disabled.', 'warning');
+        input.value = '';
+        return;
+    }
     const type = document.getElementById('sessionDocumentsType')?.value || 'evidence_attachment';
     if (!input.files?.length || !hearingId || !caseId) return;
 
@@ -3350,6 +3441,10 @@ async function uploadSessionDocuments(input) {
 window.uploadSessionDocuments = uploadSessionDocuments;
 
 async function deleteSessionDocument(documentId, hearingId) {
+    if (window.__agapCaseOutcomeLocked) {
+        if (typeof showToast === 'function') showToast('Case finalized: document removal is disabled.', 'warning');
+        return;
+    }
     if (!confirm('Remove this session document?')) return;
     const formData = new FormData();
     formData.append('action', 'delete');
@@ -7037,6 +7132,15 @@ async function openHearingSessionDetails(hearingId) {
                 Open Pangkat Workspace &rarr;
             </a>
         `;
+    } else if (isArbitration) {
+        actionButtonsHtml += `
+            <button type="button" class="btn-case-primary" onclick="switchCaseTab('tab-arbitration'); closeSessionProcessDetailsModal();" style="font-size: 0.82rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 5px;">
+                View Arbitration Tab &rarr;
+            </button>
+            <a href="../cases/arbitration-workspace.php?case_id=${encodeURIComponent(stageCaseId || '')}&hearing_id=${encodeURIComponent(hearingId)}" class="btn-secondary" style="font-size: 0.82rem; padding: 6px 14px; text-decoration: none;">
+                Open Arbitration Workspace &rarr;
+            </a>
+        `;
     } else {
         actionButtonsHtml += `
             <a href="../hearings/schedules.php?case_id=${encodeURIComponent(stageCaseId || '')}&hearing_id=${encodeURIComponent(hearingId)}" class="btn-secondary" style="font-size: 0.82rem; padding: 6px 14px; text-decoration: none;">
@@ -10581,7 +10685,7 @@ function renderArbitrationProgressiveWorkspace(workspace, complaint, caseId) {
                                     </td>
                                     <td style="padding: 10px 14px; text-align: right;">
                                         <a href="../cases/arbitration-workspace.php?case_id=${encodeURIComponent(activeCaseId)}&hearing_id=${encodeURIComponent(h.hearing_id)}#minutesSection" class="btn-case-outline" style="font-size: 0.76rem; padding: 4px 10px; text-decoration: none;">
-                                            Conduct / Minutes &rarr;
+                                            ${hasAward ? 'View Minutes &amp; Proceedings &rarr;' : 'Conduct / Minutes &rarr;'}
                                         </a>
                                     </td>
                                 </tr>
@@ -10590,11 +10694,13 @@ function renderArbitrationProgressiveWorkspace(workspace, complaint, caseId) {
                     </tbody>
                 </table>
             </div>
+            ${!hasAward ? `
             <div style="margin-top: 10px; display: flex; justify-content: flex-end;">
                 <button type="button" class="btn-secondary" onclick="openEmbeddedScheduleModal('Arbitration')" style="font-size: 0.8rem; padding: 6px 14px;">
                     + Schedule Another Arbitration Hearing
                 </button>
             </div>
+            ` : ''}
         `;
     }
 
