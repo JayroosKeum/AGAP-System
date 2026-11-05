@@ -118,9 +118,18 @@ class Database {
                 $v = trim($v, " \t\n\r\0\x0B\"'");
                 if ($k !== '') {
                     self::$envValues[$k] = $v;
-                    putenv("$k=$v");
-                    $_ENV[$k] = $v;
-                    $_SERVER[$k] = $v;
+
+                    // Web-server configuration (for example Apache SetEnv) is
+                    // deployment-specific and must take precedence over local
+                    // .env defaults. Overwriting it here made HTTP requests use
+                    // the local database even when the virtual host supplied the
+                    // Azure database credentials.
+                    $serverValue = $_SERVER[$k] ?? ($_ENV[$k] ?? getenv($k));
+                    if (!is_string($serverValue) || $serverValue === '') {
+                        putenv("$k=$v");
+                        $_ENV[$k] = $v;
+                        $_SERVER[$k] = $v;
+                    }
                 }
             }
         }
@@ -129,13 +138,13 @@ class Database {
     private function environment(string $name, string $default): string
     {
         $this->loadEnv();
-        if (array_key_exists($name, self::$envValues)) {
-            return self::$envValues[$name];
-        }
         $value = getenv($name);
         if (!is_string($value) || $value === '') {
             $value = $_ENV[$name] ?? ($_SERVER[$name] ?? '');
         }
-        return is_string($value) && $value !== '' ? $value : $default;
+        if (is_string($value) && $value !== '') {
+            return $value;
+        }
+        return self::$envValues[$name] ?? $default;
     }
 }

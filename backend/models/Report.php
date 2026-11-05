@@ -585,7 +585,7 @@ class Report
         $stmt = $this->conn->query("\n            SELECT CONCAT('paanyaya-', ps.session_id) AS hearing_id,
                    c.case_id, 'Paanyaya' AS hearing_type,
                    CONCAT(ps.scheduled_date, ' ', COALESCE(ps.scheduled_time, '09:00:00')) AS hearing_date,
-                   ps.venue, COALESCE(ps.status, 'Scheduled') AS status,
+                   ps.venue, COALESCE(p.status, 'Scheduled') AS status,
                    COALESCE(ps.queue_status, 'Waiting') AS queue_status,
                    ps.actual_start_time, NULL AS complainant_attendance, NULL AS respondent_attendance,
                    ps.session_remarks AS attendance_notes, ps.attempt_number AS mediation_attempt,
@@ -599,7 +599,7 @@ class Report
             LEFT JOIN cases c ON c.complaint_id = co.complaint_id
             LEFT JOIN paanyayas p ON p.complaint_id = co.complaint_id
                 AND p.paanyaya_id = (SELECT MAX(p2.paanyaya_id) FROM paanyayas p2 WHERE p2.complaint_id = co.complaint_id)
-            WHERE COALESCE(ps.status, 'Scheduled') NOT IN ('Cancelled', 'Completed')
+            WHERE COALESCE(p.status, 'Scheduled') NOT IN ('Cancelled', 'Completed')
               AND COALESCE(ps.queue_status, 'Waiting') <> 'Concluded'
             ORDER BY ps.scheduled_date ASC, ps.scheduled_time ASC\n        ");
         $sessionItems = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];

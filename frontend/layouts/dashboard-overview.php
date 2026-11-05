@@ -40,8 +40,8 @@
         <?php if (in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2, 5], true)): ?>
         <!-- ── Top Report & Export Action Dropdowns ────────────────── -->
         <div class="dashboard-report-actions">
-            <!-- Dedicated 1-Click Monthly Council Meeting Brief Button -->
-            <button type="button" class="btn-report-dropdown" id="btnOneClickCouncilBrief" style="background: #0f172a; color: #ffffff; border-color: #0f172a;" title="Generate 1-Page Printable Executive Summary for the Monthly Barangay Council Assembly">
+            <!-- Council Brief is now available in Generate Report. -->
+            <button type="button" class="btn-report-dropdown legacy-report-control" id="btnOneClickCouncilBrief" style="background: #0f172a; color: #ffffff; border-color: #0f172a;" title="Generate 1-Page Printable Executive Summary for the Monthly Barangay Council Assembly">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
                 <span>1-Click Council Brief</span>
             </button>
@@ -54,43 +54,38 @@
                     <svg class="dropdown-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
                 </button>
                 <div class="dash-dropdown-menu" id="menuGenerateReport" role="menu">
-                    <button type="button" class="dash-dropdown-item" id="itemPreviewReport" role="menuitem">
+                    <p class="dash-dropdown-label">Official KP Reports</p>
+                    <button type="button" class="dash-dropdown-item official-report-launch" data-report-type="certificate" role="menuitem">Certificate to File Action Cases</button>
+                    <button type="button" class="dash-dropdown-item official-report-launch" data-report-type="monitoring" role="menuitem">KP Monitoring Report</button>
+                    <button type="button" class="dash-dropdown-item official-report-launch" data-report-type="form8" role="menuitem">LTIA Form 8 – KP Case Record and Settlement Log</button>
+                    <button type="button" class="dash-dropdown-item official-report-launch" data-report-type="form6" role="menuitem">LTIA Form 6 – Summary of Cases</button>
+                    <div class="dash-dropdown-separator" role="separator"></div>
+                    <p class="dash-dropdown-label">Other Reports</p>
+                    <button type="button" class="dash-dropdown-item official-report-launch" data-report-type="council-brief" role="menuitem">Council Brief</button>
+                    <div class="dash-dropdown-separator legacy-report-control" role="separator"></div>
+                    <button type="button" class="dash-dropdown-item legacy-report-control" id="itemPreviewReport" role="menuitem">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                         <span>Preview Report</span>
                     </button>
-                    <button type="button" class="dash-dropdown-item" id="itemPrintReport" role="menuitem">
+                    <button type="button" class="dash-dropdown-item legacy-report-control" id="itemPrintReport" role="menuitem">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
                         <span>Print Report</span>
                     </button>
-                    <button type="button" class="dash-dropdown-item" id="itemKpMonitoring" role="menuitem">
+                    <button type="button" class="dash-dropdown-item legacy-report-control" id="itemKpMonitoring" role="menuitem">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
                         <span>KP Monitoring Form</span>
                     </button>
-                    <button type="button" class="dash-dropdown-item" id="itemDilgReport" role="menuitem">
+                    <button type="button" class="dash-dropdown-item legacy-report-control" id="itemDilgReport" role="menuitem">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="M16 13H8"></path><path d="M16 17H8"></path></svg>
                         <span>DILG Report</span>
                     </button>
-                    <button type="button" class="dash-dropdown-item" id="itemCouncilBrief" role="menuitem">
+                    <button type="button" class="dash-dropdown-item legacy-report-control" id="itemCouncilBrief" role="menuitem">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
                         <span>Monthly Council Meeting Brief (1-Page)</span>
                     </button>
                 </div>
             </div>
 
-            <!-- Export Dropdown -->
-            <div class="dash-dropdown" id="dropdownExport">
-                <button type="button" class="btn-report-dropdown btn-export-dropdown" id="btnExportToggle" aria-haspopup="true" aria-expanded="false" title="Export records for the selected period">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                    <span>Export</span>
-                    <svg class="dropdown-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                </button>
-                <div class="dash-dropdown-menu" id="menuExport" role="menu">
-                    <button type="button" class="dash-dropdown-item" id="itemExportRegister" role="menuitem">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="16" y2="17"></line></svg>
-                        <span>Export Case Register (Excel)</span>
-                    </button>
-                </div>
-            </div>
         </div>
         <?php endif; ?>
     </div>
@@ -353,6 +348,15 @@
         </div>
     </div>
 
+    <!-- Period selector for the centralized official report menu. -->
+    <div id="officialReportModal" class="report-modal-overlay official-report-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="officialReportModalTitle">
+        <form id="officialReportForm" class="report-modal-container official-report-form">
+            <header class="report-modal-header"><div class="modal-header-info"><span class="report-modal-badge">Official KP Report</span><h2 id="officialReportModalTitle" class="report-modal-title"></h2><p id="officialReportDescription" class="report-modal-sub"></p></div><button type="button" id="officialReportClose" class="btn-modal-close" aria-label="Close">&times;</button></header>
+            <div class="report-modal-body official-report-body"><input type="hidden" id="officialReportType" name="report_type"><div class="official-report-grid"><label>Month<select id="officialReportMonth" name="month" required></select></label><label>Year<input id="officialReportYear" name="year" type="number" min="2000" max="2100" required></label></div><div id="officialMonitoringFields" hidden><div class="official-report-grid"><label>Reporting Quarter<select id="officialReportQuarter" name="quarter"><option value="1">Quarter 1</option><option value="2">Quarter 2</option><option value="3">Quarter 3</option><option value="4">Quarter 4</option></select></label><label>Date Accomplished<input id="officialReportDateAccomplished" name="date_accomplished" type="date"></label></div><fieldset><legend>Covering Months</legend><div id="officialReportMonths" class="official-month-checks"></div></fieldset></div></div>
+            <footer class="report-modal-footer"><button type="button" id="officialReportCancel" class="btn-modal-close-footer">Cancel</button><button type="submit" class="btn-modal-action btn-modal-print">Generate Report</button></footer>
+        </form>
+    </div>
+
     <!-- ── KP Monitoring Form Modal Overlay ───────────────────────── -->
     <div id="kpMonitoringModal" class="report-modal-overlay kp-modal-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="kpDocTitle">
         <div class="report-modal-container kp-modal-container">
@@ -363,10 +367,6 @@
                     <p class="report-modal-sub">Summary of Cases Filed and Actions Taken (Editable &amp; Printable)</p>
                 </div>
                 <div class="report-modal-actions">
-                    <button type="button" id="kpExportExcelBtn" class="btn-modal-action btn-modal-export" title="Export this KP Monitoring Form to Excel (.xlsx)">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="16" y2="17"></line></svg>
-                        <span>Export to Excel (.xlsx)</span>
-                    </button>
                     <button type="button" id="kpPrintBtn" class="btn-modal-action btn-modal-print" title="Print this official form">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
                         <span>Print Form</span>

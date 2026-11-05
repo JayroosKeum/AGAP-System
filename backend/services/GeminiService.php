@@ -5,8 +5,8 @@ require_once __DIR__ . '/../config/gemini.php';
 class GeminiService
 {
     private string $apiKey = '';
-    private string $model = 'gemini-2.5-flash';
-    private array $fallbackModels = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
+    private string $model = 'gemini-3.8-flash';
+    private array $fallbackModels = ['gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
 
     public function __construct(?string $model = null, ?string $apiKey = null)
     {
@@ -20,11 +20,25 @@ class GeminiService
     }
 
     /**
-     * Resolves the Gemini API Key from database settings, .env, environment, or constant.
+     * Resolves the Gemini API key from deployment configuration first, followed by
+     * legacy database and local-development settings. A server secret must always
+     * win over a value that an administrator may have stored in the database.
      */
     public function resolveApiKey(): string
     {
-        // 1. Check system_settings in database
+        // 1. Production environment (Apache/FPM/Docker/secret manager).
+        $envKey = (string) (getenv('GEMINI_API_KEY') ?: ($_ENV['GEMINI_API_KEY'] ?? ($_SERVER['GEMINI_API_KEY'] ?? '')));
+        if (trim($envKey) !== '') {
+            return trim($envKey);
+        }
+
+        // 2. Check defined constant for hosts that load backend/config/gemini.php.
+        if (defined('GEMINI_API_KEY') && GEMINI_API_KEY !== '') {
+            return trim((string) GEMINI_API_KEY);
+        }
+
+        // 3. Legacy database setting. New production deployments should use a
+        // server-side secret instead, so the key is not persisted in application data.
         if (file_exists(__DIR__ . '/../models/Setting.php')) {
             require_once __DIR__ . '/../models/Setting.php';
             try {
@@ -37,13 +51,7 @@ class GeminiService
             }
         }
 
-        // 2. Check getenv / $_ENV / $_SERVER
-        $envKey = (string)(getenv('GEMINI_API_KEY') ?: ($_ENV['GEMINI_API_KEY'] ?? ($_SERVER['GEMINI_API_KEY'] ?? '')));
-        if (trim($envKey) !== '') {
-            return trim($envKey);
-        }
-
-        // 3. Check .env file directly if not loaded into environment
+        // 4. Local-development fallback. The .env file is ignored by Git.
         $envPath = dirname(__DIR__, 2) . '/.env';
         if (file_exists($envPath)) {
             $lines = @file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
@@ -61,16 +69,11 @@ class GeminiService
             }
         }
 
-        // 4. Check defined constant
-        if (defined('GEMINI_API_KEY') && GEMINI_API_KEY !== '') {
-            return (string)GEMINI_API_KEY;
-        }
-
         return '';
     }
 
     /**
-     * Resolves default model from system settings or falls back to gemini-2.5-flash.
+     * Resolves default model from system settings or falls back to Gemini 3.8 Flash.
      */
     public function resolveModel(): string
     {
@@ -84,7 +87,7 @@ class GeminiService
             } catch (Throwable $t) {}
         }
 
-        return 'gemini-2.5-flash';
+        return 'gemini-3.8-flash';
     }
 
     public function getApiKey(): string
@@ -177,8 +180,9 @@ class GeminiService
             $lastError = $result['message'] ?? 'API error';
             $lastStatus = $result['http_status'] ?? 0;
 
-            // Only retry if it's a 404 (model not found), 400 (unsupported model version), or 429 (rate-limited)
-            if (!in_array($lastStatus, [400, 404, 429], true)) {
+            // Retry only when the selected model is unavailable. Retrying a 429
+            // consumes no useful capacity and can delay every AI screen.
+            if (!in_array($lastStatus, [400, 404], true)) {
                 break;
             }
         }
@@ -197,7 +201,23 @@ class GeminiService
     {
         $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . urlencode($modelName) . ':generateContent';
 
+        $jsonPayload = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($jsonPayload === false) {
+            return [
+                'success' => false,
+                'message' => 'Unable to encode the Gemini request payload.',
+                'http_status' => 0,
+            ];
+        }
+
         $ch = curl_init($url);
+        if ($ch === false) {
+            return [
+                'success' => false,
+                'message' => 'Unable to initialize the Gemini connection.',
+                'http_status' => 0,
+            ];
+        }
         $curlOptions = [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST => true,
@@ -205,7 +225,7 @@ class GeminiService
                 'Content-Type: application/json',
                 'x-goog-api-key: ' . $this->apiKey
             ],
-            CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            CURLOPT_POSTFIELDS => $jsonPayload,
             CURLOPT_CONNECTTIMEOUT => 12,
             CURLOPT_TIMEOUT => 65,
             CURLOPT_SSL_VERIFYPEER => true

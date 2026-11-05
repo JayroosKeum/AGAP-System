@@ -277,19 +277,27 @@ class SettingsController
     {
         $key = trim((string)$apiKey);
         if ($key === '' || str_contains($key, '••••')) {
-            $key = (string)$this->model->get('gemini_api_key', '');
-            if ($key === '') {
-                require_once __DIR__ . '/../services/GeminiService.php';
-                $key = (new GeminiService())->resolveApiKey();
-            }
+            require_once __DIR__ . '/../services/GeminiService.php';
+            $key = (new GeminiService())->resolveApiKey();
         }
 
         if ($key === '') {
-            return ['success' => false, 'message' => 'Gemini API Key is empty. Please enter an API key first or configure GEMINI_API_KEY in your .env file.'];
+            return ['success' => false, 'message' => 'Gemini API key is empty. Configure GEMINI_API_KEY in the server environment or enter a key to test it.'];
         }
 
-        $configuredModel = (string)$this->model->get('gemini_model', 'gemini-3.5-flash');
-        $modelsToTry = array_values(array_unique(array_filter([$configuredModel, 'gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.5-flash'])));
+        if (!function_exists('curl_init')) {
+            return ['success' => false, 'message' => 'PHP cURL extension is required for Gemini AI operations.'];
+        }
+
+        $configuredModel = (string)$this->model->get('gemini_model', 'gemini-3.8-flash');
+        $modelsToTry = array_values(array_unique(array_filter([
+            $configuredModel,
+            'gemini-3.8-flash',
+            'gemini-3.5-flash',
+            'gemini-3.5-flash-lite',
+            'gemini-2.5-flash',
+            'gemini-2.5-flash-lite',
+        ])));
 
         $payload = json_encode([
             'contents' => [

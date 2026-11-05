@@ -4873,7 +4873,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const statusBanner = data.extraction_source === 'gemini_ai'
             ? `<div style="background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; padding:6px 12px; border-radius:6px; font-size:0.78rem; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                <span>Document processed with <strong>Google Gemini AI</strong> (${escapeHtml(data.model_used || 'gemini-2.5-flash')}).</span>
+                <span>Document processed with <strong>Google Gemini AI</strong> (${escapeHtml(data.model_used || 'gemini-3.8-flash')}).</span>
                </div>`
             : `<div style="background:#fef3c7; border:1px solid #fde68a; color:#92400e; padding:6px 12px; border-radius:6px; font-size:0.78rem; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
