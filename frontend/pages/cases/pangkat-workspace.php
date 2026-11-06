@@ -2,14 +2,24 @@
 
 session_start();
 
-if (!isset($_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2, 3], true)) {
-    die('Access Denied');
+if (!isset($_SESSION['user_id'], $_SESSION['role_id'])) {
+    header('Location: ../auth/login.php?error=login_required');
+    exit;
+}
+
+$roleId = (int) $_SESSION['role_id'];
+if ($roleId === 4) {
+    header('Location: ../gps/proof-service.php');
+    exit;
+}
+if (!in_array($roleId, [1, 2, 3], true)) {
+    http_response_code(403);
+    exit('Access denied for this role.');
 }
 
 require_once __DIR__ . '/../../../backend/config/database.php';
 $db = (new Database())->connect();
 
-$roleId = (int) ($_SESSION['role_id'] ?? 0);
 $canAuthorizePastDate = $roleId === 1;
 $caseId = filter_var($_GET['case_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 $complaintId = filter_var($_GET['complaint_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);

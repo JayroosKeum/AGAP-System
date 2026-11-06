@@ -2,8 +2,19 @@
 
 session_start();
 
-if (!isset($_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2, 3], true)) {
-    die('Access Denied');
+if (!isset($_SESSION['user_id'], $_SESSION['role_id'])) {
+    header('Location: ../auth/login.php?error=login_required');
+    exit;
+}
+
+$roleId = (int) $_SESSION['role_id'];
+if ($roleId === 4) {
+    header('Location: ../gps/proof-service.php');
+    exit;
+}
+if (!in_array($roleId, [1, 2, 3], true)) {
+    http_response_code(403);
+    exit('Access denied for this role.');
 }
 
 require_once __DIR__ . '/../../../backend/config/database.php';

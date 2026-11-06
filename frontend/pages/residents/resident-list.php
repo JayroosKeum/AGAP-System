@@ -5,13 +5,6 @@ session_start();
 header('Location: ../complaints/complaint-list.php');
 exit;
 
-if (
-    !isset($_SESSION['role_id']) ||
-    !in_array($_SESSION['role_id'], [1, 2])
-) {
-    die('Access Denied');
-}
-
 include '../../layouts/header.php';
 ?>
 
