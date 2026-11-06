@@ -2,19 +2,26 @@
 
 session_start();
 
-if (
-    !isset($_SESSION['role_id']) ||
-    !in_array((int)$_SESSION['role_id'], [1, 2, 3], true)
-) {
-    if ((int)($_SESSION['role_id'] ?? 0) === 4) {
-        header('Location: ../gps/proof-service.php');
-        exit;
-    }
-    http_response_code(403);
-    die('Access Denied');
+// A direct workspace URL may be opened after a session expires. Redirect to
+// sign-in instead of rendering a bare denial page. Case detail access itself
+// remains limited to the roles that handle the case workflow.
+if (!isset($_SESSION['user_id'], $_SESSION['role_id'])) {
+    header('Location: ../auth/login.php?error=login_required');
+    exit;
 }
 
-$roleId = (int) ($_SESSION['role_id'] ?? 0);
+$roleId = (int) $_SESSION['role_id'];
+if ($roleId === 4) {
+    // Summons Servers work from Proof of Service, not the full complaint
+    // workspace. This keeps case data scoped to their assigned field role.
+    header('Location: ../gps/proof-service.php');
+    exit;
+}
+if (!in_array($roleId, [1, 2, 3], true)) {
+    http_response_code(403);
+    exit('Access denied for this role.');
+}
+
 $canAuthorizePastDate = $roleId === 1;
 
 if (!isset($_GET['id']) || empty($_GET['id'])) {
