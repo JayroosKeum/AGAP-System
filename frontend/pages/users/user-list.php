@@ -28,7 +28,7 @@ include '../../layouts/header.php';
                 <h1>User Management</h1>
                 <p>Create accounts and assign system roles.</p>
             </div>
-            <button class="btn-create" onclick="openUserModal()">Add User</button>
+            <button type="button" class="btn-create" onclick="openUserModal()">Add User</button>
         </div>
         
         <div class="table-container">
@@ -54,7 +54,7 @@ include '../../layouts/header.php';
     <div class="modal-content">
         <div class="modal-header">
             <h2 id="userModalTitle">Add User</h2>
-            <button class="close-btn" onclick="closeUserModal()">&times;</button>
+            <button type="button" class="close-btn" onclick="closeUserModal()">&times;</button>
         </div>
         
         <form id="userForm" method="POST" action="../../../backend/api/users/create.php">

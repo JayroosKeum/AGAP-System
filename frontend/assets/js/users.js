@@ -66,6 +66,11 @@ function openUserModal() {
     const form = document.getElementById('userForm');
     form.reset();
     form.querySelectorAll('input, select').forEach((field) => field.setCustomValidity(''));
+    form.querySelectorAll('.is-invalid').forEach((field) => field.classList.remove('is-invalid'));
+    form.querySelectorAll('.field-validation-message').forEach((message) => {
+        message.hidden = true;
+        message.textContent = '';
+    });
     form.action = '../../../backend/api/users/create.php';
     document.getElementById('userModalTitle').textContent = 'Add User';
     setAdministratorRoleOption(false);
