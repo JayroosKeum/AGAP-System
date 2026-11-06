@@ -2010,19 +2010,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================================
     const dropdownGenToggle = document.getElementById('btnGenerateReportToggle');
     const menuGenerate = document.getElementById('menuGenerateReport');
-    const dropdownExportToggle = document.getElementById('btnExportToggle');
-    const menuExport = document.getElementById('menuExport');
 
     const closeAllDropdowns = () => {
         if (menuGenerate) menuGenerate.classList.remove('is-open');
-        if (menuExport) menuExport.classList.remove('is-open');
         if (dropdownGenToggle) {
             dropdownGenToggle.setAttribute('aria-expanded', 'false');
             dropdownGenToggle.closest('.dash-dropdown')?.classList.remove('is-open');
-        }
-        if (dropdownExportToggle) {
-            dropdownExportToggle.setAttribute('aria-expanded', 'false');
-            dropdownExportToggle.closest('.dash-dropdown')?.classList.remove('is-open');
         }
     };
 
@@ -2039,18 +2032,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    if (dropdownExportToggle && menuExport) {
-        dropdownExportToggle.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const isOpen = menuExport.classList.contains('is-open');
-            closeAllDropdowns();
-            if (!isOpen) {
-                menuExport.classList.add('is-open');
-                dropdownExportToggle.setAttribute('aria-expanded', 'true');
-                dropdownExportToggle.closest('.dash-dropdown')?.classList.add('is-open');
-            }
-        });
-    }
 
     document.addEventListener('click', (e) => {
         if (!e.target.closest('.dash-dropdown')) {
@@ -2315,36 +2296,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btnOneClickCouncilBrief')?.addEventListener('click', () => openMonthlyCouncilBrief(true));
     document.getElementById('itemCouncilBrief')?.addEventListener('click', () => openMonthlyCouncilBrief(true));
     document.getElementById('btnBulletinCouncilBrief')?.addEventListener('click', () => openMonthlyCouncilBrief(true));
-
-    // Action 4: Export Case Register (Excel .xlsx)
-    const exportRegBtn = document.getElementById('itemExportRegister');
-    if (exportRegBtn) {
-        exportRegBtn.addEventListener('click', async () => {
-            closeAllDropdowns();
-            const ap = state.activePeriodData || {};
-            const payload = {
-                format: 'register_excel',
-                start_date: ap.startDate || '',
-                end_date: ap.endDate || ''
-            };
-            if (window.agapNotify) window.agapNotify('Generating Case Register .xlsx export...', 'info', 'Export');
-            try {
-                const res = await fetch('../../../backend/api/reports/export.php', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                const result = await res.json().catch(() => ({}));
-                if (!res.ok || !result.success) {
-                    throw new Error(result.message || 'Unable to generate Case Register.');
-                }
-                if (window.agapNotify) window.agapNotify(result.message || 'Case Register exported successfully.', 'success', 'Export Complete');
-                window.location.assign(result.download_url);
-            } catch (err) {
-                if (window.agapNotify) window.agapNotify(err.message, 'error', 'Export Failed');
-            }
-        });
-    }
 
     // =========================================================================
     // KP Monitoring Form Modal Logic

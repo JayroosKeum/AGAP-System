@@ -71,10 +71,6 @@
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
                         <span>Print Report</span>
                     </button>
-                    <button type="button" class="dash-dropdown-item legacy-report-control" id="itemKpMonitoring" role="menuitem">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
-                        <span>KP Monitoring Form</span>
-                    </button>
                     <button type="button" class="dash-dropdown-item legacy-report-control" id="itemDilgReport" role="menuitem">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="M16 13H8"></path><path d="M16 17H8"></path></svg>
                         <span>DILG Report</span>
@@ -375,37 +371,6 @@
         </form>
     </div>
 
-    <!-- ── KP Monitoring Form Modal Overlay ───────────────────────── -->
-    <div id="kpMonitoringModal" class="report-modal-overlay kp-modal-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="kpDocTitle">
-        <div class="report-modal-container kp-modal-container">
-            <header class="report-modal-header kp-modal-header-actions">
-                <div class="modal-header-info">
-                    <span class="report-modal-badge">Official Form</span>
-                    <h2 class="report-modal-title">Lupong Tagapamayapa Monitoring Form</h2>
-                    <p class="report-modal-sub">Summary of Cases Filed and Actions Taken (Editable &amp; Printable)</p>
-                </div>
-                <div class="report-modal-actions">
-                    <button type="button" id="kpPrintBtn" class="btn-modal-action btn-modal-print" title="Print this official form">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
-                        <span>Print Form</span>
-                    </button>
-                    <button type="button" id="kpCloseBtn" class="btn-modal-close" aria-label="Close modal">&times;</button>
-                </div>
-            </header>
-
-            <div class="report-modal-body kp-modal-body">
-                <div id="kpLoading" class="report-modal-loading" style="display:none;">
-                    <div class="dash-spinner"></div>
-                    <span>Loading KP Monitoring Form data...</span>
-                </div>
-                <div id="kpPrintableArea" class="kp-sheet"></div>
-            </div>
-
-            <footer class="report-modal-footer">
-                <button type="button" class="btn-modal-close-footer" id="kpCloseFooterBtn">Close</button>
-            </footer>
-        </div>
-    </div>
     <?php endif; ?>
 
     <!-- ── Quick Attendance / Check-In Modal ───────────────────────── -->
