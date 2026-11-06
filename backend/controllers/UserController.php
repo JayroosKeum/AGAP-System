@@ -23,6 +23,9 @@ class UserController {
     {
         $validated = $this->validate($data, false);
         if (!$validated['success']) return $validated;
+        if ((int) $validated['data']['role_id'] === 1) {
+            return ['success' => false, 'message' => 'Creating additional Administrator accounts is not allowed.'];
+        }
         $hasPassword = trim((string) ($validated['data']['password'] ?? '')) !== '';
         $token = bin2hex(random_bytes(32));
         $validated['data']['email_verification_token'] = hash('sha256', $token);
@@ -102,6 +105,7 @@ class UserController {
         $email = trim((string) ($data['email'] ?? ''));
         $contactNo = trim((string) ($data['contact_no'] ?? ''));
         $password = (string) ($data['password'] ?? '');
+        $passwordConfirmation = (string) ($data['password_confirmation'] ?? '');
         $roleId = filter_var($data['role_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 
         if (!ValidationService::name($firstName)) return ['success' => false, 'message' => 'Please enter a valid first name (up to 100 characters).'];
@@ -115,6 +119,8 @@ class UserController {
         if (!$roleId || !$this->user->roleExists((int) $roleId)) return ['success' => false, 'message' => 'Choose a valid role.'];
         if ($passwordRequired && trim($password) === '') return ['success' => false, 'message' => 'Please enter a password for the new user account.'];
         if ($password !== '' && (strlen($password) < 12 || !preg_match('/[a-z]/', $password) || !preg_match('/[A-Z]/', $password) || !preg_match('/\\d/', $password))) return ['success' => false, 'message' => 'Use at least 12 characters with uppercase, lowercase, and a number for the password.'];
+        if ($password !== '' && !hash_equals($password, $passwordConfirmation)) return ['success' => false, 'message' => 'Password confirmation does not match the password.'];
+        if ($password === '' && $passwordConfirmation !== '') return ['success' => false, 'message' => 'Enter a password before confirming it.'];
 
         return ['success' => true, 'data' => ['first_name' => $firstName, 'last_name' => $lastName, 'username' => $username, 'email' => $email, 'contact_no' => $contactNo === '' ? null : $contactNo, 'password' => $password, 'role_id' => (int) $roleId]];
     }

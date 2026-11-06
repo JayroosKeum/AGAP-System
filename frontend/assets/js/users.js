@@ -68,8 +68,11 @@ function openUserModal() {
     form.querySelectorAll('input, select').forEach((field) => field.setCustomValidity(''));
     form.action = '../../../backend/api/users/create.php';
     document.getElementById('userModalTitle').textContent = 'Add User';
+    setAdministratorRoleOption(false);
     document.getElementById('password').required = false;
     document.getElementById('password').value = '';
+    document.getElementById('passwordConfirmation').required = false;
+    document.getElementById('passwordConfirmation').value = '';
     document.getElementById('passwordGroup').style.display = '';
     document.getElementById('passwordHint').textContent = '(optional; leave blank to send verification email)';
     showMessage('');
@@ -84,6 +87,9 @@ function editUser(id) {
     const user = users.find((item) => Number(item.user_id) === Number(id));
     if (!user) return;
     openUserModal();
+    // Keep the current Administrator role selectable only while editing an
+    // existing administrator account; it is never available for new users.
+    setAdministratorRoleOption(Number(user.role_id) === 1);
     document.getElementById('userForm').action = '../../../backend/api/users/update.php';
     document.getElementById('userModalTitle').textContent = 'Edit User';
     document.getElementById('userId').value = user.user_id;
@@ -95,8 +101,22 @@ function editUser(id) {
     document.getElementById('roleId').value = user.role_id;
     document.getElementById('password').required = false;
     document.getElementById('password').value = '';
+    document.getElementById('passwordConfirmation').required = false;
+    document.getElementById('passwordConfirmation').value = '';
     document.getElementById('passwordGroup').style.display = '';
     document.getElementById('passwordHint').textContent = '(leave blank to keep current password)';
+}
+
+function setAdministratorRoleOption(allowAdministrator) {
+    const roleSelect = document.getElementById('roleId');
+    const administratorOption = roleSelect?.querySelector('option[value="1"]');
+    if (!roleSelect || !administratorOption) return;
+
+    administratorOption.hidden = !allowAdministrator;
+    administratorOption.disabled = !allowAdministrator;
+    if (!allowAdministrator && roleSelect.value === '1') {
+        roleSelect.value = '2';
+    }
 }
 
 async function resendVerificationEmail(id) {
@@ -124,6 +144,16 @@ async function saveUser(event) {
         }
         if (field.name === 'contact_no' && !validPhilippinePhone(field.value)) {
             field.setCustomValidity('Enter a valid Philippine mobile or telephone number, such as 09171234567 or +639171234567.');
+        }
+    }
+    const password = document.getElementById('password');
+    const passwordConfirmation = document.getElementById('passwordConfirmation');
+    if (password.value !== '' || passwordConfirmation.value !== '') {
+        if (password.value === '') {
+            password.setCustomValidity('Enter a password before confirming it.');
+        }
+        if (password.value !== passwordConfirmation.value) {
+            passwordConfirmation.setCustomValidity('Password confirmation must match the password.');
         }
     }
     if (!form.reportValidity()) return;

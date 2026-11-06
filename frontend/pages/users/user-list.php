@@ -92,6 +92,11 @@ include '../../layouts/header.php';
                 <label>Password <small id="passwordHint">(optional; leave blank to send verification email)</small></label>
                 <input id="password" type="password" name="password" minlength="12" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9]).{12,}" title="Use at least 12 characters with uppercase, lowercase, and a number.">
             </div>
+            <div class="form-group" id="passwordConfirmationGroup">
+                <label for="passwordConfirmation">Confirm Password</label>
+                <input id="passwordConfirmation" type="password" name="password_confirmation" minlength="12" autocomplete="new-password" title="Re-enter the password exactly.">
+                <small>Required only when an initial password is entered.</small>
+            </div>
             
             <div class="form-group">
                 <label>Role</label>
