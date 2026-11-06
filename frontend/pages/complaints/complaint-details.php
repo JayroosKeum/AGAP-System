@@ -1,17 +1,15 @@
-<?php
+﻿<?php
 
-require_once __DIR__ . '/../../../backend/config/session.php';
+session_start();
 
-$roleId = (int) ($_SESSION['role_id'] ?? 0);
-$userId = (int) ($_SESSION['user_id'] ?? 0);
-
-if ($userId === 0 || $roleId === 0) {
-    $returnUrl = urlencode($_SERVER['REQUEST_URI'] ?? '');
-    header('Location: ../auth/login.php' . ($returnUrl !== '' ? '?return_to=' . $returnUrl : ''));
-    exit;
-}
-
-if (!in_array($roleId, [1, 2, 3, 4], true)) {
+if (
+    !isset($_SESSION['role_id']) ||
+    !in_array((int)$_SESSION['role_id'], [1, 2, 3], true)
+) {
+    if ((int)($_SESSION['role_id'] ?? 0) === 4) {
+        header('Location: ../gps/proof-service.php');
+        exit;
+    }
     http_response_code(403);
     die('Access Denied');
 }

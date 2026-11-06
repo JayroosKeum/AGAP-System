@@ -521,43 +521,9 @@ class Paanyaya
 
         $stmt = $this->conn->prepare($sql);
         $stmt->execute($params);
-        // A dispute is one Paanyaya matter, even when it has a second
-        // invitation. Older records created a second `paanyayas` row for
-        // Attempt 2, while the current workflow stores attempts in
-        // `paanyaya_sessions`. Canonicalise both forms here so the list and
-        // its summary cards never count Attempt 1 as a separate, closed case.
-        $rawRecords = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        $legacySecondPairKeys = [];
-        foreach ($rawRecords as $record) {
-            if ((int) ($record['complaint_id'] ?? 0) <= 0 && (int) ($record['attempt_number'] ?? 1) >= 2) {
-                $legacySecondPairKeys[$this->legacyPaanyayaPairKey($record)] = true;
-            }
-        }
-
-        $canonicalRecords = [];
-        foreach ($rawRecords as $record) {
-            $complaintId = (int) ($record['complaint_id'] ?? 0);
-            if ($complaintId > 0) {
-                $key = 'complaint:' . $complaintId;
-            } else {
-                // Compatibility for old, standalone rows: only combine an
-                // Attempt 1 with the matching old Attempt 2 pair. New rows
-                // never take this path because scheduleSecondPaanyaya now
-                // advances the existing row instead of inserting another.
-                $pairKey = $this->legacyPaanyayaPairKey($record);
-                $key = isset($legacySecondPairKeys[$pairKey])
-                    ? 'legacy-pair:' . $pairKey
-                    : 'paanyaya:' . (int) $record['paanyaya_id'];
-            }
-
-            if (!isset($canonicalRecords[$key]) || $this->isNewerPaanyayaAttempt($record, $canonicalRecords[$key])) {
-                $canonicalRecords[$key] = $record;
-            }
-        }
-
         $records = array_map(
-            fn(array $record): array => $this->withCurrentPaanyayaState($this->withCurrentWorkflow($record)),
-            array_values($canonicalRecords)
+            fn(array $record): array => $this->withCurrentWorkflow($record),
+            $stmt->fetchAll(PDO::FETCH_ASSOC)
         );
 
         if ($status === null || $status === '' || $status === 'all') {
@@ -664,90 +630,6 @@ class Paanyaya
         $record['current_workflow_status'] = $currentStatus;
         $record['current_workflow_stage'] = $stageLabels[$currentStatus] ?? 'Stage 0 · Informal Dialogue';
         $record['has_linked_case_workflow'] = $linkedStatus !== '';
-
-        return $record;
-    }
-
-    /**
-     * Returns true when $candidate is the later invitation for the same
-     * dispute. This also makes existing duplicate legacy rows display as one
-     * matter while they remain in the database for audit/history purposes.
-     */
-    private function isNewerPaanyayaAttempt(array $candidate, array $current): bool
-    {
-        $candidateAttempt = (int) ($candidate['attempt_number'] ?? 1);
-        $currentAttempt = (int) ($current['attempt_number'] ?? 1);
-        if ($candidateAttempt !== $currentAttempt) {
-            return $candidateAttempt > $currentAttempt;
-        }
-
-        $candidateWhen = trim((string) ($candidate['scheduled_date'] ?? '')) . ' ' . trim((string) ($candidate['scheduled_time'] ?? ''));
-        $currentWhen = trim((string) ($current['scheduled_date'] ?? '')) . ' ' . trim((string) ($current['scheduled_time'] ?? ''));
-        if ($candidateWhen !== $currentWhen) {
-            return $candidateWhen > $currentWhen;
-        }
-
-        return (int) ($candidate['paanyaya_id'] ?? 0) > (int) ($current['paanyaya_id'] ?? 0);
-    }
-
-    private function legacyPaanyayaPairKey(array $record): string
-    {
-        $normalise = static fn(mixed $value): string => strtolower(trim((string) preg_replace('/\s+/', ' ', (string) $value)));
-        return $normalise($record['complainant_name'] ?? '') . '|' . $normalise($record['invitee_name'] ?? '');
-    }
-
-    /**
-     * Adds the live, latest Paanyaya attempt to a list record. The original
-     * invitation remains history; it must not make the entire dispute appear
-     * completed when Paanyaya 2 is already pending.
-     */
-    private function withCurrentPaanyayaState(array $record): array
-    {
-        $complaintId = (int) ($record['complaint_id'] ?? 0);
-        if ($complaintId <= 0) {
-            $attempt = max(1, (int) ($record['attempt_number'] ?? 1));
-            $record['attempt_label'] = $attempt === 2 ? '2nd Paanyaya' : '1st Paanyaya';
-            if ($attempt === 2 && empty($record['has_linked_case_workflow'])) {
-                $record['current_workflow_status'] = 'Scheduled';
-                $record['current_workflow_stage'] = 'Stage 0 · 2nd Paanyaya Scheduled';
-            }
-            return $record;
-        }
-
-        $latestSession = $this->getByComplaintId($complaintId);
-        if (!$latestSession) {
-            return $record;
-        }
-
-        $attempt = max(1, (int) ($latestSession['attempt_number'] ?? $record['attempt_number'] ?? 1));
-        $record['attempt_number'] = $attempt;
-        $record['attempt_label'] = $attempt === 2 ? '2nd Paanyaya' : '1st Paanyaya';
-        $record['session_id'] = (int) ($latestSession['session_id'] ?? 0);
-        $record['session_outcome'] = $latestSession['session_outcome'] ?? null;
-
-        // The pending second session is the event staff need to act on, so
-        // make its date/time and issuer the card's current details.
-        if (!empty($latestSession['scheduled_date'])) {
-            $record['scheduled_date'] = $latestSession['scheduled_date'];
-            $record['scheduled_time'] = $latestSession['scheduled_time'] ?? null;
-            $record['scheduled_by_name'] = $latestSession['scheduled_by_name'] ?? ($record['scheduled_by_name'] ?? null);
-        }
-
-        // A formal case status is authoritative once docketing occurred.
-        if (!empty($record['has_linked_case_workflow'])) {
-            return $record;
-        }
-
-        $outcome = (string) ($latestSession['session_outcome'] ?? '');
-        if ($outcome === '') {
-            $record['current_workflow_status'] = 'Scheduled';
-            $record['current_workflow_stage'] = $attempt === 2
-                ? 'Stage 0 · 2nd Paanyaya Scheduled'
-                : 'Stage 0 · 1st Paanyaya Scheduled';
-        } elseif (in_array($outcome, ['Absent_Retry', 'Continued_Dialogue'], true) && $attempt === 1) {
-            $record['current_workflow_status'] = 'Pending';
-            $record['current_workflow_stage'] = 'Stage 0 · 2nd Paanyaya Required';
-        }
 
         return $record;
     }
@@ -3144,96 +3026,42 @@ class Paanyaya
         try {
             $this->conn->beginTransaction();
 
+            // 1. Mark 1st Paanyaya as Completed
+            $updFirst = $this->conn->prepare("
+                UPDATE paanyayas
+                SET complainant_attended = ?,
+                    invitee_attended = ?,
+                    salaysay = ?,
+                    status = 'Completed',
+                    attendance_recorded_at = NOW(),
+                    updated_at = NOW()
+                WHERE paanyaya_id = ?
+            ");
+            $updFirst->execute([$compAttended, $invAttended, $salaysay, $paanyayaId]);
+
+            // 2. Insert 2nd Paanyaya with attempt_number = 2
             $venue = !empty($paanyaya['venue']) ? $paanyaya['venue'] : 'Tanggapan ng Barangay Tumana';
             $complaintId = !empty($paanyaya['complaint_id']) ? (int)$paanyaya['complaint_id'] : null;
-            $attemptOneHistory = sprintf(
-                "[1st Paanyaya — %s %s]\nAttendance: Complainant %s; Invitee %s.%s",
-                (string) ($paanyaya['scheduled_date'] ?? ''),
-                (string) ($paanyaya['scheduled_time'] ?? ''),
-                $compAttended,
-                $invAttended,
-                $salaysay !== '' ? "\nSalaysay: {$salaysay}" : ''
-            );
-            $dialogueHistory = trim((string) ($paanyaya['dialogue_notes'] ?? ''));
-            if ($dialogueHistory === '' || !str_contains($dialogueHistory, '[1st Paanyaya')) {
-                $dialogueHistory = trim($dialogueHistory . "\n\n" . $attemptOneHistory);
-            }
 
-            // Keep Attempt 1 in the session history. Do not create a second
-            // paanyayas row: the card represents the dispute itself, and now
-            // moves forward to its 2nd Paanyaya schedule.
-            if ($complaintId > 0) {
-                $firstSession = $this->conn->prepare("SELECT session_id FROM paanyaya_sessions WHERE complaint_id = ? AND attempt_number = 1 LIMIT 1");
-                $firstSession->execute([$complaintId]);
-                $firstSessionId = $firstSession->fetchColumn();
+            $insSecond = $this->conn->prepare("
+                INSERT INTO paanyayas (
+                    complaint_id, complainant_name, invitee_name, scheduled_date, scheduled_time,
+                    status, attempt_number, venue, salaysay, scheduled_by, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, 'Scheduled', 2, ?, ?, ?, NOW(), NOW())
+            ");
+            $insSecond->execute([
+                $complaintId,
+                $paanyaya['complainant_name'],
+                $paanyaya['invitee_name'],
+                $p2Date,
+                $p2Time,
+                $venue,
+                $salaysay !== '' ? $salaysay : null,
+                $userId
+            ]);
+            $newPaanyayaId = (int)$this->conn->lastInsertId();
 
-                if ($firstSessionId) {
-                    $this->conn->prepare("
-                        UPDATE paanyaya_sessions
-                        SET complainant_attended = ?, respondent_attended = ?, salaysay = ?,
-                            session_outcome = 'Continued_Dialogue', updated_at = NOW()
-                        WHERE session_id = ?
-                    ")->execute([$compAttended, $invAttended, $salaysay !== '' ? $salaysay : null, (int) $firstSessionId]);
-                } else {
-                    $this->conn->prepare("
-                        INSERT INTO paanyaya_sessions (
-                            complaint_id, invitee_name, attempt_number, scheduled_date, scheduled_time,
-                            venue, salaysay, complainant_attended, respondent_attended,
-                            session_outcome, scheduled_by
-                        ) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, 'Continued_Dialogue', ?)
-                    ")->execute([
-                        $complaintId,
-                        $paanyaya['invitee_name'],
-                        $paanyaya['scheduled_date'],
-                        $paanyaya['scheduled_time'],
-                        $venue,
-                        $salaysay !== '' ? $salaysay : null,
-                        $compAttended,
-                        $invAttended,
-                        $paanyaya['scheduled_by'] ?? $userId,
-                    ]);
-                }
-
-                $secondSession = $this->conn->prepare("SELECT session_id FROM paanyaya_sessions WHERE complaint_id = ? AND attempt_number = 2 LIMIT 1");
-                $secondSession->execute([$complaintId]);
-                $secondSessionId = $secondSession->fetchColumn();
-                if ($secondSessionId) {
-                    $this->conn->prepare("
-                        UPDATE paanyaya_sessions
-                        SET scheduled_date = ?, scheduled_time = ?, venue = ?, scheduled_by = ?,
-                            session_outcome = NULL, updated_at = NOW()
-                        WHERE session_id = ?
-                    ")->execute([$p2Date, $p2Time, $venue, $userId, (int) $secondSessionId]);
-                } else {
-                    $this->conn->prepare("
-                        INSERT INTO paanyaya_sessions (
-                            complaint_id, invitee_name, attempt_number, scheduled_date, scheduled_time,
-                            venue, salaysay, scheduled_by
-                        ) VALUES (?, ?, 2, ?, ?, ?, ?, ?)
-                    ")->execute([$complaintId, $paanyaya['invitee_name'], $p2Date, $p2Time, $venue, $salaysay !== '' ? $salaysay : null, $userId]);
-                }
-
-                $this->conn->prepare("
-                    UPDATE complaints
-                    SET status = 'Paanyaya In Progress', paanyaya_attempt_count = 2,
-                        max_paanyaya_reached = 1, updated_at = NOW()
-                    WHERE complaint_id = ?
-                ")->execute([$complaintId]);
-            }
-
-            // The same Paanyaya record is the current card. Attendance for
-            // Attempt 1 is retained above, rather than shown as completed on
-            // the active second-attempt card.
-            $this->conn->prepare("
-                UPDATE paanyayas
-                SET scheduled_date = ?, scheduled_time = ?, status = 'Scheduled', attempt_number = 2,
-                    venue = ?, salaysay = ?, scheduled_by = ?, complainant_attended = NULL,
-                    invitee_attended = NULL, attendance_recorded_at = NULL, dialogue_notes = ?, updated_at = NOW()
-                WHERE paanyaya_id = ?
-            ")->execute([$p2Date, $p2Time, $venue, $salaysay !== '' ? $salaysay : null, $userId, $dialogueHistory, $paanyayaId]);
-            $newPaanyayaId = $paanyayaId;
-
-            // Pre-generate the second-attempt Paanyaya letter for the same matter.
+            // 3. Pre-generate 2nd Paanyaya PDF letter
             $pdfRelPath = null;
             try {
                 $pdfDir = __DIR__ . '/../../storage/paanyaya';
@@ -3263,7 +3091,8 @@ class Paanyaya
                 error_log("Failed to pre-generate 2nd Paanyaya PDF: " . $pe->getMessage());
             }
 
-            $this->audit->log($userId, "Scheduled 2nd Paanyaya for Paanyaya #{$newPaanyayaId} (same dispute) for invitee '{$paanyaya['invitee_name']}' on {$p2Date} {$p2Time}.", 'Paanyaya', $complaintId);
+            // 4. Audit Log
+            $this->audit->log($userId, "Scheduled 2nd Paanyaya #{$newPaanyayaId} for invitee '{$paanyaya['invitee_name']}' on {$p2Date} {$p2Time}.", 'Paanyaya', $complaintId);
 
             $this->conn->commit();
 

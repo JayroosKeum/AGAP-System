@@ -1,6 +1,5 @@
 <?php
 
-require_once __DIR__ . '/../config/session.php';
 require_once __DIR__ . '/../models/User.php';
 require_once __DIR__ . '/../services/AuditService.php';
 require_once __DIR__ . '/../services/PasswordResetService.php';

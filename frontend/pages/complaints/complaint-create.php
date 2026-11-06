@@ -1,23 +1,16 @@
 <?php
 
-require_once __DIR__ . '/../../../backend/config/session.php';
+session_start();
 
 $roleId = (int) ($_SESSION['role_id'] ?? 0);
-$userId = (int) ($_SESSION['user_id'] ?? 0);
-
-if ($userId === 0 || $roleId === 0) {
-    $returnUrl = urlencode($_SERVER['REQUEST_URI'] ?? '');
-    header('Location: ../auth/login.php' . ($returnUrl !== '' ? '?return_to=' . $returnUrl : ''));
+if (!in_array($roleId, [1, 2], true)) {
+    $redirect = match ($roleId) {
+        3 => '../dashboard/lupon-dashboard.php',
+        4 => '../dashboard/server-dashboard.php',
+        default => '../auth/login.php',
+    };
+    header('Location: ' . $redirect);
     exit;
-}
-
-if (!in_array($roleId, [1, 2, 3], true)) {
-    if ($roleId === 4) {
-        header('Location: ../dashboard/server-dashboard.php');
-        exit;
-    }
-    http_response_code(403);
-    die('Access Denied');
 }
 
 require_once __DIR__ . '/../../../backend/config/database.php';
@@ -4461,7 +4454,7 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault();
             const mapController = window.complaintMaps?.addComplaintMap;
             if (mapController?.map) {
-                mapController.resetView?.();
+                mapController.map.setView([14.6521, 121.0854], 16);
                 mapController.refresh?.();
             }
         });
