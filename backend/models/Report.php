@@ -41,7 +41,9 @@ class Report
     public function dashboardStats(string $period = 'all', ?string $startDate = null, ?string $endDate = null): array
     {
         $today = date('Y-m-d');
-        $nextSevenDays = date('Y-m-d', strtotime('+7 days'));
+        // A seven-calendar-day window includes today plus the following six
+        // days. Using +7 made the "Next 7 calendar days" card count eight.
+        $nextSevenDays = date('Y-m-d', strtotime('+6 days'));
 
         if ($period === 'all' || !$startDate || !$endDate) {
             $statusRows = $this->conn->query(
@@ -74,8 +76,7 @@ class Report
                    AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')
                    AND h.status <> 'Completed'
                    AND COALESCE(h.queue_status, 'Waiting') <> 'Concluded'
-                 ORDER BY CASE WHEN COALESCE(h.queue_order, 0) > 0 THEN h.queue_order ELSE 9999 END ASC, h.hearing_date ASC
-                 LIMIT 8"
+                 ORDER BY CASE WHEN COALESCE(h.queue_order, 0) > 0 THEN h.queue_order ELSE 9999 END ASC, h.hearing_date ASC"
             );
             $todayHearings->execute([$today]);
 
@@ -105,7 +106,7 @@ class Report
                      p.scheduled_date DESC,
                      p.scheduled_time ASC,
                      p.paanyaya_id DESC
-                 LIMIT 25"
+                "
             );
             $todayPaanyayas->execute([$today]);
             $paanyayaItems = $this->enrichPaanyayaRows($todayPaanyayas->fetchAll(PDO::FETCH_ASSOC));
@@ -117,7 +118,7 @@ class Report
                    AND mediation_deadline_date IS NOT NULL
                    AND mediation_deadline_date <= ?
                  ORDER BY mediation_deadline_date ASC
-                 LIMIT 8"
+                "
             );
             $deadlineCases->execute([$nextSevenDays]);
             $deadlineRows = $deadlineCases->fetchAll(PDO::FETCH_ASSOC);
@@ -165,8 +166,7 @@ class Report
                  FROM cases c
                  INNER JOIN complaints co ON co.complaint_id = c.complaint_id
                  LEFT JOIN complaint_categories cat ON cat.category_id = co.category_id
-                 ORDER BY c.docket_date DESC, c.case_id DESC
-                 LIMIT 50"
+                 ORDER BY c.docket_date DESC, c.case_id DESC"
             );
             $casesList = $casesStmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -194,8 +194,10 @@ class Report
                  ORDER BY h.hearing_date ASC"
             );
             $calendarHearings = $calendarHearingsStmt->fetchAll(PDO::FETCH_ASSOC);
-            $calendarPaanyayas = $this->getCalendarPaanyayaItems();
-            $calendarHearings = array_merge($calendarHearings, $calendarPaanyayas);
+            // Calendar markers represent active scheduled sessions: formal
+            // hearings plus the current Paanyaya session for a dispute.
+            // Completed/replaced Paanyaya attempts are filtered by the helper.
+            $calendarHearings = array_merge($calendarHearings, $this->getCalendarPaanyayaItems());
             usort($calendarHearings, static fn(array $a, array $b): int => strcmp((string) $a['hearing_date'], (string) $b['hearing_date']));
 
             $walkinsTodayStmt = $this->conn->prepare(
@@ -333,8 +335,7 @@ class Report
                AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')
                AND h.status <> 'Completed'
                AND COALESCE(h.queue_status, 'Waiting') <> 'Concluded'
-             ORDER BY h.hearing_date ASC
-             LIMIT 15"
+             ORDER BY h.hearing_date ASC"
         );
         $hearingsStmt->execute($params);
         $periodHearings = $hearingsStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -357,7 +358,7 @@ class Report
                AND p.status NOT IN ('Completed', 'Cancelled', 'Resolved', 'Unresolved', 'Escalated')
                AND (ps.session_id IS NULL OR COALESCE(ps.queue_status, 'Waiting') <> 'Concluded')
              ORDER BY p.scheduled_date DESC, p.scheduled_time ASC, p.paanyaya_id DESC
-             LIMIT 25"
+            "
         );
         $paanyayasStmt->execute([$startDate, $endDate, $startDate, $endDate]);
         $periodPaanyayas = $this->enrichPaanyayaRows($paanyayasStmt->fetchAll(PDO::FETCH_ASSOC));
@@ -368,8 +369,7 @@ class Report
              WHERE case_status IN ('Mediation', 'Conciliation')
                AND mediation_deadline_date IS NOT NULL
                AND mediation_deadline_date BETWEEN ? AND ?
-             ORDER BY mediation_deadline_date ASC
-             LIMIT 15"
+             ORDER BY mediation_deadline_date ASC"
         );
         $deadlineStmt->execute($params);
         $deadlineRows = $deadlineStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -487,8 +487,7 @@ class Report
              INNER JOIN complaints co ON co.complaint_id = c.complaint_id
              LEFT JOIN complaint_categories cat ON cat.category_id = co.category_id
              WHERE c.docket_date BETWEEN ? AND ?
-             ORDER BY c.docket_date DESC, c.case_id DESC
-             LIMIT 100"
+             ORDER BY c.docket_date DESC, c.case_id DESC"
         );
         $casesStmt->execute($params);
         $casesList = $casesStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -517,8 +516,7 @@ class Report
              ORDER BY h.hearing_date ASC"
         );
         $calendarHearings = $calendarHearingsStmt->fetchAll(PDO::FETCH_ASSOC);
-        $calendarPaanyayas = $this->getCalendarPaanyayaItems();
-        $calendarHearings = array_merge($calendarHearings, $calendarPaanyayas);
+        $calendarHearings = array_merge($calendarHearings, $this->getCalendarPaanyayaItems());
         usort($calendarHearings, static fn(array $a, array $b): int => strcmp((string) $a['hearing_date'], (string) $b['hearing_date']));
 
         $walkinsStmt = $this->conn->prepare(
@@ -579,7 +577,7 @@ class Report
         ];
     }
 
-    /** Calendar uses one event shape for formal hearings and Paanyaya sessions. */
+    /** Calendar uses one event shape for active formal hearings and Paanyaya sessions. */
     private function getCalendarPaanyayaItems(): array
     {
         $stmt = $this->conn->query("\n            SELECT CONCAT('paanyaya-', ps.session_id) AS hearing_id,
@@ -599,8 +597,16 @@ class Report
             LEFT JOIN cases c ON c.complaint_id = co.complaint_id
             LEFT JOIN paanyayas p ON p.complaint_id = co.complaint_id
                 AND p.paanyaya_id = (SELECT MAX(p2.paanyaya_id) FROM paanyayas p2 WHERE p2.complaint_id = co.complaint_id)
-            WHERE COALESCE(p.status, 'Scheduled') NOT IN ('Cancelled', 'Completed')
+            WHERE COALESCE(p.status, 'Scheduled') IN ('Scheduled', 'Pending')
+              AND ps.session_outcome IS NULL
               AND COALESCE(ps.queue_status, 'Waiting') <> 'Concluded'
+              AND NOT EXISTS (
+                  SELECT 1 FROM paanyaya_sessions later_ps
+                  WHERE later_ps.complaint_id = ps.complaint_id
+                    AND later_ps.attempt_number > ps.attempt_number
+                    AND later_ps.session_outcome IS NULL
+                    AND COALESCE(later_ps.queue_status, 'Waiting') <> 'Concluded'
+              )
             ORDER BY ps.scheduled_date ASC, ps.scheduled_time ASC\n        ");
         $sessionItems = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
         // Stand-alone invitations (not yet mirrored to paanyaya_sessions)
@@ -618,7 +624,7 @@ class Report
             FROM paanyayas p
             LEFT JOIN complaints co ON co.complaint_id = p.complaint_id
             LEFT JOIN cases c ON c.complaint_id = co.complaint_id
-            WHERE COALESCE(p.status, 'Scheduled') NOT IN ('Cancelled', 'Completed')
+            WHERE COALESCE(p.status, 'Scheduled') IN ('Scheduled', 'Pending')
               AND NOT EXISTS (SELECT 1 FROM paanyaya_sessions ps WHERE ps.complaint_id = p.complaint_id)
             ORDER BY p.scheduled_date ASC, p.scheduled_time ASC\n        ");
         $invitationItems = $inviteStmt ? $inviteStmt->fetchAll(PDO::FETCH_ASSOC) : [];

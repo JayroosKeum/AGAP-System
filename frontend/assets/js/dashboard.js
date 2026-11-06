@@ -88,6 +88,14 @@ document.addEventListener('DOMContentLoaded', () => {
         return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
     };
 
+    // Database values may be returned as either "YYYY-MM-DD HH:MM:SS" or
+    // ISO "YYYY-MM-DDTHH:MM:SS". Calendar matching must use the date part
+    // only, otherwise valid ISO hearing records never receive a marker.
+    const getHearingDateKey = (value) => {
+        const match = String(value || '').match(/^\d{4}-\d{2}-\d{2}/);
+        return match ? match[0] : '';
+    };
+
     const addListItem = (container, title, details, badge, linkUrl = null) => {
         const item = document.createElement('article');
         item.className = 'dashboard-list-item';
@@ -221,6 +229,7 @@ document.addEventListener('DOMContentLoaded', () => {
         actions.appendChild(viewLink);
 
         art.appendChild(actions);
+        bindQueueDragAndDrop(art, container);
         container.appendChild(art);
     };
 
@@ -238,6 +247,33 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     let draggedHearingCard = null;
+
+    const bindQueueDragAndDrop = (card, container) => {
+        card.draggable = true;
+        card.addEventListener('dragstart', (e) => {
+            draggedHearingCard = card;
+            card.classList.add('is-dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', card.dataset.index || '0');
+        });
+        card.addEventListener('dragend', () => {
+            card.classList.remove('is-dragging');
+            container.querySelectorAll('.dashboard-list-item').forEach(c => c.classList.remove('drag-over'));
+            if (draggedHearingCard) {
+                draggedHearingCard = null;
+                saveReorderedSequence(container);
+            }
+        });
+        card.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            if (!draggedHearingCard || draggedHearingCard === card) return;
+            const bounds = card.getBoundingClientRect();
+            card.parentNode.insertBefore(draggedHearingCard, e.clientY - bounds.top > bounds.height / 2 ? card.nextSibling : card);
+            card.classList.add('drag-over');
+        });
+        card.addEventListener('dragleave', () => card.classList.remove('drag-over'));
+    };
 
     const saveReorderedSequence = async (container) => {
         if (state.isSavingQueue) return;
@@ -283,7 +319,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (card) {
                             const timePill = card.querySelector('.agenda-time-pill');
                             if (timePill && up.formatted_time) {
-                                timePill.textContent = up.formatted_time;
+                                timePill.textContent = up.type === 'paanyaya'
+                                    ? `${formatDateClean(up.hearing_date)} · ${up.formatted_time}`
+                                    : up.formatted_time;
                             }
                         }
                         if (up.type === 'hearing' && Array.isArray(state.hearings)) {
@@ -300,6 +338,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     });
                 }
+                // Re-read the authoritative schedule so the dashboard,
+                // calendar, and later-opened case workspaces use the same
+                // recalculated time, not just the moved card's temporary UI.
+                renderDashboardCalendar();
+                window.dispatchEvent(new CustomEvent('agap:hearing-schedule-updated', { detail: data }));
+                setTimeout(fetchDashboardData, 0);
                 console.log(`Docket sequence and live times updated (#1 - #${itemsPayload.length})`);
                 window.dispatchEvent(new CustomEvent('agap:queue-reordered', { detail: data }));
             }
@@ -349,48 +393,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const addHearingItem = (container, hearing, displayIndex = 0) => {
         const item = document.createElement('article');
         item.className = 'dashboard-list-item clerk-agenda-item';
-        item.draggable = true;
         item.dataset.index = displayIndex;
         item.dataset.id = hearing.hearing_id;
         item.dataset.type = 'hearing';
         item.dataset.queueDate = String(hearing.hearing_date || getTodayDateStr()).slice(0, 10);
         item.style.cssText = 'padding: 14px 12px; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border-radius: 8px; transition: background 0.15s, transform 0.15s; margin-bottom: 4px;';
 
-        // Drag and Drop Listeners
-        item.addEventListener('dragstart', (e) => {
-            draggedHearingCard = item;
-            item.classList.add('is-dragging');
-            e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/plain', item.dataset.index);
-        });
-
-        item.addEventListener('dragend', () => {
-            item.classList.remove('is-dragging');
-            container.querySelectorAll('.dashboard-list-item').forEach(c => c.classList.remove('drag-over'));
-            if (draggedHearingCard) {
-                draggedHearingCard = null;
-                saveReorderedSequence(container);
-            }
-        });
-
-        item.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-            if (!draggedHearingCard || draggedHearingCard === item) return;
-
-            const bounding = item.getBoundingClientRect();
-            const offset = e.clientY - bounding.top;
-            if (offset > bounding.height / 2) {
-                item.parentNode.insertBefore(draggedHearingCard, item.nextSibling);
-            } else {
-                item.parentNode.insertBefore(draggedHearingCard, item);
-            }
-            item.classList.add('drag-over');
-        });
-
-        item.addEventListener('dragleave', () => {
-            item.classList.remove('drag-over');
-        });
+        bindQueueDragAndDrop(item, container);
 
         const content = document.createElement('div');
         content.className = 'dashboard-list-content';
@@ -886,8 +895,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const matchingHearings = (state.calendarHearings || []).filter(h => {
             if (!isActiveQueueSession(h)) return false;
             if (!h.hearing_date) return false;
-            const d = h.hearing_date.split(' ')[0] || h.hearing_date.split('T')[0];
-            return d === dateStr;
+            return getHearingDateKey(h.hearing_date) === dateStr;
         });
 
         const formattedDate = formatDateOnly(dateStr);
@@ -1491,7 +1499,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const hearingsByDate = {};
         (state.calendarHearings || []).forEach(h => {
             if (!h.hearing_date) return;
-            const datePart = h.hearing_date.split(' ')[0] || h.hearing_date.split('T')[0];
+            const datePart = getHearingDateKey(h.hearing_date);
+            if (!datePart) return;
             if (!hearingsByDate[datePart]) hearingsByDate[datePart] = [];
             hearingsByDate[datePart].push(h);
         });
@@ -1572,6 +1581,66 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             grid.appendChild(cell);
         }
+    };
+
+    const renderFullCalendarSummary = () => {
+        const content = document.getElementById('dashboardFullCalendarContent');
+        const subtitle = document.getElementById('dashboardFullCalendarSubtitle');
+        if (!content) return;
+        content.replaceChildren();
+
+        const hearings = (state.calendarHearings || [])
+            .filter(isActiveQueueSession)
+            .filter(h => getHearingDateKey(h.hearing_date))
+            .sort((a, b) => new Date(String(a.hearing_date).replace(' ', 'T')) - new Date(String(b.hearing_date).replace(' ', 'T')));
+
+        if (subtitle) subtitle.textContent = `${hearings.length} scheduled session${hearings.length === 1 ? '' : 's'}`;
+        if (!hearings.length) {
+            content.appendChild(emptyState('No active hearings or Paanyaya sessions are scheduled.'));
+            return;
+        }
+
+        const byDate = new Map();
+        hearings.forEach(hearing => {
+            const dateKey = getHearingDateKey(hearing.hearing_date);
+            if (!byDate.has(dateKey)) byDate.set(dateKey, []);
+            byDate.get(dateKey).push(hearing);
+        });
+
+        byDate.forEach((dayHearings, dateKey) => {
+            const section = document.createElement('section');
+            section.style.cssText = 'margin-bottom:16px;';
+            const heading = document.createElement('h3');
+            heading.style.cssText = 'margin:0 0 8px; font-size:.92rem; color:#0f172a;';
+            heading.textContent = formatDateOnly(dateKey);
+            section.appendChild(heading);
+
+            dayHearings.forEach(hearing => {
+                const card = document.createElement('article');
+                card.style.cssText = 'padding:11px 12px; border:1px solid #e2e8f0; border-radius:8px; background:#fff; margin-top:7px;';
+                const title = document.createElement('strong');
+                title.style.cssText = 'display:block; font-size:.87rem; color:#0f172a;';
+                title.textContent = `${hearing.case_number ? `Case ${hearing.case_number}` : 'Case'} · ${hearing.hearing_type || 'Hearing'}`;
+                const detail = document.createElement('div');
+                detail.style.cssText = 'font-size:.8rem; color:#64748b; margin-top:4px;';
+                detail.textContent = `${formatTimeOnly(hearing.hearing_date)} · ${hearing.venue || 'Lupon Court Room'}`;
+                card.append(title, detail);
+                section.appendChild(card);
+            });
+            content.appendChild(section);
+        });
+    };
+
+    const openFullCalendarModal = () => {
+        const modal = document.getElementById('dashboardFullCalendarModal');
+        if (!modal) return;
+        renderFullCalendarSummary();
+        modal.style.display = 'flex';
+    };
+
+    const closeFullCalendarModal = () => {
+        const modal = document.getElementById('dashboardFullCalendarModal');
+        if (modal) modal.style.display = 'none';
     };
 
     const updateCardSubtitles = (period, periodLabel) => {
@@ -1914,6 +1983,20 @@ document.addEventListener('DOMContentLoaded', () => {
             selectCalendarDate(getTodayDateStr());
         });
     }
+
+    const fullCalendarBtn = document.getElementById('dashCalFullBtn');
+    const fullCalendarModal = document.getElementById('dashboardFullCalendarModal');
+    if (fullCalendarBtn) fullCalendarBtn.addEventListener('click', openFullCalendarModal);
+    document.getElementById('dashboardFullCalendarClose')?.addEventListener('click', closeFullCalendarModal);
+    document.getElementById('dashboardFullCalendarCloseFooter')?.addEventListener('click', closeFullCalendarModal);
+    if (fullCalendarModal) {
+        fullCalendarModal.addEventListener('click', (event) => {
+            if (event.target === fullCalendarModal) closeFullCalendarModal();
+        });
+    }
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && fullCalendarModal?.style.display !== 'none') closeFullCalendarModal();
+    });
 
     // Set initial active tab state
     tabButtons.forEach((btn) => {

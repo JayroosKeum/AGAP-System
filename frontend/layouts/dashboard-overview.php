@@ -268,7 +268,7 @@
                 </div>
 
                 <div class="mini-cal-footer">
-                    <a href="../hearings/calendar.php" class="mini-cal-link">Full calendar &rarr;</a>
+                    <button type="button" id="dashCalFullBtn" class="mini-cal-link" style="border:0; background:transparent; cursor:pointer; padding:0;">Full calendar &rarr;</button>
                     <button type="button" class="mini-cal-toggle-btn" id="dashCalTodayBtn">Today</button>
                 </div>
             </div>
@@ -300,6 +300,24 @@
                 </div>
             </div>
         </aside>
+    </div>
+
+    <!-- Full hearing calendar: summary only; it reads the dashboard payload and never changes schedules. -->
+    <div id="dashboardFullCalendarModal" class="report-modal-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="dashboardFullCalendarTitle">
+        <div class="report-modal-container" style="max-width:760px;">
+            <header class="report-modal-header">
+                <div class="modal-header-info">
+                    <span class="report-modal-badge">Session Schedule</span>
+                    <h2 id="dashboardFullCalendarTitle" class="report-modal-title">Full Calendar</h2>
+                    <p id="dashboardFullCalendarSubtitle" class="report-modal-sub">Scheduled hearings and Paanyaya sessions</p>
+                </div>
+                <button type="button" id="dashboardFullCalendarClose" class="btn-modal-close" aria-label="Close calendar">&times;</button>
+            </header>
+            <div id="dashboardFullCalendarContent" class="report-modal-body" style="max-height:65vh; overflow-y:auto;"></div>
+            <footer class="report-modal-footer">
+                <button type="button" id="dashboardFullCalendarCloseFooter" class="btn-modal-close-footer">Close</button>
+            </footer>
+        </div>
     </div>
 
 
