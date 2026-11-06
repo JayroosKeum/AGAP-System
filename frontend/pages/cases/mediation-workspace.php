@@ -1,17 +1,23 @@
-﻿<?php
-
-
+<?php
 
 session_start();
 
+// A direct workspace link can be opened after the login session has expired.
+// Redirect to sign-in instead of rendering an unexplained access-denied page.
+if (!isset($_SESSION['user_id'], $_SESSION['role_id'])) {
+    header('Location: ../auth/login.php?error=login_required');
+    exit;
+}
 
-
-$roleId = (int) ($_SESSION['role_id'] ?? 0);
-
+$roleId = (int) $_SESSION['role_id'];
+if ($roleId === 4) {
+    // Summons Servers access only their assigned Proof of Service workflow.
+    header('Location: ../gps/proof-service.php');
+    exit;
+}
 if (!in_array($roleId, [1, 2, 3], true)) {
-
-    die('Access Denied');
-
+    http_response_code(403);
+    exit('Access denied for this role.');
 }
 
 $canAuthorizePastDate = $roleId === 1;
