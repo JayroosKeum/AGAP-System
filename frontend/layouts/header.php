@@ -1,9 +1,8 @@
 <?php
+require_once __DIR__ . '/../../backend/config/session.php';
 require_once __DIR__ . '/../../backend/services/CsrfService.php';
 
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+
 
 $headerCsrfToken = CsrfService::token();
 $headerFlashMessages = [];

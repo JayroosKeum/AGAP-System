@@ -1,5 +1,10 @@
 <?php
+require_once __DIR__ . '/../../../backend/config/session.php';
 $loginError = ($_GET['error'] ?? '') === 'invalid_credentials';
+$returnTo = trim((string)($_GET['return_to'] ?? $_POST['return_to'] ?? ''));
+if ($returnTo !== '' && !preg_match('#^/(frontend|backend)/#i', $returnTo) && !preg_match('#^\.\./#', $returnTo)) {
+    $returnTo = '';
+}
 include '../../layouts/header.php';
 ?>
 <link rel="stylesheet" href="../../assets/css/login.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/login.css'); ?>">
@@ -27,6 +32,7 @@ include '../../layouts/header.php';
 
         <section class="login-form-area" aria-label="Staff sign in">
             <form action="../../../backend/api/auth/login.php" method="POST" class="login-card">
+                <input type="hidden" name="return_to" value="<?php echo htmlspecialchars($returnTo, ENT_QUOTES, 'UTF-8'); ?>">
                 <p class="login-eyebrow">AGAP STAFF PORTAL</p>
                 <h2>Welcome back</h2>
                 <p class="login-intro">Sign in with your staff account to continue.</p>

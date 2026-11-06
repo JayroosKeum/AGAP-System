@@ -717,6 +717,10 @@ include '../../layouts/header.php';
                                         $t = !empty($p['scheduled_time']) ? date('g:i A', strtotime($p['scheduled_time'])) : '';
                                         $st = $p['current_workflow_status'] ?? $p['status'] ?? 'Scheduled';
                                         $workflowStage = $p['current_workflow_stage'] ?? 'Stage 0 · Informal Dialogue';
+                                        $attemptLabel = $p['attempt_label'] ?? (((int)($p['attempt_number'] ?? 1) === 2) ? '2nd Paanyaya' : '1st Paanyaya');
+                                        $displayStatus = ((int)($p['attempt_number'] ?? 1) === 2 && in_array($st, ['Scheduled', 'Pending'], true))
+                                            ? $attemptLabel . ' · ' . $st
+                                            : $st;
                                         $statusClass = 'status-pill-scheduled';
                                         if (in_array($st, ['Resolved', 'Completed', 'Settled', 'Dismissed', 'Archived', 'CFA Issued', 'RESPONDENT_DEFAULT'])) $statusClass = 'status-pill-resolved';
                                         elseif (in_array($st, ['Escalated', 'DISMISSED_BARRED', 'Repudiated'])) $statusClass = 'status-pill-escalated';
@@ -762,8 +766,8 @@ include '../../layouts/header.php';
                                             <div style="font-size: 0.78rem; color: #64748b;"><?php echo $t; ?></div>
                                         </td>
                                         <td>
-                                            <span class="<?php echo $statusClass; ?>"><?php echo htmlspecialchars($st); ?></span>
-                                            <?php if (!empty($p['has_linked_case_workflow'])): ?>
+                                            <span class="<?php echo $statusClass; ?>"><?php echo htmlspecialchars($displayStatus); ?></span>
+                                            <?php if (!empty($p['has_linked_case_workflow']) || (int)($p['attempt_number'] ?? 1) === 2): ?>
                                                 <div style="font-size: 0.72rem; color: #475569; margin-top: 4px; font-weight: 600;">
                                                     <?php echo htmlspecialchars($workflowStage); ?>
                                                 </div>
@@ -1325,11 +1329,21 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     const TUMANA_BOUNDARY_COORDS = [
-        [14.6634144, 121.0956791], [14.6606021, 121.0952328], [14.6552864, 121.0947448],
-        [14.6541990, 121.0948085], [14.6535998, 121.0949336], [14.6505044, 121.0955011],
-        [14.6505663, 121.0968930], [14.6502364, 121.1029754], [14.6508212, 121.1029839],
-        [14.6526992, 121.1028818], [14.6545169, 121.1029072], [14.6562260, 121.1029303],
-        [14.6612702, 121.1032425], [14.6621330, 121.0998690], [14.6634144, 121.0956791]
+        [14.6554682,121.0857081],[14.6562612,121.0859908],[14.6557911,121.0865123],[14.6566853,121.0867891],
+        [14.6573361,121.0874608],[14.6566672,121.0882081],[14.6596216,121.0912009],[14.6605249,121.0911456],
+        [14.6609324,121.0914765],[14.6617729,121.0920319],[14.6634173,121.0935248],[14.6639892,121.0936321],
+        [14.6643486,121.0936995],[14.6645004,121.0938826],[14.6649347,121.0948585],[14.6652695,121.0952371],
+        [14.6652424,121.0956829],[14.6648805,121.0961861],[14.664908,121.0963356],[14.6645002,121.0966408],
+        [14.6642299,121.0967374],[14.6637829,121.0977901],[14.6629907,121.0988145],[14.6625832,121.0991486],
+        [14.6625136,121.0996819],[14.6625395,121.100022],[14.6623861,121.1006225],[14.6621551,121.1005299],
+        [14.6614757,121.1023379],[14.6602368,121.1019108],[14.6595948,121.1016599],[14.6589154,121.1019614],
+        [14.6581343,121.1022551],[14.6574788,121.102553],[14.6569962,121.1027094],[14.6566377,121.102703],
+        [14.656158,121.1026733],[14.6559169,121.1026982],[14.6553478,121.1027577],[14.6550262,121.1027938],
+        [14.6548318,121.1027249],[14.6541841,121.1025018],[14.6534713,121.1024013],[14.6532707,121.102373],
+        [14.6510737,121.101336],[14.6508768,121.1007973],[14.6507211,121.0992879],[14.650753,121.0989571],
+        [14.6509538,121.098811],[14.6514718,121.0983827],[14.6521496,121.0978851],[14.6527322,121.0972236],
+        [14.6535364,121.0959443],[14.6539003,121.0955034],[14.654028,121.0953166],[14.6537619,121.0950108],
+        [14.6533329,121.0942299],[14.6530062,121.0934184]
     ];
 
     const isWithinTumana = (lat, lng) => {
@@ -1388,7 +1402,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else {
                     marker.setLatLng([latNum, lngNum]);
                 }
-                map.panTo([latNum, lngNum]);
+                // Keep every location picker on the same Tumana overview.
+                // A pin may move, but it must not change the displayed area.
             }
 
             if (shouldReverseGeocode) {
@@ -1542,12 +1557,13 @@ document.addEventListener('DOMContentLoaded', function() {
             const mapEl = document.getElementById(cfg.mapId);
             if (!mapEl || typeof L === 'undefined') return;
             if (!map) {
+                const tumanaBounds = L.latLngBounds(TUMANA_BOUNDARY_COORDS);
                 map = L.map(mapEl, {
-                    center: [14.6575, 121.0989],
-                    zoom: 16,
+                    maxBounds: tumanaBounds.pad(0.08),
+                    maxBoundsViscosity: 1,
                     minZoom: 13,
                     maxZoom: 19
-                });
+                }).fitBounds(tumanaBounds, { padding: [10, 10] });
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     attribution: '&copy; OpenStreetMap'
                 }).addTo(map);
@@ -1564,7 +1580,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
 
                 document.getElementById(cfg.recenterBtnId)?.addEventListener('click', () => {
-                    map.setView([14.6575, 121.0989], 16);
+                    map.fitBounds(tumanaBounds, { padding: [10, 10] });
                 });
                 document.getElementById(cfg.clearBtnId)?.addEventListener('click', clearPin);
                 document.getElementById(cfg.pinBtnId)?.addEventListener('click', forwardGeocodeFromInputs);
@@ -1611,17 +1627,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     let paanyayaMapInstance = null;
     let paanyayaMapMarker = null;
-    const tumanaCenter = [14.6570, 121.0992];
-    const tumanaBoundary = [
-        [14.663414, 121.095679],
-        [14.661270, 121.103242],
-        [14.656226, 121.102930],
-        [14.650236, 121.102975],
-        [14.650504, 121.095501],
-        [14.655286, 121.094745],
-        [14.663414, 121.095679]
-    ];
-
     const setPaanyayaMapPin = (lat, lng, autoReverseGeocode = true) => {
         const latNum = parseFloat(lat);
         const lngNum = parseFloat(lng);
@@ -1648,7 +1653,8 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 paanyayaMapMarker.setLatLng([latNum, lngNum]);
             }
-            paanyayaMapInstance.panTo([latNum, lngNum]);
+            // Do not pan to individual pins; all pickers retain the common
+            // Barangay Tumana highlighted area for a consistent reference.
         }
 
         if (autoReverseGeocode) {
@@ -1699,17 +1705,18 @@ document.addEventListener('DOMContentLoaded', function() {
         const mapEl = document.getElementById('paanyayaLocationMap');
         if (!mapEl || typeof L === 'undefined') return;
         if (!paanyayaMapInstance) {
+            const tumanaBounds = L.latLngBounds(TUMANA_BOUNDARY_COORDS);
             paanyayaMapInstance = L.map(mapEl, {
-                center: tumanaCenter,
-                zoom: 16,
+                maxBounds: tumanaBounds.pad(0.08),
+                maxBoundsViscosity: 1,
                 minZoom: 13,
                 maxZoom: 19
-            });
+            }).fitBounds(tumanaBounds, { padding: [10, 10] });
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '&copy; OpenStreetMap contributors'
             }).addTo(paanyayaMapInstance);
 
-            L.polygon(tumanaBoundary, {
+            L.polygon(TUMANA_BOUNDARY_COORDS, {
                 color: '#2563eb',
                 weight: 2,
                 fillColor: '#3b82f6',
@@ -1727,7 +1734,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     document.getElementById('paanyayaRecenterMapBtn')?.addEventListener('click', function() {
         if (paanyayaMapInstance) {
-            paanyayaMapInstance.setView(tumanaCenter, 16);
+            paanyayaMapInstance.fitBounds(L.latLngBounds(TUMANA_BOUNDARY_COORDS), { padding: [10, 10] });
         }
     });
     document.getElementById('paanyayaClearPinBtn')?.addEventListener('click', clearPaanyayaMapPin);

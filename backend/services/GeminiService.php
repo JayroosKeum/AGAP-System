@@ -5,8 +5,8 @@ require_once __DIR__ . '/../config/gemini.php';
 class GeminiService
 {
     private string $apiKey = '';
-    private string $model = 'gemini-3.8-flash';
-    private array $fallbackModels = ['gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+    private string $model = 'gemini-3.5-flash';
+    private array $fallbackModels = ['gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3-flash-preview'];
 
     public function __construct(?string $model = null, ?string $apiKey = null)
     {
@@ -87,7 +87,7 @@ class GeminiService
             } catch (Throwable $t) {}
         }
 
-        return 'gemini-3.8-flash';
+        return 'gemini-3.5-flash';
     }
 
     public function getApiKey(): string
@@ -182,7 +182,7 @@ class GeminiService
 
             // Retry only when the selected model is unavailable. Retrying a 429
             // consumes no useful capacity and can delay every AI screen.
-            if (!in_array($lastStatus, [400, 404], true)) {
+            if (!in_array($lastStatus, [0, 400, 404, 500, 502, 503, 504], true)) {
                 break;
             }
         }
@@ -227,7 +227,7 @@ class GeminiService
             ],
             CURLOPT_POSTFIELDS => $jsonPayload,
             CURLOPT_CONNECTTIMEOUT => 12,
-            CURLOPT_TIMEOUT => 65,
+            CURLOPT_TIMEOUT => 25,
             CURLOPT_SSL_VERIFYPEER => true
         ];
         if (defined('CURLSSLOPT_NATIVE_CA')) {

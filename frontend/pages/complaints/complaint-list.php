@@ -1,11 +1,18 @@
 <?php
 
-session_start();
+require_once __DIR__ . '/../../../backend/config/session.php';
 
 $roleId = (int) ($_SESSION['role_id'] ?? 0);
-if (!in_array($roleId, [1, 2], true)) {
+$userId = (int) ($_SESSION['user_id'] ?? 0);
+
+if ($userId === 0 || $roleId === 0) {
+    $returnUrl = urlencode($_SERVER['REQUEST_URI'] ?? '');
+    header('Location: ../auth/login.php' . ($returnUrl !== '' ? '?return_to=' . $returnUrl : ''));
+    exit;
+}
+
+if (!in_array($roleId, [1, 2, 3], true)) {
     $redirect = match ($roleId) {
-        3 => '../dashboard/lupon-dashboard.php',
         4 => '../dashboard/server-dashboard.php',
         default => '../auth/login.php',
     };

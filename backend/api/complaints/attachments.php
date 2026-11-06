@@ -14,7 +14,7 @@ function respond(array $payload, int $status = 200): never
 if (!isset($_SESSION['user_id'], $_SESSION['role_id'])) {
     respond(['success' => false, 'message' => 'Authentication required.'], 401);
 }
-if (!in_array((int) $_SESSION['role_id'], [1, 2], true)) {
+if (!in_array((int) $_SESSION['role_id'], [1, 2, 3, 4], true)) {
     respond(['success' => false, 'message' => 'Unauthorized.'], 403);
 }
 

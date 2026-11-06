@@ -18,7 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int)$_SESSION['role_id'], [1, 2], true)) {
+if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int)$_SESSION['role_id'], [1, 2, 3], true)) {
     http_response_code(401);
     echo json_encode(['success' => false, 'message' => 'Unauthorized. Only Lupon Clerk and Administrator can save complaints.']);
     exit;

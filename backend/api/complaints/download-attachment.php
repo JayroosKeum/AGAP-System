@@ -7,7 +7,7 @@ if (!isset($_SESSION['user_id'], $_SESSION['role_id'])) {
     http_response_code(401);
     exit('Authentication required.');
 }
-if (!in_array((int) $_SESSION['role_id'], [1, 2], true)) {
+if (!in_array((int) $_SESSION['role_id'], [1, 2, 3, 4], true)) {
     http_response_code(403);
     exit('Unauthorized.');
 }

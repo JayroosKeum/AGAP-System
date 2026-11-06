@@ -15,7 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 CsrfService::enforceForApiRequest();
 
-if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2], true)) {
+if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2, 3], true)) {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'Unauthorized.']);
     exit;

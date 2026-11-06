@@ -6025,7 +6025,10 @@ function initialiseComplaintMap(mapId, emptyState) {
     const city = form.querySelector('[name="incident_city"]');
     const barangay = form.querySelector('[name="incident_barangay"]');
     const tumanaBounds = L.latLngBounds(tumanaBoundary);
-    const map = L.map(element).fitBounds(tumanaBounds, { padding: [8, 8] });
+    const map = L.map(element, {
+        maxBounds: tumanaBounds.pad(0.08),
+        maxBoundsViscosity: 1
+    }).fitBounds(tumanaBounds, { padding: [10, 10] });
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
@@ -6228,7 +6231,8 @@ function initialiseComplaintMap(mapId, emptyState) {
         longitude.value = lngNum.toFixed(8);
         state.value = mapState;
         setStatus(`Map point selected: ${latitude.value}, ${longitude.value}`);
-        map.setView([latNum, lngNum], Math.max(map.getZoom(), 16));
+        // Keep the same Barangay Tumana overview in every pinning screen.
+        map.fitBounds(tumanaBounds, { padding: [10, 10] });
         if (syncAddress) updateAddressFromPoint(latNum, lngNum);
         return true;
     };
@@ -6293,7 +6297,7 @@ function initialiseComplaintMap(mapId, emptyState) {
             longitude.value = '';
             state.value = 'unchanged';
             setStatus(`Saved map point: ${Number(lat).toFixed(8)}, ${Number(lng).toFixed(8)}`);
-            map.setView([Number(lat), Number(lng)], 16);
+            map.fitBounds(tumanaBounds, { padding: [10, 10] });
         },
         setPoint,
         clear(nextState = emptyState) {
@@ -6303,6 +6307,7 @@ function initialiseComplaintMap(mapId, emptyState) {
             state.value = nextState;
             setStatus(nextState === 'clear' ? 'Saved map point will be removed.' : 'No map point selected.');
         },
+        resetView() { map.fitBounds(tumanaBounds, { padding: [10, 10] }); },
         refresh() { setTimeout(() => map.invalidateSize(), 0); }
     };
 
@@ -6321,7 +6326,7 @@ function initialiseComplaintMap(mapId, emptyState) {
         marker = L.marker([savedLat, savedLng], { draggable: true }).addTo(map);
         enableExistingMarkerDrag();
         setStatus(`Saved map point: ${savedLat.toFixed(8)}, ${savedLng.toFixed(8)}`);
-        map.setView([savedLat, savedLng], 16);
+        map.fitBounds(tumanaBounds, { padding: [10, 10] });
     }
 
     map.on('click', (event) => setPoint(event.latlng.lat, event.latlng.lng, 'selected', true));
