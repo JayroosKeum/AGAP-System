@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once __DIR__ . '/../../../backend/config/database.php';
 require_once __DIR__ . '/../../../backend/models/Setting.php';
 require_once __DIR__ . '/../../../backend/services/CsrfService.php';
