@@ -4677,6 +4677,10 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skip
         .filter(s => !['Cancelled', 'Office Cancelled'].includes(s.status) && !s.rescheduled_to_id)
         .some(s => Number(s.session_index) === nextSessionIndex);
 
+    const isConcludedSession = ['Completed', 'Concluded', 'Attendance Recorded'].includes(session.status)
+        || session.queue_status === 'Concluded';
+    let bookingOnly = false;
+
 
 
     if (outcomeVal === 'Continue Mediation' && isMediation && !hasNextSession && sessionIndex < 3) {
@@ -4724,6 +4728,13 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skip
 
             payload.next_hearing_presider_id = session.presiding_officer_id || null;
 
+            // A concluded first hearing is read-only. Booking its second
+            // session must not overwrite the recorded minutes with this form.
+            if (isConcludedSession) {
+                payload.action = 'book_next_hearing';
+                bookingOnly = true;
+            }
+
         }
 
     }
@@ -4748,7 +4759,7 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skip
 
             const draftKey = `agap_draft_${stageWorkspaceState.mode}_case_${stageWorkspaceState.caseId}_hearing_${hearingId}`;
 
-            if (window.AgapDraftManager) {
+            if (!bookingOnly && window.AgapDraftManager) {
 
                 window.AgapDraftManager.markSubmitted(draftKey);
 
@@ -4836,7 +4847,10 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skip
 
                     const seqLabel = json.next_hearing?.sequence === 2 ? '2nd' : (json.next_hearing?.sequence === 3 ? '3rd' : 'Next');
 
-                    notifyUser(`Session minutes saved successfully!\n${seqLabel} Mediation hearing booked for ${json.next_hearing.hearing_date} at ${json.next_hearing.venue || 'Barangay Hall'}.`, 'success', 'Session Minutes Saved', 5000);
+                    const successMessage = bookingOnly
+                        ? `${seqLabel} Mediation hearing booked for ${json.next_hearing.hearing_date} at ${json.next_hearing.venue || 'Barangay Hall'}. Existing minutes were not changed.`
+                        : `Session minutes saved successfully!\n${seqLabel} Mediation hearing booked for ${json.next_hearing.hearing_date} at ${json.next_hearing.venue || 'Barangay Hall'}.`;
+                    notifyUser(successMessage, 'success', bookingOnly ? 'Next Hearing Booked' : 'Session Minutes Saved', 5000);
 
                 } else if (json.next_hearing_error) {
 
@@ -7683,10 +7697,47 @@ async function initInlineMediationScheduler(hearingId) {
         dateInput.min = `${y}-${m}-${d}`;
     }
 
+    const showLoadingError = (message) => {
+        gridEl.innerHTML = `<div style="color: #b91c1c; font-size: 0.78rem; grid-column: 1 / -1; text-align: center; padding: 12px;">
+            ${escapeHtml(message)} <button type="button" onclick="initInlineMediationScheduler(${Number(hearingId)})" style="margin-left: 6px; border: 1px solid #fca5a5; border-radius: 4px; background: #fff; color: #b91c1c; padding: 3px 7px; cursor: pointer;">Retry</button>
+        </div>`;
+    };
+
     try {
-        const res = await fetch(getStageApiUrl(`summons/check-schedule.php?case_id=${encodeURIComponent(caseId)}&complaint_id=${encodeURIComponent(complaintId)}&hearing_type=Mediation&get_window=1`));
-        const json = await res.json();
-        if (json.window && json.window.daily_slots) {
+        const targetDate = curHearingDate
+            ? (() => {
+                const nextDate = new Date(`${curHearingDate}T00:00:00`);
+                nextDate.setDate(nextDate.getDate() + 1);
+                const year = nextDate.getFullYear();
+                const month = String(nextDate.getMonth() + 1).padStart(2, '0');
+                const day = String(nextDate.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            })()
+            : '';
+        const params = new URLSearchParams({
+            case_id: String(caseId || ''),
+            complaint_id: String(complaintId || ''),
+            hearing_type: 'Mediation',
+            get_window: '1'
+        });
+        if (targetDate) params.set('target_date', targetDate);
+
+        const res = await fetch(getStageApiUrl(`summons/check-schedule.php?${params.toString()}`), {
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { Accept: 'application/json' }
+        });
+        const raw = await res.text();
+        let json;
+        try {
+            json = JSON.parse(raw);
+        } catch (_) {
+            throw new Error('The availability service returned an invalid response.');
+        }
+        if (!res.ok || !json.success || !json.window?.daily_slots) {
+            throw new Error(json.message || 'Unable to load mediation availability.');
+        }
+        {
             window.inlineSchedWindowMeta = json.window;
             const allowedNums = window.AGAP_SETTINGS?.mediation_day_numbers || [2];
             const allowedDays = window.AGAP_SETTINGS?.mediation_days || ['Tue'];
@@ -7697,10 +7748,11 @@ async function initInlineMediationScheduler(hearingId) {
                 const dt = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
                 const isMedDay = allowedNums.includes(dt.getDay()) || allowedDays.includes(d.day_name);
                 const isAfterCurrent = !curHearingDate || (d.date > curHearingDate);
-                return isMedDay && !d.is_past && !d.is_fully_booked && isAfterCurrent;
+                return isMedDay && d.can_schedule && !d.is_past && !d.is_fully_booked && isAfterCurrent;
             });
 
-            const initialDate = firstOpen ? firstOpen.date : Object.keys(json.window.daily_slots).find(d => !curHearingDate || d > curHearingDate);
+            const initialDate = firstOpen ? firstOpen.date : Object.values(json.window.daily_slots)
+                .find(d => d.can_schedule && (!curHearingDate || d.date > curHearingDate))?.date;
             if (initialDate && (!dateInput.value || (curHearingDate && dateInput.value <= curHearingDate))) {
                 dateInput.value = initialDate;
             }
@@ -7710,6 +7762,7 @@ async function initInlineMediationScheduler(hearingId) {
         }
     } catch (err) {
         console.error('initInlineMediationScheduler error:', err);
+        showLoadingError(err?.message || 'Unable to load mediation availability.');
     }
 }
 window.initInlineMediationScheduler = initInlineMediationScheduler;
@@ -7755,7 +7808,7 @@ function renderInlineSchedVisualDays(hearingId, windowMeta, selectedDate) {
             tooltip = (d.date === curHearingDate)
                 ? `${d.date}: Current session date. 2nd mediation must be scheduled on a future date.`
                 : `${d.date}: Prior date. Cannot schedule on or before current session date.`;
-        } else if (d.is_fully_booked || (d.max > 0 && d.available <= 0)) {
+        } else if (!d.can_schedule || d.is_fully_booked || (d.max > 0 && d.available <= 0)) {
             badgeText = `${d.max || 8}/${d.max || 8} Full`;
             badgeBg = '#fee2e2';
             badgeColor = '#b91c1c';

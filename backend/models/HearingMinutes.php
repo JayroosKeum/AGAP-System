@@ -64,6 +64,92 @@ class HearingMinutes
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
+    /**
+     * Books the next hearing without rewriting minutes that were already
+     * concluded. This is used when a clerk returns solely to schedule the
+     * second mediation session from the concluded first-session record.
+     */
+    public function bookNextHearing(array $data, int $userId): array
+    {
+        $hearingId = filter_var($data['hearing_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $nextDate = trim((string) ($data['next_hearing_date'] ?? ''));
+        $nextTime = trim((string) ($data['next_hearing_time'] ?? ''));
+        if (!$hearingId || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $nextDate) || $nextTime === '') {
+            return ['success' => false, 'message' => 'A valid source hearing, next hearing date, and time are required.'];
+        }
+
+        $sourceStmt = $this->conn->prepare("\n            SELECT h.*, c.case_status, hm.session_outcome, hm.minute_id\n            FROM hearings h\n            INNER JOIN cases c ON c.case_id = h.case_id\n            INNER JOIN hearing_minutes hm ON hm.hearing_id = h.hearing_id\n            WHERE h.hearing_id = ?\n            LIMIT 1\n        ");
+        $sourceStmt->execute([$hearingId]);
+        $source = $sourceStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$source) {
+            return ['success' => false, 'message' => 'The concluded hearing minutes were not found.'];
+        }
+
+        $targetType = ($source['hearing_type'] ?? '') === 'Conciliation' ? 'Conciliation' : 'Mediation';
+        $expectedOutcome = $targetType === 'Conciliation' ? 'Continue Conciliation' : 'Continue Mediation';
+        if (($source['session_outcome'] ?? '') !== $expectedOutcome) {
+            return ['success' => false, 'message' => "The source minutes must have the '{$expectedOutcome}' outcome before another session can be booked."];
+        }
+        if (!in_array((string) ($source['status'] ?? ''), ['Completed', 'Concluded', 'Attendance Recorded'], true)
+            && ($source['queue_status'] ?? '') !== 'Concluded') {
+            return ['success' => false, 'message' => 'Conclude the current hearing before booking its next session.'];
+        }
+
+        $nextDateTime = $nextDate . ' ' . (strlen($nextTime) === 5 ? $nextTime . ':00' : $nextTime);
+        if (strtotime($nextDateTime) === false || strtotime($nextDateTime) <= strtotime((string) $source['hearing_date'])) {
+            return ['success' => false, 'message' => 'The next hearing must be scheduled after the concluded hearing.'];
+        }
+
+        $existingStmt = $this->conn->prepare("\n            SELECT hearing_id, hearing_date, venue\n            FROM hearings\n            WHERE case_id = ? AND hearing_type = ? AND hearing_date > ?\n              AND status NOT IN ('Cancelled', 'Office Cancelled')\n            ORDER BY hearing_date ASC LIMIT 1\n        ");
+        $existingStmt->execute([(int) $source['case_id'], $targetType, $source['hearing_date']]);
+        $existing = $existingStmt->fetch(PDO::FETCH_ASSOC);
+        if ($existing) {
+            return [
+                'success' => true,
+                'next_hearing_booked' => true,
+                'next_hearing' => [
+                    'hearing_id' => (int) $existing['hearing_id'],
+                    'hearing_date' => $existing['hearing_date'],
+                    'hearing_type' => $targetType,
+                    'venue' => $existing['venue'],
+                    'already_existed' => true,
+                ],
+            ];
+        }
+
+        require_once __DIR__ . '/Hearing.php';
+        require_once __DIR__ . '/../services/DeadlineService.php';
+        $venue = trim((string) ($data['next_hearing_venue'] ?? '')) ?: ($source['venue'] ?: 'Lupon Court Room');
+        $hearing = new Hearing($this->conn);
+        $result = $hearing->createProgression([
+            'case_id' => (int) $source['case_id'],
+            'hearing_type' => $targetType,
+            'hearing_date' => $nextDateTime,
+            'venue' => $venue,
+            'remarks' => 'Booked from concluded session; parties personally notified and no new summons is required.',
+            'presiding_officer_id' => $source['presiding_officer_id'] ?? null,
+            'duration_minutes' => 45,
+            'schedule_reviewed' => '1',
+        ], DeadlineService::deadlineForHearing($targetType, $nextDateTime), $userId);
+
+        if (empty($result['success'])) {
+            return ['success' => false, 'message' => $result['message'] ?? 'Unable to schedule the next hearing.'];
+        }
+
+        return [
+            'success' => true,
+            'next_hearing_booked' => true,
+            'next_hearing' => [
+                'hearing_id' => (int) $result['hearing_id'],
+                'sequence' => $result['sequence'] ?? null,
+                'hearing_date' => $nextDateTime,
+                'hearing_type' => $targetType,
+                'venue' => $venue,
+                'summons_suppressed' => true,
+            ],
+        ];
+    }
+
     public function save(array $data, int $userId): array
     {
         // 1. Validate hearing_id

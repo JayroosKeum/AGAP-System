@@ -50,9 +50,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $input = $_POST;
     }
 
-    $result = $model->save($input, $userId);
+    $result = (($input['action'] ?? '') === 'book_next_hearing')
+        ? $model->bookNextHearing($input, $userId)
+        : $model->save($input, $userId);
     if ($result['success']) {
-        (new AuditService())->log($userId, 'Recorded hearing session minutes', 'Hearings', (int) ($input['hearing_id'] ?? 0));
+        $action = (($input['action'] ?? '') === 'book_next_hearing')
+            ? 'Booked next hearing from concluded session'
+            : 'Recorded hearing session minutes';
+        (new AuditService())->log($userId, $action, 'Hearings', (int) ($input['hearing_id'] ?? 0));
     }
 
     http_response_code($result['success'] ? 200 : 422);

@@ -4693,9 +4693,22 @@ async function submitEmbeddedSchedule(e) {
         const json = await res.json();
         if (json.success) {
             closeEmbeddedScheduleModal();
-            window.agapNotify?.(existingHearingId ? `${hearingType} hearing schedule updated successfully.` : `${hearingType} session scheduled successfully.`, 'success', existingHearingId ? 'Schedule Updated' : 'Session Scheduled');
             await loadComplaintDetails();
             loadHearingSessions(hearingType);
+
+            // The first mediation is the only booking that issues KP Forms 8
+            // and 9. Open their combined print-preview immediately after a
+            // successful issue instead of leaving the user at a toast only.
+            if (isFirstMedCheck && !existingHearingId) {
+                const previewCaseId = Number(json.case_id || caseId || 0);
+                if (previewCaseId && typeof openSummonsPreviewModal === 'function') {
+                    openSummonsPreviewModal(previewCaseId, json.document_id || null, json.hearing_id || null, true);
+                } else {
+                    window.agapNotify?.('First mediation was scheduled and KP Forms 8 and 9 were issued. Open FORM(S) on the hearing card to preview and print them.', 'success', 'Summons Issued');
+                }
+            } else {
+                window.agapNotify?.(existingHearingId ? `${hearingType} hearing schedule updated successfully.` : `${hearingType} session scheduled successfully.`, 'success', existingHearingId ? 'Schedule Updated' : 'Session Scheduled');
+            }
         } else {
             window.agapNotify?.(json.message || 'Unable to schedule hearing session.', 'warning', 'Scheduling Error');
         }

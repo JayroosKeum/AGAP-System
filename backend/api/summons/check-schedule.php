@@ -95,6 +95,8 @@ if ($complaintId || $getWindow) {
     }
 
     $todayStr = date('Y-m-d');
+    $filingDateStr = $compCreatedAt ? substr($compCreatedAt, 0, 10) : $todayStr;
+    $deadlineDateStr = MediationDeadlineService::calculateBusinessDays($filingDateStr, 15);
     $targetDate = !empty($input['target_date']) ? trim((string) $input['target_date']) : null;
 
     if ($targetDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $targetDate)) {
@@ -105,9 +107,6 @@ if ($complaintId || $getWindow) {
         $rangeStart = $monthStart;
         $rangeEnd = date('Y-m-d', max(strtotime($monthEnd), strtotime($monthStart . ' +34 days')));
     } else {
-        $filingDateStr = $compCreatedAt ? substr($compCreatedAt, 0, 10) : date('Y-m-d');
-        $deadlineDateStr = MediationDeadlineService::calculateBusinessDays($filingDateStr, 15);
-
         // Range to inspect: today (or filing date) up to 7 calendar days after statutory deadline
         $rangeStart = min($todayStr, $filingDateStr);
         $rangeEnd = date('Y-m-d', strtotime($deadlineDateStr . ' +7 days'));
