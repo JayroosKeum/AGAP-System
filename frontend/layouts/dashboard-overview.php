@@ -37,7 +37,7 @@
             </div>
         </div>
 
-        <?php if (in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2, 5], true)): ?>
+        <?php if (in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2], true)): ?>
         <!-- ── Top Report & Export Action Dropdowns ────────────────── -->
         <div class="dashboard-report-actions">
             <!-- Council Brief is now available in Generate Report. -->
@@ -322,7 +322,7 @@
 
 
 
-    <?php if (in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2, 5], true)): ?>
+    <?php if (in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2], true)): ?>
     <!-- ── Report Preview Modal Overlay ───────────────────────────── -->
     <div id="reportPreviewModal" class="report-modal-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="modalReportTitle">
         <div class="report-modal-container">

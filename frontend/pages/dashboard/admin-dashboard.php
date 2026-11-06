@@ -1,6 +1,13 @@
 <?php
 session_start();
 
+// The administrator overview contains management-wide statistics and report
+// controls, so it must not be rendered for an expired session or another role.
+if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || (int) $_SESSION['role_id'] !== 1) {
+    header('Location: ../auth/login.php?error=login_required');
+    exit;
+}
+
 include '../../layouts/header.php';
 ?>
 

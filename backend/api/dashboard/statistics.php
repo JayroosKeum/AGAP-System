@@ -7,7 +7,10 @@ header('Content-Type: application/json');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 
-if (!isset($_SESSION['user_id']) || !in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2, 3, 4], true)) {
+// This endpoint backs the management dashboard. Lupon Members and Summons
+// Servers use their own scoped dashboard endpoints and must not receive the
+// barangay-wide aggregate payload through a direct request.
+if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2], true)) {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'You are not authorized to view dashboard statistics.']);
     exit;
