@@ -1333,6 +1333,39 @@ WHERE NOT EXISTS (
     SELECT 1 FROM users WHERE users.username = seed.username
 );
 
+-- Default Pangkat duty panel and lupon schedule for fresh installations.
+INSERT INTO pangkat_roster_groups (
+    group_name, duty_day, chairman_id, secretary_id, member_id, station, notes, is_active
+)
+SELECT
+    'Team Alpha (Wednesday)', 'Wednesday', u_chair.user_id, u_sec.user_id, u_mem.user_id,
+    'Barangay Hall - Lupon Court Room', 'Primary Wednesday Conciliation Panel', 1
+FROM users u_chair
+CROSS JOIN users u_sec
+CROSS JOIN users u_mem
+WHERE u_chair.username = 'pangkatchair'
+  AND u_sec.username = 'luponsecretary'
+  AND u_mem.username = 'luponmember'
+  AND NOT EXISTS (
+      SELECT 1 FROM pangkat_roster_groups WHERE group_name = 'Team Alpha (Wednesday)'
+  );
+
+INSERT INTO lupon_duty_schedules (user_id, duty_day, start_time, end_time, is_active)
+SELECT u.user_id, 'Wednesday', '08:00:00', '17:00:00', 1
+FROM users u
+WHERE u.username IN ('pangkatchair', 'luponsecretary', 'luponmember')
+ON DUPLICATE KEY UPDATE duty_day = VALUES(duty_day), is_active = 1;
+
+-- Initial resident profiles for Barangay Tumana directory & immediate dispute intake.
+INSERT INTO residents (
+    resident_id, first_name, middle_name, last_name, gender, civil_status, occupation,
+    contact_no, email, address, house_street, barangay, city_municipality, residency_verified
+) VALUES
+    (1, 'Jose', 'P.', 'Rizal', 'Male', 'Married', 'Property Owner', '09170000001', 'jose.rizal@tumana.test', '123 J.P. Rizal St., Purok 1, Tumana, Marikina City', '123 J.P. Rizal St.', 'Tumana', 'Marikina City', 1),
+    (2, 'Andres', 'C.', 'Bonifacio', 'Male', 'Married', 'Building Contractor', '09170000002', 'andres.bonifacio@tumana.test', '456 Katipunan Ave., Purok 2, Tumana, Marikina City', '456 Katipunan Ave.', 'Tumana', 'Marikina City', 1),
+    (3, 'Gabriela', 'S.', 'Silang', 'Female', 'Single', 'Public School Teacher', '09170000003', 'gabriela.silang@tumana.test', '789 Silang St., Purok 3, Tumana, Marikina City', '789 Silang St.', 'Tumana', 'Marikina City', 1)
+ON DUPLICATE KEY UPDATE first_name = VALUES(first_name), last_name = VALUES(last_name);
+
 INSERT INTO complaint_categories (category_name, tagalog_name) VALUES
     ('Abandonment of a Minor (Arts. 276, 277) / Pagpapabaya sa Bata o Menor de Edad', 'Pagpapabaya sa Bata o Menor de Edad'),
     ('Abandonment of Persons in Danger or One\'s Own Victim (Art. 275) / Pagpapabaya sa Taong nasa Panganib o Sariling Biktima', 'Pagpapabaya sa Taong nasa Panganib o Sariling Biktima'),
