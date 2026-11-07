@@ -125,6 +125,18 @@ if (typeof window.agapNotify !== 'function') {
     };
 }
 
+// Shared, accessible loading placeholders. Keep asynchronous flows intact while
+// giving each screen a stable layout during data fetches.
+window.agapSkeleton = {
+    block(lines = 3, className = '') {
+        const widths = ['92%', '76%', '58%', '84%'];
+        return `<div class="agap-skeleton ${className}" role="status" aria-label="Loading content">${Array.from({ length: lines }, (_, index) => `<span class="agap-skeleton-line" style="width:${widths[index % widths.length]}"></span>`).join('')}<span class="sr-only">Loading content</span></div>`;
+    },
+    tableRows(columns, rows = 4) {
+        return Array.from({ length: rows }, () => `<tr class="agap-skeleton-row">${Array.from({ length: columns }, (_, index) => `<td><span class="agap-skeleton-line" style="width:${index === columns - 1 ? '54%' : '82%'}"></span></td>`).join('')}</tr>`).join('');
+    }
+};
+
 document.addEventListener('DOMContentLoaded', () => {
     const requiredFieldSelector = 'input[required]:not([type="hidden"]), textarea[required], select[required]';
     const validationMessage = (field) => {

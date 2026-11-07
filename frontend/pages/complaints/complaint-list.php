@@ -239,12 +239,9 @@ include '../../layouts/header.php';
                     </tr>
                 </thead>
                 <tbody id="complaintTable">
-                    <tr>
-                        <td colspan="5" class="table-empty-wrap">
-                            <div class="empty-icon-circle"></div>
-                            <div class="empty-state-title">Loading complaint records...</div>
-                        </td>
-                    </tr>
+                    <tr class="agap-skeleton-row"><td><span class="agap-skeleton-line" style="width:72%"></span></td><td><span class="agap-skeleton-line" style="width:90%"></span></td><td><span class="agap-skeleton-line" style="width:84%"></span></td><td><span class="agap-skeleton-line" style="width:56%"></span></td><td><span class="agap-skeleton-line" style="width:48%; margin-left:auto"></span></td></tr>
+                    <tr class="agap-skeleton-row"><td><span class="agap-skeleton-line" style="width:66%"></span></td><td><span class="agap-skeleton-line" style="width:78%"></span></td><td><span class="agap-skeleton-line" style="width:88%"></span></td><td><span class="agap-skeleton-line" style="width:62%"></span></td><td><span class="agap-skeleton-line" style="width:48%; margin-left:auto"></span></td></tr>
+                    <tr class="agap-skeleton-row"><td><span class="agap-skeleton-line" style="width:75%"></span></td><td><span class="agap-skeleton-line" style="width:86%"></span></td><td><span class="agap-skeleton-line" style="width:68%"></span></td><td><span class="agap-skeleton-line" style="width:54%"></span></td><td><span class="agap-skeleton-line" style="width:48%; margin-left:auto"></span></td></tr>
                 </tbody>
             </table>
         </div>

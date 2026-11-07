@@ -6711,7 +6711,7 @@ async function openAttendanceModal(hearingId, shouldScroll = true) {
 
         }
 
-        cardBody.innerHTML = '<div style="text-align: center; padding: 20px; color: #64748b;">Loading parties and service records...</div>';
+        cardBody.innerHTML = window.agapSkeleton?.block(4) || '<div style="text-align: center; padding: 20px; color: #64748b;">Loading parties and service records...</div>';
 
         if (shouldScroll) {
 
@@ -6733,7 +6733,7 @@ async function openAttendanceModal(hearingId, shouldScroll = true) {
 
         if (bodyEl) {
 
-            bodyEl.innerHTML = '<div style="text-align: center; padding: 20px;">Loading parties and service records...</div>';
+            bodyEl.innerHTML = window.agapSkeleton?.block(4) || '<div style="text-align: center; padding: 20px;">Loading parties and service records...</div>';
 
         }
 

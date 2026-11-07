@@ -3914,7 +3914,7 @@ async function initEmbeddedScheduleModalCalendar(stageType, caseId, complaintId)
 
     const gridEl = document.getElementById('schedVisualDayGrid');
     if (gridEl) {
-        gridEl.innerHTML = '<div style="text-align: center; color: #64748b; font-size: 0.78rem; padding: 12px; grid-column: 1 / -1;">Loading available mediation dates &amp; capacity...</div>';
+        gridEl.innerHTML = `<div style="grid-column:1 / -1;">${window.agapSkeleton?.block(3, 'agap-skeleton--compact') || 'Loading available mediation dates &amp; capacity...'}</div>`;
     }
 
     try {
@@ -4755,7 +4755,7 @@ async function openEmbeddedAttendanceModal(hearingId) {
     if (!modal || !body) return;
 
     modal.style.display = 'flex';
-    body.innerHTML = '<div class="empty-detail-state" style="text-align: center; padding: 24px 16px;">Loading attendance records...</div>';
+    body.innerHTML = window.agapSkeleton?.block(4) || '<div class="empty-detail-state" style="text-align: center; padding: 24px 16px;">Loading attendance records...</div>';
 
     try {
         const res = await fetch(`../../../backend/api/hearings/attendance.php?hearing_id=${encodeURIComponent(hearingId)}`);
@@ -7720,7 +7720,7 @@ async function openScanHistoryModal(complaintId) {
     }
 
     modal.style.display = 'flex';
-    body.innerHTML = '<div style="text-align: center; color: #64748b; padding: 20px;">Loading version history...</div>';
+    body.innerHTML = window.agapSkeleton?.block(4) || '<div style="text-align: center; color: #64748b; padding: 20px;">Loading version history...</div>';
 
     try {
         const resp = await fetch(`../../../backend/api/complaints/scanned-document.php?id=${safeComplaintId}&action=history&_t=${Date.now()}`);
@@ -9574,7 +9574,7 @@ window.viewPaanyayaMinutes = async function(stageType = 'Paanyaya 1') {
     const compId = window.complaintData?.complaint_id || (new URLSearchParams(window.location.search).get('id'));
     if (!compId) return;
 
-    body.innerHTML = '<p style="color: #64748b;">Loading dialogue minutes...</p>';
+    body.innerHTML = window.agapSkeleton?.block(3) || '<p style="color: #64748b;">Loading dialogue minutes...</p>';
     modal.style.display = 'flex';
 
     try {

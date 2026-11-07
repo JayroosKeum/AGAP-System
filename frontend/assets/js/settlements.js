@@ -77,7 +77,7 @@ async function loadSettlements(page = 1) {
     const tbody = document.getElementById('settlementsTableBody');
     if (!tbody) return;
 
-    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Loading amicable settlements...</td></tr>';
+    tbody.innerHTML = window.agapSkeleton?.tableRows(7) || '<tr><td colspan="7" class="empty-state">Loading amicable settlements...</td></tr>';
 
     const q = document.getElementById('filterSearch')?.value.trim() || '';
     const comp = document.getElementById('filterCompliance')?.value || '';

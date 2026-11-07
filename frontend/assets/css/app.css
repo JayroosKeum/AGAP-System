@@ -858,3 +858,19 @@ th {
     box-shadow: 0 4px 8px rgba(185, 28, 28, 0.3);
     transform: translateY(-1px);
 }
+
+/* Shared skeleton loading states */
+.agap-skeleton { display: grid; gap: 10px; width: 100%; }
+.agap-skeleton--compact { gap: 8px; }
+.agap-skeleton-line {
+    display: block;
+    min-height: 12px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #e8edf1 20%, #f5f7f8 42%, #e8edf1 64%);
+    background-size: 220% 100%;
+    animation: agap-skeleton-shimmer 1.25s ease-in-out infinite;
+}
+.agap-skeleton-row td { padding-top: 18px; padding-bottom: 18px; }
+.agap-skeleton-row .agap-skeleton-line { min-height: 14px; }
+@keyframes agap-skeleton-shimmer { to { background-position: -220% 0; } }
+@media (prefers-reduced-motion: reduce) { .agap-skeleton-line { animation: none; } }

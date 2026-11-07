@@ -105,7 +105,7 @@ async function loadCombinedRecords(page = 1, targetDate = null) {
     const table = document.getElementById('combinedTable');
     if (!table) return;
 
-    table.innerHTML = '<tr><td colspan="4" class="empty-state">Loading hearings and deadlines...</td></tr>';
+    table.innerHTML = window.agapSkeleton?.tableRows(4) || '<tr><td colspan="4" class="empty-state">Loading hearings and deadlines...</td></tr>';
 
     const q = document.getElementById('searchKeyword')?.value.trim() || '';
     const status = document.getElementById('searchStatus')?.value || '';

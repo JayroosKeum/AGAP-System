@@ -145,9 +145,10 @@ include '../../layouts/header.php';
                 </div>
 
                 <div id="notificationList" class="notif-feed-list" aria-live="polite">
-                    <div class="notif-loading-row">
-                        <div class="notif-spinner"></div>
-                        <span>Loading notifications...</span>
+                    <div class="agap-skeleton" role="status" aria-label="Loading notifications">
+                        <span class="agap-skeleton-line" style="min-height: 54px; width: 100%; border-radius: 8px;"></span>
+                        <span class="agap-skeleton-line" style="min-height: 54px; width: 100%; border-radius: 8px;"></span>
+                        <span class="agap-skeleton-line" style="min-height: 54px; width: 100%; border-radius: 8px;"></span>
                     </div>
                 </div>
             </div>

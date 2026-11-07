@@ -319,6 +319,45 @@
     box-shadow: 0 0 0 3px rgba(68, 132, 99, .12);
 }
 
+.login-screen .login-card .password-field {
+    position: relative;
+}
+
+.login-screen .login-card .password-field input {
+    padding-right: 76px;
+}
+
+.login-screen .login-card .password-visibility-toggle {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: 5px;
+    color: #3b6257;
+    cursor: pointer;
+    display: inline-flex;
+    font-size: 11px;
+    font-weight: 700;
+    gap: 4px;
+    margin: 0;
+    min-height: 32px;
+    padding: 4px 7px;
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.login-screen .login-card .password-visibility-toggle:hover {
+    background: #edf5ef;
+    color: #24544c;
+    transform: translateY(-50%);
+}
+
+.login-screen .login-card .password-visibility-toggle svg {
+    height: 16px;
+    width: 16px;
+}
+
 .login-screen .login-card button {
     background: var(--auth-deep);
     border-radius: 7px;

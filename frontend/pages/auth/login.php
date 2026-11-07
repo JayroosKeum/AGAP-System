@@ -44,7 +44,16 @@ include '../../layouts/header.php';
 
                 <div class="form-group">
                     <label for="password">Password</label>
-                    <input type="password" id="password" name="password" autocomplete="current-password" required>
+                    <div class="password-field">
+                        <input type="password" id="password" name="password" autocomplete="current-password" required>
+                        <button type="button" class="password-visibility-toggle" id="togglePasswordVisibility" aria-controls="password" aria-label="Show password" aria-pressed="false">
+                            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"></path>
+                                <circle cx="12" cy="12" r="2.5"></circle>
+                            </svg>
+                            <span>Show</span>
+                        </button>
+                    </div>
                 </div>
 
                 <button type="submit">Sign in</button>
@@ -231,6 +240,18 @@ include '../../layouts/header.php';
         if (e.key === 'Escape' && !modal.hidden) {
             closeModal();
         }
+    });
+
+    const passwordInput = document.getElementById('password');
+    const passwordToggle = document.getElementById('togglePasswordVisibility');
+    passwordToggle?.addEventListener('click', () => {
+        const willShow = passwordInput?.type === 'password';
+        if (!passwordInput) return;
+        passwordInput.type = willShow ? 'text' : 'password';
+        passwordToggle.setAttribute('aria-pressed', String(willShow));
+        passwordToggle.setAttribute('aria-label', willShow ? 'Hide password' : 'Show password');
+        passwordToggle.querySelector('span').textContent = willShow ? 'Hide' : 'Show';
+        passwordInput.focus({ preventScroll: true });
     });
 })();
 </script>

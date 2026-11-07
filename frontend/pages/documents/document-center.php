@@ -103,9 +103,10 @@ include '../../layouts/header.php';
 
                     <!-- Grid of Template Cards (Matching Wireframe) -->
                     <div class="doc-templates-grid" id="kpFormsGrid">
-                        <div class="doc-loading-state">
-                            <div class="doc-spinner"></div>
-                            <span>Loading KP Form templates...</span>
+                        <div class="agap-skeleton" role="status" aria-label="Loading KP Form templates">
+                            <span class="agap-skeleton-line" style="min-height: 150px; width: 100%; border-radius: 12px;"></span>
+                            <span class="agap-skeleton-line" style="min-height: 150px; width: 100%; border-radius: 12px;"></span>
+                            <span class="agap-skeleton-line" style="min-height: 150px; width: 100%; border-radius: 12px;"></span>
                         </div>
                     </div>
                 </div>

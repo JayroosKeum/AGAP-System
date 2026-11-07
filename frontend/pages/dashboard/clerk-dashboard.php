@@ -236,7 +236,7 @@ include '../../layouts/header.php';
                                 </div>
                             </div>
                             <div id="analyticsTopCategories" class="analytics-bars-container">
-                                <div class="analytics-loading">Loading dispute statistics...</div>
+                                <div class="agap-skeleton agap-skeleton--compact" role="status" aria-label="Loading dispute statistics"><span class="agap-skeleton-line"></span><span class="agap-skeleton-line" style="width:78%"></span><span class="agap-skeleton-line" style="width:62%"></span></div>
                             </div>
                         </div>
 
@@ -249,7 +249,7 @@ include '../../layouts/header.php';
                                 </div>
                             </div>
                             <div id="analyticsPurokHotspots" class="analytics-bars-container">
-                                <div class="analytics-loading">Loading area hotspots...</div>
+                                <div class="agap-skeleton agap-skeleton--compact" role="status" aria-label="Loading area hotspots"><span class="agap-skeleton-line"></span><span class="agap-skeleton-line" style="width:78%"></span><span class="agap-skeleton-line" style="width:62%"></span></div>
                             </div>
                         </div>
                     </div>
@@ -265,7 +265,7 @@ include '../../layouts/header.php';
                                 </div>
                             </div>
                             <div id="analyticsGenderBreakdown" class="analytics-demographics-wrap">
-                                <div class="analytics-loading">Loading gender data...</div>
+                                <div class="agap-skeleton agap-skeleton--compact" role="status" aria-label="Loading gender data"><span class="agap-skeleton-line"></span><span class="agap-skeleton-line" style="width:74%"></span><span class="agap-skeleton-line" style="width:58%"></span></div>
                             </div>
                         </div>
 
@@ -278,7 +278,7 @@ include '../../layouts/header.php';
                                 </div>
                             </div>
                             <div id="analyticsAgeDistribution" class="analytics-demographics-wrap">
-                                <div class="analytics-loading">Loading age demographics...</div>
+                                <div class="agap-skeleton agap-skeleton--compact" role="status" aria-label="Loading age demographics"><span class="agap-skeleton-line"></span><span class="agap-skeleton-line" style="width:74%"></span><span class="agap-skeleton-line" style="width:58%"></span></div>
                             </div>
                         </div>
                     </div>
@@ -329,7 +329,7 @@ include '../../layouts/header.php';
                     </div>
                     <div style="padding: 12px 14px;">
                         <div class="security-audit-list" id="clerkSecurityAuditFeed">
-                            <div style="text-align: center; color: #64748b; padding: 16px; font-size: 0.82rem;">Loading audit feed...</div>
+                            <div class="agap-skeleton agap-skeleton--compact" role="status" aria-label="Loading audit feed"><span class="agap-skeleton-line"></span><span class="agap-skeleton-line" style="width:82%"></span><span class="agap-skeleton-line" style="width:68%"></span></div>
                         </div>
                     </div>
                 </div>

@@ -591,10 +591,7 @@ function renderSummonCasesTable(cases) {
                 <tr id="expanded-row-${caseId}" class="expanded-row-container">
                     <td colspan="6" class="expanded-row-cell">
                         <div id="expanded-content-${caseId}" class="expanded-inline-panel">
-                            <div style="padding: 24px; text-align: center; color: #64748b;">
-                                <div style="display: inline-block; width: 20px; height: 20px; border: 2px solid #cbd5e1; border-top-color: #0284c7; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 8px;"></div>
-                                <div>Loading case service records...</div>
-                            </div>
+                        ${window.agapSkeleton?.block(4) || '<div style="padding: 24px; text-align: center; color: #64748b;">Loading case service records...</div>'}
                         </div>
                     </td>
                 </tr>
