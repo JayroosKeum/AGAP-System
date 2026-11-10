@@ -270,7 +270,7 @@ include '../../layouts/header.php';
                     <input type="hidden" name="complaint_id" value="<?= $complaintId ?>">
                     <input type="hidden" id="stageTypeInput" name="stage_type" value="<?= htmlspecialchars($stageType) ?>">
 
-                    <!-- SECTION 1: Date, Time & Multi-Select Presiding Officers (Lupon / LISO) -->
+                    <!-- SECTION 1: Date, Time & Multi-Select Presiding Lupon Members -->
                     <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 20px; margin-bottom: 22px;">
                         <div class="rm-section-title">
                             <span style="font-size: 1.1rem;">🗓️</span>
@@ -310,11 +310,11 @@ include '../../layouts/header.php';
                             </div>
                         </div>
 
-                        <!-- 3. Multi-Select Presiding Officers (Lupon / LISO) -->
+                        <!-- 3. Multi-Select Presiding Lupon Members -->
                         <div class="form-group" style="margin-bottom: 0;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                                 <label for="minutesPresidingSelect" style="font-weight: 700; font-size: 0.88rem; color: #0f172a; margin: 0;">
-                                    Mga Namuno / Tagapamagitan sa Pag-uusap (Presiding Officer[s] / Lupon / LISO) <span id="presidersRequiredMark" class="required-mark" style="color: #dc2626;">*</span>
+                                    Mga Namuno / Tagapamagitan sa Pag-uusap (Presiding Lupon Member[s]) <span id="presidersRequiredMark" class="required-mark" style="color: #dc2626;">*</span>
                                 </label>
                                 <span id="presidersOptionalNote" style="font-size: 0.74rem; color: #64748b;">Maaaring pumili ng higit sa isa (Co-presiders)</span>
                             </div>
@@ -322,7 +322,7 @@ include '../../layouts/header.php';
                             <div class="presider-multiselect-container" style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; background: #ffffff;">
                                 <!-- Selected Badges / Chips Area -->
                                 <div id="selectedPresidersList" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; min-height: 32px; align-items: center;">
-                                    <span id="noPresiderPlaceholder" style="font-size: 0.8rem; color: #94a3b8;">Pumili ng isa o higit pang Lupon / LISO members mula sa dropdown sa ibaba...</span>
+                                    <span id="noPresiderPlaceholder" style="font-size: 0.8rem; color: #94a3b8;">Pumili ng isa o higit pang Lupon Members mula sa dropdown sa ibaba...</span>
                                 </div>
 
                                 <!-- Dropdown Selector -->
@@ -723,7 +723,7 @@ function renderPresiderChips() {
     inputEl.value = JSON.stringify(selectedPresiders.map(p => p.id));
 
     if (selectedPresiders.length === 0) {
-        listEl.innerHTML = '<span id="noPresiderPlaceholder" style="font-size: 0.8rem; color: #94a3b8;">Pumili ng isa o higit pang Lupon / LISO members mula sa dropdown sa ibaba...</span>';
+        listEl.innerHTML = '<span id="noPresiderPlaceholder" style="font-size: 0.8rem; color: #94a3b8;">Pumili ng isa o higit pang Lupon Members mula sa dropdown sa ibaba...</span>';
     } else {
         listEl.innerHTML = selectedPresiders.map(p => `
             <span class="presider-chip" style="display: inline-flex; align-items: center; gap: 6px; background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; border-radius: 9999px; padding: 4px 10px; font-size: 0.82rem; font-weight: 600;">
@@ -920,7 +920,7 @@ function handleMinutesAttendanceChange() {
             presidersNote.textContent = 'Maaaring pumili ng higit sa isa (Co-presiders)';
         }
         if (noPresiderPlaceholder) {
-            noPresiderPlaceholder.textContent = 'Pumili ng isa o higit pang Lupon / LISO members mula sa dropdown sa ibaba...';
+            noPresiderPlaceholder.textContent = 'Pumili ng isa o higit pang Lupon Members mula sa dropdown sa ibaba...';
         }
     }
 

@@ -6,9 +6,18 @@ require_once __DIR__ . '/../../config/database.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
-if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2], true)) {
+$isResidentPortal = ($_SESSION['role_name'] ?? '') === 'Resident';
+if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || (!in_array((int) $_SESSION['role_id'], [1, 2], true) && !$isResidentPortal)) {
     http_response_code(401);
     echo json_encode(['success' => false, 'message' => 'Authentication required.']);
+    exit;
+}
+
+// A portal user must not be shown another resident's complaint details. The
+// server-side intake handler still performs the duplicate check and routes it
+// to a Lupon Member for an authorized screening decision.
+if ($isResidentPortal) {
+    echo json_encode(['has_duplicate' => false, 'duplicates' => []]);
     exit;
 }
 

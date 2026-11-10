@@ -151,6 +151,27 @@ class Complaint
                 $data['incident_street'] = $data['incident_location'];
             }
 
+            $actorId = (int) ($_SESSION['user_id'] ?? 0);
+            $isResidentPortal = ($_SESSION['role_name'] ?? '') === 'Resident';
+            $data['intake_source'] = $isResidentPortal ? 'Online' : 'Walk-in';
+            if ($isResidentPortal) {
+                $profile = $this->conn->prepare('SELECT resident_id FROM resident_user_profiles WHERE user_id = ?');
+                $profile->execute([$actorId]);
+                $residentId = (int) $profile->fetchColumn();
+                if ($residentId < 1) {
+                    return ['success' => false, 'message' => 'Your Resident account is not linked to a resident profile. Please contact the barangay office.'];
+                }
+                $data['complainant_resident_id'] = $residentId;
+                foreach (($data['party_types'] ?? []) as $index => $partyType) {
+                    if ($partyType === 'Complainant') {
+                        // The client renders primary parties again as hidden
+                        // multi-party inputs. Bind every complainant entry to
+                        // the signed-in profile rather than trusting those IDs.
+                        $data['party_resident_ids'][$index] = $residentId;
+                    }
+                }
+            }
+
             $validation = $this->validateIncidentInput($data);
             if (!$validation['success']) {
                 return $validation;
@@ -163,9 +184,11 @@ class Complaint
             if (!$partiesValidation['success']) {
                 return $partiesValidation;
             }
-            $jurisdictionValidation = $this->validateJurisdictionInput($data);
-            if (!$jurisdictionValidation['success']) {
-                return $jurisdictionValidation;
+            if (!$isResidentPortal) {
+                $jurisdictionValidation = $this->validateJurisdictionInput($data);
+                if (!$jurisdictionValidation['success']) {
+                    return $jurisdictionValidation;
+                }
             }
             $duplicates = $this->findPotentialDuplicates($data);
             if ($duplicates !== [] && empty($data['duplicate_acknowledged'])) {
@@ -210,6 +233,9 @@ class Complaint
                     narrative,
                     additional_details,
                     requested_resolution,
+                    intake_source,
+                    submitted_by,
+                    screening_decision,
                     status,
                     document_status,
                     is_draft,
@@ -217,7 +243,7 @@ class Complaint
                 )
                 VALUES
                 (
-                    ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+                    ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
                 )
             ");
 
@@ -245,67 +271,32 @@ class Complaint
                 trim((string) $data['narrative']),
                 trim((string) ($data['additional_details'] ?? '')) ?: null,
                 trim((string) ($data['requested_resolution'] ?? '')) ?: null,
-                'Mediation',
+                $data['intake_source'],
+                $isResidentPortal ? $actorId : null,
+                'Pending',
+                'Submitted',
                 'No Scan Uploaded',
                 0,
-                $_SESSION['user_id'] ?? $data['clerk_id'] ?? $data['encoded_by'] ?? 1
+                $isResidentPortal ? null : ($actorId ?: ($data['clerk_id'] ?? $data['encoded_by'] ?? 1))
             ]);
 
             $complaintId = (int) $this->conn->lastInsertId();
-            require_once __DIR__ . '/CaseModel.php';
-            $docketDate = date('Y-m-d');
-            $caseInsertStmt = $this->conn->prepare("
-                INSERT INTO cases (complaint_id, case_type, case_status, docket_date)
-                VALUES (?, ?, 'Mediation', ?)
-            ");
-            $caseInsertStmt->execute([
-                $complaintId,
-                in_array($caseType, ['Civil', 'Criminal', 'Others'], true) ? $caseType : 'Others',
-                $docketDate
-            ]);
-            $caseId = (int) $this->conn->lastInsertId();
-            $complaintNumber = CaseModel::generateCaseNumber($this->conn, $docketDate, $caseId);
-            $this->conn->prepare('UPDATE cases SET case_number = ? WHERE case_id = ?')
-                ->execute([$complaintNumber, $caseId]);
-            try {
-                $adminStmt = $this->conn->prepare("
-                    SELECT u.user_id FROM users u
-                    JOIN roles r ON u.role_id = r.role_id
-                    WHERE r.role_name = 'Administrator' AND u.status = 'Active'
-                    ORDER BY u.user_id ASC LIMIT 1
-                ");
-                $adminStmt->execute();
-                $adminUserId = (int) $adminStmt->fetchColumn();
-                if ($adminUserId > 0) {
-                    $this->conn->prepare("INSERT INTO case_assignments (case_id, user_id, role_in_case) VALUES (?, ?, 'Head')")
-                        ->execute([$caseId, $adminUserId]);
-                }
-            } catch (Throwable $ae) {
-                error_log('Could not auto-assign Administrator on complaint creation: ' . $ae->getMessage());
-            }
-            try {
-                require_once __DIR__ . '/CaseStage.php';
-                (new CaseStage($this->conn))->startStage($caseId, 'Mediation');
-            } catch (Throwable $se) {
-                error_log('Could not initialize Mediation case_stages row: ' . $se->getMessage());
-            }
-            $numberStatement = $this->conn->prepare(
-                'UPDATE complaints SET complaint_number = ?, status = \'Mediation\', paanyaya_attempt_count = 0, max_paanyaya_reached = 0, resolved_without_docketing = 0 WHERE complaint_id = ?'
-            );
-            $numberStatement->execute([$complaintNumber, $complaintId]);
+            $intakeReference = sprintf('INT-%s-%06d', date('Y'), $complaintId);
+            $this->conn->prepare('UPDATE complaints SET intake_reference = ? WHERE complaint_id = ?')
+                ->execute([$intakeReference, $complaintId]);
             $this->applyMapLocation($complaintId, $data);
             $this->applyParties($complaintId, $data);
             $this->saveIntakeScreening($complaintId, $data);
             try {
                 require_once __DIR__ . '/../services/NotificationService.php';
                 $notifService = new NotificationService();
-                $cNum = $this->conn->query("SELECT complaint_number FROM complaints WHERE complaint_id = {$complaintId}")->fetchColumn() ?: "CMP-#{$complaintId}";
-                $actionUrl = "../complaints/complaint-details.php?id=" . (int) $complaintId . "&tab=mediation";
+                $cNum = $intakeReference;
+                $actionUrl = "../complaints/complaint-details.php?id=" . (int) $complaintId;
                 $notifService->notifyRoles(
-                    ['Administrator', 'Lupon Clerk'],
-                    'New Complaint Filed',
-                    "New complaint {$cNum} (" . ($data['complaint_title'] ?? 'General Dispute') . ") has been officially filed and placed into Mediation (Stage 1).",
-                    $_SESSION['user_id'] ?? null,
+                    ['Administrator', 'Lupon Member'],
+                    'New Complaint Intake',
+                    "New {$data['intake_source']} intake {$cNum} (" . ($data['complaint_title'] ?? 'General Dispute') . ") is ready for preliminary screening.",
+                    $actorId ?: null,
                     'info',
                     $actionUrl
                 );
@@ -316,12 +307,13 @@ class Complaint
             $this->conn->commit();
             return [
                 'success' => true,
-                'message' => 'Official complaint filed and docketed into Mediation (Stage 1).',
-                'case_id' => $caseId ?? null,
-                'case_number' => $complaintNumber,
-                'status' => 'Mediation',
+                'message' => 'Complaint intake submitted for preliminary screening by a Lupon Member.',
+                'case_id' => null,
+                'case_number' => null,
+                'status' => 'Submitted',
                 'complaint_id' => $complaintId,
-                'complaint_number' => $complaintNumber,
+                'intake_reference' => $intakeReference,
+                'complaint_number' => null,
                 'is_draft' => false
             ];
 
@@ -520,12 +512,47 @@ class Complaint
         if (!in_array($status, $allowed, true)) {
             return ['success' => false, 'message' => 'Select a valid review decision.'];
         }
-        $exists = $this->conn->prepare("SELECT complaint_id FROM complaints WHERE complaint_id = ? AND status NOT IN ('Docketed', 'Archived')");
+        $exists = $this->conn->prepare("SELECT c.complaint_id FROM complaints c LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id WHERE c.complaint_id = ? AND cs.case_id IS NULL AND c.status <> 'Archived'");
         $exists->execute([$id]);
         if (!$exists->fetchColumn()) return ['success' => false, 'message' => 'This complaint cannot be reviewed in its current status.'];
-        $stmt = $this->conn->prepare('UPDATE complaints SET status = ?, review_notes = ? WHERE complaint_id = ?');
-        $stmt->execute([$status, $notes, $id]);
+        $decision = match ($status) {
+            'Needs Information' => 'Needs Information',
+            'Accepted' => 'Eligible',
+            'Rejected' => 'Rejected',
+            default => 'Pending',
+        };
+        $stmt = $this->conn->prepare('UPDATE complaints SET status = ?, screening_decision = ?, review_notes = ?, liso_reviewed_by = ?, liso_reviewed_at = NOW() WHERE complaint_id = ?');
+        $stmt->execute([$status, $decision, $notes, $_SESSION['user_id'] ?? null, $id]);
         return ['success' => true, 'message' => 'Complaint review saved.'];
+    }
+
+    public function docket(int $id, int $clerkId): array
+    {
+        require_once __DIR__ . '/CaseModel.php';
+        $this->conn->beginTransaction();
+        try {
+            $record = $this->conn->prepare('SELECT complaint_id, case_type, screening_decision FROM complaints WHERE complaint_id = ? FOR UPDATE');
+            $record->execute([$id]);
+            $complaint = $record->fetch(PDO::FETCH_ASSOC);
+            if (!$complaint) throw new InvalidArgumentException('Complaint intake not found.');
+            if (($complaint['screening_decision'] ?? '') !== 'Eligible') {
+                throw new InvalidArgumentException('Only complaint intakes marked eligible by preliminary screening may be formally docketed.');
+            }
+            $caseModel = new CaseModel();
+            if (!$caseModel->create(['complaint_id' => $id, 'case_type' => $complaint['case_type']])) {
+                throw new RuntimeException('Formal case docketing could not be completed.');
+            }
+            $caseQuery = $this->conn->prepare('SELECT case_id, case_number FROM cases WHERE complaint_id = ? LIMIT 1');
+            $caseQuery->execute([$id]);
+            $case = $caseQuery->fetch(PDO::FETCH_ASSOC);
+            if (!$case) throw new RuntimeException('The formal docket was not created.');
+            $this->conn->prepare('UPDATE complaints SET docketed_by = ?, docketed_at = NOW() WHERE complaint_id = ?')->execute([$clerkId, $id]);
+            $this->conn->commit();
+            return ['success' => true, 'message' => 'Complaint formally docketed.', 'case_id' => (int) $case['case_id'], 'case_number' => $case['case_number']];
+        } catch (Throwable $exception) {
+            if ($this->conn->inTransaction()) $this->conn->rollBack();
+            return ['success' => false, 'message' => $exception->getMessage()];
+        }
     }
 
     public function delete(mixed $id): bool

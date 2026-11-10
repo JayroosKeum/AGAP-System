@@ -3,7 +3,8 @@
 session_start();
 
 $roleId = (int) ($_SESSION['role_id'] ?? 0);
-if (!in_array($roleId, [1, 2], true)) {
+$isResidentPortal = ($_SESSION['role_name'] ?? '') === 'Resident';
+if (!in_array($roleId, [1, 2], true) && !$isResidentPortal) {
     $redirect = match ($roleId) {
         3 => '../dashboard/lupon-dashboard.php',
         4 => '../dashboard/server-dashboard.php',
@@ -29,11 +30,15 @@ $categoriesStmt = $db->query("
 ");
 $categories = $categoriesStmt ? $categoriesStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
-$residentsStmt = $db->query("
-    SELECT resident_id, first_name, middle_name, last_name, suffix, birth_date, gender, civil_status, occupation, contact_no, email, preferred_contact, purok, address, home_latitude, home_longitude, is_tenant, residency_verified
-    FROM residents 
-    ORDER BY last_name ASC, first_name ASC
-");
+$residentSelect = "SELECT resident_id, first_name, middle_name, last_name, suffix, birth_date, gender, civil_status, occupation, contact_no, email, preferred_contact, purok, address, home_latitude, home_longitude, is_tenant, residency_verified FROM residents";
+if ($isResidentPortal) {
+    // A portal resident may see only their linked directory profile. Respondent
+    // details are entered directly; the full barangay directory remains staff-only.
+    $residentsStmt = $db->prepare($residentSelect . ' WHERE resident_id = (SELECT resident_id FROM resident_user_profiles WHERE user_id = ?)');
+    $residentsStmt->execute([(int) $_SESSION['user_id']]);
+} else {
+    $residentsStmt = $db->query($residentSelect . ' ORDER BY last_name ASC, first_name ASC');
+}
 $residents = $residentsStmt ? $residentsStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
 $marikinaPath = __DIR__ . '/../../assets/images/marikina_logo.jpg';

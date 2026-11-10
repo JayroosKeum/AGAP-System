@@ -16,6 +16,11 @@ if ($username === '' || $password === '' || !$auth->login($username, $password))
     exit;
 }
 
+if (($_SESSION['role_name'] ?? '') === 'Resident') {
+    header('Location: ../../../frontend/pages/resident/dashboard.php', true, 303);
+    exit;
+}
+
 switch ((int) $_SESSION['role_id']) {
     case 1:
         header('Location: ../../../frontend/pages/dashboard/admin-dashboard.php', true, 303);

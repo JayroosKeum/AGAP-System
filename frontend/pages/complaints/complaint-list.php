@@ -3,7 +3,7 @@
 session_start();
 
 $roleId = (int) ($_SESSION['role_id'] ?? 0);
-if (!in_array($roleId, [1, 2], true)) {
+if (!in_array($roleId, [1, 2, 3], true)) {
     $redirect = match ($roleId) {
         3 => '../dashboard/lupon-dashboard.php',
         4 => '../dashboard/server-dashboard.php',

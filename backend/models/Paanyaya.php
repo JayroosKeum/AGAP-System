@@ -1561,7 +1561,7 @@ class Paanyaya
             SELECT u.user_id, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS full_name, r.role_name
             FROM users u
             INNER JOIN roles r ON r.role_id = u.role_id
-            WHERE u.status = 'Active' AND (r.role_name IN ('Lupon Member', 'Lupon Clerk', 'Administrator', 'Punong Barangay') OR u.role_id IN (1, 2, 3, 5))
+            WHERE u.status = 'Active' AND r.role_name IN ('Lupon Member', 'Lupon Clerk', 'Administrator', 'Punong Barangay')
             ORDER BY r.role_id ASC, u.last_name ASC
         ");
         return $stmt->fetchAll(PDO::FETCH_ASSOC);

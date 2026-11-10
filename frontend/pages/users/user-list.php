@@ -11,6 +11,9 @@ if ($roleId !== 1) {
     header('Location: ' . $redirect);
     exit;
 } 
+require_once __DIR__ . '/../../../backend/config/database.php';
+$db = (new Database())->connect();
+$availableRoles = $db->query("SELECT role_id, role_name FROM roles WHERE role_name IN ('Administrator', 'Lupon Clerk', 'Lupon Member', 'Summons Server', 'Resident') ORDER BY role_id")->fetchAll(PDO::FETCH_ASSOC);
 include '../../layouts/header.php'; 
 ?>
 
@@ -50,11 +53,11 @@ include '../../layouts/header.php';
     </div>
 </div>
 
-<div id="userModal" class="modal">
-    <div class="modal-content">
+<div id="userModal" class="modal" role="presentation" aria-hidden="true">
+    <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="userModalTitle" tabindex="-1">
         <div class="modal-header">
             <h2 id="userModalTitle">Add User</h2>
-            <button type="button" class="close-btn" onclick="closeUserModal()">&times;</button>
+            <button type="button" class="close-btn" onclick="closeUserModal()" aria-label="Close user form">&times;</button>
         </div>
         
         <form id="userForm" method="POST" action="../../../backend/api/users/create.php">
@@ -63,22 +66,22 @@ include '../../layouts/header.php';
             
             <div class="grid">
                 <div class="form-group">
-                    <label>First Name</label>
+                    <label for="firstName">First Name</label>
                     <input id="firstName" name="first_name" maxlength="100" required>
                 </div>
                 <div class="form-group">
-                    <label>Last Name</label>
+                    <label for="lastName">Last Name</label>
                     <input id="lastName" name="last_name" maxlength="100" required>
                 </div>
             </div>
             
             <div class="form-group">
-                <label>Username</label>
+                <label for="username">Username</label>
                 <input id="username" name="username" minlength="3" maxlength="100" pattern="[A-Za-z0-9_.-]{3,100}" required>
             </div>
             
             <div class="form-group">
-                <label>Email</label>
+                <label for="email">Email</label>
                 <input id="email" type="email" name="email" maxlength="150" required>
             </div>
 
@@ -89,26 +92,37 @@ include '../../layouts/header.php';
             </div>
             
             <div class="form-group" id="passwordGroup">
-                <label>Password <small id="passwordHint">(optional; leave blank to send verification email)</small></label>
-                <input id="password" type="password" name="password" minlength="12" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9]).{12,}" title="Use at least 12 characters with uppercase, lowercase, and a number.">
+                <label for="password">Password <small id="passwordHint">(optional; leave blank to send verification email)</small></label>
+                <div class="user-password-field">
+                    <input id="password" type="password" name="password" minlength="12" autocomplete="new-password" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9]).{12,}" title="Use at least 12 characters with uppercase, lowercase, and a number." aria-describedby="passwordRequirements">
+                    <button type="button" class="user-password-toggle" data-password-toggle="password" aria-controls="password" aria-label="Show password" aria-pressed="false">Show</button>
+                </div>
+                <ul id="passwordRequirements" class="password-requirements" aria-label="Password requirements">
+                    <li data-password-rule="length">At least 12 characters</li>
+                    <li data-password-rule="lowercase">One lowercase letter</li>
+                    <li data-password-rule="uppercase">One uppercase letter</li>
+                    <li data-password-rule="number">One number</li>
+                </ul>
             </div>
             <div class="form-group" id="passwordConfirmationGroup">
                 <label for="passwordConfirmation">Confirm Password</label>
-                <input id="passwordConfirmation" type="password" name="password_confirmation" minlength="12" autocomplete="new-password" title="Re-enter the password exactly.">
+                <div class="user-password-field">
+                    <input id="passwordConfirmation" type="password" name="password_confirmation" minlength="12" autocomplete="new-password" title="Re-enter the password exactly.">
+                    <button type="button" class="user-password-toggle" data-password-toggle="passwordConfirmation" aria-controls="passwordConfirmation" aria-label="Show confirmation password" aria-pressed="false">Show</button>
+                </div>
                 <small>Required only when an initial password is entered.</small>
             </div>
             
             <div class="form-group">
-                <label>Role</label>
+                <label for="roleId">Role</label>
                 <select id="roleId" name="role_id">
-                    <option value="1">Administrator</option>
-                    <option value="2">Lupon Clerk</option>
-                    <option value="3">Lupon Member</option>
-                    <option value="4">Summons Server</option>
+                    <?php foreach ($availableRoles as $role): ?>
+                        <option value="<?= (int) $role['role_id'] ?>"><?= htmlspecialchars($role['role_name']) ?></option>
+                    <?php endforeach; ?>
                 </select>
             </div>
             
-            <button class="btn-create">Save User</button>
+            <button type="submit" class="btn-create">Save User</button>
         </form>
     </div>
 </div>

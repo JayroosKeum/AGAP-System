@@ -647,13 +647,18 @@ async function loadComplaintDetails() {
             const yy = d.getFullYear() || 2026;
             return isPaanyayaRecord ? `P-${mm}-${ss}-${yy}` : `${mm}-${ss}-${yy}`;
         };
-        const docketNum = formatDocketDisplay(data.case_number || data.complaint_number, data.complaint_id, data.created_at);
+        const hasFormalDocket = Boolean(data.case_number || data.complaint_number);
+        const docketNum = hasFormalDocket
+            ? formatDocketDisplay(data.case_number || data.complaint_number, data.complaint_id, data.created_at)
+            : (data.intake_reference || 'Not yet docketed');
         const compNum = docketNum;
 
         // Header Case Number
         const compNumEl = document.getElementById('complaintNumber');
         if (compNumEl) {
-            compNumEl.textContent = (isPaanyayaRecord ? 'Paanyaya Case #' : 'Case #') + docketNum;
+            compNumEl.textContent = hasFormalDocket
+                ? (isPaanyayaRecord ? 'Paanyaya Case #' : 'Case #') + docketNum
+                : 'Intake #' + docketNum;
         }
 
         const compTitleEl = document.getElementById('complaintTitle');

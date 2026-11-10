@@ -19,7 +19,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2], true)) {
+$isResidentPortal = ($_SESSION['role_name'] ?? '') === 'Resident';
+if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || (!in_array((int) $_SESSION['role_id'], [1, 2], true) && !$isResidentPortal)) {
     if ($isJson) {
         header('Content-Type: application/json; charset=utf-8');
         http_response_code(401);
@@ -62,6 +63,10 @@ if (!$result['success']) {
 }
 
 if (!empty($result['complaint_id'])) {
+    if ($isResidentPortal) {
+        header('Location: ../../../frontend/pages/resident/dashboard.php');
+        exit;
+    }
     if (!empty($result['escalated_from_paanyaya'])) {
         header('Location: ../../../frontend/pages/complaints/complaint-details.php?id=' . (int)$result['complaint_id'] . '&tab=mediation');
         exit;

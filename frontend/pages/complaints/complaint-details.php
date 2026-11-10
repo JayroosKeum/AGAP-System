@@ -148,6 +148,15 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             </div>
 
             <div class="case-bar-right">
+                <?php if ($roleId === 3): ?>
+                    <button type="button" class="btn-case-primary" onclick="reviewIntake(<?php echo $complaintId; ?>, 'Accepted')"><span>Mark Intake Eligible</span></button>
+                    <button type="button" class="btn-case-status" onclick="reviewIntake(<?php echo $complaintId; ?>, 'Needs Information')">Needs Information</button>
+                <?php endif; ?>
+                <?php if (in_array($roleId, [1, 2], true)): ?>
+                    <button type="button" class="btn-case-primary" onclick="docketEligibleIntake(<?php echo $complaintId; ?>)">
+                        <span>Formal Docket</span>
+                    </button>
+                <?php endif; ?>
                 <button type="button" class="btn-case-status" id="statusTrackerButton" onclick="toggleStatusTracker()" title="Toggle case progression tracking">
                     <span id="statusDotIndicator" class="status-dot-indicator"></span>
                     <span id="statusTrackerButtonLabel">Status: In Progress</span>
@@ -170,6 +179,33 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                 });
             </script>
         <?php endif; ?>
+
+        <script>
+        async function reviewIntake(complaintId, status) {
+            const reviewNotes = window.prompt(status === 'Accepted' ? 'Optional preliminary-screening notes:' : 'Explain what information is required:');
+            if (reviewNotes === null) return;
+            const form = new FormData();
+            form.append('complaint_id', complaintId);
+            form.append('status', status);
+            form.append('review_notes', reviewNotes);
+            const response = await fetch('../../../backend/api/complaints/review.php', { method: 'POST', body: form });
+            const result = await response.json();
+            if (!result.success) { window.agapNotify?.(result.message || 'Unable to save the screening decision.', 'error'); return; }
+            window.agapNotify?.(result.message, 'success');
+            window.location.reload();
+        }
+
+        async function docketEligibleIntake(complaintId) {
+            if (!window.confirm('Create the formal KP case docket for this eligible intake?')) return;
+            const form = new FormData();
+            form.append('complaint_id', complaintId);
+            const response = await fetch('../../../backend/api/complaints/docket.php', { method: 'POST', headers: { 'X-CSRF-Token': window.agapCsrfToken || '' }, body: form });
+            const result = await response.json();
+            if (!result.success) { window.agapNotify?.(result.message || 'Unable to docket this intake.', 'error'); return; }
+            window.agapNotify?.(`Formal case ${result.case_number} created.`, 'success');
+            window.location.reload();
+        }
+        </script>
 
         <!-- Cross-Link Alert Banner (Module 5: Multi-Complaint Handling & Resident Linkage) -->
         <?php $hasConcurrent = !empty($concurrentDisputes['has_concurrent']); ?>

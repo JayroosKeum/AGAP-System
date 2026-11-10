@@ -1,4 +1,5 @@
 let users = [];
+let userModalReturnFocus = null;
 
 const esc = (value) => {
     const node = document.createElement('div');
@@ -31,7 +32,43 @@ document.addEventListener('DOMContentLoaded', () => {
     form.addEventListener('submit', saveUser);
     form.addEventListener('input', clearFieldValidationMessage);
     form.addEventListener('change', clearFieldValidationMessage);
+    document.querySelectorAll('[data-password-toggle]').forEach((toggle) => {
+        toggle.addEventListener('click', () => togglePasswordVisibility(toggle));
+    });
+    document.getElementById('password')?.addEventListener('input', updatePasswordRequirements);
+    document.getElementById('passwordConfirmation')?.addEventListener('input', updatePasswordRequirements);
+    document.getElementById('userModal')?.addEventListener('click', (event) => {
+        if (event.target.id === 'userModal') closeUserModal();
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && document.getElementById('userModal')?.style.display === 'flex') closeUserModal();
+    });
 });
+
+function togglePasswordVisibility(toggle) {
+    const input = document.getElementById(toggle.dataset.passwordToggle);
+    if (!input) return;
+    const willShow = input.type === 'password';
+    input.type = willShow ? 'text' : 'password';
+    toggle.textContent = willShow ? 'Hide' : 'Show';
+    toggle.setAttribute('aria-pressed', String(willShow));
+    toggle.setAttribute('aria-label', `${willShow ? 'Hide' : 'Show'} ${input.id === 'password' ? 'password' : 'confirmation password'}`);
+    input.focus({preventScroll: true});
+}
+
+function updatePasswordRequirements() {
+    const password = document.getElementById('password');
+    if (!password) return;
+    const rules = {
+        length: password.value.length >= 12,
+        lowercase: /[a-z]/.test(password.value),
+        uppercase: /[A-Z]/.test(password.value),
+        number: /\d/.test(password.value)
+    };
+    document.querySelectorAll('[data-password-rule]').forEach((item) => {
+        item.classList.toggle('is-met', Boolean(rules[item.dataset.passwordRule]));
+    });
+}
 
 function clearFieldValidationMessage(event) {
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) {
@@ -81,11 +118,21 @@ function openUserModal() {
     document.getElementById('passwordGroup').style.display = '';
     document.getElementById('passwordHint').textContent = '(optional; leave blank to send verification email)';
     showMessage('');
-    document.getElementById('userModal').style.display = 'flex';
+    updatePasswordRequirements();
+    userModalReturnFocus = document.activeElement;
+    const modal = document.getElementById('userModal');
+    modal.style.display = 'flex';
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('modal-open');
+    window.setTimeout(() => document.getElementById('firstName')?.focus(), 0);
 }
 
 function closeUserModal() {
-    document.getElementById('userModal').style.display = 'none';
+    const modal = document.getElementById('userModal');
+    modal.style.display = 'none';
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('modal-open');
+    userModalReturnFocus?.focus?.();
 }
 
 function editUser(id) {
@@ -110,6 +157,7 @@ function editUser(id) {
     document.getElementById('passwordConfirmation').value = '';
     document.getElementById('passwordGroup').style.display = '';
     document.getElementById('passwordHint').textContent = '(leave blank to keep current password)';
+    updatePasswordRequirements();
 }
 
 function setAdministratorRoleOption(allowAdministrator) {
@@ -153,6 +201,7 @@ async function saveUser(event) {
     }
     const password = document.getElementById('password');
     const passwordConfirmation = document.getElementById('passwordConfirmation');
+    updatePasswordRequirements();
     if (password.value !== '' || passwordConfirmation.value !== '') {
         if (password.value === '') {
             password.setCustomValidity('Enter a password before confirming it.');

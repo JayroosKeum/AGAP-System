@@ -147,6 +147,15 @@ CREATE TABLE IF NOT EXISTS residents (
     KEY idx_residents_jurisdiction (barangay, is_tenant)
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS resident_user_profiles (
+    user_id INT UNSIGNED PRIMARY KEY,
+    resident_id INT UNSIGNED NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_resident_user_profiles_resident (resident_id),
+    CONSTRAINT fk_resident_user_profiles_user FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE,
+    CONSTRAINT fk_resident_user_profiles_resident FOREIGN KEY (resident_id) REFERENCES residents (resident_id) ON DELETE RESTRICT
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS complaint_categories (
     category_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     category_name VARCHAR(255) NOT NULL,
@@ -184,6 +193,15 @@ CREATE TABLE IF NOT EXISTS complaints (
     additional_details LONGTEXT NULL,
     requested_resolution TEXT NULL,
     review_notes TEXT NULL,
+    intake_reference VARCHAR(50) NULL,
+    intake_source ENUM('Online', 'Walk-in') NOT NULL DEFAULT 'Walk-in',
+    submitted_by INT UNSIGNED NULL,
+    liso_reviewed_by INT UNSIGNED NULL,
+    liso_reviewed_at DATETIME NULL,
+    screening_decision ENUM('Pending', 'Needs Information', 'Eligible', 'Referred', 'Rejected', 'Duplicate') NOT NULL DEFAULT 'Pending',
+    duplicate_of_complaint_id INT UNSIGNED NULL,
+    docketed_by INT UNSIGNED NULL,
+    docketed_at DATETIME NULL,
     status VARCHAR(50) NOT NULL DEFAULT 'Filed',
     document_status ENUM('No Scan Uploaded', 'Scan Uploaded', 'Updated Scan Uploaded') NOT NULL DEFAULT 'No Scan Uploaded',
     is_draft TINYINT(1) NOT NULL DEFAULT 0,
@@ -197,6 +215,9 @@ CREATE TABLE IF NOT EXISTS complaints (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_complaints_number (complaint_number),
+    UNIQUE KEY uq_complaints_intake_reference (intake_reference),
+    KEY idx_complaints_intake_queue (screening_decision, intake_source, created_at),
+    KEY idx_complaints_submitted_by (submitted_by),
     KEY idx_complaints_category_id (category_id),
     KEY idx_complaints_secondary_category_id (secondary_category_id),
     KEY idx_complaints_status_created_at (status, created_at),
@@ -205,7 +226,15 @@ CREATE TABLE IF NOT EXISTS complaints (
     CONSTRAINT fk_complaints_secondary_category
         FOREIGN KEY (secondary_category_id) REFERENCES complaint_categories (category_id) ON DELETE SET NULL,
     CONSTRAINT fk_complaints_encoded_by
-        FOREIGN KEY (encoded_by) REFERENCES users (user_id) ON DELETE SET NULL
+        FOREIGN KEY (encoded_by) REFERENCES users (user_id) ON DELETE SET NULL,
+    CONSTRAINT fk_complaints_submitted_by
+        FOREIGN KEY (submitted_by) REFERENCES users (user_id) ON DELETE SET NULL,
+    CONSTRAINT fk_complaints_liso_reviewed_by
+        FOREIGN KEY (liso_reviewed_by) REFERENCES users (user_id) ON DELETE SET NULL,
+    CONSTRAINT fk_complaints_duplicate_of
+        FOREIGN KEY (duplicate_of_complaint_id) REFERENCES complaints (complaint_id) ON DELETE SET NULL,
+    CONSTRAINT fk_complaints_docketed_by
+        FOREIGN KEY (docketed_by) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS complaint_parties (
@@ -1282,7 +1311,8 @@ INSERT INTO roles (role_name) VALUES
     ('Administrator'),
     ('Lupon Clerk'),
     ('Lupon Member'),
-    ('Summons Server')
+    ('Summons Server'),
+    ('Resident')
 ON DUPLICATE KEY UPDATE role_name = VALUES(role_name);
 
 -- Initial local accounts. Default strong seed password: PassTumana2026!

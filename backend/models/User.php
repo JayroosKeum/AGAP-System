@@ -15,7 +15,10 @@ class User {
     public function findByUsername(string $username): array|false
     {
         $stmt = $this->db->prepare(
-            "SELECT * FROM users WHERE username = ?"
+            "SELECT u.*, r.role_name
+             FROM users u
+             INNER JOIN roles r ON r.role_id = u.role_id
+             WHERE u.username = ?"
         );
 
         $stmt->execute([$username]);
@@ -211,6 +214,31 @@ class User {
         $stmt = $this->db->prepare('SELECT 1 FROM roles WHERE role_id = ?');
         $stmt->execute([$roleId]);
         return (bool) $stmt->fetchColumn();
+    }
+
+    public function roleName(int $roleId): ?string
+    {
+        $stmt = $this->db->prepare('SELECT role_name FROM roles WHERE role_id = ?');
+        $stmt->execute([$roleId]);
+        $name = $stmt->fetchColumn();
+        return is_string($name) ? $name : null;
+    }
+
+    public function createResidentProfileForUser(int $userId, array $data): bool
+    {
+        try {
+            $this->db->beginTransaction();
+            $resident = $this->db->prepare('INSERT INTO residents (first_name, last_name, contact_no, email, address, barangay, city_municipality, residency_verified) VALUES (?, ?, ?, ?, NULL, \'Tumana\', \'Marikina City\', 0)');
+            $resident->execute([$data['first_name'], $data['last_name'], $data['contact_no'] ?: null, $data['email']]);
+            $residentId = (int) $this->db->lastInsertId();
+            $this->db->prepare('INSERT INTO resident_user_profiles (user_id, resident_id) VALUES (?, ?)')->execute([$userId, $residentId]);
+            $this->db->commit();
+            return true;
+        } catch (Throwable $exception) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            error_log($exception->getMessage());
+            return false;
+        }
     }
 
     public function usernameInUse(string $username, ?int $exceptUserId = null): bool

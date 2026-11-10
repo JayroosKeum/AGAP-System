@@ -296,7 +296,7 @@ class ComplaintController
             }
 
             if (empty($result['redirect_url'])) {
-                $result['redirect_url'] = '../../frontend/pages/complaints/complaint-details.php?id=' . $complaintId . '&tab=mediation';
+                $result['redirect_url'] = '../../frontend/pages/complaints/complaint-details.php?id=' . $complaintId . '&tab=overview';
             }
         }
 
@@ -396,6 +396,15 @@ class ComplaintController
         $result = $this->complaint->review($id, $status, $notes !== '' ? $notes : null);
         if ($result['success']) {
             $this->audit->log((int) $_SESSION['user_id'], 'Reviewed Complaint: ' . $status, 'Complaints', $id);
+        }
+        return $result;
+    }
+
+    public function docket(int $id, int $userId): array
+    {
+        $result = $this->complaint->docket($id, $userId);
+        if ($result['success']) {
+            $this->audit->log($userId, 'Formally docketed screened complaint', 'Complaints', $id);
         }
         return $result;
     }

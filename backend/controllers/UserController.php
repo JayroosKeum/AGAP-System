@@ -32,6 +32,10 @@ class UserController {
         $validated['data']['email_verification_expires_at'] = (new DateTimeImmutable('+24 hours'))->format('Y-m-d H:i:s');
         $result = $this->user->create($validated['data']);
         if (!$result['success']) return $result + ['message' => $result['message'] ?? 'Unable to create the user account.'];
+        if ($this->user->roleName((int) $validated['data']['role_id']) === 'Resident'
+            && !$this->user->createResidentProfileForUser((int) $result['id'], $validated['data'])) {
+            return ['success' => false, 'message' => 'The Resident account was created, but its resident profile could not be linked. Remove the account and try again.'];
+        }
         if ($hasPassword) {
             $this->audit->log($actorId, 'Created user account with initial password', 'User Management', $result['id']);
             return $result + ['message' => 'User account created successfully.', 'email_sent' => false];
